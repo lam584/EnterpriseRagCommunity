@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './assets/styles/tailwind.css'   // ← 引入 Tailwind
 import '@fortawesome/fontawesome-svg-core/styles.css';
+import 'react-datepicker/dist/react-datepicker.css'
 import { config } from '@fortawesome/fontawesome-svg-core';
 config.autoAddCss = false;
 ReactDOM

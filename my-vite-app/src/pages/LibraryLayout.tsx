@@ -128,6 +128,7 @@ const LibraryLayout: React.FC = () => {
     };
 
     return (
+
         <div className="flex h-screen">
             {/* Sidebar */}
             <aside className="w-64 bg-gradient-to-b from-purple-700 to-purple-500 text-white shadow-xl flex flex-col">

@@ -27,9 +27,9 @@ public class DirectoryTreeMarkdownGenerator {
     // 常见扩展名描述
     private static final Map<String, String> EXTENSION_DESCRIPTIONS = Map.ofEntries(
             Map.entry("properties", "配置文件"),
-            Map.entry("yml", "YAML 配置文件"),
-            Map.entry("yaml", "YAML 配置文件"),
-            Map.entry("xml", "XML 文件"),
+//            Map.entry("yml", "YAML 配置文件"),
+//            Map.entry("yaml", "YAML 配置文件"),
+//            Map.entry("xml", "XML 文件"),
             Map.entry("ftl", "FreeMarker 模板"),
             Map.entry("jsp", "JSP 视图"),
             Map.entry("ts", "TypeScript 文件"),
@@ -219,7 +219,7 @@ public class DirectoryTreeMarkdownGenerator {
 
     public static void main(String[] args) throws IOException {
         Path projectRoot = args.length>0 ? Paths.get(args[0]) :
-                Paths.get("H:/JavaWeb/FinalAssignments");
+                Paths.get(".");
         if (!Files.isDirectory(projectRoot)) {
             System.err.println("无效的项目根目录: " + projectRoot);
             return;

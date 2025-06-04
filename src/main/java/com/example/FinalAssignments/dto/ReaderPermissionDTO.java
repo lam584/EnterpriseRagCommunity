@@ -1,3 +1,4 @@
+//java/com/example/FinalAssignments/dto/ReaderPermissionDTO.java
 package com.example.FinalAssignments.dto;
 
 import com.example.FinalAssignments.entity.ReaderPermission;

@@ -1,3 +1,4 @@
+//java/com/example/FinalAssignments/service/ReaderService.java
 package com.example.FinalAssignments.service;
 
 import com.example.FinalAssignments.entity.Reader;
@@ -162,10 +163,10 @@ public class ReaderService {
         readerRepository.deleteById(id);
     }
 
-    public List<Reader> search(String account, String phone, String email) {
-        return readerRepository.search(account, phone, email);
+    public List<Reader> search(Long id, String account, String phone, String email,
+                               String sex, String role, LocalDateTime  startDate, LocalDateTime  endDate) {
+        return readerRepository.search(id, account, phone, email, sex, role, startDate, endDate);
     }
-
     /**
      * 验证密码
      * @param rawPassword 原始密码
@@ -176,3 +177,4 @@ public class ReaderService {
         return passwordEncoder.matches(rawPassword, encodedPassword);
     }
 }
+

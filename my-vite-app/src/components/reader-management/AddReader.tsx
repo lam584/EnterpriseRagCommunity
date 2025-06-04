@@ -1,3 +1,4 @@
+//my-vite-app/src/components/reader-management/AddReader.tsx
 import React, { useState, useEffect } from 'react';
 import { createReader } from '../../services/readerService';
 import { fetchReaderPermissions, ReaderPermissionDTO } from '../../services/readerPermissionService';
@@ -286,7 +287,7 @@ const AddReader: React.FC = () => {
                                 <option value={0}>请选择权限</option>
                                 {permissions.map(perm => (
                                     <option key={perm.id} value={perm.id}>
-                                        {perm.name}
+                                        {perm.roles || `权限ID: ${perm.id}`}  {/* 使用 roles */}
                                     </option>
                                 ))}
                             </select>

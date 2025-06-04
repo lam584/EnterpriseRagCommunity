@@ -38,7 +38,7 @@ const ReaderPermissions: React.FC = () => {
                 // 转换API数据格式为组件内部使用的格式
                 const mappedPermissions = data.map(item => ({
                     id: item.id,
-                    role: item.name,
+                    role: item.roles ?? '未知角色', // 防止 undefined
                     login: item.canLogin || false,
                     appointment: item.canReserve || false,
                     viewAnnouncements: item.canViewAnnouncement || false,
@@ -175,7 +175,7 @@ const ReaderPermissions: React.FC = () => {
 
             const createdRole = {
                 id: response.id,
-                role: response.name || '新角色',
+                role: response.roles || '新角色',
                 login: response.canLogin || true,
                 appointment: response.canReserve || true,
                 viewAnnouncements: response.canViewAnnouncement || true,
@@ -205,7 +205,7 @@ const ReaderPermissions: React.FC = () => {
     const mapToApiFormat = (permission: RolePermission): ReaderPermissionDTO => {
         return {
             id: permission.id,
-            name: permission.role,
+            roles: permission.role,
             description: permission.notes,
             canLogin: permission.login,
             canReserve: permission.appointment,

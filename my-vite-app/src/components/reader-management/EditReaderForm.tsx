@@ -364,16 +364,16 @@ const EditReaderForm: React.FC = () => {
               <div>
                 <label className="block mb-1">权限角色</label>
                 <select
-                  name="permission"
-                  value={form.permission?.id || ''}
-                  onChange={handleChange}
-                  className="w-full border border-gray-300 p-2 rounded"
+                    name="permission"
+                    value={form.permission?.id || ''}
+                    onChange={handleChange}
+                    className="w-full border border-gray-300 p-2 rounded"
                 >
                   <option value="">选择权限角色...</option>
                   {permissions.map(perm => (
-                    <option key={perm.id} value={perm.id}>
-                      {perm.name || perm.description || `权限ID: ${perm.id}`}
-                    </option>
+                      <option key={perm.id} value={perm.id}>
+                        {perm.roles || `权限ID: ${perm.id}`}  {/* 使用 roles */}
+                      </option>
                   ))}
                 </select>
               </div>

@@ -5,7 +5,7 @@ const API_BASE = '/api/reader-permissions';
 
 export interface ReaderPermissionDTO {
   id: number;
-  name: string;
+  roles?: string;      // 改成 roles，与后端一致
   description?: string;
   maxBorrowCount?: number;
   maxBorrowDays?: number;

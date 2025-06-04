@@ -1,3 +1,4 @@
+//java/com/example/FinalAssignments/controller/ReaderController.java
 package com.example.FinalAssignments.controller;
 
 import com.example.FinalAssignments.dto.ReaderDTO;
@@ -11,6 +12,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,10 +39,15 @@ public class ReaderController {
 
     @GetMapping
     public ResponseEntity<List<Reader>> getReaders(
+            @RequestParam(required = false) Long id,
             @RequestParam(required = false) String account,
             @RequestParam(required = false) String phone,
-            @RequestParam(required = false) String email) {
-        List<Reader> list = readerService.search(account, phone, email);
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String sex,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) LocalDateTime  startDate,
+            @RequestParam(required = false) LocalDateTime  endDate) {
+        List<Reader> list = readerService.search(id, account, phone, email, sex, role, startDate, endDate);
         // 确保清除所有读者的密码信息
         list.forEach(reader -> reader.setPassword(null));
         return new ResponseEntity<>(list, HttpStatus.OK);
@@ -45,10 +56,15 @@ public class ReaderController {
     // 返回ReaderDTO列表的API
     @GetMapping("/dto")
     public ResponseEntity<List<ReaderDTO>> getReadersDTO(
+            @RequestParam(required = false) Long id,
             @RequestParam(required = false) String account,
             @RequestParam(required = false) String phone,
-            @RequestParam(required = false) String email) {
-        List<Reader> list = readerService.search(account, phone, email);
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String sex,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) LocalDateTime  startDate,
+            @RequestParam(required = false) LocalDateTime  endDate) {
+        List<Reader> list = readerService.search(id, account, phone, email, sex, role, startDate, endDate);
         List<ReaderDTO> dtoList = list.stream()
                 .map(readerDTOConverter::convertToDTO)
                 .collect(Collectors.toList());
@@ -60,13 +76,17 @@ public class ReaderController {
             @RequestParam(required = false) Long id,
             @RequestParam(required = false) String account,
             @RequestParam(required = false) String phone,
-            @RequestParam(required = false) String email) {
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String sex,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) LocalDateTime  startDate,
+            @RequestParam(required = false) LocalDateTime  endDate) {
         List<Reader> list;
         if (id != null) {
             Optional<Reader> reader = readerService.findById(id);
             list = reader.isPresent() ? List.of(reader.get()) : List.of();
         } else {
-            list = readerService.search(account, phone, email);
+            list = readerService.search(id, account, phone, email, sex, role, startDate, endDate);
         }
         // 确保清除所有读者的密码信息
         list.forEach(reader -> reader.setPassword(null));
@@ -79,16 +99,31 @@ public class ReaderController {
             @RequestParam(required = false) Long id,
             @RequestParam(required = false) String account,
             @RequestParam(required = false) String phone,
-            @RequestParam(required = false) String email) {
-        List<Reader> list;
-        if (id != null) {
-            Optional<Reader> reader = readerService.findById(id);
-            list = reader.isPresent() ? List.of(reader.get()) : List.of();
-        } else {
-            list = readerService.search(account, phone, email);
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String sex,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+
+        LocalDateTime startDateTime = null;
+        LocalDateTime endDateTime = null;
+
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+
+        try {
+            if (startDate != null && !startDate.isEmpty()) {
+                startDateTime = LocalDate.parse(startDate, formatter).atStartOfDay();
+            }
+
+            if (endDate != null && !endDate.isEmpty()) {
+                endDateTime = LocalDate.parse(endDate, formatter).atTime(23, 59, 59); // 结束时间到当天最后一秒
+            }
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("日期格式不正确，请使用 yyyy/MM/dd 格式");
         }
 
-        // 转换为DTO列表
+        List<Reader> list = readerService.search(id, account, phone, email, sex, role, startDateTime, endDateTime);
+
         List<ReaderDTO> dtoList = list.stream()
                 .map(readerDTOConverter::convertToDTO)
                 .collect(Collectors.toList());
@@ -221,4 +256,5 @@ public class ReaderController {
         }
     }
 }
+
 

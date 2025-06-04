@@ -30,7 +30,7 @@
 
 # 项目目录结构
 ```  
-📁 FinalAssignments
+📁 .
 ├─ 📁 gradle
 │   └─ 📁 wrapper
 │       ├─ 📄 gradle-wrapper.jar
@@ -102,15 +102,15 @@
 │   │   │       └─ 📄 SystemLogs.tsx
 │   │   ├─ 📁 contexts
 │   │   │   └─ 📄 AuthContext.tsx                                 - React TypeScript 组件文件
-│   │   ├─ 📁 hooks                                               - 自定义 React Hooks 目录;封装可复用逻辑(如 useFetch/useAuth/useDebounce)
 │   │   ├─ 📁 pages                                               - 路由级页面组件目录;每个子目录对应一个页面或路由
 │   │   │   └─ 📄 LibraryLayout.tsx                               - React TypeScript 组件文件
 │   │   ├─ 📁 services                                            - 后端 API 封装目录;基于 fetch/axios 统一处理请求/响应/错误
 │   │   │   ├─ 📄 authService.ts                                  - TypeScript 文件
 │   │   │   ├─ 📄 bookService.ts
 │   │   │   ├─ 📄 categoryService.ts
+│   │   │   ├─ 📄 readerPermissionService.ts
+│   │   │   ├─ 📄 readerService.ts
 │   │   │   └─ 📄 shelfService.ts
-│   │   ├─ 📁 types                                               - 全局 TypeScript 类型声明目录(interface/type/enum 等)
 │   │   ├─ 📁 utils                                               - 工具函数目录(日期格式化/深拷贝/节流防抖/校验等纯函数)
 │   │   │   └─ 📄 csrfUtils.ts                                    - TypeScript 文件
 │   │   ├─ 📄 App.tsx                                             - 根组件;配置路由/Provider/顶级布局等全局逻辑
@@ -122,16 +122,16 @@
 │   │   ├─ 📄 [REMOVED]
 │   │   ├─ 📄 vite-env.d.ts                                       - Vite 环境类型声明;支持 import.meta.env 及静态资源导入
 │   │   └─ 📄 vue.global.js                                       - Vue 全局配置文件，定义 Vue 组件全局注册和配置
-│   ├─ 📄 .gitignore                                              - Git 忽略文件配置，指定不需要纳入版本控制的文件类型
+│   ├─ 📄 .gitignore                                              - 前端项目 Git 忽略文件，指定不需要纳入版本控制的文件类型
 │   ├─ 📄 eslint.config.js                                        - ESLint 配置文件，配置前端格式化和代码校验规则
 │   ├─ 📄 index.html                                              - Vite HTML 模板，应用入口文件，用来挂载 #root 并注入 script/style
-│   ├─ 📄 package-lock.json                                       - NPM 依赖锁定文件，确保前后端一致的版本
-│   ├─ 📄 package.json                                            - NPM 包管理配置文件，定义依赖和脚本命令
+│   ├─ 📄 package-lock.json                                       - NPM 依赖锁定文件，确保安装一致性
+│   ├─ 📄 package.json                                            - NPM 包管理配置文件，定义依赖、开发/构建脚本等
 │   ├─ 📄 postcss.config.js
-│   ├─ 📄 README.md                                               - 项目说明文档，介绍项目背景、使用方法及其他信息
+│   ├─ 📄 README.md                                               - 前端项目说明文档，介绍启动、开发及发布流程
 │   ├─ 📄 tailwind.config.js
 │   ├─ 📄 tsconfig.app.json                                       - Vite 前端 TypeScript 项目编译配置
-│   ├─ 📄 tsconfig.json                                           - TypeScript 配置文件，配置编译选项与路径别名等
+│   ├─ 📄 tsconfig.json                                           - TypeScript 通用编译选项配置
 │   ├─ 📄 tsconfig.node.json                                      - Node 运行时 TypeScript 配置，用于脚本/工具调用
 │   ├─ 📄 vite.config.ts                                          - Vite 配置文件，包含开发服务器、插件和构建选项
 │   └─ 📄 vite.config.ts_1
@@ -151,9 +151,26 @@
 │   │   │   │           │   ├─ 📄 BookController.java
 │   │   │   │           │   ├─ 📄 BookShelfController.java
 │   │   │   │           │   ├─ 📄 GlobalExceptionHandler.java
+│   │   │   │           │   ├─ 📄 ReaderController.java
+│   │   │   │           │   ├─ 📄 ReaderPermissionController.java
 │   │   │   │           │   └─ 📄 SelfIntroController.java
 │   │   │   │           ├─ 📁 dto                                 - 数据传输对象目录
-│   │   │   │           │   └─ 📄 AdminResponseDTO.java
+│   │   │   │           │   ├─ 📄 AdministratorDTO.java
+│   │   │   │           │   ├─ 📄 AdminPermissionDTO.java
+│   │   │   │           │   ├─ 📄 AdminResponseDTO.java
+│   │   │   │           │   ├─ 📄 AnnouncementDTO.java
+│   │   │   │           │   ├─ 📄 BookCategoryDTO.java
+│   │   │   │           │   ├─ 📄 BookDTO.java
+│   │   │   │           │   ├─ 📄 BookLoanDTO.java
+│   │   │   │           │   ├─ 📄 BookShelfDTO.java
+│   │   │   │           │   ├─ 📄 FineRuleDTO.java
+│   │   │   │           │   ├─ 📄 HelpArticleDTO.java
+│   │   │   │           │   ├─ 📄 OverduePaymentDTO.java
+│   │   │   │           │   ├─ 📄 PaymentBillDTO.java
+│   │   │   │           │   ├─ 📄 ReaderDTO.java
+│   │   │   │           │   ├─ 📄 ReaderPermissionDTO.java
+│   │   │   │           │   ├─ 📄 SystemAdminLogDTO.java
+│   │   │   │           │   └─ 📄 SystemReaderLogDTO.java
 │   │   │   │           ├─ 📁 entity                              - 实体类层，存放与数据库表对应的实体
 │   │   │   │           │   ├─ 📄 Administrator.java
 │   │   │   │           │   ├─ 📄 AdminPermission.java
@@ -172,14 +189,27 @@
 │   │   │   │           │   └─ 📄 SystemReaderLog.java
 │   │   │   │           ├─ 📁 repository                          - 数据访问层（DAO）
 │   │   │   │           │   ├─ 📄 AdministratorRepository.java
+│   │   │   │           │   ├─ 📄 AdminPermissionRepository.java
+│   │   │   │           │   ├─ 📄 AnnouncementRepository.java
 │   │   │   │           │   ├─ 📄 BookCategoryRepository.java
+│   │   │   │           │   ├─ 📄 BookLoanRepository.java
 │   │   │   │           │   ├─ 📄 BookRepository.java
-│   │   │   │           │   └─ 📄 BookShelfRepository.java
+│   │   │   │           │   ├─ 📄 BookShelfRepository.java
+│   │   │   │           │   ├─ 📄 FineRuleRepository.java
+│   │   │   │           │   ├─ 📄 HelpArticleRepository.java
+│   │   │   │           │   ├─ 📄 OverduePaymentRepository.java
+│   │   │   │           │   ├─ 📄 PaymentBillRepository.java
+│   │   │   │           │   ├─ 📄 ReaderPermissionRepository.java
+│   │   │   │           │   ├─ 📄 ReaderRepository.java
+│   │   │   │           │   ├─ 📄 SystemAdminLogRepository.java
+│   │   │   │           │   └─ 📄 SystemReaderLogRepository.java
 │   │   │   │           ├─ 📁 service                             - 业务逻辑层
 │   │   │   │           │   ├─ 📄 AdministratorService.java
 │   │   │   │           │   ├─ 📄 BookCategoryService.java
 │   │   │   │           │   ├─ 📄 BookService.java
 │   │   │   │           │   ├─ 📄 BookShelfService.java
+│   │   │   │           │   ├─ 📄 ReaderPermissionService.java
+│   │   │   │           │   ├─ 📄 ReaderService.java
 │   │   │   │           │   └─ 📄 ViteManifestService.java
 │   │   │   │           ├─ 📁 utils                               - 工具类目录
 │   │   │   │           │   ├─ 📄 MyFunctions.java
@@ -222,13 +252,14 @@
 ├─ 📄 index (1).html
 ├─ 📄 index (2).html
 ├─ 📄 package-lock.json
-├─ 📄 [REMOVED]                                                 - YAML 配置文件
+├─ 📄 [REMOVED]
 ├─ 📄 README.md
 ├─ 📄 settings.gradle
 ├─ 📄 [REMOVED]
 ├─ 📄 [REMOVED]
 ├─ 📄 提示词-期末作业.md
 └─ 📄 [REMOVED]
+
 ```  
 
 # 说明及注释

@@ -238,7 +238,7 @@ const EditReader: React.FC = () => {
                                     <option value="">选择权限角色...</option>
                                     {permissions.map(perm => (
                                         <option key={perm.id} value={perm.id}>
-                                            {perm.name || perm.description || `权限ID: ${perm.id}`}
+                                            {perm.roles || perm.description || `权限ID: ${perm.id}`}
                                         </option>
                                     ))}
                                 </select>

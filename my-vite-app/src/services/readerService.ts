@@ -125,21 +125,28 @@ export async function deleteReader(id: number): Promise<void> {
   }
 }
 
-// 搜索读者
+// 搜索读者（使用 DTO 接口）
 export async function searchReaders(
-  id?: number,
-  account?: string,
-  phone?: string,
-  email?: string
+    id?: number,
+    account?: string,
+    phone?: string,
+    email?: string,
+    gender?: string,
+    role?: string,
+    startDate?: string,
+    endDate?: string
 ): Promise<ReaderDTO[]> {
-  let url = `${API_BASE}/search`;
+  let url = `${API_BASE}/search/dto`;
 
-  // 添加查询参数
   const params = new URLSearchParams();
-  if (id) params.append('id', id.toString());
+  if (id !== undefined) params.append('id', id.toString());
   if (account) params.append('account', account);
   if (phone) params.append('phone', phone);
   if (email) params.append('email', email);
+  if (gender) params.append('sex', gender); // 使用 sex 字段名对应后端
+  if (role) params.append('role', role);
+  if (startDate) params.append('startDate', startDate);
+  if (endDate) params.append('endDate', endDate);
 
   const queryString = params.toString();
   if (queryString) {

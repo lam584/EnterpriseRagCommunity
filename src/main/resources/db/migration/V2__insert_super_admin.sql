@@ -57,7 +57,7 @@ INSERT INTO administrators (
     is_active
 ) VALUES (
              'admin',
-             '$2a$10$XvkfedUmWlHHmbBihk7mz.NelET1zu.FmESqgmYRg9OX/GQd8e.V.',        -- 如果需要加密请事先在外部生成 bcrypt/hash 值并写入这里
+             '$2a$10$XvkfedUmWlHHmbBihk7mz.NelET1zu.FmESqgmYRg9OX/GQd8e.V.',        -- 如果需要修改默认密码或加密请在java/com/example/FinalAssignments/utils/PasswordEncoderUtil.java 生成 bcrypt/hash 值并写入这里
              '12345678901',
              'admin@admin.com',
              (SELECT id FROM admin_permissions WHERE roles = 'SuperAdministrator'),
