@@ -136,4 +136,36 @@ const DeleteReaderForm: React.FC = () => {
                             <p><span className="font-medium">账号：</span> {reader.account}</p>
                             <p><span className="font-medium">手机号：</span> {reader.phone}</p>
                             <p><span className="font-medium">邮箱：</span> {reader.email}</p>
-                            <p><span className="font-medium">性别：</span> {
+                            <p><span className="font-medium">性别：</span> {reader.sex || '未设置'}</p>
+                            <p><span className="font-medium">状态：</span> {reader.isActive ? '激活' : '未激活'}</p>
+                            <p><span className="font-medium">权限ID：</span> {reader.permission?.id ?? '未设置'}</p>
+                            <p><span className="font-medium">权限：</span> {reader.permission?.roles ?? '未设置'}</p>
+                            <p><span className="font-medium">创建时间：</span> {reader.createdAt ? new Date(reader.createdAt).toLocaleString() : '未知'}</p>
+                            <p><span className="font-medium">更新时间：</span> {reader.updatedAt ? new Date(reader.updatedAt).toLocaleString() : '未知'}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between">
+                        <button
+                            onClick={handleConfirmDelete}
+                            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 disabled:bg-red-300"
+                            disabled={loading}
+                        >
+                            {loading ? '处理中...' : '确认删除'}
+                        </button>
+                        <button
+                            onClick={handleCancelDelete}
+                            className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 disabled:bg-gray-300"
+                            disabled={loading}
+                        >
+                            取消
+                        </button>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
+export default DeleteReaderForm;
+
