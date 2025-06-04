@@ -1,0 +1,66 @@
+<html lang="">
+<head>
+ <meta charset="UTF-8">
+ <style>
+  body {
+   display: flex;
+   justify-content: center;
+   align-items: center;
+   height: 100vh;
+   margin: 0;
+   font-family: Arial, sans-serif;
+  }
+  .container {
+   text-align: center;
+  }
+  img {
+   max-width: 100%;
+   height: auto;
+  }
+  .buttons {
+   margin-top: 10px;
+  }
+  .buttons button {
+   font-size: 16px;
+   padding: 5px 10px;
+   margin: 0 5px;
+   border: 1px solid #000;
+   background-color: #fff;
+   cursor: pointer;
+  }
+ </style>
+ <title></title>
+</head>
+<body>
+<div class="container">
+ <img id="mainImage" alt="Current image" height="400" src="https://oaidalleapiprodscus.blob.core.windows.net/private/org-DmgZvNjcw7LathQSTmEVSdcG/user-2XyEvzXJwQLDNewyCTZ58aMx/img-NTnIhtUJrZO1lTot1emamRn0.png?st=2025-03-12T05%3A20%3A45Z&se=2025-03-12T07%3A20%3A45Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=d505667d-d6c1-4a0a-bac7-5c84a87759f8&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-03-11T23%3A24%3A59Z&ske=2025-03-12T23%3A24%3A59Z&sks=b&skv=2024-08-04&sig=1XE6c73hUezYJyBAkWTXWDNbKMIU5DFe1US3r1asx8k%3D" width="600"/>
+ <div class="buttons">
+  <button id="prevBtn">上一张</button>
+  <button id="nextBtn">下一张</button>
+ </div>
+</div>
+
+<script>
+ // Array stores image sources
+ const images = ['https://oaidalleapiprodscus.blob.core.windows.net/private/org-DmgZvNjcw7LathQSTmEVSdcG/user-2XyEvzXJwQLDNewyCTZ58aMx/img-NTnIhtUJrZO1lTot1emamRn0.png?st=2025-03-12T05%3A20%3A45Z&se=2025-03-12T07%3A20%3A45Z&sp=r&sv=2024-08-04&sr=b&rscd=inline&rsct=image/png&skoid=d505667d-d6c1-4a0a-bac7-5c84a87759f8&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2025-03-11T23%3A24%3A59Z&ske=2025-03-12T23%3A24%3A59Z&sks=b&skv=2024-08-04&sig=1XE6c73hUezYJyBAkWTXWDNbKMIU5DFe1US3r1asx8k%3D', 'https://pic.52112.com/JPG-180515/180515_67/KDlUffeicm_small.jpg', 'https://pic.52112.com/180209/180209_86/E6h84wTZhP.jpg','https://pic.52112.com/180327/180327_108/eTXLrM0LOx_small.jpg'];
+ let currentIndex = 0;
+
+ // Get DOM elements
+ const imgElement = document.getElementById('mainImage');
+ const prevBtn = document.getElementById('prevBtn');
+ const nextBtn = document.getElementById('nextBtn');
+
+ // Event listener for previous button
+ prevBtn.addEventListener('click', () => {
+  currentIndex = (currentIndex - 1 + images.length) % images.length;
+  imgElement.src = images[currentIndex];
+ });
+
+ // Event listener for next button
+ nextBtn.addEventListener('click', () => {
+  currentIndex = (currentIndex + 1) % images.length;
+  imgElement.src = images[currentIndex];
+ });
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.box13 {
+    height: 40px;
+    width: auto;
+}
+.w-64-18{
+    width: 18rem;
+}
+.box14{
+    height: auto;
+    width: auto;
+    position: relative; /* 或者使用其他定位方式，如 absolute 或 fixed */
+    left: 5%; /* 设置右偏移量 */
+    margin: 14px auto;
+    top:7px;
+}
+.box13:hover {
+    background-color: rgba(231, 225, 225, 0.7); /* 添加背景颜色并设置透明度 */
+    border-radius: 20px; /* 将四个角设置为圆形 */
+}
+.hover-effect {
+    position: relative; /* 相对定位 */
+    color: #808080; /* 默认文字颜色设为灰色 */
+    transition: color 0.3s; /* 只对文字颜色进行过渡 */
+}
+
+.hover-effect::after {
+    content: '';
+    position: absolute;
+    bottom: -6px; /* 下边距为-6px */
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: transparent; /* 初始下划线颜色透明 */
+    transition: background 0.3s, bottom 0.3s; /* 下划线颜色和位置过渡效果 */
+}
+
+.hover-effect:hover::after {
+    background: #4F46E5; /* 悬停时下划线颜色 */
+    bottom: -10px; /* 悬停时下边距再往下移动4px */
+}
+
+.hover-effect:hover {
+    color: #000; /* 悬停时文字颜色改为黑色 */
+}
+
+.light-gray-text {
+    color: #808080; /* 更灰色的文字颜色 */
+}
+
+.text-gray-700 {
+    color: #000; /* 默认黑色文字颜色 */
+    font-weight: 600;
+}
+
+.text-gray-600 {
+    color: #666;
+}
+
+ul li a {
+    color: blue;
+    font-size: 14px;
+}

@@ -1,0 +1,96 @@
+plugins {
+    id 'java'
+    id 'war'                                           // ← 添加 war 插件，支持 JSP
+    id 'org.springframework.boot' version '3.5.0'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'org.flywaydb.flyway' version '10.20.1'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(23)
+    }
+}
+
+repositories {
+    // 使用阿里云Maven仓库镜像
+    maven { url 'https://maven.aliyun.com/repository/public/' }
+    maven { url 'https://maven.aliyun.com/repository/spring/' }
+    maven { url 'https://maven.aliyun.com/repository/gradle-plugin/' }
+    // 备用仓库
+    mavenCentral()
+}
+bootWar { enabled = true }
+bootJar { enabled = false }                // jar 禁用
+tasks.named('bootRun') {
+    classpath = sourceSets.main.runtimeClasspath
+}
+dependencies {
+    // 核心 Web + 内嵌 Tomcat
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // 添加验证依赖
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+
+    // 你现有的 FreeMarker / MyBatis / JPA / Security 等
+    implementation 'org.springframework.boot:spring-boot-starter-freemarker'
+    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.4'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.security:spring-security-taglibs'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // --- JSP + EL + JSTL（都用 runtimeOnly，保证打包进来，IDEA/bootRun 也能拿到） ---
+    runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-jasper'              // JSP 引擎
+    runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-el'                 // EL 引擎
+    runtimeOnly 'jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api:2.0.0'
+    runtimeOnly 'org.glassfish.web:jakarta.servlet.jsp.jstl:2.0.0'
+
+    // Flyway / MySQL / DevTools / Lombok / Test
+    implementation "org.flywaydb:flyway-mysql:10.20.1"
+    implementation 'org.flywaydb:flyway-core:10.20.1'
+    runtimeOnly 'mysql:mysql-connector-java:8.0.33'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// Spring Boot 打包配置：关闭 bootJar，启用 bootWar
+tasks.named('bootJar') {
+    enabled = false
+}
+tasks.named('bootWar') {
+    enabled = true
+}
+
+// —— 前端构建（Vite） & 资源拷贝 ——
+
+// 1. 前端构建
+tasks.register('buildVite', Exec) {
+    workingDir 'my-vite-app'
+    // 如果在 Windows 并且你的 npm 安装在 E:\NodeJS\npm.cmd 下，则这样写
+    commandLine 'E:\\NodeJS\\npm.cmd', 'run', 'build'
+}
+
+// 2. 处理资源，把 my-vite-app/dist 下的文件复制到 Spring Boot 的 static 目录
+processResources {
+    dependsOn buildVite
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    // 清空旧资源
+    delete fileTree("${buildDir}/resources/main/static")
+
+    from('my-vite-app/dist') {
+        into 'static'
+    }
+}
+
