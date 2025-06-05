@@ -38,7 +38,7 @@ const AddBookForm: React.FC = () => {
         ]);
         setCategories(categoriesData);
         setShelves(shelvesData);
-      } catch (err) {
+      } catch {
         setMessage({ type: 'error', text: '加载数据失败，请刷新页面重试' });
       }
     };
@@ -387,4 +387,3 @@ const AddBookForm: React.FC = () => {
 };
 
 export default AddBookForm;
-
