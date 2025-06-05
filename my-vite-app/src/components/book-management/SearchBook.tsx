@@ -129,7 +129,7 @@ const SearchBook: React.FC = () => {
       if (result.length === 0) {
         setMessage('未找到匹配的图书');
       }
-    } catch (err) {
+    } catch {
       setMessage('搜索过程中发生错误');
       setSearchResults([]);
     } finally {
@@ -145,7 +145,7 @@ const SearchBook: React.FC = () => {
     setCurrentPage(1); // 重置到第一页
 
     try {
-      // 检查是否至少有一个搜索条件
+      // 检查是否至少有一个搜���条件
       const hasAnyCriteria = Object.entries(advCriteria).some(([key, value]) => {
         return key !== 'idExact' &&
                key !== 'isbnExact' &&
@@ -175,7 +175,7 @@ const SearchBook: React.FC = () => {
       if (result.length === 0) {
         setMessage('未找到匹配的图书');
       }
-    } catch (err) {
+    } catch {
       setMessage('搜索过程中发生错误');
       setSearchResults([]);
     } finally {
@@ -210,8 +210,8 @@ const SearchBook: React.FC = () => {
         book.isbn,
         book.edition,
         book.price,
-        (book.category as any)?.name || '',
-        (book.shelf as any)?.shelfCode || '',
+        book.category?.name || '',
+        book.shelf?.shelfCode || '',
         book.status,
         book.printTimes
       ].join(','))
@@ -658,8 +658,8 @@ const SearchBook: React.FC = () => {
                           <td className="border p-2">{book.isbn}</td>
                           <td className="border p-2">{book.edition}</td>
                           <td className="border p-2">{Number(book.price).toFixed(2)}</td>
-                          <td className="border p-2">{(book.category as any)?.name}</td>
-                          <td className="border p-2">{(book.shelf as any)?.shelfCode}</td>
+                          <td className="border p-2">{book.category?.name}</td>
+                          <td className="border p-2">{book.shelf?.shelfCode}</td>
                           <td className="border p-2">
                         <span className={`px-2 py-1 rounded text-sm ${book.status === '可借阅' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                           {book.status}

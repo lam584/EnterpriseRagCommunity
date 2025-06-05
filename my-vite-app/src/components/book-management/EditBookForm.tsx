@@ -52,6 +52,7 @@ const EditBookForm: React.FC = () => {
       fetchBooks().catch(() => [])
     ]).then(([categoriesData, shelvesData, booksData]) => {
       setCategories(categoriesData);
+      setCategories(categoriesData);
       setShelves(shelvesData);
       setBooks(booksData);
 
