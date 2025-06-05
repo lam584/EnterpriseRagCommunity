@@ -90,16 +90,16 @@ const SearchReaderForm: React.FC = () => {
             const startDateParam = formData.startDate ? formData.startDate.toISOString().split('T')[0] : undefined;
             const endDateParam = formData.endDate ? formData.endDate.toISOString().split('T')[0] : undefined;
 
-            const data = await searchReaders(
-                idParam,
-                accountParam,
-                phoneParam,
-                emailParam,
-                genderParam,
-                roleParam,
-                startDateParam,
-                endDateParam
-            );
+            const data = await searchReaders({
+                id: idParam,
+                account: accountParam,
+                phone: phoneParam,
+                email: emailParam,
+                sex: genderParam,
+                role: roleParam,
+                startDate: startDateParam,
+                endDate: endDateParam
+            });
             setResults(data);
             setShowResults(true);
             setShowSuccess(true);

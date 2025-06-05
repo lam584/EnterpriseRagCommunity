@@ -7,6 +7,7 @@ import com.example.FinalAssignments.entity.ReaderPermission;
 import com.example.FinalAssignments.service.ReaderPermissionService;
 import com.example.FinalAssignments.service.ReaderService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -103,7 +104,7 @@ public class ReaderController {
             @RequestParam(required = false) String sex,
             @RequestParam(required = false) String role,
             @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate) {
+            @RequestParam(required = false) String endDate){
 
         LocalDateTime startDateTime = null;
         LocalDateTime endDateTime = null;
@@ -237,22 +238,29 @@ public class ReaderController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteReader(@PathVariable Long id) {
-        try {
-            Optional<Reader> reader = readerService.findById(id);
-            if (!reader.isPresent()) {
-                Map<String, String> res = new HashMap<>();
-                res.put("message", "读者不存在");
-                return new ResponseEntity<>(res, HttpStatus.NOT_FOUND);
-            }
+        Optional<Reader> readerOpt = readerService.findById(id);
+        if (readerOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "读者不存在"));
+        }
 
+        // ① 显式判断：检查是否有借阅记录
+        long loanCount = readerService.countLoansByReaderId(id);
+        if (loanCount > 0) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "该读者存在借阅记录，无法删除"));
+        }
+
+        try {
             readerService.delete(id);
-            Map<String, String> res = new HashMap<>();
-            res.put("message", "读者删除成功");
-            return new ResponseEntity<>(res, HttpStatus.OK);
-        } catch (Exception e) {
-            Map<String, String> res = new HashMap<>();
-            res.put("message", "删除失败: " + e.getMessage());
-            return new ResponseEntity<>(res, HttpStatus.INTERNAL_SERVER_ERROR);
+            return ResponseEntity.ok(Map.of("message", "读者删除成功"));
+        } catch(DataIntegrityViolationException ex) {
+            // 万一仍有外键约束
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "该读者有相关数据，无法删除"));
+        } catch(Exception ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "删除失败: " + ex.getMessage()));
         }
     }
 }

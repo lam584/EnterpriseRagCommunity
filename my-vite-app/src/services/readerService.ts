@@ -19,13 +19,13 @@ export interface ReaderDTO {
   updatedAt?: string;
 }
 
-// 获取所有读者
-export async function fetchReaders(
-  account?: string,
-  phone?: string,
-  email?: string
-): Promise<ReaderDTO[]> {
-  let url = API_BASE;
+// 获取所有 ReaderDTO 列表（避免实体懒加载代理序列化问题）
+    export async function fetchReaders(
+        account?: string,
+        phone?: string,
+        email?: string
+            ): Promise<ReaderDTO[]> {
+    let url = `${API_BASE}/dto`;
 
   // 添加可选的查询参数
   const params = new URLSearchParams();
@@ -35,7 +35,7 @@ export async function fetchReaders(
 
   const queryString = params.toString();
   if (queryString) {
-    url += `?${queryString}`;
+      url += `?${ queryString }`;
   }
 
   const res = await fetch(url, { credentials: 'include' });
@@ -50,7 +50,7 @@ export async function fetchReaders(
 
 // 获取读者详情
 export async function fetchReaderById(id: number): Promise<ReaderDTO> {
-  const res = await fetch(`${API_BASE}/${id}`, { credentials: 'include' });
+    const res = await fetch(`${API_BASE}/${id}/dto`, { credentials: 'include' });
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ message: '获取读者详情失败' }));
@@ -126,27 +126,31 @@ export async function deleteReader(id: number): Promise<void> {
 }
 
 // 搜索读者（使用 DTO 接口）
+export interface ReaderSearchCriteria {
+  id?: number;
+  account?: string;
+  phone?: string;
+  email?: string;
+  sex?: string;
+  role?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
 export async function searchReaders(
-    id?: number,
-    account?: string,
-    phone?: string,
-    email?: string,
-    gender?: string,
-    role?: string,
-    startDate?: string,
-    endDate?: string
+    criteria: ReaderSearchCriteria
 ): Promise<ReaderDTO[]> {
   let url = `${API_BASE}/search/dto`;
 
   const params = new URLSearchParams();
-  if (id !== undefined) params.append('id', id.toString());
-  if (account) params.append('account', account);
-  if (phone) params.append('phone', phone);
-  if (email) params.append('email', email);
-  if (gender) params.append('sex', gender); // 使用 sex 字段名对应后端
-  if (role) params.append('role', role);
-  if (startDate) params.append('startDate', startDate);
-  if (endDate) params.append('endDate', endDate);
+  if (criteria.id !== undefined) params.append('id', criteria.id.toString());
+  if (criteria.account) params.append('account', criteria.account);
+  if (criteria.phone) params.append('phone', criteria.phone);
+  if (criteria.email) params.append('email', criteria.email);
+  if (criteria.sex) params.append('sex', criteria.sex);
+  if (criteria.role) params.append('role', criteria.role);
+  if (criteria.startDate) params.append('startDate', criteria.startDate);
+  if (criteria.endDate) params.append('endDate', criteria.endDate);
 
   const queryString = params.toString();
   if (queryString) {

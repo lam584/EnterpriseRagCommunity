@@ -31,6 +31,8 @@ const DeleteBookForm: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   // 添加定时器引用
   const timeoutRef = useRef<number | null>(null);
+  // 添加标记鼠标是否在下拉框内的状态
+  const [isMouseInDropdown, setIsMouseInDropdown] = useState(false);
 
   const loadBooks = () => {
     setLoading(true);
@@ -39,14 +41,17 @@ const DeleteBookForm: React.FC = () => {
           setBooks(data);
 
           // 默认展示最近更新的图书
-          const sortedBooks = [...data].sort((a, b) => {
-            const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-            const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-            return dateB - dateA; // 降序排列，最新的在前面
-          }).slice(0, MAX_RECENT_BOOKS);
+          const sortedBooks = [...data]
+              .sort((a, b) => {
+                const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+                const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+                return dateB - dateA; // 降序排列，最新的在前面
+              })
+              .slice(0, MAX_RECENT_BOOKS);
 
           setFilteredBooks(sortedBooks);
-          setDropdownOpen(true);
+          // 初次加载不自动展开
+          // setDropdownOpen(true);
         })
         .catch(() => setMessage({type: 'error', text: '加载图书列表失败'}))
         .finally(() => setLoading(false));
@@ -59,14 +64,17 @@ const DeleteBookForm: React.FC = () => {
   // 当搜索条件变化时，过滤图书
   useEffect(() => {
     if (!searchCriteria.keyword.trim()) {
-      const recentBooks = [...books].sort((a, b) => {
-        const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        return dateB - dateA; // 降序排列，最新的在前面
-      }).slice(0, MAX_RECENT_BOOKS);
+      const recentBooks = [...books]
+          .sort((a, b) => {
+            const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return dateB - dateA; // 降序排列，最新的在前面
+          })
+          .slice(0, MAX_RECENT_BOOKS);
 
       setFilteredBooks(recentBooks);
-      setDropdownOpen(true);
+      // 关键词为空时不自动展开
+      // setDropdownOpen(true);
       return;
     }
 
@@ -87,6 +95,7 @@ const DeleteBookForm: React.FC = () => {
       }
     });
     setFilteredBooks(filtered);
+    // 只有输入关键词后才展开
     setDropdownOpen(true);
   }, [searchCriteria, books]);
 
@@ -109,27 +118,29 @@ const DeleteBookForm: React.FC = () => {
     setSearchCriteria(prev => ({ ...prev, [name]: value }));
   };
   
-  // 添加搜索框失焦处理函数
+  // 修改搜索框失焦处理函数
   const handleSearchBlur = () => {
     // 使用setTimeout延迟关闭下拉框，让用户有时间点击选项
     timeoutRef.current = window.setTimeout(() => {
-      setDropdownOpen(false);
+      if (!isMouseInDropdown) {
+        setDropdownOpen(false);
+      }
     }, 200); // 200毫秒延迟
   };
 
-  // 当鼠标进入下拉框时取消定时器
+  // 修改鼠标进入下拉框时的处理函数
   const handleDropdownMouseEnter = () => {
+    setIsMouseInDropdown(true);
     if (timeoutRef.current !== null) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
   };
 
-  // 当鼠标离开下拉框时启动关闭定时器
+  // 修改鼠标离开下拉框时的处理函数
   const handleDropdownMouseLeave = () => {
-    timeoutRef.current = window.setTimeout(() => {
-      setDropdownOpen(false);
-    }, 200);
+    setIsMouseInDropdown(false);
+    // 不再自动关闭下拉框，交由 onBlur 控制
   };
 
   const handleBookSelect = (book: BookDTO) => {
@@ -154,7 +165,8 @@ const DeleteBookForm: React.FC = () => {
       setShowConfirm(false);
       loadBooks(); // 重新加载图书列表
     } catch (err) {
-      setMessage({type: 'error', text: '删除失败，可能是图书已被借出或有其他关联记录'});
+      const errorMessage = err instanceof Error ? err.message : '删除失败，可能是图书已被借出或有其他关联记录';
+      setMessage({type: 'error', text: errorMessage});
     } finally {
       setLoading(false);
     }
@@ -207,7 +219,7 @@ const DeleteBookForm: React.FC = () => {
                 <div className="relative" ref={dropdownRef}>
                   <div 
                     className="absolute z-10 w-full bg-white border border-gray-300 rounded shadow-lg overflow-y-auto"
-                    style={{ maxHeight: '360px' }} // 设置为4.5本图书的高度（每本约75px）
+                    style={{ maxHeight: '360px' }}
                     onMouseEnter={handleDropdownMouseEnter}
                     onMouseLeave={handleDropdownMouseLeave}
                   >

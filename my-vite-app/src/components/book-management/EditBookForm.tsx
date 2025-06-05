@@ -36,6 +36,8 @@ const EditBookForm: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   // 添加一个定时器引用
   const timeoutRef = useRef<number | null>(null);
+  // 标记鼠标是否在下拉框内
+  const [isMouseInDropdown, setIsMouseInDropdown] = useState(false);
 
   useEffect(() => {
     // 加载所有选项数据
@@ -56,22 +58,22 @@ const EditBookForm: React.FC = () => {
       }).slice(0, MAX_RECENT_BOOKS);
 
       setFilteredBooks(sortedBooks);
-      setDropdownOpen(true);
+      // setDropdownOpen(true); // 移除页面加载时自动展开下拉框
     });
   }, []);
 
   // 当搜索条件变化时，过滤图书
   useEffect(() => {
     if (!searchCriteria.keyword.trim()) {
-      // 当搜索框为空时，显示最近更新的图书
-      const recentBooks = [...books].sort((a, b) => {
-        const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-        const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-        return dateB - dateA; // 降序排列，最新的在前面
-      }).slice(0, MAX_RECENT_BOOKS);
-
+      // 只更新列表，不自动展开
+      const recentBooks = [...books]
+        .sort((a, b) => {
+          const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+          const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+          return dateB - dateA;
+        })
+        .slice(0, MAX_RECENT_BOOKS);
       setFilteredBooks(recentBooks);
-      setDropdownOpen(true);
       return;
     }
 
@@ -92,6 +94,7 @@ const EditBookForm: React.FC = () => {
       }
     });
     setFilteredBooks(filtered);
+    // 只在有关键词时展开
     setDropdownOpen(true);
   }, [searchCriteria, books]);
 
@@ -116,25 +119,27 @@ const EditBookForm: React.FC = () => {
 
   // 添加搜索框失焦处理函数
   const handleSearchBlur = () => {
-    // 使用setTimeout延迟关闭下拉框，让用户有时间点击选项
+    // 延迟关闭下拉框，让用户有时间点击选项
     timeoutRef.current = window.setTimeout(() => {
-      setDropdownOpen(false);
+      if (!isMouseInDropdown) {
+        setDropdownOpen(false);
+      }
     }, 200); // 200毫秒延迟
   };
 
-  // 当鼠标进入下拉框时取消定时器
+  // 当鼠标进入下拉框时取消定时器，并标记在下拉框内
   const handleDropdownMouseEnter = () => {
+    setIsMouseInDropdown(true);
     if (timeoutRef.current !== null) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
   };
 
-  // 当鼠标离开下拉框时启动关闭定时器
+  // 当鼠标离开下拉框时，标记不在下拉框内，但不立即关闭
   const handleDropdownMouseLeave = () => {
-    timeoutRef.current = window.setTimeout(() => {
-      setDropdownOpen(false);
-    }, 200);
+    setIsMouseInDropdown(false);
+    // 不再自动关闭下拉框，交由 onBlur 控制
   };
 
   const handleBookSelect = async (bookId: number) => {

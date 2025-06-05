@@ -15,4 +15,5 @@ public interface BookLoanRepository extends JpaRepository<BookLoan, Long> {
     List<BookLoan> findByAdministratorId(Long administratorId);
     List<BookLoan> findByStartTimeBetween(LocalDateTime start, LocalDateTime end);
     List<BookLoan> findByReaderIdAndStatus(Long readerId, String status);
+    long countByReaderId(Long readerId);
 }

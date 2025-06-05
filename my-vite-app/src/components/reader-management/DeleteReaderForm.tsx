@@ -1,171 +1,275 @@
 // src/components/reader-management/DeleteReaderForm.tsx
-import React, { useState } from 'react';
-import { fetchReaderById, deleteReader } from '../../services/readerService';
-import type { ReaderDTO } from '../../services/readerService';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+    fetchReaders,
+    searchReaders,
+    fetchReaderById,
+    deleteReader,
+    ReaderDTO,
+    ReaderSearchCriteria
+} from '../../services/readerService';
+
+type SearchField = 'id' | 'account' | 'phone' | 'email';
+const MAX_RECENT = 10;
 
 const DeleteReaderForm: React.FC = () => {
-    // 状态管理
-    const [readerId, setReaderId] = useState<string>('');
+    // 搜索相关状态
+    const [searchField, setSearchField] = useState<SearchField>('id');
+    const [keyword, setKeyword] = useState<string>('');
+    const [recentReaders, setRecentReaders] = useState<ReaderDTO[]>([]);
+    const [filteredReaders, setFilteredReaders] = useState<ReaderDTO[]>([]);
+    const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
+    const searchTimer = useRef<number | undefined>(undefined);
+    const blurTimer = useRef<number | undefined>(undefined);
+
+    // 选中 & 详细信息状态
+    const [selectedReaderId, setSelectedReaderId] = useState<number | undefined>(undefined);
     const [reader, setReader] = useState<ReaderDTO | null>(null);
+    const [showInfo, setShowInfo] = useState<boolean>(false);
+
+    // 全局加载／提示
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
-    const [showReaderInfo, setShowReaderInfo] = useState<boolean>(false);
 
-    // 处理输入变化
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setReaderId(e.target.value);
-        // 重置状态
-        setError(null);
-        setSuccess(null);
-        setShowReaderInfo(false);
-        setReader(null);
-    };
+    // 1. 初始化「最近更新」列表
+    useEffect(() => {
+        fetchReaders()
+            .then(list => {
+                const recent = list
+                    .sort((a, b) => {
+                        const tA = new Date(a.updatedAt || a.createdAt || '').getTime();
+                        const tB = new Date(b.updatedAt || b.createdAt || '').getTime();
+                        return tB - tA;
+                    })
+                    .slice(0, MAX_RECENT);
+                setRecentReaders(recent);
+                setFilteredReaders(recent);
+            })
+            .catch(() => console.error('初始化最近读者列表失败'));
+    }, []);
 
-    // 处理查找读者
-    const handleSearch = async () => {
-        if (!readerId.trim()) {
-            setError('请输入读者ID');
+    // 2. 执行搜索
+    const performSearch = async (kw: string) => {
+        if (!kw.trim()) {
+            // 关键字为空 → 展示最近更新
+            setFilteredReaders(recentReaders);
             return;
         }
-
-        const id = parseInt(readerId, 10);
-        if (isNaN(id)) {
-            setError('读者ID必须是数字');
-            return;
+        // 构造搜索条件
+        const criteria: ReaderSearchCriteria = {};
+        if (searchField === 'id') {
+            const idNum = Number(kw);
+            if (!isNaN(idNum)) criteria.id = idNum;
+        } else {
+            criteria[searchField] = kw;
         }
-
-        setLoading(true);
-        setError(null);
-        setSuccess(null);
 
         try {
-            const readerData = await fetchReaderById(id);
-            setReader(readerData);
-            setShowReaderInfo(true);
-            setSuccess('读者信息获取成功');
-        } catch (err) {
-            setError(err instanceof Error ? err.message : '查找读者失败');
-            setShowReaderInfo(false);
-            setReader(null);
+            const res = await searchReaders(criteria);
+            setFilteredReaders(res);
+        } catch {
+            setFilteredReaders([]);
+        }
+    };
+
+    // 3. 输入变化 + 防抖
+    const handleKeywordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setKeyword(val);
+        setError(null);
+        setSuccess(null);
+        setShowInfo(false);
+        setReader(null);
+        setSelectedReaderId(undefined);
+
+        window.clearTimeout(searchTimer.current);
+        searchTimer.current = window.setTimeout(() => {
+            performSearch(val);
+            setDropdownOpen(true);
+        }, 300);
+    };
+
+    // 4. 搜索字段切换时立即触发一次搜索（如果有关键字）
+    const handleFieldChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const f = e.target.value as SearchField;
+        setSearchField(f);
+        if (keyword.trim()) {
+            window.clearTimeout(searchTimer.current);
+            window.setTimeout(() => performSearch(keyword), 0);
+        }
+    };
+
+    // 5. 聚焦 / 失焦 控制下拉
+    const handleInputFocus = () => {
+        setDropdownOpen(true);
+        if (!keyword.trim()) {
+            setFilteredReaders(recentReaders);
+        }
+    };
+    const handleInputBlur = () => {
+        blurTimer.current = window.setTimeout(() => {
+            setDropdownOpen(false);
+        }, 200);
+    };
+
+
+    // 7. 选中条目 → 拉取详情 & 显示 ID
+    const handleSelect = async (r: ReaderDTO) => {
+        if (!r.id) return;
+        window.clearTimeout(blurTimer.current);
+        setDropdownOpen(false);
+        setSelectedReaderId(r.id);
+        // setKeyword(r.id.toString());
+        setError(null);
+        setSuccess(null);
+
+        setLoading(true);
+        try {
+            const data = await fetchReaderById(r.id);
+            setReader(data);
+            setShowInfo(true);
+            setSuccess('读者信息加载成功');
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : '加载失败';
+            setError(msg);
         } finally {
             setLoading(false);
         }
     };
 
-    // 处理确认删除
+    // 8. 确认删除
     const handleConfirmDelete = async () => {
-        if (!reader || !reader.id) {
-            setError('无效的读者信息');
+        if (selectedReaderId === undefined) {
+            setError('请先选择有效的读者');
             return;
         }
-
         setLoading(true);
         setError(null);
         setSuccess(null);
-
         try {
-            await deleteReader(reader.id);
-            setSuccess('读者删除成功');
-            // 重置表单和状态
-            setReaderId('');
-            setShowReaderInfo(false);
+            await deleteReader(selectedReaderId);
+            setSuccess('删除成功');
+            // 重置状态
+            setKeyword('');
             setReader(null);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : '删除读者失败');
+            setShowInfo(false);
+            setSelectedReaderId(undefined);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : '删除失败';
+            setError(msg);
         } finally {
             setLoading(false);
         }
     };
-
-    // 处理取消删除
-    const handleCancelDelete = () => {
-        setReaderId('');
-        setShowReaderInfo(false);
+    const handleCancel = () => {
+        setKeyword('');
         setReader(null);
+        setShowInfo(false);
+        setSelectedReaderId(undefined);
         setError(null);
         setSuccess(null);
     };
 
     return (
-        <div className="max-w-2xl mx-auto mt-10 bg-white p-6 rounded shadow">
+        <div className="max-w-2xl mx-auto mt-10 p-6 bg-white shadow rounded relative">
             <h1 className="text-2xl font-bold mb-4">删除读者</h1>
+            {error && <div className="mb-4 p-3 bg-red-100 text-red-700 border border-red-400 rounded">{error}</div>}
+            {success && <div className="mb-4 p-3 bg-green-100 text-green-700 border border-green-400 rounded">{success}</div>}
 
-            {/* 错误提示 */}
-            {error && (
-                <div className="bg-red-100 text-red-800 px-4 py-2 rounded mb-4">
-                    {error}
+            {/* 搜索条件 */}
+            <div className="mb-4 flex space-x-2">
+                <select
+                    value={searchField}
+                    onChange={handleFieldChange}
+                    className="border p-2 rounded"
+                >
+                    <option value="id">按 ID</option>
+                    <option value="account">按 账号</option>
+                    <option value="phone">按 手机号</option>
+                    <option value="email">按 邮箱</option>
+                </select>
+                <div className="relative flex-1">
+                    <input
+                        type="text"
+                        value={keyword}
+                        onChange={handleKeywordChange}
+                        onFocus={handleInputFocus}
+                        onBlur={handleInputBlur}
+                        disabled={loading}
+                        placeholder="请输入关键字"
+                        className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                    {dropdownOpen && (
+                        <div
+                            className="absolute top-full left-0 right-0 mt-1 bg-white border rounded shadow max-h-60 overflow-auto z-10"
+                        >
+                            {filteredReaders.length > 0 ? (
+                                filteredReaders.map(r => (
+                                    <div
+                                        key={r.id}
+                                        className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-none"
+                                        onClick={() => handleSelect(r)}
+                                    >
+                                        <div className="font-medium">{r.account}（ID:{r.id}）</div>
+                                        <div className="text-xs text-gray-600">
+                                            {r.phone} | {r.email}
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="p-2 text-gray-500">暂无匹配结果</div>
+                            )}
+                        </div>
+                    )}
                 </div>
-            )}
-
-            {/* 成功提示 */}
-            {success && (
-                <div className="bg-green-100 text-green-800 px-4 py-2 rounded mb-4">
-                    {success}
-                </div>
-            )}
-
-            <div className="mb-4">
-                <label htmlFor="readerId" className="block text-gray-700 font-medium mb-2">请输入读者ID:</label>
-                <input
-                    type="text"
-                    id="readerId"
-                    value={readerId}
-                    onChange={handleInputChange}
-                    className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    disabled={loading}
-                />
             </div>
 
-            {!showReaderInfo && (
+            {/* 新增：选中后提示已选 ID */}
+            {selectedReaderId && (
+                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                    <span className="text-blue-700">已选择读者ID: {selectedReaderId}</span>
+                </div>
+            )}
+
+            {/* 搜索后显示的读者详情 */}
+            {showInfo && reader && (
+                <div className="mb-4 border rounded p-4 bg-gray-50">
+                    <p><strong>账号：</strong>{reader.account}</p>
+                    <p><strong>手机号：</strong>{reader.phone}</p>
+                    <p><strong>邮箱：</strong>{reader.email}</p>
+                    {/* 新增更多信息 */}
+                    <p><strong>性别：</strong>{reader.sex || '-'}</p>
+                    <p><strong>权限：</strong>{reader.permission?.roles || '-'}</p>
+                    <p><strong>状态：</strong>{reader.isActive ? '激活' : '禁用'}</p>
+                    <p><strong>创建时间：</strong>{reader.createdAt ? new Date(reader.createdAt).toLocaleString() : '-'}</p>
+                    <p><strong>更新时间：</strong>{reader.updatedAt ? new Date(reader.updatedAt).toLocaleString() : '-'}</p>
+                </div>
+            )}
+
+            {/* 操作按钮 */}
+            <div className="flex space-x-4">
                 <button
-                    onClick={handleSearch}
-                    className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-blue-300"
-                    disabled={loading || !readerId.trim()}
+                    onClick={handleConfirmDelete}
+                    disabled={loading || !showInfo}
+                    className={`px-4 py-2 rounded text-white ${
+                        loading || !showInfo ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'
+                    }`}
                 >
-                    {loading ? '查找中...' : '查找读者'}
+                    {loading ? '处理中...' : '确认删除'}
                 </button>
-            )}
-
-            {showReaderInfo && reader && (
-                <>
-                    <div className="border p-4 rounded-md bg-gray-50 mb-6">
-                        <h2 className="font-bold text-xl mb-2">读者信息</h2>
-                        <div className="text-gray-700">
-                            <p><span className="font-medium">读者ID：</span> {reader.id}</p>
-                            <p><span className="font-medium">账号：</span> {reader.account}</p>
-                            <p><span className="font-medium">手机号：</span> {reader.phone}</p>
-                            <p><span className="font-medium">邮箱：</span> {reader.email}</p>
-                            <p><span className="font-medium">性别：</span> {reader.sex || '未设置'}</p>
-                            <p><span className="font-medium">状态：</span> {reader.isActive ? '激活' : '未激活'}</p>
-                            <p><span className="font-medium">权限ID：</span> {reader.permission?.id ?? '未设置'}</p>
-                            <p><span className="font-medium">权限：</span> {reader.permission?.roles ?? '未设置'}</p>
-                            <p><span className="font-medium">创建时间：</span> {reader.createdAt ? new Date(reader.createdAt).toLocaleString() : '未知'}</p>
-                            <p><span className="font-medium">更新时间：</span> {reader.updatedAt ? new Date(reader.updatedAt).toLocaleString() : '未知'}</p>
-                        </div>
-                    </div>
-
-                    <div className="flex justify-between">
-                        <button
-                            onClick={handleConfirmDelete}
-                            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 disabled:bg-red-300"
-                            disabled={loading}
-                        >
-                            {loading ? '处理中...' : '确认删除'}
-                        </button>
-                        <button
-                            onClick={handleCancelDelete}
-                            className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 disabled:bg-gray-300"
-                            disabled={loading}
-                        >
-                            取消
-                        </button>
-                    </div>
-                </>
-            )}
+                <button
+                    onClick={handleCancel}
+                    disabled={loading}
+                    className={`px-4 py-2 rounded text-white ${
+                        loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-500 hover:bg-gray-600'
+                    }`}
+                >
+                    取消
+                </button>
+            </div>
         </div>
     );
 };
 
 export default DeleteReaderForm;
-

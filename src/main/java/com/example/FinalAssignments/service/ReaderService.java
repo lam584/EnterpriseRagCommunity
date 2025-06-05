@@ -2,6 +2,7 @@
 package com.example.FinalAssignments.service;
 
 import com.example.FinalAssignments.entity.Reader;
+import com.example.FinalAssignments.repository.BookLoanRepository;
 import com.example.FinalAssignments.repository.ReaderRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -14,7 +15,13 @@ import java.util.Optional;
 
 @Service
 public class ReaderService {
-    
+    // 注入 BookLoanRepository
+    @Autowired
+    private BookLoanRepository loanRepo;
+
+    public long countLoansByReaderId(Long readerId) {
+        return loanRepo.countByReaderId(readerId);
+    }
     @Autowired
     private ReaderRepository readerRepository;
     
@@ -63,7 +70,7 @@ public class ReaderService {
     private void checkDuplicateInfo(Reader reader) {
         // 如果是更新操作，需要排除自身ID进行比较
         if (reader.getId() != null) {
-            // 更新操作只在必要时检查（即当字段有值且与现有记录不同时）
+            // 更新操作只在必要时检查（即当字段有值且��现有记录不同时）
             Optional<Reader> existingReader = readerRepository.findById(reader.getId());
             if (existingReader.isPresent()) {
                 Reader current = existingReader.get();
@@ -145,7 +152,7 @@ public class ReaderService {
                 reader.setCreatedAt(now);
                 // 检查密码是否为null或空
                 if (reader.getPassword() == null || reader.getPassword().isEmpty()) {
-                    throw new IllegalArgumentException("新建读者时密码不能为空");
+                    throw new IllegalArgumentException("新建读者时密码不能��空");
                 } else {
                     // 加密密码
                     reader.setPassword(passwordEncoder.encode(reader.getPassword()));
@@ -177,4 +184,3 @@ public class ReaderService {
         return passwordEncoder.matches(rawPassword, encodedPassword);
     }
 }
-
