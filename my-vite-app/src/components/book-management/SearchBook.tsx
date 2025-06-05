@@ -1,10 +1,12 @@
 // src/components/book-management/SearchBook.tsx 改进版
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { fetchBooks, advancedSearch, BookDTO, AdvancedSearchCriteria } from '../../services/bookService';
 
 const SearchBook: React.FC = () => {
   // 基本搜索状态
   const [criteria, setCriteria] = useState({ id: '', isbn: '', title: '', author: '', publisher: '' });
+  // 添加错误状态
+  const [errors, setErrors] = useState({ id: '' });
 
   // 高级搜索状态
   const [advCriteria, setAdvCriteria] = useState<AdvancedSearchCriteria>({
@@ -109,6 +111,14 @@ const SearchBook: React.FC = () => {
         return;
       }
 
+      // 验证ID格式
+      if (criteria.id && !/^\d+$/.test(criteria.id)) {
+        setMessage('图书ID必须是数字');
+        setSearchResults([]);
+        setLoading(false);
+        return;
+      }
+
       // 创建一个新的搜索条件对象，将id转换为number类型
       const searchCriteria: Partial<BookDTO> = {
         isbn: criteria.isbn,
@@ -145,7 +155,7 @@ const SearchBook: React.FC = () => {
     setCurrentPage(1); // 重置到第一页
 
     try {
-      // 检查是否至少有一个搜���条件
+      // 检查是否至少有一个搜索条件
       const hasAnyCriteria = Object.entries(advCriteria).some(([key, value]) => {
         return key !== 'idExact' &&
                key !== 'isbnExact' &&
@@ -163,6 +173,14 @@ const SearchBook: React.FC = () => {
 
       if (!hasAnyCriteria) {
         setMessage('请至少输入一个搜索条件');
+        setSearchResults([]);
+        setLoading(false);
+        return;
+      }
+
+      // 验证ID格式
+      if (advCriteria.id && !/^\d+$/.test(advCriteria.id)) {
+        setMessage('图书ID必须是数字');
         setSearchResults([]);
         setLoading(false);
         return;
@@ -238,6 +256,18 @@ const SearchBook: React.FC = () => {
     }
   };
 
+  // 表单验证
+  useEffect(() => {
+    const newErrors = { id: '' };
+
+    // 基本搜索ID验证
+    if (criteria.id && !/^\d+$/.test(criteria.id)) {
+      newErrors.id = '图书ID必须是数字';
+    }
+
+    setErrors(newErrors);
+  }, [criteria.id]);
+
   return (
       <div className="space-y-6">
         {/* 搜索表单 */}
@@ -264,6 +294,7 @@ const SearchBook: React.FC = () => {
                     className="w-full border p-2 rounded"
                     placeholder="输入图书ID"
                 />
+                {errors.id && <p className="text-red-500 text-sm mt-1">{errors.id}</p>}
               </div>
               <div>
                 <label className="block text-gray-700 mb-2">ISBN号</label>
@@ -638,7 +669,7 @@ const SearchBook: React.FC = () => {
                       <th className="border p-2">ID</th>
                       <th className="border p-2">标题</th>
                       <th className="border p-2">作者</th>
-                      <th className="border p-2">出版社</th>
+                      <th className="border p-2">��版社</th>
                       <th className="border p-2">ISBN号</th>
                       <th className="border p-2">版次</th>
                       <th className="border p-2">定价</th>
