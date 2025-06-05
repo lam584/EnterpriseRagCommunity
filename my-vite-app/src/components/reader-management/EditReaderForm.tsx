@@ -399,9 +399,9 @@ const EditReaderForm: React.FC = () => {
 
 
           {selectedId && (
-            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
-              <span className="text-blue-700">已选择读者ID: {selectedId}</span>
-            </div>
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                <span className="text-blue-700">已选择读者ID: {selectedId}</span>
+              </div>
           )}
 
           {/* 编辑表单 */}

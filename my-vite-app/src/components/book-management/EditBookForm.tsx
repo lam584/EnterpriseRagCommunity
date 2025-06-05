@@ -10,6 +10,11 @@ interface ExtendedBookDTO extends BookDTO {
   updatedAt?: string;
 }
 
+// 添加一个带有索引签名的接口，用于替代不明确的 any 类型
+interface FormWithNamedFields extends BookDTO {
+  [key: string]: string | number | boolean | { id: number } | undefined;
+}
+
 const EditBookForm: React.FC = () => {
   const [books, setBooks] = useState<ExtendedBookDTO[]>([]);
   const [filteredBooks, setFilteredBooks] = useState<ExtendedBookDTO[]>([]);
@@ -67,12 +72,12 @@ const EditBookForm: React.FC = () => {
     if (!searchCriteria.keyword.trim()) {
       // 只更新列表，不自动展开
       const recentBooks = [...books]
-        .sort((a, b) => {
-          const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-          const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-          return dateB - dateA;
-        })
-        .slice(0, MAX_RECENT_BOOKS);
+          .sort((a, b) => {
+            const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return dateB - dateA;
+          })
+          .slice(0, MAX_RECENT_BOOKS);
       setFilteredBooks(recentBooks);
       return;
     }
@@ -152,7 +157,7 @@ const EditBookForm: React.FC = () => {
       const book = await fetchBookById(bookId);
       setForm(book);
       setErrors({});
-    } catch (err) {
+    } catch {
       setMessage({type: 'error', text: '加载图书信息失败'});
     } finally {
       setLoading(false);
@@ -177,11 +182,11 @@ const EditBookForm: React.FC = () => {
     const { name, value } = e.target;
     if (['category','shelf'].includes(name)) {
       const id = Number(value);
-      setForm(f => ({ ...f, [name]: { id } } as any));
+      setForm(f => ({ ...f, [name]: { id } } as FormWithNamedFields));
     } else if (name === 'price') {
       setForm(f => ({ ...f, price: value }));
     } else {
-      setForm(f => ({ ...f, [name]: value } as any));
+      setForm(f => ({ ...f, [name]: value } as FormWithNamedFields));
     }
 
     if (errors[name]) {
@@ -207,7 +212,7 @@ const EditBookForm: React.FC = () => {
       const updatedBooks = await fetchBooks();
       setBooks(updatedBooks);
       setFilteredBooks(updatedBooks);
-    } catch (err) {
+    } catch {
       setMessage({type: 'error', text: '更新失败，请检查填写内容或稍后重试'});
     } finally {
       setLoading(false);
@@ -248,18 +253,18 @@ const EditBookForm: React.FC = () => {
                   className="flex-1 border border-gray-300 p-2 rounded-r"
                   placeholder={searchCriteria.searchField === 'id' ? "输入图书ID..." : "输入关键词搜索图书..."}
                   onFocus={() => setDropdownOpen(true)}
-                  onBlur={handleSearchBlur} 
+                  onBlur={handleSearchBlur}
                   disabled={loading}
               />
             </div>
 
             {dropdownOpen && filteredBooks.length > 0 && (
                 <div className="relative" ref={dropdownRef}>
-                  <div 
-                    className="absolute z-10 w-full bg-white border border-gray-300 rounded shadow-lg overflow-y-auto"
-                    style={{ maxHeight: '360px' }} // 设置为4.5本图书的高度（每本约50px）
-                    onMouseEnter={handleDropdownMouseEnter}
-                    onMouseLeave={handleDropdownMouseLeave}
+                  <div
+                      className="absolute z-10 w-full bg-white border border-gray-300 rounded shadow-lg overflow-y-auto"
+                      style={{ maxHeight: '360px' }} // 设置为4.5本图书的高度（每本约50px）
+                      onMouseEnter={handleDropdownMouseEnter}
+                      onMouseLeave={handleDropdownMouseLeave}
                   >
                     {filteredBooks.map(book => (
                         <div
@@ -444,7 +449,7 @@ const EditBookForm: React.FC = () => {
             <ul className="list-disc pl-5 space-y-2 text-gray-700">
               <li>使用搜索框查找并选择要编辑的图书</li>
               <li>可以按ID、书名、ISBN、作者或出版社搜索</li>
-              <li>修改相关信息后点击保存</li>
+              <li>修改相关信���后点击保存</li>
               <li>ISBN、书名、作者等为必填项</li>
             </ul>
           </div>
@@ -454,3 +459,4 @@ const EditBookForm: React.FC = () => {
 }
 
 export default EditBookForm;
+
