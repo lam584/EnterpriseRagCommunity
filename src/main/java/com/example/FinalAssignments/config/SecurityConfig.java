@@ -61,7 +61,9 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/csrf-token",
-                                "/api/auth/current-admin"    // ← 新增：前端允许匿名调用此接口
+                                "/api/auth/current-admin",    // ← 前端允许匿名调用此接口
+                                "/api/auth/initial-setup-status",  // ← 新增：允许匿名访问初始设置状态查询
+                                "/api/auth/register-initial-admin" // ← 新增：允许匿名注册初始管理员
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

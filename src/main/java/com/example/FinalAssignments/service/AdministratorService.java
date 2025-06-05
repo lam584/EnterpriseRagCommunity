@@ -40,4 +40,12 @@ public class AdministratorService {
     public void delete(Long id) {
         administratorRepository.deleteById(id);
     }
+
+    /**
+     * 统计系统中管理员账户的数量
+     * @return 管理员账户数量
+     */
+    public long countAdministrators() {
+        return administratorRepository.count();
+    }
 }

@@ -223,7 +223,7 @@
 │   │   │   │       ├─ 📄 V1__init_library_schema.sql
 │   │   │   │       ├─ 📄 V2__insert_super_admin.sql
 │   │   │   │       ├─ 📄 V3__Test.sql
-│   │   │   │       └─ 📄 V4__insert_test_data.sql
+│   │   │   │       └─ 📄 V3__insert_test_data.sql
 │   │   │   ├─ 📁 static                                          - 静态资源目录,此文件夹目前由my-vite-app/src文件夹替代，非必要情况下请勿往此目录中添加静态资源文件
 │   │   │   │   └─ 📁 assets                                      - 存放静态资源
 │   │   │   ├─ 📁 templates                                       - 模板文件目录，此目录已弃用，前端文件已移至 my-vite-app/src 目录，非必要情况下请勿往此目录中添加模板文件

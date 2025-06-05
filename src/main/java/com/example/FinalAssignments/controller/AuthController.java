@@ -1,8 +1,12 @@
 package com.example.FinalAssignments.controller;
 
+import com.example.FinalAssignments.config.InitialAdminSetupState;
 import com.example.FinalAssignments.dto.AdminResponseDTO;
+import com.example.FinalAssignments.dto.InitialAdminRegisterRequest;
 import com.example.FinalAssignments.entity.Administrator;
+import com.example.FinalAssignments.entity.AdminPermission;
 import com.example.FinalAssignments.service.AdministratorService;
+import com.example.FinalAssignments.service.AdminPermissionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +14,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.*;
 import org.slf4j.Logger;
@@ -18,6 +23,8 @@ import org.slf4j.LoggerFactory;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -32,7 +39,16 @@ public class AuthController {
     private AdministratorService administratorService;
 
     @Autowired
+    private AdminPermissionService adminPermissionService; // 需要添加此依赖
+
+    @Autowired
     private AuthenticationManager authenticationManager;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private InitialAdminSetupState initialAdminSetupState;
 
     @GetMapping("/current-admin")
     public ResponseEntity<?> getCurrentAdmin(HttpServletRequest request) {
@@ -208,6 +224,92 @@ public class AuthController {
             return ResponseEntity.ok(response);
         } else {
             response.put("message", "无法获取CSRF令牌");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+    }
+
+    /**
+     * 检查系统是否需要进行初始管理员设置
+     * 此端点允许匿名访问
+     */
+    @GetMapping("/initial-setup-status")
+    public ResponseEntity<?> getInitialSetupStatus() {
+        Map<String, Boolean> response = new HashMap<>();
+        response.put("setupRequired", initialAdminSetupState.isSetupRequired());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 注册初始管理员账户
+     * 此端点允许匿名访问，但只有在系统需要初始设置时才会执行注册
+     */
+    @PostMapping("/register-initial-admin")
+    public ResponseEntity<?> registerInitialAdmin(@Valid @RequestBody InitialAdminRegisterRequest request) {
+        // 检查是否需要初始设置
+        if (!initialAdminSetupState.isSetupRequired()) {
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "系统已完成初始化，不能再注册初始管理员");
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+        }
+
+        try {
+            // 检查账号是否已存在
+            if (administratorService.findByUsername(request.getAccount()).isPresent()) {
+                Map<String, String> response = new HashMap<>();
+                response.put("message", "账号已存在");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+            }
+
+            // 创建超级管理员权限
+            AdminPermission superAdminPermission = new AdminPermission();
+            superAdminPermission.setRoles("超级管理员");
+            // 设置所有权限为 true
+            superAdminPermission.setCanLogin(true);
+            superAdminPermission.setCanManageAnnouncement(true);
+            superAdminPermission.setCanManageHelpArticles(true);
+            superAdminPermission.setCanCreateSuperAdmin(true);
+            superAdminPermission.setCanCreateAdmin(true);
+            superAdminPermission.setCanCreateUserAccount(true);
+            superAdminPermission.setCanManageAdminPermissions(true);
+            superAdminPermission.setCanManageUserPermissions(true);
+            superAdminPermission.setCanResetAdminPassword(true);
+            superAdminPermission.setCanResetUserPassword(true);
+            superAdminPermission.setCanPayUserOverdue(true);
+            superAdminPermission.setCanLendBooksToUser(true);
+            superAdminPermission.setCanReturnBooksForUser(true);
+            superAdminPermission.setAllowEditReadersProfile(true);
+            superAdminPermission.setAllowEditProfile(true);
+            superAdminPermission.setAllowEditOtherAdminProfile(true);
+            superAdminPermission.setCreatedAt(LocalDateTime.now());
+            superAdminPermission.setUpdatedAt(LocalDateTime.now());
+
+            AdminPermission savedPermission = adminPermissionService.save(superAdminPermission);
+
+            // 创建管理员账户
+            Administrator admin = new Administrator();
+            admin.setAccount(request.getAccount());
+            admin.setPassword(passwordEncoder.encode(request.getPassword())); // 加密密码
+            admin.setEmail(request.getEmail());
+            admin.setPhone(request.getPhone());
+            admin.setSex(request.getSex());
+            admin.setRegisteredAt(LocalDateTime.now());
+            admin.setIsActive(true);
+            admin.setPermission(savedPermission);
+            admin.setCreatedAt(LocalDateTime.now());
+            admin.setUpdatedAt(LocalDateTime.now());
+
+            Administrator savedAdmin = administratorService.save(admin);
+
+            // 更新系统状态为已完成初始设置
+            initialAdminSetupState.setSetupRequired(false);
+
+            // 构建响应，使用DTO避免返回实体
+            AdminResponseDTO responseDTO = AdminResponseDTO.fromEntity(savedAdmin);
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(responseDTO);
+        } catch (Exception e) {
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "注册失败：" + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
