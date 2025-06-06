@@ -1,3 +1,4 @@
+//my-vite-app/src/contexts/AuthContext.tsx
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { AdminDTO, getCurrentAdmin } from '../services/authService';
 
