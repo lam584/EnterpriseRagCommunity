@@ -1,4 +1,13 @@
+// I:\JavaWeb\FinalAssignments\my-vite-app\tsconfig.json
 {
+  "compilerOptions": {
+    // 所有相对路径都从项目根开始解析
+    "baseUrl": ".",
+    // 定义别名：/components/* → src/components/*
+    "paths": {
+      "/components/*": ["src/components/*"]
+    }
+  },
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },

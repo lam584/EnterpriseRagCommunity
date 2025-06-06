@@ -32,9 +32,16 @@ cssFiles.forEach(fullPath => {
 
 // 可选地加入 viteStaticCopy 插件保证 webfonts 目录也被 build 到 dist
 import { viteStaticCopy } from 'vite-plugin-static-copy'
+import * as path from "node:path";
 
 export default defineConfig({
+    resolve: {
+        alias: {
+            '/components': path.resolve(__dirname, 'src/components'),
+        },
+    },
     plugins: [
+
         react(),
         viteStaticCopy({
             targets: [
