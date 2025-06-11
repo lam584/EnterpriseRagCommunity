@@ -1,124 +1,167 @@
-// src/components/account-management/ChangePassword.tsx
 import React, { useState } from 'react';
+import { changePassword } from '../../services/accountService';
+import { toast } from 'react-hot-toast';
 
-const ChangePassword: React.FC = () => {
+interface ChangePasswordProps {
+  onBack: () => void;
+}
+
+const ChangePassword: React.FC<ChangePasswordProps> = ({ onBack }) => {
   const [formData, setFormData] = useState({
     currentPassword: '',
     newPassword: '',
-    confirmNewPassword: ''
+    confirmPassword: ''
   });
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { id, value } = e.target;
-    setFormData({
-      ...formData,
-      [id]: value
-    });
-    setError(null);
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    // 清除对应字段的错误
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
-  const validatePassword = () => {
-    // 检查新密码是否满足复杂性要求
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    if (!passwordRegex.test(formData.newPassword)) {
-      setError('新密码必须至少包含8个字符，包括大写字母、小写字母、数字和特殊字符');
-      return false;
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    // 验证当前密码
+    if (!formData.currentPassword) {
+      newErrors.currentPassword = '请输入当前密码';
     }
 
-    // 检查两次输入的新密码是否一致
-    if (formData.newPassword !== formData.confirmNewPassword) {
-      setError('两次输入的新密码不一致');
-      return false;
+    // 验证新密码
+    if (!formData.newPassword) {
+      newErrors.newPassword = '请输入新密码';
+    } else if (formData.newPassword.length < 8) {
+      newErrors.newPassword = '密码长度至少为8个字符';
+    } else if (!/[A-Z]/.test(formData.newPassword)) {
+      newErrors.newPassword = '密码应至少包含一个大写字母';
+    } else if (!/[a-z]/.test(formData.newPassword)) {
+      newErrors.newPassword = '密码应至少包含一个小写字母';
+    } else if (!/[0-9]/.test(formData.newPassword)) {
+      newErrors.newPassword = '密码应至少包含一个数字';
+    } else if (!/[^A-Za-z0-9]/.test(formData.newPassword)) {
+      newErrors.newPassword = '密码应至少包含一个特殊字符';
     }
 
-    return true;
+    // 验证确认密码
+    if (!formData.confirmPassword) {
+      newErrors.confirmPassword = '请确认新密码';
+    } else if (formData.confirmPassword !== formData.newPassword) {
+      newErrors.confirmPassword = '两次输入的密码不一致';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (validatePassword()) {
-      // 这里可以添加密码更改的API调用
-      setSuccess(true);
+    if (!validateForm()) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await changePassword({
+        currentPassword: formData.currentPassword,
+        newPassword: formData.newPassword
+      });
+
+      toast.success('密码修改成功');
+
+      // 清空表单
       setFormData({
         currentPassword: '',
         newPassword: '',
-        confirmNewPassword: ''
+        confirmPassword: ''
       });
+
+    } catch (err) {
+      console.error('Failed to change password:', err);
+      toast.error(err instanceof Error ? err.message : '密码修改失败');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="bg-white shadow-md rounded-md p-6">
+    <div className="max-w-lg mx-auto bg-white p-6 rounded-lg shadow-md">
       <h2 className="text-xl font-bold mb-4">更改密码</h2>
-      <div className="bg-gray-50 p-6 rounded-lg">
-        {success ? (
-          <div className="text-center">
-            <div className="text-green-500 text-xl mb-4">✓</div>
-            <p className="text-gray-700 mb-4">密码已成功更改！</p>
-            <button
-              className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-              onClick={() => setSuccess(false)}
-            >
-              继续
-            </button>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
-                <span>{error}</span>
-              </div>
-            )}
-            <div className="mb-4">
-              <label htmlFor="currentPassword" className="block text-gray-700 font-medium mb-1">当前密码：</label>
-              <input
-                type="password"
-                id="currentPassword"
-                value={formData.currentPassword}
-                onChange={handleChange}
-                className="w-full border border-gray-300 rounded-md p-2"
-                required
-              />
-            </div>
-            <div className="mb-4">
-              <label htmlFor="newPassword" className="block text-gray-700 font-medium mb-1">新密码：</label>
-              <input
-                type="password"
-                id="newPassword"
-                value={formData.newPassword}
-                onChange={handleChange}
-                className="w-full border border-gray-300 rounded-md p-2"
-                required
-              />
-            </div>
-            <div className="mb-4">
-              <label htmlFor="confirmNewPassword" className="block text-gray-700 font-medium mb-1">确认新密码：</label>
-              <input
-                type="password"
-                id="confirmNewPassword"
-                value={formData.confirmNewPassword}
-                onChange={handleChange}
-                className="w-full border border-gray-300 rounded-md p-2"
-                required
-              />
-            </div>
-            <div className="flex justify-end space-x-4">
-              <button
-                type="submit"
-                className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
-              >
-                更改密码
-              </button>
-            </div>
-          </form>
-        )}
-        <p className="text-gray-500 text-sm mt-6">
-          密码应至少包括大写字母、小写字母、数字、符号，以提高您对您的账户安全性的控制。
-        </p>
-      </div>
+
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4">
+          <label htmlFor="currentPassword" className="block text-gray-700 font-medium mb-1">当前密码：</label>
+          <input
+            type="password"
+            id="currentPassword"
+            name="currentPassword"
+            value={formData.currentPassword}
+            onChange={handleChange}
+            className={`w-full border ${errors.currentPassword ? 'border-red-500' : 'border-gray-300'} rounded-md p-2`}
+            placeholder="请输入当前密码"
+          />
+          {errors.currentPassword && (
+            <p className="text-red-500 text-xs mt-1">{errors.currentPassword}</p>
+          )}
+        </div>
+
+        <div className="mb-4">
+          <label htmlFor="newPassword" className="block text-gray-700 font-medium mb-1">新密码：</label>
+          <input
+            type="password"
+            id="newPassword"
+            name="newPassword"
+            value={formData.newPassword}
+            onChange={handleChange}
+            className={`w-full border ${errors.newPassword ? 'border-red-500' : 'border-gray-300'} rounded-md p-2`}
+            placeholder="请输入新密码"
+          />
+          {errors.newPassword ? (
+            <p className="text-red-500 text-xs mt-1">{errors.newPassword}</p>
+          ) : (
+            <p className="text-gray-500 text-xs mt-1">
+              密码应至少包含8个字符，包括大写字母、小写字母、数字和特殊字符
+            </p>
+          )}
+        </div>
+
+        <div className="mb-4">
+          <label htmlFor="confirmPassword" className="block text-gray-700 font-medium mb-1">确认新密码：</label>
+          <input
+            type="password"
+            id="confirmPassword"
+            name="confirmPassword"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            className={`w-full border ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'} rounded-md p-2`}
+            placeholder="请再次输入新密码"
+          />
+          {errors.confirmPassword && (
+            <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>
+          )}
+        </div>
+
+        <div className="flex justify-end space-x-4 mt-6">
+          <button
+            onClick={onBack}
+            className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 disabled:bg-gray-400"
+          >
+            返回
+          </button>
+          <button
+            type="submit"
+            className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600"
+            disabled={loading}
+          >
+            {loading ? '提交中...' : '更改密码'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

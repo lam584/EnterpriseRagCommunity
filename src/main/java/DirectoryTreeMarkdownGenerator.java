@@ -149,8 +149,8 @@ public class DirectoryTreeMarkdownGenerator {
                 Map.entry("my-vite-app/vite-env.d.ts", "Vite 环境变量类型声明，支持 import.meta.env 等"),
                 Map.entry("my-vite-app/src/vue.global.js", "Vue 全局配置文件，定义 Vue 组件全局注册和配置"),
                 Map.entry("my-vite-app/src/bootstrap.js", "Vite 启动脚本，初始化 Vue 应用和全局配置"),
-                Map.entry("my-vite-app/src/index.js", "Vite 入口文件，挂载 Vue 应用到 #app 元素")
-
+                Map.entry("my-vite-app/src/index.js", "Vite 入口文件，挂载 Vue 应用到 #app 元素"),
+                Map.entry("my-vite-app/src/components/ui", "Shadcn UI 组件目录，包含全局样式和组件")
         );
 
         List<PatternDesc> list = new ArrayList<>();

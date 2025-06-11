@@ -6,7 +6,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 public class PasswordEncoderUtil {
     public static void main(String[] args) {
         PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
-        String rawPassword = "password";
+        String rawPassword = "Qq076835378.";
         String encodedPassword = passwordEncoder.encode(rawPassword);
 
         System.out.println("Raw Password: " + rawPassword);

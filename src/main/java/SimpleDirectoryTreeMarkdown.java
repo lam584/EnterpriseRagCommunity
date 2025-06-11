@@ -15,6 +15,7 @@ public class SimpleDirectoryTreeMarkdown {
 
     // 全局排除目录名（不区分大小写）
     private static final Set<String> EXCLUDED_DIR_NAMES = Set.of(
+            "node_modules"
 //            "build", ".gradle", "dist", "node_modules", "out",".idea", ".git", ".vscode", "target",  "obj", "tmp", "temp"
     );
 
@@ -111,7 +112,7 @@ public class SimpleDirectoryTreeMarkdown {
     }
 
     public static void main(String[] args) throws IOException {
-        Path projectRoot = Paths.get("H:\\JavaWeb\\FinalAssignments\\my-vite-app\\src");
+        Path projectRoot = Paths.get("G:\\期末项目\\未完成\\微信小程序\\考核2项目");
         if (!Files.isDirectory(projectRoot)) {
             System.err.println("无效的项目根目录: " + projectRoot);
             return;
