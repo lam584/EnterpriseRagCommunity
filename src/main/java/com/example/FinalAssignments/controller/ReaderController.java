@@ -6,6 +6,7 @@ import com.example.FinalAssignments.entity.Reader;
 import com.example.FinalAssignments.entity.ReaderPermission;
 import com.example.FinalAssignments.service.ReaderPermissionService;
 import com.example.FinalAssignments.service.ReaderService;
+import org.flywaydb.core.internal.util.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -48,12 +49,31 @@ public class ReaderController {
             @RequestParam(required = false) String role,
             @RequestParam(required = false) LocalDateTime  startDate,
             @RequestParam(required = false) LocalDateTime  endDate) {
-        List<Reader> list = readerService.search(id, account, phone, email, sex, role, startDate, endDate);
+        List<Reader> list = readerService.searchBasic(id, account, phone, email, sex, role, startDate, endDate);
         // 确保清除所有读者的密码信息
         list.forEach(reader -> reader.setPassword(null));
         return new ResponseEntity<>(list, HttpStatus.OK);
     }
 
+    /**
+     * 模糊查询读者信息，支持 id/account/phone/email
+     * 返回 DTO，避免直接暴露实体
+     */
+    @GetMapping("/query")
+    public ResponseEntity<List<ReaderDTO>> queryReaders(
+            @RequestParam(required = false) Long id,
+            @RequestParam(required = false) String account,
+            @RequestParam(required = false) String phone,
+            @RequestParam(required = false) String email) {
+
+        List<Reader> list = readerService.searchBasic(
+                id, account, phone, email, null, null, null, null
+        );
+        List<ReaderDTO> dtos = list.stream()
+                .map(readerDTOConverter::convertToDTO)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(dtos);
+    }
     // 返回ReaderDTO列表的API
     @GetMapping("/dto")
     public ResponseEntity<List<ReaderDTO>> getReadersDTO(
@@ -65,7 +85,7 @@ public class ReaderController {
             @RequestParam(required = false) String role,
             @RequestParam(required = false) LocalDateTime  startDate,
             @RequestParam(required = false) LocalDateTime  endDate) {
-        List<Reader> list = readerService.search(id, account, phone, email, sex, role, startDate, endDate);
+        List<Reader> list = readerService.searchBasic(id, account, phone, email, sex, role, startDate, endDate);
         List<ReaderDTO> dtoList = list.stream()
                 .map(readerDTOConverter::convertToDTO)
                 .collect(Collectors.toList());
@@ -87,7 +107,7 @@ public class ReaderController {
             Optional<Reader> reader = readerService.findById(id);
             list = reader.isPresent() ? List.of(reader.get()) : List.of();
         } else {
-            list = readerService.search(id, account, phone, email, sex, role, startDate, endDate);
+            list = readerService.searchBasic(id, account, phone, email, sex, role, startDate, endDate);
         }
         // 确保清除所有读者的密码信息
         list.forEach(reader -> reader.setPassword(null));
@@ -110,19 +130,20 @@ public class ReaderController {
         LocalDateTime endDateTime = null;
 
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd");
-
+        DateTimeFormatter slashFmt = DateTimeFormatter.ofPattern("yyyy/MM/dd");
+        DateTimeFormatter dashFmt  = DateTimeFormatter.ISO_LOCAL_DATE; // yyyy-MM-dd
         try {
-            if (startDate != null && !startDate.isEmpty()) {
-                startDateTime = LocalDate.parse(startDate, formatter).atStartOfDay();
+            if (StringUtils.hasText(startDate)) {
+                try {
+                    startDateTime = LocalDate.parse(startDate, slashFmt).atStartOfDay();
+                } catch(DateTimeParseException ex) {
+                    startDateTime = LocalDate.parse(startDate, dashFmt).atStartOfDay();
+                }
             }
-
-            if (endDate != null && !endDate.isEmpty()) {
-                endDateTime = LocalDate.parse(endDate, formatter).atTime(23, 59, 59); // 结束时间到当天最后一秒
-            }
-        } catch (DateTimeParseException e) {
-            throw new IllegalArgumentException("日期格式不正确，请使用 yyyy/MM/dd 格式");
+            // 同理处理 endDate
+        } catch(DateTimeParseException ex) {
+            throw new IllegalArgumentException("日期格式不正确，请使用 yyyy/MM/dd 或 yyyy-MM-dd 格式");
         }
-
         List<Reader> list = readerService.search(id, account, phone, email, sex, role, startDateTime, endDateTime);
 
         List<ReaderDTO> dtoList = list.stream()
@@ -264,7 +285,3 @@ public class ReaderController {
         }
     }
 }
-
-
-
-

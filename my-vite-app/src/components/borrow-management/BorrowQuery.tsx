@@ -34,7 +34,7 @@ const BorrowQuery: React.FC = () => {
   });
 
   const [showSuccess, setShowSuccess] = useState(true);
-  const [searchResults, _setSearchResults] = useState<BorrowRecord[]>([
+  const [searchResults, ] = useState<BorrowRecord[]>([
     {
       borrowId: '1',
       bookId: '1',

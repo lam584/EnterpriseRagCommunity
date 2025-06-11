@@ -34,6 +34,16 @@ public interface ReaderRepository extends JpaRepository<Reader, Long> {
     // 添加根据账号查询用户的方法
     Optional<Reader> findByAccount(String account);
 
+    @Query("SELECT r FROM Reader r WHERE " +
+            "(r.id = :id) OR " +
+            "(r.account LIKE %:account%) OR " +
+            "(r.phone LIKE %:phone%) OR " +
+            "(r.email LIKE %:email%) ")
+    List<Reader> search(@Param("id") Long id,
+                        @Param("account") String account,
+                        @Param("phone") String phone,
+                        @Param("email") String email);
+
     // 添加根据邮箱查询用户的方法
     Optional<Reader> findByEmail(String email);
 

@@ -5,9 +5,18 @@ import { fetchBooks, advancedSearch, BookDTO, AdvancedSearchCriteria } from '../
 // 添加图标库
 import { FaSearch, FaFilter, FaFileCsv, FaArrowLeft, FaArrowRight, FaBook, FaSyncAlt, FaTimes, FaInfoCircle } from 'react-icons/fa';
 
+// 为基础搜索条件声明一个接口，方便 useState 推断类型
+interface BasicCriteria {
+  id: string;
+  isbn: string;
+  title: string;
+  author: string;
+  publisher: string;
+}
+
 const SearchBook: React.FC = () => {
-  // 基本搜索状态
-  const [criteria, setCriteria] = useState({ id: '', isbn: '', title: '', author: '', publisher: '' });
+  // 基本搜索状态 - 添加类型声明，解决 "Parameter 'prev' implicitly has an 'any' type" 错误
+  const [criteria, setCriteria] = useState<BasicCriteria>({ id: '', isbn: '', title: '', author: '', publisher: '' });
   // 添加错误状态
   const [errors, setErrors] = useState({ id: '' });
 

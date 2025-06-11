@@ -121,7 +121,9 @@
 │   │   ├─ 📁 pages                                                - 路由级页面组件目录;每个子目录对应一个页面或路由
 │   │   │   └─ 📄 LibraryLayout.tsx                                - React TypeScript 组件文件
 │   │   ├─ 📁 services                                             - 后端 API 封装目录;基于 fetch/axios 统一处理请求/响应/错误
-│   │   │   ├─ 📄 authService.ts                                   - TypeScript 文件
+│   │   │   ├─ 📄 accountService.ts                                - TypeScript 文件
+│   │   │   ├─ 📄 authService.ts
+│   │   │   ├─ 📄 bookLoanService.ts
 │   │   │   ├─ 📄 bookService.ts
 │   │   │   ├─ 📄 categoryService.ts
 │   │   │   ├─ 📄 readerPermissionService.ts
@@ -138,18 +140,18 @@
 │   │   ├─ 📄 [REMOVED]
 │   │   ├─ 📄 vite-env.d.ts                                        - Vite 环境类型声明;支持 import.meta.env 及静态资源导入
 │   │   └─ 📄 vue.global.js                                        - Vue 全局配置文件，定义 Vue 组件全局注册和配置
-│   ├─ 📄 .gitignore                                               - 前端项目 Git 忽略文件，指定不需要纳入版本控制的文件类型
+│   ├─ 📄 .gitignore                                               - Git 忽略文件配置，指定不需要纳入版本控制的文件类型
 │   ├─ 📄 .shadcnrc
 │   ├─ 📄 components.json
 │   ├─ 📄 eslint.config.js                                         - ESLint 配置文件，配置前端格式化和代码校验规则
 │   ├─ 📄 index.html                                               - Vite HTML 模板，应用入口文件，用来挂载 #root 并注入 script/style
-│   ├─ 📄 package-lock.json                                        - NPM 依赖锁定文件，确保前后端一致的版本
+│   ├─ 📄 package-lock.json                                        - NPM 依赖锁定文件，确保安装一致性
 │   ├─ 📄 package.json                                             - NPM 包管理配置文件，定义依赖、开发/构建脚本等
 │   ├─ 📄 postcss.config.js
 │   ├─ 📄 README.md                                                - 前端项目说明文档，介绍启动、开发及发布流程
 │   ├─ 📄 tailwind.config.js
 │   ├─ 📄 tsconfig.app.json                                        - Vite 前端 TypeScript 项目编译配置
-│   ├─ 📄 tsconfig.json                                            - TypeScript 配置文件，配置编译选项与路径别名等
+│   ├─ 📄 tsconfig.json                                            - TypeScript 通用编译选项配置
 │   ├─ 📄 tsconfig.node.json                                       - Node 运行时 TypeScript 配置，用于脚本/工具调用
 │   ├─ 📄 vite.config.ts                                           - Vite 配置文件，包含开发服务器、插件和构建选项
 │   └─ 📄 vite.config.ts_1
@@ -166,9 +168,11 @@
 │   │   │   │           │   ├─ 📄 SecurityConfig.java
 │   │   │   │           │   └─ 📄 SpaWebMvcConfig.java
 │   │   │   │           ├─ 📁 controller                           - 控制器层，处理 HTTP 请求
+│   │   │   │           │   ├─ 📄 AdminAccountController.java
 │   │   │   │           │   ├─ 📄 AuthController.java
 │   │   │   │           │   ├─ 📄 BookCategoryController.java
 │   │   │   │           │   ├─ 📄 BookController.java
+│   │   │   │           │   ├─ 📄 BookLoanController.java
 │   │   │   │           │   ├─ 📄 BookShelfController.java
 │   │   │   │           │   ├─ 📄 GlobalExceptionHandler.java
 │   │   │   │           │   ├─ 📄 ReaderController.java
@@ -183,6 +187,7 @@
 │   │   │   │           │   ├─ 📄 BookDTO.java
 │   │   │   │           │   ├─ 📄 BookLoanDTO.java
 │   │   │   │           │   ├─ 📄 BookShelfDTO.java
+│   │   │   │           │   ├─ 📄 BulkBookLoanRequestDTO.java
 │   │   │   │           │   ├─ 📄 FineRuleDTO.java
 │   │   │   │           │   ├─ 📄 HelpArticleDTO.java
 │   │   │   │           │   ├─ 📄 InitialAdminRegisterRequest.java
@@ -228,6 +233,7 @@
 │   │   │   │           │   ├─ 📄 AdministratorService.java
 │   │   │   │           │   ├─ 📄 AdminPermissionService.java
 │   │   │   │           │   ├─ 📄 BookCategoryService.java
+│   │   │   │           │   ├─ 📄 BookLoanService.java
 │   │   │   │           │   ├─ 📄 BookService.java
 │   │   │   │           │   ├─ 📄 BookShelfService.java
 │   │   │   │           │   ├─ 📄 ReaderPermissionService.java
@@ -271,14 +277,11 @@
 ├─ 📄 gradlew.bat                                                  - 批处理脚本
 ├─ 📄 [REMOVED]
 ├─ 📄 [REMOVED]
-├─ 📄 index (1).html
-├─ 📄 index (2).html
 ├─ 📄 package-lock.json
 ├─ 📄 [REMOVED]
 ├─ 📄 README.md
 ├─ 📄 [REMOVED]
 ├─ 📄 settings.gradle
-├─ 📄 [REMOVED]
 ├─ 📄 [REMOVED]
 ├─ 📄 [REMOVED]
 ├─ 📄 [REMOVED]

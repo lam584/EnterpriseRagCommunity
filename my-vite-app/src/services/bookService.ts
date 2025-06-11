@@ -21,29 +21,7 @@ export interface BookDTO {
   updatedAt?: string; // 添加更新时间
 }
 
-// 普通搜索接口（向后兼容）
-export async function fetchBooks(criteria?: Partial<BookDTO>): Promise<BookDTO[]> {
-  let url = API_BASE;
-
-  if (criteria) {
-    const params = new URLSearchParams();
-    if (criteria.id) params.append('id', criteria.id.toString());
-    if (criteria.isbn) params.append('isbn', criteria.isbn);
-    if (criteria.title) params.append('title', criteria.title);
-    if (criteria.author) params.append('author', criteria.author);
-    if (criteria.publisher) params.append('publisher', criteria.publisher);
-
-    if (params.toString()) {
-      url += `/search?${params.toString()}`;
-    }
-  }
-
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) throw new Error('获取图书列表失败');
-  return res.json();
-}
-
-// 高级搜索接口
+// 新增高级搜索的 Criteria 接口
 export interface AdvancedSearchCriteria {
   id?: string;
   idExact?: boolean;
@@ -68,72 +46,35 @@ export interface AdvancedSearchCriteria {
   status?: string;
 }
 
-export async function advancedSearch(criteria: AdvancedSearchCriteria): Promise<BookDTO[]> {
-  const params = new URLSearchParams();
-
-  // 添加ID搜索条件
-  if (criteria.id) {
-    params.append('id', criteria.id);
-    params.append('idExact', criteria.idExact ? 'true' : 'false');
+// 普通搜索：不传参数时改为调用 /search
+export async function fetchBooks(criteria?: Partial<BookDTO>): Promise<BookDTO[]> {
+  let url = API_BASE;
+  if (criteria && Object.keys(criteria).length > 0) {
+    const params = new URLSearchParams();
+    if (criteria.id)       params.append('id', String(criteria.id));
+    if (criteria.isbn)     params.append('isbn', criteria.isbn);
+    if (criteria.title)    params.append('title', criteria.title);
+    if (criteria.author)   params.append('author', criteria.author);
+    if (criteria.publisher)params.append('publisher', criteria.publisher);
+    url = `${API_BASE}/search?${params.toString()}`;
+  } else {
+    // 无条件加载就走根接口
+    url = `${API_BASE}`;
   }
-
-  // 添加所有可能的搜索条件
-  if (criteria.isbn) {
-    params.append('isbn', criteria.isbn);
-    params.append('isbnExact', criteria.isbnExact ? 'true' : 'false');
-  }
-
-  if (criteria.title) {
-    params.append('title', criteria.title);
-    params.append('titleExact', criteria.titleExact ? 'true' : 'false');
-  }
-
-  if (criteria.author) {
-    params.append('author', criteria.author);
-    params.append('authorExact', criteria.authorExact ? 'true' : 'false');
-  }
-
-  if (criteria.publisher) {
-    params.append('publisher', criteria.publisher);
-    params.append('publisherExact', criteria.publisherExact ? 'true' : 'false');
-  }
-
-  if (criteria.edition) {
-    params.append('edition', criteria.edition);
-    params.append('editionExact', criteria.editionExact ? 'true' : 'false');
-  }
-
-  if (criteria.category) {
-    params.append('category', criteria.category);
-    params.append('categoryExact', criteria.categoryExact ? 'true' : 'false');
-  }
-
-  if (criteria.shelvesCode) {
-    params.append('shelvesCode', criteria.shelvesCode);
-    params.append('shelvesCodeExact', criteria.shelvesCodeExact ? 'true' : 'false');
-  }
-
-  if (criteria.priceMin !== undefined) {
-    params.append('priceMin', criteria.priceMin.toString());
-  }
-
-  if (criteria.priceMax !== undefined) {
-    params.append('priceMax', criteria.priceMax.toString());
-  }
-
-  if (criteria.printTimes) {
-    params.append('printTimes', criteria.printTimes);
-    params.append('printTimesExact', criteria.printTimesExact ? 'true' : 'false');
-  }
-
-  if (criteria.status) {
-    params.append('status', criteria.status);
-  }
-
-  const url = `${API_BASE}/advanced-search?${params.toString()}`;
-
   const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error('获取图书列表失败');
+  return res.json();
+}
+
+// 高级搜索：请求地址保持与后端一致
+export async function advancedSearch(criteria: AdvancedSearchCriteria): Promise<BookDTO[]> {
+  const params = new URLSearchParams();
+  Object.entries(criteria).forEach(([k,v])=>{
+    if (v!==undefined && v!=='') params.append(k, String(v));
+  });
+  const url = `${API_BASE}/advanced-search?${params.toString()}`;
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error('高级搜索失败');
   return res.json();
 }
 

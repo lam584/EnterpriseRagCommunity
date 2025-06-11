@@ -170,8 +170,13 @@ public class ReaderService {
         readerRepository.deleteById(id);
     }
 
+    public List<Reader> searchBasic(Long id, String account, String phone, String email,
+                                    String sex, String role, LocalDateTime  startDate, LocalDateTime  endDate) {
+        return readerRepository.search(id, account, phone, email);
+    }
     public List<Reader> search(Long id, String account, String phone, String email,
-                               String sex, String role, LocalDateTime  startDate, LocalDateTime  endDate) {
+                               String sex, String role,
+                               LocalDateTime startDate, LocalDateTime endDate) {
         return readerRepository.search(id, account, phone, email, sex, role, startDate, endDate);
     }
     /**
