@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import backgroundImage from '../../assets/images/login_1.png';
+import backgroundImage1 from '../../assets/images/login_1.png';
+import backgroundImage2 from '../../assets/images/2.png';
 import { login } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -22,6 +23,22 @@ const Login: React.FC = () => {
     const [csrfToken, setCsrfToken] = useState<string>('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // 轮播图相关状态
+    const [currentImage, setCurrentImage] = useState(backgroundImage1);
+    const images = [backgroundImage1, backgroundImage2];
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentImage(prevImage => {
+                const currentIndex = images.indexOf(prevImage);
+                const nextIndex = (currentIndex + 1) % images.length;
+                return images[nextIndex];
+            });
+        }, 2000); // 每5秒切换图片
+
+        return () => clearInterval(interval);
+    }, []);
 
     // 在组件加载时获取CSRF令牌 - 安全保障措施，防止CSRF攻击
     useEffect(() => {
@@ -63,7 +80,7 @@ const Login: React.FC = () => {
             // 使用 authService 的 login 函数，传递 CSRF 令牌
             const userData = await login(formData.username, formData.password, csrfToken);
 
-            // 更新全局认证��态
+            // 更新全局认证状态
             setCurrentUser(userData);
             setIsAuthenticated(true);
 
@@ -73,8 +90,7 @@ const Login: React.FC = () => {
             }
 
             // 导航到主页面
-            // navigate('/library');
-            navigate('/helpCenter')
+            navigate('/helpCenter');
         } catch (err) {
             setError((err as Error).message || '登录失败');
             console.error('登录错误:', err);
@@ -85,7 +101,7 @@ const Login: React.FC = () => {
 
     return (
         <div className="bg-cover bg-center h-screen flex flex-col"
-             style={{backgroundImage: `url(${backgroundImage})`}}>
+             style={{ backgroundImage: `url(${currentImage})` }}>
             <div className="flex items-center justify-center flex-grow">
                 <div className="bg-white p-8 rounded-lg shadow-lg w-96">
                     <div className="flex items-center mb-6">
@@ -111,11 +127,7 @@ const Login: React.FC = () => {
                                 value={formData.username}
                                 onChange={handleInputChange}
                                 required
-
-
-
-
-                               />
+                            />
                         </div>
                         <div className="mb-4">
                             <label className="block text-gray-700 text-sm font-bold mb-2"

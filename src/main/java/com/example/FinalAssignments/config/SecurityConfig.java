@@ -45,32 +45,48 @@ public class SecurityConfig {
     @Bean
     @Order(1)
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
+        System.out.println("配置 API 安全过滤链开始...");
         // 创建CSRF令牌处理器
         CookieCsrfTokenRepository tokenRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         XorCsrfTokenRequestAttributeHandler delegate = new XorCsrfTokenRequestAttributeHandler();
         // 使用无状态CSRF处理器
         CsrfTokenRequestHandler requestHandler = delegate::handle;
+        System.out.println("CSRF令牌处理器已创建。");
         http
                 .securityMatcher("/api/**")
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .cors(cors -> {
+                    System.out.println("配置 CORS 开始...");
+                    cors.configurationSource(corsConfigurationSource());
+                    System.out.println("CORS 配置完成。");
+                })
                 // 保留CSRF保护
-                .csrf(csrf -> {})
-                // 保留 httpBasic 也行，只要后面不抛出 WWW-Authenticate 就不会弹窗
+                .csrf(csrf -> {
+                    System.out.println("配置 CSRF 开始...");
+                    // ...existing code...
+                    System.out.println("CSRF 配置完成。");
+                })
+                // 保留 httpBasic 也行，只要后面不��出 WWW-Authenticate 就不会弹窗
                 .httpBasic(Customizer.withDefaults())
-                .authorizeHttpRequests(authz -> authz
+                .authorizeHttpRequests(authz -> {
+                    System.out.println("配置请求授权开始...");
+                    authz
                         .requestMatchers(
                                 "/api/auth/login",
                                 "/api/auth/csrf-token",
-                                "/api/auth/current-admin",    // ← 前端允许匿名调用此接口
+                                "/api/auth/current-admin",    // ← 前端允许匿名调用��接口
                                 "/api/auth/initial-setup-status",  // ← 新增：允许匿名访问初始设置状态查询
                                 "/api/auth/register-initial-admin" // ← 新增：允许匿名注册初始管理员
                         ).permitAll()
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated();
+                    System.out.println("请求授权配置完成。");
+                })
                 // 遇到未经认证时，直接 401，不携带 WWW-Authenticate 头
-                .exceptionHandling(ex -> ex
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
-                );
+                .exceptionHandling(ex -> {
+                    System.out.println("配置异常处理开始...");
+                    ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED));
+                    System.out.println("异常处理配置完成。");
+                });
+        System.out.println("配置 API 安全过滤链完成。");
         return http.build();
     }
 
@@ -78,57 +94,58 @@ public class SecurityConfig {
     @Bean
     @Order(2) // 较低的优先级，匹配所有其他请求
     public SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
+        System.out.println("配置 Web 安全过滤链开始...");
         http
                 .securityMatcher("/**") // 匹配所有其他请求
                 // 配置CORS
-                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .cors(cors -> {
+                    System.out.println("配置 CORS 开始...");
+                    cors.configurationSource(corsConfigurationSource());
+                    System.out.println("CORS 配置完成。");
+                })
 
                 // 配置CSRF - 确保所有接口都受CSRF保护
-                .csrf(csrf -> {})
+                .csrf(csrf -> {
+                    System.out.println("配置 CSRF 开始...");
+                    // ...existing code...
+                    System.out.println("CSRF 配置完成。");
+                })
 
                 // 会话管理
-                .sessionManagement(session -> session
+                .sessionManagement(session -> {
+                    System.out.println("配置会话管理开始...");
+                    session
                         .sessionCreationPolicy(SessionCreationPolicy.ALWAYS)
                         .invalidSessionUrl("/login?expired")
-                        .maximumSessions(1)
-                )
+                        .maximumSessions(1);
+                    System.out.println("会话管理配置完成。");
+                })
 
                 // 配置请求授权
-                .authorizeHttpRequests(authorize -> authorize
+                .authorizeHttpRequests(authorize -> {
+                    System.out.println("配置请求授权开始...");
+                    authorize
                         // 允许匿名访问登录页面、静态资源和错误页面
                         .requestMatchers("/", "/login","/register", "/error", "/css/**", "/js/**", "/images/**", "/webjars/**").permitAll()
                         // 允许访问Vite资源
                         .requestMatchers("/vite-manifest.json", "/src/**", "/assets/**", "/@vite/**", "/@fs/**").permitAll()
                         // 所有其他请求需要认证
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated();
+                    System.out.println("请求授权配置完成。");
+                })
 
                 // 表单登录配置
-                .formLogin(formLogin -> formLogin
+                .formLogin(formLogin -> {
+                    System.out.println("配置表单登录开始...");
+                    formLogin
                         .loginPage("/login")
                         .loginProcessingUrl("/login")
                         .defaultSuccessUrl("/welcome", true)
                         .failureUrl("/login?error")
-                        .permitAll()
-                )
-
-                // 禁用HTTP Basic认证 - 因为我们使用表单登录
-                .httpBasic(AbstractHttpConfigurer::disable)
-
-                // 记住我功能 - 延长会话有效期
-                .rememberMe(rememberMe -> rememberMe
-                        .key("uniqueAndSecretKey")
-                        .tokenValiditySeconds(86400) // 1天
-                )
-                // 登出配置
-                .logout(logout -> logout
-                        .logoutUrl("/logout")
-                        .logoutSuccessUrl("/login?logout")
-                        .invalidateHttpSession(true)
-                        .deleteCookies("JSESSIONID")
-                        .permitAll()
-                );
-
+                        .permitAll();
+                    System.out.println("表单登录配置完成。");
+                });
+        System.out.println("配置 Web 安全过滤链完成。");
         return http.build();
     }
 

@@ -105,7 +105,7 @@ public class BookShelfController {
             return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
         }
 
-        // 保留原书架ID
+        // 保留原书架IDx
         shelfDetails.setId(id);
         BookShelf updatedShelf = bookShelfService.saveBookShelf(shelfDetails);
         return new ResponseEntity<>(updatedShelf, HttpStatus.OK);
@@ -123,6 +123,7 @@ public class BookShelfController {
 
         if (isDeleted) {
             response.put("message", "书架删除成功");
+
             return new ResponseEntity<>(response, HttpStatus.OK);
         } else {
             response.put("message", "书架不存在或该书架上存在图书，无法删除");

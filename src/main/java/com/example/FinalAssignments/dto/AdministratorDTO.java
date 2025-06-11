@@ -13,26 +13,82 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * 管理员数据传输对象
+ * 管理员数据传输对象(Data Transfer Object)
+ * 
+ * <p>用于在系统各层之间传输管理员数据，不包含敏感信息如密码字段</p>
+ * 
+ * <p>注意事项：</p>
+ * <ul>
+ *   <li>不包含密码字段，确保安全性</li>
+ *   <li>包含权限信息的DTO对象</li>
+ *   <li>所有时间字段使用LocalDateTime类型</li>
+ * </ul>
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class AdministratorDTO {
+    /**
+     * 管理员唯一标识ID
+     */
     private Long id;
+    
+    /**
+     * 管理员账号，用于登录系统
+     */
     private String account;
-    // 不包含密码字段，提高安全性
+    
+    /**
+     * 管理员联系电话
+     */
     private String phone;
+    
+    /**
+     * 管理员电子邮箱
+     */
     private String email;
+    
+    /**
+     * 管理员性别
+     */
     private String sex;
+    
+    /**
+     * 管理员注册时间
+     */
     private LocalDateTime registeredAt;
-    private AdminPermissionDTO permission; // 使用权限DTO
+    
+    /**
+     * 管理员权限信息DTO
+     */
+    private AdminPermissionDTO permission;
+    
+    /**
+     * 账号是否激活
+     */
     private Boolean isActive;
+    
+    /**
+     * 记录创建时间
+     */
     private LocalDateTime createdAt;
+    
+    /**
+     * 记录最后更新时间
+     */
     private LocalDateTime updatedAt;
 
     /**
      * 管理员DTO转换器
+     * 
+     * <p>提供管理员实体与DTO之间的转换方法</p>
+     * 
+     * <p>转换规则：</p>
+     * <ul>
+     *   <li>自动复制同名属性</li>
+     *   <li>手动处理特殊字段(如权限)</li>
+     *   <li>处理空值情况</li>
+     * </ul>
      */
     public static class Converter {
         /**

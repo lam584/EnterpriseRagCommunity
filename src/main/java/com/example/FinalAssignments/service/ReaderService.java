@@ -1,4 +1,3 @@
-//java/com/example/FinalAssignments/service/ReaderService.java
 package com.example.FinalAssignments.service;
 
 import com.example.FinalAssignments.entity.Reader;
@@ -20,6 +19,7 @@ public class ReaderService {
     private BookLoanRepository loanRepo;
 
     public long countLoansByReaderId(Long readerId) {
+        System.out.println("[调试] 正在统计读者ID为 " + readerId + " 的借书记录数量");
         return loanRepo.countByReaderId(readerId);
     }
     @Autowired
@@ -28,10 +28,12 @@ public class ReaderService {
     private final PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public List<Reader> findAll() {
+        System.out.println("[调试] 正在查询所有读者信息");
         return readerRepository.findAll();
     }
     
     public Optional<Reader> findById(Long id) {
+        System.out.println("[调试] 正在根据ID查询读者信息，ID: " + id);
         return readerRepository.findById(id);
     }
 
@@ -41,6 +43,7 @@ public class ReaderService {
      * @return 读者对象，如果不存在则返回空
      */
     public Optional<Reader> findByAccount(String account) {
+        System.out.println("[调试] 正在根据账号查询读者信息，账号: " + account);
         return readerRepository.findByAccount(account);
     }
 
@@ -50,6 +53,7 @@ public class ReaderService {
      * @return 读者对象，如果不存在则返回空
      */
     public Optional<Reader> findByEmail(String email) {
+        System.out.println("[调试] 正在根据邮箱查询读者信息，邮箱: " + email);
         return readerRepository.findByEmail(email);
     }
 
@@ -59,6 +63,7 @@ public class ReaderService {
      * @return 读者对象，如果不存在则返回空
      */
     public Optional<Reader> findByPhone(String phone) {
+        System.out.println("[调试] 正在根据手机号查询读者信息，手机号: " + phone);
         return readerRepository.findByPhone(phone);
     }
 
@@ -68,9 +73,11 @@ public class ReaderService {
      * @throws IllegalArgumentException 如果存在重复信息，抛出此异常
      */
     private void checkDuplicateInfo(Reader reader) {
+        System.out.println("[调试] 正在检查读者信息是否存在重复，读者信息: " + reader);
         // 如果是更新操作，需要排除自身ID进行比较
         if (reader.getId() != null) {
-            // 更新操作只在必要时检查（即当字段有值且��现有记录不同时）
+            System.out.println("[调试] 更新操作，读者ID: " + reader.getId());
+            // 更新操作只在必要时检查（即当字段有值且与现有记录不同时）
             Optional<Reader> existingReader = readerRepository.findById(reader.getId());
             if (existingReader.isPresent()) {
                 Reader current = existingReader.get();
@@ -96,6 +103,7 @@ public class ReaderService {
                 }
             }
         } else {
+            System.out.println("[调试] 新增操作，检查所有唯一字段");
             // 新增操作，检查所有唯一字段
             // 检查账号是否存在
             readerRepository.findByAccount(reader.getAccount()).ifPresent(r -> {
@@ -115,14 +123,16 @@ public class ReaderService {
     }
 
     public Reader save(Reader reader) {
+        System.out.println("[调试] 正在保存读者信息，读者信息: " + reader);
         // 在保存前检查重复信息
         checkDuplicateInfo(reader);
 
         // 设置创建时间和更新时间
         LocalDateTime now = LocalDateTime.now();
 
-        // 如果是新建读者（ID为空），则设置创建时间和活动状态，并加密密码
+        // 如果是新建读者（ID为空），则���置创建时间和活动状态，并加密密码
         if (reader.getId() == null) {
+            System.out.println("[调试] 新建读者，设置创建时间和活动状态");
             reader.setCreatedAt(now);
             // 默认设置读者为活动状态
             if (reader.getIsActive() == null) {
@@ -135,6 +145,7 @@ public class ReaderService {
             // 加密密码
             reader.setPassword(passwordEncoder.encode(reader.getPassword()));
         } else {
+            System.out.println("[调试] 更新读者信息，读者ID: " + reader.getId());
             // 如果是更新读者，保留原来的创建时间
             Optional<Reader> existingReader = readerRepository.findById(reader.getId());
             if (existingReader.isPresent()) {
@@ -152,7 +163,7 @@ public class ReaderService {
                 reader.setCreatedAt(now);
                 // 检查密码是否为null或空
                 if (reader.getPassword() == null || reader.getPassword().isEmpty()) {
-                    throw new IllegalArgumentException("新建读者时密码不能��空");
+                    throw new IllegalArgumentException("新建读者时密码不能为空");
                 } else {
                     // 加密密码
                     reader.setPassword(passwordEncoder.encode(reader.getPassword()));
@@ -162,23 +173,29 @@ public class ReaderService {
 
         // 每次保存都更新更新时间
         reader.setUpdatedAt(now);
-
+        System.out.println("[调试] 保存成功，读者信息: " + reader);
         return readerRepository.save(reader);
     }
 
     public void delete(Long id) {
+        System.out.println("[调试] 正在删除读者信息，读者ID: " + id);
         readerRepository.deleteById(id);
+        System.out.println("[调试] 删除成功，读者ID: " + id);
     }
 
     public List<Reader> searchBasic(Long id, String account, String phone, String email,
-                                    String sex, String role, LocalDateTime  startDate, LocalDateTime  endDate) {
+                                    String sex, String role, LocalDateTime startDate, LocalDateTime endDate) {
+        System.out.println("[调试] 正在执行基本搜索，参数: ID=" + id + ", 账号=" + account + ", 手机号=" + phone + ", 邮箱=" + email);
         return readerRepository.search(id, account, phone, email);
     }
+
     public List<Reader> search(Long id, String account, String phone, String email,
                                String sex, String role,
                                LocalDateTime startDate, LocalDateTime endDate) {
+        System.out.println("[调试] 正在执行高级搜索，参数: ID=" + id + ", 账号=" + account + ", 手机号=" + phone + ", 邮箱=" + email + ", 性别=" + sex + ", 角色=" + role);
         return readerRepository.search(id, account, phone, email, sex, role, startDate, endDate);
     }
+
     /**
      * 验证密码
      * @param rawPassword 原始密码
@@ -186,6 +203,9 @@ public class ReaderService {
      * @return 密码是否匹配
      */
     public boolean verifyPassword(String rawPassword, String encodedPassword) {
-        return passwordEncoder.matches(rawPassword, encodedPassword);
+        System.out.println("[调试] 正在验证密码，原始密码: " + rawPassword);
+        boolean result = passwordEncoder.matches(rawPassword, encodedPassword);
+        System.out.println("[调试] 验证结果: " + result);
+        return result;
     }
 }

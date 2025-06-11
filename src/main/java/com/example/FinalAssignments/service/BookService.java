@@ -27,6 +27,7 @@ import java.util.Optional;
 
 @Service
 public class BookService {
+
     private static final Logger logger = LoggerFactory.getLogger(BookService.class);
 
     @Autowired
@@ -42,10 +43,12 @@ public class BookService {
     private AdministratorRepository administratorRepository;
 
     public List<Book> findAll() {
+        logger.info("[调试] 正在查询所有图书信息");
         return bookRepository.findAll();
     }
 
     public Optional<Book> findById(Long id) {
+        logger.info("[调试] 正在根据ID查询图书信息，ID: {}", id);
         return bookRepository.findById(id);
     }
 
@@ -53,6 +56,7 @@ public class BookService {
      * 基本搜索方法，向后兼容
      */
     public List<Book> search(String isbn, String title, String author, String publisher) {
+        logger.info("[调试] 正在执行基本搜索，参数: ISBN={}, 标题={}, 作者={}, 出版社={}", isbn, title, author, publisher);
         return advancedSearch(null, false, isbn, false, title, false, author, false, publisher, false,
                 null, false, null, false, null, false, null, null, null, false, null);
     }
@@ -72,6 +76,9 @@ public class BookService {
             BigDecimal priceMin, BigDecimal priceMax,
             String printTimes, boolean printTimesExact,
             String status) {
+
+        logger.info("[调试] 正在执行高级搜索，参数: ID={}, ISBN={}, 标题={}, 作者={}, 出版社={}, 分类={}, 书架编码={}, 最低价格={}, 最高价格={}, 印次={}, 状态={}",
+                id, isbn, title, author, publisher, category, shelvesCode, priceMin, priceMax, printTimes, status);
 
         return bookRepository.findAll((Specification<Book>) (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -175,6 +182,7 @@ public class BookService {
 
     @Transactional
     public Book save(Book book) {
+        logger.info("[调试] 正在保存图书信息，图书信息: {}", book);
         // 获取当前登录的管理员
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         logger.info("当前认证信息: {}", authentication);
@@ -210,11 +218,14 @@ public class BookService {
         book.setAdministrator(admin.get());
         logger.info("设置图书管理员ID: {}", admin.get().getId());
 
+        logger.info("[调试] 保存成功，图书信息: {}", book);
         return bookRepository.save(book);
     }
 
     @Transactional
     public void delete(Long id) {
+        logger.info("[调试] 正在删除图书信息，图书ID: {}", id);
         bookRepository.deleteById(id);
+        logger.info("[调试] 删除成功，图书ID: {}", id);
     }
 }

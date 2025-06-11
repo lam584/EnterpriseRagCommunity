@@ -148,7 +148,7 @@ public class AuthController {
 
             // 获取会话ID
             String sessionId = request.getSession().getId();
-            System.out.println("认证成功，已设置SecurityContext，当前身份: " + authentication.getName());
+            System.out.println("认证成功，已设置SecurityContext，当前���份: " + authentication.getName());
             System.out.println("当前会话ID: " + sessionId);
 
             // 明确设置JSESSIONID Cookie，确保前端能收到
@@ -267,6 +267,7 @@ public class AuthController {
             superAdminPermission.setCanLogin(true);
             superAdminPermission.setCanManageAnnouncement(true);
             superAdminPermission.setCanManageHelpArticles(true);
+            System.out.println("开始设置超级管理员权限...");
             superAdminPermission.setCanCreateSuperAdmin(true);
             superAdminPermission.setCanCreateAdmin(true);
             superAdminPermission.setCanCreateUserAccount(true);
@@ -282,8 +283,11 @@ public class AuthController {
             superAdminPermission.setAllowEditOtherAdminProfile(true);
             superAdminPermission.setCreatedAt(LocalDateTime.now());
             superAdminPermission.setUpdatedAt(LocalDateTime.now());
+            System.out.println("超级管理员权限设置完成。");
 
+            System.out.println("保存超级管理员权限...");
             AdminPermission savedPermission = adminPermissionService.save(superAdminPermission);
+            System.out.println("超级管理员权限保存成功。");
 
             // 创建管理员账户
             Administrator admin = new Administrator();
@@ -297,17 +301,24 @@ public class AuthController {
             admin.setPermission(savedPermission);
             admin.setCreatedAt(LocalDateTime.now());
             admin.setUpdatedAt(LocalDateTime.now());
+            System.out.println("管理员账户创建完成。");
 
+            System.out.println("保存管理员账户...");
             Administrator savedAdmin = administratorService.save(admin);
+            System.out.println("管理员账户保存成功。");
 
-            // 更新系统状态为已完成初始设置
+            System.out.println("更新系统状态为已完成初始设置...");
             initialAdminSetupState.setSetupRequired(false);
+            System.out.println("系统状态更新完成。");
 
-            // 构建响应，使用DTO避免返回实体
+            System.out.println("构建响应数据...");
             AdminResponseDTO responseDTO = AdminResponseDTO.fromEntity(savedAdmin);
+            System.out.println("响应数据构建完成。");
 
+            System.out.println("返回成功响应。");
             return ResponseEntity.status(HttpStatus.CREATED).body(responseDTO);
         } catch (Exception e) {
+            System.out.println("发生异常: " + e.getMessage());
             Map<String, String> response = new HashMap<>();
             response.put("message", "注册失败：" + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
