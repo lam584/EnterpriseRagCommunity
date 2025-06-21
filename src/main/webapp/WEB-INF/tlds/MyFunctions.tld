@@ -10,7 +10,7 @@
     <uri>http://example.com/tld/myfunctions</uri>
     <function>
         <name>toLowercase</name>
-        <function-class>com.example.FinalAssignments.utils.MyFunctions</function-class>
+        <function-class>com.example.NewsPublishingSystem.utils.MyFunctions</function-class>
         <function-signature>java.lang.String toLowercase(java.lang.String)</function-signature>
     </function>
 </taglib>

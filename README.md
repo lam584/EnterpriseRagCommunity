@@ -1,38 +1,129 @@
-# 项目技术栈
+## 一、项目概述
+本项目为⼀套图书馆管理系统，前后端分离。  
+后端基于 Spring Boot + MySQL + Flyway，提供 RESTful API；  
+前端基于 Vite + React + TypeScript + Tailwind CSS，提供 SPA 界面。
 
-## 后端
-| 组件             | 技术                        | 版本       |
-|------------------|-----------------------------|----------|
-| 框架             | Spring Boot                 | 3.5.0    |
-| 构建工具         | Gradle                      | 8.12.1   |
-| 模板引擎         | FreeMarker                  | 2.3.34   |
-| 数据库           | MySQL                       | 8.0.33   |
-| 数据库迁移工具   | Flyway                      | 10.20.1  |
-| JDK              | Eclipse Temurin OpenJDK     | 23.0.2+7 |
+---
 
-## 前端
-| 分类 | 技术 | 版本 | 说明 |
-|------|------|------|------|
-| **核心框架** | React | 18.3.1 | 用户界面构建库 |
-| | TypeScript | 5.7.2 | JavaScript 类型扩展 |
-| **构建与环境** | Vite | 6.2.6 | 现代前端构建工具 |
-| | SWC | - | 快速 JavaScript/TypeScript 编译器 |
-| | Node.js | 20.12.0 | JavaScript 运行环境 |
-| | npm | 10.5.0 | 包管理工具 |
-| **UI 组件与样式** | Tailwind CSS | 3.4.17 | 实用优先的 CSS 框架 |
-| | Shadcn UI | 0.9.5 | 基于 Tailwind 的组件库 |
-| **图标与资源** | Font Awesome | 6.7.2 | 矢量图标库 |
-| | React Icons | 5.5.0 | 流行图标集的 React 组件 |
-| **插件与工具** | @vitejs/plugin-react-swc | 3.8.0 | Vite 的 React SWC 插件 |
+## 二、技术栈一览
 
-> 注: 所有依赖版本在 `package.json` 中定义，实际使用时会根据语义化版本控制自动更新补丁版本。
+### 2.1 后端技术栈
+
+| 分类           | 组件/框架               | 版本       | 说明                                    |
+|--------------|-----------------------|----------|---------------------------------------|
+| 核心框架         | Spring Boot           | 3.5.0    | 核心应用容器与启动器                          |
+| 构建工具         | Gradle                | 8.12.1   | 项目构建与依赖管理                          |
+| JDK           | Eclipse Temurin OpenJDK | 23.0.2+7 | Java 运行时环境                           |
+| ORM & 数据访问    | Spring Data JPA       | 3.5.0    | 主流 ORM 框架，自动生成 Repository 接口         |
+|                | MyBatis               | 3.0.4    | 辅助 SQL 映射，用于复杂查询                      |
+| 数据库 & 迁移     | MySQL                 | 8.4.5    | 关系型数据库                                |
+|                | Flyway                | 10.20.1  | 数据库版本与迁移管理                          |
+| 安全 & 验证       | Spring Security       | 3.5.0    | 认证和授权                                |
+|                | Spring Validation     | 3.5.0    | @Valid 注解形式的参数校验                   |
+| 嵌入式服务器       | Tomcat Embed          | 随 Spring | 内置 Servlet 容器                            |
+| 其它辅助         | Lombok                | —        | 注解简化 Getter/Setter、构造器等样板代码            |
+| 开发工具 (仅 dev) | Spring DevTools       | 3.5.0    | 热重载支持，仅开发环境启用                     |
+
+> 冗余/低频：Spring Actuator（未深度配置）、JSP & JSTL（前后端分离后废弃，仅保留少量旧版视图支持）。
+
+### 2.2 前端技术栈
+
+| 分类         | 组件/框架                 | 版本       | 说明                                    |
+|------------|-------------------------|----------|---------------------------------------|
+| 核心框架       | React                   | 18.3.1   | 构建单页应用                              |
+|            | TypeScript              | 5.7.2    | 强类型支持                                |
+| 构建与打包      | Vite                    | 6.2.6    | 极速启动与构建                             |
+|            | SWC (via plugin)        | —        | 编译/转译工具                              |
+| UI 样式       | Tailwind CSS            | 3.4.17   | 原子化 CSS 框架                           |
+|            | Shadcn UI               | 0.9.5    | 组件库（基于 Radix）                    |
+| 网络请求       | axios                   | 1.9.0    | HTTP 客户端                              |
+| 路由管理       | react-router-dom        | 7.6.1    | 前端路由                               |
+| 图标库        | Font Awesome            | 6.7.2    | 通用图标                                |
+|            | React Icons             | 5.5.0    | React 版图标组件                           |
+| 开发工具       | ESLint                  | 9.21.0   | 代码规范校验                             |
+|            | PostCSS & Autoprefixer | 8.5.3 / 10.4.21 | Tailwind 依赖                            |
+| Node 版本    | Node.js                 | 20.12.0  | 本地开发环境                             |
+| 包管理        | npm                     | 10.5.0   | 依赖安装与脚本                             |
+
+> 冗余/低频：react-slick/slick-carousel（计划轮播，暂无实用场景）；部分静态复制插件（vite-plugin-static-copy）。
+
+---
+
+## 三、简化版项目结构
+
+```
+FinalAssignments
+├─ build.gradle                      # 后端构建脚本
+├─ settings.gradle
+├─ gradlew / gradlew.bat             # Gradle Wrapper
+├─ my-vite-app/                      # ── 前端模块 (Vite + React + TS)
+│   ├─ public/                       # 静态资源直拷目录
+│   ├─ src/
+│   │   ├─ assets/                   # 全局样式、图片、字体
+│   │   ├─ components/               # UI 组件
+│   │   ├─ pages/                    # 路由页面
+│   │   ├─ services/                 # API 调用封装
+│   │   ├─ contexts/                 # Context 管理（Auth 等）
+│   │   ├─ utils/                    # 工具函数
+│   │   ├─ main.tsx / App.tsx        # 入口与根组件
+│   │   └─ vite.config.ts            # 别名 & 插件配置
+│   └─ package.json / tsconfig*.json
+├─ src/                              # 后端源码
+│   ├─ main/
+│   │   ├─ java/com/example/...      # package：config/ controller/ service/ repository/ entity/ dto/ utils
+│   │   └─ resources/
+│   │       ├─ db/migration/         # Flyway 脚本 V1__…sql
+│   │       ├─ static/               # 打包后前端文件（由 gradle copy）
+│   │       └─ application.properties
+│   └─ test/java/com/example/...     # 单元测试
+└─ README.md, .gitignore, …          # 根目录说明及工具文件
+```
+
+---
+
+## 四、构建与运行
+
+1. 克隆项目  
+
+   `git clone <repo_url> && cd FinalAssignments`
 
 
-### 开发工具
-- IDE：IntelliJ IDEA 2025.1.1.1
+2. 在 `resources/application.properties` 中配置数据库的账号和密码， 示例：
+    ```
+    spring.datasource.url=jdbc:mysql://localhost:3306/test12345678?createDatabaseIfNotExist=true
+    spring.datasource.username=root
+    spring.datasource.password=password
+    ```
+
+3. 后端打包并运行（含前端打包）
+   ```bash
+   ./gradlew build     # 会触发 my-vite-app npm run build
+   ./gradlew bootRun
+   ```
+   访问 http://localhost:8080
 
 
-# 项目目录结构
+4. 本地前端调试（可选）
+   ```bash
+   cd my-vite-app
+   npm install
+   npm run dev         # 启动 HMR 开发服务器
+   ```
+
+
+---
+
+## 五、注意事项
+
+1. Flyway 脚本请按 V{n}__xxx.sql 递增，不要修改已执行版本
+2. 生产环境静态资源通过 Vite Manifest 注入，确保 `my-vite-app` 每次 build 更新
+3. 环境变量 & 配置（见 application.properties）可覆盖数据库、上下文路径等
+
+
+
+---
+
+# 项目完整目录结构及注释
 ```  
 
 📁 .
@@ -58,9 +149,9 @@
 │   │   │   │   ├─ 📄 EditProfile.tsx
 │   │   │   │   └─ 📄 Logout.tsx
 │   │   │   ├─ 📁 book-management
-│   │   │   │   ├─ 📄 AddBookForm.tsx                              - React TypeScript 组件文件
-│   │   │   │   ├─ 📄 BookManagement.tsx
-│   │   │   │   ├─ 📄 CategoryManage.tsx
+│   │   │   │   ├─ 📄 AddNewForm.tsx                              - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 NewManagement.tsx
+│   │   │   │   ├─ 📄 TopicManage.tsx
 │   │   │   │   ├─ 📄 DeleteBookForm.tsx
 │   │   │   │   ├─ 📄 EditBookForm.tsx
 │   │   │   │   ├─ 📄 SearchBook.tsx
@@ -84,15 +175,15 @@
 │   │   │   │   ├─ 📄 AdminSetup.tsx                               - React TypeScript 组件文件
 │   │   │   │   └─ 📄 Login.tsx
 │   │   │   ├─ 📁 reader-management
-│   │   │   │   ├─ 📄 AddReader.tsx                                - React TypeScript 组件文件
-│   │   │   │   ├─ 📄 AddReaderForm.tsx
-│   │   │   │   ├─ 📄 DeleteReader.tsx
-│   │   │   │   ├─ 📄 DeleteReaderForm.tsx
-│   │   │   │   ├─ 📄 EditReader.tsx
-│   │   │   │   ├─ 📄 EditReaderForm.tsx
-│   │   │   │   ├─ 📄 reader-management.tsx
-│   │   │   │   ├─ 📄 SearchReader.tsx
-│   │   │   │   └─ 📄 SearchReaderForm.tsx
+│   │   │   │   ├─ 📄 AddUser.tsx                                - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 AddUserForm.tsx
+│   │   │   │   ├─ 📄 DeleteUser.tsx
+│   │   │   │   ├─ 📄 DeleteUserForm.tsx
+│   │   │   │   ├─ 📄 EditUser.tsx
+│   │   │   │   ├─ 📄 EditUserForm.tsx
+│   │   │   │   ├─ 📄 UserManagement.tsx
+│   │   │   │   ├─ 📄 SearchUser.tsx
+│   │   │   │   └─ 📄 SearchUserForm.tsx
 │   │   │   ├─ 📁 stats-management
 │   │   │   │   ├─ 📄 BookStats.tsx                                - React TypeScript 组件文件
 │   │   │   │   ├─ 📄 FineStats.tsx
@@ -121,13 +212,11 @@
 │   │   ├─ 📁 pages                                                - 路由级页面组件目录;每个子目录对应一个页面或路由
 │   │   │   └─ 📄 LibraryLayout.tsx                                - React TypeScript 组件文件
 │   │   ├─ 📁 services                                             - 后端 API 封装目录;基于 fetch/axios 统一处理请求/响应/错误
-│   │   │   ├─ 📄 accountService.ts                                - TypeScript 文件
-│   │   │   ├─ 📄 authService.ts
-│   │   │   ├─ 📄 bookLoanService.ts
+│   │   │   ├─ 📄 authService.ts                                   - TypeScript 文件
 │   │   │   ├─ 📄 bookService.ts
-│   │   │   ├─ 📄 categoryService.ts
-│   │   │   ├─ 📄 readerPermissionService.ts
-│   │   │   ├─ 📄 readerService.ts
+│   │   │   ├─ 📄 TopicService.ts
+│   │   │   ├─ 📄 UserPermissionService.ts
+│   │   │   ├─ 📄 UserService.ts
 │   │   │   └─ 📄 shelfService.ts
 │   │   ├─ 📁 utils                                                - 工具函数目录(日期格式化/深拷贝/节流防抖/校验等纯函数)
 │   │   │   └─ 📄 csrfUtils.ts                                     - TypeScript 文件
@@ -140,18 +229,18 @@
 │   │   ├─ 📄 [REMOVED]
 │   │   ├─ 📄 vite-env.d.ts                                        - Vite 环境类型声明;支持 import.meta.env 及静态资源导入
 │   │   └─ 📄 vue.global.js                                        - Vue 全局配置文件，定义 Vue 组件全局注册和配置
-│   ├─ 📄 .gitignore                                               - Git 忽略文件配置，指定不需要纳入版本控制的文件类型
+│   ├─ 📄 .gitignore                                               - 前端项目 Git 忽略文件，指定不需要纳入版本控制的文件类型
 │   ├─ 📄 .shadcnrc
 │   ├─ 📄 components.json
 │   ├─ 📄 eslint.config.js                                         - ESLint 配置文件，配置前端格式化和代码校验规则
 │   ├─ 📄 index.html                                               - Vite HTML 模板，应用入口文件，用来挂载 #root 并注入 script/style
-│   ├─ 📄 package-lock.json                                        - NPM 依赖锁定文件，确保安装一致性
+│   ├─ 📄 package-lock.json                                        - NPM 依赖锁定文件，确保前后端一致的版本
 │   ├─ 📄 package.json                                             - NPM 包管理配置文件，定义依赖、开发/构建脚本等
 │   ├─ 📄 postcss.config.js
 │   ├─ 📄 README.md                                                - 前端项目说明文档，介绍启动、开发及发布流程
 │   ├─ 📄 tailwind.config.js
 │   ├─ 📄 tsconfig.app.json                                        - Vite 前端 TypeScript 项目编译配置
-│   ├─ 📄 tsconfig.json                                            - TypeScript 通用编译选项配置
+│   ├─ 📄 tsconfig.json                                            - TypeScript 配置文件，配置编译选项与路径别名等
 │   ├─ 📄 tsconfig.node.json                                       - Node 运行时 TypeScript 配置，用于脚本/工具调用
 │   ├─ 📄 vite.config.ts                                           - Vite 配置文件，包含开发服务器、插件和构建选项
 │   └─ 📄 vite.config.ts_1
@@ -168,11 +257,9 @@
 │   │   │   │           │   ├─ 📄 SecurityConfig.java
 │   │   │   │           │   └─ 📄 SpaWebMvcConfig.java
 │   │   │   │           ├─ 📁 controller                           - 控制器层，处理 HTTP 请求
-│   │   │   │           │   ├─ 📄 AdminAccountController.java
 │   │   │   │           │   ├─ 📄 AuthController.java
 │   │   │   │           │   ├─ 📄 BookCategoryController.java
 │   │   │   │           │   ├─ 📄 BookController.java
-│   │   │   │           │   ├─ 📄 BookLoanController.java
 │   │   │   │           │   ├─ 📄 BookShelfController.java
 │   │   │   │           │   ├─ 📄 GlobalExceptionHandler.java
 │   │   │   │           │   ├─ 📄 ReaderController.java
@@ -187,7 +274,6 @@
 │   │   │   │           │   ├─ 📄 BookDTO.java
 │   │   │   │           │   ├─ 📄 BookLoanDTO.java
 │   │   │   │           │   ├─ 📄 BookShelfDTO.java
-│   │   │   │           │   ├─ 📄 BulkBookLoanRequestDTO.java
 │   │   │   │           │   ├─ 📄 FineRuleDTO.java
 │   │   │   │           │   ├─ 📄 HelpArticleDTO.java
 │   │   │   │           │   ├─ 📄 InitialAdminRegisterRequest.java
@@ -233,7 +319,6 @@
 │   │   │   │           │   ├─ 📄 AdministratorService.java
 │   │   │   │           │   ├─ 📄 AdminPermissionService.java
 │   │   │   │           │   ├─ 📄 BookCategoryService.java
-│   │   │   │           │   ├─ 📄 BookLoanService.java
 │   │   │   │           │   ├─ 📄 BookService.java
 │   │   │   │           │   ├─ 📄 BookShelfService.java
 │   │   │   │           │   ├─ 📄 ReaderPermissionService.java
@@ -277,6 +362,8 @@
 ├─ 📄 gradlew.bat                                                  - 批处理脚本
 ├─ 📄 [REMOVED]
 ├─ 📄 [REMOVED]
+├─ 📄 index (1).html
+├─ 📄 index (2).html
 ├─ 📄 package-lock.json
 ├─ 📄 [REMOVED]
 ├─ 📄 README.md
@@ -285,153 +372,6 @@
 ├─ 📄 [REMOVED]
 ├─ 📄 [REMOVED]
 ├─ 📄 [REMOVED]
+├─ 📄 [REMOVED]
 └─ 📄 [REMOVED]
 ```  
-
-# 说明及注释
-
-## 1. 项目结构概览
-
-```
-FinalAssignments  
-├─ gradle/…             # Gradle Wrapper  
-├─ my-vite-app/…        # 前端：Vite + React + TypeScript  
-├─ src/  
-│  ├─ main/  
-│  │  ├─ java/…         # 后端 Java 源码（Spring Boot）  
-│  │  └─ resources/…    # 配置、Flyway 脚本、静态资源  
-│  └─ test/…            # 后端单元测试  
-└─ 根目录脚本 & 配置文件  
-```
-
-## 2. 后端模块（Spring Boot + Gradle）
-
-### 2.1 构建逻辑
-
-- 使用 `gradlew` 保证环境一致
-- 插件：java、war（JSP 支持）、spring-boot、dependency-management、flyway
-- 打包：`bootWar()` 输出 WAR；禁用 `bootJar()`
-- 前端集成：
-    - `buildVite` 任务在 `my-vite-app` 目录执行 `npm run build`
-    - `processResources` 拷贝打包产物到 `src/main/resources/static`
-
-### 2.2 核心依赖
-
-- Web / Freemarker / JPA / Security / MyBatis / Flyway / MySQL
-- JSP 支持：Tomcat-embed-jasper、EL、JSTL
-
-### 2.3 包与目录
-
-```
-com.example.FinalAssignments  
-├─ config/      # Spring 配置（Security、视图解析、Freemarker 等）  
-├─ controller/  # HTTP 接口 & MVC 控制器  
-├─ service/     # 业务逻辑层  
-├─ repository/  # 数据访问层（DAO）  
-├─ entity/      # JPA 实体映射  
-├─ utils/       # 工具类（加密、通用方法）  
-└─ FinalAssignmentsApplication.java  
-```
-
-### 2.4 视图与模板
-
-- FreeMarker（*.ftl）：`resources/templates/`
-- JSP（*.jsp）：`src/main/webapp/WEB-INF/jsp/`
-- ViewResolver 顺序：Freemarker > JSP（JSP 限定 viewNames 且 order=LOWEST）
-- Vite 资源注入：通过 `ViteManifestService` 在模板中按需加载
-
-### 2.5 配置（application.properties）
-
-```properties
-spring.application.name=HelloSringBoot
-spring.datasource.url=jdbc:mysql://localhost:3306/test?createDatabaseIfNotExist=true
-spring.datasource.username=root
-spring.datasource.password=password
-spring.flyway.enabled=true
-spring.flyway.locations=classpath:db/migration
-spring.freemarker.template-loader-path=classpath:/templates/
-spring.freemarker.suffix=.ftl
-# spring.flyway.enabled=false
-spring.flyway.baseline-on-migrate=true
-spring.flyway.baseline-version=1
-logging.level.com.example.FinalAssignments.service.ViteManifestService=DEBUG
-logging.level.org.springframework.web=DEBUG
-logging.level.org.springframework.web.servlet.resource.ResourceHttpRequestHandler=TRACE
-#spring.mvc.view.prefix=/WEB-   INF/jsp/
-#spring.mvc.view.suffix=.jsp
-server.servlet.context-path=/
-spring.freemarker.expose-request-attributes=true
-spring.freemarker.expose-session-attributes=true
-spring.freemarker.expose-spring-macro-helpers=true
-debug=true
-logging.level.root=DEBUG
-spring.freemarker.settings.incompatible_improvements=2.3.34
-```
-
-## 3. 前端模块（my-vite-app）
-
-### 3.1 技术栈
-
-Vite 6.2.6 + React 18.3.1 + TypeScript 5.7.2 + SWC + TailwindCSS + Font-Awesome
-
-### 3.2 目录结构
-
-```
-my-vite-app/  
-├─ public/        # 原样拷贝到 dist  
-├─ src/  
-│  ├─ assets/     # 图片、字体、全局样式  
-│  ├─ components/ # 纯 UI 组件（.tsx + .module.css）  
-│  ├─ hooks/      # 自定义 Hooks  
-│  ├─ pages/      # 路由页面  
-│  ├─ services/   # 后端 API 封装（fetch/axios）  
-│  ├─ types/      # 全局 TS 类型声明  
-│  ├─ utils/      # 工具函数  
-│  ├─ main.tsx    # React 挂载入口  
-│  └─ App.tsx     # 根组件，路由 & Provider 配置  
-├─ vite.config.ts # 别名、静态资源复制、manifest 等  
-└─ package.json   # 依赖 & 脚本  
-```
-
-### 3.3 常用脚本
-
-```bash
-cd my-vite-app  
-npm install       # 安装依赖  
-npm run dev       # 本地开发 HMR  
-npm run build     # 生产打包，生成 manifest.json  
-npm run preview   # 预览打包产物  
-```
-
-## 4. 数据库 & Flyway 迁移
-
-- 脚本目录：`src/main/resources/db/migration/V{version}__{desc}.sql`
-- 应用启动自动执行增量迁移；`baseline-on-migrate` 支持已有库首次校准
-- 如需重置：手动清空数据库 → 重启应用
-
-## 5. 开发 & 运行流程
-
-1. 克隆仓库
-2. 后端构建 & 启动
-
-```bash
-./gradlew build   # 包含前端打包
-./gradlew bootRun
-```  
-
-3. （可选）前端单独启动
-
-```bash
-cd my-vite-app
-npm install
-npm run build
-npm run dev
-```  
-
----
-
-# 注意事项
-
-- JSP 与 FreeMarker 共存时务必控制 ViewResolver 顺序及 viewNames，避免路由冲突
-- 前端资源通过 Vite Manifest 注入，生产环境按需引用静态文件
-- Flyway 脚本版本号递增，已执行版本请勿修改，新增脚本请顺序命名

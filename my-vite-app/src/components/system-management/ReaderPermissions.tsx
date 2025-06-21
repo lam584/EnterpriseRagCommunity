@@ -6,7 +6,7 @@ import {
     updateReaderPermission,
     deleteReaderPermission,
     ReaderPermissionDTO
-} from '../../services/readerPermissionService';
+} from '../../services/UserPermissionService.ts';
 
 interface RolePermission {
     id: number;
