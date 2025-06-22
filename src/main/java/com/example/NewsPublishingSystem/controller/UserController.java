@@ -1,8 +1,8 @@
 //java/com/example/FinalAssignments/controller/UserController.java
 package com.example.NewsPublishingSystem.controller;
+import com.example.NewsPublishingSystem.dto.UserRoleDTOs.UserRoleDTO;
 import com.example.NewsPublishingSystem.entity.UserRole;
 import com.example.NewsPublishingSystem.dto.UserDTOs;
-import com.example.NewsPublishingSystem.dto.PermissionDTOs;
 import com.example.NewsPublishingSystem.entity.User;
 import com.example.NewsPublishingSystem.service.UserRoleService;
 import com.example.NewsPublishingSystem.service.UserService;
@@ -34,7 +34,7 @@ public class UserController {
     private UserService userService;          // 原来是 UserService
 
     @Autowired
-    private UserRoleService userRoleService;  // 原来是 UserRoleService
+    private com.example.NewsPublishingSystem.service.UserRoleService userRoleService;
 
 
 
@@ -260,7 +260,7 @@ public class UserController {
             // 处理角色关系
             if (User.getRole() != null && User.getRole().getId() != null) {
                 Long roleId = User.getRole().getId();
-                PermissionDTOs roleDto = userRoleService.getById(roleId);
+                UserRoleDTO roleDto = userRoleService.getById(roleId);
                 // 创建一个新的UserRole对象并设置ID
                 UserRole role = new UserRole();
                 role.setId(roleDto.getId());
@@ -300,7 +300,7 @@ public class UserController {
             // 处理角色关系
             if (UserDetails.getRole() != null && UserDetails.getRole().getId() != null) {
                 Long roleId = UserDetails.getRole().getId();
-                PermissionDTOs roleDto = userRoleService.getById(roleId);
+                UserRoleDTO roleDto = userRoleService.getById(roleId);
                 // 创建一个新的UserRole对象并设置ID
                 UserRole role = new UserRole();
                 role.setId(roleDto.getId());

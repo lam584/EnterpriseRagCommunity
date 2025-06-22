@@ -1,4 +1,3 @@
-// src/components/reader-management/DeleteUser.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
     fetchReaders,
@@ -7,7 +6,7 @@ import {
     deleteReader,
     ReaderDTO,
     ReaderSearchCriteria
-} from '../../services/UserService.ts';
+} from '../../services/MockUserService'; // 如果你要用 Mock 数据，请按上次示例改成 MockUserService
 
 type SearchField = 'id' | 'account' | 'phone' | 'email';
 const MAX_RECENT = 10;
@@ -19,8 +18,9 @@ const DeleteUser: React.FC = () => {
     const [recentReaders, setRecentReaders] = useState<ReaderDTO[]>([]);
     const [filteredReaders, setFilteredReaders] = useState<ReaderDTO[]>([]);
     const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
-    const searchTimer = useRef<number | undefined>(undefined);
-    const blurTimer = useRef<number | undefined>(undefined);
+    // 修正：useRef 必须带初始值
+    const searchTimer = useRef<number | null>(null);
+    const blurTimer = useRef<number | null>(null);
 
     // 选中 & 详细信息状态
     const [selectedReaderId, setSelectedReaderId] = useState<number | undefined>(undefined);
@@ -52,11 +52,9 @@ const DeleteUser: React.FC = () => {
     // 2. 执行搜索
     const performSearch = async (kw: string) => {
         if (!kw.trim()) {
-            // 关键字为空 → 展示最近更新
             setFilteredReaders(recentReaders);
             return;
         }
-        // 构造搜索条件
         const criteria: ReaderSearchCriteria = {};
         if (searchField === 'id') {
             const idNum = Number(kw);
@@ -83,19 +81,25 @@ const DeleteUser: React.FC = () => {
         setReader(null);
         setSelectedReaderId(undefined);
 
-        window.clearTimeout(searchTimer.current);
+        // 清掉上一次定时
+        if (searchTimer.current) {
+            clearTimeout(searchTimer.current)
+        }
         searchTimer.current = window.setTimeout(() => {
             performSearch(val);
             setDropdownOpen(true);
         }, 300);
     };
 
-    // 4. 搜索字段切换时立即触发一次搜索（如果有关键字）
+    // 4. 字段切换时立即触发一次搜索（如果有关键字）
     const handleFieldChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const f = e.target.value as SearchField;
         setSearchField(f);
         if (keyword.trim()) {
-            window.clearTimeout(searchTimer.current);
+            if (searchTimer.current) {
+                clearTimeout(searchTimer.current)
+            }
+            // 0ms 延迟触发
             window.setTimeout(() => performSearch(keyword), 0);
         }
     };
@@ -113,14 +117,14 @@ const DeleteUser: React.FC = () => {
         }, 200);
     };
 
-
     // 7. 选中条目 → 拉取详情 & 显示 ID
     const handleSelect = async (r: ReaderDTO) => {
         if (!r.id) return;
-        window.clearTimeout(blurTimer.current);
+        if (blurTimer.current) {
+            window.clearTimeout(blurTimer.current);
+        }
         setDropdownOpen(false);
         setSelectedReaderId(r.id);
-        // setKeyword(r.id.toString());
         setError(null);
         setSuccess(null);
 
@@ -130,9 +134,8 @@ const DeleteUser: React.FC = () => {
             setReader(data);
             setShowInfo(true);
             setSuccess('用户信息加载成功');
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : '加载失败';
-            setError(msg);
+        } catch (err: any) {
+            setError(err.message || '加载失败');
         } finally {
             setLoading(false);
         }
@@ -155,9 +158,20 @@ const DeleteUser: React.FC = () => {
             setReader(null);
             setShowInfo(false);
             setSelectedReaderId(undefined);
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : '删除失败';
-            setError(msg);
+            // 同时更新最近列表（如果需要）
+            fetchReaders().then(list => {
+                const recent = list
+                    .sort((a, b) => {
+                        const tA = new Date(a.updatedAt || a.createdAt || '').getTime();
+                        const tB = new Date(b.updatedAt || b.createdAt || '').getTime();
+                        return tB - tA;
+                    })
+                    .slice(0, MAX_RECENT);
+                setRecentReaders(recent);
+                setFilteredReaders(recent);
+            });
+        } catch (err: any) {
+            setError(err.message || '删除失败');
         } finally {
             setLoading(false);
         }
@@ -174,8 +188,16 @@ const DeleteUser: React.FC = () => {
     return (
         <div className="max-w-2xl mx-auto mt-10 p-6 bg-white shadow rounded relative">
             <h1 className="text-2xl font-bold mb-4">删除用户</h1>
-            {error && <div className="mb-4 p-3 bg-red-100 text-red-700 border border-red-400 rounded">{error}</div>}
-            {success && <div className="mb-4 p-3 bg-green-100 text-green-700 border border-green-400 rounded">{success}</div>}
+            {error && (
+                <div className="mb-4 p-3 bg-red-100 text-red-700 border border-red-400 rounded">
+                    {error}
+                </div>
+            )}
+            {success && (
+                <div className="mb-4 p-3 bg-green-100 text-green-700 border border-green-400 rounded">
+                    {success}
+                </div>
+            )}
 
             {/* 搜索条件 */}
             <div className="mb-4 flex space-x-2">
@@ -201,9 +223,7 @@ const DeleteUser: React.FC = () => {
                         className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
                     {dropdownOpen && (
-                        <div
-                            className="absolute top-full left-0 right-0 mt-1 bg-white border rounded shadow max-h-60 overflow-auto z-10"
-                        >
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded shadow max-h-60 overflow-auto z-10">
                             {filteredReaders.length > 0 ? (
                                 filteredReaders.map(r => (
                                     <div
@@ -211,7 +231,9 @@ const DeleteUser: React.FC = () => {
                                         className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-none"
                                         onClick={() => handleSelect(r)}
                                     >
-                                        <div className="font-medium">{r.account}（ID:{r.id}）</div>
+                                        <div className="font-medium">
+                                            {r.account}（ID:{r.id}）
+                                        </div>
                                         <div className="text-xs text-gray-600">
                                             {r.phone} | {r.email}
                                         </div>
@@ -225,22 +247,23 @@ const DeleteUser: React.FC = () => {
                 </div>
             </div>
 
-            {/* 新增：选中后提示已选 ID */}
+            {/* 已选 ID */}
             {selectedReaderId && (
                 <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
-                    <span className="text-blue-700">已选择用户ID: {selectedReaderId}</span>
+          <span className="text-blue-700">
+            已选择用户ID: {selectedReaderId}
+          </span>
                 </div>
             )}
 
-            {/* 搜索后显示的用户详情 */}
+            {/* 用户详情 */}
             {showInfo && reader && (
                 <div className="mb-4 border rounded p-4 bg-gray-50">
                     <p><strong>账号：</strong>{reader.account}</p>
                     <p><strong>手机号：</strong>{reader.phone}</p>
                     <p><strong>邮箱：</strong>{reader.email}</p>
-                    {/* 新增更多信息 */}
                     <p><strong>性别：</strong>{reader.sex || '-'}</p>
-                    <p><strong>权限：</strong>{reader.permission?.roles || '-'}</p>
+                    <p><strong>权限：</strong>{reader.permission?.roles.join(', ') || '-'}</p>
                     <p><strong>状态：</strong>{reader.isActive ? '激活' : '禁用'}</p>
                     <p><strong>创建时间：</strong>{reader.createdAt ? new Date(reader.createdAt).toLocaleString() : '-'}</p>
                     <p><strong>更新时间：</strong>{reader.updatedAt ? new Date(reader.updatedAt).toLocaleString() : '-'}</p>
@@ -253,7 +276,9 @@ const DeleteUser: React.FC = () => {
                     onClick={handleConfirmDelete}
                     disabled={loading || !showInfo}
                     className={`px-4 py-2 rounded text-white ${
-                        loading || !showInfo ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'
+                        loading || !showInfo
+                            ? 'bg-gray-400 cursor-not-allowed'
+                            : 'bg-red-500 hover:bg-red-600'
                     }`}
                 >
                     {loading ? '处理中...' : '确认删除'}
@@ -262,7 +287,9 @@ const DeleteUser: React.FC = () => {
                     onClick={handleCancel}
                     disabled={loading}
                     className={`px-4 py-2 rounded text-white ${
-                        loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gray-500 hover:bg-gray-600'
+                        loading
+                            ? 'bg-gray-400 cursor-not-allowed'
+                            : 'bg-gray-500 hover:bg-gray-600'
                     }`}
                 >
                     取消

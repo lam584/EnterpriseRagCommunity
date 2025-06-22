@@ -1,4 +1,4 @@
-// src/services/UserPermissionService.ts
+// src/services/UserRoleService.ts
 // import { getCsrfToken, clearCsrfToken } from '../utils/csrfUtils';
 import { getCsrfToken } from '../utils/csrfUtils';
 const API_BASE = '/api/reader-permissions';

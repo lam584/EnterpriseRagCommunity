@@ -1,24 +1,50 @@
 package com.example.NewsPublishingSystem.service;
 
-
-import com.example.NewsPublishingSystem.dto.PermissionDTOs;
+import com.example.NewsPublishingSystem.dto.UserRoleDTOs.CreateUserRoleDTO;
+import com.example.NewsPublishingSystem.dto.UserRoleDTOs.UpdateUserRoleDTO;
+import com.example.NewsPublishingSystem.dto.UserRoleDTOs.UserRoleDTO;
 import com.example.NewsPublishingSystem.entity.UserRole;
 import com.example.NewsPublishingSystem.repository.UserRoleRepository;
-import org.springframework.beans.BeanUtils;
-import org.springframework.data.domain.*;
+import jakarta.persistence.EntityNotFoundException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-// ========== Service 接口 ==========
+/**
+ * UserRole Service 接口 + 实现（合并在同一个文件中）
+ */
 public interface UserRoleService {
-    PermissionDTOs create(PermissionDTOs dto);
-    PermissionDTOs update(PermissionDTOs dto);
+
+    /**
+     * 创建一个新的角色
+     */
+    UserRoleDTO create(CreateUserRoleDTO dto);
+
+    /**
+     * 更新已有角色
+     */
+    UserRoleDTO update(UpdateUserRoleDTO dto);
+
+    /**
+     * 删除角色
+     */
     void delete(Long id);
-    PermissionDTOs getById(Long id);
-    Page<PermissionDTOs> list(Pageable pageable);
+
+    /**
+     * 根据 ID 查询单个角色
+     */
+    UserRoleDTO getById(Long id);
+
+    /**
+     * 分页查询所有角色
+     */
+    Page<UserRoleDTO> list(Pageable pageable);
 }
 
-// ========== Service 实现 ==========
+/**
+ * 默认的 Service 实现（Spring Bean）
+ */
 @Service
 @Transactional
 class UserRoleServiceImpl implements UserRoleService {
@@ -30,47 +56,41 @@ class UserRoleServiceImpl implements UserRoleService {
     }
 
     @Override
-    public PermissionDTOs create(PermissionDTOs dto) {
-        UserRole entity = new UserRole();
-        BeanUtils.copyProperties(dto, entity);
-        entity = repo.save(entity);
-        PermissionDTOs result = new PermissionDTOs();
-        BeanUtils.copyProperties(entity, result);
-        return result;
+    public UserRoleDTO create(CreateUserRoleDTO dto) {
+        UserRole entity = dto.toEntity();
+        UserRole saved = repo.save(entity);
+        return UserRoleDTO.fromEntity(saved);
     }
 
     @Override
-    public PermissionDTOs update(PermissionDTOs dto) {
+    public UserRoleDTO update(UpdateUserRoleDTO dto) {
         UserRole entity = repo.findById(dto.getId())
-                .orElseThrow(() -> new IllegalArgumentException("角色不存在"));
-        BeanUtils.copyProperties(dto, entity);
-        // 修改后重新 fetch
-        return getById(entity.getId());
+                .orElseThrow(() -> new EntityNotFoundException("UserRole not found: " + dto.getId()));
+        dto.applyToEntity(entity);
+        UserRole saved = repo.save(entity);
+        return UserRoleDTO.fromEntity(saved);
     }
 
     @Override
     public void delete(Long id) {
+        if (!repo.existsById(id)) {
+            throw new EntityNotFoundException("UserRole not found: " + id);
+        }
         repo.deleteById(id);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public PermissionDTOs getById(Long id) {
+    public UserRoleDTO getById(Long id) {
         UserRole entity = repo.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("角色不存在"));
-        PermissionDTOs dto = new PermissionDTOs();
-        BeanUtils.copyProperties(entity, dto);
-        return dto;
+                .orElseThrow(() -> new EntityNotFoundException("UserRole not found: " + id));
+        return UserRoleDTO.fromEntity(entity);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Page<PermissionDTOs> list(Pageable pageable) {
-        Page<UserRole> page = repo.findAll(pageable);
-        return page.map(entity -> {
-            PermissionDTOs dto = new PermissionDTOs();
-            BeanUtils.copyProperties(entity, dto);
-            return dto;
-        });
+    public Page<UserRoleDTO> list(Pageable pageable) {
+        return repo.findAll(pageable)
+                .map(UserRoleDTO::fromEntity);
     }
 }

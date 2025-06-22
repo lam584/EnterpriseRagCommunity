@@ -1,6 +1,7 @@
 // src/components/new-management/EditNews.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchCategories, TopicDTO } from '../../services/TopicService.ts';
+import { fetchNewsById, fetchNewsList, updateNews } from '../../services/NewsService.ts';
 // 引入富文本编辑器组件
 import { Textarea } from '../ui/textarea';
 
@@ -80,20 +81,48 @@ const EditNewsForm: React.FC = () => {
     // 加载所有选项数据
     Promise.all([
       fetchCategories().catch(() => []),
-      // fetchNews().catch(() => []) // 需要实现新闻获取服务
-      Promise.resolve([] as NewsDTO[]) // 明确指定返回类型为 NewsDTO[]
+      fetchNewsList({ page: 0, size: 50 }).catch(err => {
+        console.error('加载新闻列表失败', err);
+        return { content: [] };
+      })
     ]).then(([categoriesData, newsData]) => {
       setCategories(categoriesData);
-      setNews(newsData);
+
+      // 从API返回的数据转换为我们的NewsDTO格式
+      const formattedNews: NewsDTO[] = newsData.content.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        content: item.content || '',
+        summary: item.summary || '',
+        author: item.authorName || '',
+        TopicId: item.topicId,
+        Topic: { id: item.topicId, name: item.topicName },
+        coverImage: item.coverImage || '',
+        isTop: false, // 后端API未提供此字段，默认为false
+        status: item.status || '待发布',
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        views: item.viewCount,
+        likes: item.likeCount,
+        commentCount: item.commentCount
+      }));
+
+      setNews(formattedNews);
 
       // 默认展示最近更新的新闻
-      const sortedNews = [...newsData].sort((a, b) => {
+      const sortedNews = [...formattedNews].sort((a, b) => {
         const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
         const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
         return dateB - dateA; // 降序排列，最新的在前面
       }).slice(0, MAX_RECENT_NEWS);
 
       setFilteredNews(sortedNews);
+    }).catch(err => {
+      console.error('初始化数据加载失败', err);
+      setMessage({
+        type: 'error',
+        text: '加载数据失败，请刷新页面重试'
+      });
     });
   }, []);
 
@@ -139,20 +168,20 @@ const EditNewsForm: React.FC = () => {
       setDropdownOpen(false);
       setSelectedNewsId(id.toString());
 
-      // 临时模拟，实际应从API获取
-      // const newsData = await fetchNewsById(id);
-      const newsData = news.find(item => item.id === id);
-
+      // 从API获取新闻详情
+      const newsData = await fetchNewsById(id);
+      
       if (newsData) {
+        // 转换后端数据格式为前端表单格式
         setForm({
           id: newsData.id,
           title: newsData.title,
           content: newsData.content,
-          summary: newsData.summary,
-          author: newsData.author,
-          TopicId: newsData.Topic?.id || 0,
-          coverImage: newsData.coverImage,
-          isTop: newsData.isTop,
+          summary: newsData.summary || '',
+          author: newsData.authorName,
+          TopicId: newsData.topicId,
+          coverImage: newsData.coverImage || '',
+          isTop: false, // 后端API可能未提供此字段，默认为false
           status: newsData.status
         });
       }
@@ -183,19 +212,52 @@ const EditNewsForm: React.FC = () => {
   // 处理表单提交
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm() || !form.id) return;
 
     try {
       setLoading(true);
+      // 将前端表单数据转换为后端API需要的格式
+      const updateData = {
+        id: form.id,
+        title: form.title,
+        content: form.content,
+        summary: form.summary,
+        topicId: form.TopicId,
+        coverImage: form.coverImage || '',
+        status: form.status
+      };
+
       // 调用后端API更新新闻
-      // await updateNews(form);
+      await updateNews(form.id, updateData);
 
       setMessage({
         type: 'success',
         text: '新闻更新成功！'
       });
 
-      // 重置选中状态，但保留表单数据以便确认
+      // 重新加载新闻列表以获取最新数据
+      const newsData = await fetchNewsList({ page: 0, size: 50 });
+      const formattedNews = newsData.content.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        content: item.content || '',
+        summary: item.summary || '',
+        author: item.authorName || '',
+        TopicId: item.topicId,
+        Topic: { id: item.topicId, name: item.topicName },
+        coverImage: item.coverImage || '',
+        isTop: false,
+        status: item.status || '待发布',
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        views: item.viewCount,
+        likes: item.likeCount,
+        commentCount: item.commentCount
+      }));
+
+      setNews(formattedNews);
+
+      // 保留表单数据以便确认，但重置选中状态，用户需要重新选择才能继续编辑
       setSelectedNewsId('');
     } catch (error) {
       console.error('更新新闻失败', error);
@@ -487,7 +549,7 @@ const EditNewsForm: React.FC = () => {
             </div>
           </div>
 
-          {/* ���闻摘要 */}
+          {/* 新闻摘要 */}
           <div className="space-y-2">
             <Label htmlFor="summary">新闻摘要 <span className="text-red-500">*</span></Label>
             <Textarea

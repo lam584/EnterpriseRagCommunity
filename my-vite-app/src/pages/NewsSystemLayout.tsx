@@ -48,13 +48,13 @@ const sidebarCategories = [
     },
     {
         id: 'editor',
-        label: '编辑员管理',
+        label: '管理员管理',
         icon: <FaUserPlus />,
         subItems: [
-            { id: 'addEditor', label: '添加编辑员' },
-            { id: 'editEditor', label: '编辑员信息管理' },
-            { id: 'deleteEditor', label: '删除编辑员' },
-            { id: 'editorPermissions', label: '编辑员权限管理' }
+            { id: 'addEditor', label: '添加管理员' },
+            { id: 'editEditor', label: '管理员信息管理' },
+            { id: 'deleteEditor', label: '删除管理员' },
+            { id: 'editorPermissions', label: '管理员权限管理' }
         ]
     },
     {

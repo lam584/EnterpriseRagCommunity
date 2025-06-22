@@ -20,7 +20,7 @@ const SearchComments: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [searchResults, setSearchResults] = useState<Comment[]>([]);
 
-    // 模拟评论数据
+    // mn评论数据
     const mockComments: Comment[] = [
         { id: '1', newsTitle: '国内疫情最新情况', newsId: '101', content: '希望疫情早日结束，大家都能恢复正常生活！', userName: '关心市民', userId: 'u1001', createTime: '2023-09-18 14:30', status: 'approved', likes: 12 },
         { id: '2', newsTitle: '人工智能技术最新进展', newsId: '102', content: '人工智能的发展真是日新月异，期待更多创新应用！', userName: '科技迷', userId: 'u1002', createTime: '2023-09-18 15:10', status: 'approved', likes: 8 },
@@ -45,7 +45,7 @@ const SearchComments: React.FC = () => {
     const handleSearch = () => {
         setLoading(true);
 
-        // 模拟API搜索
+        // mnAPI搜索
         setTimeout(() => {
             let results = [...mockComments];
 

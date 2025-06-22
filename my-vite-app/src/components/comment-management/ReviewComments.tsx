@@ -19,11 +19,11 @@ const ReviewComments: React.FC = () => {
     const [message, setMessage] = useState({ type: '', text: '' });
     const [filter, setFilter] = useState('pending'); // pending, all
 
-    // 模拟获取评论数据
+    // mn获取评论数据
     useEffect(() => {
         setLoading(true);
 
-        // 模拟API请求
+        // mnAPI请求
         setTimeout(() => {
             const mockComments: Comment[] = [
                 { id: '1', newsTitle: '国内疫情最新情况', newsId: '101', content: '希望疫情早日结束，大家都能恢复正常生活！', userName: '关心市民', userId: 'u1001', createTime: '2023-09-18 14:30', status: 'pending' },

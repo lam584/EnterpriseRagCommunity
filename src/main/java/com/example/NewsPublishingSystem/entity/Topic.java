@@ -31,6 +31,4 @@ public class Topic {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    @Column(name = "news_count")
-    private int newsCount;
 }

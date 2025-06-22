@@ -1,7 +1,7 @@
 //my-vite-app/src/components/reader-management/AddUser.tsx
 import React, { useState, useEffect } from 'react';
-import { createReader } from '../../services/UserService.ts';
-import { fetchReaderPermissions, ReaderPermissionDTO } from '../../services/UserPermissionService.ts';
+import { createReader } from '../../services/UserService_1.ts';
+import { fetchReaderPermissions, ReaderPermissionDTO } from '../../services/UserRoleService_1.ts';
 
 const AddUser: React.FC = () => {
     // 表单状态
@@ -114,10 +114,6 @@ const AddUser: React.FC = () => {
 
             const newReader = await createReader(readerData);
 
-            // 安全处理：从响应中移除密码敏感信息
-            if (newReader && newReader.password) {
-                delete newReader.password;
-            }
 
             // 更详细的成功消息，包含用户信息但不包含密码
             setMessage({

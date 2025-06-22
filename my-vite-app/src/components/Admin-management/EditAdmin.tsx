@@ -7,11 +7,11 @@ import {
     updateAdministrator,
     AdministratorDTO,
     UpdateAdministratorDTO,
-} from '../../services/adminService';
+} from '../../services/adminService_2';
 import {
     fetchAdminPermissions,
     AdminPermissionDTO,
-} from '../../services/adminPermissionService';
+} from '../../services/adminPermissionService_1';
 
 type SearchField = 'id' | 'account' | 'phone' | 'email';
 const MAX_RECENT = 10;

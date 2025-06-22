@@ -7,16 +7,18 @@ let csrfToken: string | null = null;
 
 /**
  * 获取 CSRF 令牌
- * 如果本地没有缓存，会从服务器获取一个新的令牌
+ * 如果本地没有缓存或强制刷新，会从服务器获取一个新的令牌
+ * @param forceRefresh 是否强制从服务器刷新令牌
  */
-export async function getCsrfToken(): Promise<string> {
-  // 如果已经有令牌，直接返回
-  if (csrfToken) {
+export async function getCsrfToken(forceRefresh: boolean = false): Promise<string> {
+  // 如果已经有令牌且不需要强制刷新，直接返回
+  if (csrfToken && !forceRefresh) {
     return csrfToken;
   }
 
   try {
     // 从服务器获取新令牌
+    console.log('从服务器获取新的 CSRF 令牌...');
     const response = await fetch('/api/auth/csrf-token', {
       credentials: 'include' // 确保包含 cookies
     });
@@ -32,6 +34,7 @@ export async function getCsrfToken(): Promise<string> {
 
     // 缓存令牌
     csrfToken = data.token;
+    console.log('成功获取 CSRF 令牌:', csrfToken);
     // 由于 csrfToken 在此时一定不为 null，这里使用非空断言运算符
     return csrfToken as string;
   } catch (error) {

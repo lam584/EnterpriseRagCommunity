@@ -19,7 +19,7 @@ const DeleteComments: React.FC = () => {
     const [searchResults, setSearchResults] = useState<Comment[]>([]);
     const [message, setMessage] = useState({ type: '', text: '' });
 
-    // 模拟评论数据
+    // mn评论数据
     const mockComments: Comment[] = [
         { id: '1', newsTitle: '国内疫情最新情况', newsId: '101', content: '希望疫情早日结束，大家都能恢复正常生活！', userName: '关心市民', userId: 'u1001', createTime: '2023-09-18 14:30', status: 'approved' },
         { id: '2', newsTitle: '人工智能技术最新进展', newsId: '102', content: '人工智能的发展真是日新月异，期待更多创新应用！', userName: '科技迷', userId: 'u1002', createTime: '2023-09-18 15:10', status: 'approved' },
@@ -40,7 +40,7 @@ const DeleteComments: React.FC = () => {
         setLoading(true);
         setMessage({ type: '', text: '' });
 
-        // 模拟API搜索
+        // mnAPI搜索
         setTimeout(() => {
             let results: Comment[] = [];
 
@@ -77,7 +77,7 @@ const DeleteComments: React.FC = () => {
         if (window.confirm('确定要删除此评论吗？此操作不可恢复。')) {
             setMessage({ type: 'info', text: '正在删除评论...' });
 
-            // 模拟删除操作
+            // mn删除操作
             setTimeout(() => {
                 setSearchResults(prev => prev.filter(comment => comment.id !== commentId));
                 setMessage({ type: 'success', text: '评论已成功删除' });

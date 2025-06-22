@@ -6,6 +6,10 @@ import Login from './components/login/Login';
 import AdminSetup from './components/login/AdminSetup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { checkInitialSetupStatus } from './services/authService';
+// 导入新闻页面组件
+import { NewsHomePage } from './pages/news/NewsHomePage';
+import { NewsDetailPage } from './pages/news/NewsDetailPage';
+import Register from './components/login/Register';
 
 // 受保护的路由组件
 const ProtectedRoute = () => {
@@ -75,6 +79,13 @@ function AppRoutes() {
                 <Route path="/library" element={<LibraryLayout />} />
                 {/* 这里可以添加其他需要保护的路由 */}
             </Route>
+
+            {/* 新闻相关页面 - 公开访问 */}
+            <Route path="/news" element={<NewsHomePage />} />
+            <Route path="/news/:newsId" element={<NewsDetailPage />} />
+            <Route path="/news/topic/:topicId" element={<NewsHomePage />} />
+
+            <Route path="/register" element={<Register />} />
         </Routes>
     );
 }

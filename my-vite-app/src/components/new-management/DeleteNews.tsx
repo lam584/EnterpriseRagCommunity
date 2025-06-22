@@ -1,337 +1,209 @@
-// src/components/new-management/DeleteNews.tsx
 import React, { useState, useEffect, useRef } from 'react';
-// 这里将来需要替换为实际的新闻服务API
-// import { fetchCategories, CategoryDTO } from '../../services/categoryService';
-
-// UI 组件
+import { searchNews, deleteNews, NewsDTO } from '../../services/NewsService';
 import { Card, CardHeader, CardContent, CardTitle } from '../ui/card';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Alert, AlertTitle, AlertDescription } from '../ui/alert';
 import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
+  Select, SelectTrigger, SelectValue,
+  SelectContent, SelectItem
 } from '../ui/select';
+import {
+  FaTrash, FaCheckCircle, FaTimesCircle,
+  FaSearch, FaExclamationTriangle
+} from 'react-icons/fa';
 
-// 图标
-import { FaTrash, FaCheckCircle, FaTimesCircle, FaSearch, FaExclamationTriangle } from 'react-icons/fa';
-
-const MAX_RECENT_NEWS = 10;
-
-// 新闻DTO接口
-interface NewsDTO {
-  id?: number;
-  title: string;
-  content: string;
-  summary: string;
-  author: string;
-  categoryId: number;
-  category?: { id: number, name?: string };
-  coverImage: string;
-  isTop: boolean;
-  status: string;
-  createdAt?: string;
-  updatedAt?: string;
-  views?: number;
-  likes?: number;
-  commentCount?: number;
-}
+// const MAX_RECENT_NEWS = 10;
 
 const DeleteNews: React.FC = () => {
-  const [news, setNews] = useState<NewsDTO[]>([]);
   const [filteredNews, setFilteredNews] = useState<NewsDTO[]>([]);
-  const [selectedNews, setSelectedNews] = useState<NewsDTO | null>(null);
+  const [selected, setSelected] = useState<NewsDTO | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [message, setMessage] = useState<{type:'success'|'error', text:string}|null>(null);
 
-  const [loading, setLoading] = useState<boolean>(false);
-  const [showConfirm, setShowConfirm] = useState<boolean>(false);
-  const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
-
-  // 搜索条件
-  const [searchCriteria, setSearchCriteria] = useState({
-    keyword: '',
-    searchField: 'title' // 默认按标题搜索
+  const [criteria, setCriteria] = useState({
+    searchField: 'title',
+    keyword: ''
   });
 
-  // 下拉菜单是否展开
   const [dropdownOpen, setDropdownOpen] = useState(false);
-
-  // 添加引用来追踪下拉框状态
   const dropdownRef = useRef<HTMLDivElement>(null);
-  // 添加标记鼠标是否在下拉框内的状态
-  const [isMouseInDropdown, setIsMouseInDropdown] = useState(false);
+  const [inside, setInside] = useState(false);
 
-  const loadNews = () => {
-    setLoading(true);
-    // 这里将来需要替换为实际的新闻API调用
-    // fetchNews()
-    Promise.resolve<NewsDTO[]>([]) // 临时使用空数组，明确指定类型
-      .then(data => {
-        setNews(data);
-
-        // 默认展示最近更新的新闻
-        const sortedNews = [...data]
-          .sort((a, b) => {
-            const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-            const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-            return dateB - dateA; // 降序排列，最新的在前面
-          })
-          .slice(0, MAX_RECENT_NEWS);
-
-        setFilteredNews(sortedNews);
-      })
-      .catch(() => setMessage({type: 'error', text: '加载新闻列表失败'}))
-      .finally(() => setLoading(false));
-  };
-
+  // 点击页面任意处关闭下拉
   useEffect(() => {
-    loadNews();
-  }, []);
+    const handler = (e: MouseEvent) => {
+      if (!inside &&
+          dropdownRef.current &&
+          !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [inside]);
 
-  // 当搜索条件变化时，过滤新闻
+  // 每次搜索条件变化时调用后端
   useEffect(() => {
-    if (!searchCriteria.keyword.trim()) {
-      const recentNews = [...news]
-        .sort((a, b) => {
-          const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-          const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-          return dateB - dateA;
-        })
-        .slice(0, MAX_RECENT_NEWS);
-
-      setFilteredNews(recentNews);
+    if (!criteria.keyword.trim()) {
+      setFilteredNews([]);
       return;
     }
-
-    const keyword = searchCriteria.keyword.toLowerCase();
-    const filtered = news.filter(item => {
-      switch (searchCriteria.searchField) {
-        case 'id':
-          return item.id?.toString() === keyword || item.id?.toString().includes(keyword);
-        case 'author':
-          return item.author.toLowerCase().includes(keyword);
-        case 'title':
-        default:
-          return item.title.toLowerCase().includes(keyword);
+    const fn = async () => {
+      try {
+        setLoading(true);
+        // 修改参数传递方式，构建一个NewsSearchCriteria对象
+        const searchCriteria = {
+          [criteria.searchField]: criteria.keyword
+        };
+        const list = await searchNews(searchCriteria);
+        setFilteredNews(list);
+        setDropdownOpen(true);
+      } catch {
+        setMessage({type:'error', text:'搜索失败'});
+      } finally {
+        setLoading(false);
       }
-    });
-    setFilteredNews(filtered);
-    // 只有输入关键词后才展开
-    setDropdownOpen(true);
-  }, [searchCriteria, news]);
+    };
+    fn();
+  }, [criteria]);
 
-  // 选择新闻进行删除
-  const selectNewsForDelete = (selectedNews: NewsDTO) => {
-    setSelectedNews(selectedNews);
-    setDropdownOpen(false);
-    setShowConfirm(true);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setCriteria(prev => ({...prev, [name]: value}));
     setMessage(null);
+    setShowConfirm(false);
+    setSelected(null);
   };
 
-  // 确认删除
-  const confirmDelete = async () => {
-    if (!selectedNews?.id) return;
+  const pick = (item: NewsDTO) => {
+    setSelected(item);
+    setShowConfirm(true);
+    setDropdownOpen(false);
+  };
 
+  const confirmDelete = async () => {
+    if (!selected) return;
     try {
       setLoading(true);
-      // 调用删除API
-      // await deleteNews(selectedNews.id);
-
-      setMessage({
-        type: 'success',
-        text: `"${selectedNews.title}" 已成功删除`
-      });
-
-      // 重新加载新闻列表
-      loadNews();
-
-      // 重置状态
-      setSelectedNews(null);
+      await deleteNews(selected.id);
+      setMessage({type:'success', text:`“${selected.title}” 已删除`});
+      setSelected(null);
       setShowConfirm(false);
-    } catch (error) {
-      console.error('删除新闻失败', error);
-      setMessage({
-        type: 'error',
-        text: '删除新闻失败，请重试'
-      });
+      setFilteredNews(prev => prev.filter(n => n.id !== selected.id));
+    } catch {
+      setMessage({type:'error', text:'删除失败，请重试'});
     } finally {
       setLoading(false);
     }
   };
 
-  // 取消删除
   const cancelDelete = () => {
     setShowConfirm(false);
-    setSelectedNews(null);
+    setSelected(null);
   };
-
-  // 处理搜索条件变化
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setSearchCriteria(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  // 点击外部关闭下拉框
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node) &&
-        !isMouseInDropdown
-      ) {
-        setDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isMouseInDropdown]);
 
   return (
-    <Card className="w-full max-w-4xl mx-auto  bg-white">
-      <CardHeader className="bg-gradient-to-r from-red-600 to-orange-500 text-white">
-        <CardTitle className="text-2xl flex items-center gap-2">
-          <FaTrash /> 删除新闻
-        </CardTitle>
-      </CardHeader>
-
-      <CardContent className="pt-6">
-        {message && (
-          <Alert className={`mb-6 ${message.type === 'success' ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'}`}>
-            <AlertTitle className="flex items-center gap-2">
-              {message.type === 'success' ? <FaCheckCircle className="text-green-500" /> : <FaTimesCircle className="text-red-500" />}
-              {message.type === 'success' ? '成功' : '错误'}
-            </AlertTitle>
-            <AlertDescription>{message.text}</AlertDescription>
-          </Alert>
-        )}
-
-        {showConfirm && selectedNews && (
-          <Alert className="mb-6 bg-yellow-50 text-yellow-800 border-yellow-200">
-            <AlertTitle className="flex items-center gap-2">
-              <FaExclamationTriangle className="text-yellow-500" />
-              确认删除
-            </AlertTitle>
-            <AlertDescription className="space-y-4">
-              <p>您确定要删除以下新闻吗？此操作不可撤销。</p>
-              <div className="bg-white p-4 rounded border border-yellow-200">
-                <h3 className="font-bold">{selectedNews.title}</h3>
-                <p className="text-sm text-gray-500">作者: {selectedNews.author}</p>
-                <p className="text-sm text-gray-500">ID: {selectedNews.id}</p>
-                <p className="mt-2 text-sm">{selectedNews.summary}</p>
-              </div>
-              <div className="flex justify-end gap-2 mt-4">
-                <Button
-                  variant="outline"
-                  onClick={cancelDelete}
-                  className="border-yellow-500 text-yellow-700 hover:bg-yellow-50"
-                  disabled={loading}
-                >
-                  取消
-                </Button>
-                <Button
-                  onClick={confirmDelete}
-                  className="bg-red-500 hover:bg-red-600 text-white"
-                  disabled={loading}
-                >
-                  {loading ? '删除中...' : '确认删除'}
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* 搜索区域 */}
-        <div className="mb-6 relative">
-          <div className="flex flex-col md:flex-row gap-2 items-end">
-            <div className="flex-1">
-              <Label htmlFor="searchField">搜索字段</Label>
-              <Select
-                value={searchCriteria.searchField}
-                onValueChange={(value) => handleSearchChange({
-                  target: { name: 'searchField', value }
-                } as React.ChangeEvent<HTMLSelectElement>)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="选择搜索字段" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="title">标题</SelectItem>
-                  <SelectItem value="author">作者</SelectItem>
-                  <SelectItem value="id">ID</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex-[2]">
-              <Label htmlFor="keyword">关键词</Label>
-              <div className="relative">
-                <Input
-                  id="keyword"
-                  name="keyword"
-                  placeholder="输入关键词搜索新闻..."
-                  className="pr-8"
-                  value={searchCriteria.keyword}
-                  onChange={handleSearchChange}
-                  onFocus={() => setDropdownOpen(true)}
-                />
-                <FaSearch className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400" />
-              </div>
-            </div>
-          </div>
-
-          {/* 搜索结果下拉框 */}
-          {dropdownOpen && (
-            <div
-              ref={dropdownRef}
-              className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-80 overflow-auto"
-              onMouseEnter={() => setIsMouseInDropdown(true)}
-              onMouseLeave={() => setIsMouseInDropdown(false)}
-            >
-              {filteredNews.length > 0 ? (
-                filteredNews.map(item => (
-                  <div
-                    key={item.id}
-                    className="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
-                    onClick={() => selectNewsForDelete(item)}
-                  >
-                    <div className="font-medium">{item.title}</div>
-                    <div className="text-sm text-gray-500 flex justify-between">
-                      <span>作者: {item.author}</span>
-                      <span>ID: {item.id}</span>
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '无更新时间'}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-3 text-center text-gray-500">
-                  {searchCriteria.keyword ? '没有找到匹配的新闻' : '最近没有更新的新闻'}
-                </div>
-              )}
-            </div>
+      <Card className="max-w-3xl mx-auto bg-white">
+        <CardHeader className="bg-red-600 text-white">
+          <CardTitle className="flex items-center gap-2">
+            <FaTrash /> 删除新闻
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          {message && (
+              <Alert className={`mb-4 ${message.type==='success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                <AlertTitle className="flex items-center gap-2">
+                  {message.type==='success' ? <FaCheckCircle className="text-green-500"/> : <FaTimesCircle className="text-red-500"/>}
+                  {message.type==='success' ? '成功' : '错误'}
+                </AlertTitle>
+                <AlertDescription>{message.text}</AlertDescription>
+              </Alert>
           )}
-        </div>
 
-        {/* 说明文字 */}
-        {!showConfirm && (
-          <div className="text-center text-gray-600 p-8">
-            <FaSearch className="mx-auto mb-3 text-3xl text-gray-400" />
-            <p className="mb-2">请使用上方搜索框查找要删除的新闻</p>
-            <p className="text-sm text-gray-500">删除操作不可撤销，请谨慎操作</p>
+          {/* 确认删除 */}
+          {showConfirm && selected && (
+              <Alert className="mb-6 bg-yellow-50 text-yellow-800 border-yellow-200">
+                <AlertTitle className="flex items-center gap-2">
+                  <FaExclamationTriangle className="text-yellow-500"/> 确认删除
+                </AlertTitle>
+                <AlertDescription>
+                  <p>您确定要删除以下新闻么？此操作不可撤销。</p>
+                  <div className="border border-yellow-200 rounded p-4 bg-white mt-2">
+                    <h3 className="font-bold">{selected.title}</h3>
+                    <p className="text-sm text-gray-600">作者: {selected.authorName}</p>
+                    <p className="text-sm text-gray-600">ID: {selected.id}</p>
+                    <p className="mt-2 text-gray-700">{selected.summary}</p>
+                  </div>
+                  <div className="mt-4 flex justify-end gap-2">
+                    <Button variant="outline" onClick={cancelDelete} disabled={loading}
+                            className="border-yellow-500 text-yellow-700 hover:bg-yellow-50">
+                      取消
+                    </Button>
+                    <Button onClick={confirmDelete} className="bg-red-500 text-white hover:bg-red-600"
+                            disabled={loading}>
+                      {loading?'删除中...':'确认删除'}
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+          )}
+
+          {/* 搜索区域 */}
+          <div className="mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+              <div>
+                <Label htmlFor="searchField">搜索字段</Label>
+                <Select value={criteria.searchField}
+                        onValueChange={v=>handleChange({target:{name:'searchField',value:v}} as never)}>
+                  <SelectTrigger><SelectValue/></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="title">标题</SelectItem>
+                    <SelectItem value="author">作者</SelectItem>
+                    <SelectItem value="id">ID</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="md:col-span-2 relative">
+                <Label htmlFor="keyword">关键词</Label>
+                <Input id="keyword" name="keyword"
+                       value={criteria.keyword}
+                       onChange={handleChange}
+                       onFocus={()=>setDropdownOpen(true)}
+                       className="pr-8"/>
+                <FaSearch className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"/>
+              </div>
+            </div>
+
+            {dropdownOpen && filteredNews.length>0 && (
+                <div ref={dropdownRef}
+                     onMouseEnter={()=>setInside(true)}
+                     onMouseLeave={()=>setInside(false)}
+                     className="mt-1 border bg-white rounded shadow max-h-64 overflow-auto z-10">
+                  {filteredNews.map(item=>(
+                      <div key={item.id}
+                           className="p-3 hover:bg-gray-100 cursor-pointer border-b last:border-0"
+                           onClick={()=>pick(item)}>
+                        <div className="font-medium">{item.title}</div>
+                        <div className="text-sm text-gray-500 flex justify-between">
+                          <span>作者: {item.authorName}</span>
+                          <span>ID: {item.id}</span>
+                        </div>
+                      </div>
+                  ))}
+                </div>
+            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {(!dropdownOpen || filteredNews.length===0) && !showConfirm && (
+              <div className="text-center text-gray-500 py-12">
+                <p>请输入关键词搜索新闻，然后从下拉列表中选择要删除的项。</p>
+              </div>
+          )}
+        </CardContent>
+      </Card>
   );
 };
 

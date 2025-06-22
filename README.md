@@ -215,7 +215,7 @@ FinalAssignments
 │   │   │   ├─ 📄 authService.ts                                   - TypeScript 文件
 │   │   │   ├─ 📄 bookService.ts
 │   │   │   ├─ 📄 TopicService.ts
-│   │   │   ├─ 📄 UserPermissionService.ts
+│   │   │   ├─ 📄 UserRoleService.ts
 │   │   │   ├─ 📄 UserService.ts
 │   │   │   └─ 📄 shelfService.ts
 │   │   ├─ 📁 utils                                                - 工具函数目录(日期格式化/深拷贝/节流防抖/校验等纯函数)

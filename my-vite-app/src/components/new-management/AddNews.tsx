@@ -11,6 +11,8 @@
 import React, { useState, useEffect } from 'react'
 // 后端 API 封装将来需要修改
 import { fetchCategories, TopicDTO } from '../../services/TopicService.ts'
+// 导入新闻服务
+import { createNews } from '../../services/NewsService.ts'
 // 新增导入富文本编辑器
 import { Textarea } from '../ui/textarea'
 
@@ -37,7 +39,7 @@ const AddNews: React.FC = () => {
     title: '',
     content: '',
     summary: '',
-    author: '',
+    authorId: '', // 将 author 改为 authorId
     TopicId: 0,
     coverImage: '',
     isTop: false,
@@ -79,7 +81,7 @@ const AddNews: React.FC = () => {
     if (!formData.title.trim()) e.title = '标题不能为空'
     if (!formData.content.trim()) e.content = '内容不能为空'
     if (!formData.summary.trim()) e.summary = '摘要不能为空'
-    if (!formData.author.trim()) e.author = '作者不能为空'
+    if (!formData.authorId.trim()) e.author = '作者不能为空'
     // 下拉选择必须非 0
     if (formData.TopicId === 0) e.TopicId = '请选择新闻主题'
 
@@ -96,8 +98,16 @@ const AddNews: React.FC = () => {
 
     try {
       setLoading(true)
-      // TODO: 实现新闻发布接口调用
-      // await createNews(formData)
+      // 调用新闻发布接口
+      await createNews({
+        title: formData.title,
+        content: formData.content,
+        summary: formData.summary,
+        topicId: Number(formData.TopicId),
+        coverImage: formData.coverImage,
+        status: formData.status,
+        authorId: Number(formData.authorId) || undefined
+      })
 
       // 成功提示
       setMessage({
@@ -109,7 +119,7 @@ const AddNews: React.FC = () => {
         title: '',
         content: '',
         summary: '',
-        author: '',
+        authorId: '',
         TopicId: 0,
         coverImage: '',
         isTop: false,
@@ -132,7 +142,7 @@ const AddNews: React.FC = () => {
       title: '',
       content: '',
       summary: '',
-      author: '',
+      authorId: '',
       TopicId: 0,
       coverImage: '',
       isTop: false,
@@ -211,12 +221,12 @@ const AddNews: React.FC = () => {
 
             {/* 作者 */}
             <div className="space-y-2">
-              <Label htmlFor="author">作者 <span className="text-red-500">*</span></Label>
+              <Label htmlFor="authorId">作者 <span className="text-red-500">*</span></Label>
               <Input
-                id="author"
-                name="author"
+                id="authorId"
+                name="authorId"
                 placeholder="请输入作者名称"
-                value={formData.author}
+                value={formData.authorId}
                 onChange={handleInputChange}
                 className={errors.author ? 'border-red-500' : ''}
               />
@@ -226,6 +236,7 @@ const AddNews: React.FC = () => {
             {/* 新闻主题 */}
             <div className="space-y-2">
               <Label htmlFor="TopicId">新闻主题 <span className="text-red-500">*</span></Label>
+              <div className="bg-white">
               <Select
                 value={formData.TopicId.toString()}
                 onValueChange={(value) => handleSelectChange('TopicId', value)}
@@ -242,7 +253,9 @@ const AddNews: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
+
               {errors.TopicId && <p className="text-red-500 text-sm">{errors.TopicId}</p>}
+              </div>
             </div>
 
             {/* 封面图片链接 */}

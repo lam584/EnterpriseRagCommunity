@@ -3,11 +3,13 @@ import React, { useState } from 'react';
 import AddAdmin from './AddAdmin';
 import EditAdmin from './EditAdmin';
 import DeleteAdmin from './DeleteAdmin';
+import EditorPermissions from './AdminPermissions';
 
 const navItems = [
     '添加管理员',
     '编辑管理员',
-    '删除管理员'
+    '删除管理员',
+    '权限管理'
 ];
 
 const AdminManagement: React.FC = () => {
@@ -42,6 +44,7 @@ const AdminManagement: React.FC = () => {
                 {activeTab === 0 && <AddAdmin />}
                 {activeTab === 1 && <EditAdmin />}
                 {activeTab === 2 && <DeleteAdmin />}
+                {activeTab === 3 && <EditorPermissions />}
             </div>
         </main>
     );

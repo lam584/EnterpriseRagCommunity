@@ -20,6 +20,7 @@ public class AdminPermission {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // 手动添加缺失的getter和setter方法
     @Column(name = "roles", nullable = false, unique = true)
     private String roles;
 
@@ -77,72 +78,4 @@ public class AdminPermission {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    // 手动添加缺失的getter和setter方法
-    public void setRoles(String roles) {
-        this.roles = roles;
-    }
-
-    public void setCanLogin(boolean canLogin) {
-        this.canLogin = canLogin;
-    }
-
-    public void setCanManageAnnouncement(boolean canManageAnnouncement) {
-        this.canManageAnnouncement = canManageAnnouncement;
-    }
-
-    public void setCanManageHelpArticles(boolean canManageHelpArticles) {
-        this.canManageHelpArticles = canManageHelpArticles;
-    }
-
-    public void setCanCreateSuperAdmin(boolean canCreateSuperAdmin) {
-        this.canCreateSuperAdmin = canCreateSuperAdmin;
-    }
-
-    public void setCanCreateAdmin(boolean canCreateAdmin) {
-        this.canCreateAdmin = canCreateAdmin;
-    }
-
-    public void setCanCreateUserAccount(boolean canCreateUserAccount) {
-        this.canCreateUserAccount = canCreateUserAccount;
-    }
-
-    public void setCanManageAdminPermissions(boolean canManageAdminPermissions) {
-        this.canManageAdminPermissions = canManageAdminPermissions;
-    }
-
-    public void setCanManageUserPermissions(boolean canManageUserPermissions) {
-        this.canManageUserPermissions = canManageUserPermissions;
-    }
-
-    public void setCanResetAdminPassword(boolean canResetAdminPassword) {
-        this.canResetAdminPassword = canResetAdminPassword;
-    }
-
-    public void setCanResetUserPassword(boolean canResetUserPassword) {
-        this.canResetUserPassword = canResetUserPassword;
-    }
-
-    public void setCanPayUserOverdue(boolean canPayUserOverdue) {
-        this.canPayUserOverdue = canPayUserOverdue;
-    }
-
-    public void setAllowEditProfile(boolean allowEditProfile) {
-        this.allowEditProfile = allowEditProfile;
-    }
-
-    public void setAllowEditOtherAdminProfile(boolean allowEditOtherAdminProfile) {
-        this.allowEditOtherAdminProfile = allowEditOtherAdminProfile;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
-
-    public void setAllowEditUserProfile(boolean allowEditUserProfile) {
-        this.allowEditUserProfile = allowEditUserProfile;
-    }
 }

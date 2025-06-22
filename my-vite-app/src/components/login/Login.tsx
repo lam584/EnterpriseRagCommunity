@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/login_1.png';
 import backgroundImage2 from '../../assets/images/2.png';
 import { login } from '../../services/authService';
@@ -106,7 +106,7 @@ const Login: React.FC = () => {
                 <div className="bg-white p-8 rounded-lg shadow-lg w-96">
                     <div className="flex items-center mb-6">
                         <i className="fas fa-book fa-2x mr-2"></i>
-                        <h1 className="text-2xl font-bold">图书管理系统</h1>
+                        <h1 className="text-2xl font-bold">新闻发布系统</h1>
                     </div>
 
                     {error && (
@@ -162,17 +162,16 @@ const Login: React.FC = () => {
                                 disabled={loading}>
                                 {loading ? '登录中...' : '登录'}
                             </button>
-                            <a className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800"
-                               href="#">
+                            <Link to="/register" className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
                                 注册
-                            </a>
+                            </Link>
                         </div>
                     </form>
                 </div>
             </div>
             <div className="text-center text-white p-4">
                 <h2 className="text-3xl font-bold">解锁知识的世界</h2>
-                <p className="text-lg">加入我们的社区，探索成千上万的书籍</p>
+                <p className="text-lg">加入我们的社区，探索成千上万的新闻</p>
                 <p className="text-sm mt-4">©2024. 版权所有。</p>
             </div>
         </div>

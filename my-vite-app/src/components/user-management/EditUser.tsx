@@ -6,11 +6,11 @@ import {
     fetchReaderById,
     updateReader,
     ReaderDTO
-} from '../../services/UserService.ts'
+} from '../../services/UserService_2.ts'
 import {
     fetchReaderPermissions,
     ReaderPermissionDTO
-} from '../../services/UserPermissionService.ts'
+} from '../../services/UserRoleService_2.ts'
 
 type SearchField = 'id' | 'account' | 'phone' | 'email'
 
@@ -39,7 +39,7 @@ const EditUser: React.FC = () => {
     // 选中用户 ID & 表单 DTO
     const [selectedId, setSelectedId] = useState<number | null>(null)
     const [form, setForm] = useState<ReaderDTO>({
-        id: undefined,
+        id: 0,  // 将undefined改为0作为初始值
         account: '',
         phone: '',
         email: '',
