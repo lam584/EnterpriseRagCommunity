@@ -1,4 +1,4 @@
-// filepath: i:\待办事项\短学期\NewsPublishingSystem\my-vite-app\src\components\Admin-management\AdminManagement.tsx
+// filepath: i:\待办事项\短学期\NewsHubCommunity\my-vite-app\src\components\Admin-management\AdminManagement.tsx
 import React, { useState } from 'react';
 import AddAdmin from './AddAdmin';
 import EditAdmin from './EditAdmin';
