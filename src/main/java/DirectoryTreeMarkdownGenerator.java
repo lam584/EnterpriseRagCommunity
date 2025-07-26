@@ -225,7 +225,7 @@ public class DirectoryTreeMarkdownGenerator {
             return;
         }
         generateDirectoryTreeMarkdown(projectRoot);
-        System.out.println("完成 → " + projectRoot.resolve("[REMOVED]"));
+        System.out.println("完成 → " + projectRoot.resolve("tree.md"));
     }
 
     private static void generateDirectoryTreeMarkdown(Path root) throws IOException {
@@ -239,7 +239,7 @@ public class DirectoryTreeMarkdownGenerator {
             maxLen = Math.max(maxLen, namePart.length());
         }
 
-        Path outFile = root.resolve("[REMOVED]");
+        Path outFile = root.resolve("tree.md");
         try (PrintStream out = new PrintStream(
                 new FileOutputStream(outFile.toFile()), true, StandardCharsets.UTF_8)) {
             out.println("::: treeview");

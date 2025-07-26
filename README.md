@@ -90,7 +90,7 @@ FinalAssignments
 
 2. 在 `resources/application.properties` 中配置数据库的账号和密码， 示例：
     ```
-    spring.datasource.url=jdbc:mysql://localhost:3306/test12345678?createDatabaseIfNotExist=true
+    spring.datasource.url=jdbc:mysql://localhost:3306/test24031700?createDatabaseIfNotExist=true
     spring.datasource.username=root
     spring.datasource.password=password
     ```
@@ -226,7 +226,7 @@ FinalAssignments
 │   │   ├─ 📄 icons.ts                                             - TypeScript 文件
 │   │   ├─ 📄 index.js                                             - Vite 入口文件，挂载 Vue 应用到 #app 元素
 │   │   ├─ 📄 main.tsx                                             - 入口挂载文件;调用 ReactDOM 将 <App/> 挂载到 #root 并初始化 HMR 等
-│   │   ├─ 📄 [REMOVED]
+│   │   ├─ 📄 tree.md
 │   │   ├─ 📄 vite-env.d.ts                                        - Vite 环境类型声明;支持 import.meta.env 及静态资源导入
 │   │   └─ 📄 vue.global.js                                        - Vue 全局配置文件，定义 Vue 组件全局注册和配置
 │   ├─ 📄 .gitignore                                               - 前端项目 Git 忽略文件，指定不需要纳入版本控制的文件类型
@@ -360,18 +360,18 @@ FinalAssignments
 ├─ 📄 build.gradle                                                 - Gradle 构建脚本
 ├─ 📄 gradlew
 ├─ 📄 gradlew.bat                                                  - 批处理脚本
-├─ 📄 [REMOVED]
-├─ 📄 [REMOVED]
+├─ 📄 HELP.md
+├─ 📄 hs_err_pid12336.log
 ├─ 📄 index (1).html
 ├─ 📄 index (2).html
 ├─ 📄 package-lock.json
-├─ 📄 [REMOVED]
+├─ 📄 qodana.yaml
 ├─ 📄 README.md
-├─ 📄 [REMOVED]
+├─ 📄 replay_pid12336.log
 ├─ 📄 settings.gradle
-├─ 📄 [REMOVED]
-├─ 📄 [REMOVED]
-├─ 📄 [REMOVED]
-├─ 📄 [REMOVED]
-└─ 📄 [REMOVED]
+├─ 📄 temp.md
+├─ 📄 tree.md
+├─ 📄 作业要求.md
+├─ 📄 提示词-期末作业-qmxm-tsc.md
+└─ 📄 提示词-课后作业.md
 ```  
