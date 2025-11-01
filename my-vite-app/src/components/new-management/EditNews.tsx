@@ -1,7 +1,7 @@
 // src/components/new-management/EditNews.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchCategories, TopicDTO } from '../../services/TopicService.ts';
-import { fetchNewsById, fetchNewsList, updateNews } from '../../services/NewsService.ts';
+import { fetchCategories, TopicDTO } from '../../services/TopicService';
+import { fetchNewsById, fetchNewsList, updateNews } from '../../services/NewsService';
 // 引入富文本编辑器组件
 import { Textarea } from '../ui/textarea';
 
@@ -89,7 +89,7 @@ const EditNewsForm: React.FC = () => {
       setCategories(categoriesData);
 
       // 从API返回的数据转换为我们的NewsDTO格式
-      const formattedNews: NewsDTO[] = newsData.content.map((item: any) => ({
+      const formattedNews: NewsDTO[] = newsData.content.map((item: import('../../types/news').NewsItem) => ({
         id: item.id,
         title: item.title,
         content: item.content || '',
@@ -237,7 +237,7 @@ const EditNewsForm: React.FC = () => {
 
       // 重新加载新闻列表以获取最新数据
       const newsData = await fetchNewsList({ page: 0, size: 50 });
-      const formattedNews = newsData.content.map((item: any) => ({
+      const formattedNews = newsData.content.map((item: import('../../types/news').NewsItem) => ({
         id: item.id,
         title: item.title,
         content: item.content || '',
@@ -389,7 +389,7 @@ const EditNewsForm: React.FC = () => {
               <Label htmlFor="searchField">搜索字段</Label>
               <Select
                 value={searchCriteria.searchField}
-                onValueChange={(value) => handleSearchChange({
+                onValueChange={(value: string) => handleSearchChange({
                   target: { name: 'searchField', value }
                 } as React.ChangeEvent<HTMLSelectElement>)}
               >
@@ -488,7 +488,7 @@ const EditNewsForm: React.FC = () => {
               <Label htmlFor="TopicId">新闻主题 <span className="text-red-500">*</span></Label>
               <Select
                 value={form.TopicId.toString()}
-                onValueChange={(value) => handleSelectChange('TopicId', value)}
+                onValueChange={(value: string) => handleSelectChange('TopicId', value)}
               >
                 <SelectTrigger className={errors.TopicId ? 'border-red-500' : ''}>
                   <SelectValue placeholder="选择新闻主题" />
@@ -535,7 +535,7 @@ const EditNewsForm: React.FC = () => {
               <Label htmlFor="status">状态</Label>
               <Select
                 value={form.status}
-                onValueChange={(value) => handleSelectChange('status', value)}
+                onValueChange={(value: string) => handleSelectChange('status', value)}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="选择状态" />

@@ -1,9 +1,13 @@
 plugins {
     id 'java'
-    id 'war'                                           // ← 添加 war 插件，支持 JSP
-    id 'org.springframework.boot' version '3.5.0'
+    id 'war'
+    id 'org.springframework.boot' version '3.5.7'
     id 'io.spring.dependency-management' version '1.1.7'
-    id 'org.flywaydb.flyway' version '10.20.1'
+    id 'org.flywaydb.flyway' version '11.15.0'
+}
+
+bootWar {
+    archiveFileName = 'EnterpriseRagCommunity.war'
 }
 
 group = 'com.example'
@@ -11,7 +15,7 @@ version = '0.0.1-SNAPSHOT'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(23)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
@@ -30,34 +34,25 @@ tasks.named('bootRun') {
 }
 dependencies {
     // 核心 Web + 内嵌 Tomcat
-    implementation 'org.springframework.boot:spring-boot-starter-web'
-
-    // 添加验证依赖
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
-
-
-    // 你现有的 FreeMarker / MyBatis / JPA / Security 等
-    implementation 'org.springframework.boot:spring-boot-starter-freemarker'
-    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.4'
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.security:spring-security-taglibs'
-    implementation 'org.springframework.boot:spring-boot-starter-actuator'
-
-    // --- JSP + EL + JSTL（都用 runtimeOnly，保证打包进来，IDEA/bootRun 也能拿到） ---
-    runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-jasper'              // JSP 引擎
-    runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-el'                 // EL 引擎
-    runtimeOnly 'jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api:2.0.0'
-    runtimeOnly 'org.glassfish.web:jakarta.servlet.jsp.jstl:2.0.0'
-
-    // Flyway / MySQL / DevTools / Lombok / Test
-    implementation "org.flywaydb:flyway-mysql:10.20.1"
-    implementation 'org.flywaydb:flyway-core:10.20.1'
-    runtimeOnly 'mysql:mysql-connector-java:8.0.33'
-    developmentOnly 'org.springframework.boot:spring-boot-devtools'
-    compileOnly 'org.projectlombok:lombok'
-    annotationProcessor 'org.projectlombok:lombok'
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    implementation 'org.springframework.boot:spring-boot-starter-web:3.5.7'
+    implementation 'org.springframework.boot:spring-boot-starter-validation:3.5.7'
+    implementation 'org.springframework.boot:spring-boot-starter-freemarker:3.5.7'
+    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.3'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa:3.5.7'
+    implementation 'org.springframework.boot:spring-boot-starter-security:3.5.7'
+    implementation 'org.springframework.security:spring-security-taglibs:6.5.6'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator:3.5.7'
+    runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-jasper:10.1.48'              // JSP 引擎
+    runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-el:10.1.48'                 // EL 引擎
+    runtimeOnly 'jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api:3.0.2'
+    runtimeOnly 'org.glassfish.web:jakarta.servlet.jsp.jstl:3.0.1'
+    implementation 'org.flywaydb:flyway-mysql:11.7.2'
+    implementation 'org.flywaydb:flyway-core:11.7.2'
+    runtimeOnly 'com.mysql:mysql-connector-j:9.4.0'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools:3.5.7'
+    compileOnly 'org.projectlombok:lombok:1.18.42'
+    annotationProcessor 'org.projectlombok:lombok:1.18.42'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test:3.5.7'
 }
 
 tasks.named('test') {
@@ -93,4 +88,3 @@ processResources {
         into 'static'
     }
 }
-

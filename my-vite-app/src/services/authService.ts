@@ -13,11 +13,10 @@ export interface InitialSetupStatusResponse {
 }
 
 export interface InitialAdminRegisterRequest {
-  account: string;
-  password: string;
   email: string;
-  phone?: string;
-  sex?: string;
+  password: string;
+  displayName: string;
+  code?: string;
 }
 
 export async function login(username: string, password: string, csrfToken: string): Promise<AdminDTO> {
@@ -28,12 +27,12 @@ export async function login(username: string, password: string, csrfToken: strin
       'X-CSRF-TOKEN': csrfToken // 添加 CSRF 令牌到请求头
     },
     credentials: 'include', // 确保包含凭证
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ email: username, password })
   });
 
   if (!res.ok) {
-    const errorData = await res.json();
-    throw new Error(errorData.message || '登录失败');
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error((errorData && errorData.message) || '登录失败');
   }
 
   return res.json();
@@ -85,10 +84,9 @@ export async function checkInitialSetupStatus(): Promise<InitialSetupStatusRespo
 
 /**
  * 注册初始管理员账户
- * @param registerData 注册信息
- * @returns 注册成功的管理员信息
+ * @param registerData 注册信息（仅 email、password、displayName）
  */
-export async function registerInitialAdmin(registerData: InitialAdminRegisterRequest): Promise<AdminDTO> {
+export async function registerInitialAdmin(registerData: InitialAdminRegisterRequest): Promise<void> {
   // 获取 CSRF 令牌
   const csrfToken = await getCsrfToken();
 
@@ -102,10 +100,25 @@ export async function registerInitialAdmin(registerData: InitialAdminRegisterReq
     body: JSON.stringify(registerData)
   });
 
+  const data = await res.json().catch(() => ({}));
+
   if (!res.ok) {
-    const errorData = await res.json();
-    throw new Error(errorData.message || '注册初始管理员失败');
+    // 后端校验失败时可能返回字段错误映射，如 { displayName: '...' }
+    const fieldErrMsg = typeof data === 'object' && data !== null
+      ? (data.message || data.displayName || data.email || data.password)
+      : undefined;
+    throw new Error(fieldErrMsg || '注册初始管理员失败');
   }
 
-  return res.json();
+  // 后端成功时使用 ApiResponse 包裹 { success, message, data }
+  if (data && typeof data === 'object' && 'success' in data) {
+    if (!data.success) {
+      throw new Error(data.message || '注册初始管理员失败');
+    }
+    // 成功则无需返回值
+    return;
+  }
+
+  // 如果不是标准包裹，直接返回
+  return;
 }

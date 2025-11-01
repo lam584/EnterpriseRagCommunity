@@ -10,9 +10,9 @@
 
 import React, { useState, useEffect } from 'react'
 // 后端 API 封装将来需要修改
-import { fetchCategories, TopicDTO } from '../../services/TopicService.ts'
+import { fetchCategories, TopicDTO } from '../../services/TopicService'
 // 导入新闻服务
-import { createNews } from '../../services/NewsService.ts'
+import { createNews } from '../../services/NewsService'
 // 新增导入富文本编辑器
 import { Textarea } from '../ui/textarea'
 
@@ -239,7 +239,7 @@ const AddNews: React.FC = () => {
               <div className="bg-white">
               <Select
                 value={formData.TopicId.toString()}
-                onValueChange={(value) => handleSelectChange('TopicId', value)}
+                onValueChange={(value: string) => handleSelectChange('TopicId', value)}
               >
                 <SelectTrigger className={errors.TopicId ? 'border-red-500' : ''}>
                   <SelectValue placeholder="选择新闻主题" />

@@ -58,8 +58,8 @@ export function NewsList({
     const currentPage = newsData.number;
     const delta = 1; // 当前页前后各显示多少页
 
-    const range = [];
-    const rangeWithDots = [];
+    const range = [] as (number | string)[];
+    const rangeWithDots = [] as (number | string)[];
 
     for (let i = 0; i < totalPages; i++) {
       if (
@@ -73,13 +73,13 @@ export function NewsList({
 
     let prev = 0;
     for (const i of range) {
-      if (i - prev === 2) {
+      if (typeof i === 'number' && i - prev === 2) {
         rangeWithDots.push(prev + 1);
-      } else if (i - prev !== 1) {
+      } else if (typeof i === 'number' && i - prev !== 1) {
         rangeWithDots.push('...');
       }
       rangeWithDots.push(i);
-      prev = i;
+      prev = typeof i === 'number' ? i : prev;
     }
 
     return rangeWithDots;
@@ -152,6 +152,8 @@ export function NewsList({
                     onClick={() => handlePageChange(page as number)}
                     isActive={newsData.number === page}
                     className="cursor-pointer"
+                    // size is optional but we can pass explicit value
+                    size="default"
                   >
                     {(page as number) + 1}
                   </PaginationLink>

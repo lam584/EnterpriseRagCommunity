@@ -1,5 +1,7 @@
+# 基于Qwen3的企业知识检索增强社区系统
+
 ## 一、项目概述
-本项目为⼀套图书馆管理系统，前后端分离。  
+本项目为毕业设计的实现，前后端分离。  
 后端基于 Spring Boot + MySQL + Flyway，提供 RESTful API；  
 前端基于 Vite + React + TypeScript + Tailwind CSS，提供 SPA 界面。
 
@@ -9,22 +11,20 @@
 
 ### 2.1 后端技术栈
 
-| 分类           | 组件/框架               | 版本       | 说明                                    |
-|--------------|-----------------------|----------|---------------------------------------|
-| 核心框架         | Spring Boot           | 3.5.0    | 核心应用容器与启动器                          |
-| 构建工具         | Gradle                | 8.12.1   | 项目构建与依赖管理                          |
-| JDK           | Eclipse Temurin OpenJDK | 23.0.2+7 | Java 运行时环境                           |
-| ORM & 数据访问    | Spring Data JPA       | 3.5.0    | 主流 ORM 框架，自动生成 Repository 接口         |
-|                | MyBatis               | 3.0.4    | 辅助 SQL 映射，用于复杂查询                      |
-| 数据库 & 迁移     | MySQL                 | 8.4.5    | 关系型数据库                                |
-|                | Flyway                | 10.20.1  | 数据库版本与迁移管理                          |
-| 安全 & 验证       | Spring Security       | 3.5.0    | 认证和授权                                |
-|                | Spring Validation     | 3.5.0    | @Valid 注解形式的参数校验                   |
-| 嵌入式服务器       | Tomcat Embed          | 随 Spring | 内置 Servlet 容器                            |
-| 其它辅助         | Lombok                | —        | 注解简化 Getter/Setter、构造器等样板代码            |
-| 开发工具 (仅 dev) | Spring DevTools       | 3.5.0    | 热重载支持，仅开发环境启用                     |
-
-> 冗余/低频：Spring Actuator（未深度配置）、JSP & JSTL（前后端分离后废弃，仅保留少量旧版视图支持）。
+| 分类           | 组件/框架               | 版本      | 说明                                    |
+|--------------|-----------------------|---------|---------------------------------------|
+| 核心框架         | Spring Boot           | 3.5.7   | 核心应用容器与启动器                          |
+| 构建工具         | Gradle                | 8.12.1  | 项目构建与依赖管理                          |
+| JDK           | Eclipse Temurin OpenJDK | 25      | Java 运行时环境                           |
+| ORM & 数据访问    | Spring Data JPA       | 3.5.7   | 主流 ORM 框架，自动生成 Repository 接口         |
+|                | MyBatis               | 3.0.3   | 辅助 SQL 映射，用于复杂查询                      |
+| 数据库 & 迁移     | MySQL                 | 8.4.7   | 关系型数据库                                |
+|                | Flyway                | 11.7.2  | 数据库版本与迁移管理                          |
+| 安全 & 验证       | Spring Security       | 3.5.7   | 认证和授权                                |
+|                | Spring Validation     | 3.5.7   | @Valid 注解形式的参数校验                   |
+| 嵌入式服务器       | Tomcat Embed          | 10.1.48 | 内置 Servlet 容器                            |
+| 其它辅助         | Lombok                | 1.18.42 | 注解简化 Getter/Setter、构造器等样板代码            |
+| 开发工具 (仅 dev) | Spring DevTools       | 3.5.7   | 热重载支持，仅开发环境启用                     |
 
 ### 2.2 前端技术栈
 
@@ -45,14 +45,13 @@
 | Node 版本    | Node.js                 | 20.12.0  | 本地开发环境                             |
 | 包管理        | npm                     | 10.5.0   | 依赖安装与脚本                             |
 
-> 冗余/低频：react-slick/slick-carousel（计划轮播，暂无实用场景）；部分静态复制插件（vite-plugin-static-copy）。
 
 ---
 
 ## 三、简化版项目结构
 
 ```
-FinalAssignments
+EnterpriseRagCommunity
 ├─ build.gradle                      # 后端构建脚本
 ├─ settings.gradle
 ├─ gradlew / gradlew.bat             # Gradle Wrapper
@@ -85,7 +84,7 @@ FinalAssignments
 
 1. 克隆项目  
 
-   `git clone <repo_url> && cd FinalAssignments`
+   `git clone  https://github.com/lam584/EnterpriseRagCommunity.git && cd EnterpriseRagCommunity`
 
 
 2. 在 `resources/application.properties` 中配置数据库的账号和密码， 示例：
@@ -124,74 +123,65 @@ FinalAssignments
 ---
 
 # 项目完整目录结构及注释
-```  
-
+``` 
 📁 .
 ├─ 📁 gradle
 │   └─ 📁 wrapper
 │       ├─ 📄 gradle-wrapper.jar
-│       └─ 📄 gradle-wrapper.properties                            - 配置文件
+│       └─ 📄 gradle-wrapper.properties                                   - 配置文件
 ├─ 📁 my-vite-app
-│   ├─ 📁 public                                                   - 公共静态资源目录;不经打包,直接拷贝至 dist 根目录;适合 favicon、HTML 模板等
-│   │   └─ 📄 main.tsx                                             - React TypeScript 组件文件
-│   ├─ 📁 src                                                      - 前端源代码根目录;存放应用逻辑/组件/样式/类型声明/工具函数
-│   │   ├─ 📁 assets                                               - 通用静态资源目录;fonts:自定义字体(woff/ttf等)通过 @font-face 加载;images:位图图片;svg:矢量图标或插画;styles:全局 CSS(重置/变量/mixins等)
-│   │   │   ├─ 📁 fonts                                            - 字体文件目录(woff/woff2/ttf 等);兼容多浏览器
-│   │   │   │   └─ 📄 fa-solid-900.woff2                           - 字体文件
-│   │   │   ├─ 📁 images                                           - 位图图片目录(png/jpg/gif 等),组件中可直接 import
-│   │   │   ├─ 📁 styles                                           - 全局样式目录(reset.css/variables.css/mixins.css 等);在入口统一引入
+│   ├─ 📁 public                                                          - 公共静态资源目录;不经打包,直接拷贝至 dist 根目录;适合 favicon、HTML 模板等
+│   │   └─ 📄 main.tsx                                                    - React TypeScript 组件文件
+│   ├─ 📁 src                                                             - 前端源代码根目录;存放应用逻辑/组件/样式/类型声明/工具函数
+│   │   ├─ 📁 assets                                                      - 通用静态资源目录;fonts:自定义字体(woff/ttf等)通过 @font-face 加载;images:位图图片;svg:矢量图标或插画;styles:全局 CSS(重置/变量/mixins等)
+│   │   │   ├─ 📁 fonts                                                   - 字体文件目录(woff/woff2/ttf 等);兼容多浏览器
+│   │   │   │   └─ 📄 fa-solid-900.woff2                                  - 字体文件
+│   │   │   ├─ 📁 images                                                  - 位图图片目录(png/jpg/gif 等),组件中可直接 import
+│   │   │   ├─ 📁 styles                                                  - 全局样式目录(reset.css/variables.css/mixins.css 等);在入口统一引入
 │   │   │   │   └─ 📄 css2
-│   │   │   └─ 📁 svg                                              - SVG 矢量图目录;支持 SVGR 转为 React 组件或作为 img src
-│   │   ├─ 📁 components                                           - 纯 UI 组件目录(.tsx+.module.css 同名放置);关注展示无需业务逻辑
+│   │   │   └─ 📁 svg                                                     - SVG 矢量图目录;支持 SVGR 转为 React 组件或作为 img src
+│   │   ├─ 📁 components                                                  - 纯 UI 组件目录(.tsx+.module.css 同名放置);关注展示无需业务逻辑
 │   │   │   ├─ 📁 account-management
-│   │   │   │   ├─ 📄 account-management.tsx                       - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 account-management.tsx                              - React TypeScript 组件文件
 │   │   │   │   ├─ 📄 ChangePassword.tsx
 │   │   │   │   ├─ 📄 EditProfile.tsx
 │   │   │   │   └─ 📄 Logout.tsx
-│   │   │   ├─ 📁 book-management
-│   │   │   │   ├─ 📄 AddNewForm.tsx                              - React TypeScript 组件文件
-│   │   │   │   ├─ 📄 NewManagement.tsx
-│   │   │   │   ├─ 📄 TopicManage.tsx
-│   │   │   │   ├─ 📄 DeleteBookForm.tsx
-│   │   │   │   ├─ 📄 EditBookForm.tsx
-│   │   │   │   ├─ 📄 SearchBook.tsx
-│   │   │   │   └─ 📄 ShelfManage.tsx
-│   │   │   ├─ 📁 borrow-management
-│   │   │   │   ├─ 📄 borrow-management.tsx                        - React TypeScript 组件文件
-│   │   │   │   ├─ 📄 BorrowBook.tsx
-│   │   │   │   ├─ 📄 BorrowQuery.tsx
-│   │   │   │   ├─ 📄 RenewBook.tsx
-│   │   │   │   └─ 📄 ReturnBook.tsx
-│   │   │   ├─ 📁 fine-management
-│   │   │   │   ├─ 📄 fine-management.tsx                          - React TypeScript 组件文件
-│   │   │   │   ├─ 📄 FineRecords.tsx
-│   │   │   │   ├─ 📄 FineRules.tsx
-│   │   │   │   └─ 📄 PayFine.tsx
+│   │   │   ├─ 📁 Admin-management
+│   │   │   │   ├─ 📄 AddAdmin.tsx                                        - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 AdminManagement.tsx
+│   │   │   │   ├─ 📄 AdminPermissions.tsx
+│   │   │   │   ├─ 📄 DeleteAdmin.tsx
+│   │   │   │   └─ 📄 EditAdmin.tsx
+│   │   │   ├─ 📁 comment-management
+│   │   │   │   ├─ 📄 CommentManagement.tsx                               - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 DeleteComments.tsx
+│   │   │   │   ├─ 📄 ReviewComments.tsx
+│   │   │   │   └─ 📄 SearchComments.tsx
 │   │   │   ├─ 📁 help-center
-│   │   │   │   └─ 📄 HelpCenter.tsx                               - React TypeScript 组件文件
-│   │   │   ├─ 📁 lib
-│   │   │   │   └─ 📄 utils.ts                                     - TypeScript 文件
+│   │   │   │   └─ 📄 HelpCenter.tsx                                      - React TypeScript 组件文件
 │   │   │   ├─ 📁 login
-│   │   │   │   ├─ 📄 AdminSetup.tsx                               - React TypeScript 组件文件
-│   │   │   │   └─ 📄 Login.tsx
-│   │   │   ├─ 📁 reader-management
-│   │   │   │   ├─ 📄 AddUser.tsx                                - React TypeScript 组件文件
-│   │   │   │   ├─ 📄 AddUserForm.tsx
-│   │   │   │   ├─ 📄 DeleteUser.tsx
-│   │   │   │   ├─ 📄 DeleteUserForm.tsx
-│   │   │   │   ├─ 📄 EditUser.tsx
-│   │   │   │   ├─ 📄 EditUserForm.tsx
-│   │   │   │   ├─ 📄 UserManagement.tsx
-│   │   │   │   ├─ 📄 SearchUser.tsx
-│   │   │   │   └─ 📄 SearchUserForm.tsx
+│   │   │   │   ├─ 📄 AdminSetup.tsx                                      - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 Login.tsx
+│   │   │   │   └─ 📄 Register.tsx
+│   │   │   ├─ 📁 new-management
+│   │   │   │   ├─ 📄 AddNews.tsx                                         - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 DeleteNews.tsx
+│   │   │   │   ├─ 📄 EditNews.tsx
+│   │   │   │   ├─ 📄 NewManagement.tsx
+│   │   │   │   ├─ 📄 SearchNews.tsx
+│   │   │   │   └─ 📄 TopicManage.tsx
+│   │   │   ├─ 📁 news
+│   │   │   │   ├─ 📄 NewsCard.tsx                                        - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 NewsList.tsx
+│   │   │   │   └─ 📄 TopicList.tsx
 │   │   │   ├─ 📁 stats-management
-│   │   │   │   ├─ 📄 BookStats.tsx                                - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 BookStats.tsx                                       - React TypeScript 组件文件
 │   │   │   │   ├─ 📄 FineStats.tsx
 │   │   │   │   ├─ 📄 InventoryStats.tsx
 │   │   │   │   ├─ 📄 ReaderStats.tsx
 │   │   │   │   └─ 📄 stats-management.tsx
 │   │   │   ├─ 📁 system-management
-│   │   │   │   ├─ 📄 AddAdmin.tsx                                 - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 AddAdmin.tsx                                        - React TypeScript 组件文件
 │   │   │   │   ├─ 📄 AdminPermissions.tsx
 │   │   │   │   ├─ 📄 BackupRestore.tsx
 │   │   │   │   ├─ 📄 NewAddAdmin.tsx
@@ -199,179 +189,294 @@ FinalAssignments
 │   │   │   │   ├─ 📄 ResetPassword.tsx
 │   │   │   │   ├─ 📄 system-management.tsx
 │   │   │   │   └─ 📄 SystemLogs.tsx
-│   │   │   └─ 📁 ui                                               - Shadcn UI 组件目录，包含全局样式和组件
-│   │   │       ├─ 📄 alert.tsx                                    - React TypeScript 组件文件
-│   │   │       ├─ 📄 button.tsx
-│   │   │       ├─ 📄 card.tsx
-│   │   │       ├─ 📄 input.tsx
-│   │   │       ├─ 📄 label.tsx
-│   │   │       └─ 📄 select.tsx
+│   │   │   ├─ 📁 ui                                                      - Shadcn UI 组件目录，包含全局样式和组件
+│   │   │   │   ├─ 📄 alert.tsx                                           - React TypeScript 组件文件
+│   │   │   │   ├─ 📄 avatar.tsx
+│   │   │   │   ├─ 📄 badge.tsx
+│   │   │   │   ├─ 📄 button.tsx
+│   │   │   │   ├─ 📄 card.tsx
+│   │   │   │   ├─ 📄 checkbox.tsx
+│   │   │   │   ├─ 📄 input.tsx
+│   │   │   │   ├─ 📄 label.tsx
+│   │   │   │   ├─ 📄 pagination.tsx
+│   │   │   │   ├─ 📄 scroll-area.tsx
+│   │   │   │   ├─ 📄 select.tsx
+│   │   │   │   ├─ 📄 skeleton.tsx
+│   │   │   │   ├─ 📄 tabs.tsx
+│   │   │   │   └─ 📄 textarea.tsx
+│   │   │   └─ 📁 user-management
+│   │   │       ├─ 📄 AddUser.tsx                                         - React TypeScript 组件文件
+│   │   │       ├─ 📄 DeleteUser.tsx
+│   │   │       ├─ 📄 EditUser.tsx
+│   │   │       ├─ 📄 SearchUser.tsx
+│   │   │       └─ 📄 UserManagement.tsx
 │   │   ├─ 📁 contexts
-│   │   │   └─ 📄 AuthContext.tsx                                  - React TypeScript 组件文件
+│   │   │   └─ 📄 AuthContext.tsx                                         - React TypeScript 组件文件
 │   │   ├─ 📁 lib
-│   │   ├─ 📁 pages                                                - 路由级页面组件目录;每个子目录对应一个页面或路由
-│   │   │   └─ 📄 LibraryLayout.tsx                                - React TypeScript 组件文件
-│   │   ├─ 📁 services                                             - 后端 API 封装目录;基于 fetch/axios 统一处理请求/响应/错误
-│   │   │   ├─ 📄 authService.ts                                   - TypeScript 文件
-│   │   │   ├─ 📄 bookService.ts
+│   │   │   └─ 📄 utils.ts                                                - TypeScript 文件
+│   │   ├─ 📁 mockData
+│   │   │   └─ 📄 newsData.ts                                             - TypeScript 文件
+│   │   ├─ 📁 pages                                                       - 路由级页面组件目录;每个子目录对应一个页面或路由
+│   │   │   ├─ 📁 news
+│   │   │   │   ├─ 📄 NewsDetailPage.tsx                                  - React TypeScript 组件文件
+│   │   │   │   └─ 📄 NewsHomePage.tsx
+│   │   │   └─ 📄 NewsSystemLayout.tsx                                    - React TypeScript 组件文件
+│   │   ├─ 📁 services                                                    - 后端 API 封装目录;基于 fetch/axios 统一处理请求/响应/错误
+│   │   │   ├─ 📄 accountService.ts                                       - TypeScript 文件
+│   │   │   ├─ 📄 adminPermissionService.ts
+│   │   │   ├─ 📄 adminPermissionService_1.ts
+│   │   │   ├─ 📄 adminService.ts
+│   │   │   ├─ 📄 adminService_1.ts
+│   │   │   ├─ 📄 adminService_2.ts
+│   │   │   ├─ 📄 authService.ts
+│   │   │   ├─ 📄 mockAdminService.ts
+│   │   │   ├─ 📄 MockUserService.ts
+│   │   │   ├─ 📄 NewsService.ts
 │   │   │   ├─ 📄 TopicService.ts
 │   │   │   ├─ 📄 UserRoleService.ts
+│   │   │   ├─ 📄 UserRoleService_1.ts
+│   │   │   ├─ 📄 UserRoleService_2.ts
+│   │   │   ├─ 📄 UserRoleService_3.ts
 │   │   │   ├─ 📄 UserService.ts
-│   │   │   └─ 📄 shelfService.ts
-│   │   ├─ 📁 utils                                                - 工具函数目录(日期格式化/深拷贝/节流防抖/校验等纯函数)
-│   │   │   └─ 📄 csrfUtils.ts                                     - TypeScript 文件
-│   │   ├─ 📄 App.tsx                                              - 根组件;配置路由/Provider/顶级布局等全局逻辑
-│   │   ├─ 📄 bootstrap.js                                         - Vite 启动脚本，初始化 Vue 应用和全局配置
+│   │   │   ├─ 📄 UserService_1.ts
+│   │   │   ├─ 📄 UserService_2.ts
+│   │   │   └─ 📄 UserService_3.ts
+│   │   ├─ 📁 types                                                       - 全局 TypeScript 类型声明目录(interface/type/enum 等)
+│   │   │   ├─ 📄 admin.ts                                                - TypeScript 文件
+│   │   │   └─ 📄 news.ts
+│   │   ├─ 📁 utils                                                       - 工具函数目录(日期格式化/深拷贝/节流防抖/校验等纯函数)
+│   │   │   └─ 📄 csrfUtils.ts                                            - TypeScript 文件
+│   │   ├─ 📄 App.tsx                                                     - 根组件;配置路由/Provider/顶级布局等全局逻辑
+│   │   ├─ 📄 bootstrap.js                                                - Vite 启动脚本，初始化 Vue 应用和全局配置
 │   │   ├─ 📄 css2
-│   │   ├─ 📄 icons.ts                                             - TypeScript 文件
-│   │   ├─ 📄 index.js                                             - Vite 入口文件，挂载 Vue 应用到 #app 元素
-│   │   ├─ 📄 main.tsx                                             - 入口挂载文件;调用 ReactDOM 将 <App/> 挂载到 #root 并初始化 HMR 等
-│   │   ├─ 📄 tree.md
-│   │   ├─ 📄 vite-env.d.ts                                        - Vite 环境类型声明;支持 import.meta.env 及静态资源导入
-│   │   └─ 📄 vue.global.js                                        - Vue 全局配置文件，定义 Vue 组件全局注册和配置
-│   ├─ 📄 .gitignore                                               - 前端项目 Git 忽略文件，指定不需要纳入版本控制的文件类型
+│   │   ├─ 📄 icons.ts                                                    - TypeScript 文件
+│   │   ├─ 📄 index.js                                                    - Vite 入口文件，挂载 Vue 应用到 #app 元素
+│   │   ├─ 📄 main.tsx                                                    - 入口挂载文件;调用 ReactDOM 将 <App/> 挂载到 #root 并初始化 HMR 等
+│   │   ├─ 📄 temp-file-check-icons.tsx                                   - React TypeScript 组件文件
+│   │   ├─ 📄 vite-env.d.ts                                               - Vite 环境类型声明;支持 import.meta.env 及静态资源导入
+│   │   └─ 📄 vue.global.js                                               - Vue 全局配置文件，定义 Vue 组件全局注册和配置
+│   ├─ 📄 .gitignore                                                      - Git 忽略文件配置，指定不需要纳入版本控制的文件类型
 │   ├─ 📄 .shadcnrc
-│   ├─ 📄 components.json
-│   ├─ 📄 eslint.config.js                                         - ESLint 配置文件，配置前端格式化和代码校验规则
-│   ├─ 📄 index.html                                               - Vite HTML 模板，应用入口文件，用来挂载 #root 并注入 script/style
-│   ├─ 📄 package-lock.json                                        - NPM 依赖锁定文件，确保前后端一致的版本
-│   ├─ 📄 package.json                                             - NPM 包管理配置文件，定义依赖、开发/构建脚本等
+│   ├─ 📄 eslint.config.js                                                - ESLint 配置文件，配置前端格式化和代码校验规则
+│   ├─ 📄 index.html                                                      - Vite HTML 模板，应用入口文件，用来挂载 #root 并注入 script/style
+│   ├─ 📄 package-lock.json                                               - NPM 依赖锁定文件，确保安装一致性
+│   ├─ 📄 package.json                                                    - NPM 包管理配置文件，定义依赖和脚本命令
 │   ├─ 📄 postcss.config.js
-│   ├─ 📄 README.md                                                - 前端项目说明文档，介绍启动、开发及发布流程
+│   ├─ 📄 README.md                                                       - 前端项目说明文档，介绍启动、开发及发布流程
 │   ├─ 📄 tailwind.config.js
-│   ├─ 📄 tsconfig.app.json                                        - Vite 前端 TypeScript 项目编译配置
-│   ├─ 📄 tsconfig.json                                            - TypeScript 配置文件，配置编译选项与路径别名等
-│   ├─ 📄 tsconfig.node.json                                       - Node 运行时 TypeScript 配置，用于脚本/工具调用
-│   ├─ 📄 vite.config.ts                                           - Vite 配置文件，包含开发服务器、插件和构建选项
-│   └─ 📄 vite.config.ts_1
+│   ├─ 📄 tsconfig.app.json                                               - Vite 前端 TypeScript 项目编译配置
+│   ├─ 📄 tsconfig.json                                                   - TypeScript 通用编译选项配置
+│   ├─ 📄 tsconfig.node.json                                              - Node 运行时 TypeScript 配置，用于脚本/工具调用
+│   └─ 📄 vite.config.ts                                                  - Vite 配置文件，包含开发服务器、插件和构建选项
 ├─ 📁 src
-│   ├─ 📁 main                                                     - 主要源代码和资源文件目录
-│   │   ├─ 📁 java                                                 - Java 源代码目录
+│   ├─ 📁 main                                                            - 主要源代码和资源文件目录
+│   │   ├─ 📁 java                                                        - Java 源代码目录
 │   │   │   ├─ 📁 com
 │   │   │   │   └─ 📁 example
-│   │   │   │       └─ 📁 FinalAssignments
-│   │   │   │           ├─ 📁 config                               - 配置类目录，存放 Spring 配置、Bean 定义等
+│   │   │   │       └─ 📁 EnterpriseRagCommunity
+│   │   │   │           ├─ 📁 config                                      - 配置类目录，存放 Spring 配置、Bean 定义等
+│   │   │   │           │   ├─ 📄 AdminSetupManager.java
 │   │   │   │           │   ├─ 📄 FreemarkerGlobalConfig.java
-│   │   │   │           │   ├─ 📄 InitialAdminSetupChecker.java
-│   │   │   │           │   ├─ 📄 InitialAdminSetupState.java
-│   │   │   │           │   ├─ 📄 SecurityConfig.java
-│   │   │   │           │   └─ 📄 SpaWebMvcConfig.java
-│   │   │   │           ├─ 📁 controller                           - 控制器层，处理 HTTP 请求
+│   │   │   │           │   └─ 📄 SecurityConfig.java
+│   │   │   │           ├─ 📁 controller                                  - 控制器层，处理 HTTP 请求
 │   │   │   │           │   ├─ 📄 AuthController.java
-│   │   │   │           │   ├─ 📄 BookCategoryController.java
-│   │   │   │           │   ├─ 📄 BookController.java
-│   │   │   │           │   ├─ 📄 BookShelfController.java
 │   │   │   │           │   ├─ 📄 GlobalExceptionHandler.java
-│   │   │   │           │   ├─ 📄 ReaderController.java
-│   │   │   │           │   ├─ 📄 ReaderPermissionController.java
-│   │   │   │           │   └─ 📄 SelfIntroController.java
-│   │   │   │           ├─ 📁 dto                                  - 数据传输对象目录
-│   │   │   │           │   ├─ 📄 AdministratorDTO.java
-│   │   │   │           │   ├─ 📄 AdminPermissionDTO.java
-│   │   │   │           │   ├─ 📄 AdminResponseDTO.java
-│   │   │   │           │   ├─ 📄 AnnouncementDTO.java
-│   │   │   │           │   ├─ 📄 BookCategoryDTO.java
-│   │   │   │           │   ├─ 📄 BookDTO.java
-│   │   │   │           │   ├─ 📄 BookLoanDTO.java
-│   │   │   │           │   ├─ 📄 BookShelfDTO.java
-│   │   │   │           │   ├─ 📄 FineRuleDTO.java
-│   │   │   │           │   ├─ 📄 HelpArticleDTO.java
-│   │   │   │           │   ├─ 📄 InitialAdminRegisterRequest.java
-│   │   │   │           │   ├─ 📄 OverduePaymentDTO.java
-│   │   │   │           │   ├─ 📄 PaymentBillDTO.java
-│   │   │   │           │   ├─ 📄 ReaderDTO.java
-│   │   │   │           │   ├─ 📄 ReaderPermissionDTO.java
-│   │   │   │           │   ├─ 📄 SystemAdminLogDTO.java
-│   │   │   │           │   └─ 📄 SystemReaderLogDTO.java
-│   │   │   │           ├─ 📁 entity                               - 实体类层，存放与数据库表对应的实体
-│   │   │   │           │   ├─ 📄 Administrator.java
-│   │   │   │           │   ├─ 📄 AdminPermission.java
-│   │   │   │           │   ├─ 📄 Announcement.java
-│   │   │   │           │   ├─ 📄 Book.java
-│   │   │   │           │   ├─ 📄 BookCategory.java
-│   │   │   │           │   ├─ 📄 BookLoan.java
-│   │   │   │           │   ├─ 📄 BookShelf.java
-│   │   │   │           │   ├─ 📄 FineRule.java
-│   │   │   │           │   ├─ 📄 HelpArticle.java
-│   │   │   │           │   ├─ 📄 OverduePayment.java
-│   │   │   │           │   ├─ 📄 PaymentBill.java
-│   │   │   │           │   ├─ 📄 Reader.java
-│   │   │   │           │   ├─ 📄 ReaderPermission.java
-│   │   │   │           │   ├─ 📄 SystemAdminLog.java
-│   │   │   │           │   └─ 📄 SystemReaderLog.java
-│   │   │   │           ├─ 📁 repository                           - 数据访问层（DAO）
-│   │   │   │           │   ├─ 📄 AdministratorRepository.java
-│   │   │   │           │   ├─ 📄 AdminPermissionRepository.java
-│   │   │   │           │   ├─ 📄 AnnouncementRepository.java
-│   │   │   │           │   ├─ 📄 BookCategoryRepository.java
-│   │   │   │           │   ├─ 📄 BookLoanRepository.java
-│   │   │   │           │   ├─ 📄 BookRepository.java
-│   │   │   │           │   ├─ 📄 BookShelfRepository.java
-│   │   │   │           │   ├─ 📄 FineRuleRepository.java
-│   │   │   │           │   ├─ 📄 HelpArticleRepository.java
-│   │   │   │           │   ├─ 📄 OverduePaymentRepository.java
-│   │   │   │           │   ├─ 📄 PaymentBillRepository.java
-│   │   │   │           │   ├─ 📄 ReaderPermissionRepository.java
-│   │   │   │           │   ├─ 📄 ReaderRepository.java
-│   │   │   │           │   ├─ 📄 SystemAdminLogRepository.java
-│   │   │   │           │   └─ 📄 SystemReaderLogRepository.java
-│   │   │   │           ├─ 📁 service                              - 业务逻辑层
+│   │   │   │           │   ├─ 📄 LoginPageController.java
+│   │   │   │           │   ├─ 📄 UserController.java
+│   │   │   │           │   └─ 📄 UserRoleController.java
+│   │   │   │           ├─ 📁 dto                                         - 数据传输对象目录
+│   │   │   │           │   ├─ 📁 base
+│   │   │   │           │   │   ├─ 📄 BaseDTO.java
+│   │   │   │           │   │   └─ 📄 BaseIdDTO.java
+│   │   │   │           │   ├─ 📁 content
+│   │   │   │           │   │   ├─ 📄 BoardDTO.java
+│   │   │   │           │   │   ├─ 📄 CommentDTO.java
+│   │   │   │           │   │   ├─ 📄 FavoriteDTO.java
+│   │   │   │           │   │   ├─ 📄 HotScoreDTO.java
+│   │   │   │           │   │   ├─ 📄 PostAttachmentDTO.java
+│   │   │   │           │   │   ├─ 📄 PostDTO.java
+│   │   │   │           │   │   ├─ 📄 PostTagDTO.java
+│   │   │   │           │   │   ├─ 📄 PostVersionDTO.java
+│   │   │   │           │   │   ├─ 📄 ReactionDTO.java
+│   │   │   │           │   │   ├─ 📄 ReportDTO.java
+│   │   │   │           │   │   └─ 📄 TagDTO.java
+│   │   │   │           │   ├─ 📁 identity
+│   │   │   │           │   │   ├─ 📄 AuthSessionDTO.java
+│   │   │   │           │   │   ├─ 📄 EmailVerificationDTO.java
+│   │   │   │           │   │   ├─ 📄 PasswordResetTokenDTO.java
+│   │   │   │           │   │   ├─ 📄 PermissionDTO.java
+│   │   │   │           │   │   ├─ 📄 RolePermissionDTO.java
+│   │   │   │           │   │   ├─ 📄 TenantDTO.java
+│   │   │   │           │   │   ├─ 📄 TotpSecretDTO.java
+│   │   │   │           │   │   ├─ 📄 UserDTO.java
+│   │   │   │           │   │   └─ 📄 UserRoleDTO.java
+│   │   │   │           │   ├─ 📁 misc
+│   │   │   │           │   │   ├─ 📄 FileAssetDTO.java
+│   │   │   │           │   │   ├─ 📄 NotificationDTO.java
+│   │   │   │           │   │   └─ 📄 UserSettingDTO.java
+│   │   │   │           │   ├─ 📁 moderation
+│   │   │   │           │   │   ├─ 📄 ModerationActionDTO.java
+│   │   │   │           │   │   ├─ 📄 ModerationQueueDTO.java
+│   │   │   │           │   │   ├─ 📄 ModerationRuleDTO.java
+│   │   │   │           │   │   └─ 📄 RiskLabelingDTO.java
+│   │   │   │           │   ├─ 📁 qa
+│   │   │   │           │   │   ├─ 📄 AnswerCitationDTO.java
+│   │   │   │           │   │   ├─ 📄 QaMessageDTO.java
+│   │   │   │           │   │   ├─ 📄 QaSessionDTO.java
+│   │   │   │           │   │   └─ 📄 QaTurnDTO.java
+│   │   │   │           │   ├─ 📁 rag
+│   │   │   │           │   │   ├─ 📄 DocumentChunkDTO.java
+│   │   │   │           │   │   ├─ 📄 DocumentDTO.java
+│   │   │   │           │   │   ├─ 📄 GenerationJobDTO.java
+│   │   │   │           │   │   ├─ 📄 PromptDTO.java
+│   │   │   │           │   │   └─ 📄 VectorIndexDTO.java
+│   │   │   │           │   ├─ 📁 request
+│   │   │   │           │   │   ├─ 📄 ChangePasswordRequest.java
+│   │   │   │           │   │   ├─ 📄 CreateCommentRequest.java
+│   │   │   │           │   │   ├─ 📄 CreatePostRequest.java
+│   │   │   │           │   │   ├─ 📄 LoginRequest.java
+│   │   │   │           │   │   ├─ 📄 PageRequest.java
+│   │   │   │           │   │   ├─ 📄 QaQueryRequest.java
+│   │   │   │           │   │   └─ 📄 RegisterRequest.java
+│   │   │   │           │   ├─ 📁 response
+│   │   │   │           │   │   ├─ 📄 ApiResponse.java
+│   │   │   │           │   │   ├─ 📄 AuthResponse.java
+│   │   │   │           │   │   ├─ 📄 PageResponse.java
+│   │   │   │           │   │   ├─ 📄 QaQueryResponse.java
+│   │   │   │           │   │   └─ 📄 StatsResponse.java
+│   │   │   │           │   ├─ 📄 DTO_GENERATION_REPORT.md
+│   │   │   │           │   ├─ 📄 DTO_LAYER_SUMMARY.md
+│   │   │   │           │   ├─ 📄 DTO_QUICK_REFERENCE.md
+│   │   │   │           │   └─ 📄 README.md                               - 项目说明文档，介绍项目背景、使用方法及其他信息
+│   │   │   │           ├─ 📁 entity                                      - 实体类层，存放与数据库表对应的实体
+│   │   │   │           │   ├─ 📁 base
+│   │   │   │           │   │   ├─ 📄 BaseAuditEntity.java
+│   │   │   │           │   │   └─ 📄 BaseIdEntity.java
+│   │   │   │           │   ├─ 📁 content
+│   │   │   │           │   │   ├─ 📄 Board.java
+│   │   │   │           │   │   ├─ 📄 Comment.java
+│   │   │   │           │   │   ├─ 📄 Favorite.java
+│   │   │   │           │   │   ├─ 📄 HotScore.java
+│   │   │   │           │   │   ├─ 📄 Post.java
+│   │   │   │           │   │   ├─ 📄 PostAttachment.java
+│   │   │   │           │   │   ├─ 📄 PostTag.java
+│   │   │   │           │   │   ├─ 📄 PostTagId.java
+│   │   │   │           │   │   ├─ 📄 PostVersion.java
+│   │   │   │           │   │   ├─ 📄 Reaction.java
+│   │   │   │           │   │   ├─ 📄 Report.java
+│   │   │   │           │   │   └─ 📄 Tag.java
+│   │   │   │           │   ├─ 📁 enums
+│   │   │   │           │   │   └─ 📄 AccountStatus.java
+│   │   │   │           │   ├─ 📁 identity
+│   │   │   │           │   │   ├─ 📄 AuthSession.java
+│   │   │   │           │   │   ├─ 📄 EmailVerification.java
+│   │   │   │           │   │   ├─ 📄 PasswordResetToken.java
+│   │   │   │           │   │   ├─ 📄 Permission.java
+│   │   │   │           │   │   ├─ 📄 RolePermission.java
+│   │   │   │           │   │   ├─ 📄 RolePermissionId.java
+│   │   │   │           │   │   ├─ 📄 Tenant.java
+│   │   │   │           │   │   ├─ 📄 TotpSecret.java
+│   │   │   │           │   │   ├─ 📄 User.java
+│   │   │   │           │   │   └─ 📄 UserRole.java
+│   │   │   │           │   ├─ 📁 misc
+│   │   │   │           │   │   ├─ 📄 FileAsset.java
+│   │   │   │           │   │   ├─ 📄 Notification.java
+│   │   │   │           │   │   └─ 📄 UserSetting.java
+│   │   │   │           │   ├─ 📁 moderation
+│   │   │   │           │   │   ├─ 📄 ModerationAction.java
+│   │   │   │           │   │   ├─ 📄 ModerationQueue.java
+│   │   │   │           │   │   ├─ 📄 ModerationRule.java
+│   │   │   │           │   │   └─ 📄 RiskLabeling.java
+│   │   │   │           │   ├─ 📁 qa
+│   │   │   │           │   │   ├─ 📄 AnswerCitation.java
+│   │   │   │           │   │   ├─ 📄 QaMessage.java
+│   │   │   │           │   │   ├─ 📄 QaSession.java
+│   │   │   │           │   │   └─ 📄 QaTurn.java
+│   │   │   │           │   └─ 📁 rag
+│   │   │   │           │       ├─ 📄 Document.java
+│   │   │   │           │       ├─ 📄 DocumentChunk.java
+│   │   │   │           │       ├─ 📄 GenerationJob.java
+│   │   │   │           │       ├─ 📄 Prompt.java
+│   │   │   │           │       └─ 📄 VectorIndex.java
+│   │   │   │           ├─ 📁 repository                                  - 数据访问层（DAO）
+│   │   │   │           │   ├─ 📁 content
+│   │   │   │           │   │   ├─ 📄 BoardRepository.java
+│   │   │   │           │   │   ├─ 📄 CommentRepository.java
+│   │   │   │           │   │   ├─ 📄 FavoriteRepository.java
+│   │   │   │           │   │   ├─ 📄 HotScoreRepository.java
+│   │   │   │           │   │   ├─ 📄 PostAttachmentRepository.java
+│   │   │   │           │   │   ├─ 📄 PostRepository.java
+│   │   │   │           │   │   ├─ 📄 PostTagRepository.java
+│   │   │   │           │   │   ├─ 📄 PostVersionRepository.java
+│   │   │   │           │   │   ├─ 📄 ReactionRepository.java
+│   │   │   │           │   │   ├─ 📄 ReportRepository.java
+│   │   │   │           │   │   └─ 📄 TagRepository.java
+│   │   │   │           │   ├─ 📁 identity
+│   │   │   │           │   │   ├─ 📄 AuthSessionRepository.java
+│   │   │   │           │   │   ├─ 📄 EmailVerificationRepository.java
+│   │   │   │           │   │   ├─ 📄 PasswordResetTokenRepository.java
+│   │   │   │           │   │   ├─ 📄 PermissionRepository.java
+│   │   │   │           │   │   ├─ 📄 RolePermissionRepository.java
+│   │   │   │           │   │   ├─ 📄 TenantRepository.java
+│   │   │   │           │   │   ├─ 📄 TotpSecretRepository.java
+│   │   │   │           │   │   ├─ 📄 UserRepository.java
+│   │   │   │           │   │   └─ 📄 UserRoleRepository.java
+│   │   │   │           │   ├─ 📁 misc
+│   │   │   │           │   │   ├─ 📄 FileAssetRepository.java
+│   │   │   │           │   │   ├─ 📄 NotificationRepository.java
+│   │   │   │           │   │   └─ 📄 UserSettingRepository.java
+│   │   │   │           │   ├─ 📁 moderation
+│   │   │   │           │   │   ├─ 📄 ModerationActionRepository.java
+│   │   │   │           │   │   ├─ 📄 ModerationQueueRepository.java
+│   │   │   │           │   │   ├─ 📄 ModerationRuleRepository.java
+│   │   │   │           │   │   └─ 📄 RiskLabelingRepository.java
+│   │   │   │           │   ├─ 📁 qa
+│   │   │   │           │   │   ├─ 📄 AnswerCitationRepository.java
+│   │   │   │           │   │   ├─ 📄 QaMessageRepository.java
+│   │   │   │           │   │   ├─ 📄 QaSessionRepository.java
+│   │   │   │           │   │   └─ 📄 QaTurnRepository.java
+│   │   │   │           │   ├─ 📁 rag
+│   │   │   │           │   │   ├─ 📄 DocumentChunkRepository.java
+│   │   │   │           │   │   ├─ 📄 DocumentRepository.java
+│   │   │   │           │   │   ├─ 📄 GenerationJobRepository.java
+│   │   │   │           │   │   ├─ 📄 PromptRepository.java
+│   │   │   │           │   │   └─ 📄 VectorIndexRepository.java
+│   │   │   │           │   ├─ 📄 BaseRepository.java
+│   │   │   │           │   └─ 📄 REPOSITORY_LAYER_SUMMARY.md
+│   │   │   │           ├─ 📁 service                                     - 业务逻辑层
+│   │   │   │           │   ├─ 📁 impl
+│   │   │   │           │   │   └─ 📄 UserRoleServiceImpl.java
 │   │   │   │           │   ├─ 📄 AdministratorService.java
-│   │   │   │           │   ├─ 📄 AdminPermissionService.java
-│   │   │   │           │   ├─ 📄 BookCategoryService.java
-│   │   │   │           │   ├─ 📄 BookService.java
-│   │   │   │           │   ├─ 📄 BookShelfService.java
-│   │   │   │           │   ├─ 📄 ReaderPermissionService.java
-│   │   │   │           │   ├─ 📄 ReaderService.java
+│   │   │   │           │   ├─ 📄 UserRoleService.java
+│   │   │   │           │   ├─ 📄 UserService.java
 │   │   │   │           │   └─ 📄 ViteManifestService.java
-│   │   │   │           ├─ 📁 utils                                - 工具类目录
-│   │   │   │           │   ├─ 📄 MyFunctions.java
+│   │   │   │           ├─ 📁 utils                                       - 工具类目录
 │   │   │   │           │   └─ 📄 PasswordEncoderUtil.java
-│   │   │   │           └─ 📄 FinalAssignmentsApplication.java
+│   │   │   │           └─ 📄 EnterpriseRagCommunityApplication.java
 │   │   │   ├─ 📄 DirectoryTreeMarkdownGenerator.java
 │   │   │   └─ 📄 SimpleDirectoryTreeMarkdown.java
-│   │   ├─ 📁 resources                                            - 资源文件目录，存放配置文件、模板和静态资源
-│   │   │   ├─ 📁 db
-│   │   │   │   └─ 📁 migration                                    - Flyway 数据库迁移脚本
-│   │   │   │       ├─ 📄 V1__init_library_schema.sql
-│   │   │   │       ├─ 📄 V2__insert_super_admin.sql
-│   │   │   │       └─ 📄 V3__insert_test_data.sql
-│   │   │   ├─ 📁 static                                           - 静态资源目录,此文件夹目前由my-vite-app/src文件夹替代，非必要情况下请勿往此目录中添加静态资源文件
-│   │   │   │   └─ 📁 assets                                       - 存放静态资源
-│   │   │   ├─ 📁 templates                                        - 模板文件目录，此目录已弃用，前端文件已移至 my-vite-app/src 目录，非必要情况下请勿往此目录中添加模板文件
-│   │   │   │   ├─ 📄 login.ftl                                    - FreeMarker 模板
-│   │   │   │   └─ 📄 welcome.ftl
-│   │   │   └─ 📄 application.properties                           - Spring Boot 配置文件
-│   │   └─ 📁 webapp                                               - 传统 Java Web 应用目录，此目录存放 JSP/HTML 文件等，此目录已弃用，前端文件已移至 my-vite-app/src 目录
-│   │       └─ 📁 WEB-INF                                          - WEB-INF 目录
-│   │           ├─ 📁 jsp
-│   │           │   ├─ 📄 converted.jsp                            - JSP 视图
-│   │           │   └─ 📄 home.jsp
-│   │           └─ 📁 tlds
-│   │               └─ 📄 MyFunctions.tld                          - 标签库描述文件
-│   └─ 📁 test                                                     - 测试代码目录
-│       └─ 📁 java                                                 - Java 测试代码目录
+│   │   └─ 📁 resources                                                   - 资源文件目录，存放配置文件、模板和静态资源
+│   │       ├─ 📁 db
+│   │       │   └─ 📁 migration                                           - Flyway 数据库迁移脚本
+│   │       │       └─ 📄 V1__EnterpriseRagCommunity.sql
+│   │       └─ 📄 application.properties                                  - Spring Boot 配置文件
+│   └─ 📁 test                                                            - 测试代码目录
+│       └─ 📁 java                                                        - Java 测试代码目录
 │           └─ 📁 com
 │               └─ 📁 example
-│                   └─ 📁 FinalAssignments
-│                       └─ 📄 HelloSringBootApplicationTests.java
+│                   └─ 📁 EnterpriseRagCommunity
+│                       └─ 📄 EnterpriseRagCommunityApplicationTests.java
 ├─ 📄 .gitattributes
 ├─ 📄 .gitignore
-├─ 📄 build.gradle                                                 - Gradle 构建脚本
+├─ 📄 build.gradle                                                        - Gradle 构建脚本
 ├─ 📄 gradlew
-├─ 📄 gradlew.bat                                                  - 批处理脚本
-├─ 📄 HELP.md
-├─ 📄 hs_err_pid12336.log
-├─ 📄 index (1).html
-├─ 📄 index (2).html
+├─ 📄 gradlew.bat                                                         - 批处理脚本
+├─ 📄 LOGIN_REFACTOR_README.md
+├─ 📄 LOGIN_TEST_GUIDE.md
 ├─ 📄 package-lock.json
-├─ 📄 qodana.yaml
 ├─ 📄 README.md
-├─ 📄 replay_pid12336.log
 ├─ 📄 settings.gradle
-├─ 📄 temp.md
 ├─ 📄 tree.md
-├─ 📄 作业要求.md
-├─ 📄 提示词-期末作业-qmxm-tsc.md
-└─ 📄 提示词-课后作业.md
+└─ 📄 任务书+开题报告+功能清单.txt
+
 ```  

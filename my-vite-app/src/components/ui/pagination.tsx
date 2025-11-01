@@ -1,7 +1,28 @@
 import * as React from "react"
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react"
-import { cn } from "../lib/utils"
-import { ButtonProps, buttonVariants } from "./button"
+import { cn } from "../../lib/utils"
+
+// Minimal button variants and props to avoid dependency on './button'
+export type ButtonSize = "default" | "sm" | "lg" | "icon"
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  size?: ButtonSize
+  variant?: "default" | "outline" | "ghost"
+}
+export function buttonVariants({ size = "default", variant = "default" }: { size?: ButtonSize; variant?: "default" | "outline" | "ghost" }) {
+  const base = "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+  const sizes: Record<ButtonSize, string> = {
+    default: "h-9 px-4 py-2",
+    sm: "h-8 rounded-md px-3",
+    lg: "h-10 rounded-md px-8",
+    icon: "h-9 w-9",
+  }
+  const variants: Record<string, string> = {
+    default: "bg-primary text-primary-foreground hover:bg-primary/90",
+    outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+    ghost: "hover:bg-accent hover:text-accent-foreground",
+  }
+  return cn(base, sizes[size], variants[variant])
+}
 
 const Pagination = React.forwardRef<
   HTMLDivElement,
@@ -33,8 +54,8 @@ PaginationItem.displayName = "PaginationItem"
 
 type PaginationLinkProps = {
   isActive?: boolean
-} & Pick<ButtonProps, "size"> &
-  React.ComponentProps<"a">
+  size?: ButtonSize
+} & React.AnchorHTMLAttributes<HTMLAnchorElement>
 
 const PaginationLink = ({
   className,

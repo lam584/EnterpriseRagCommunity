@@ -157,7 +157,7 @@ const DeleteNews: React.FC = () => {
               <div>
                 <Label htmlFor="searchField">搜索字段</Label>
                 <Select value={criteria.searchField}
-                        onValueChange={v=>handleChange({target:{name:'searchField',value:v}} as never)}>
+                        onValueChange={(v: string)=>handleChange({target:{name:'searchField',value:v}} as never)}>
                   <SelectTrigger><SelectValue/></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="title">标题</SelectItem>
