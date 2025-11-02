@@ -106,7 +106,7 @@ const Login: React.FC = () => {
                 <div className="bg-white p-8 rounded-lg shadow-lg w-96">
                     <div className="flex items-center mb-6">
                         <i className="fas fa-book fa-2x mr-2"></i>
-                        <h1 className="text-2xl font-bold">新闻发布系统</h1>
+                        <h1 className="text-2xl font-bold">企业知识检索增强社区系统</h1>
                     </div>
 
                     {error && (

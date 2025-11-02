@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import AddUser from './AddUser.tsx';
-import EditUser from '././EditUser.tsx';
-import DeleteUser from './DeleteUser.tsx';
-import SearchUser from './SearchUser.tsx';
+// import AddUser from './AddUser.tsx';
+// import EditUser from '././EditUser.tsx';
+// import DeleteUser from './DeleteUser.tsx';
+// import SearchUser from './SearchUser.tsx';
 
 const navItems = [
     '添加新用户',
@@ -40,12 +40,12 @@ const UserManagement: React.FC = () => {
             </div>
 
             {/* 根据活动标签显示不同的组件 */}
-            <div className="mt-6">
-                {activeTab === 0 && <AddUser />}
-                {activeTab === 1 && <EditUser />}
-                {activeTab === 2 && <DeleteUser />}
-                {activeTab === 3 && <SearchUser />}
-            </div>
+            {/*<div className="mt-6">*/}
+            {/*    {activeTab === 0 && <AddUser />}*/}
+            {/*    {activeTab === 1 && <EditUser />}*/}
+            {/*    {activeTab === 2 && <DeleteUser />}*/}
+            {/*    {activeTab === 3 && <SearchUser />}*/}
+            {/*</div>*/}
         </main>
     );
 };

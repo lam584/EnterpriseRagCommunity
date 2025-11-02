@@ -70,10 +70,61 @@ tasks.named('bootWar') {
 // —— 前端构建（Vite） & 资源拷贝 ——
 
 // 1. 前端构建
+// 将 Vite 的 stdout/stderr 捕获并在失败时完整输出，避免只看到非零退出码而没有详细错误
+// 同时在 Windows 上优先使用固定路径的 E:\\NodeJS\\npm.cmd，若不存在则回退到系统 PATH 中的 npm(.cmd)
+import java.nio.charset.Charset
+
 tasks.register('buildVite', Exec) {
     workingDir 'my-vite-app'
-    // 如果在 Windows 并且你的 npm 安装在 E:\NodeJS\npm.cmd 下，则这样写
-    commandLine 'E:\\NodeJS\\npm.cmd', 'run', 'build'
+
+    // 捕获标准输出/错误
+    def stdoutBuffer = new ByteArrayOutputStream()
+    def stderrBuffer = new ByteArrayOutputStream()
+    standardOutput = stdoutBuffer
+    errorOutput = stderrBuffer
+    // 让任务本身不要立刻失败，我们在 doLast 中抛出并打印完整日志
+    ignoreExitValue = true
+
+    // 选择 npm 命令（通过 shell 启动，确保即使命令不存在也能拿到 9009/127 等错误码与 stderr）
+    def isWin = org.gradle.internal.os.OperatingSystem.current().isWindows()
+    def fixedNpm = isWin ? file('E:/NodeJS/npm.cmd') : null
+    if (isWin && fixedNpm != null && fixedNpm.exists()) {
+        commandLine 'cmd', '/c', fixedNpm.absolutePath, 'run', 'build'
+    } else if (isWin) {
+        commandLine 'cmd', '/c', 'npm.cmd', 'run', 'build'
+    } else {
+        // 使用 bash -lc 保持与交互终端一致的 PATH/别名解析
+        commandLine 'bash', '-lc', 'npm run build'
+    }
+
+    doLast {
+        // 用平台默认编码解码，避免 Windows 控制台出现乱码
+        def cs = Charset.defaultCharset().name()
+        def outTxt = stdoutBuffer.toString(cs)
+        def errTxt = stderrBuffer.toString(cs)
+
+        // Exec 任务在 Gradle 8+ 暴露 executionResult(Provider<ExecResult>)
+        def exitCode = executionResult.present ? executionResult.get().exitValue : 0
+
+        if (exitCode != 0) {
+            if (outTxt) {
+                logger.error('\n----- Vite stdout -----\n' + outTxt)
+            }
+            if (errTxt) {
+                logger.error('\n----- Vite stderr -----\n' + errTxt)
+            }
+            // 使用 ASCII 文本避免乱码
+            throw new GradleException("Vite build failed (exit ${exitCode}). See logs above.")
+        } else {
+            // 成功也打印，便于排查
+            if (outTxt) {
+                logger.lifecycle('\n----- Vite stdout -----\n' + outTxt)
+            }
+            if (errTxt) {
+                logger.lifecycle('\n----- Vite stderr -----\n' + errTxt)
+            }
+        }
+    }
 }
 
 // 2. 处理资源，把 my-vite-app/dist 下的文件复制到 Spring Boot 的 static 目录
@@ -81,8 +132,10 @@ processResources {
     dependsOn buildVite
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
-    // 清空旧资源
-    delete fileTree("${buildDir}/resources/main/static")
+    // 清空旧资源（避免使用已弃用的 buildDir，改用 layout.buildDirectory）
+    doFirst {
+        delete(layout.buildDirectory.dir("resources/main/static").get().asFile)
+    }
 
     from('my-vite-app/dist') {
         into 'static'

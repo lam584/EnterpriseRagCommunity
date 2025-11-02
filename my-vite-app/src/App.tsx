@@ -6,10 +6,13 @@ import Login from './components/login/Login';
 import AdminSetup from './components/login/AdminSetup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { checkInitialSetupStatus } from './services/authService';
-// 导入新闻页面组件
+import CommunityPortalLayout from './pages/portal/CommunityPortalLayout';
+import AdminDashboardLayout from './pages/admin/AdminDashboardLayout';
 import { NewsHomePage } from './pages/news/NewsHomePage';
 import { NewsDetailPage } from './pages/news/NewsDetailPage';
 import Register from './components/login/Register';
+import { DiscoverPage, PostsPage, InteractPage, AssistantPage, AccountPage } from './pages/portal/sections';
+import { ContentMgmtPage, ReviewCenterPage, SemanticBoostPage, RetrievalRagPage, MetricsMonitorPage, UsersRBACPage } from './pages/admin/sections';
 
 // 受保护的路由组件
 const ProtectedRoute = () => {
@@ -59,7 +62,7 @@ function AppRoutes() {
             <Route path="/" element={
                 setupRequired
                 ? <Navigate to="/admin-setup" replace />
-                : (isAuthenticated ? <Navigate to="/library" replace /> : <Navigate to="/login" replace />)
+                : <Navigate to="/portal/discover" replace />
             } />
 
             {/* 初始管理员设置页面 */}
@@ -71,13 +74,34 @@ function AppRoutes() {
             <Route path="/login" element={
                 setupRequired
                 ? <Navigate to="/admin-setup" replace />
-                : (isAuthenticated ? <Navigate to="/library" replace /> : <Login />)
+                : (isAuthenticated ? <Navigate to="/portal/discover" replace /> : <Login />)
             } />
+
+            {/* 前台门户（普通用户/访客） - 公开访问 */}
+            <Route path="/portal" element={<CommunityPortalLayout />}>
+                <Route path="discover" element={<DiscoverPage />} />
+                <Route path="posts" element={<PostsPage />} />
+                <Route path="interact" element={<InteractPage />} />
+                <Route path="assistant" element={<AssistantPage />} />
+                <Route path="account" element={<AccountPage />} />
+                <Route index element={<Navigate to="discover" replace />} />
+            </Route>
 
             {/* 受保护的路由组 */}
             <Route element={<ProtectedRoute />}>
+                {/* 后台管理（审核员/管理员） */}
+                <Route path="/admin" element={<AdminDashboardLayout />}>
+                    <Route path="content" element={<ContentMgmtPage />} />
+                    <Route path="review" element={<ReviewCenterPage />} />
+                    <Route path="semantic" element={<SemanticBoostPage />} />
+                    <Route path="retrieval" element={<RetrievalRagPage />} />
+                    <Route path="metrics" element={<MetricsMonitorPage />} />
+                    <Route path="users" element={<UsersRBACPage />} />
+                    <Route index element={<Navigate to="content" replace />} />
+                </Route>
+
+                {/* 旧的新闻系统布局保留（如需） */}
                 <Route path="/library" element={<LibraryLayout />} />
-                {/* 这里可以添加其他需要保护的路由 */}
             </Route>
 
             {/* 新闻相关页面 - 公开访问 */}
@@ -86,6 +110,9 @@ function AppRoutes() {
             <Route path="/news/topic/:topicId" element={<NewsHomePage />} />
 
             <Route path="/register" element={<Register />} />
+
+            {/* 兜底路由 */}
+            <Route path="*" element={<Navigate to="/portal/discover" replace />} />
         </Routes>
     );
 }
