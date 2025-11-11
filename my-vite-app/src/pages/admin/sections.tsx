@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import FormContainer from './forms/FormContainer';
+import { formsRegistry } from './forms/index';
 
 // 复用 NewsSystemLayout 的侧边菜单风格，做成二级菜单组件
 type SubItem = { id: string; label: string };
@@ -216,127 +218,107 @@ type SectionCardProps = { form?: React.ReactNode; className?: string } & React.P
 const SectionCard: React.FC<SectionCardProps> = ({ children, form, className = '' }) => (
   <div className={`w-full h-full min-h-0 flex flex-col bg-[rgb(221,221,221)] ${className}`}>
     <div className="rounded-lg shadow p-8 w-full flex-none bg-[rgb(221,221,221)]">
-      {/* 标题已移入 SubMenu 内部 */}
       <div className="text-gray-700">{children}</div>
     </div>
-    <div className="bg-[rgb(221,221,221)] rounded-lg  p-4 w-full flex-1 min-h-0 overflow-auto">
+    <FormContainer>
       {form}
-    </div>
+    </FormContainer>
   </div>
 );
 
-export const ContentMgmtPage: React.FC = () => {
-  const [active, setActive] = useState<string | undefined>();
+// 新增：可复用的 AdminSection，收敛重复的 active + form + SubMenu 逻辑
+type AdminSectionProps = { title: string; items: SubItem[]; defaultActiveId?: string; className?: string };
+
+const AdminSection: React.FC<AdminSectionProps> = ({ title, items, defaultActiveId, className }) => {
+  const [active, setActive] = useState<string | undefined>(defaultActiveId);
+  const ActiveForm = active ? formsRegistry[active] : undefined;
   return (
     <SectionCard
+      className={className}
       form={
         <div className="space-y-3">
-          <div className="text-sm text-gray-600">当前选中：{active ?? '—'}</div>
-          {/* 这里放每个二级菜单对应的表单占位符 */}
-          {active === 'board' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input className="rounded border px-3 py-2" placeholder="新建版块名称" />
-              <button className="rounded bg-blue-600 text-white px-4 py-2">保存</button>
-            </div>
-          )}
-          {active === 'post' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input className="rounded border px-3 py-2" placeholder="帖子关键词" />
-              <button className="rounded bg-blue-600 text-white px-4 py-2">筛选</button>
-            </div>
-          )}
+          {/*<div className="text-sm text-gray-600">当前选中：{active ?? '—'}</div>*/}
+          {ActiveForm ? <ActiveForm /> : null}
         </div>
       }
     >
-      {/* 二级菜单（内容管理） */}
-      <SubMenu
-        title="内容管理"
-        items={[
-          { id: 'board', label: '版块管理' },
-          { id: 'post', label: '帖子管理' },
-          { id: 'comment', label: '评论管理' },
-          { id: 'tags', label: '标签体系管理' },
-        ]}
-        onChange={setActive}
-      />
+      {/* 二级菜单 */}
+      <SubMenu title={title} items={items} onChange={setActive} defaultActiveId={defaultActiveId} />
     </SectionCard>
   );
 };
 
+export const ContentMgmtPage: React.FC = () => (
+  <AdminSection
+    title="内容管理"
+    items={[
+      { id: 'board', label: '版块管理' },
+      { id: 'post', label: '帖子管理' },
+      { id: 'comment', label: '评论管理' },
+      { id: 'tags', label: '标签体系管理' },
+    ]}
+  />
+);
+
 export const ReviewCenterPage: React.FC = () => (
-  <SectionCard>
-    {/* 二级菜单（审核中心） */}
-    <SubMenu
-      title="审核中心"
-      items={[
-        { id: 'queue', label: '审核队列面板' },
-        { id: 'rules', label: '规则过滤层' },
-        { id: 'embed', label: '嵌入相似检测' },
-        { id: 'llm', label: 'LLM 审核层' },
-        { id: 'fallback', label: '置信回退机制' },
-        { id: 'logs', label: '审核日志与追溯' },
-        { id: 'risk-tags', label: '风险标签生成' },
-      ]}
-    />
-  </SectionCard>
+  <AdminSection
+    title="审核中心"
+    items={[
+      { id: 'queue', label: '审核队列面板' },
+      { id: 'rules', label: '规则过滤层' },
+      { id: 'embed', label: '嵌入相似检测' },
+      { id: 'llm', label: 'LLM 审核层' },
+      { id: 'fallback', label: '置信回退机制' },
+      { id: 'logs', label: '审核日志与追溯' },
+      { id: 'risk-tags', label: '风险标签生成' },
+    ]}
+  />
 );
 
 export const SemanticBoostPage: React.FC = () => (
-  <SectionCard>
-    {/* 二级菜单（语义增强） */}
-    <SubMenu
-      title="语义增强"
-      items={[
-        { id: 'title-gen', label: '标题生成' },
-        { id: 'multi-label', label: '多任务标签生成' },
-        { id: 'summary', label: '帖子摘要' },
-        { id: 'translate', label: '翻译' },
-      ]}
-    />
-  </SectionCard>
+  <AdminSection
+    title="语义增强"
+    items={[
+      { id: 'title-gen', label: '标题生成' },
+      { id: 'multi-label', label: '多任务标签生成' },
+      { id: 'summary', label: '帖子摘要' },
+      { id: 'translate', label: '翻译' },
+    ]}
+  />
 );
 
 export const RetrievalRagPage: React.FC = () => (
-  <SectionCard>
-    {/* 二级菜单（检索与 RAG） */}
-    <SubMenu
-      title="检索与 RAG"
-      items={[
-        { id: 'index', label: '向量索引构建' },
-        { id: 'hybrid', label: 'Hybrid 检索配置' },
-        { id: 'context', label: '动态上下文裁剪' },
-        { id: 'citation', label: '引用与来源展示配置' },
-      ]}
-    />
-  </SectionCard>
+  <AdminSection
+    title="检索与 RAG"
+    items={[
+      { id: 'index', label: '向量索引构建' },
+      { id: 'hybrid', label: 'Hybrid 检索配置' },
+      { id: 'context', label: '动态上下文裁剪' },
+      { id: 'citation', label: '引用与来源展示配置' },
+    ]}
+  />
 );
 
 export const MetricsMonitorPage: React.FC = () => (
-  <SectionCard>
-    {/* 二级菜单（评估与监控） */}
-    <SubMenu
-      title="评估与监控"
-      items={[
-        { id: 'metrics', label: '指标采集层' },
-        { id: 'abtest', label: '实验对比脚本' },
-        { id: 'token', label: 'Token 成本统计' },
-        { id: 'label-quality', label: '标签质量评估工具' },
-        { id: 'cost', label: '审核成本分析' },
-      ]}
-    />
-  </SectionCard>
+  <AdminSection
+    title="评估与监控"
+    items={[
+      { id: 'metrics', label: '指标采集层' },
+      { id: 'abtest', label: '实验对比脚本' },
+      { id: 'token', label: 'Token 成本统计' },
+      { id: 'label-quality', label: '标签质量评估工具' },
+      { id: 'cost', label: '审核成本分析' },
+    ]}
+  />
 );
 
 export const UsersRBACPage: React.FC = () => (
-  <SectionCard>
-    {/* 二级菜单（用户与权限） */}
-    <SubMenu
-      title="用户与权限"
-      items={[
-        { id: 'user-role', label: '用户与角色管理' },
-        { id: 'matrix', label: '权限矩阵' },
-        { id: '2fa', label: '高权限操作 2FA 策略' },
-      ]}
-    />
-  </SectionCard>
+  <AdminSection
+    title="用户与权限"
+    items={[
+      { id: 'user-role', label: '用户与角色管理' },
+      { id: 'matrix', label: '权限矩阵' },
+      { id: '2fa', label: '高权限操作 2FA 策略' },
+    ]}
+  />
 );

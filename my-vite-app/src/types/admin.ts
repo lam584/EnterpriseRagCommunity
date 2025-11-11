@@ -1,7 +1,7 @@
 // my-vite-app/src/types/admin.ts
 
 /**
- * 管理员 DTO 定义
+ * 管理员 dto 定义
  */
 export interface AdminDTO {
     id: number;

@@ -5,18 +5,18 @@ const API_BASE = '/api/readers';
 
 export interface ReaderDTO {
   id?: number;
-  account: string;
+  account: string; // 对齐：SQL users.account → DTO.account
   password?: string;
-  phone: string;
-  email: string;
-  sex?: string;
+  phone: string; // 对齐：SQL users.phone → DTO.phone
+  email: string; // 对齐：SQL users.email → DTO.email
+  sex?: string; // 对齐：SQL users.sex → DTO.sex
   permission?: {
     id: number;
     roles?: string;
   };
-  isActive?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  isActive?: boolean; // 对齐：SQL users.is_active → DTO.isActive
+  createdAt?: string; // 对齐：SQL users.created_at → DTO.createdAt
+  updatedAt?: string; // 对齐：SQL users.updated_at → DTO.updatedAt
 }
 
 // 获取所有 ReaderDTO 列表（避免实体懒加载代理序列化问题）
@@ -125,7 +125,7 @@ export async function deleteReader(id: number): Promise<void> {
   }
 }
 
-// 搜索读者（使用 DTO 接口）
+// 搜索读者（使用 dto 接口）
 export interface ReaderSearchCriteria {
   id?: number;
   account?: string;

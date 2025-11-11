@@ -1,0 +1,8 @@
+package com.example.EnterpriseRagCommunity.entity.monitor.enums;
+
+public enum FileAssetStatus {
+    READY,
+    UPLOADING,
+    DELETED
+}
+

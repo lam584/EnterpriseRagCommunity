@@ -53,6 +53,7 @@ dependencies {
     compileOnly 'org.projectlombok:lombok:1.18.42'
     annotationProcessor 'org.projectlombok:lombok:1.18.42'
     testImplementation 'org.springframework.boot:spring-boot-starter-test:3.5.7'
+    compileOnly 'io.swagger:swagger-annotations:1.6.14'
 }
 
 tasks.named('test') {
@@ -72,7 +73,6 @@ tasks.named('bootWar') {
 // 1. 前端构建
 // 将 Vite 的 stdout/stderr 捕获并在失败时完整输出，避免只看到非零退出码而没有详细错误
 // 同时在 Windows 上优先使用固定路径的 E:\\NodeJS\\npm.cmd，若不存在则回退到系统 PATH 中的 npm(.cmd)
-import java.nio.charset.Charset
 
 tasks.register('buildVite', Exec) {
     workingDir 'my-vite-app'
@@ -99,7 +99,7 @@ tasks.register('buildVite', Exec) {
 
     doLast {
         // 用平台默认编码解码，避免 Windows 控制台出现乱码
-        def cs = Charset.defaultCharset().name()
+        def cs = java.nio.charset.Charset.defaultCharset().name()
         def outTxt = stdoutBuffer.toString(cs)
         def errTxt = stderrBuffer.toString(cs)
 

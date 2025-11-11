@@ -8,8 +8,6 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { checkInitialSetupStatus } from './services/authService';
 import CommunityPortalLayout from './pages/portal/CommunityPortalLayout';
 import AdminDashboardLayout from './pages/admin/AdminDashboardLayout';
-import { NewsHomePage } from './pages/news/NewsHomePage';
-import { NewsDetailPage } from './pages/news/NewsDetailPage';
 import Register from './components/login/Register';
 import { DiscoverPage, PostsPage, InteractPage, AssistantPage, AccountPage } from './pages/portal/sections';
 import { ContentMgmtPage, ReviewCenterPage, SemanticBoostPage, RetrievalRagPage, MetricsMonitorPage, UsersRBACPage } from './pages/admin/sections';
@@ -105,9 +103,6 @@ function AppRoutes() {
             </Route>
 
             {/* 新闻相关页面 - 公开访问 */}
-            <Route path="/news" element={<NewsHomePage />} />
-            <Route path="/news/:newsId" element={<NewsDetailPage />} />
-            <Route path="/news/topic/:topicId" element={<NewsHomePage />} />
 
             <Route path="/register" element={<Register />} />
 

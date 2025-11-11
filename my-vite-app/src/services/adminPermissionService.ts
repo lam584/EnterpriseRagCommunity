@@ -55,7 +55,7 @@ export const fetchAdminPermissions = async (): Promise<AdminPermissionDTO[]> => 
         throw new Error(`获取权限列表失败，HTTP 状态码：${res.status}`);
     }
 
-    // 3. 解析原始数据并映射到前端 DTO
+    // 3. 解析原始数据并映射到前端 dto
     const data = (await res.json()) as RawAdminPermission[];
     return data.map(item => ({
         id: item.id,

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
 
 /**
- * 管理员权限 DTO
+ * 管理员权限 dto
  */
 interface AdminPermissionDTO {
     id: number;

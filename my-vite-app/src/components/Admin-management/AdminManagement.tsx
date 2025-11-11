@@ -1,6 +1,5 @@
 // filepath: i:\待办事项\短学期\EnterpriseRagCommunity\my-vite-app\src\components\Admin-management\AdminManagement.tsx
 import React, { useState } from 'react';
-import AddAdmin from './AddAdmin';
 // import EditAdmin from './EditAdmin';
 // import DeleteAdmin from './DeleteAdmin';
 import EditorPermissions from './AdminPermissions';
@@ -41,7 +40,6 @@ const AdminManagement: React.FC = () => {
 
             {/* 根据活动标签显示不同的组件 */}
             <div className="mt-6">
-                {activeTab === 0 && <AddAdmin />}
                 {/*{activeTab === 1 && <EditAdmin />}*/}
                 {/*{activeTab === 2 && <DeleteAdmin />}*/}
                 {activeTab === 3 && <EditorPermissions />}

@@ -3,9 +3,9 @@ import { getCsrfToken } from '../utils/csrfUtils';
 
 export interface AdminDTO {
   id: number;
-  username: string;
-  name: string;
-  role: string;
+  email: string; // 对齐：SQL users.email → DTO.email
+  username: string; // 对齐：SQL users.username → DTO.username
+  isDeleted: boolean; // 对齐：SQL users.is_deleted → DTO.isDeleted
 }
 
 export interface InitialSetupStatusResponse {
@@ -19,7 +19,7 @@ export interface InitialAdminRegisterRequest {
   code?: string;
 }
 
-export async function login(username: string, password: string, csrfToken: string): Promise<AdminDTO> {
+export async function login(email: string, password: string, csrfToken: string): Promise<AdminDTO> { // 对齐：SQL users.email → DTO.email
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: {
@@ -27,7 +27,7 @@ export async function login(username: string, password: string, csrfToken: strin
       'X-CSRF-TOKEN': csrfToken // 添加 CSRF 令牌到请求头
     },
     credentials: 'include', // 确保包含凭证
-    body: JSON.stringify({ email: username, password })
+    body: JSON.stringify({ email, password })
   });
 
   if (!res.ok) {

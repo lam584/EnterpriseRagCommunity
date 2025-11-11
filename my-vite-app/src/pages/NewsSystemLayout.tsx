@@ -12,14 +12,8 @@ import {
 } from 'react-icons/fa';
 
 // 导入所有管理组件
-import NewManagement from '../components/new-management/NewManagement';
 import UserManagement from '../components/user-management/UserManagement';
-import CommentManagement from '../components/comment-management/CommentManagement';
 import EditorManagement from '../components/Admin-management/AdminManagement.tsx';
-import StatsManagement from '../components/stats-management/stats-management';
-import SystemManagement from '../components/system-management/system-management';
-import AccountManagement from '../components/account-management/account-management';
-import HelpCenter from '../components/help-center/HelpCenter';
 
 // 主导航项
 const sidebarCategories = [
@@ -158,14 +152,8 @@ const NewsSystemLayout: React.FC = () => {
 
             {/* Main Content */}
             <div className="flex-1 overflow-auto">
-                {activeCategory === 'new' && <NewManagement />}
                 {activeCategory === 'user' && <UserManagement />}
                 {activeCategory === 'editor' && <EditorManagement />}
-                {activeCategory === 'comment' && <CommentManagement />}
-                {activeCategory === 'stats' && <StatsManagement />}
-                {activeCategory === 'system' && <SystemManagement />}
-                {activeCategory === 'account' && <AccountManagement />}
-                {activeCategory === 'help' && <HelpCenter />}
             </div>
         </div>
     );

@@ -1,21 +1,21 @@
-// // src/components/user-management/SearchUser.tsx
-//
+// src/components/user-management/SearchUser.tsx
+
 // import React, {useEffect, useState} from 'react';
 // import DatePicker from 'react-datepicker';
 // import 'react-datepicker/dist/react-datepicker.css';
-//
-// import {ReaderDTO, searchReaders} from '../../services/UserService_3';
-// import {fetchReaderPermissions, ReaderPermissionDTO} from '../../services/UserRoleService_3';
+
+// import {ReaderDTO, searchReaders} from '../../services/UserService'; // 对齐：UserService.ts
+// import {fetchReaderPermissions, ReaderPermissionDTO} from '../../services/UserRoleService';
 //
 // const SearchUser: React.FC = () => {
 //     // 表单字段状态
 //     const [formData, setFormData] = useState({
 //         id: '',
-//         username: '',
-//         phone: '',
-//         email: '',
+//         account: '', // 对齐：SQL users.account → DTO.account
+//         phone: '', // 对齐：SQL users.phone → DTO.phone
+//         email: '', // 对齐：SQL users.email → DTO.email
 //         role: '',        // 空表示“全部”
-//         gender: '请选择',
+//         sex: '请选择', // 对齐：SQL users.sex → DTO.sex
 //         startDate: null as Date | null,
 //         endDate: null as Date | null,
 //     });
@@ -23,9 +23,9 @@
 //     // 精确搜索开关
 //     const [exactSearch, setExactSearch] = useState({
 //         id: false,
-//         username: false,
-//         phone: false,
-//         email: false,
+//         account: false, // 对齐：SQL users.account → DTO.account
+//         phone: false, // 对齐：SQL users.phone → DTO.phone
+//         email: false, // 对齐：SQL users.email → DTO.email
 //     });
 //
 //     // 角色列表
@@ -53,6 +53,7 @@
 //         e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
 //     ) => {
 //         const { id, value } = e.target;
+//         // 对齐：SQL users.account/phone/email/sex → DTO.account/phone/email/sex
 //         setFormData(prev => ({...prev, [id]: value}));
 //     };
 //
@@ -68,6 +69,7 @@
 //     const handleExactSearchChange = (field: keyof typeof exactSearch) => (
 //         e: React.ChangeEvent<HTMLInputElement>
 //     ) => {
+//         // 对齐：SQL users.account/phone/email → DTO.account/phone/email
 //         setExactSearch(prev => ({...prev, [field]: e.target.checked}));
 //     };
 //
@@ -76,11 +78,11 @@
 //         e.preventDefault();
 //
 //         const idParam = formData.id ? parseInt(formData.id, 10) : undefined;
-//         const accountParam = formData.username || undefined;
-//         const phoneParam = formData.phone || undefined;
-//         const emailParam = formData.email || undefined;
-//         const genderParam =
-//             formData.gender !== '请选择' ? formData.gender : undefined;
+//         const accountParam = formData.account || undefined; // 对齐：SQL users.account → DTO.account
+//         const phoneParam = formData.phone || undefined; // 对齐：SQL users.phone → DTO.phone
+//         const emailParam = formData.email || undefined; // 对齐：SQL users.email → DTO.email
+//         const sexParam =
+//             formData.sex !== '请选择' ? formData.sex : undefined; // 对齐：SQL users.sex → DTO.sex
 //         const roleParam = formData.role || undefined;
 //         const startDateParam = formData.startDate
 //             ? formData.startDate.toISOString().split('T')[0]
@@ -95,7 +97,7 @@
 //                 account: accountParam,
 //                 phone: phoneParam,
 //                 email: emailParam,
-//                 sex: genderParam,
+//                 sex: sexParam, // 对齐：SQL users.sex → DTO.sex
 //                 role: roleParam,
 //                 startDate: startDateParam,
 //                 endDate: endDateParam,
@@ -141,27 +143,27 @@
 //                     </div>
 //                 </div>
 //
-//                 {/* 用户名 */}
+//                 {/* 账号 */} // 对齐：SQL users.account → DTO.account
 //                 <div>
-//                     <label htmlFor="username" className="block text-sm font-medium mb-1">
-//                         用户名
+//                     <label htmlFor="account" className="block text-sm font-medium mb-1">
+//                         账号
 //                     </label>
 //                     <input
 //                         type="text"
-//                         id="username"
-//                         value={formData.username}
+//                         id="account"
+//                         value={formData.account}
 //                         onChange={handleInputChange}
 //                         className="w-full border border-gray-300 rounded-md p-2"
 //                     />
 //                     <div className="mt-2">
 //                         <input
 //                             type="checkbox"
-//                             id="exactSearchUsername"
-//                             checked={exactSearch.username}
-//                             onChange={handleExactSearchChange('username')}
+//                             id="exactSearchAccount"
+//                             checked={exactSearch.account}
+//                             onChange={handleExactSearchChange('account')}
 //                             className="mr-2"
 //                         />
-//                         <label htmlFor="exactSearchUsername" className="text-sm">
+//                         <label htmlFor="exactSearchAccount" className="text-sm">
 //                             精确搜索
 //                         </label>
 //                     </div>
@@ -239,14 +241,14 @@
 //                     </select>
 //                 </div>
 //
-//                 {/* 性别 */}
+//                 {/* 性别 */} // 对齐：SQL users.sex → DTO.sex
 //                 <div>
-//                     <label htmlFor="gender" className="block text-sm font-medium mb-1">
+//                     <label htmlFor="sex" className="block text-sm font-medium mb-1">
 //                         性别
 //                     </label>
 //                     <select
-//                         id="gender"
-//                         value={formData.gender}
+//                         id="sex"
+//                         value={formData.sex}
 //                         onChange={handleInputChange}
 //                         className="w-full border border-gray-300 rounded-md p-2"
 //                     >
@@ -308,7 +310,7 @@
 //                         <thead>
 //                         <tr className="bg-gray-100">
 //                             <th className="border p-2">ID</th>
-//                             <th className="border p-2">用户名</th>
+//                             <th className="border p-2">账号</th> // 对齐：SQL users.account → DTO.account
 //                             <th className="border p-2">手机号</th>
 //                             <th className="border p-2">邮箱</th>
 //                             <th className="border p-2">注册日期</th>
