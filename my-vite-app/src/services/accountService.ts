@@ -39,7 +39,7 @@ export async function updateAccountInfo(body: UpdateAccountRequest): Promise<voi
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-TOKEN': csrfToken,
+      'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
     body: JSON.stringify(body),
@@ -56,7 +56,7 @@ export async function changePassword(body: ChangePasswordRequest): Promise<void>
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-TOKEN': csrfToken,
+      'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
     body: JSON.stringify(body),

@@ -1,20 +1,22 @@
 // src/services/tagService.ts
 
+import { getCsrfToken } from '../utils/csrfUtils';
+
 export type TagType = 'TOPIC' | 'LANGUAGE' | 'RISK' | 'SYSTEM';
 
 export interface TagCreateDTO {
   tenantId?: number; // nullable per DB
   type: TagType;
   name: string;
-  slug: string; // unique with tenantId+type
+  slug: string; // unique with tenantId+type+slug
   description?: string;
-  system?: boolean; // default false
-  active?: boolean; // default true
+  system?: boolean; // 前端字段：映射到后端 isSystem
+  active?: boolean; // 前端字段：映射到后端 isActive
 }
 
 export interface TagDTO extends TagCreateDTO {
+    usageCount: number;
   id: number;
-  usageCount?: number;
   createdAt: string;
 }
 
@@ -22,13 +24,60 @@ export interface FieldError {
   fieldErrors: Record<string, string>;
 }
 
-const tags: TagDTO[] = [];
-let tagSeq = 1;
+const API_BASE = '/api/tags';
+
+type BackendTagsDTO = {
+  id: number;
+  tenantId?: number;
+  type: TagType;
+  name: string;
+  slug: string;
+  description?: string;
+  isSystem: boolean;
+  isActive: boolean;
+  createdAt: string;
+};
+
+function mapToBackendPayload(dto: TagCreateDTO): Record<string, unknown> {
+  return {
+    tenantId: dto.tenantId ?? null,
+    type: dto.type,
+    name: dto.name,
+    slug: dto.slug,
+    description: dto.description ?? null,
+    isSystem: dto.system ?? false,
+    isActive: dto.active ?? true,
+  };
+}
+
+function mapFromBackend(dto: BackendTagsDTO): TagDTO {
+  return {
+      usageCount: 0,
+      id: dto.id,
+    tenantId: dto.tenantId ?? undefined,
+    type: dto.type,
+    name: dto.name,
+    slug: dto.slug,
+    description: dto.description ?? undefined,
+    system: !!dto.isSystem,
+    active: !!dto.isActive,
+    createdAt: dto.createdAt
+  };
+}
+
+function extractFieldErrors(payload: unknown): Record<string, string> | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  // GlobalExceptionHandler 对 MethodArgumentNotValidException 返回 Map<field, message>
+  const asMap = payload as Record<string, unknown>;
+  const allString = Object.values(asMap).every(v => typeof v === 'string');
+  return allString ? (asMap as Record<string, string>) : undefined;
+}
 
 function isValidSlug(s: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s);
 }
 
+// 前端本地校验（与 UI 约束一致，后端仍会做校验）
 function validateTag(dto: TagCreateDTO): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!dto.type || !['TOPIC', 'LANGUAGE', 'RISK', 'SYSTEM'].includes(dto.type)) {
@@ -57,38 +106,53 @@ export async function createTag(payload: TagCreateDTO): Promise<TagDTO> {
   if (Object.keys(errors).length > 0) {
     throw Object.assign(new Error('Validation failed'), { fieldErrors: errors } as FieldError);
   }
-  // enforce unique (tenantId, type, slug)
-  if (tags.some(t => (t.tenantId ?? null) === (payload.tenantId ?? null) && t.type === payload.type && t.slug === payload.slug)) {
-    throw Object.assign(new Error('Tag already exists'), { fieldErrors: { slug: 'Duplicate slug under same tenant and type' } } as FieldError);
+
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(API_BASE, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify(mapToBackendPayload(payload)),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => undefined);
+    const fieldErrors = extractFieldErrors(data);
+    if (fieldErrors) throw Object.assign(new Error('Validation failed'), { fieldErrors } as FieldError);
+    const msg = (data as any)?.message ?? '创建失败';
+    throw new Error(msg);
   }
-  const now = new Date().toISOString();
-  const tag: TagDTO = {
-    id: tagSeq++,
-    tenantId: payload.tenantId,
-    type: payload.type,
-    name: payload.name.trim(),
-    slug: payload.slug.trim(),
-    description: payload.description?.trim(),
-    system: payload.system ?? false,
-    active: payload.active ?? true,
-    usageCount: 0,
-    createdAt: now,
-  };
-  tags.push(tag);
-  await new Promise(r => setTimeout(r, 200));
-  return { ...tag };
+
+  const dto = (await res.json()) as BackendTagsDTO;
+  return mapFromBackend(dto);
 }
 
 export async function listTags(): Promise<TagDTO[]> {
-  await new Promise(r => setTimeout(r, 100));
-  return tags.map(t => ({ ...t }));
+  const url = new URL(API_BASE, window.location.origin);
+  url.searchParams.set('page', '1');
+  url.searchParams.set('pageSize', '200');
+  url.searchParams.set('sortBy', 'createdAt');
+  url.searchParams.set('sortOrder', 'desc');
+
+  const res = await fetch(url.toString(), { credentials: 'include' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ message: '加载失败' }));
+    throw new Error((data as any)?.message ?? '加载失败');
+  }
+
+  // 后端返回 Page<TagsDTO>
+  const page = (await res.json()) as { content?: BackendTagsDTO[] };
+  return (page.content ?? []).map(mapFromBackend);
 }
 
-export async function incrementUsage(tagNames: string[]): Promise<void> {
-  tagNames.forEach(name => {
-    const t = tags.find(tt => tt.name.toLowerCase() === name.toLowerCase());
-    if (t) t.usageCount = (t.usageCount ?? 0) + 1;
-  });
+export async function incrementUsage(_tagNames: string[]): Promise<void> {
+  // 目前后端 TagsEntity 没有 usageCount 字段（SQL 也没有）。
+  // 这里保持接口不崩，但不执行任何请求。
+  // 如需支持使用量，请在 DB/Entity/DTO 层新增字段与接口（当前规则禁止修改底层）。
+  return;
 }
 
 export interface TagUpdateDTO {
@@ -101,40 +165,72 @@ export interface TagUpdateDTO {
 }
 
 export async function updateTag(id: number, payload: TagUpdateDTO): Promise<TagDTO> {
-  const existing = tags.find(t => t.id === id);
-  if (!existing) throw new Error('Tag not found');
+  // 兼容：沿用前端校验逻辑（仅对提供的字段做格式限制）
   const merged: TagCreateDTO = {
-    tenantId: existing.tenantId,
-    type: payload.type ?? existing.type,
-    name: payload.name?.trim() ?? existing.name,
-    slug: payload.slug?.trim() ?? existing.slug,
-    description: payload.description?.trim() ?? existing.description,
-    system: payload.system ?? existing.system ?? false,
-    active: payload.active ?? existing.active ?? true,
+    tenantId: undefined,
+    type: payload.type ?? 'TOPIC',
+    name: payload.name ?? 'x',
+    slug: payload.slug ?? 'x',
+    description: payload.description,
+    system: payload.system,
+    active: payload.active,
   };
-  const errors = validateTag(merged);
-  if (Object.keys(errors).length > 0) {
-    throw Object.assign(new Error('Validation failed'), { fieldErrors: errors } as FieldError);
+  const errs = validateTag(merged);
+  // 去掉 name/slug/type 的强制必填错误（因为 update 是可选字段）
+  delete errs.name;
+  delete errs.slug;
+  delete errs.type;
+  if (payload.name && payload.name.length > 64) errs.name = 'Tag name must not exceed 64 characters';
+  if (payload.slug && payload.slug.length > 96) errs.slug = 'Slug must not exceed 96 characters';
+  if (payload.slug && !isValidSlug(payload.slug)) errs.slug = 'Slug must be kebab-case: lowercase letters, numbers and dashes';
+  if (Object.keys(errs).length) {
+    throw Object.assign(new Error('Validation failed'), { fieldErrors: errs } as FieldError);
   }
-  // Unique check excluding self
-  if (tags.some(t => t.id !== id && (t.tenantId ?? null) === (merged.tenantId ?? null) && t.type === merged.type && t.slug === merged.slug)) {
-    throw Object.assign(new Error('Tag already exists'), { fieldErrors: { slug: 'Duplicate slug under same tenant and type' } } as FieldError);
+
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(`${API_BASE}/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      // 后端 update DTO 使用 Optional 字段，这里只传存在的字段
+      ...(payload.type != null ? { type: payload.type } : {}),
+      ...(payload.name != null ? { name: payload.name } : {}),
+      ...(payload.slug != null ? { slug: payload.slug } : {}),
+      ...(payload.description != null ? { description: payload.description } : {}),
+      ...(payload.system != null ? { isSystem: payload.system } : {}),
+      ...(payload.active != null ? { isActive: payload.active } : {}),
+    }),
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => undefined);
+    const fieldErrors = extractFieldErrors(data);
+    if (fieldErrors) throw Object.assign(new Error('Validation failed'), { fieldErrors } as FieldError);
+    const msg = (data as any)?.message ?? '更新失败';
+    throw new Error(msg);
   }
-  existing.type = merged.type;
-  existing.name = merged.name;
-  existing.slug = merged.slug;
-  existing.description = merged.description;
-  existing.system = merged.system ?? false;
-  existing.active = merged.active ?? true;
-  await new Promise(r => setTimeout(r, 150));
-  return { ...existing };
+
+  const dto = (await res.json()) as BackendTagsDTO;
+  return mapFromBackend(dto);
 }
 
 export async function deleteTag(id: number): Promise<void> {
-  const idx = tags.findIndex(t => t.id === id);
-  if (idx === -1) throw new Error('Tag not found');
-  tags.splice(idx, 1);
-  await new Promise(r => setTimeout(r, 120));
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(`${API_BASE}/${id}`, {
+    method: 'DELETE',
+    headers: {
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ message: '删除失败' }));
+    throw new Error((data as any)?.message ?? '删除失败');
+  }
 }
 
 // helper: slugify (export for UI use)

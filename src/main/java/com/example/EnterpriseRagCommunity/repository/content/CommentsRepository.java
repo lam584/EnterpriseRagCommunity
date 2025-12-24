@@ -16,4 +16,6 @@ public interface CommentsRepository extends JpaRepository<CommentsEntity, Long>,
     Page<CommentsEntity> findByAuthorIdAndIsDeletedFalse(Long authorId, Pageable pageable);
     Page<CommentsEntity> findByParentIdAndIsDeletedFalse(Long parentId, Pageable pageable);
     Page<CommentsEntity> findByIsDeletedFalseAndCreatedAtBetween(LocalDateTime start, LocalDateTime end, Pageable pageable);
+
+    long countByPostIdAndStatusAndIsDeletedFalse(Long postId, CommentStatus status);
 }

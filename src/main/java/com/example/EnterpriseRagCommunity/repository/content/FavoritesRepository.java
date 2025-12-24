@@ -11,4 +11,8 @@ import org.springframework.stereotype.Repository;
 public interface FavoritesRepository extends JpaRepository<FavoritesEntity, Long>, JpaSpecificationExecutor<FavoritesEntity> {
     Page<FavoritesEntity> findByUserId(Long userId, Pageable pageable);
     Page<FavoritesEntity> findByPostId(Long postId, Pageable pageable);
+
+    boolean existsByUserIdAndPostId(Long userId, Long postId);
+    long countByPostId(Long postId);
+    void deleteByUserIdAndPostId(Long userId, Long postId);
 }

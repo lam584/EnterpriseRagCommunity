@@ -4,6 +4,7 @@ export const DiscoverPage: React.FC = () => (
   <div>
     <h2 className="text-xl font-semibold mb-4">浏览与发现</h2>
     <p className="text-gray-600">探索热度榜、版块浏览、标签浏览。</p>
+      <a href="http://127.0.0.1:8099/admin" target="_blank" rel="noopener noreferrer">点击进入管理员后台</a>
   </div>
 );
 
@@ -16,7 +17,7 @@ export const PostsPage: React.FC = () => (
 
 export const InteractPage: React.FC = () => (
   <div>
-    <h2 className="text-xl font-semibold mb-4">互动</h2>
+    <h2 className="text-xl font-semibold mb-4">互动记录</h2>
     <p className="text-gray-600">评论与回复、点赞与收藏、举报。</p>
   </div>
 );

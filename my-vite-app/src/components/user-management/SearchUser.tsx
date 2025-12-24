@@ -13,7 +13,7 @@
 //         id: '',
 //         account: '', // 对齐：SQL users.account → DTO.account
 //         phone: '', // 对齐：SQL users.phone → DTO.phone
-//         email: '', // 对齐：SQL users.email → DTO.email
+//         email: '', 
 //         role: '',        // 空表示“全部”
 //         sex: '请选择', // 对齐：SQL users.sex → DTO.sex
 //         startDate: null as Date | null,
@@ -25,7 +25,7 @@
 //         id: false,
 //         account: false, // 对齐：SQL users.account → DTO.account
 //         phone: false, // 对齐：SQL users.phone → DTO.phone
-//         email: false, // 对齐：SQL users.email → DTO.email
+//         email: false, 
 //     });
 //
 //     // 角色列表
@@ -80,7 +80,7 @@
 //         const idParam = formData.id ? parseInt(formData.id, 10) : undefined;
 //         const accountParam = formData.account || undefined; // 对齐：SQL users.account → DTO.account
 //         const phoneParam = formData.phone || undefined; // 对齐：SQL users.phone → DTO.phone
-//         const emailParam = formData.email || undefined; // 对齐：SQL users.email → DTO.email
+//         const emailParam = formData.email || undefined; 
 //         const sexParam =
 //             formData.sex !== '请选择' ? formData.sex : undefined; // 对齐：SQL users.sex → DTO.sex
 //         const roleParam = formData.role || undefined;

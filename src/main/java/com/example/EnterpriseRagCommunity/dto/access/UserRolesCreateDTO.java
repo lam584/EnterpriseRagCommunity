@@ -10,6 +10,9 @@ import java.time.LocalDateTime;
 
 @Data
 public class UserRolesCreateDTO {
+    @ApiModelProperty("主键ID")
+    private Long id;
+
     @ApiModelProperty("所属租户ID")
     private Long tenantId;
 

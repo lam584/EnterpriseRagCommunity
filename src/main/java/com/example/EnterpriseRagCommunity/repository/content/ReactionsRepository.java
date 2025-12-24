@@ -14,4 +14,8 @@ public interface ReactionsRepository extends JpaRepository<ReactionsEntity, Long
     Page<ReactionsEntity> findByUserId(Long userId, Pageable pageable);
     Page<ReactionsEntity> findByTargetTypeAndTargetId(ReactionTargetType targetType, Long targetId, Pageable pageable);
     Page<ReactionsEntity> findByTargetTypeAndTargetIdAndType(ReactionTargetType targetType, Long targetId, ReactionType type, Pageable pageable);
+
+    boolean existsByUserIdAndTargetTypeAndTargetIdAndType(Long userId, ReactionTargetType targetType, Long targetId, ReactionType type);
+    long countByTargetTypeAndTargetIdAndType(ReactionTargetType targetType, Long targetId, ReactionType type);
+    void deleteByUserIdAndTargetTypeAndTargetIdAndType(Long userId, ReactionTargetType targetType, Long targetId, ReactionType type);
 }

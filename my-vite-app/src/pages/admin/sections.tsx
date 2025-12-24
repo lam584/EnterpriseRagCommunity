@@ -252,7 +252,7 @@ export const ContentMgmtPage: React.FC = () => (
   <AdminSection
     title="内容管理"
     items={[
-      { id: 'board', label: '版块管理' },
+      { id: 'board-management', label: '版块管理' },
       { id: 'post', label: '帖子管理' },
       { id: 'comment', label: '评论管理' },
       { id: 'tags', label: '标签体系管理' },
@@ -316,7 +316,8 @@ export const UsersRBACPage: React.FC = () => (
   <AdminSection
     title="用户与权限"
     items={[
-      { id: 'user-role', label: '用户与角色管理' },
+      { id: 'user-role', label: '用户管理' },
+      { id: 'roles', label: '角色管理' },
       { id: 'matrix', label: '权限矩阵' },
       { id: '2fa', label: '高权限操作 2FA 策略' },
     ]}

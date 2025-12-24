@@ -6,7 +6,7 @@ import { getCsrfToken } from '../utils/csrfUtils';
 const API_BASE = '/api';
 
 // Spring Security默认的CSRF头名称
-const CSRF_HEADER = 'X-CSRF-TOKEN';
+const CSRF_HEADER = 'X-XSRF-TOKEN';
 
 export interface AdminPermissionDTO {
     id: number;
