@@ -1,6 +1,8 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 import type { SpringPage } from '../types/page';
 
+export type CommentStatus = 'VISIBLE' | 'PENDING' | 'HIDDEN' | 'REJECTED';
+
 export type CommentDTO = {
   id: number;
   postId: number;
@@ -18,6 +20,35 @@ export type CommentCreateRequest = {
   parentId?: number | null;
 };
 
+export type CommentAdminDTO = {
+  id: number;
+  postId: number;
+  parentId?: number | null;
+  authorId: number;
+  authorName?: string | null;
+  content: string;
+  status: CommentStatus;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // optional display
+  postTitle?: string | null;
+  postExcerpt?: string | null;
+};
+
+export type CommentAdminQuery = {
+  page?: number;
+  pageSize?: number;
+  postId?: number;
+  authorId?: number;
+  authorName?: string;
+  createdFrom?: string; // ISO datetime
+  createdTo?: string;   // ISO datetime
+  status?: CommentStatus;
+  isDeleted?: boolean;
+  keyword?: string;
+};
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 function apiUrl(path: string): string {
   if (!path.startsWith('/')) path = `/${path}`;
@@ -29,6 +60,16 @@ function getBackendMessage(data: unknown): string | undefined {
     return (data as { message: string }).message;
   }
   return undefined;
+}
+
+function buildQuery(params: Record<string, unknown>): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue;
+    sp.set(k, String(v));
+  }
+  const qs = sp.toString();
+  return qs ? `?${qs}` : '';
 }
 
 export async function listPostComments(postId: number, page = 1, pageSize = 20): Promise<SpringPage<CommentDTO>> {
@@ -59,3 +100,60 @@ export async function createPostComment(postId: number, payload: CommentCreateRe
   return data as CommentDTO;
 }
 
+export async function adminListComments(query: CommentAdminQuery = {}): Promise<SpringPage<CommentAdminDTO>> {
+  const qs = buildQuery({
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 20,
+    postId: query.postId,
+    authorId: query.authorId,
+    authorName: query.authorName,
+    createdFrom: query.createdFrom,
+    createdTo: query.createdTo,
+    status: query.status,
+    isDeleted: query.isDeleted,
+    keyword: query.keyword,
+  });
+
+  const res = await fetch(apiUrl(`/api/admin/comments${qs}`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取评论列表失败');
+  return data as SpringPage<CommentAdminDTO>;
+}
+
+export async function adminUpdateCommentStatus(id: number, status: CommentStatus): Promise<CommentAdminDTO> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/comments/${id}/status`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({ status }),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '更新评论状态失败');
+  return data as CommentAdminDTO;
+}
+
+export async function adminSetCommentDeleted(id: number, isDeleted: boolean): Promise<CommentAdminDTO> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/comments/${id}/deleted`), {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({ isDeleted }),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '更新删除状态失败');
+  return data as CommentAdminDTO;
+}
