@@ -19,6 +19,9 @@ public class PostAttachmentsEntity {
     @Column(name = "post_id", nullable = false)
     private Long postId;
 
+    @Column(name = "file_asset_id")
+    private Long fileAssetId;
+
     @Column(name = "url", nullable = false, length = 512)
     private String url;
 

@@ -1,47 +1,76 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { Compass, FileText, MessageCircle, Bot, User, LogOut } from 'lucide-react';
 
 /**
- * 前台门户布局：包含一级菜单（浏览与发现、帖子、互动、智能助手、账户）
+ * 前台门户布局：包含左侧一级菜单（浏览与发现、帖子、互动、智能助手、账户）
  * 作为路由嵌套的容器，子路由在 <Outlet /> 中渲染。
  */
 export default function CommunityPortalLayout() {
   const linkBase = '/portal';
   const navItems = [
-    { to: `${linkBase}/discover`, label: '浏览与发现' },
-    { to: `${linkBase}/posts`, label: '帖子' },
-    { to: `${linkBase}/interact`, label: '互动' },
-    { to: `${linkBase}/assistant`, label: '智能助手' },
-    { to: `${linkBase}/account`, label: '账户' },
+    { to: `${linkBase}/discover`, label: '浏览与发现', icon: Compass },
+    { to: `${linkBase}/posts`, label: '帖子', icon: FileText },
+    { to: `${linkBase}/interact`, label: '互动记录', icon: MessageCircle },
+    { to: `${linkBase}/assistant`, label: '智能助手', icon: Bot },
+    { to: `${linkBase}/account`, label: '账户', icon: User },
   ];
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="shadow bg-white">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="text-lg font-semibold">企业 RAG 社区</div>
-          <nav className="flex gap-4">
+    <div className="min-h-screen bg-white">
+      <div className="max-w-6xl mx-auto flex border-gray-200 min-h-screen">
+        {/* Left Sidebar */}
+        <aside className="w-64 bg-white border-gray-200 h-screen sticky top-0 flex flex-col shrink-0 z-10">
+          <div className="p-6 border-b border-gray-200">
+            <div className="text-xl font-bold text-blue-600 flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
+                R
+              </div>
+              RAG Community
+            </div>
+          </div>
+
+          <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
             {navItems.map((n) => (
               <NavLink
                 key={n.to}
                 to={n.to}
                 className={({ isActive }) =>
-                  `px-2 py-1 rounded ${isActive ? 'text-blue-600 font-semibold' : 'text-gray-700 hover:text-blue-600'}`
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-gray-100 text-gray-900 font-medium'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  }`
                 }
               >
+                <n.icon className="w-5 h-5" />
                 {n.label}
               </NavLink>
             ))}
           </nav>
-        </div>
-      </header>
 
-      <main className="flex-1 max-w-6xl mx-auto w-full px-4 py-6">
-        <Outlet />
-      </main>
+          <div className="p-4 border-t border-gray-200">
+            <a
+              href="http://127.0.0.1:8099/admin"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors text-sm"
+            >
+              <LogOut className="w-5 h-5" />
+              进入管理员后台
+            </a>
+            <div className="mt-4 text-xs text-center text-gray-400">
+              © {new Date().getFullYear()} RAG Community
+            </div>
+          </div>
+        </aside>
 
-      <footer className="border-t bg-gray-50 text-center text-sm text-gray-500 py-4">
-        © {new Date().getFullYear()} RAG Community
-      </footer>
+        {/* Main Content */}
+        <main className="min-w-0 bg-white">
+          <div>
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

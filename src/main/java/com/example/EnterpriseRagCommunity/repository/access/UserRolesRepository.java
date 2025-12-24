@@ -17,4 +17,6 @@ public interface UserRolesRepository extends JpaRepository<UserRolesEntity, Long
 
     // Add missing method for existsByTenantIdAndRoles
     boolean existsByTenantIdAndRoles(Long tenantId, String roles);
+
+    boolean existsByTenantIdAndRolesAndIdNot(Long tenantId, String roles, Long id);
 }

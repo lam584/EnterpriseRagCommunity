@@ -8,7 +8,7 @@ export interface ReaderDTO {
   account: string; // 对齐：SQL users.account → DTO.account
   password?: string;
   phone: string; // 对齐：SQL users.phone → DTO.phone
-  email: string; // 对齐：SQL users.email → DTO.email
+  email: string; 
   sex?: string; // 对齐：SQL users.sex → DTO.sex
   permission?: {
     id: number;
@@ -69,7 +69,7 @@ export async function createReader(reader: Partial<ReaderDTO>): Promise<ReaderDT
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-TOKEN': csrfToken
+      'X-XSRF-TOKEN': csrfToken
     },
     credentials: 'include',
     body: JSON.stringify(reader)
@@ -92,7 +92,7 @@ export async function updateReader(id: number, reader: Partial<ReaderDTO>): Prom
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-TOKEN': csrfToken
+      'X-XSRF-TOKEN': csrfToken
     },
     credentials: 'include',
     body: JSON.stringify(reader)
@@ -114,7 +114,7 @@ export async function deleteReader(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/${id}`, {
     method: 'DELETE',
     headers: {
-      'X-CSRF-TOKEN': csrfToken
+      'X-XSRF-TOKEN': csrfToken
     },
     credentials: 'include'
   });

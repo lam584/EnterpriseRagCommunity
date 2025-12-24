@@ -1,11 +1,16 @@
 // src/services/authService.ts
-import { getCsrfToken } from '../utils/csrfUtils';
+import { getCsrfToken, clearCsrfToken } from '../utils/csrfUtils';
 
 export interface AdminDTO {
   id: number;
-  email: string; // 对齐：SQL users.email → DTO.email
+  email: string; 
   username: string; // 对齐：SQL users.username → DTO.username
   isDeleted: boolean; // 对齐：SQL users.is_deleted → DTO.isDeleted
+  /**
+   * 多租户：当前登录用户所属 tenantId（后端若未返回则为 undefined）。
+   * 用于前端在创建角色/资源时自动补齐 tenantId。
+   */
+  tenantId?: number;
 }
 
 export interface InitialSetupStatusResponse {
@@ -15,16 +20,20 @@ export interface InitialSetupStatusResponse {
 export interface InitialAdminRegisterRequest {
   email: string;
   password: string;
-  displayName: string;
+  /**
+   * 后端 RegisterRequest 必填字段为 username。
+   * 前端页面仍可展示为“显示名称”，但提交时需要发 username。
+   */
+  username: string;
   code?: string;
 }
 
-export async function login(email: string, password: string, csrfToken: string): Promise<AdminDTO> { // 对齐：SQL users.email → DTO.email
+export async function login(email: string, password: string, csrfToken: string): Promise<AdminDTO> { 
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-TOKEN': csrfToken // 添加 CSRF 令牌到请求头
+      'X-XSRF-TOKEN': csrfToken // 添加 CSRF 令牌到请求头
     },
     credentials: 'include', // 确保包含凭证
     body: JSON.stringify({ email, password })
@@ -34,6 +43,10 @@ export async function login(email: string, password: string, csrfToken: string):
     const errorData = await res.json().catch(() => ({}));
     throw new Error((errorData && errorData.message) || '登录失败');
   }
+
+  // 登录成功后，会话ID改变，CSRF令牌也会改变
+  // 清除缓存的令牌，以便下次请求时获取新的令牌
+  clearCsrfToken();
 
   return res.json();
 }
@@ -45,10 +58,13 @@ export async function logout(): Promise<void> {
   const res = await fetch('/api/auth/logout', {
     method: 'POST',
     headers: {
-      'X-CSRF-TOKEN': csrfToken // 添加 CSRF 令牌到请求头
+      'X-XSRF-TOKEN': csrfToken // 添加 CSRF 令牌到请求头
     },
     credentials: 'include' // 确保包含凭证
   });
+
+  // 无论成功与否，都清除本地缓存的 CSRF 令牌
+  clearCsrfToken();
 
   if (!res.ok) {
     const errorData = await res.json();
@@ -94,7 +110,7 @@ export async function registerInitialAdmin(registerData: InitialAdminRegisterReq
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-TOKEN': csrfToken
+      'X-XSRF-TOKEN': csrfToken
     },
     credentials: 'include',
     body: JSON.stringify(registerData)
@@ -103,9 +119,9 @@ export async function registerInitialAdmin(registerData: InitialAdminRegisterReq
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    // 后端校验失败时可能返回字段错误映射，如 { displayName: '...' }
+    // 后端校验失败时可能返回字段错误映射，如 { username: '...' }
     const fieldErrMsg = typeof data === 'object' && data !== null
-      ? (data.message || data.displayName || data.email || data.password)
+      ? (data.message || data.username || data.email || data.password)
       : undefined;
     throw new Error(fieldErrMsg || '注册初始管理员失败');
   }
@@ -115,10 +131,8 @@ export async function registerInitialAdmin(registerData: InitialAdminRegisterReq
     if (!data.success) {
       throw new Error(data.message || '注册初始管理员失败');
     }
-    // 成功则无需返回值
     return;
   }
 
-  // 如果不是标准包裹，直接返回
   return;
 }

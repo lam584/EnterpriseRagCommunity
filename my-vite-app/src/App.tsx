@@ -1,7 +1,6 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { useState, useEffect } from 'react';
-import LibraryLayout from './pages/NewsSystemLayout';
 import Login from './components/login/Login';
 import AdminSetup from './components/login/AdminSetup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -9,8 +8,41 @@ import { checkInitialSetupStatus } from './services/authService';
 import CommunityPortalLayout from './pages/portal/CommunityPortalLayout';
 import AdminDashboardLayout from './pages/admin/AdminDashboardLayout';
 import Register from './components/login/Register';
-import { DiscoverPage, PostsPage, InteractPage, AssistantPage, AccountPage } from './pages/portal/sections';
-import { ContentMgmtPage, ReviewCenterPage, SemanticBoostPage, RetrievalRagPage, MetricsMonitorPage, UsersRBACPage } from './pages/admin/sections';
+import DiscoverLayout, { DiscoverIndexRedirect } from './pages/portal/discover/DiscoverLayout';
+import PostsLayout, { PostsIndexRedirect } from './pages/portal/posts/PostsLayout';
+import InteractLayout, { InteractIndexRedirect } from './pages/portal/interact/InteractLayout';
+import AssistantLayout, { AssistantIndexRedirect } from './pages/portal/assistant/AssistantLayout';
+import AccountLayout, { AccountIndexRedirect } from './pages/portal/account/AccountLayout';
+
+import DiscoverHomePage from './pages/portal/discover/pages/DiscoverHomePage';
+import DiscoverTrendingPage from './pages/portal/discover/pages/DiscoverTrendingPage';
+import DiscoverBoardsPage from './pages/portal/discover/pages/DiscoverBoardsPage';
+import DiscoverTagsPage from './pages/portal/discover/pages/DiscoverTagsPage';
+import DiscoverSearchPage from './pages/portal/discover/pages/DiscoverSearchPage';
+
+import PostsFeedPage from './pages/portal/posts/pages/PostsFeedPage';
+import PostsCreatePage from './pages/portal/posts/pages/PostsCreatePage';
+import PostsDraftsPage from './pages/portal/posts/pages/PostsDraftsPage';
+import PostsMinePage from './pages/portal/posts/pages/PostsMinePage';
+import PostsBookmarksPage from './pages/portal/posts/pages/PostsBookmarksPage';
+import PostDetailPage from './pages/portal/posts/pages/PostDetailPage';
+
+import InteractNotificationsPage from './pages/portal/interact/pages/InteractNotificationsPage';
+import InteractRepliesPage from './pages/portal/interact/pages/InteractRepliesPage';
+import InteractLikesPage from './pages/portal/interact/pages/InteractLikesPage';
+import InteractMentionsPage from './pages/portal/interact/pages/InteractMentionsPage';
+import InteractReportsPage from './pages/portal/interact/pages/InteractReportsPage';
+
+import AssistantChatPage from './pages/portal/assistant/pages/AssistantChatPage';
+import AssistantHistoryPage from './pages/portal/assistant/pages/AssistantHistoryPage';
+import AssistantCollectionsPage from './pages/portal/assistant/pages/AssistantCollectionsPage';
+import AssistantSettingsPage from './pages/portal/assistant/pages/AssistantSettingsPage';
+
+import AccountProfilePage from './pages/portal/account/pages/AccountProfilePage';
+import AccountSecurityPage from './pages/portal/account/pages/AccountSecurityPage';
+import AccountPreferencesPage from './pages/portal/account/pages/AccountPreferencesPage';
+import AccountConnectionsPage from './pages/portal/account/pages/AccountConnectionsPage';
+import { ContentMgmtPage, ReviewCenterPage, SemanticBoostPage, RetrievalRagPage, MetricsMonitorPage, UsersRBACPage } from './pages/admin/sections.tsx';
 
 // 受保护的路由组件
 const ProtectedRoute = () => {
@@ -77,11 +109,51 @@ function AppRoutes() {
 
             {/* 前台门户（普通用户/访客） - 公开访问 */}
             <Route path="/portal" element={<CommunityPortalLayout />}>
-                <Route path="discover" element={<DiscoverPage />} />
-                <Route path="posts" element={<PostsPage />} />
-                <Route path="interact" element={<InteractPage />} />
-                <Route path="assistant" element={<AssistantPage />} />
-                <Route path="account" element={<AccountPage />} />
+                <Route path="discover" element={<DiscoverLayout />}>
+                    <Route index element={<DiscoverIndexRedirect />} />
+                    <Route path="home" element={<DiscoverHomePage />} />
+                    <Route path="trending" element={<DiscoverTrendingPage />} />
+                    <Route path="boards" element={<DiscoverBoardsPage />} />
+                    <Route path="tags" element={<DiscoverTagsPage />} />
+                    <Route path="search" element={<DiscoverSearchPage />} />
+                </Route>
+
+                <Route path="posts" element={<PostsLayout />}>
+                    <Route index element={<PostsIndexRedirect />} />
+                    <Route path="feed" element={<PostsFeedPage />} />
+                    <Route path="create" element={<PostsCreatePage />} />
+                    <Route path="edit/:postId" element={<PostsCreatePage />} />
+                    <Route path="detail/:postId" element={<PostDetailPage />} />
+                    <Route path="drafts" element={<PostsDraftsPage />} />
+                    <Route path="mine" element={<PostsMinePage />} />
+                    <Route path="bookmarks" element={<PostsBookmarksPage />} />
+                </Route>
+
+                <Route path="interact" element={<InteractLayout />}>
+                    <Route index element={<InteractIndexRedirect />} />
+                    <Route path="notifications" element={<InteractNotificationsPage />} />
+                    <Route path="replies" element={<InteractRepliesPage />} />
+                    <Route path="likes" element={<InteractLikesPage />} />
+                    <Route path="mentions" element={<InteractMentionsPage />} />
+                    <Route path="reports" element={<InteractReportsPage />} />
+                </Route>
+
+                <Route path="assistant" element={<AssistantLayout />}>
+                    <Route index element={<AssistantIndexRedirect />} />
+                    <Route path="chat" element={<AssistantChatPage />} />
+                    <Route path="history" element={<AssistantHistoryPage />} />
+                    <Route path="collections" element={<AssistantCollectionsPage />} />
+                    <Route path="settings" element={<AssistantSettingsPage />} />
+                </Route>
+
+                <Route path="account" element={<AccountLayout />}>
+                    <Route index element={<AccountIndexRedirect />} />
+                    <Route path="profile" element={<AccountProfilePage />} />
+                    <Route path="security" element={<AccountSecurityPage />} />
+                    <Route path="preferences" element={<AccountPreferencesPage />} />
+                    <Route path="connections" element={<AccountConnectionsPage />} />
+                </Route>
+
                 <Route index element={<Navigate to="discover" replace />} />
             </Route>
 
@@ -98,8 +170,6 @@ function AppRoutes() {
                     <Route index element={<Navigate to="content" replace />} />
                 </Route>
 
-                {/* 旧的新闻系统布局保留（如需） */}
-                <Route path="/library" element={<LibraryLayout />} />
             </Route>
 
             {/* 新闻相关页面 - 公开访问 */}

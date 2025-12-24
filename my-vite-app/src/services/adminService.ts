@@ -97,7 +97,7 @@ export const updateAdministrator = async (
         credentials: 'include',  // 携带 Cookie
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken  // CSRF 保护
+            'X-XSRF-TOKEN': csrfToken  // CSRF 保护
         },
         body: JSON.stringify(payload)
     });

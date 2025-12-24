@@ -42,8 +42,19 @@ export default function AdminDashboardLayout() {
           </ul>
         </nav>
         <div className="p-4 border-t border-purple-800 text-sm text-purple-200">
-          © 2026 后台管理
+            © {new Date().getFullYear()} 后台管理
+            <div className="pt-2">
+                <a
+                    href="http://127.0.0.1:8099"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline"
+                >
+                    点击进入前台
+                </a>
+            </div>
         </div>
+
       </aside>
 
       {/* Main Content */}

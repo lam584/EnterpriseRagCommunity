@@ -27,9 +27,37 @@ public interface PostsRepository extends JpaRepository<PostsEntity, Long>, JpaSp
            nativeQuery = true)
     Page<PostsEntity> searchFullText(@Param("q") String query, Pageable pageable);
 
+    /**
+     * Full-text search with a stable DB column sort.
+     *
+     * NOTE: When using nativeQuery, Spring Data may append Pageable sort properties directly into SQL.
+     * If callers pass entity property names (e.g. createdAt), it can cause "Unknown column".
+     * This method safeguards by using explicit db column ordering.
+     */
+    @Query(value = "SELECT * FROM posts WHERE is_deleted = 0 AND MATCH(title, content) AGAINST(:q IN BOOLEAN MODE) ORDER BY created_at DESC",
+           countQuery = "SELECT COUNT(*) FROM posts WHERE is_deleted = 0 AND MATCH(title, content) AGAINST(:q IN BOOLEAN MODE)",
+           nativeQuery = true)
+    Page<PostsEntity> searchFullTextOrderByCreatedAtDesc(@Param("q") String query, Pageable pageable);
+
     // Time-based publication filtering
     Page<PostsEntity> findByPublishedAtBetweenAndIsDeletedFalse(LocalDateTime start, LocalDateTime end, Pageable pageable);
 
     // Status-only filtering with pagination
     Page<PostsEntity> findByStatusAndIsDeletedFalse(PostStatus status, Pageable pageable);
+
+    /**
+     * Fuzzy search (LIKE) on title/content.
+     *
+     * Note: Uses ESCAPE '\\' so callers can safely pass escaped %/_.
+     * We keep ORDER BY as DB column to avoid Pageable sort injection/unknown column issues for nativeQuery.
+     */
+    @Query(value = "SELECT * FROM posts " +
+            "WHERE is_deleted = 0 AND (title LIKE CONCAT('%', :kw, '%') ESCAPE '\\\\' OR content LIKE CONCAT('%', :kw, '%') ESCAPE '\\\\') " +
+            "ORDER BY created_at DESC",
+            countQuery = "SELECT COUNT(*) FROM posts " +
+                    "WHERE is_deleted = 0 AND (title LIKE CONCAT('%', :kw, '%') ESCAPE '\\\\' OR content LIKE CONCAT('%', :kw, '%') ESCAPE '\\\\')",
+            nativeQuery = true)
+    Page<PostsEntity> searchLikeOrderByCreatedAtDesc(@Param("kw") String keyword, Pageable pageable);
+
+    java.util.Optional<PostsEntity> findByIdAndIsDeletedFalse(Long id);
 }

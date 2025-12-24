@@ -30,6 +30,7 @@ repositories {
 bootWar { enabled = true }
 bootJar { enabled = false }                // jar 禁用
 tasks.named('bootRun') {
+    dependsOn 'build'
     classpath = sourceSets.main.runtimeClasspath
 }
 dependencies {
@@ -53,6 +54,7 @@ dependencies {
     compileOnly 'org.projectlombok:lombok:1.18.42'
     annotationProcessor 'org.projectlombok:lombok:1.18.42'
     testImplementation 'org.springframework.boot:spring-boot-starter-test:3.5.7'
+    testImplementation 'org.springframework.security:spring-security-test'
     compileOnly 'io.swagger:swagger-annotations:1.6.14'
 }
 

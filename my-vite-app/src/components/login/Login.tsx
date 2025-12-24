@@ -6,7 +6,7 @@ import { login } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface LoginFormData {
-    email: string; // 对齐：SQL users.email → DTO.email
+    email: string; 
     password: string;
     rememberMe: boolean;
 }
@@ -15,7 +15,7 @@ const Login: React.FC = () => {
     const navigate = useNavigate();
     const { setCurrentUser, setIsAuthenticated } = useAuth();
     const [formData, setFormData] = useState<LoginFormData>({
-        email: '', // 对齐：SQL users.email → DTO.email
+        email: '', 
         password: '',
         rememberMe: false
     });
@@ -59,7 +59,7 @@ const Login: React.FC = () => {
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = e.target;
-        // 对齐：SQL users.email → DTO.email
+        
         setFormData(prev => ({
             ...prev,
             [name]: type === 'checkbox' ? checked : value
@@ -79,7 +79,7 @@ const Login: React.FC = () => {
             setError(null);
 
             // 使用 authService 的 login 函数，传递 CSRF 令牌
-            const userData = await login(formData.email, formData.password, csrfToken); // 对齐：SQL users.email → DTO.email
+            const userData = await login(formData.email, formData.password, csrfToken); 
 
             // 更新全局认证状态
             setCurrentUser(userData);
@@ -119,7 +119,7 @@ const Login: React.FC = () => {
                     <form onSubmit={handleSubmit}>
                         <div className="mb-4">
                             <label className="block text-gray-700 text-sm font-bold mb-2"
-                                   htmlFor="email">邮箱</label> // 对齐：SQL users.email → DTO.email
+                                   htmlFor="email">邮箱</label> 
                             <input
                                 className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                                 id="email"

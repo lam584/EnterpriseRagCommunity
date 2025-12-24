@@ -46,7 +46,7 @@ export async function createReaderPermission(permission: Partial<ReaderPermissio
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': csrfToken
+        'X-XSRF-TOKEN': csrfToken
       },
       body: JSON.stringify(permission)
     });
@@ -73,7 +73,7 @@ export async function updateReaderPermission(id: number, permission: ReaderPermi
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-TOKEN': csrfToken
+      'X-XSRF-TOKEN': csrfToken
     },
     body: JSON.stringify(permission)
   });
@@ -90,7 +90,7 @@ export async function deleteReaderPermission(id: number): Promise<void> {
     method: 'DELETE',
     credentials: 'include',
     headers: {
-      'X-CSRF-TOKEN': csrfToken
+      'X-XSRF-TOKEN': csrfToken
     }
   });
   if (!res.ok) throw new Error('删除读者权限失败');
