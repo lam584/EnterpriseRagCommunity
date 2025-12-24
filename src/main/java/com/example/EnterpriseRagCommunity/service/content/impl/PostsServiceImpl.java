@@ -113,21 +113,41 @@ public class PostsServiceImpl implements PostsService {
         return post;
     }
 
-    private static boolean isLikelyFullTextUnfriendlyKeyword(String kw) {
-        if (kw == null) return true;
-        String s = kw.trim();
+    private static boolean isLikelyFullTextUnfriendlyKeyword(String keyword) {
+        if (keyword == null) return true;
+        String s = keyword.trim();
         if (s.isEmpty()) return true;
-        // MySQL FULLTEXT often ignores very short tokens (e.g. < 3) or numeric-only tokens.
-        if (s.length() < 3) return true;
-        boolean allDigits = true;
+
+        // MySQL/InnoDB FULLTEXT often ignores short tokens (default min token size is commonly 3 or 4).
+        // To guarantee admin search works for short substrings like "wre", we fallback to LIKE.
+        // Note: This is a correctness-first choice; FULLTEXT remains the default for longer pure-word queries.
+        if (s.length() < 4) return true;
+
+        boolean hasDigit = false;
+        boolean hasLetter = false;
+        boolean hasNonAlnum = false;
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            if (!Character.isDigit(c)) {
-                allDigits = false;
-                break;
-            }
+            if (Character.isDigit(c)) hasDigit = true;
+            else if (Character.isLetter(c)) hasLetter = true;
+            else if (!Character.isWhitespace(c)) hasNonAlnum = true;
         }
-        return allDigits;
+
+        boolean allDigits = hasDigit && !hasLetter && !hasNonAlnum;
+
+        // Numeric-only: FULLTEXT tokenization/prefix behavior is often surprising.
+        if (allDigits) return true;
+
+        // Symbols/punctuation: fall back to LIKE for predictable substring behavior.
+        if (hasNonAlnum) return true;
+
+        // Mixed letter+digit (e.g. ids like "tyujyswreb2025"): users often expect substring match.
+        if (hasDigit && hasLetter) return true;
+
+        // For pure-letter single tokens, don't blindly fallback.
+        // FULLTEXT can handle prefix search via "wre*" and is usually faster.
+        // Keep AUTO on FULLTEXT unless the keyword is very long.
+        return s.length() >= 12;
     }
 
     private static String escapeForLike(String raw) {
