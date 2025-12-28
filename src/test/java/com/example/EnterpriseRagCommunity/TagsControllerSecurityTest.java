@@ -28,7 +28,7 @@ class TagsControllerSecurityTest {
         // 这里只验证安全链允许通过（不验证业务结果）；由于没有准备数据源，可能会在之后抛出 500。
         // 但至少不应该是 401。
         mockMvc.perform(get("/api/tags").with(SecurityMockMvcRequestPostProcessors.user("u").roles("ADMIN")))
-                .andExpect(status().is(not401()));
+                .andExpect(not401());
     }
 
     private static org.springframework.test.web.servlet.ResultMatcher not401() {
@@ -40,4 +40,3 @@ class TagsControllerSecurityTest {
         };
     }
 }
-

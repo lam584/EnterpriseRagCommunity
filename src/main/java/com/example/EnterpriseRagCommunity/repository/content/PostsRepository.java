@@ -59,5 +59,8 @@ public interface PostsRepository extends JpaRepository<PostsEntity, Long>, JpaSp
             nativeQuery = true)
     Page<PostsEntity> searchLikeOrderByCreatedAtDesc(@Param("kw") String keyword, Pageable pageable);
 
+    @Query("select p.id from PostsEntity p where p.isDeleted = false and p.status = :status")
+    List<Long> findIdsByStatusAndIsDeletedFalse(@Param("status") PostStatus status);
+
     java.util.Optional<PostsEntity> findByIdAndIsDeletedFalse(Long id);
 }

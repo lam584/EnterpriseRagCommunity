@@ -116,7 +116,7 @@ tasks.register('buildVite', Exec) {
                 logger.error('\n----- Vite stderr -----\n' + errTxt)
             }
             // 使用 ASCII 文本避免乱码
-            throw new GradleException("Vite build failed (exit ${exitCode}). See logs above.")
+             throw new GradleException("Vite build failed (exit ${exitCode}). See logs above.")
         } else {
             // 成功也打印，便于排查
             if (outTxt) {

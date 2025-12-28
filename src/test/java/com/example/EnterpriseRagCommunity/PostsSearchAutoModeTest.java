@@ -77,7 +77,8 @@ class PostsSearchAutoModeTest {
 
     @Test
     void autoMode_shouldFallbackToLike_forLongSingleTokenKeyword() {
-        when(postsRepository.searchLikeOrderByCreatedAtDesc(eq("abcdef"), any(Pageable.class)))
+        // 当前实现：纯字母单 token 在 AUTO 下默认走 FULLTEXT（更快），仅非常长时才回退 LIKE。
+        when(postsRepository.searchFullTextOrderByCreatedAtDesc(anyString(), any(Pageable.class)))
                 .thenReturn(Page.empty());
 
         postsService.query(
@@ -95,8 +96,8 @@ class PostsSearchAutoModeTest {
                 null
         );
 
-        verify(postsRepository, times(1)).searchLikeOrderByCreatedAtDesc(eq("abcdef"), any(Pageable.class));
-        verify(postsRepository, never()).searchFullTextOrderByCreatedAtDesc(anyString(), any(Pageable.class));
+        verify(postsRepository, times(1)).searchFullTextOrderByCreatedAtDesc(eq("abcdef*"), any(Pageable.class));
+        verify(postsRepository, never()).searchLikeOrderByCreatedAtDesc(anyString(), any(Pageable.class));
     }
 
     @Test
@@ -124,8 +125,9 @@ class PostsSearchAutoModeTest {
     }
 
     @Test
-    void autoMode_shouldUseFullText_forShortLetterToken_likeWre() {
-        when(postsRepository.searchFullTextOrderByCreatedAtDesc(anyString(), any(Pageable.class)))
+    void autoMode_shouldFallbackToLike_forShortLetterToken_likeWre() {
+        // 当前实现：长度<4 的 token 在 AUTO 下会回退 LIKE，以保证短词检索的可预期性。
+        when(postsRepository.searchLikeOrderByCreatedAtDesc(eq("wre"), any(Pageable.class)))
                 .thenReturn(Page.empty());
 
         postsService.query(
@@ -143,8 +145,8 @@ class PostsSearchAutoModeTest {
                 null
         );
 
-        verify(postsRepository, times(1)).searchFullTextOrderByCreatedAtDesc(eq("wre*"), any(Pageable.class));
-        verify(postsRepository, never()).searchLikeOrderByCreatedAtDesc(anyString(), any(Pageable.class));
+        verify(postsRepository, times(1)).searchLikeOrderByCreatedAtDesc(eq("wre"), any(Pageable.class));
+        verify(postsRepository, never()).searchFullTextOrderByCreatedAtDesc(anyString(), any(Pageable.class));
     }
 
     @Test

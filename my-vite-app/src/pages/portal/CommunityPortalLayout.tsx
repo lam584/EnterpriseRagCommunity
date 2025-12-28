@@ -1,23 +1,38 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import { Compass, FileText, MessageCircle, Bot, User, LogOut } from 'lucide-react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { Compass, FileText, MessageCircle, Bot, User, LogOut, Search, PencilLine } from 'lucide-react';
+import { portalSections } from './portalMenu';
 
 /**
  * 前台门户布局：包含左侧一级菜单（浏览与发现、帖子、互动、智能助手、账户）
  * 作为路由嵌套的容器，子路由在 <Outlet /> 中渲染。
  */
 export default function CommunityPortalLayout() {
-  const linkBase = '/portal';
-  const navItems = [
-    { to: `${linkBase}/discover`, label: '浏览与发现', icon: Compass },
-    { to: `${linkBase}/posts`, label: '帖子', icon: FileText },
-    { to: `${linkBase}/interact`, label: '互动记录', icon: MessageCircle },
-    { to: `${linkBase}/assistant`, label: '智能助手', icon: Bot },
-    { to: `${linkBase}/account`, label: '账户', icon: User },
-  ];
+  const iconMap = {
+    discover: Compass,
+    search: Search,
+    compose: PencilLine,
+    posts: FileText,
+    interact: MessageCircle,
+    assistant: Bot,
+    account: User,
+  } as const;
+
+  const navItems = portalSections.map((s) => {
+    const Icon = iconMap[s.id as keyof typeof iconMap] ?? Compass;
+    return { to: s.basePath, label: s.label, icon: Icon };
+  });
+
+  const location = useLocation();
+  const isComposeWide =
+    location.pathname.startsWith('/portal/posts/create') ||
+    location.pathname.startsWith('/portal/posts/edit') ||
+    location.pathname.startsWith('/portal/compose');
+
+  const containerClassName = isComposeWide ? 'max-w-screen-2xl' : 'max-w-7xl';
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="max-w-6xl mx-auto flex border-gray-200 min-h-screen">
+      <div className={`${containerClassName} mx-auto flex border-gray-200 min-h-screen`}>
         {/* Left Sidebar */}
         <aside className="w-64 bg-white border-gray-200 h-screen sticky top-0 flex flex-col shrink-0 z-10">
           <div className="p-6 border-b border-gray-200">

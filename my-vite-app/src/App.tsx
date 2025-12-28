@@ -15,10 +15,9 @@ import AssistantLayout, { AssistantIndexRedirect } from './pages/portal/assistan
 import AccountLayout, { AccountIndexRedirect } from './pages/portal/account/AccountLayout';
 
 import DiscoverHomePage from './pages/portal/discover/pages/DiscoverHomePage';
-import DiscoverTrendingPage from './pages/portal/discover/pages/DiscoverTrendingPage';
 import DiscoverBoardsPage from './pages/portal/discover/pages/DiscoverBoardsPage';
 import DiscoverTagsPage from './pages/portal/discover/pages/DiscoverTagsPage';
-import DiscoverSearchPage from './pages/portal/discover/pages/DiscoverSearchPage';
+import DiscoverHotPage from './pages/portal/discover/pages/DiscoverHotPage';
 
 import PostsFeedPage from './pages/portal/posts/pages/PostsFeedPage';
 import PostsCreatePage from './pages/portal/posts/pages/PostsCreatePage';
@@ -27,7 +26,7 @@ import PostsMinePage from './pages/portal/posts/pages/PostsMinePage';
 import PostsBookmarksPage from './pages/portal/posts/pages/PostsBookmarksPage';
 import PostDetailPage from './pages/portal/posts/pages/PostDetailPage';
 
-import InteractNotificationsPage from './pages/portal/interact/pages/InteractNotificationsPage';
+// 删除 notifications 页路由后，该 import 不再需要
 import InteractRepliesPage from './pages/portal/interact/pages/InteractRepliesPage';
 import InteractLikesPage from './pages/portal/interact/pages/InteractLikesPage';
 import InteractMentionsPage from './pages/portal/interact/pages/InteractMentionsPage';
@@ -42,6 +41,9 @@ import AccountProfilePage from './pages/portal/account/pages/AccountProfilePage'
 import AccountSecurityPage from './pages/portal/account/pages/AccountSecurityPage';
 import AccountPreferencesPage from './pages/portal/account/pages/AccountPreferencesPage';
 import AccountConnectionsPage from './pages/portal/account/pages/AccountConnectionsPage';
+import SearchLayout from './pages/portal/search/SearchLayout';
+import SearchIndexRedirect from './pages/portal/search/SearchIndexRedirect';
+import SearchPostsPage from './pages/portal/search/pages/SearchPostsPage';
 import { ContentMgmtPage, ReviewCenterPage, SemanticBoostPage, RetrievalRagPage, MetricsMonitorPage, UsersRBACPage } from './pages/admin/sections.tsx';
 
 // 受保护的路由组件
@@ -91,8 +93,8 @@ function AppRoutes() {
             {/* 根路径重定向逻辑 */}
             <Route path="/" element={
                 setupRequired
-                ? <Navigate to="/admin-setup" replace />
-                : <Navigate to="/portal/discover" replace />
+                    ? <Navigate to="/admin-setup" replace />
+                    : <Navigate to="/portal/discover" replace />
             } />
 
             {/* 初始管理员设置页面 */}
@@ -103,8 +105,8 @@ function AppRoutes() {
             {/* 登录页面 - 如果需要初始设置则重定向到初始设置页面 */}
             <Route path="/login" element={
                 setupRequired
-                ? <Navigate to="/admin-setup" replace />
-                : (isAuthenticated ? <Navigate to="/portal/discover" replace /> : <Login />)
+                    ? <Navigate to="/admin-setup" replace />
+                    : (isAuthenticated ? <Navigate to="/portal/discover" replace /> : <Login />)
             } />
 
             {/* 前台门户（普通用户/访客） - 公开访问 */}
@@ -112,10 +114,15 @@ function AppRoutes() {
                 <Route path="discover" element={<DiscoverLayout />}>
                     <Route index element={<DiscoverIndexRedirect />} />
                     <Route path="home" element={<DiscoverHomePage />} />
-                    <Route path="trending" element={<DiscoverTrendingPage />} />
                     <Route path="boards" element={<DiscoverBoardsPage />} />
                     <Route path="tags" element={<DiscoverTagsPage />} />
-                    <Route path="search" element={<DiscoverSearchPage />} />
+                    <Route path="search" element={<Navigate to="/portal/search/posts" replace />} />
+                    <Route path="hot" element={<DiscoverHotPage />} />
+                </Route>
+
+                <Route path="search" element={<SearchLayout />}>
+                    <Route index element={<SearchIndexRedirect />} />
+                    <Route path="posts" element={<SearchPostsPage />} />
                 </Route>
 
                 <Route path="posts" element={<PostsLayout />}>
@@ -131,7 +138,7 @@ function AppRoutes() {
 
                 <Route path="interact" element={<InteractLayout />}>
                     <Route index element={<InteractIndexRedirect />} />
-                    <Route path="notifications" element={<InteractNotificationsPage />} />
+                    {/* 二级菜单“通知”删除：原 /portal/interact/notifications 不再暴露为独立页 */}
                     <Route path="replies" element={<InteractRepliesPage />} />
                     <Route path="likes" element={<InteractLikesPage />} />
                     <Route path="mentions" element={<InteractMentionsPage />} />
@@ -152,6 +159,8 @@ function AppRoutes() {
                     <Route path="security" element={<AccountSecurityPage />} />
                     <Route path="preferences" element={<AccountPreferencesPage />} />
                     <Route path="connections" element={<AccountConnectionsPage />} />
+                    <Route path="mine" element={<PostsMinePage />} />
+                    <Route path="bookmarks" element={<PostsBookmarksPage />} />
                 </Route>
 
                 <Route index element={<Navigate to="discover" replace />} />
