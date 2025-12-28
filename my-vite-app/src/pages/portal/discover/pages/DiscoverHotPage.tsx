@@ -6,6 +6,8 @@ import { fetchHotPosts, type HotPostDTO, type HotWindow } from '../../../../serv
 const tabs: HotWindow[] = ['24h', '7d', 'all'];
 const labels: Record<HotWindow, string> = { '24h': '24小时', '7d': '7天', all: '全部' };
 
+const PAGE_SIZE = 25;
+
 export default function DiscoverHotPage() {
   const [window, setWindow] = useState<HotWindow>('24h');
   const [page, setPage] = useState(1);
@@ -17,7 +19,7 @@ export default function DiscoverHotPage() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetchHotPosts({ window: w, page: p, pageSize: 20 });
+      const resp = await fetchHotPosts({ window: w, page: p, pageSize: PAGE_SIZE });
       setData(resp);
       setWindow(w);
       setPage(p);
@@ -34,6 +36,11 @@ export default function DiscoverHotPage() {
   }, [load]);
 
   const totalPages = useMemo(() => (data?.totalPages ?? 1), [data]);
+  const showPager = useMemo(() => {
+    // 只要后端返回 totalPages>1 就显示分页。
+    // 不要用 content.length >= PAGE_SIZE 作为条件：后端可能会过滤掉部分帖子，导致第一页不足一页但仍然存在下一页。
+    return totalPages > 1;
+  }, [totalPages]);
 
   return (
     <div className="space-y-4">
@@ -67,7 +74,7 @@ export default function DiscoverHotPage() {
       <div className="bg-white border rounded-lg divide-y">
         {(data?.content ?? []).map((it, idx) => (
           <div key={it.post.id} className="p-4 flex gap-3">
-            <div className="w-10 text-center text-gray-500">{(page - 1) * 20 + idx + 1}</div>
+            <div className="w-10 text-center text-gray-500">{(page - 1) * PAGE_SIZE + idx + 1}</div>
             <div className="flex-1 min-w-0">
               <Link to={`/portal/posts/detail/${it.post.id}`} className="font-medium hover:text-blue-600">
                 {it.post.title}
@@ -86,27 +93,29 @@ export default function DiscoverHotPage() {
         ) : null}
       </div>
 
-      <div className="flex items-center justify-between">
-        <button
-          type="button"
-          className="px-3 py-2 border rounded disabled:opacity-50"
-          disabled={loading || page <= 1}
-          onClick={() => load(window, Math.max(1, page - 1))}
-        >
-          上一页
-        </button>
-        <div className="text-sm text-gray-600">
-          第 {page} / {totalPages} 页
+      {showPager ? (
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            className="px-3 py-2 border rounded disabled:opacity-50"
+            disabled={loading || page <= 1}
+            onClick={() => load(window, Math.max(1, page - 1))}
+          >
+            上一页
+          </button>
+          <div className="text-sm text-gray-600">
+            第 {page} / {totalPages} 页
+          </div>
+          <button
+            type="button"
+            className="px-3 py-2 border rounded disabled:opacity-50"
+            disabled={loading || page >= totalPages}
+            onClick={() => load(window, page + 1)}
+          >
+            下一页
+          </button>
         </div>
-        <button
-          type="button"
-          className="px-3 py-2 border rounded disabled:opacity-50"
-          disabled={loading || page >= totalPages}
-          onClick={() => load(window, page + 1)}
-        >
-          下一页
-        </button>
-      </div>
+      ) : null}
     </div>
   );
 }

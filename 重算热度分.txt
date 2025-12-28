@@ -1,0 +1,30 @@
+立即重新计算热度分
+
+$base = "http://localhost:8099"
+
+# 1) 登录，并把 cookie 保存到 $session（后面请求会自动带上 JSESSIONID）
+$session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$loginBody = @{
+  email = "ls20@vip.qq.com"
+  password = "qq2076835378"
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Uri "$base/api/auth/login" `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body $loginBody `
+  -WebSession $session
+
+
+# 2) 验证是否登录成功
+Invoke-RestMethod -Uri "$base/api/auth/current-admin" -Method Get -WebSession $session
+
+
+# 3) 重新计算热度分
+Invoke-RestMethod -Uri "$base/api/admin/hot-scores/recompute-24h" -Method Post -WebSession $session
+
+# 新增：重算 7 天窗口（如果你需要 7d 榜单，这一步必须要跑）
+Invoke-RestMethod -Uri "$base/api/admin/hot-scores/recompute-7d" -Method Post -WebSession $session
+
+Invoke-RestMethod -Uri "$base/api/admin/hot-scores/recompute-all" -Method Post -WebSession $session
