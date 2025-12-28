@@ -57,8 +57,9 @@ public class HotScoresServiceImpl implements HotScoresService {
         return switch (window) {
             case H24 -> new Range(today.atStartOfDay(), today.plusDays(1).atStartOfDay());
             case D7 -> {
-                LocalDate from = today.minusDays(6);
-                yield new Range(from.atStartOfDay(), today.plusDays(1).atStartOfDay());
+                // rolling 7 days：必须包含最近 24 小时（避免“自然日口径”导致 7d 榜比 24h 还少）
+                LocalDateTime now = LocalDateTime.now(ZONE);
+                yield new Range(now.minusDays(7), now);
             }
             case ALL -> new Range(null, null);
         };
@@ -121,7 +122,14 @@ public class HotScoresServiceImpl implements HotScoresService {
                 })
                 .toList();
 
-        return new PageImpl<>(content, hsPage.getPageable(), hsPage.getTotalElements());
+        // 注意：当前页内容做了过滤（未发布/异常帖子会被剔除）。
+        // 如果仍然返回 hsPage.getTotalElements()，前端会看到不可靠的 totalPages，从而误以为条数更少/无法翻页。
+        // 这里做一个“安全 total”：不夸大并尽量保持分页体验。
+        long safeTotal = hsPage.getTotalElements();
+        if (safeTotal < content.size()) safeTotal = content.size();
+        if (safeTotal > 0 && content.isEmpty() && safePage == 1) safeTotal = 0;
+
+        return new PageImpl<>(content, hsPage.getPageable(), safeTotal);
     }
 
     @Override
@@ -163,8 +171,13 @@ public class HotScoresServiceImpl implements HotScoresService {
             likeMap = toCountMap(hotScoresRepository.aggregateLikesBetween(r.fromInclusive, r.toExclusive));
             favMap = toCountMap(hotScoresRepository.aggregateFavoritesBetween(r.fromInclusive, r.toExclusive));
             cmtMap = toCountMap(hotScoresRepository.aggregateCommentsBetween(r.fromInclusive, r.toExclusive));
-            // post_views_daily 是按 day 聚合的：这里用自然日 [fromDay, toDay)
-            viewMap = toCountMap(postViewsDailyRepository.aggregateViewsBetweenDays(r.fromInclusive.toLocalDate(), r.toExclusive.toLocalDate()));
+
+            // post_views_daily 是按 day 聚合的（没有小时/分钟粒度）。
+            // 为了避免 rolling 窗口在同一天内 toDay==today 导致“今天整天被排除”（从而出现 7d 榜比 24h 还少），
+            // 这里把上界扩成“包含 r.toExclusive 所在自然日”的 [fromDay, toDayExclusive)。
+            LocalDate fromDay = r.fromInclusive.toLocalDate();
+            LocalDate toDayExclusive = r.toExclusive.toLocalDate().plusDays(1);
+            viewMap = toCountMap(postViewsDailyRepository.aggregateViewsBetweenDays(fromDay, toDayExclusive));
         }
 
         // 2) 读取已有 hot_scores，做 upsert

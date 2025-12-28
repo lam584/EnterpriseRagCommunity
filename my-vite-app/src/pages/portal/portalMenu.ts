@@ -22,7 +22,6 @@ export const portalSections: PortalSection[] = [
       { id: 'home', label: '首页', path: 'home', description: '新鲜内容' },
       { id: 'hot', label: '热榜', path: 'hot', description: '当前社区热门内容' },
       { id: 'boards', label: '版块', path: 'boards', description: '按版块浏览内容' },
-      { id: 'tags', label: '标签', path: 'tags', description: '按标签筛选与发现' },
     ],
   },
   {
