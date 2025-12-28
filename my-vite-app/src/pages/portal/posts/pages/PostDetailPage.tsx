@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {JSX, useEffect, useMemo, useRef, useState} from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
 import ImageLightbox from '../../../../components/ui/ImageLightbox';
@@ -11,10 +11,34 @@ function clamp0(n: number) {
   return n < 0 ? 0 : n;
 }
 
-const StatButton =
-  (StatButtonModule as any).default ??
-  (StatButtonModule as any).StatButton ??
-  (Object.values(StatButtonModule as any).find((v: any) => typeof v === 'function') as any);
+type StatButtonProps = {
+  label: string;
+  count: number;
+  onClick?: () => void;
+  tone?: string;
+  active?: boolean;
+  disabled?: boolean;
+};
+
+type StatButtonComponent = (props: StatButtonProps) => JSX.Element;
+
+function pickStatButton(mod: unknown): StatButtonComponent {
+  if (mod && typeof mod === 'object') {
+    const m = mod as Record<string, unknown>;
+
+    const candidate =
+      (m.default as unknown) ??
+      (m.StatButton as unknown) ??
+      Object.values(m).find((v) => typeof v === 'function');
+
+    if (typeof candidate === 'function') return candidate as StatButtonComponent;
+  }
+
+  // Fallback so the page won't crash if the module shape changes.
+  return (() => <span />) as StatButtonComponent;
+}
+
+const StatButton = pickStatButton(StatButtonModule);
 
 export default function PostDetailPage() {
   const navigate = useNavigate();
@@ -179,7 +203,7 @@ export default function PostDetailPage() {
   }, [id]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full mx-auto px-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">帖子详情</h3>
