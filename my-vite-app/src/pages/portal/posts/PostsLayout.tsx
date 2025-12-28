@@ -14,7 +14,7 @@ export default function PostsLayout() {
 
   const location = useLocation();
   const showCreatePreview =
-    location.pathname.startsWith(section.basePath) || location.pathname.startsWith('/portal/posts/edit');
+    location.pathname.startsWith('/portal/posts/create') || location.pathname.startsWith('/portal/posts/edit');
 
   return (
     <div className="space-y-4">
