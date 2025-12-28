@@ -16,18 +16,27 @@ export default function PostsLayout() {
   const showCreatePreview =
     location.pathname.startsWith('/portal/posts/create') || location.pathname.startsWith('/portal/posts/edit');
 
+  // 详情页：让左侧内容区更宽（避免仅在页面内部 max-width 被父容器限制）
+  const isPostDetail = /^\/portal\/posts\/\d+\/?$/.test(location.pathname);
+
   return (
     <div className="space-y-4">
       <SubTabsNav title={section.label} items={items} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_525px] xl:grid-cols-[minmax(0,1.25fr)_525px] gap-4 items-start">
-        {/* Left: original card container */}
+      <div
+        className={
+          isPostDetail
+            ? 'grid grid-cols-1 gap-4 items-start'
+            : 'grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_275px] xl:grid-cols-[minmax(0,1.25fr)_275px] gap-4 items-start'
+        }
+      >
+        {/* Left: main content */}
         <div className="bg-white rounded-lg border border-gray-200 p-4 min-w-0">
           <Outlet />
         </div>
 
-        {/* Right: preview sidebar (outside of the left card) */}
-        {showCreatePreview ? <PostsCreatePreviewSidebar /> : null}
+        {/* Right: preview sidebar (only on create/edit) */}
+        {!isPostDetail && showCreatePreview ? <PostsCreatePreviewSidebar /> : null}
       </div>
     </div>
   );

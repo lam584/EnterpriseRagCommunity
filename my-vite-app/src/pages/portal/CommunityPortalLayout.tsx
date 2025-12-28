@@ -23,12 +23,18 @@ export default function CommunityPortalLayout() {
   });
 
   const location = useLocation();
-  const isComposeWide =
+  const isPostDetail = /^\/portal\/posts\/\d+\/?$/.test(location.pathname);
+  const isCompose =
     location.pathname.startsWith('/portal/posts/create') ||
     location.pathname.startsWith('/portal/posts/edit') ||
     location.pathname.startsWith('/portal/compose');
 
-  const containerClassName = isComposeWide ? 'max-w-screen-2xl' : 'max-w-7xl';
+  let containerClassName = 'max-w-7xl';
+  if (isPostDetail) {
+    containerClassName = 'w-full';
+  } else if (isCompose) {
+    containerClassName = 'max-w-screen-2xl';
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -80,7 +86,7 @@ export default function CommunityPortalLayout() {
         </aside>
 
         {/* Main Content */}
-        <main className="min-w-0 bg-white">
+        <main className="min-w-0 bg-white flex-1">
           <div>
             <Outlet />
           </div>
