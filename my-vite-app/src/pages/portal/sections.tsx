@@ -11,7 +11,7 @@ export const DiscoverPage: React.FC = () => (
 export const PostsPage: React.FC = () => (
   <div>
     <h2 className="text-xl font-semibold mb-4">帖子</h2>
-    <p className="text-gray-600">发布新帖、编辑与草稿箱、我的帖子与回收站。</p>
+    <p className="text-gray-600">发布新帖、编辑与草稿箱。</p>
   </div>
 );
 

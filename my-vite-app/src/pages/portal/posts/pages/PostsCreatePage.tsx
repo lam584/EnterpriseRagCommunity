@@ -110,7 +110,7 @@ export default function PostsCreatePage() {
     return () => {
       mounted = false;
     };
-  }, [postId]);
+  }, [postId, draftId, setSearchParams]);
 
   useEffect(() => {
     // Draft mode is disabled when editing an existing post.
@@ -241,126 +241,144 @@ export default function PostsCreatePage() {
 
   const busy = loadingDraft || loadingPost;
 
+  useEffect(() => {
+    // Push live preview snapshot to right sidebar (PostsLayout) via localStorage.
+    // Using both localStorage and a custom event so same-tab updates are instant.
+    const key = 'portal.posts.compose.preview';
+    try {
+      localStorage.setItem(
+        key,
+        JSON.stringify({ markdown: draft.content ?? '', updatedAt: new Date().toISOString() })
+      );
+      window.dispatchEvent(new Event('posts-compose-preview-update'));
+    } catch {
+      // Ignore quota/security errors; editor should still work.
+    }
+  }, [draft.content]);
+
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold">{postId !== null ? '编辑帖子' : '发帖'}</h3>
-        <p className="text-gray-600">
-          使用 Markdown 编写内容。你可以插入图片与附件（先模拟上传）
-          {postId !== null ? '，保存修改后会回到“我的帖子”。' : '，并保存到草稿箱后继续编辑。'}
-        </p>
-      </div>
+      {/* Left: existing page content */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold">{postId !== null ? '编辑帖子' : '发帖'}</h3>
+          <p className="text-gray-600">
+            使用 Markdown 编写内容。你可以插入图片与附件（先模拟上传）
+            {postId !== null ? '，保存修改后会回到“我的帖子”。' : '，并保存到草稿箱后继续编辑。'}
+          </p>
+        </div>
 
-      {error && (
-        <div className="p-3 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm">{error}</div>
-      )}
+        {error && (
+          <div className="p-3 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm">{error}</div>
+        )}
 
-      {busy ? (
-        <div className="text-sm text-gray-600">正在加载{postId !== null ? '帖子' : '草稿'}...</div>
-      ) : (
-        <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">标题</label>
-              <input
-                value={draft.title}
-                onChange={(e) => setDraft((p) => ({ ...p, title: e.target.value }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="输入标题..."
+        {busy ? (
+          <div className="text-sm text-gray-600">正在加载{postId !== null ? '帖子' : '草稿'}...</div>
+        ) : (
+          <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">标题</label>
+                <input
+                  value={draft.title}
+                  onChange={(e) => setDraft((p) => ({ ...p, title: e.target.value }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="输入标题..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">版块</label>
+                <select
+                  value={draft.boardId}
+                  onChange={(e) => setDraft((p) => ({ ...p, boardId: Number(e.target.value) }))}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  {loadingBoards && !boards.length ? (
+                    <option value={draft.boardId}>加载中...</option>
+                  ) : boards.length ? (
+                    boards.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} (#{b.id})
+                      </option>
+                    ))
+                  ) : (
+                    <option value={draft.boardId}>（暂无版块）</option>
+                  )}
+                </select>
+                {!boards.length && !loadingBoards && (
+                  <div className="text-xs text-gray-500 mt-1">未能加载版块列表，将使用当前 boardId：{draft.boardId}</div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">内容（Markdown）</label>
+              <MarkdownEditor
+                value={{ markdown: draft.content }}
+                onChange={(v) => setDraft((p) => ({ ...p, content: v.markdown }))}
+                onInsertImage={(file) => uploadAndGetMarkdown(file, 'image')}
+                onInsertAttachment={(file) => uploadAndGetMarkdown(file, 'attachment')}
+                placeholder="写点什么..."
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">版块</label>
-              <select
-                value={draft.boardId}
-                onChange={(e) => setDraft((p) => ({ ...p, boardId: Number(e.target.value) }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={publishing || saving}
+                onClick={handlePublish}
+                className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
               >
-                {loadingBoards && !boards.length ? (
-                  <option value={draft.boardId}>加载中...</option>
-                ) : boards.length ? (
-                  boards.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name} (#{b.id})
-                    </option>
-                  ))
-                ) : (
-                  <option value={draft.boardId}>（暂无版块）</option>
-                )}
-              </select>
-              {!boards.length && !loadingBoards && (
-                <div className="text-xs text-gray-500 mt-1">未能加载版块列表，将使用当前 boardId：{draft.boardId}</div>
+                {publishing ? (postId !== null ? '保存中...' : '发布中...') : postId !== null ? '保存修改' : '发布'}
+              </button>
+
+              {postId === null && (
+                <button
+                  type="button"
+                  disabled={publishing || saving}
+                  onClick={handleSaveDraft}
+                  className="px-4 py-2 rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {saving ? '保存中...' : isEditingDraft ? '更新草稿' : '保存草稿'}
+                </button>
+              )}
+
+              {draftId && postId === null && (
+                <button
+                  type="button"
+                  disabled={publishing || saving}
+                  onClick={async () => {
+                    await deleteDraft(draftId);
+                    setSearchParams({});
+                    setDraft(createEmptyDraft());
+                    navigate('/portal/posts/drafts');
+                  }}
+                  className="px-4 py-2 rounded-md border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  删除草稿
+                </button>
+              )}
+
+              {postId !== null && (
+                <button
+                  type="button"
+                  disabled={publishing || saving}
+                  onClick={() => navigate('/portal/posts/mine')}
+                  className="px-4 py-2 rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-opacity-50"
+                >
+                  取消
+                </button>
               )}
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">内容（Markdown）</label>
-            <MarkdownEditor
-              value={{ markdown: draft.content }}
-              onChange={(v) => setDraft((p) => ({ ...p, content: v.markdown }))}
-              onInsertImage={(file) => uploadAndGetMarkdown(file, 'image')}
-              onInsertAttachment={(file) => uploadAndGetMarkdown(file, 'attachment')}
-              placeholder="写点什么..."
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={publishing || saving}
-              onClick={handlePublish}
-              className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {publishing ? (postId !== null ? '保存中...' : '发布中...') : postId !== null ? '保存修改' : '发布'}
-            </button>
-
-            {postId === null && (
-              <button
-                type="button"
-                disabled={publishing || saving}
-                onClick={handleSaveDraft}
-                className="px-4 py-2 rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
-              >
-                {saving ? '保存中...' : isEditingDraft ? '更新草稿' : '保存草稿'}
-              </button>
-            )}
-
-            {draftId && postId === null && (
-              <button
-                type="button"
-                disabled={publishing || saving}
-                onClick={async () => {
-                  await deleteDraft(draftId);
-                  setSearchParams({});
-                  setDraft(createEmptyDraft());
-                  navigate('/portal/posts/drafts');
-                }}
-                className="px-4 py-2 rounded-md border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
-              >
-                删除草稿
-              </button>
-            )}
-
-            {postId !== null && (
-              <button
-                type="button"
-                disabled={publishing || saving}
-                onClick={() => navigate('/portal/posts/mine')}
-                className="px-4 py-2 rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-opacity-50"
-              >
-                取消
-              </button>
-            )}
-          </div>
-
-          <div className="text-sm text-gray-500">
-            信息：{draft.title ? `《${draft.title}》` : '（无标题）'} /{' '}
-            {draft.content ? `${draft.content.length} 字` : '（无内容）'}
-            {draft.attachments?.length ? ` / ${draft.attachments.length} 个附件` : ''}
-          </div>
-        </form>
-      )}
+            <div className="text-sm text-gray-500">
+              信息：{draft.title ? `《${draft.title}》` : '（无标题）'} /{' '}
+              {draft.content ? `${draft.content.length} 字` : '（无内容）'}
+              {draft.attachments?.length ? ` / ${draft.attachments.length} 个附件` : ''}
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

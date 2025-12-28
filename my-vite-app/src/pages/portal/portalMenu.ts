@@ -7,7 +7,7 @@ export type PortalSubNavItem = {
 };
 
 export type PortalSection = {
-  id: 'discover' | 'posts' | 'interact' | 'assistant' | 'account';
+  id: 'discover' | 'posts' | 'interact' | 'assistant' | 'account' | 'compose' | 'search';
   label: string;
   basePath: `/portal/${string}`;
   children: PortalSubNavItem[];
@@ -20,30 +20,31 @@ export const portalSections: PortalSection[] = [
     basePath: '/portal/discover',
     children: [
       { id: 'home', label: '首页', path: 'home', description: '新鲜内容' },
-      { id: 'trending', label: '热榜', path: 'trending', description: '当前社区热门内容' },
+      { id: 'hot', label: '热榜', path: 'hot', description: '当前社区热门内容' },
       { id: 'boards', label: '版块', path: 'boards', description: '按版块浏览内容' },
       { id: 'tags', label: '标签', path: 'tags', description: '按标签筛选与发现' },
-      { id: 'search', label: '搜索', path: 'search', description: '关键词搜索帖子与用户' },
     ],
   },
   {
-    id: 'posts',
-    label: '帖子',
+    id: 'search',
+    label: '搜索',
+    basePath: '/portal/search',
+    children: [],
+  },
+  {
+    id: 'compose',
+    label: '发帖',
     basePath: '/portal/posts',
     children: [
-      // { id: 'feed', label: '信息流', path: 'feed', description: '最新/关注/推荐帖子流' },
-      { id: 'create', label: '发帖', path: 'create', description: '发布新帖子' },
+      { id: 'create', label: '发帖', path: 'create', description: '创建新帖子' },
       { id: 'drafts', label: '草稿箱', path: 'drafts', description: '未发布内容' },
-      { id: 'mine', label: '我的帖子', path: 'mine', description: '我发布过的帖子' },
-      { id: 'bookmarks', label: '收藏', path: 'bookmarks', description: '我收藏的帖子' },
     ],
   },
   {
     id: 'interact',
-    label: '互动记录',
+    label: '通知',
     basePath: '/portal/interact',
     children: [
-      { id: 'notifications', label: '通知', path: 'notifications', description: '互动通知总览' },
       { id: 'replies', label: '回复', path: 'replies', description: '回复我的评论/帖子' },
       { id: 'likes', label: '点赞', path: 'likes', description: '我点赞过的内容' },
       { id: 'mentions', label: '提及', path: 'mentions', description: '有人 @ 我' },
@@ -70,6 +71,8 @@ export const portalSections: PortalSection[] = [
       { id: 'security', label: '安全', path: 'security', description: '密码、登录设备与风控' },
       { id: 'preferences', label: '偏好', path: 'preferences', description: '语言、展示与通知偏好' },
       { id: 'connections', label: '绑定', path: 'connections', description: '邮箱/手机/第三方账号' },
+      { id: 'mine', label: '我的帖子', path: 'mine', description: '我发布过的帖子' },
+      { id: 'bookmarks', label: '收藏', path: 'bookmarks', description: '我收藏的帖子' },
     ],
   },
 ];

@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { SpringPage } from '../../../../types/page';
 import { listPostsPage, type PostDTO } from '../../../../services/postService';
 import PostFeed from '../components/PostFeed';
 
 export default function DiscoverSearchPage() {
-  const [q, setQ] = useState('');
-  const [submittedQ, setSubmittedQ] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const qFromUrl = searchParams.get('q') ?? '';
+
+  const [q, setQ] = useState(qFromUrl);
+  const [submittedQ, setSubmittedQ] = useState(qFromUrl);
   const [page, setPage] = useState<number>(1);
   const [data, setData] = useState<SpringPage<PostDTO> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,6 +51,13 @@ export default function DiscoverSearchPage() {
   );
 
   useEffect(() => {
+    // URL -> state 同步（例如：从首页跳转、或浏览器前进后退）
+    setQ(qFromUrl);
+    setSubmittedQ(qFromUrl);
+    setPage(1);
+  }, [qFromUrl]);
+
+  useEffect(() => {
     if (!canSearch) return;
     load(1, submittedQ);
   }, [canSearch, submittedQ, load]);
@@ -62,8 +73,12 @@ export default function DiscoverSearchPage() {
         className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          setSubmittedQ(q);
+          const next = q.trim();
+          setSubmittedQ(next);
           setPage(1);
+          // state -> URL 同步
+          if (next) setSearchParams({ q: next }, { replace: false });
+          else setSearchParams({}, { replace: false });
         }}
       >
         <input

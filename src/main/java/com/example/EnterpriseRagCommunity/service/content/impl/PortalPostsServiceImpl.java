@@ -7,14 +7,21 @@ import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
 import com.example.EnterpriseRagCommunity.service.content.PostInteractionsService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
+import com.example.EnterpriseRagCommunity.repository.content.PostViewsDailyRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 
 @Service
 public class PortalPostsServiceImpl implements PortalPostsService {
+
+    private static final Logger log = LoggerFactory.getLogger(PortalPostsServiceImpl.class);
 
     @Autowired
     private PostsService postsService;
@@ -24,6 +31,11 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
     @Autowired
     private CommentsService commentsService;
+
+    @Autowired
+    private PostViewsDailyRepository postViewsDailyRepository;
+
+    private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
     private static PostDetailDTO toBaseDto(PostsEntity e) {
         PostDetailDTO dto = new PostDetailDTO();
@@ -91,9 +103,18 @@ public class PortalPostsServiceImpl implements PortalPostsService {
     }
 
     @Override
+    @Transactional
     public PostDetailDTO getById(Long id) {
         PostsEntity e = postsService.getById(id);
+
+        // 浏览量：按自然日聚合 +1（不去重）。
+        // 注意：视图计数不应影响主流程，但也不能静默失败；这里记录 warning 便于排查。
+        try {
+            postViewsDailyRepository.increment(id, LocalDate.now(ZONE));
+        } catch (Exception ex) {
+            log.warn("Failed to increment post view count. postId={}, day={}", id, LocalDate.now(ZONE), ex);
+        }
+
         return enrichAggregates(toBaseDto(e));
     }
 }
-
