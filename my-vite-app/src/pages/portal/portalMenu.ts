@@ -31,15 +31,6 @@ export const portalSections: PortalSection[] = [
     children: [],
   },
   {
-    id: 'compose',
-    label: '发帖',
-    basePath: '/portal/posts',
-    children: [
-      { id: 'create', label: '发帖', path: 'create', description: '创建新帖子' },
-      { id: 'drafts', label: '草稿箱', path: 'drafts', description: '未发布内容' },
-    ],
-  },
-  {
     id: 'interact',
     label: '通知',
     basePath: '/portal/interact',
@@ -74,6 +65,15 @@ export const portalSections: PortalSection[] = [
       { id: 'bookmarks', label: '收藏', path: 'bookmarks', description: '我收藏的帖子' },
     ],
   },
+    {
+        id: 'compose',
+        label: '发帖',
+        basePath: '/portal/posts',
+        children: [
+            {id: 'create', label: '发帖', path: 'create', description: '创建新帖子'},
+            {id: 'drafts', label: '草稿箱', path: 'drafts', description: '未发布内容'},
+        ],
+    },
 ];
 
 /**

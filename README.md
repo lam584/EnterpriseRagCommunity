@@ -89,7 +89,7 @@ EnterpriseRagCommunity
 
 2. 在 `resources/application.properties` 中配置数据库的账号和密码， 示例：
     ```
-    spring.datasource.url=jdbc:mysql://localhost:3306/test24031700?createDatabaseIfNotExist=true
+    spring.datasource.url=jdbc:mysql://localhost:3306/test?createDatabaseIfNotExist=true
     spring.datasource.username=root
     spring.datasource.password=password
     ```
