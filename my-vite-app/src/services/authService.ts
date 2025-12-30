@@ -28,7 +28,13 @@ export interface InitialAdminRegisterRequest {
   code?: string;
 }
 
-export async function login(email: string, password: string, csrfToken: string): Promise<AdminDTO> { 
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  username: string;
+}
+
+export async function login(email: string, password: string, csrfToken: string): Promise<AdminDTO> {
   const res = await fetch('/api/auth/login', {
     method: 'POST',
     headers: {
@@ -135,4 +141,41 @@ export async function registerInitialAdmin(registerData: InitialAdminRegisterReq
   }
 
   return;
+}
+
+/**
+ * 普通用户注册（非“初始管理员”）。
+ *
+ * 后端约定：POST /api/auth/register
+ */
+export async function register(registerData: RegisterRequest): Promise<void> {
+  const csrfToken = await getCsrfToken();
+
+  const res = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken
+    },
+    credentials: 'include',
+    body: JSON.stringify(registerData)
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const fieldErrMsg = typeof data === 'object' && data !== null
+      ? (data.message || data.username || data.email || data.password)
+      : undefined;
+    throw new Error(fieldErrMsg || '注册失败');
+  }
+
+  // 若后端使用 ApiResponse 包装
+  if (data && typeof data === 'object' && 'success' in data) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api: any = data;
+    if (!api.success) {
+      throw new Error(api.message || '注册失败');
+    }
+  }
 }
