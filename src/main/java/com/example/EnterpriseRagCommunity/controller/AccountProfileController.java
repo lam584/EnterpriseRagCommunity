@@ -2,8 +2,10 @@ package com.example.EnterpriseRagCommunity.controller;
 
 import com.example.EnterpriseRagCommunity.dto.access.UpdateMyProfileRequest;
 import com.example.EnterpriseRagCommunity.dto.access.UsersDTO;
+import com.example.EnterpriseRagCommunity.dto.access.request.ChangePasswordRequest;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.service.AccountSecurityService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,6 +26,7 @@ import java.util.Map;
 public class AccountProfileController {
 
     private final UsersRepository usersRepository;
+    private final AccountSecurityService accountSecurityService;
 
     @PutMapping("/profile")
     public ResponseEntity<?> updateMyProfile(@RequestBody @Valid UpdateMyProfileRequest req) {
@@ -73,6 +76,25 @@ public class AccountProfileController {
 
         UsersEntity saved = usersRepository.save(user);
         return ResponseEntity.ok(toSafeDTO(saved));
+    }
+
+    @PostMapping("/password")
+    public ResponseEntity<?> changeMyPassword(@RequestBody @Valid ChangePasswordRequest req) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "未登录或会话已过期");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+
+        String email = auth.getName();
+
+        try {
+            accountSecurityService.changePasswordByEmail(email, req.getCurrentPassword(), req.getNewPassword());
+            return ResponseEntity.ok(Map.of("message", "密码修改成功"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
     }
 
     private static String emptyToNull(String v) {
