@@ -80,6 +80,18 @@ export interface PostSearchQueryDTO {
   favoritedByMe?: boolean;
 }
 
+export interface SearchPostsOptions {
+  /**
+   * 当 status === 'ALL' 时，是否仍然把 status=ALL 传给后端。
+   *
+   * 背景：后端 /api/posts 在不传 status 时会默认 status=PUBLISHED；
+   * 管理端想看“全部状态”时必须显式传 status=ALL，才能取消状态过滤。
+   *
+   * 默认 false：保持旧行为（ALL 等价于不传）。
+   */
+  preserveAllStatus?: boolean;
+}
+
 function buildQueryString(query: Record<string, unknown>): string {
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
@@ -160,11 +172,15 @@ export async function listPosts(): Promise<PostDTO[]> {
   return getPageContent<PostDTO>(data) ?? (Array.isArray(data) ? (data as PostDTO[]) : []);
 }
 
-export async function searchPosts(query: PostSearchQueryDTO = {}): Promise<PostDTO[]> {
+export async function searchPosts(query: PostSearchQueryDTO = {}, options: SearchPostsOptions = {}): Promise<PostDTO[]> {
+  const preserveAllStatus = options.preserveAllStatus === true;
+
   const qs = buildQueryString({
     ...query,
-    // Normalize status: omit when ALL
-    status: query.status === 'ALL' ? undefined : query.status,
+    // Normalize status:
+    // - 默认：ALL => omit（兼容旧逻辑）
+    // - 管理端：ALL => keep（确保后端不会默认 PUBLISHED）
+    status: query.status === 'ALL' && !preserveAllStatus ? undefined : query.status,
     page: query.page ?? 1,
     pageSize: query.pageSize ?? 1000,
   });
@@ -176,6 +192,34 @@ export async function searchPosts(query: PostSearchQueryDTO = {}): Promise<PostD
 
   if (!res.ok) {
     // For now don't explode on missing endpoint
+    return [];
+  }
+
+  const data: unknown = await res.json().catch(() => ({}));
+  return getPageContent<PostDTO>(data) ?? (Array.isArray(data) ? (data as PostDTO[]) : []);
+}
+
+/**
+ * 管理端帖子查询（推荐）：走 /api/admin/posts。
+ *
+ * 说明：
+ * - 管理端默认需要“ALL（不过滤状态）”，因此这里不会把 ALL 过滤掉。
+ * - 后端接口会把不传/ALL 解释为不过滤 status。
+ */
+export async function searchAdminPosts(query: PostSearchQueryDTO = {}): Promise<PostDTO[]> {
+  const qs = buildQueryString({
+    ...query,
+    // admin API: allow status=ALL to pass through
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 1000,
+  });
+
+  const res = await fetch(apiUrl(`/api/admin/posts?${qs}`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
     return [];
   }
 
@@ -206,6 +250,48 @@ export async function listPostsPage(query: PostSearchQueryDTO = {}): Promise<Spr
   }
 
   // 兼容后端直接返回数组的情况
+  if (Array.isArray(data)) {
+    return {
+      content: data as PostDTO[],
+      totalElements: (data as PostDTO[]).length,
+      totalPages: 1,
+      size: (data as PostDTO[]).length,
+      number: 0,
+      first: true,
+      last: true,
+      empty: (data as PostDTO[]).length === 0,
+    };
+  }
+
+  return data as SpringPage<PostDTO>;
+}
+
+/**
+ * 分页查询“我的帖子”（包含待审核/草稿等状态）。
+ * 后端接口：GET /api/posts/mine
+ *
+ * 约定：
+ * - authorId 不需要也不允许前端传入；后端从会话解析当前用户。
+ * - status 传 ALL/undefined 表示不过滤状态（返回该用户全部帖子）。
+ */
+export async function listMyPostsPage(query: Omit<PostSearchQueryDTO, 'authorId'> = {}): Promise<SpringPage<PostDTO>> {
+  const qs = buildQueryString({
+    ...query,
+    status: query.status === 'ALL' ? undefined : query.status,
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 20,
+  });
+
+  const res = await fetch(apiUrl(`/api/posts/mine?${qs}`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(getBackendMessage(data) || '获取我的帖子失败');
+  }
+
   if (Array.isArray(data)) {
     return {
       content: data as PostDTO[],

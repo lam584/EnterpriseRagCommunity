@@ -164,13 +164,13 @@ export default function PostDetailPage() {
     if (!content) return;
 
     setCommentPending(true);
+    setCommentsError(null);
     try {
-      const created = await createPostComment(id, { content });
+      await createPostComment(id, { content });
       setNewComment('');
-      setComments((prev) => [created, ...prev]);
-      setCommentCount((c) => c + 1);
-      // stay on first page to show new one
-      setCommentsPage(1);
+      // 评论默认待审核，详情页只展示已审核(VISIBLE)评论；因此这里不直接插入列表
+      // 重新拉取第一页，保持 UI 与后端可见性一致
+      await loadComments(1);
     } catch (e) {
       setCommentsError(e instanceof Error ? e.message : String(e));
     } finally {

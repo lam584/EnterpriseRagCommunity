@@ -11,6 +11,7 @@ import {
   type PostDraftDTO,
 } from '../../../../services/draftService';
 import { listBoards, type BoardDTO } from '../../../../services/boardService';
+import { suggestPostTitles } from '../../../../services/aiTitleService';
 
 function getErrorMessage(e: unknown, fallback: string) {
   if (e && typeof e === 'object' && 'message' in e) {
@@ -52,6 +53,11 @@ export default function PostsCreatePage() {
   const [boards, setBoards] = useState<BoardDTO[]>([]);
 
   const [draft, setDraft] = useState<PostDraftDTO>(() => createEmptyDraft());
+
+  const [useAiTitle, setUseAiTitle] = useState(false);
+  const [titleSuggesting, setTitleSuggesting] = useState(false);
+  const [titleSuggestError, setTitleSuggestError] = useState<string | null>(null);
+  const [titleCandidates, setTitleCandidates] = useState<string[]>([]);
 
   const isEditingDraft = useMemo(() => Boolean(draftId), [draftId]);
   // const isEditingPost = useMemo(() => postId !== null, [postId]);
@@ -225,8 +231,8 @@ export default function PostsCreatePage() {
         await deleteDraft(draftId);
       }
 
-      // After publishing, go to feed for now.
-      navigate('/portal/posts/feed');
+      // 新帖默认进入“待审核”，不会出现在首页/热榜等公共区域；引导用户去“我的帖子”查看
+      navigate('/portal/posts/mine');
     } catch (e: unknown) {
       const fieldErrors = getFieldErrors(e);
       if (fieldErrors) {
@@ -256,6 +262,44 @@ export default function PostsCreatePage() {
     }
   }, [draft.content]);
 
+  useEffect(() => {
+    // 切换草稿/帖子时，清理标题候选避免跨帖子串数据
+    setTitleCandidates([]);
+    setTitleSuggestError(null);
+    setTitleSuggesting(false);
+  }, [draftId, postId]);
+
+  async function handleSuggestTitles() {
+    if (titleSuggesting) return;
+
+    const content = (draft.content ?? '').trim();
+    if (content.length < 10) {
+      setTitleSuggestError('内容太短了，先写一点内容再生成标题。');
+      return;
+    }
+
+    setTitleSuggesting(true);
+    setTitleSuggestError(null);
+
+    try {
+      const boardName = boards.find((b) => b.id === draft.boardId)?.name;
+      const resp = await suggestPostTitles({
+        content,
+        count: 5,
+        boardName,
+        tags: draft.tags,
+      });
+      setTitleCandidates(Array.isArray(resp.titles) ? resp.titles : []);
+      if (!resp.titles?.length) {
+        setTitleSuggestError('没有生成到可用标题，请稍后重试。');
+      }
+    } catch (e: unknown) {
+      setTitleSuggestError(getErrorMessage(e, '生成标题失败'));
+    } finally {
+      setTitleSuggesting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Left: existing page content */}
@@ -278,14 +322,70 @@ export default function PostsCreatePage() {
           <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">标题</label>
+                <div className="flex items-center justify-between gap-3">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">标题</label>
+
+                  <label className="flex items-center gap-2 text-xs text-gray-600 select-none">
+                    <input
+                      type="checkbox"
+                      checked={useAiTitle}
+                      onChange={(e) => {
+                        const v = e.target.checked;
+                        setUseAiTitle(v);
+                        setTitleSuggestError(null);
+                        if (!v) setTitleCandidates([]);
+                      }}
+                    />
+                    使用AI生成标题
+                  </label>
+                </div>
+
                 <input
                   value={draft.title}
                   onChange={(e) => setDraft((p) => ({ ...p, title: e.target.value }))}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="输入标题..."
                 />
+
+                {useAiTitle && (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={titleSuggesting}
+                        onClick={() => void handleSuggestTitles()}
+                        className="px-3 py-1.5 rounded-md bg-gray-100 hover:bg-gray-200 text-sm disabled:opacity-60"
+                      >
+                        {titleSuggesting ? '生成中...' : '生成候选标题'}
+                      </button>
+                      <div className="text-xs text-gray-500">根据正文内容生成 5 个候选标题，点击即可填充。</div>
+                    </div>
+
+                    {titleSuggestError && (
+                      <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                        {titleSuggestError}
+                      </div>
+                    )}
+
+                    {titleCandidates.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {titleCandidates.map((t, idx) => (
+                          <button
+                            key={`${idx}-${t}`}
+                            type="button"
+                            onClick={() => setDraft((p) => ({ ...p, title: t }))}
+                            className="px-3 py-1.5 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-sm"
+                            title="点击使用该标题"
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">版块</label>
                 <select

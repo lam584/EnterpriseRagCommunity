@@ -59,6 +59,27 @@ public interface PostsRepository extends JpaRepository<PostsEntity, Long>, JpaSp
             nativeQuery = true)
     Page<PostsEntity> searchLikeOrderByCreatedAtDesc(@Param("kw") String keyword, Pageable pageable);
 
+    // --- Keyword search with optional status filter (admin needs to see PENDING etc.) ---
+
+    @Query(value = "SELECT * FROM posts WHERE is_deleted = 0 AND (:status IS NULL OR status = :status) AND MATCH(title, content) AGAINST(:q IN BOOLEAN MODE) ORDER BY created_at DESC",
+            countQuery = "SELECT COUNT(*) FROM posts WHERE is_deleted = 0 AND (:status IS NULL OR status = :status) AND MATCH(title, content) AGAINST(:q IN BOOLEAN MODE)",
+            nativeQuery = true)
+    Page<PostsEntity> searchFullTextOrderByCreatedAtDescWithStatus(@Param("q") String query,
+                                                                  @Param("status") String status,
+                                                                  Pageable pageable);
+
+    @Query(value = "SELECT * FROM posts " +
+            "WHERE is_deleted = 0 AND (:status IS NULL OR status = :status) " +
+            "AND (title LIKE CONCAT('%', :kw, '%') ESCAPE '\\\\' OR content LIKE CONCAT('%', :kw, '%') ESCAPE '\\\\') " +
+            "ORDER BY created_at DESC",
+            countQuery = "SELECT COUNT(*) FROM posts " +
+                    "WHERE is_deleted = 0 AND (:status IS NULL OR status = :status) " +
+                    "AND (title LIKE CONCAT('%', :kw, '%') ESCAPE '\\\\' OR content LIKE CONCAT('%', :kw, '%') ESCAPE '\\\\')",
+            nativeQuery = true)
+    Page<PostsEntity> searchLikeOrderByCreatedAtDescWithStatus(@Param("kw") String keyword,
+                                                              @Param("status") String status,
+                                                              Pageable pageable);
+
     @Query("select p.id from PostsEntity p where p.isDeleted = false and p.status = :status")
     List<Long> findIdsByStatusAndIsDeletedFalse(@Param("status") PostStatus status);
 

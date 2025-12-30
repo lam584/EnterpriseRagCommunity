@@ -9,6 +9,7 @@ import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.content.CommentsService;
+import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,9 @@ public class CommentsServiceImpl implements CommentsService {
 
     @Autowired
     private NotificationsService notificationsService;
+
+    @Autowired
+    private AdminModerationQueueService adminModerationQueueService;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -86,12 +90,18 @@ public class CommentsServiceImpl implements CommentsService {
         e.setParentId(req.getParentId());
         e.setAuthorId(me);
         e.setContent(req.getContent());
-        e.setStatus(CommentStatus.VISIBLE);
+
+        // 业务规则：用户评论默认进入待审核状态；审核通过后再改为 VISIBLE
+        e.setStatus(CommentStatus.PENDING);
+
         e.setIsDeleted(false);
         e.setCreatedAt(LocalDateTime.now());
         e.setUpdatedAt(LocalDateTime.now());
 
         CommentsEntity saved = commentsRepository.save(e);
+
+        // 新增：写入审核队列（防重复）
+        adminModerationQueueService.ensureEnqueuedComment(saved.getId());
 
         // 回复通知：仅“有人评论了我发布的帖子（顶层评论）”才通知；多级回复暂不通知。
         if (req.getParentId() == null) {

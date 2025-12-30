@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import FormContainer from './forms/FormContainer';
 import { formsRegistry } from './forms/index';
 
@@ -166,7 +167,10 @@ const SubMenu: React.FC<{ items: SubItem[]; ariaLabel?: string; onChange?: (id: 
                     aria-controls={`${it.id}-panel`}
                     tabIndex={selected ? 0 : -1}
                     onKeyDown={(e) => onKeyDown(e, idx)}
-                    onClick={() => setActive(it.id)}
+                    onClick={() => {
+                      setActive(it.id);
+                      onChange?.(it.id);
+                    }}
                     className={`px-4 py-2 rounded-none whitespace-nowrap transition-colors duration-200 border-0 focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-0 ${
                       selected
                         ? 'bg-white text-blue-600 shadow-none font-bold text-[18px]'
@@ -230,7 +234,22 @@ const SectionCard: React.FC<SectionCardProps> = ({ children, form, className = '
 type AdminSectionProps = { title: string; items: SubItem[]; defaultActiveId?: string; className?: string };
 
 const AdminSection: React.FC<AdminSectionProps> = ({ title, items, defaultActiveId, className }) => {
-  const [active, setActive] = useState<string | undefined>(defaultActiveId);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const activeFromUrl = searchParams.get('active') ?? undefined;
+  const normalizedDefault = defaultActiveId ?? items[0]?.id;
+  const initialActive = (activeFromUrl && items.some((i) => i.id === activeFromUrl)) ? activeFromUrl : normalizedDefault;
+
+  const [active, setActive] = useState<string | undefined>(initialActive);
+
+  // 当 URL 参数变化时，同步到 state（允许外部跳转定位到某个子表单）
+  useEffect(() => {
+    if (!activeFromUrl) return;
+    if (items.some((i) => i.id === activeFromUrl)) {
+      setActive(activeFromUrl);
+    }
+  }, [activeFromUrl, items]);
+
   const ActiveForm = active ? formsRegistry[active] : undefined;
   return (
     <SectionCard
@@ -243,7 +262,19 @@ const AdminSection: React.FC<AdminSectionProps> = ({ title, items, defaultActive
       }
     >
       {/* 二级菜单 */}
-      <SubMenu title={title} items={items} onChange={setActive} defaultActiveId={defaultActiveId} />
+      <SubMenu
+        title={title}
+        items={items}
+        onChange={(id) => {
+          setActive(id);
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set('active', id);
+            return next;
+          });
+        }}
+        defaultActiveId={initialActive}
+      />
     </SectionCard>
   );
 };
