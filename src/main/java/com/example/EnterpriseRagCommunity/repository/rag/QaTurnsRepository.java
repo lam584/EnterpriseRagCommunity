@@ -11,4 +11,7 @@ import java.util.List;
 public interface QaTurnsRepository extends JpaRepository<QaTurnsEntity, Long>, JpaSpecificationExecutor<QaTurnsEntity> {
     // 按 sessionId 查询轮次列表（基于字段名 sessionId）
     List<QaTurnsEntity> findBySessionIdOrderByCreatedAtAsc(Long sessionId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    void deleteBySessionId(Long sessionId);
 }
