@@ -174,7 +174,40 @@ public class PostsServiceImpl implements PostsService {
         int safePage = Math.max(page, 1);
         int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
 
-        String safeSortBy = (sortBy == null || sortBy.isBlank()) ? "createdAt" : sortBy;
+        // Only allow sorting by real PostsEntity properties to avoid PropertyReferenceException (500).
+        // Also keep a couple of legacy/portal-friendly aliases.
+        String rawSortBy = (sortBy == null ? "" : sortBy.trim());
+        String normalizedSortBy;
+        if (rawSortBy.isEmpty()) {
+            normalizedSortBy = "createdAt";
+        } else if ("hotScore".equalsIgnoreCase(rawSortBy) || "hot_score".equalsIgnoreCase(rawSortBy)) {
+            // hotScore is not a PostsEntity field. Map to a safe default for now.
+            normalizedSortBy = "createdAt";
+        } else if ("created_at".equalsIgnoreCase(rawSortBy)) {
+            normalizedSortBy = "createdAt";
+        } else if ("updated_at".equalsIgnoreCase(rawSortBy)) {
+            normalizedSortBy = "updatedAt";
+        } else if ("published_at".equalsIgnoreCase(rawSortBy)) {
+            normalizedSortBy = "publishedAt";
+        } else {
+            normalizedSortBy = rawSortBy;
+        }
+
+        java.util.Set<String> allowedSortBy = java.util.Set.of(
+                "id",
+                "tenantId",
+                "boardId",
+                "authorId",
+                "title",
+                "contentFormat",
+                "status",
+                "publishedAt",
+                "isDeleted",
+                "createdAt",
+                "updatedAt"
+        );
+
+        String safeSortBy = allowedSortBy.contains(normalizedSortBy) ? normalizedSortBy : "createdAt";
         Sort.Direction direction = "ASC".equalsIgnoreCase(sortOrderDirection) ? Sort.Direction.ASC : Sort.Direction.DESC;
         Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(direction, safeSortBy));
 

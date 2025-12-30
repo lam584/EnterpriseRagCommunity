@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { JSX, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { PostDTO } from '../../../../services/postService';
 import { togglePostFavorite, togglePostLike } from '../../../../services/postService';
@@ -6,16 +6,41 @@ import { formatPostTime, getPostCoverThumbUrl } from '../../../../utils/postMeta
 import CollapsedMarkdownPreview from './CollapsedMarkdownPreview';
 import ImageLightbox from '../../../../components/ui/ImageLightbox';
 import * as StatButtonModule from '../../../../components/ui/StatButton';
+import HotScoreBadge from '../../../../components/post/HotScoreBadge';
 
 function clamp0(n: number) {
   return n < 0 ? 0 : n;
 }
 
+type StatButtonProps = {
+  label: string;
+  count: number;
+  onClick?: () => void;
+  tone?: string;
+  active?: boolean;
+  disabled?: boolean;
+};
+
+type StatButtonComponent = (props: StatButtonProps) => JSX.Element;
+
+function pickStatButton(mod: unknown): StatButtonComponent {
+  if (mod && typeof mod === 'object') {
+    const m = mod as Record<string, unknown>;
+
+    const candidate =
+      (m.default as unknown) ??
+      (m.StatButton as unknown) ??
+      Object.values(m).find((v) => typeof v === 'function');
+
+    if (typeof candidate === 'function') return candidate as StatButtonComponent;
+  }
+
+  // Fallback so the list won't crash if the module shape changes.
+  return (() => <span />) as StatButtonComponent;
+}
+
 // 兼容：模块可能是 default 导出，也可能是各种具名导出；这里选到一个可用的 React 组件即可
-const StatButton =
-  (StatButtonModule as any).default ??
-  (StatButtonModule as any).StatButton ??
-  (Object.values(StatButtonModule as any).find((v: any) => typeof v === 'function') as any);
+const StatButton = pickStatButton(StatButtonModule);
 
 export default function PostCard({ post }: { post: PostDTO }) {
   const navigate = useNavigate();
@@ -35,11 +60,6 @@ export default function PostCard({ post }: { post: PostDTO }) {
   const [favoriteCount, setFavoriteCount] = useState<number>(typeof post.favoriteCount === 'number' ? post.favoriteCount : 0);
 
   const commentCount = typeof post.commentCount === 'number' ? post.commentCount : 0;
-
-  const hotScoreLabel = useMemo(() => {
-    if (typeof post.hotScore !== 'number') return null;
-    return Number.isFinite(post.hotScore) ? post.hotScore.toFixed(1) : String(post.hotScore);
-  }, [post.hotScore]);
 
   const goDetail = () => {
     navigate(`/portal/posts/detail/${post.id}`);
@@ -187,9 +207,7 @@ export default function PostCard({ post }: { post: PostDTO }) {
               onClick={onToggleFavorite}
             />
 
-            {hotScoreLabel ? (
-              <span className="text-xs text-gray-500 tabular-nums">热度 {hotScoreLabel}</span>
-            ) : null}
+            <HotScoreBadge value={post.hotScore} variant="text" />
           </div>
         </div>
       </div>

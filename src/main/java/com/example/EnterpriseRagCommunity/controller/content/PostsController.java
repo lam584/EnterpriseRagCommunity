@@ -17,7 +17,6 @@ import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/posts")
-@CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
 public class PostsController {
 
     @Autowired
@@ -46,7 +45,9 @@ public class PostsController {
                                    @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
                                    @RequestParam(value = "sortBy", required = false) String sortBy,
                                    @RequestParam(value = "sortOrderDirection", required = false) String sortOrderDirection) {
-        return portalPostsService.query(keyword, postId, searchMode, boardId, status, authorId, createdFrom, createdTo, page, pageSize, sortBy, sortOrderDirection);
+        // 门户默认只展示已发布；管理端需要看全部时可显式传 status
+        PostStatus effectiveStatus = (status == null ? PostStatus.PUBLISHED : status);
+        return portalPostsService.query(keyword, postId, searchMode, boardId, effectiveStatus, authorId, createdFrom, createdTo, page, pageSize, sortBy, sortOrderDirection);
     }
 
     @GetMapping("/{id}")

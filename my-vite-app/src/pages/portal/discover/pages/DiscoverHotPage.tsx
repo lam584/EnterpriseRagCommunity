@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { SpringPage } from '../../../../types/page';
 import { fetchHotPosts, type HotPostDTO, type HotWindow } from '../../../../services/hotService';
+import type { PostDTO } from '../../../../services/postService';
+import PostFeed from '../components/PostFeed';
 
 const tabs: HotWindow[] = ['24h', '7d', 'all'];
 const labels: Record<HotWindow, string> = { '24h': '24小时', '7d': '7天', all: '全部' };
@@ -34,6 +36,20 @@ export default function DiscoverHotPage() {
   useEffect(() => {
     load('24h', 1);
   }, [load]);
+
+  const mappedPage: SpringPage<PostDTO> | null = useMemo(() => {
+    if (!data) return null;
+    return {
+      ...data,
+      content: (data.content ?? []).map((it) => {
+        const p = it.post as PostDTO;
+        if (typeof p.hotScore !== 'number' && typeof it.score === 'number') {
+          return { ...p, hotScore: it.score } as PostDTO;
+        }
+        return p;
+      }),
+    } as SpringPage<PostDTO>;
+  }, [data]);
 
   const totalPages = useMemo(() => (data?.totalPages ?? 1), [data]);
   const showPager = useMemo(() => {
@@ -68,31 +84,16 @@ export default function DiscoverHotPage() {
         ))}
       </div>
 
-      {loading ? <div className="text-sm text-gray-500">加载中...</div> : null}
-      {error ? <div className="text-sm text-red-600">{error}</div> : null}
+      <PostFeed
+        page={mappedPage}
+        loading={loading}
+        error={error}
+        onRetry={() => load(window, page)}
+        onPrev={() => load(window, Math.max(1, page - 1))}
+        onNext={() => load(window, page + 1)}
+      />
 
-      <div className="bg-white border rounded-lg divide-y">
-        {(data?.content ?? []).map((it, idx) => (
-          <div key={it.post.id} className="p-4 flex gap-3">
-            <div className="w-10 text-center text-gray-500">{(page - 1) * PAGE_SIZE + idx + 1}</div>
-            <div className="flex-1 min-w-0">
-              <Link to={`/portal/posts/detail/${it.post.id}`} className="font-medium hover:text-blue-600">
-                {it.post.title}
-              </Link>
-              <div className="mt-1 text-xs text-gray-500 flex gap-4">
-                <span>分数：{(it.score ?? 0).toFixed(2)}</span>
-                <span>评论：{it.post.commentCount ?? 0}</span>
-                <span>点赞：{it.post.reactionCount ?? 0}</span>
-                <span>收藏：{it.post.favoriteCount ?? 0}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-        {!loading && !error && (data?.content?.length ?? 0) === 0 ? (
-          <div className="p-6 text-sm text-gray-500">暂无数据</div>
-        ) : null}
-      </div>
-
+      {/* 兼容：如果后端没给 totalPages（或返回 1），但你仍希望保留原分页行，可改用 mappedPage 的分页条；这里额外保留原分页（showPager）以匹配旧行为 */}
       {showPager ? (
         <div className="flex items-center justify-between">
           <button
@@ -103,9 +104,7 @@ export default function DiscoverHotPage() {
           >
             上一页
           </button>
-          <div className="text-sm text-gray-600">
-            第 {page} / {totalPages} 页
-          </div>
+          <div className="text-sm text-gray-600">第 {page} / {totalPages} 页</div>
           <button
             type="button"
             className="px-3 py-2 border rounded disabled:opacity-50"
@@ -119,4 +118,3 @@ export default function DiscoverHotPage() {
     </div>
   );
 }
-
