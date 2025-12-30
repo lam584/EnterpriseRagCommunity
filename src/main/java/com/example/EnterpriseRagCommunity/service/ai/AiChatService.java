@@ -1,0 +1,283 @@
+package com.example.EnterpriseRagCommunity.service.ai;
+
+import com.example.EnterpriseRagCommunity.config.AiProperties;
+import com.example.EnterpriseRagCommunity.dto.ai.AiChatStreamRequest;
+import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
+import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
+import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
+import com.example.EnterpriseRagCommunity.entity.rag.enums.ContextStrategy;
+import com.example.EnterpriseRagCommunity.entity.rag.enums.MessageRole;
+import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
+import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
+import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
+import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.time.LocalDateTime;
+import java.util.*;
+
+@Service
+@RequiredArgsConstructor
+public class AiChatService {
+
+    private final AiProperties aiProperties;
+    private final QaSessionsRepository qaSessionsRepository;
+    private final QaMessagesRepository qaMessagesRepository;
+    private final QaTurnsRepository qaTurnsRepository;
+
+    private BailianOpenAiSseClient sseClient() {
+        return new BailianOpenAiSseClient(aiProperties);
+    }
+
+    @Transactional
+    public void streamChat(AiChatStreamRequest req, Long currentUserId, HttpServletResponse response) throws IOException {
+        if (currentUserId == null) {
+            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
+        }
+
+        // 1) session
+        QaSessionsEntity session = ensureSession(req.getSessionId(), currentUserId, req.getDryRun());
+
+        // 2) persist user msg
+        QaMessagesEntity userMsg = null;
+        if (!req.getDryRun()) {
+            userMsg = new QaMessagesEntity();
+            userMsg.setSessionId(session.getId());
+            userMsg.setRole(MessageRole.USER);
+            userMsg.setContent(req.getMessage());
+            userMsg.setCreatedAt(LocalDateTime.now());
+            userMsg = qaMessagesRepository.save(userMsg);
+        }
+
+        // 2.1) persist turn shell
+        QaTurnsEntity turn = null;
+        if (!req.getDryRun() && userMsg != null) {
+            turn = new QaTurnsEntity();
+            turn.setSessionId(session.getId());
+            turn.setQuestionMessageId(userMsg.getId());
+            turn.setAnswerMessageId(null);
+            turn.setCreatedAt(LocalDateTime.now());
+            turn = qaTurnsRepository.save(turn);
+        }
+
+        // 3) load history for context
+        List<Map<String, String>> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", "你是一个严谨、专业的中文助手。"));
+
+        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
+        if (!req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
+            // fetch last N messages (excluding current user message which is not yet in context)
+            var page = qaMessagesRepository.findAll(
+                    (root, _query, cb) -> cb.equal(root.get("sessionId"), session.getId()),
+                    PageRequest.of(0, historyLimit, Sort.by(Sort.Direction.DESC, "createdAt"))
+            );
+            List<QaMessagesEntity> histDesc = page.getContent();
+            Collections.reverse(histDesc); // to asc
+            for (QaMessagesEntity m : histDesc) {
+                if (userMsg != null && Objects.equals(m.getId(), userMsg.getId())) continue;
+                String role = switch (m.getRole()) {
+                    case USER -> "user";
+                    case ASSISTANT -> "assistant";
+                    case SYSTEM -> "system";
+                };
+                messages.add(Map.of("role", role, "content", m.getContent()));
+            }
+        }
+
+        messages.add(Map.of("role", "user", "content", req.getMessage()));
+
+        // 4) setup SSE response
+        response.setStatus(200);
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("text/event-stream;charset=UTF-8");
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
+
+        PrintWriter out = response.getWriter();
+        out.write("event: meta\n");
+        out.write("data: {\"sessionId\":" + session.getId() + (userMsg != null ? ",\"userMessageId\":" + userMsg.getId() : "") + "}\n\n");
+        out.flush();
+
+        StringBuilder assistantAccum = new StringBuilder();
+        long startedAt = System.currentTimeMillis();
+        String model = (req.getModel() != null && !req.getModel().isBlank()) ? req.getModel() : aiProperties.getModel();
+
+        QaMessagesEntity assistantMsg = null;
+
+        try {
+            sseClient().chatCompletionsStream(
+                    null,
+                    aiProperties.getBaseUrl(),
+                    model,
+                    messages,
+                    req.getTemperature(),
+                    line -> {
+                        if (line == null || line.isBlank()) return;
+                        if (!line.startsWith("data:")) return;
+
+                        String data = line.substring("data:".length()).trim();
+                        if ("[DONE]".equals(data)) {
+                            out.write("event: done\n");
+                            out.write("data: {}\n\n");
+                            out.flush();
+                            return;
+                        }
+
+                        String delta = extractDeltaContent(data);
+                        if (delta == null || delta.isEmpty()) return;
+
+                        assistantAccum.append(delta);
+
+                        out.write("event: delta\n");
+                        out.write("data: {\"content\":\"" + jsonEscape(delta) + "\"}\n\n");
+                        out.flush();
+                    }
+            );
+
+            // finalize persistence
+            if (!req.getDryRun()) {
+                assistantMsg = new QaMessagesEntity();
+                assistantMsg.setSessionId(session.getId());
+                assistantMsg.setRole(MessageRole.ASSISTANT);
+                assistantMsg.setContent(assistantAccum.toString());
+                assistantMsg.setModel(model);
+                assistantMsg.setCreatedAt(LocalDateTime.now());
+                assistantMsg = qaMessagesRepository.save(assistantMsg);
+
+                if (turn != null) {
+                    turn.setAnswerMessageId(assistantMsg.getId());
+                    turn.setLatencyMs((int) (System.currentTimeMillis() - startedAt));
+                    qaTurnsRepository.save(turn);
+                }
+
+                // auto title if empty
+                if ((session.getTitle() == null || session.getTitle().isBlank()) && req.getMessage() != null) {
+                    String t = req.getMessage().trim();
+                    if (t.length() > 60) t = t.substring(0, 60);
+                    session.setTitle(t);
+                    qaSessionsRepository.save(session);
+                }
+            }
+        } catch (Exception ex) {
+            out.write("event: error\n");
+            out.write("data: {\"message\":\"" + jsonEscape(String.valueOf(ex.getMessage())) + "\"}\n\n");
+            out.flush();
+        } finally {
+            long latency = System.currentTimeMillis() - startedAt;
+            out.write("event: done\n");
+            out.write("data: {\"latencyMs\":" + latency + "}\n\n");
+            out.flush();
+        }
+    }
+
+    private QaSessionsEntity ensureSession(Long sessionId, Long currentUserId, boolean dryRun) {
+        if (sessionId != null) {
+            QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, currentUserId)
+                    .orElseThrow(() -> new IllegalArgumentException("sessionId not found"));
+            if (Boolean.FALSE.equals(s.getIsActive())) {
+                throw new IllegalArgumentException("session inactive");
+            }
+            return s;
+        }
+
+        QaSessionsEntity s = new QaSessionsEntity();
+        s.setUserId(currentUserId);
+        s.setTitle(null);
+        s.setContextStrategy(ContextStrategy.RECENT_N);
+        s.setIsActive(true);
+        s.setCreatedAt(LocalDateTime.now());
+
+        if (dryRun) {
+            s.setId(-System.currentTimeMillis());
+            return s;
+        }
+        return qaSessionsRepository.save(s);
+    }
+
+    /**
+     * Extremely small extractor to avoid adding JSON deps.
+     * It looks for "\"content\":\"...\"" under choices[0].delta.
+     *
+     * This is not a full JSON parser but works for common OpenAI-compatible SSE frames.
+     */
+    static String extractDeltaContent(String json) {
+        if (json == null) return null;
+        // try: "delta":{"content":"..."}
+        int idx = json.indexOf("\"content\"");
+        if (idx < 0) return null;
+        int colon = json.indexOf(':', idx);
+        if (colon < 0) return null;
+        int firstQuote = json.indexOf('"', colon + 1);
+        if (firstQuote < 0) return null;
+        int i = firstQuote + 1;
+        StringBuilder sb = new StringBuilder();
+        boolean esc = false;
+        while (i < json.length()) {
+            char c = json.charAt(i);
+            if (esc) {
+                switch (c) {
+                    case '"' -> sb.append('"');
+                    case '\\' -> sb.append('\\');
+                    case '/' -> sb.append('/');
+                    case 'b' -> sb.append('\b');
+                    case 'f' -> sb.append('\f');
+                    case 'n' -> sb.append('\n');
+                    case 'r' -> sb.append('\r');
+                    case 't' -> sb.append('\t');
+                    case 'u' -> {
+                        if (i + 4 < json.length()) {
+                            String hex = json.substring(i + 1, i + 5);
+                            try {
+                                sb.append((char) Integer.parseInt(hex, 16));
+                            } catch (Exception ignore) {
+                            }
+                            i += 4;
+                        }
+                    }
+                    default -> sb.append(c);
+                }
+                esc = false;
+            } else {
+                if (c == '\\') {
+                    esc = true;
+                } else if (c == '"') {
+                    break;
+                } else {
+                    sb.append(c);
+                }
+            }
+            i++;
+        }
+        return sb.toString();
+    }
+
+    static String jsonEscape(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\b' -> sb.append("\\b");
+                case '\f' -> sb.append("\\f");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    else sb.append(c);
+                }
+            }
+        }
+        return sb.toString();
+    }
+}
+
