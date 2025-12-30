@@ -2,13 +2,16 @@ package com.example.EnterpriseRagCommunity.service.content.impl;
 
 import com.example.EnterpriseRagCommunity.dto.content.PostToggleResponseDTO;
 import com.example.EnterpriseRagCommunity.entity.content.FavoritesEntity;
+import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.ReactionsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionTargetType;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionType;
 import com.example.EnterpriseRagCommunity.repository.content.FavoritesRepository;
+import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.content.PostInteractionsService;
+import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -26,6 +29,12 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
 
     @Autowired
     private AdministratorService administratorService;
+
+    @Autowired
+    private PostsRepository postsRepository;
+
+    @Autowired
+    private NotificationsService notificationsService;
 
     private Long currentUserIdOrThrow() {
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
@@ -59,6 +68,14 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
             e.setType(ReactionType.LIKE);
             e.setCreatedAt(LocalDateTime.now());
             reactionsRepository.save(e);
+
+            // 产生通知：给帖子作者发“被点赞”通知（自己点赞自己不发）
+            PostsEntity post = postsRepository.findById(postId).orElse(null);
+            if (post != null && post.getAuthorId() != null && !me.equals(post.getAuthorId())) {
+                String title = "有人点赞了你的帖子";
+                String content = "你的帖子《" + post.getTitle() + "》收到一个赞。";
+                notificationsService.createNotification(post.getAuthorId(), "LIKE_POST", title, content);
+            }
         }
 
         long likeCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
