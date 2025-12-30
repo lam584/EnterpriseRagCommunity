@@ -3,10 +3,13 @@ package com.example.EnterpriseRagCommunity.service.content.impl;
 import com.example.EnterpriseRagCommunity.dto.content.CommentCreateRequest;
 import com.example.EnterpriseRagCommunity.dto.content.CommentDTO;
 import com.example.EnterpriseRagCommunity.entity.content.CommentsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.content.CommentsService;
+import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -27,6 +30,12 @@ public class CommentsServiceImpl implements CommentsService {
 
     @Autowired
     private AdministratorService administratorService;
+
+    @Autowired
+    private PostsRepository postsRepository;
+
+    @Autowired
+    private NotificationsService notificationsService;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -82,7 +91,24 @@ public class CommentsServiceImpl implements CommentsService {
         e.setCreatedAt(LocalDateTime.now());
         e.setUpdatedAt(LocalDateTime.now());
 
-        return toDTO(commentsRepository.save(e));
+        CommentsEntity saved = commentsRepository.save(e);
+
+        // 回复通知：仅“有人评论了我发布的帖子（顶层评论）”才通知；多级回复暂不通知。
+        if (req.getParentId() == null) {
+            PostsEntity post = postsRepository.findById(postId).orElse(null);
+            if (post != null && post.getAuthorId() != null && !me.equals(post.getAuthorId())) {
+                String postTitle = post.getTitle() == null ? "" : post.getTitle();
+                String title = "有人评论了你的帖子";
+                String content = (postTitle.isBlank() ? "" : ("帖子《" + postTitle + "》")) + "收到了新的评论：" + req.getContent();
+                // 避免 content 太长（表字段是 TEXT，但前端展示也需要可读性）
+                if (content.length() > 500) {
+                    content = content.substring(0, 500) + "...";
+                }
+                notificationsService.createNotification(post.getAuthorId(), "REPLY_POST", title, content);
+            }
+        }
+
+        return toDTO(saved);
     }
 
     @Override
