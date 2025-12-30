@@ -33,7 +33,7 @@ export default function CommunityPortalLayout() {
 
   const location = useLocation();
 
-  const { currentUser, isAuthenticated, setCurrentUser, setIsAuthenticated } = useAuth();
+  const { currentUser, isAuthenticated, setCurrentUser, setIsAuthenticated, refreshAuth } = useAuth();
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | undefined>(undefined);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
@@ -48,6 +48,22 @@ export default function CommunityPortalLayout() {
     if (!name) return 'U';
     return name.slice(0, 1).toUpperCase();
   }, [currentUser?.username]);
+
+  // 登录成功后路由跳转到 portal，但 AuthProvider 的初始化 refresh 只跑一次；
+  // 这里在门户布局挂载时再触发一次，确保侧边栏用户区立即同步。
+  useEffect(() => {
+    refreshAuth?.();
+
+    // 兼容其它页面（例如登录页）写入 localStorage 后，同步门户 UI（同 tab 内不会触发 storage）
+    // 这里只是兜底：跨 tab 会触发 storage；同 tab 主要依赖 refreshAuth。
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'userData') return;
+      refreshAuth?.();
+    };
+
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [refreshAuth]);
 
   useEffect(() => {
     let cancelled = false;
