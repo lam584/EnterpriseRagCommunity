@@ -1,20 +1,19 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import { useNavigate } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/login_1.png';
+import { register } from '../../services/authService';
 interface RegisterFormData {
-    account: string;
+    username: string;
     password: string;
     confirmPassword: string;
-    phone: string;
     email: string;
-    sex: string;
 }
 
 
 
 const Register: React.FC = () => {
     const [currentImage, setCurrentImage] = useState(backgroundImage1);
-    const images = [backgroundImage1];
+    const images = useMemo(() => [backgroundImage1], []);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -26,16 +25,14 @@ const Register: React.FC = () => {
         }, 2000); // 每5秒切换图片
 
         return () => clearInterval(interval);
-    }, []);
+    }, [images]);
 
     const navigate = useNavigate();
     const [formData, setFormData] = useState<RegisterFormData>({
-        account: '',
+        username: '',
         password: '',
         confirmPassword: '',
-        phone: '',
-        email: '',
-        sex: '男'
+        email: ''
     });
 
     const [loading, setLoading] = useState(false);
@@ -46,14 +43,16 @@ const Register: React.FC = () => {
     const validateForm = () => {
         const newErrors: Record<string, string> = {};
 
-        if (!formData.account.trim()) newErrors.account = '账号不能为空';
+        if (!formData.username.trim()) newErrors.username = '用户名不能为空';
+        else if (formData.username.trim().length < 2 || formData.username.trim().length > 20)
+            newErrors.username = '用户名长度必须在2-20位之间';
+
         if (!formData.password.trim()) newErrors.password = '密码不能为空';
+        else if (formData.password.length < 6 || formData.password.length > 20)
+            newErrors.password = '密码长度必须在6-20位之间';
+
         if (formData.password !== formData.confirmPassword)
             newErrors.confirmPassword = '两次输入的密码不一致';
-
-        if (!formData.phone.trim()) newErrors.phone = '电话号码不能为空';
-        else if (!/^\d{11}$/.test(formData.phone))
-            newErrors.phone = '电话号码必须为11位数字';
 
         if (!formData.email.trim()) newErrors.email = '邮箱不能为空';
         else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email))
@@ -86,26 +85,27 @@ const Register: React.FC = () => {
         if (!validateForm()) return;
 
         setLoading(true);
+        setMessage({ type: '', text: '' });
 
         try {
-            // 这里是demo，无需实际与后端交互
-            // 模拟注册成功
-            setTimeout(() => {
-                setMessage({
-                    type: 'success',
-                    text: '注册成功！请使用您的账号登录'
-                });
+            await register({
+                email: formData.email.trim(),
+                password: formData.password,
+                username: formData.username.trim()
+            });
 
-                // 3秒后重定向到登录页
-                setTimeout(() => {
-                    navigate('/login');
-                }, 3000);
+            setMessage({
+                type: 'success',
+                text: '注册成功！请使用您的邮箱和密码登录'
+            });
+
+            setTimeout(() => {
+                navigate('/login', { state: { email: formData.email.trim() } });
             }, 1500);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
             setMessage({
                 type: 'error',
-                text: '注册失败，请稍后重试'
+                text: error instanceof Error ? error.message : '注册失败，请稍后重试'
             });
         } finally {
             setLoading(false);
@@ -135,26 +135,50 @@ const Register: React.FC = () => {
                     )}
 
                     <form className="space-y-6" onSubmit={handleSubmit}>
-                        {/* 账号 */}
+                        {/* 用户名 */}
                         <div>
-                            <label htmlFor="account" className="block text-sm font-medium text-gray-700">
-                                账号 <span className="text-red-500">*</span>
+                            <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+                                用户名 <span className="text-red-500">*</span>
                             </label>
                             <div className="mt-1">
                                 <input
-                                    id="account"
-                                    name="account"
+                                    id="username"
+                                    name="username"
                                     type="text"
                                     autoComplete="username"
                                     required
-                                    value={formData.account}
+                                    value={formData.username}
                                     onChange={handleInputChange}
                                     className={`appearance-none block w-full px-3 py-2 border ${
-                                        errors.account ? 'border-red-500' : 'border-gray-300'
+                                        errors.username ? 'border-red-500' : 'border-gray-300'
                                     } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm`}
                                 />
-                                {errors.account && (
-                                    <p className="mt-2 text-sm text-red-600">{errors.account}</p>
+                                {errors.username && (
+                                    <p className="mt-2 text-sm text-red-600">{errors.username}</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 邮箱 */}
+                        <div>
+                            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                                邮箱 <span className="text-red-500">*</span>
+                            </label>
+                            <div className="mt-1">
+                                <input
+                                    id="email"
+                                    name="email"
+                                    type="email"
+                                    autoComplete="email"
+                                    required
+                                    value={formData.email}
+                                    onChange={handleInputChange}
+                                    className={`appearance-none block w-full px-3 py-2 border ${
+                                        errors.email ? 'border-red-500' : 'border-gray-300'
+                                    } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm`}
+                                />
+                                {errors.email && (
+                                    <p className="mt-2 text-sm text-red-600">{errors.email}</p>
                                 )}
                             </div>
                         </div>
@@ -203,73 +227,6 @@ const Register: React.FC = () => {
                                 />
                                 {errors.confirmPassword && (
                                     <p className="mt-2 text-sm text-red-600">{errors.confirmPassword}</p>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* 性别 */}
-                        <div>
-                            <label htmlFor="sex" className="block text-sm font-medium text-gray-700">
-                                性别
-                            </label>
-                            <div className="mt-1">
-                                <select
-                                    id="sex"
-                                    name="sex"
-                                    value={formData.sex}
-                                    onChange={handleInputChange}
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                                >
-                                    <option value="男">男</option>
-                                    <option value="女">女</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* 电话号码 */}
-                        <div>
-                            <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                                电话号码 <span className="text-red-500">*</span>
-                            </label>
-                            <div className="mt-1">
-                                <input
-                                    id="phone"
-                                    name="phone"
-                                    type="text"
-                                    autoComplete="tel"
-                                    required
-                                    value={formData.phone}
-                                    onChange={handleInputChange}
-                                    className={`appearance-none block w-full px-3 py-2 border ${
-                                        errors.phone ? 'border-red-500' : 'border-gray-300'
-                                    } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm`}
-                                />
-                                {errors.phone && (
-                                    <p className="mt-2 text-sm text-red-600">{errors.phone}</p>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* 邮箱 */}
-                        <div>
-                            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                                邮箱 <span className="text-red-500">*</span>
-                            </label>
-                            <div className="mt-1">
-                                <input
-                                    id="email"
-                                    name="email"
-                                    type="email"
-                                    autoComplete="email"
-                                    required
-                                    value={formData.email}
-                                    onChange={handleInputChange}
-                                    className={`appearance-none block w-full px-3 py-2 border ${
-                                        errors.email ? 'border-red-500' : 'border-gray-300'
-                                    } rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm`}
-                                />
-                                {errors.email && (
-                                    <p className="mt-2 text-sm text-red-600">{errors.email}</p>
                                 )}
                             </div>
                         </div>
