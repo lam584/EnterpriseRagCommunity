@@ -10,7 +10,7 @@ export type CommentDTO = {
   authorId?: number | null;
   authorName?: string | null;
   content: string;
-  status?: string | null;
+  status?: CommentStatus | null;
   createdAt?: string;
   updatedAt?: string;
 };

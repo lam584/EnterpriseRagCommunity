@@ -13,6 +13,7 @@ import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
+import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
@@ -40,6 +41,9 @@ public class PostsServiceImpl implements PostsService {
     @Autowired
     private AdministratorService administratorService;
 
+    @Autowired
+    private AdminModerationQueueService adminModerationQueueService;
+
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
@@ -65,12 +69,18 @@ public class PostsServiceImpl implements PostsService {
         post.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
         post.setContent(dto.getContent());
         post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
-        post.setStatus(PostStatus.PUBLISHED);
-        post.setPublishedAt(LocalDateTime.now());
+
+        // 业务规则：用户发帖默认进入待审核状态；审核通过（切到 PUBLISHED）时再补齐 publishedAt
+        post.setStatus(PostStatus.PENDING);
+        post.setPublishedAt(null);
+
         post.setIsDeleted(false);
         post.setMetadata(dto.getMetadata());
 
         post = postsRepository.save(post);
+
+        // 新增：写入审核队列（防重复）
+        adminModerationQueueService.ensureEnqueuedPost(post.getId());
 
         List<Long> attachmentIds = dto.getAttachmentIds();
         if (attachmentIds != null && !attachmentIds.isEmpty()) {
@@ -229,7 +239,9 @@ public class PostsServiceImpl implements PostsService {
 
             if ("LIKE".equals(mode) || ("AUTO".equals(mode) && isLikelyFullTextUnfriendlyKeyword(kw))) {
                 String escaped = escapeForLike(kw);
-                return postsRepository.searchLikeOrderByCreatedAtDesc(escaped, unsortedPageable);
+                // keyword search should also respect status filter (null => ALL)
+                String statusStr = status == null ? null : status.name();
+                return postsRepository.searchLikeOrderByCreatedAtDescWithStatus(escaped, statusStr, unsortedPageable);
             }
 
             // default FULLTEXT
@@ -237,7 +249,8 @@ public class PostsServiceImpl implements PostsService {
             if (!q.endsWith("*")) {
                 q = q + "*";
             }
-            return postsRepository.searchFullTextOrderByCreatedAtDesc(q, unsortedPageable);
+            String statusStr = status == null ? null : status.name();
+            return postsRepository.searchFullTextOrderByCreatedAtDescWithStatus(q, statusStr, unsortedPageable);
         }
 
         // 3) Non-keyword filtering (spec)

@@ -48,11 +48,31 @@ export type PostCardProps = {
   renderActions?: (post: PostDTO) => JSX.Element | null;
 };
 
+function getPostStatusMeta(status?: PostDTO['status']): { label: string; className: string } | null {
+  if (!status) return null;
+
+  switch (status) {
+    case 'DRAFT':
+      return { label: '草稿', className: 'bg-gray-100 text-gray-700 border-gray-200' };
+    case 'PENDING':
+      return { label: '待审核', className: 'bg-amber-50 text-amber-700 border-amber-200' };
+    case 'PUBLISHED':
+      return { label: '已发布', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    case 'REJECTED':
+      return { label: '已拒绝', className: 'bg-red-50 text-red-700 border-red-200' };
+    case 'ARCHIVED':
+      return { label: '已归档', className: 'bg-slate-50 text-slate-700 border-slate-200' };
+    default:
+      return { label: String(status), className: 'bg-gray-100 text-gray-700 border-gray-200' };
+  }
+}
+
 export default function PostCard({ post, renderActions }: PostCardProps) {
   const navigate = useNavigate();
 
   const authorLabel = post.authorName || (post.authorId ? `用户#${post.authorId}` : '匿名');
   const timeLabel = formatPostTime(post);
+  const statusMeta = getPostStatusMeta(post.status);
 
   const cover = getPostCoverThumbUrl(post);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -145,7 +165,17 @@ export default function PostCard({ post, renderActions }: PostCardProps) {
           </div>
 
           <button type="button" className="mt-1 block text-left w-full" onClick={goDetail}>
-            <h4 className="text-base font-semibold text-gray-900">{post.title}</h4>
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="min-w-0 text-base font-semibold text-gray-900 truncate">{post.title}</h4>
+              {statusMeta ? (
+                <span
+                  className={`shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}
+                  title={`状态：${statusMeta.label}`}
+                >
+                  {statusMeta.label}
+                </span>
+              ) : null}
+            </div>
           </button>
 
           <div

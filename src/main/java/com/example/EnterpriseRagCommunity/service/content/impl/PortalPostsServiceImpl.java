@@ -132,12 +132,33 @@ public class PortalPostsServiceImpl implements PortalPostsService {
     public PostDetailDTO getById(Long id) {
         PostsEntity e = postsService.getById(id);
 
-        // 浏览量：按自然日聚合 +1（不去重）。
-        // 注意：视图计数不应影响主流程，但也不能静默失败；这里记录 warning 便于排查。
-        try {
-            postViewsDailyRepository.increment(id, LocalDate.now(ZONE));
-        } catch (Exception ex) {
-            log.warn("Failed to increment post view count. postId={}, day={}", id, LocalDate.now(ZONE), ex);
+        // 访问控制：待审核/草稿/驳回/归档 等非已发布内容，仅作者本人可查看
+        if (e.getStatus() != PostStatus.PUBLISHED) {
+            Long me = null;
+            try {
+                var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
+                    String email = auth.getName();
+                    me = administratorService.findByUsername(email).map(x -> x.getId()).orElse(null);
+                }
+            } catch (Exception ignored) {
+                me = null;
+            }
+
+            boolean isAuthor = me != null && e.getAuthorId() != null && me.equals(e.getAuthorId());
+            if (!isAuthor) {
+                // 用 404 语义更贴近“不可见”，避免泄露存在性
+                throw new IllegalArgumentException("帖子不存在: " + id);
+            }
+        }
+
+        // 浏览量：仅对可公开访问的帖子累计
+        if (e.getStatus() == PostStatus.PUBLISHED) {
+            try {
+                postViewsDailyRepository.increment(id, LocalDate.now(ZONE));
+            } catch (Exception ex) {
+                log.warn("Failed to increment post view count. postId={}, day={}", id, LocalDate.now(ZONE), ex);
+            }
         }
 
         return enrichAggregates(toBaseDto(e));

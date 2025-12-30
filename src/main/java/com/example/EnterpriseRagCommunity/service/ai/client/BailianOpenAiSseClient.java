@@ -75,6 +75,66 @@ public class BailianOpenAiSseClient {
         }
     }
 
+    /**
+     * Non-streaming completion: POST /chat/completions with stream=false.
+     *
+     * @return raw response json (OpenAI compatible)
+     */
+    public String chatCompletionsOnce(
+            String apiKey,
+            String baseUrl,
+            String model,
+            List<Map<String, String>> messages,
+            Double temperature
+    ) throws IOException {
+        if (baseUrl == null || baseUrl.isBlank()) baseUrl = props.getBaseUrl();
+        if (model == null || model.isBlank()) model = props.getModel();
+        if (apiKey == null || apiKey.isBlank()) apiKey = props.getApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IOException("Missing app.ai.api-key (or env injection)");
+        }
+
+        String endpoint = baseUrl;
+        if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        endpoint = endpoint + "/chat/completions";
+
+        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
+        conn.setRequestMethod("POST");
+        conn.setDoOutput(true);
+        conn.setConnectTimeout(props.getConnectTimeoutMs());
+        conn.setReadTimeout(props.getReadTimeoutMs());
+        conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+        conn.setRequestProperty("Accept", "application/json");
+
+        String body = buildBodyJsonOnce(model, messages, temperature);
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+
+        int code = conn.getResponseCode();
+        InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+        if (is == null) {
+            throw new IOException("Upstream returned HTTP " + code + " without body");
+        }
+
+        String resp;
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+            resp = sb.toString();
+        }
+
+        if (code < 200 || code >= 300) {
+            throw new IOException("Upstream returned HTTP " + code + ": " + resp);
+        }
+
+        return resp;
+    }
+
     private static String escapeJson(String s) {
         if (s == null) return "";
         StringBuilder sb = new StringBuilder();
@@ -102,6 +162,28 @@ public class BailianOpenAiSseClient {
         sb.append('{');
         sb.append("\"model\":\"").append(escapeJson(model)).append("\"");
         sb.append(",\"stream\":true");
+        if (temperature != null) {
+            sb.append(",\"temperature\":").append(temperature);
+        }
+        sb.append(",\"messages\":[");
+        for (int i = 0; i < messages.size(); i++) {
+            Map<String, String> m = messages.get(i);
+            if (i > 0) sb.append(',');
+            sb.append('{');
+            sb.append("\"role\":\"").append(escapeJson(m.getOrDefault("role", "user"))).append("\"");
+            sb.append(",\"content\":\"").append(escapeJson(m.getOrDefault("content", ""))).append("\"");
+            sb.append('}');
+        }
+        sb.append(']');
+        sb.append('}');
+        return sb.toString();
+    }
+
+    private static String buildBodyJsonOnce(String model, List<Map<String, String>> messages, Double temperature) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('{');
+        sb.append("\"model\":\"").append(escapeJson(model)).append("\"");
+        sb.append(",\"stream\":false");
         if (temperature != null) {
             sb.append(",\"temperature\":").append(temperature);
         }

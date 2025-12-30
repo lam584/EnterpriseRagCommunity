@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listBoards, type BoardDTO } from '../../../../services/boardService';
 // NOTE: Portal pages shouldn't depend on admin AuthContext (it calls /api/auth/current-admin).
-import { deletePost, searchPosts, type PostDTO, type PostStatus } from '../../../../services/postService';
+import { deletePost, type PostDTO, type PostStatus, listMyPostsPage } from '../../../../services/postService';
 import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
 import { getStoredUserId, resolvePortalAuthState } from '../../../../services/portalAuthService';
 import type { SpringPage } from '../../../../types/page';
@@ -62,17 +62,10 @@ export default function PostsMinePage() {
   const canQuery = Boolean(authorId);
 
   const onQuery = async () => {
-    if (!authorId) {
-      setItems([]);
-      setError('未获取到当前用户信息，无法加载“我的帖子”。（请先登录或刷新页面重试）');
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
-      const rs = await searchPosts({
-        authorId,
+      const pageResp = await listMyPostsPage({
         keyword: keyword || undefined,
         boardId: boardId === '' ? undefined : Number(boardId),
         status,
@@ -81,7 +74,7 @@ export default function PostsMinePage() {
         page: 1,
         pageSize: 1000,
       });
-      setItems(rs);
+      setItems(pageResp.content ?? []);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '查询失败';
       setError(msg || '查询失败');
