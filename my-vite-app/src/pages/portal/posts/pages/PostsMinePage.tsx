@@ -5,20 +5,13 @@ import { listBoards, type BoardDTO } from '../../../../services/boardService';
 import { deletePost, searchPosts, type PostDTO, type PostStatus } from '../../../../services/postService';
 import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
 import { getStoredUserId, resolvePortalAuthState } from '../../../../services/portalAuthService';
+import type { SpringPage } from '../../../../types/page';
+import PostFeed from '../../discover/components/PostFeed';
 
 function formatDateTime(iso?: string) {
   if (!iso) return '-';
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '-' : d.toLocaleString();
-}
-
-function toSummary(post: PostDTO, maxLen = 160) {
-  const raw = (post.content ?? '').trim();
-  if (!raw) return '-';
-
-  const compact = raw.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
-  if (compact.length <= maxLen) return compact;
-  return `${compact.slice(0, maxLen)}…`;
 }
 
 const STATUS_OPTIONS: Array<{ value: PostStatus | 'ALL'; label: string }> = [
@@ -147,6 +140,20 @@ export default function PostsMinePage() {
       return tb - ta;
     });
   }, [items]);
+
+  const listPage: SpringPage<PostDTO> | null = useMemo(() => {
+    const content = sorted;
+    return {
+      content,
+      totalElements: content.length,
+      totalPages: 1,
+      size: content.length,
+      number: 0,
+      first: true,
+      last: true,
+      empty: content.length === 0,
+    };
+  }, [sorted]);
 
   const PreviewModal: React.FC<{ post: PostDTO; onClose: () => void }> = ({ post, onClose }) => {
     const content = post.content ?? '';
@@ -323,82 +330,55 @@ export default function PostsMinePage() {
           <div className="text-xs text-gray-500">共 {sorted.length} 条</div>
         </div>
 
-        {loading ? (
-          <div className="text-sm text-gray-600">加载中...</div>
-        ) : sorted.length === 0 ? (
+        {listPage ? (
+          <PostFeed
+            page={listPage}
+            loading={loading}
+            error={error}
+            onRetry={() => onQuery()}
+            renderActions={(p) => (
+              <>
+                <button
+                  type="button"
+                  className="text-blue-600 hover:underline"
+                  onClick={() => setPreviewing(p)}
+                  disabled={!p.content}
+                  title={!p.content ? '无正文内容' : '查看全文'}
+                >
+                  查看全文
+                </button>
+                <button
+                  type="button"
+                  className="text-gray-700 hover:underline"
+                  onClick={() => navigate(`/portal/posts/edit/${p.id}`)}
+                >
+                  编辑
+                </button>
+                <button
+                  type="button"
+                  className="text-red-600 hover:underline"
+                  onClick={async () => {
+                    const ok = window.confirm(`确定删除帖子《${p.title}》吗？此操作不可恢复。`);
+                    if (!ok) return;
+                    try {
+                      await deletePost(p.id);
+                      setItems((prev) => prev.filter((x) => x.id !== p.id));
+                    } catch (e: unknown) {
+                      const msg = e instanceof Error ? e.message : '删除失败';
+                      setError(msg || '删除失败');
+                    }
+                  }}
+                >
+                  删除
+                </button>
+              </>
+            )}
+          />
+        ) : null}
+
+        {!loading && !error && sorted.length === 0 ? (
           <p className="text-sm text-gray-500">暂无数据。可调整条件后点击“查询”。</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="text-left border-b">
-                  <th className="py-2 pr-4">ID</th>
-                  <th className="py-2 pr-4">标题</th>
-                  <th className="py-2 pr-4">摘要</th>
-                  <th className="py-2 pr-4">板块</th>
-                  <th className="py-2 pr-4">状态</th>
-                  <th className="py-2 pr-4">更新时间</th>
-                  <th className="py-2 pr-4">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((p) => (
-                  <tr key={p.id} className="border-b hover:bg-gray-50">
-                    <td className="py-2 pr-4">{p.id}</td>
-                    <td className="py-2 pr-4 max-w-[260px] truncate" title={p.title}>
-                      {p.title}
-                    </td>
-                    <td className="py-2 pr-4 max-w-[420px]">
-                      <div className="truncate" title={(p.content ?? '').trim() || ''}>
-                        {toSummary(p)}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-4">{boards.find((b) => b.id === p.boardId)?.name ?? p.boardName ?? p.boardId}</td>
-                    <td className="py-2 pr-4">{p.status ?? '-'}</td>
-                    <td className="py-2 pr-4">{formatDateTime(p.updatedAt ?? p.createdAt)}</td>
-                    <td className="py-2 pr-4">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="text-blue-600 hover:underline"
-                          onClick={() => setPreviewing(p)}
-                          disabled={!p.content}
-                          title={!p.content ? '无正文内容' : '查看全文'}
-                        >
-                          查看全文
-                        </button>
-                        <button
-                          type="button"
-                          className="text-gray-700 hover:underline"
-                          onClick={() => navigate(`/portal/posts/edit/${p.id}`)}
-                        >
-                          编辑
-                        </button>
-                        <button
-                          type="button"
-                          className="text-red-600 hover:underline"
-                          onClick={async () => {
-                            const ok = window.confirm(`确定删除帖子《${p.title}》吗？此操作不可恢复。`);
-                            if (!ok) return;
-                            try {
-                              await deletePost(p.id);
-                              setItems((prev) => prev.filter((x) => x.id !== p.id));
-                            } catch (e: unknown) {
-                              const msg = e instanceof Error ? e.message : '删除失败';
-                              setError(msg || '删除失败');
-                            }
-                          }}
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        ) : null}
       </div>
 
       {previewing ? <PreviewModal post={previewing} onClose={() => setPreviewing(null)} /> : null}

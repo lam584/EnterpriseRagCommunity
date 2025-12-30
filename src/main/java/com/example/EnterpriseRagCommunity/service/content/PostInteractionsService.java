@@ -7,6 +7,11 @@ public interface PostInteractionsService {
 
     PostToggleResponseDTO toggleFavorite(Long postId);
 
+    /**
+     * 取消收藏（幂等）：如果不存在收藏记录也会返回成功态。
+     */
+    PostToggleResponseDTO unfavorite(Long postId);
+
     long countLikes(Long postId);
 
     long countFavorites(Long postId);
@@ -15,4 +20,3 @@ public interface PostInteractionsService {
 
     boolean favoritedByMe(Long postId);
 }
-

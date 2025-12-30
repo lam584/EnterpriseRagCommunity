@@ -22,5 +22,9 @@ public class PostInteractionsController {
     public PostToggleResponseDTO toggleFavorite(@PathVariable("postId") Long postId) {
         return postInteractionsService.toggleFavorite(postId);
     }
-}
 
+    @DeleteMapping("/{postId}/favorite")
+    public PostToggleResponseDTO unfavorite(@PathVariable("postId") Long postId) {
+        return postInteractionsService.unfavorite(postId);
+    }
+}

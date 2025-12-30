@@ -9,8 +9,13 @@ import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
 import com.example.EnterpriseRagCommunity.service.content.PostInteractionsService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import com.example.EnterpriseRagCommunity.repository.content.PostViewsDailyRepository;
+import com.example.EnterpriseRagCommunity.repository.content.FavoritesRepository;
+import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +43,12 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
     @Autowired(required = false)
     private HotScoresRepository hotScoresRepository;
+
+    @Autowired
+    private FavoritesRepository favoritesRepository;
+
+    @Autowired
+    private AdministratorService administratorService;
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
@@ -130,5 +141,32 @@ public class PortalPostsServiceImpl implements PortalPostsService {
         }
 
         return enrichAggregates(toBaseDto(e));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<PostDetailDTO> queryMyBookmarkedPosts(int page, int pageSize) {
+        int safePage = Math.max(page, 1);
+        int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
+
+        // 获取 userId：沿用 PostInteractionsServiceImpl 的做法：从 SecurityContext 取 email 再查 users。
+        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
+        }
+        String email = auth.getName();
+        Long userId = administratorService.findByUsername(email)
+                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
+                .getId();
+
+        Pageable pageable = PageRequest.of(safePage - 1, safePageSize);
+        var rs = favoritesRepository.findBookmarkedPostsByUserId(userId, pageable);
+
+        var content = rs.getContent().stream()
+                .map(PortalPostsServiceImpl::toBaseDto)
+                .map(this::enrichAggregates)
+                .toList();
+
+        return new PageImpl<>(content, rs.getPageable(), rs.getTotalElements());
     }
 }

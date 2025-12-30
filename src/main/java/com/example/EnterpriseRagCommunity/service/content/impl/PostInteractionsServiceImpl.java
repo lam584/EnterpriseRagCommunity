@@ -99,6 +99,26 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
     }
 
     @Override
+    @Transactional
+    public PostToggleResponseDTO unfavorite(Long postId) {
+        if (postId == null) throw new IllegalArgumentException("postId 不能为空");
+        Long me = currentUserIdOrThrow();
+
+        // deleteBy.. 本身是幂等的：无记录不会报错
+        favoritesRepository.deleteByUserIdAndPostId(me, postId);
+
+        long likeCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
+                ReactionTargetType.POST, postId, ReactionType.LIKE
+        );
+        long favCount = favoritesRepository.countByPostId(postId);
+        boolean likedByMe = reactionsRepository.existsByUserIdAndTargetTypeAndTargetIdAndType(
+                me, ReactionTargetType.POST, postId, ReactionType.LIKE
+        );
+        boolean favByMe = false;
+        return new PostToggleResponseDTO(likedByMe, favByMe, likeCount, favCount);
+    }
+
+    @Override
     public long countLikes(Long postId) {
         if (postId == null) return 0;
         return reactionsRepository.countByTargetTypeAndTargetIdAndType(

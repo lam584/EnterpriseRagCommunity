@@ -76,6 +76,8 @@ export interface PostSearchQueryDTO {
   pageSize?: number;
   sortBy?: string;
   sortOrderDirection?: string;
+  /** 当前用户是否已收藏（用于收藏列表：true 表示只查收藏） */
+  favoritedByMe?: boolean;
 }
 
 function buildQueryString(query: Record<string, unknown>): string {
@@ -220,6 +222,58 @@ export async function listPostsPage(query: PostSearchQueryDTO = {}): Promise<Spr
   return data as SpringPage<PostDTO>;
 }
 
+/**
+ * 分页查询“我收藏的帖子”。
+ * 后端接口：GET /api/posts/bookmarks?page=1&pageSize=20
+ */
+export async function listMyBookmarkedPostsPage(
+  query: Pick<PostSearchQueryDTO, 'page' | 'pageSize'> = {}
+): Promise<SpringPage<PostDTO>> {
+  const qs = buildQueryString({
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 20,
+  });
+
+  const res = await fetch(apiUrl(`/api/posts/bookmarks?${qs}`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(getBackendMessage(data) || '获取收藏失败');
+  }
+
+  // 兼容后端直接返回数组的情况
+  if (Array.isArray(data)) {
+    return {
+      content: data as PostDTO[],
+      totalElements: (data as PostDTO[]).length,
+      totalPages: 1,
+      size: (data as PostDTO[]).length,
+      number: 0,
+      first: true,
+      last: true,
+      empty: (data as PostDTO[]).length === 0,
+    };
+  }
+
+  return data as SpringPage<PostDTO>;
+}
+
+/**
+ * 兼容旧实现：通过 /api/posts 的查询参数过滤收藏。
+ * 注意：后端目前不支持 favoritedByMe 过滤，因此不要再用于“收藏管理”页。
+ */
+export async function listBookmarkedPostsPage(
+  query: Omit<PostSearchQueryDTO, 'favoritedByMe'> = {}
+): Promise<SpringPage<PostDTO>> {
+  return listPostsPage({
+    ...query,
+    favoritedByMe: true,
+  });
+}
+
 export async function updatePostStatus(id: number, status: PostStatus): Promise<PostDTO> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/posts/${id}/status`), {
@@ -331,6 +385,23 @@ export async function togglePostFavorite(postId: number): Promise<PostToggleResp
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/posts/${postId}/favorite`), {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+  });
+
+  if (!res.ok) return null;
+  const data: unknown = await res.json().catch(() => ({}));
+  if (data && typeof data === 'object') return data as PostToggleResponse;
+  return null;
+}
+
+export async function deletePostFavorite(postId: number): Promise<PostToggleResponse | null> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/posts/${postId}/favorite`), {
+    method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',
       'X-XSRF-TOKEN': csrfToken,

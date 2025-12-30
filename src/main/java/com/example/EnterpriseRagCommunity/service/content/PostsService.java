@@ -25,6 +25,8 @@ public interface PostsService {
 
     PostsEntity updateStatus(Long id, PostStatus status);
 
+    PostsEntity update(Long id, com.example.EnterpriseRagCommunity.dto.content.PostsUpdateDTO dto);
+
     /**
      * 获取帖子详情（未删除）。
      *

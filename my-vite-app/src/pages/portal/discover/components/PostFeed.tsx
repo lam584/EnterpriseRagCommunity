@@ -1,6 +1,7 @@
 import type { PostDTO } from '../../../../services/postService';
 import type { SpringPage } from '../../../../types/page';
 import PostCard from './PostCard';
+import type { JSX } from 'react';
 
 export type PostFeedProps = {
   page: SpringPage<PostDTO> | null;
@@ -9,6 +10,8 @@ export type PostFeedProps = {
   onRetry?: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  /** Optional actions area rendered inside each PostCard. */
+  renderActions?: (post: PostDTO) => JSX.Element | null;
 };
 
 function SkeletonRow() {
@@ -25,8 +28,13 @@ function SkeletonRow() {
   );
 }
 
-export default function PostFeed({ page, loading, error, onRetry, onPrev, onNext }: PostFeedProps) {
+export default function PostFeed({ page, loading, error, onRetry, onPrev, onNext, renderActions }: PostFeedProps) {
   const content = page?.content ?? [];
+
+  const totalElements = page?.totalElements ?? content.length;
+  const pageSize = page?.size ?? content.length;
+  const totalPages = page?.totalPages ?? (pageSize > 0 ? Math.ceil(totalElements / pageSize) : 0);
+  const showPagination = !!page && totalPages > 1;
 
   return (
     <div>
@@ -54,7 +62,7 @@ export default function PostFeed({ page, loading, error, onRetry, onPrev, onNext
       ) : null}
 
       {content.map((p: PostDTO) => (
-        <PostCard key={p.id} post={p} />
+        <PostCard key={p.id} post={p} renderActions={renderActions} />
       ))}
 
       {page ? (
@@ -62,24 +70,28 @@ export default function PostFeed({ page, loading, error, onRetry, onPrev, onNext
           <div className="text-xs text-gray-500">
             第 {Math.max(1, (page.number ?? 0) + 1)} 页 / 共 {page.totalPages ?? 0} 页，{page.totalElements ?? 0} 条
           </div>
-          <div className="flex gap-2">
-            <button
-              className="px-3 py-1 rounded-md border border-gray-300 bg-white disabled:opacity-50"
-              onClick={onPrev}
-              disabled={loading || !!page.first || (page.number ?? 0) <= 0}
-              type="button"
-            >
-              上一页
-            </button>
-            <button
-              className="px-3 py-1 rounded-md border border-gray-300 bg-white disabled:opacity-50"
-              onClick={onNext}
-              disabled={loading || !!page.last || (page.totalPages ?? 0) <= 0}
-              type="button"
-            >
-              下一页
-            </button>
-          </div>
+          {showPagination ? (
+            <div className="flex gap-2">
+              <button
+                className="px-3 py-1 rounded-md border border-gray-300 bg-white disabled:opacity-50"
+                onClick={onPrev}
+                disabled={loading || !!page.first || (page.number ?? 0) <= 0}
+                type="button"
+              >
+                上一页
+              </button>
+              <button
+                className="px-3 py-1 rounded-md border border-gray-300 bg-white disabled:opacity-50"
+                onClick={onNext}
+                disabled={loading || !!page.last || (page.totalPages ?? 0) <= 0}
+                type="button"
+              >
+                下一页
+              </button>
+            </div>
+          ) : (
+            <div />
+          )}
         </div>
       ) : null}
     </div>

@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.controller.content;
 
 import com.example.EnterpriseRagCommunity.dto.content.PostDetailDTO;
 import com.example.EnterpriseRagCommunity.dto.content.PostsPublishDTO;
+import com.example.EnterpriseRagCommunity.dto.content.PostsUpdateDTO;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
@@ -71,5 +72,16 @@ public class PostsController {
     @PutMapping("/{id}/status")
     public PostsEntity updateStatus(@PathVariable("id") Long id, @Valid @RequestBody UpdateStatusRequest req) {
         return postsService.updateStatus(id, req.getStatus());
+    }
+
+    @PutMapping("/{id}")
+    public PostsEntity update(@PathVariable("id") Long id, @Valid @RequestBody PostsUpdateDTO dto) {
+        return postsService.update(id, dto);
+    }
+
+    @GetMapping("/bookmarks")
+    public Page<PostDetailDTO> listMyBookmarks(@RequestParam(value = "page", defaultValue = "1") int page,
+                                               @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
+        return portalPostsService.queryMyBookmarkedPosts(page, pageSize);
     }
 }

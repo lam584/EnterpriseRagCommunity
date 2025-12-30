@@ -10,4 +10,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface PostAttachmentsRepository extends JpaRepository<PostAttachmentsEntity, Long>, JpaSpecificationExecutor<PostAttachmentsEntity> {
     Page<PostAttachmentsEntity> findByPostId(Long postId, Pageable pageable);
+
+    void deleteByPostId(Long postId);
 }
