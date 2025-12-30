@@ -19,7 +19,6 @@ import DiscoverBoardsPage from './pages/portal/discover/pages/DiscoverBoardsPage
 import DiscoverTagsPage from './pages/portal/discover/pages/DiscoverTagsPage';
 import DiscoverHotPage from './pages/portal/discover/pages/DiscoverHotPage';
 
-import PostsFeedPage from './pages/portal/posts/pages/PostsFeedPage';
 import PostsCreatePage from './pages/portal/posts/pages/PostsCreatePage';
 import PostsDraftsPage from './pages/portal/posts/pages/PostsDraftsPage';
 import PostsMinePage from './pages/portal/posts/pages/PostsMinePage';
@@ -127,7 +126,6 @@ function AppRoutes() {
 
                 <Route path="posts" element={<PostsLayout />}>
                     <Route index element={<PostsIndexRedirect />} />
-                    <Route path="feed" element={<PostsFeedPage />} />
                     <Route path="create" element={<PostsCreatePage />} />
                     <Route path="edit/:postId" element={<PostsCreatePage />} />
                     <Route path="detail/:postId" element={<PostDetailPage />} />

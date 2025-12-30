@@ -129,6 +129,37 @@ export async function deleteBoard(id: number): Promise<void> {
   }
 }
 
+function normalizeBoardDTO(raw: unknown): BoardDTO {
+  const obj = (raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}) as Record<string, unknown>;
+
+  const toNumberOrUndef = (v: unknown): number | undefined => {
+    if (v === null || v === undefined || v === '') return undefined;
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const toBoolOrUndef = (v: unknown): boolean | undefined => {
+    if (v === null || v === undefined || v === '') return undefined;
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return v !== 0;
+    if (typeof v === 'string') {
+      const s = v.trim().toLowerCase();
+      if (s === 'true' || s === '1' || s === 'yes' || s === 'y') return true;
+      if (s === 'false' || s === '0' || s === 'no' || s === 'n') return false;
+    }
+    return undefined;
+  };
+
+  return {
+    ...(obj as unknown as BoardDTO),
+    id: Number(obj.id),
+    tenantId: toNumberOrUndef(obj.tenantId),
+    parentId: toNumberOrUndef(obj.parentId),
+    sortOrder: toNumberOrUndef(obj.sortOrder),
+    visible: toBoolOrUndef(obj.visible),
+  };
+}
+
 export async function searchBoards(query: BoardQueryDTO): Promise<BoardDTO[]> {
   const queryString = buildQueryString(query);
   const res = await fetch(`/api/boards?${queryString}`, {
@@ -141,6 +172,11 @@ export async function searchBoards(query: BoardQueryDTO): Promise<BoardDTO[]> {
   }
 
   const data = await res.json();
-  // Backend returns Page<BoardsDTO>, so we need data.content
-  return data.content || [];
+
+  // Backend normally returns Page<BoardsDTO> => { content: [...] }.
+  // Be defensive in case backend returns an array directly.
+  const list = Array.isArray(data) ? data : (data?.content ?? []);
+  if (!Array.isArray(list)) return [];
+
+  return list.map(normalizeBoardDTO);
 }

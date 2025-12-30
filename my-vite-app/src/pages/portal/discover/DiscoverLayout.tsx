@@ -8,7 +8,7 @@ export default function DiscoverLayout() {
   const items = section.children?.map((child) => ({ id: child.id, label: child.label, to: `${section.basePath}/${child.path}` })) ?? [];
 
   return (
-    <div className="space-y-4 max-w-3xl mx-auto">
+    <div className="space-y-4">
       <SubTabsNav title={section.label} items={items} />
       <div>
         <Outlet />

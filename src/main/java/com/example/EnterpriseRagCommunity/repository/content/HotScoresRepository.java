@@ -18,6 +18,7 @@ public interface HotScoresRepository extends JpaRepository<HotScoresEntity, Long
     Page<HotScoresEntity> findAllByOrderByScore7dDesc(Pageable pageable);
     Page<HotScoresEntity> findAllByOrderByScoreAllDesc(Pageable pageable);
     List<HotScoresEntity> findByPostIdIn(List<Long> postIds);
+    java.util.Optional<HotScoresEntity> findByPostId(Long postId);
 
     // =============== Aggregations for natural-day windows ===============
 

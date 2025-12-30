@@ -19,22 +19,14 @@ export default function CommunityPortalLayout() {
 
   const navItems = portalSections.map((s) => {
     const Icon = iconMap[s.id as keyof typeof iconMap] ?? Compass;
-    return { to: s.basePath, label: s.label, icon: Icon };
+    return { id: s.id, to: s.basePath, label: s.label, icon: Icon };
   });
 
   const location = useLocation();
-  const isPostDetail = /^\/portal\/posts\/\d+\/?$/.test(location.pathname);
-  const isCompose =
-    location.pathname.startsWith('/portal/posts/create') ||
-    location.pathname.startsWith('/portal/posts/edit') ||
-    location.pathname.startsWith('/portal/compose');
 
-  let containerClassName = 'max-w-7xl';
-  if (isPostDetail) {
-    containerClassName = 'w-full';
-  } else if (isCompose) {
-    containerClassName = 'max-w-screen-2xl';
-  }
+  // Keep the outer container width stable across routes to prevent sidebar "jump".
+  // Let individual pages control their own inner content widths instead.
+  const containerClassName = 'max-w-7xl';
 
   return (
     <div className="min-h-screen bg-white">
@@ -55,13 +47,32 @@ export default function CommunityPortalLayout() {
               <NavLink
                 key={n.to}
                 to={n.to}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                    isActive
+                end
+                className={({ isActive }) => {
+                  // 约束一级菜单 active 规则：
+                  // - compose 只在 /portal/compose 或 posts/create|edit 时高亮
+                  // - posts 在 /portal/posts(含子路由，如 detail) 时高亮，但 create/edit 交给 compose
+                  const pathname = location.pathname;
+                  const isComposeActive =
+                    n.id === 'compose' &&
+                    (pathname.startsWith('/portal/compose') ||
+                      pathname.startsWith('/portal/posts/create') ||
+                      pathname.startsWith('/portal/posts/edit'));
+
+                  const isPostsActive =
+                    n.id === 'posts' &&
+                    pathname.startsWith('/portal/posts') &&
+                    !pathname.startsWith('/portal/posts/create') &&
+                    !pathname.startsWith('/portal/posts/edit');
+
+                  const finalActive = isComposeActive || isPostsActive || (isActive && n.id !== 'compose' && n.id !== 'posts');
+
+                  return `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                    finalActive
                       ? 'bg-gray-100 text-gray-900 font-medium'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  }`
-                }
+                  }`;
+                }}
               >
                 <n.icon className="w-5 h-5" />
                 {n.label}
@@ -86,8 +97,10 @@ export default function CommunityPortalLayout() {
         </aside>
 
         {/* Main Content */}
-        <main className="min-w-0 bg-white flex-1">
-          <div>
+        <main className="flex-1 min-w-0 bg-white">
+          <div className="w-full min-w-0">
+              {/*<main className="min-w-0 bg-white">*/}
+              {/*    <div>*/}
             <Outlet />
           </div>
         </main>

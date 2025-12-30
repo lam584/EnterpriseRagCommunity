@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Prevent layout shift when toggling pages with/without vertical scrollbars */
+:root {
+  scrollbar-gutter: stable;
+}
+
+/* Fallback for browsers that don't support scrollbar-gutter */
+html {
+  overflow-y: scroll;
+}

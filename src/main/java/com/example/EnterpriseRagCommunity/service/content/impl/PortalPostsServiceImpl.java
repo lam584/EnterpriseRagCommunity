@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.service.content.impl;
 import com.example.EnterpriseRagCommunity.dto.content.PostDetailDTO;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
+import com.example.EnterpriseRagCommunity.repository.content.HotScoresRepository;
 import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
 import com.example.EnterpriseRagCommunity.service.content.PostInteractionsService;
@@ -34,6 +35,9 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
     @Autowired
     private PostViewsDailyRepository postViewsDailyRepository;
+
+    @Autowired(required = false)
+    private HotScoresRepository hotScoresRepository;
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
@@ -67,6 +71,16 @@ public class PortalPostsServiceImpl implements PortalPostsService {
         dto.setCommentCount(commentsService.countByPostId(postId));
         dto.setReactionCount(postInteractionsService.countLikes(postId));
         dto.setFavoriteCount(postInteractionsService.countFavorites(postId));
+
+        // Fill hotScore (if hot scores are enabled).
+        // Default to scoreAll so all feeds and detail share one stable "热度分".
+        try {
+            if (hotScoresRepository != null) {
+                hotScoresRepository.findByPostId(postId).ifPresent(h -> dto.setHotScore(h.getScoreAll()));
+            }
+        } catch (Exception ex) {
+            log.debug("Failed to read hotScore for postId={}", postId, ex);
+        }
 
         // likedByMe/favoritedByMe may throw when anonymous; treat as false for browse.
         try {
