@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.content.impl;
 
 import com.example.EnterpriseRagCommunity.dto.content.PostsPublishDTO;
+import com.example.EnterpriseRagCommunity.dto.content.PostsUpdateDTO;
 import com.example.EnterpriseRagCommunity.entity.content.PostAttachmentsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
@@ -287,5 +288,74 @@ public class PostsServiceImpl implements PostsService {
         if (id == null) throw new IllegalArgumentException("id 不能为空");
         return postsRepository.findByIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + id));
+    }
+
+    @Override
+    @Transactional
+    public PostsEntity update(Long id, PostsUpdateDTO dto) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        if (dto == null) throw new IllegalArgumentException("参数不能为空");
+
+        Long me = currentUserIdOrThrow();
+
+        PostsEntity post = postsRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + id));
+
+        if (Boolean.TRUE.equals(post.getIsDeleted())) {
+            throw new IllegalArgumentException("帖子已删除: " + id);
+        }
+
+        boolean isAuthor = post.getAuthorId() != null && post.getAuthorId().equals(me);
+        if (!isAuthor) {
+            throw new IllegalArgumentException("无权编辑该帖子");
+        }
+
+        post.setBoardId(dto.getBoardId());
+        post.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
+        post.setContent(dto.getContent());
+        post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
+        post.setMetadata(dto.getMetadata());
+
+        // sync attachments: keep it simple - replace all
+        postAttachmentsRepository.deleteByPostId(post.getId());
+
+        List<Long> attachmentIds = dto.getAttachmentIds();
+        if (attachmentIds != null && !attachmentIds.isEmpty()) {
+            LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
+            for (Long faId : uniq) {
+                if (faId == null) continue;
+                FileAssetsEntity fa = fileAssetsRepository.findById(faId)
+                        .orElseThrow(() -> new IllegalArgumentException("附件不存在: " + faId));
+
+                Long ownerId = fa.getOwner() == null ? null : fa.getOwner().getId();
+                if (ownerId == null || !ownerId.equals(me)) {
+                    throw new IllegalArgumentException("无权使用该附件: " + faId);
+                }
+                if (fa.getStatus() != FileAssetStatus.READY) {
+                    throw new IllegalArgumentException("附件状态不可用: " + faId);
+                }
+
+                String fileName = fa.getUrl();
+                if (fileName != null) {
+                    int slash = fileName.lastIndexOf('/');
+                    fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
+                }
+                if (fileName == null || fileName.isBlank()) {
+                    fileName = "file";
+                }
+
+                PostAttachmentsEntity pa = new PostAttachmentsEntity();
+                pa.setPostId(post.getId());
+                pa.setFileAssetId(fa.getId());
+                pa.setUrl(fa.getUrl());
+                pa.setFileName(fileName);
+                pa.setMimeType(fa.getMimeType());
+                pa.setSizeBytes(fa.getSizeBytes());
+                pa.setCreatedAt(LocalDateTime.now());
+                postAttachmentsRepository.save(pa);
+            }
+        }
+
+        return postsRepository.save(post);
     }
 }

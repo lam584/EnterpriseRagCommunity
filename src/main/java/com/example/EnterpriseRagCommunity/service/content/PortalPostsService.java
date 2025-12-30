@@ -25,6 +25,11 @@ public interface PortalPostsService {
                              String sortBy,
                              String sortOrderDirection);
 
+    /**
+     * 分页查询“我收藏的帖子”。
+     * page 从 1 开始。
+     */
+    Page<PostDetailDTO> queryMyBookmarkedPosts(int page, int pageSize);
+
     PostDetailDTO getById(Long id);
 }
-

@@ -42,7 +42,13 @@ function pickStatButton(mod: unknown): StatButtonComponent {
 // 兼容：模块可能是 default 导出，也可能是各种具名导出；这里选到一个可用的 React 组件即可
 const StatButton = pickStatButton(StatButtonModule);
 
-export default function PostCard({ post }: { post: PostDTO }) {
+export type PostCardProps = {
+  post: PostDTO;
+  /** Optional actions area (e.g. edit/delete buttons on "My Posts" page). */
+  renderActions?: (post: PostDTO) => JSX.Element | null;
+};
+
+export default function PostCard({ post, renderActions }: PostCardProps) {
   const navigate = useNavigate();
 
   const authorLabel = post.authorName || (post.authorId ? `用户#${post.authorId}` : '匿名');
@@ -181,33 +187,47 @@ export default function PostCard({ post }: { post: PostDTO }) {
           ) : null}
 
           <div
-            className="mt-3 inline-flex w-fit max-w-full flex-wrap items-center gap-2 align-top"
+            className="mt-3 flex flex-wrap items-center justify-between gap-2"
             onClick={(e) => {
-              // 操作区不触发跳转
+              // bottom action row shouldn't trigger card navigation
               e.stopPropagation();
             }}
           >
-            <StatButton label="评论" count={commentCount} onClick={goDetail} />
+            <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-2 align-top">
+              <StatButton label="评论" count={commentCount} onClick={goDetail} />
 
-            <StatButton
-              label="点赞"
-              count={reactionCount}
-              tone="blue"
-              active={likedByMe}
-              disabled={likePending}
-              onClick={onToggleLike}
-            />
+              <StatButton
+                label="点赞"
+                count={reactionCount}
+                tone="blue"
+                active={likedByMe}
+                disabled={likePending}
+                onClick={onToggleLike}
+              />
 
-            <StatButton
-              label="收藏"
-              count={favoriteCount}
-              tone="amber"
-              active={favoritedByMe}
-              disabled={favPending}
-              onClick={onToggleFavorite}
-            />
+              <StatButton
+                label="收藏"
+                count={favoriteCount}
+                tone="amber"
+                active={favoritedByMe}
+                disabled={favPending}
+                onClick={onToggleFavorite}
+              />
 
-            <HotScoreBadge value={post.hotScore} variant="text" />
+              <HotScoreBadge value={post.hotScore} variant="text" />
+            </div>
+
+            {renderActions ? (
+              <div
+                className="inline-flex shrink-0 items-center gap-3 text-sm"
+                onClick={(e) => {
+                  // actions area shouldn't trigger card navigation
+                  e.stopPropagation();
+                }}
+              >
+                {renderActions(post)}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
