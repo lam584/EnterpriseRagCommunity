@@ -57,6 +57,10 @@ export interface FieldError {
   fieldErrors: Record<string, string>;
 }
 
+export interface RequestOptions {
+  signal?: AbortSignal;
+}
+
 // Helper to build query string
 function buildQueryString(query: BoardQueryDTO): string {
   const params = new URLSearchParams();
@@ -90,7 +94,7 @@ export async function createBoard(payload: BoardCreateDTO): Promise<BoardDTO> {
 
 export async function listBoards(): Promise<BoardDTO[]> {
   // Default list, fetch all (or first page with large size)
-  return searchBoards({ page: 1, pageSize: 1000 });
+  return searchBoards({ page: 1, pageSize: 25 });
 }
 
 export async function updateBoard(payload: BoardUpdateDTO): Promise<BoardDTO> {
@@ -160,11 +164,12 @@ function normalizeBoardDTO(raw: unknown): BoardDTO {
   };
 }
 
-export async function searchBoards(query: BoardQueryDTO): Promise<BoardDTO[]> {
+export async function searchBoards(query: BoardQueryDTO, options: RequestOptions = {}): Promise<BoardDTO[]> {
   const queryString = buildQueryString(query);
   const res = await fetch(`/api/boards?${queryString}`, {
     method: 'GET',
-    credentials: 'include'
+    credentials: 'include',
+    signal: options.signal,
   });
 
   if (!res.ok) {

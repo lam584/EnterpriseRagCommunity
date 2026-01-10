@@ -92,6 +92,11 @@ export interface SearchPostsOptions {
   preserveAllStatus?: boolean;
 }
 
+export interface RequestOptions {
+  /** 用于在路由切换/组件卸载时取消请求，避免请求堆积 */
+  signal?: AbortSignal;
+}
+
 function buildQueryString(query: Record<string, unknown>): string {
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
@@ -156,11 +161,12 @@ export async function createPost(payload: PostCreateDTO): Promise<PostDTO> {
   return data as PostDTO;
 }
 
-export async function listPosts(): Promise<PostDTO[]> {
+export async function listPosts(options: RequestOptions = {}): Promise<PostDTO[]> {
   // Prefer backend pagination shape: Page<PostDTO> with { content: [...] }
-  const res = await fetch(apiUrl('/api/posts?page=1&pageSize=1000'), {
+  const res = await fetch(apiUrl('/api/posts?page=1&pageSize=25'), {
     method: 'GET',
     credentials: 'include',
+    signal: options.signal,
   });
 
   if (!res.ok) {
@@ -172,7 +178,10 @@ export async function listPosts(): Promise<PostDTO[]> {
   return getPageContent<PostDTO>(data) ?? (Array.isArray(data) ? (data as PostDTO[]) : []);
 }
 
-export async function searchPosts(query: PostSearchQueryDTO = {}, options: SearchPostsOptions = {}): Promise<PostDTO[]> {
+export async function searchPosts(
+  query: PostSearchQueryDTO = {},
+  options: SearchPostsOptions & RequestOptions = {},
+): Promise<PostDTO[]> {
   const preserveAllStatus = options.preserveAllStatus === true;
 
   const qs = buildQueryString({
@@ -182,12 +191,13 @@ export async function searchPosts(query: PostSearchQueryDTO = {}, options: Searc
     // - 管理端：ALL => keep（确保后端不会默认 PUBLISHED）
     status: query.status === 'ALL' && !preserveAllStatus ? undefined : query.status,
     page: query.page ?? 1,
-    pageSize: query.pageSize ?? 1000,
+    pageSize: query.pageSize ?? 25,
   });
 
   const res = await fetch(apiUrl(`/api/posts?${qs}`), {
     method: 'GET',
     credentials: 'include',
+    signal: options.signal,
   });
 
   if (!res.ok) {
@@ -206,17 +216,18 @@ export async function searchPosts(query: PostSearchQueryDTO = {}, options: Searc
  * - 管理端默认需要“ALL（不过滤状态）”，因此这里不会把 ALL 过滤掉。
  * - 后端接口会把不传/ALL 解释为不过滤 status。
  */
-export async function searchAdminPosts(query: PostSearchQueryDTO = {}): Promise<PostDTO[]> {
+export async function searchAdminPosts(query: PostSearchQueryDTO = {}, options: RequestOptions = {}): Promise<PostDTO[]> {
   const qs = buildQueryString({
     ...query,
     // admin API: allow status=ALL to pass through
     page: query.page ?? 1,
-    pageSize: query.pageSize ?? 1000,
+    pageSize: query.pageSize ?? 25,
   });
 
   const res = await fetch(apiUrl(`/api/admin/posts?${qs}`), {
     method: 'GET',
     credentials: 'include',
+    signal: options.signal,
   });
 
   if (!res.ok) {

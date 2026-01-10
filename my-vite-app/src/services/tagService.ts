@@ -24,6 +24,10 @@ export interface FieldError {
   fieldErrors: Record<string, string>;
 }
 
+export interface RequestOptions {
+  signal?: AbortSignal;
+}
+
 const API_BASE = '/api/tags';
 
 type BackendTagsDTO = {
@@ -59,10 +63,16 @@ function mapFromBackend(dto: BackendTagsDTO): TagDTO {
     name: dto.name,
     slug: dto.slug,
     description: dto.description ?? undefined,
-    system: !!dto.isSystem,
-    active: !!dto.isActive,
+    system: dto.isSystem,
+    active: dto.isActive,
     createdAt: dto.createdAt
   };
+}
+
+function getBackendMessage(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const m = (payload as { message?: unknown }).message;
+  return typeof m === 'string' && m.trim() ? m : undefined;
 }
 
 function extractFieldErrors(payload: unknown): Record<string, string> | undefined {
@@ -122,25 +132,24 @@ export async function createTag(payload: TagCreateDTO): Promise<TagDTO> {
     const data = await res.json().catch(() => undefined);
     const fieldErrors = extractFieldErrors(data);
     if (fieldErrors) throw Object.assign(new Error('Validation failed'), { fieldErrors } as FieldError);
-    const msg = (data as any)?.message ?? '创建失败';
-    throw new Error(msg);
+    throw new Error(getBackendMessage(data) ?? '创建失败');
   }
 
   const dto = (await res.json()) as BackendTagsDTO;
   return mapFromBackend(dto);
 }
 
-export async function listTags(): Promise<TagDTO[]> {
+export async function listTags(options: RequestOptions = {}): Promise<TagDTO[]> {
   const url = new URL(API_BASE, window.location.origin);
   url.searchParams.set('page', '1');
-  url.searchParams.set('pageSize', '200');
+  url.searchParams.set('pageSize', '25');
   url.searchParams.set('sortBy', 'createdAt');
   url.searchParams.set('sortOrder', 'desc');
 
-  const res = await fetch(url.toString(), { credentials: 'include' });
+  const res = await fetch(url.toString(), { credentials: 'include', signal: options.signal });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ message: '加载失败' }));
-    throw new Error((data as any)?.message ?? '加载失败');
+    throw new Error(getBackendMessage(data) ?? '加载失败');
   }
 
   // 后端返回 Page<TagsDTO>
@@ -148,7 +157,7 @@ export async function listTags(): Promise<TagDTO[]> {
   return (page.content ?? []).map(mapFromBackend);
 }
 
-export async function incrementUsage(_tagNames: string[]): Promise<void> {
+export async function incrementUsage(): Promise<void> {
   // 目前后端 TagsEntity 没有 usageCount 字段（SQL 也没有）。
   // 这里保持接口不崩，但不执行任何请求。
   // 如需支持使用量，请在 DB/Entity/DTO 层新增字段与接口（当前规则禁止修改底层）。
@@ -210,8 +219,7 @@ export async function updateTag(id: number, payload: TagUpdateDTO): Promise<TagD
     const data = await res.json().catch(() => undefined);
     const fieldErrors = extractFieldErrors(data);
     if (fieldErrors) throw Object.assign(new Error('Validation failed'), { fieldErrors } as FieldError);
-    const msg = (data as any)?.message ?? '更新失败';
-    throw new Error(msg);
+    throw new Error(getBackendMessage(data) ?? '更新失败');
   }
 
   const dto = (await res.json()) as BackendTagsDTO;
@@ -229,7 +237,7 @@ export async function deleteTag(id: number): Promise<void> {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ message: '删除失败' }));
-    throw new Error((data as any)?.message ?? '删除失败');
+    throw new Error(getBackendMessage(data) ?? '删除失败');
   }
 }
 

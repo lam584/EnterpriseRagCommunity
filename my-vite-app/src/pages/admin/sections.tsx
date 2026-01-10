@@ -1,13 +1,21 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import FormContainer from './forms/FormContainer';
-import { formsRegistry } from './forms/index';
+import { getLazyForm, preloadForm } from './forms/index';
 
 // 复用 NewsSystemLayout 的侧边菜单风格，做成二级菜单组件
 type SubItem = { id: string; label: string };
 
-const SubMenu: React.FC<{ items: SubItem[]; ariaLabel?: string; onChange?: (id: string) => void; defaultActiveId?: string; title?: string }>
-  = ({ items, ariaLabel = '二级菜单', onChange, defaultActiveId, title }) => {
+const SubMenu: React.FC<{
+  items: SubItem[];
+  ariaLabel?: string;
+  onChange?: (id: string) => void;
+  defaultActiveId?: string;
+  title?: string;
+  /** 可选：受控模式，外部指定当前激活 id（用于与 URL 同步） */
+  activeId?: string;
+}>
+  = ({ items, ariaLabel = '二级菜单', onChange, defaultActiveId, title, activeId }) => {
   const [active, setActive] = useState(defaultActiveId ?? items[0]?.id);
   const containerRef = useRef<HTMLDivElement>(null);
   const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -23,10 +31,15 @@ const SubMenu: React.FC<{ items: SubItem[]; ariaLabel?: string; onChange?: (id: 
     }
   }, [items, active]);
 
-  // 通知父组件当前活动项
+  // 与外部受控 activeId 同步（仅同步，不触发 onChange，避免循环）
   useEffect(() => {
-    if (active) onChange?.(active);
-  }, [active, onChange]);
+    if (!activeId) return;
+    if (!items.some(i => i.id === activeId)) return;
+    if (activeId === active) return;
+    setActive(activeId);
+  }, [activeId, items, active]);
+
+  // 注意：不要在 effect 里自动 onChange，否则会把“state 同步”也变成“用户交互”，触发 URL 写入循环
 
   const focusButton = (id?: string) => {
     if (!id) return;
@@ -125,7 +138,12 @@ const SubMenu: React.FC<{ items: SubItem[]; ariaLabel?: string; onChange?: (id: 
         return;
     }
     const nextId = items[nextIdx]?.id;
+    if (!nextId || nextId === active) {
+      focusButton(nextId);
+      return;
+    }
     setActive(nextId);
+    onChange?.(nextId);
     focusButton(nextId);
   };
 
@@ -168,8 +186,13 @@ const SubMenu: React.FC<{ items: SubItem[]; ariaLabel?: string; onChange?: (id: 
                     tabIndex={selected ? 0 : -1}
                     onKeyDown={(e) => onKeyDown(e, idx)}
                     onClick={() => {
+                      if (it.id === active) return;
                       setActive(it.id);
                       onChange?.(it.id);
+                    }}
+                    onMouseEnter={() => {
+                      // Prefetch active form chunks on hover to make first click instant.
+                      preloadForm(it.id);
                     }}
                     className={`px-4 py-2 rounded-none whitespace-nowrap transition-colors duration-200 border-0 focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-0 ${
                       selected
@@ -242,22 +265,38 @@ const AdminSection: React.FC<AdminSectionProps> = ({ title, items, defaultActive
 
   const [active, setActive] = useState<string | undefined>(initialActive);
 
+  // Debug 开关：需要时在控制台输入 localStorage.setItem('debugAdminNav','1')
+  const debug = typeof window !== 'undefined' && window.localStorage?.getItem('debugAdminNav') === '1';
+
   // 当 URL 参数变化时，同步到 state（允许外部跳转定位到某个子表单）
   useEffect(() => {
     if (!activeFromUrl) return;
-    if (items.some((i) => i.id === activeFromUrl)) {
-      setActive(activeFromUrl);
-    }
-  }, [activeFromUrl, items]);
+    if (!items.some((i) => i.id === activeFromUrl)) return;
 
-  const ActiveForm = active ? formsRegistry[active] : undefined;
+    // 避免同值反复 setState 造成额外渲染/副作用链
+    if (activeFromUrl === active) return;
+
+    if (debug) console.log('[admin][active] sync from url -> state', { activeFromUrl, prev: active });
+    setActive(activeFromUrl);
+  }, [activeFromUrl, items, active, debug]);
+
+  const ActiveForm = getLazyForm(active);
+
   return (
     <SectionCard
       className={className}
       form={
         <div className="space-y-3">
-          {/*<div className="text-sm text-gray-600">当前选中：{active ?? '—'}</div>*/}
-          {ActiveForm ? <ActiveForm /> : null}
+          <Suspense
+            key={active}
+            fallback={
+              <div className="bg-white rounded-lg shadow p-4 text-sm text-gray-600">
+                正在加载模块…
+              </div>
+            }
+          >
+            {ActiveForm ? <ActiveForm /> : null}
+          </Suspense>
         </div>
       }
     >
@@ -265,13 +304,21 @@ const AdminSection: React.FC<AdminSectionProps> = ({ title, items, defaultActive
       <SubMenu
         title={title}
         items={items}
+        activeId={active}
         onChange={(id) => {
+          if (id === active) return;
+
+          if (debug) console.log('[admin][active] menu change', { next: id, prev: active });
+
           setActive(id);
           setSearchParams((prev) => {
+            const current = prev.get('active') ?? undefined;
+            if (current === id) return prev;
+
             const next = new URLSearchParams(prev);
             next.set('active', id);
             return next;
-          });
+          }, { replace: true });
         }}
         defaultActiveId={initialActive}
       />

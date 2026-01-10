@@ -1,5 +1,5 @@
 //my-vite-app/src/contexts/AuthContext.tsx
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useContext, useEffect, ReactNode, useRef } from 'react';
 import { AdminDTO, getCurrentAdmin } from '../services/authService';
 
 interface AuthContextType {
@@ -30,40 +30,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // Dedupe concurrent refreshes to avoid auth "flapping" causing redirect storms.
+  const inFlightRefreshRef = useRef<Promise<boolean> | null>(null);
+
   // 添加刷新认证状态的函数
   const refreshAuth = async (): Promise<boolean> => {
-    try {
-      const user = await getCurrentAdmin();
-      setCurrentUser(user);
-      setIsAuthenticated(true);
-      console.log("认证刷新成功，当前用户:", user.username);
-      return true;
-    } catch (error) {
-      console.error("认证刷新失败:", error);
-      setCurrentUser(null);
-      setIsAuthenticated(false);
-      return false;
-    } finally {
-      setLoading(false);
-    }
+    if (inFlightRefreshRef.current) return inFlightRefreshRef.current;
+
+    setLoading(true);
+
+    const p = (async (): Promise<boolean> => {
+      try {
+        const user = await getCurrentAdmin();
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+        console.log("认证刷新成功，当前用户:", user.username);
+        return true;
+      } catch (error) {
+        console.error("认证刷新失败:", error);
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        return false;
+      } finally {
+        setLoading(false);
+        inFlightRefreshRef.current = null;
+      }
+    })();
+
+    inFlightRefreshRef.current = p;
+    return p;
   };
 
   useEffect(() => {
-    const checkAuthStatus = async () => {
-      setLoading(true);
-      try {
-        // 尝试获取当前用户信息
-        await refreshAuth();
-      } catch (error) {
-        console.error("初始认证检查失败:", error);
-        setCurrentUser(null);
-        setIsAuthenticated(false);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuthStatus();
+    // Initial auth check. refreshAuth already manages loading.
+    void refreshAuth();
   }, []);
 
   return (

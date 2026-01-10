@@ -1,6 +1,6 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import Login from './components/login/Login';
 import AdminSetup from './components/login/AdminSetup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -43,7 +43,13 @@ import AccountConnectionsPage from './pages/portal/account/pages/AccountConnecti
 import SearchLayout from './pages/portal/search/SearchLayout';
 import SearchIndexRedirect from './pages/portal/search/SearchIndexRedirect';
 import SearchPostsPage from './pages/portal/search/pages/SearchPostsPage';
-import { ContentMgmtPage, ReviewCenterPage, SemanticBoostPage, RetrievalRagPage, MetricsMonitorPage, UsersRBACPage } from './pages/admin/sections.tsx';
+// NOTE: admin sections are lazy-loaded to reduce main-thread EvaluateScript on menu switch.
+const ContentMgmtPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.ContentMgmtPage })));
+const ReviewCenterPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.ReviewCenterPage })));
+const SemanticBoostPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.SemanticBoostPage })));
+const RetrievalRagPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.RetrievalRagPage })));
+const MetricsMonitorPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.MetricsMonitorPage })));
+const UsersRBACPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.UsersRBACPage })));
 
 // 受保护的路由组件
 const ProtectedRoute = () => {
@@ -168,12 +174,12 @@ function AppRoutes() {
             <Route element={<ProtectedRoute />}>
                 {/* 后台管理（审核员/管理员） */}
                 <Route path="/admin" element={<AdminDashboardLayout />}>
-                    <Route path="content" element={<ContentMgmtPage />} />
-                    <Route path="review" element={<ReviewCenterPage />} />
-                    <Route path="semantic" element={<SemanticBoostPage />} />
-                    <Route path="retrieval" element={<RetrievalRagPage />} />
-                    <Route path="metrics" element={<MetricsMonitorPage />} />
-                    <Route path="users" element={<UsersRBACPage />} />
+                    <Route path="content" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><ContentMgmtPage /></Suspense>} />
+                    <Route path="review" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><ReviewCenterPage /></Suspense>} />
+                    <Route path="semantic" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><SemanticBoostPage /></Suspense>} />
+                    <Route path="retrieval" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><RetrievalRagPage /></Suspense>} />
+                    <Route path="metrics" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><MetricsMonitorPage /></Suspense>} />
+                    <Route path="users" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><UsersRBACPage /></Suspense>} />
                     <Route index element={<Navigate to="content" replace />} />
                 </Route>
 
