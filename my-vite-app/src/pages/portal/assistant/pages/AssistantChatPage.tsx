@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -22,6 +22,20 @@ function uid(): string {
 export default function AssistantChatPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // 防止流式回调重复 replace 同一个 URL，触发 Chromium 的 navigation throttling
+  const lastSyncedSessionIdRef = useRef<number | undefined>(undefined);
+
+  // Avoid capturing stale location/searchParams inside stream callbacks.
+  const latestLocationRef = useRef(location);
+  useEffect(() => {
+    latestLocationRef.current = location;
+  }, [location]);
+
+  // Coalesce multiple meta events into at most 1 navigation.
+  const pendingUrlSyncRef = useRef<number | null>(null);
+  const urlSyncScheduledRef = useRef(false);
 
   const initialSessionId = useMemo(() => {
     const raw = searchParams.get('sessionId');
@@ -103,9 +117,40 @@ export default function AssistantChatPage() {
         (ev: AiStreamEvent) => {
           if (ev.type === 'meta') {
             if (Number.isFinite(ev.sessionId)) {
-              setSessionId(ev.sessionId);
-              // keep URL in sync so refresh can resume
-              navigate(`/portal/assistant/chat?sessionId=${ev.sessionId}`, { replace: true });
+              const nextId = ev.sessionId as number;
+              setSessionId(nextId);
+
+              // keep URL in sync so refresh can resume (de-dupe to avoid navigation storms)
+              if (lastSyncedSessionIdRef.current !== nextId) {
+                lastSyncedSessionIdRef.current = nextId;
+
+                // schedule a single replace based on the latest location
+                pendingUrlSyncRef.current = nextId;
+                if (!urlSyncScheduledRef.current) {
+                  urlSyncScheduledRef.current = true;
+                  queueMicrotask(() => {
+                    urlSyncScheduledRef.current = false;
+                    const idToSync = pendingUrlSyncRef.current;
+                    pendingUrlSyncRef.current = null;
+                    if (idToSync == null) return;
+
+                    const loc = latestLocationRef.current;
+                    const currentParams = new URLSearchParams(loc.search);
+                    const currentUrlId = currentParams.get('sessionId');
+                    const nextUrl = `/portal/assistant/chat?sessionId=${idToSync}`;
+                    const currentUrl = `${loc.pathname}${loc.search}`;
+
+                    if (currentUrl === nextUrl) return;
+                    if (loc.pathname !== '/portal/assistant/chat') {
+                      // Only sync when we're actually on the chat route.
+                      return;
+                    }
+                    if (currentUrlId !== String(idToSync)) {
+                      navigate(nextUrl, { replace: true });
+                    }
+                  });
+                }
+              }
             }
           } else if (ev.type === 'delta') {
             if (!ev.content) return;
@@ -140,6 +185,9 @@ export default function AssistantChatPage() {
     setError(null);
     setSessionId(undefined);
     setMessages([]);
+    lastSyncedSessionIdRef.current = undefined;
+    pendingUrlSyncRef.current = null;
+    urlSyncScheduledRef.current = false;
     navigate('/portal/assistant/chat', { replace: false });
   }
 

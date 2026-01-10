@@ -49,16 +49,20 @@ export default function CommunityPortalLayout() {
     return name.slice(0, 1).toUpperCase();
   }, [currentUser?.username]);
 
-  // 登录成功后路由跳转到 portal，但 AuthProvider 的初始化 refresh 只跑一次；
-  // 这里在门户布局挂载时再触发一次，确保侧边栏用户区立即同步。
-  useEffect(() => {
-    refreshAuth?.();
+  // React 18 StrictMode(dev) 会让 effect 挂载/卸载/再挂载一次，
+  // 如果这里每次都 refreshAuth，可能导致 isAuthenticated 短时间抖动，引发重定向风暴。
+  const didInitialRefreshRef = useRef(false);
 
-    // 兼容其它页面（例如登录页）写入 localStorage 后，同步门户 UI（同 tab 内不会触发 storage）
-    // 这里只是兜底：跨 tab 会触发 storage；同 tab 主要依赖 refreshAuth。
+  useEffect(() => {
+    if (!didInitialRefreshRef.current) {
+      didInitialRefreshRef.current = true;
+      void refreshAuth?.();
+    }
+
+    // 兼容其它页面（例如登录页）写入 localStorage 后，同步 portal UI
     const onStorage = (e: StorageEvent) => {
       if (e.key !== 'userData') return;
-      refreshAuth?.();
+      void refreshAuth?.();
     };
 
     window.addEventListener('storage', onStorage);

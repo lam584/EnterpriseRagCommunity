@@ -1,61 +1,86 @@
-import BoardForm from './content/board';
-import BoardManagement from './content/BoardManagement';
-import PostForm from './content/post';
-import CommentForm from './content/comment';
-import TagsForm from './content/tags';
-import QueueForm from './review/queue';
-import RulesForm from './review/rules';
-import EmbedForm from './review/embed';
-import LlmForm from './review/llm';
-import FallbackForm from './review/fallback';
-import LogsForm from './review/logs';
-import RiskTagsForm from './review/risk-tags';
-import TitleGenForm from './semantic/title-gen';
-import MultiLabelForm from './semantic/multi-label';
-import SummaryForm from './semantic/summary';
-import TranslateForm from './semantic/translate';
-import VectorIndexForm from './retrieval/vector-index';
-import HybridSearchForm from './retrieval/hybrid';
-import ContextClipForm from './retrieval/context';
-import CitationForm from './retrieval/citation';
-import MetricsForm from './metrics/metrics';
-import AbtestForm from './metrics/abtest';
-import TokenForm from './metrics/token';
-import LabelQualityForm from './metrics/label-quality';
-import CostForm from './metrics/cost';
-import UserRoleForm from './users/user-role';
-import RolesForm from './users/roles';
-import MatrixForm from './users/matrix';
-import TwoFAForm from './users/2fa';
+import type { ComponentType, LazyExoticComponent } from 'react';
+import { createElement, lazy } from 'react';
 
-export const formsRegistry: Record<string, React.FC> = {
-  'board': BoardForm,
-  'board-management': BoardManagement,
-  'post': PostForm,
-  'comment': CommentForm,
-  'tags': TagsForm,
-  'queue': QueueForm,
-  'rules': RulesForm,
-  'embed': EmbedForm,
-  'llm': LlmForm,
-  'fallback': FallbackForm,
-  'logs': LogsForm,
-  'risk-tags': RiskTagsForm,
-  'title-gen': TitleGenForm,
-  'multi-label': MultiLabelForm,
-  'summary': SummaryForm,
-  'translate': TranslateForm,
-  'index': VectorIndexForm,
-  'hybrid': HybridSearchForm,
-  'context': ContextClipForm,
-  'citation': CitationForm,
-  'metrics': MetricsForm,
-  'abtest': AbtestForm,
-  'token': TokenForm,
-  'label-quality': LabelQualityForm,
-  'cost': CostForm,
-  'user-role': UserRoleForm,
-  'roles': RolesForm,
-  'matrix': MatrixForm,
-  '2fa': TwoFAForm,
+export type AnyPropsComponent = ComponentType<Record<string, unknown>>;
+export type FormLoader = () => Promise<{ default: AnyPropsComponent }>;
+
+// Lazy loaders: keep paths static so Vite can create separate chunks.
+// Note: Vite ignores webpackChunkName by default, but keeping the comment doesn't hurt and helps future migration.
+export const formsLoaders: Partial<Record<string, FormLoader>> = {
+  'board': () => import('./content/board'),
+  'board-management': () => import('./content/BoardManagement'),
+  'post': () => import('./content/post'),
+  'comment': () => import('./content/comment'),
+  'tags': () => import('./content/tags'),
+
+  'queue': () => import('./review/queue'),
+  'rules': () => import('./review/rules'),
+  'embed': () => import('./review/embed'),
+  'llm': () => import('./review/llm'),
+  'fallback': () => import('./review/fallback'),
+  'logs': () => import('./review/logs'),
+  'risk-tags': () => import('./review/risk-tags'),
+
+  'title-gen': () => import('./semantic/title-gen'),
+  'multi-label': () => import('./semantic/multi-label'),
+  'summary': () => import('./semantic/summary'),
+  'translate': () => import('./semantic/translate'),
+
+  'index': () => import('./retrieval/vector-index'),
+  'hybrid': () => import('./retrieval/hybrid'),
+  'context': () => import('./retrieval/context'),
+  'citation': () => import('./retrieval/citation'),
+
+  'metrics': () => import('./metrics/metrics'),
+  'abtest': () => import('./metrics/abtest'),
+  'token': () => import('./metrics/token'),
+  'label-quality': () => import('./metrics/label-quality'),
+  'cost': () => import('./metrics/cost'),
+
+  'user-role': () => import('./users/user-role'),
+  'roles': () => import('./users/roles'),
+  'matrix': () => import('./users/matrix'),
+  '2fa': () => import('./users/2fa'),
 };
+
+function UnknownForm({ id }: { id?: string }) {
+  return createElement(
+    'div',
+    { className: 'bg-white rounded-lg shadow p-4 space-y-2' },
+    createElement('h3', { className: 'text-lg font-semibold' }, '未找到表单'),
+    createElement('div', { className: 'text-sm text-gray-600' }, `active=${id ?? '—'}`)
+  );
+}
+
+const lazyCache = new Map<string, LazyExoticComponent<AnyPropsComponent>>();
+const preloadCache = new Map<string, Promise<unknown>>();
+
+export function getLazyForm(id: string | undefined) {
+  const key = (id ?? '').trim();
+  if (!key) return undefined;
+
+  const cached = lazyCache.get(key);
+  if (cached) return cached;
+
+  const loader = formsLoaders[key];
+  const fallbackLoader: FormLoader = async () => ({
+    default: UnknownForm as AnyPropsComponent,
+  });
+
+  const Lazy = lazy(loader ?? fallbackLoader);
+
+  lazyCache.set(key, Lazy);
+  return Lazy;
+}
+
+export function preloadForm(id: string | undefined) {
+  const key = (id ?? '').trim();
+  if (!key) return;
+  const loader = formsLoaders[key];
+  if (!loader) return;
+
+  // Avoid spamming duplicate dynamic imports on rapid hover / repeated renders.
+  const existing = preloadCache.get(key);
+  if (existing) return;
+  preloadCache.set(key, loader());
+}
