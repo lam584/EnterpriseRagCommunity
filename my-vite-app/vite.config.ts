@@ -34,6 +34,26 @@ cssFiles.forEach(fullPath => {
 import { viteStaticCopy } from 'vite-plugin-static-copy'
 import * as path from "node:path";
 
+function hasFiles(dir: string): boolean {
+    try {
+        const entries = readdirSync(dir);
+        return entries.some(name => {
+            // ignore common placeholders
+            if (name === '.gitkeep' || name === '.DS_Store') return false;
+            try {
+                return statSync(join(dir, name)).isFile();
+            } catch {
+                return false;
+            }
+        });
+    } catch {
+        return false;
+    }
+}
+
+const fontsDir = resolve(__dirname, 'src/assets/fonts');
+const enableFontsCopy = hasFiles(fontsDir);
+
 export default defineConfig({
     resolve: {
         alias: {
@@ -53,13 +73,16 @@ export default defineConfig({
         },
     },
     plugins: [
-
         react(),
-        viteStaticCopy({
-            targets: [
-                { src: 'src/assets/fonts/*', dest: 'fonts' }
+        ...(enableFontsCopy
+            ? [
+                viteStaticCopy({
+                    targets: [
+                        { src: 'src/assets/fonts/*', dest: 'fonts' }
+                    ]
+                })
             ]
-        })
+            : [])
     ],
     build: {
         manifest: true,
