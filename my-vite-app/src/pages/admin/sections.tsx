@@ -396,7 +396,7 @@ export const UsersRBACPage: React.FC = () => (
     items={[
       { id: 'user-role', label: '用户管理' },
       { id: 'roles', label: '角色管理' },
-      { id: 'matrix', label: '权限矩阵' },
+      { id: 'matrix', label: '权限管理' },
       { id: '2fa', label: '高权限操作 2FA 策略' },
     ]}
   />

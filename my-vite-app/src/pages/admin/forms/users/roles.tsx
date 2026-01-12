@@ -1,21 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Button } from '../../../../components/ui/button';
-import { Input } from '../../../../components/ui/input';
-import { Checkbox } from '../../../../components/ui/checkbox';
-import { Label } from '../../../../components/ui/label';
-import { queryPermissions, PermissionsUpdateDTO } from '../../../../services/permissionsService';
+import React, {useEffect, useMemo, useState} from 'react';
+import {Button} from '../../../../components/ui/button';
+import {Input} from '../../../../components/ui/input';
+import {Checkbox} from '../../../../components/ui/checkbox';
+import {Label} from '../../../../components/ui/label';
+import {PermissionsUpdateDTO, queryPermissions} from '../../../../services/permissionsService';
+import {RoleCreateDTO, RoleQueryDTO, rolesService,} from '../../../../services/rolesService';
 import {
-  RoleCreateDTO,
-  // RoleUpdateDTO,
-  RoleQueryDTO,
-  rolesService,
-} from '../../../../services/rolesService';
-import {
-  deleteRolePermission,
-  listRolePermissionsByRole,
-  upsertRolePermission,
+    deleteRolePermission,
+    listRolePermissionsByRole,
+    upsertRolePermission,
 } from '../../../../services/rolePermissionsService';
-import { getCurrentAdmin } from '../../../../services/authService';
+import {getCurrentAdmin} from '../../../../services/authService';
+import {FaSearch} from "react-icons/fa";
 
 // 说明：
 // - 角色 CRUD 走 /api/user-roles（后端当前 controller 未标注 @PreAuthorize）。
@@ -266,7 +262,7 @@ const RolesManagement: React.FC = () => {
         alert('加载角色权限矩阵失败');
       } finally {
         setMatrixLoading(false);
-      }
+      }1
     }
   };
 
@@ -353,14 +349,14 @@ const RolesManagement: React.FC = () => {
         <Button onClick={openCreateRole}>新增角色</Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto] md:items-center">
         <Input
           placeholder="角色名称关键字（本地过滤）"
           value={nameKeyword}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNameKeyword(e.target.value)}
         />
-        <Button onClick={handleSearch} variant="secondary">
-          搜索
+        <Button onClick={handleSearch} variant="secondary" className="whitespace-nowrap">
+          <FaSearch className="mr-2" /> 搜索
         </Button>
       </div>
 
