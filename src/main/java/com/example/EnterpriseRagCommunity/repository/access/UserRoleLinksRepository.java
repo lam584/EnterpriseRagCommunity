@@ -12,5 +12,6 @@ public interface UserRoleLinksRepository extends JpaRepository<UserRoleLinksEnti
     List<UserRoleLinksEntity> findByUserId(Long userId);
     List<UserRoleLinksEntity> findByRoleId(Long roleId);
     void deleteByUserIdAndRoleId(Long userId, Long roleId);
-}
 
+    void deleteByUserId(Long userId);
+}

@@ -84,4 +84,7 @@ public interface PostsRepository extends JpaRepository<PostsEntity, Long>, JpaSp
     List<Long> findIdsByStatusAndIsDeletedFalse(@Param("status") PostStatus status);
 
     java.util.Optional<PostsEntity> findByIdAndIsDeletedFalse(Long id);
+
+    // Used by user hard-delete pre-checks (avoid FK constraint errors)
+    long countByAuthorId(Long authorId);
 }

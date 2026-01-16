@@ -18,4 +18,7 @@ public interface CommentsRepository extends JpaRepository<CommentsEntity, Long>,
     Page<CommentsEntity> findByIsDeletedFalseAndCreatedAtBetween(LocalDateTime start, LocalDateTime end, Pageable pageable);
 
     long countByPostIdAndStatusAndIsDeletedFalse(Long postId, CommentStatus status);
+
+    // Used by user hard-delete pre-checks (avoid FK constraint errors)
+    long countByAuthorId(Long authorId);
 }

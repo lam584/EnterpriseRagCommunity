@@ -3,11 +3,11 @@ package com.example.EnterpriseRagCommunity.dto.access;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 @Data
@@ -40,4 +40,13 @@ public class UsersUpdateDTO {
 
     @ApiModelProperty("扩展元数据(JSON)")
     private Map<String, Object> metadata;
+
+    @ApiModelProperty("上次登录时间")
+    private LocalDateTime lastLoginAt;
+
+    @ApiModelProperty("创建时间")
+    private LocalDateTime createdAt;
+
+    @ApiModelProperty("更新时间")
+    private LocalDateTime updatedAt;
 }
