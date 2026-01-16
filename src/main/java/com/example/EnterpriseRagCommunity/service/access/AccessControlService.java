@@ -3,12 +3,10 @@ package com.example.EnterpriseRagCommunity.service.access;
 import com.example.EnterpriseRagCommunity.entity.access.PermissionsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.RolePermissionsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UserRoleLinksEntity;
-import com.example.EnterpriseRagCommunity.entity.access.UserRolesEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.PermissionsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.RolePermissionsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UserRoleLinksRepository;
-import com.example.EnterpriseRagCommunity.repository.access.UserRolesRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,7 +21,8 @@ import java.util.*;
  * Loads roles and permissions for a user and builds Spring Security authorities.
  *
  * Authorities produced:
- * - ROLE_{roles} (for hasRole)
+ * - ROLE_{roleName} (for hasRole/hasAuthority; roleName from user_roles.roles)
+ * - ROLE_ID_{roleId} (compat/debug)
  * - PERM_{resource}:{action} (for hasAuthority)
  */
 @Service
@@ -31,10 +30,11 @@ import java.util.*;
 public class AccessControlService {
 
     public static final String PERM_PREFIX = "PERM_";
+    public static final String ROLE_PREFIX = "ROLE_";
+    public static final String ROLE_ID_PREFIX = "ROLE_ID_";
 
     private final UsersRepository usersRepository;
     private final UserRoleLinksRepository userRoleLinksRepository;
-    private final UserRolesRepository userRolesRepository;
     private final RolePermissionsRepository rolePermissionsRepository;
     private final PermissionsRepository permissionsRepository;
 
@@ -60,9 +60,34 @@ public class AccessControlService {
 
         List<GrantedAuthority> authorities = new ArrayList<>();
 
-        // roles -> ROLE_xxx (Spring's hasRole('ADMIN') checks for ROLE_ADMIN)
-        for (String role : data.roleNames) {
-            authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+        // roles -> ROLE_{name} + ROLE_ID_{id}
+        if (!data.roleIds.isEmpty()) {
+            // 仅从 role_permissions.role_name 推断 roleName；若为空，则只发放 ROLE_ID_{id}
+            Map<Long, String> roleIdToName = new HashMap<>();
+
+            for (Long roleId : data.roleIds) {
+                if (roleId == null) continue;
+
+                List<RolePermissionsEntity> rps = rolePermissionsRepository.findByRoleId(roleId);
+                for (RolePermissionsEntity rp : rps) {
+                    String roleName = rp.getRoleName();
+                    if (roleName != null && !roleName.isBlank()) {
+                        roleIdToName.put(roleId, roleName.trim());
+                        break;
+                    }
+                }
+            }
+
+            for (Long roleId : data.roleIds) {
+                if (roleId == null) continue;
+
+                authorities.add(new SimpleGrantedAuthority(ROLE_ID_PREFIX + roleId));
+
+                String roleName = roleIdToName.get(roleId);
+                if (roleName != null && !roleName.isBlank()) {
+                    authorities.add(new SimpleGrantedAuthority(ROLE_PREFIX + roleName));
+                }
+            }
         }
 
         // permissions -> PERM_resource:action
@@ -74,20 +99,17 @@ public class AccessControlService {
     }
 
     private AccessData loadAccessData(Long userId) {
-        Set<String> roleNames = new LinkedHashSet<>();
+        Set<Long> roleIds = new LinkedHashSet<>();
         Set<String> permissionKeys = new LinkedHashSet<>();
 
         List<UserRoleLinksEntity> links = userRoleLinksRepository.findByUserId(userId);
         if (links.isEmpty()) {
-            return new AccessData(roleNames, permissionKeys);
+            return new AccessData(roleIds, permissionKeys);
         }
 
-        List<Long> roleIds = links.stream().map(UserRoleLinksEntity::getRoleId).toList();
-        List<UserRolesEntity> roles = userRolesRepository.findAllById(roleIds);
-
-        for (UserRolesEntity r : roles) {
-            if (r.getRoles() != null && !r.getRoles().isBlank()) {
-                roleNames.add(r.getRoles().trim());
+        for (UserRoleLinksEntity link : links) {
+            if (link.getRoleId() != null) {
+                roleIds.add(link.getRoleId());
             }
         }
 
@@ -117,13 +139,13 @@ public class AccessControlService {
             }
         }
 
-        return new AccessData(roleNames, permissionKeys);
+        return new AccessData(roleIds, permissionKeys);
     }
 
     public static String toPermissionKey(String resource, String action) {
         return (resource == null ? "" : resource.trim()) + ":" + (action == null ? "" : action.trim());
     }
 
-    private record AccessData(Set<String> roleNames, Set<String> permissionKeys) {
+    private record AccessData(Set<Long> roleIds, Set<String> permissionKeys) {
     }
 }

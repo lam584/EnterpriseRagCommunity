@@ -9,11 +9,13 @@ import com.example.EnterpriseRagCommunity.dto.moderation.ModerationQueueQueryDTO
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
+import com.example.EnterpriseRagCommunity.security.Permissions;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -27,6 +29,7 @@ public class AdminModerationQueueController {
     private AdminModerationQueueService adminModerationQueueService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read'))")
     public Page<AdminModerationQueueItemDTO> list(@RequestParam(value = "page", defaultValue = "1") int page,
                                                  @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
                                                  @RequestParam(value = "id", required = false) Long id,
@@ -58,11 +61,13 @@ public class AdminModerationQueueController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read'))")
     public AdminModerationQueueDetailDTO getDetail(@PathVariable("id") Long id) {
         return adminModerationQueueService.getDetail(id);
     }
 
     @PostMapping("/{id}/approve")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
     public AdminModerationQueueDetailDTO approve(@PathVariable("id") Long id,
                                                  @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
         String reason = req == null ? null : req.getReason();
@@ -70,6 +75,7 @@ public class AdminModerationQueueController {
     }
 
     @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
     public AdminModerationQueueDetailDTO reject(@PathVariable("id") Long id,
                                                 @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
         String reason = req == null ? null : req.getReason();
@@ -77,6 +83,7 @@ public class AdminModerationQueueController {
     }
 
     @PostMapping("/backfill")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
     public AdminModerationQueueBackfillResponse backfill(@RequestBody(required = false) AdminModerationQueueBackfillRequest req) {
         return adminModerationQueueService.backfill(req);
     }

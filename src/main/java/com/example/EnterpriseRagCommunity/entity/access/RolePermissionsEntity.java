@@ -11,19 +11,18 @@ import lombok.NoArgsConstructor;
 @IdClass(RolePermissionId.class)
 public class RolePermissionsEntity {
 
-    // 原 @EmbeddedId 模式移除，改为显式两个主键字段
     @Id
     @Column(name = "role_id", nullable = false)
     private Long roleId;
+
+    @Column(name = "role_name")
+    private String roleName;
 
     @Id
     @Column(name = "permission_id", nullable = false)
     private Long permissionId;
 
-    // 可选：若仍需导航属性，可使用只读关联（遵守外键 Long 字段主权）
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "role_id", insertable = false, updatable = false)
-    private UserRolesEntity role;
+    // 说明：roleId 不再关联到角色定义表（user_roles 已删除）。
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "permission_id", insertable = false, updatable = false)

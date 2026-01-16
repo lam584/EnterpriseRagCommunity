@@ -1,361 +1,579 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {Button} from '../../../../components/ui/button';
 import {Input} from '../../../../components/ui/input';
-import {Checkbox} from '../../../../components/ui/checkbox';
-import {Label} from '../../../../components/ui/label';
 import {PermissionsUpdateDTO, queryPermissions} from '../../../../services/permissionsService';
-import {RoleCreateDTO, RoleQueryDTO, rolesService,} from '../../../../services/rolesService';
 import {
-    deleteRolePermission,
+    createRoleWithMatrix,
+    listRoleIds,
     listRolePermissionsByRole,
-    upsertRolePermission,
+    replaceRolePermissions,
+    type RolePermissionUpsertDTO,
+    type RolePermissionViewDTO,
 } from '../../../../services/rolePermissionsService';
-import {getCurrentAdmin} from '../../../../services/authService';
-import {FaSearch} from "react-icons/fa";
+import {FaEdit, FaPlus, FaSearch, FaSync, FaTrash} from 'react-icons/fa';
+import {useAccess} from '../../../../contexts/AccessContext';
+import Modal from './roles/Modal';
+import RolePermissionEditor from './roles/RolePermissionEditor';
+import ActionDescriptions from './roles/ActionDescriptions';
+import {type PermissionVM, safeStr, type StandardAction, stdActionLabel, stdActionOf} from './roles/permissionUtils';
 
-// 说明：
-// - 角色 CRUD 走 /api/user-roles（后端当前 controller 未标注 @PreAuthorize）。
-//   如果后端最终要求 ADMIN 权限，请在后端加权限控制后，这里无需改动。
-// - 角色-权限矩阵接口返回的是 Entity（RolePermissionsEntity），为了避免 Hibernate proxy 序列化风险，
-//   后端更推荐返回 DTO；但在“零修改底层”的约束下，前端这里做了最小字段读取（roleId/permissionId/allow）。
-
-type RoleDTO = {
-  /**
-   * 兼容：有些后端/序列化可能返回 id 为 string，或字段名为 roleId。
-   * 页面内部会统一 normalize 成 number。
-   */
-  id?: number | string;
-  roleId?: number | string;
-  tenantId?: number;
-  roles: string;
-  canLogin: boolean;
-  canViewAnnouncement: boolean;
-  canViewHelpArticles: boolean;
-  canResetOwnPassword: boolean;
-  canComment: boolean;
-  notes?: string;
+type RoleRow = { roleId: number; roleName?: string };
+type ResourceGroupVM = {
+    resourceKey: string;
+    perms: PermissionVM[];
 };
 
-type Page<T> = {
-  content: T[];
-  totalPages: number;
-  totalElements: number;
-  size: number;
-  number: number;
+type SubGroupVM = {
+    key: string;
+    label: string;
+    resources: ResourceGroupVM[];
 };
 
-type RolePermissionEntityLike = {
-  roleId: number;
-  permissionId: number;
-  allow: boolean;
+type L1GroupVM = {
+    key: string;
+    label: string;
+    subGroups: SubGroupVM[];
 };
 
-const Modal: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  title: string;
-  children: React.ReactNode;
-}> = ({ isOpen, onClose, title, children }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">{title}</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-            &times;
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-};
+function splitResource(resource: string): { l1: string; l2: string; resourceKey: string } {
+    const key = safeStr(resource) || 'unknown';
+    const parts = key.split('_').filter(Boolean);
+    const l1 = parts[0] || 'misc';
+    const l2 = parts[1] || 'misc';
+    return {l1, l2, resourceKey: key};
+}
 
-// const toRoleUpdate = (role: RoleDTO): RoleUpdateDTO => {
-//   if (typeof role.id !== 'number') throw new Error('role.id is required');
-//   return {
-//     id: role.id,
-//     tenantId: role.tenantId,
-//     roles: role.roles,
-//     canLogin: role.canLogin,
-//     canViewAnnouncement: role.canViewAnnouncement,
-//     canViewHelpArticles: role.canViewHelpArticles,
-//     canResetOwnPassword: role.canResetOwnPassword,
-//     canComment: role.canComment,
-//     notes: role.notes,
-//   };
-// };
+function l1Label(key: string): string {
+    switch (key) {
+        case 'admin':
+            return '后台管理';
+        case 'portal':
+            return '前台功能';
+        default:
+            return key;
+    }
+}
 
-const emptyCreateForm = (): RoleCreateDTO => ({
-  tenantId: undefined,
-  roles: '',
-  canLogin: true,
-  canViewAnnouncement: false,
-  canViewHelpArticles: false,
-  canResetOwnPassword: false,
-  canComment: false,
-  notes: '',
-});
+function actionBadgeHint(perms: PermissionVM[]): string {
+    return perms
+        .map(p => `${p.action}${p.description ? ` - ${p.description}` : ''}`)
+        .slice(0, 6)
+        .join('\n');
+}
+
+type TriState = 'ALLOW' | 'DENY' | 'UNSET';
+
+function triStateClass(state: TriState): string {
+    if (state === 'ALLOW') return 'bg-green-100 text-green-700 border-green-200';
+    if (state === 'DENY') return 'bg-red-100 text-red-700 border-red-200';
+    return 'bg-gray-100 text-gray-700 border-gray-200';
+}
+
+function triStateLabel(state: TriState): string {
+    switch (state) {
+        case 'ALLOW':
+            return '允许';
+        case 'DENY':
+            return '拒绝';
+        case 'UNSET':
+        default:
+            return '未设置';
+    }
+}
+
+function normalizeRoleId(value: unknown): number | undefined {
+    const n = typeof value === 'number' ? value : Number(String(value ?? ''));
+    if (!Number.isFinite(n)) return undefined;
+    if (n <= 0) return undefined;
+    return Math.trunc(n);
+}
+
+function toTriState(existing: RolePermissionViewDTO | undefined): TriState {
+    if (!existing) return 'UNSET';
+    return existing.allow ? 'ALLOW' : 'DENY';
+}
+
+function toAllow(payload: TriState): boolean | undefined {
+    if (payload === 'ALLOW') return true;
+    if (payload === 'DENY') return false;
+    return undefined;
+}
+
+function initDraftFromPermissions(perms: PermissionsUpdateDTO[]): Record<number, TriState> {
+    const nextDraft: Record<number, TriState> = {};
+    for (const p of perms ?? []) nextDraft[p.id] = 'UNSET';
+    return nextDraft;
+}
+
+function initDraftFromRolePerms(perms: PermissionsUpdateDTO[], rolePerms: RolePermissionViewDTO[]): Record<number, TriState> {
+    const rpMap = new Map<number, RolePermissionViewDTO>();
+    for (const rp of rolePerms ?? []) rpMap.set(rp.permissionId, rp);
+    const nextDraft: Record<number, TriState> = {};
+    for (const p of perms ?? []) nextDraft[p.id] = toTriState(rpMap.get(p.id));
+    return nextDraft;
+}
+
+function buildUpsertPayload(args: {
+    mode: 'create';
+    roleNameInput: string;
+    permissions: PermissionsUpdateDTO[];
+    draft: Record<number, TriState>;
+    rolePermMap: Map<number, RolePermissionViewDTO>;
+}): { payload: Omit<RolePermissionUpsertDTO, 'roleId'>[]; trimmedName: string };
+function buildUpsertPayload(args: {
+    mode: 'edit';
+    roleId: number;
+    roleNameInput: string;
+    permissions: PermissionsUpdateDTO[];
+    draft: Record<number, TriState>;
+    rolePermMap: Map<number, RolePermissionViewDTO>;
+}): { payload: RolePermissionUpsertDTO[]; trimmedName: string };
+function buildUpsertPayload(args: {
+    mode: 'create' | 'edit';
+    roleId?: number;
+    roleNameInput: string;
+    permissions: PermissionsUpdateDTO[];
+    draft: Record<number, TriState>;
+    rolePermMap: Map<number, RolePermissionViewDTO>;
+}): { payload: RolePermissionUpsertDTO[] | Omit<RolePermissionUpsertDTO, 'roleId'>[]; trimmedName: string } {
+    const trimmedName = args.roleNameInput.trim();
+    const payload: (RolePermissionUpsertDTO | Omit<RolePermissionUpsertDTO, 'roleId'>)[] = [];
+    for (const p of args.permissions ?? []) {
+        const state = args.mode === 'edit'
+            ? (args.draft[p.id] ?? toTriState(args.rolePermMap.get(p.id)))
+            : (args.draft[p.id] ?? 'UNSET');
+        const allow = toAllow(state);
+        if (allow === undefined) continue;
+
+        if (args.mode === 'edit') {
+            payload.push({
+                roleId: args.roleId!,
+                roleName: trimmedName ? trimmedName : undefined,
+                permissionId: p.id,
+                allow,
+            } satisfies RolePermissionUpsertDTO);
+        } else {
+            payload.push({
+                roleName: trimmedName,
+                permissionId: p.id,
+                allow,
+            } satisfies Omit<RolePermissionUpsertDTO, 'roleId'>);
+        }
+    }
+    if (args.mode === 'edit') {
+        return {
+            payload: payload as RolePermissionUpsertDTO[],
+            trimmedName,
+        };
+    }
+
+    return {
+        payload: payload as Omit<RolePermissionUpsertDTO, 'roleId'>[],
+        trimmedName,
+    };
+}
 
 const RolesManagement: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [pageNum, setPageNum] = useState(1);
-  const [pageSize] = useState(10);
-
-  const [rolesPage, setRolesPage] = useState<Page<RoleDTO>>({
-    content: [],
-    totalPages: 0,
-    totalElements: 0,
-    size: 10,
-    number: 0,
-  });
-
-  const [nameKeyword, setNameKeyword] = useState('');
-
-  // Role Modal
-  const [isRoleModalOpen, setRoleModalOpen] = useState(false);
-  const [currentRole, setCurrentRole] = useState<RoleDTO | null>(null);
-  const [roleForm, setRoleForm] = useState<RoleCreateDTO>(emptyCreateForm());
-
-  // Permissions matrix
-  const [permissions, setPermissions] = useState<PermissionsUpdateDTO[]>([]);
-  const [rolePermissions, setRolePermissions] = useState<RolePermissionEntityLike[]>([]);
-  const [matrixLoading, setMatrixLoading] = useState(false);
-
-  // 多租户：尽量从当前登录管理员信息中推断 tenantId
-  const [defaultTenantId, setDefaultTenantId] = useState<number | undefined>(undefined);
-
-  const rolePermAllowSet = useMemo(() => {
-    const set = new Set<number>();
+    const [matrixLoading, setMatrixLoading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const access = useAccess();
+    const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+    const [nameKeyword, setNameKeyword] = useState('');
+    const [roles, setRoles] = useState<RoleRow[]>([]);
+    const [isRoleModalOpen, setRoleModalOpen] = useState(false);
+    const [editingRoleId, setEditingRoleId] = useState<number | null>(null);
+    const [roleNameInput, setRoleNameInput] = useState('');
+    const [creating, setCreating] = useState(false);
+    const [permissions, setPermissions] = useState<PermissionsUpdateDTO[]>([]);
+    const [rolePermissions, setRolePermissions] = useState<RolePermissionViewDTO[]>([]);
+    const [draft, setDraft] = useState<Record<number, TriState>>({});
+    const [permKeyword, setPermKeyword] = useState('');
+    const [collapsedL1, setCollapsedL1] = useState<Record<string, boolean>>({});
+    const rolePermMap = useMemo(() => {
+        const map = new Map<number, RolePermissionViewDTO>();
     for (const rp of rolePermissions) {
-      if (rp.allow) set.add(rp.permissionId);
+        map.set(rp.permissionId, rp);
     }
-    return set;
+        return map;
   }, [rolePermissions]);
 
-  const parseRoleId = (role?: Partial<RoleDTO> | null): number | undefined => {
-    const raw = role?.id ?? role?.roleId;
-    if (raw == null) return undefined;
-    const n = typeof raw === 'number' ? raw : Number(String(raw));
-    return Number.isFinite(n) ? n : undefined;
-  };
+    const permissionVMs = useMemo((): PermissionVM[] => {
+        return (permissions ?? [])
+            .map(p => ({
+                id: p.id,
+                resource: safeStr(p.resource) || 'unknown',
+                action: safeStr(p.action) || 'unknown',
+                description: p.description,
+            }))
+            .filter(p => p.id && p.resource);
+    }, [permissions]);
 
-  const normalizeRole = (role: RoleDTO): RoleDTO & { id?: number } => {
-    const id = parseRoleId(role);
-    return {
-      ...role,
-      id,
+    const filteredRoles = useMemo(() => {
+        const keyword = nameKeyword.trim().toLowerCase();
+        if (!keyword) return roles;
+        return roles.filter(r => (safeStr(r.roleName).toLowerCase().includes(keyword)));
+    }, [roles, nameKeyword]);
+
+    const groupedTree = useMemo((): L1GroupVM[] => {
+        const byL1 = new Map<string, Map<string, Map<string, PermissionVM[]>>>();
+        for (const p of permissionVMs) {
+            const {l1, l2, resourceKey} = splitResource(p.resource);
+            if (!byL1.has(l1)) byL1.set(l1, new Map());
+            const byL2 = byL1.get(l1)!;
+            if (!byL2.has(l2)) byL2.set(l2, new Map());
+            const byRes = byL2.get(l2)!;
+            if (!byRes.has(resourceKey)) byRes.set(resourceKey, []);
+            byRes.get(resourceKey)!.push(p);
+        }
+
+        const l1Keys = Array.from(byL1.keys()).sort((a: string, b: string) => a.localeCompare(b));
+        return l1Keys.map(l1 => {
+            const byL2 = byL1.get(l1)!;
+            const l2Keys = Array.from(byL2.keys()).sort((a: string, b: string) => a.localeCompare(b));
+            const subGroups: SubGroupVM[] = l2Keys.map(l2 => {
+                const byRes = byL2.get(l2)!;
+                const resKeys = Array.from(byRes.keys()).sort((a: string, b: string) => a.localeCompare(b));
+                const resources: ResourceGroupVM[] = resKeys.map(resourceKey => {
+                    const perms = (byRes.get(resourceKey) ?? []).slice().sort((a: PermissionVM, b: PermissionVM) => a.action.localeCompare(b.action));
+                    return {resourceKey, perms};
+                });
+                return {key: l2, label: l2, resources};
+            });
+            return {key: l1, label: l1Label(l1), subGroups};
+        });
+    }, [permissionVMs]);
+
+    const filteredTree = useMemo((): L1GroupVM[] => {
+        const kw = permKeyword.trim().toLowerCase();
+        if (!kw) return groupedTree;
+
+        const matchesPerm = (p: PermissionVM) => {
+            const r = p.resource.toLowerCase();
+            const a = p.action.toLowerCase();
+            const d = (p.description ?? '').toLowerCase();
+            return r.includes(kw) || a.includes(kw) || d.includes(kw);
+        };
+
+        const next: L1GroupVM[] = [];
+        for (const g1 of groupedTree) {
+            const nextSubs: SubGroupVM[] = [];
+            for (const g2 of g1.subGroups) {
+                const nextRes: ResourceGroupVM[] = [];
+                for (const r of g2.resources) {
+                    if (r.perms.some(matchesPerm) || r.resourceKey.toLowerCase().includes(kw)) {
+                        nextRes.push(r);
+                    }
+                }
+                if (nextRes.length) nextSubs.push({...g2, resources: nextRes});
+            }
+            if (nextSubs.length) next.push({...g1, subGroups: nextSubs});
+        }
+        return next;
+    }, [groupedTree, permKeyword]);
+    useEffect(() => {
+        const kw = permKeyword.trim();
+        if (!kw) return;
+        setCollapsedL1(prev => {
+            const copy = {...prev};
+            for (const g1 of filteredTree) copy[g1.key] = false;
+            return copy;
+        });
+    }, [permKeyword, filteredTree]);
+
+    const visiblePermissionIds = useMemo(() => {
+        const ids: number[] = [];
+        for (const g1 of filteredTree) {
+            for (const g2 of g1.subGroups) {
+                for (const r of g2.resources) {
+                    for (const p of r.perms) ids.push(p.id);
+                }
+            }
+        }
+        return ids;
+    }, [filteredTree]);
+
+    const cycleTriState = (current: TriState): TriState => {
+        // UNSET -> ALLOW -> DENY -> UNSET
+        if (current === 'UNSET') return 'ALLOW';
+        if (current === 'ALLOW') return 'DENY';
+        return 'UNSET';
     };
+
+    const getState = (permissionId: number): TriState => {
+        return draft[permissionId] ?? toTriState(rolePermMap.get(permissionId));
+    };
+
+    const bulkSet = (permissionIds: number[], next: TriState) => {
+        if (!permissionIds.length) return;
+        setDraft(prev => {
+            const copy = {...prev};
+            for (const id of permissionIds) copy[id] = next;
+            return copy;
+        });
+    };
+
+    const setAllVisible = (next: TriState) => bulkSet(visiblePermissionIds, next);
+
+
+    const groupPermissionIds = (l1Key: string, l2Key?: string): number[] => {
+        const ids: number[] = [];
+        for (const p of permissionVMs) {
+            const {l1, l2} = splitResource(p.resource);
+            if (l1 !== l1Key) continue;
+            if (l2Key && l2 !== l2Key) continue;
+            ids.push(p.id);
+        }
+        return ids;
   };
 
-  const fetchRoles = async () => {
+    const actionBucket = (perms: PermissionVM[]) => {
+        const buckets: Record<StandardAction, PermissionVM[]> = {
+            READ: [],
+            WRITE: [],
+            UPDATE: [],
+            DELETE: [],
+            EXEC: [],
+            OTHER: [],
+    };
+        for (const p of perms) buckets[stdActionOf(p.action)].push(p);
+        return buckets;
+  };
+
+    const renderActionCell = (list: PermissionVM[], title: string) => {
+        if (!list.length)
+            return (
+                <div className="text-xs text-gray-300 text-center" title={title}>
+                    -
+                </div>
+            );
+        const states = list.map(p => getState(p.id));
+        const allSame = states.every(s => s === states[0]);
+        const agg: TriState | 'MIXED' = allSame ? states[0] : 'MIXED';
+
+        const baseClass = agg === 'MIXED' ? 'bg-yellow-50 text-yellow-800 border-yellow-200' : triStateClass(agg);
+        const label = agg === 'MIXED' ? '部分' : triStateLabel(agg);
+
+        return (
+            <button
+                type="button"
+                className={`w-full border rounded px-2 py-1 text-xs ${baseClass} hover:opacity-90`}
+                title={`${title}\n\n${actionBadgeHint(list)}`}
+                onClick={() => {
+                    // 点击时：若 mixed 则先统一设为 ALLOW；否则按循环切换
+                    const next = agg === 'MIXED' ? 'ALLOW' : cycleTriState(agg);
+                    bulkSet(
+                        list.map(p => p.id),
+                        next,
+                    );
+                }}
+            >
+                {label}
+            </button>
+        );
+    };
+
+    const refreshRoleIds = async () => {
     setLoading(true);
     try {
-      const query: RoleQueryDTO = { pageNum, pageSize };
-      const res = await rolesService.queryRoles(query);
+        const ids = await listRoleIds();
+        const normalized = (ids ?? []).map(normalizeRoleId).filter((v): v is number => typeof v === 'number');
+        const deduped = Array.from(new Set(normalized)).sort((a, b) => a - b);
 
-      // 统一修正 id 字段（避免 id 为 string 或字段名不一致）
-      const page = res as unknown as Page<RoleDTO>;
-      const normalized: Page<RoleDTO> = {
-        ...page,
-        content: (page.content ?? []).map(normalizeRole),
-      };
+        // 额外取每个 roleId 的 roleName（从该 roleId 下任意一条 role_permissions 记录读取）
+        const rows = await Promise.all(
+            deduped.map(async roleId => {
+                try {
+                    const rps = await listRolePermissionsByRole(roleId);
+                    const roleName = rps?.find(x => x.roleName && String(x.roleName).trim())?.roleName;
+                    return {roleId, roleName} as RoleRow;
+                } catch {
+                    return {roleId} as RoleRow;
+                }
+            }),
+        );
 
-      setRolesPage(normalized);
+        setRoles(rows);
     } catch (e) {
       console.error(e);
-      alert('加载角色列表失败');
+        alert('加载 roleId 列表失败');
     } finally {
       setLoading(false);
     }
   };
 
+    const refreshPermissions = async () => {
+        const permsPage = await queryPermissions({pageNum: 1, pageSize: 1000});
+        setPermissions(permsPage.content ?? []);
+    };
+
   useEffect(() => {
-    fetchRoles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageNum, pageSize]);
-
-  const handleSearch = () => {
-    // 后端 /api/user-roles 目前不支持 keyword 查询，这里做本地过滤；
-    // 若后端新增 query 参数/Specification，再改成服务端搜索。
-    // 这里仍重置页码以获得一致的用户体验。
-    setPageNum(1);
-  };
-
-  const filteredRoles = useMemo(() => {
-    const keyword = nameKeyword.trim().toLowerCase();
-    const content = rolesPage.content ?? [];
-    if (!keyword) return content;
-    return content.filter(r => (r.roles ?? '').toLowerCase().includes(keyword));
-  }, [rolesPage.content, nameKeyword]);
-
-  const fetchTenantId = async () => {
-    try {
-      const admin = await getCurrentAdmin();
-      if (typeof admin?.tenantId === 'number') {
-        setDefaultTenantId(admin.tenantId);
+      (async () => {
+          setLoading(true);
+          try {
+              await Promise.all([refreshRoleIds(), refreshPermissions()]);
+          } finally {
+              setLoading(false);
       }
-    } catch (e) {
-      // 不打断页面：tenantId 可能由后端默认/或用户手动输入
-      console.warn('Failed to fetch current-admin for tenantId', e);
-    }
-  };
-
-  useEffect(() => {
-    fetchTenantId();
+      })();
   }, []);
 
-  const openCreateRole = () => {
-    setCurrentRole(null);
-    setRoleForm({
-      ...emptyCreateForm(),
-      tenantId: defaultTenantId,
-    });
-    setPermissions([]);
-    setRolePermissions([]);
-    setRoleModalOpen(true);
-  };
+    const openCreateRole = async () => {
+        setEditingRoleId(null);
+        setRoleNameInput('');
+        setRolePermissions([]);
 
-  const openEditRole = async (role: RoleDTO) => {
-    const normalizedRole = normalizeRole(role);
-
-    // 如果列表数据没有 id（历史数据/后端刚修），主动补拉详情
-    const roleToEdit = normalizedRole;
-    const roleId = parseRoleId(normalizedRole);
-    if (roleId == null) {
-      console.warn('Role from list has no id, fallback to fetch details', role);
-      try {
-        // 这里无法推断 id，只能直接提示用户刷新或从后端修复数据
-        // 但保留弹窗可编辑体验
-      } catch {
-        // ignore
-      }
-    }
-
-    setCurrentRole(roleToEdit);
-    setRoleForm({
-      tenantId: roleToEdit.tenantId ?? defaultTenantId,
-      roles: roleToEdit.roles,
-      canLogin: roleToEdit.canLogin,
-      canViewAnnouncement: roleToEdit.canViewAnnouncement,
-      canViewHelpArticles: roleToEdit.canViewHelpArticles,
-      canResetOwnPassword: roleToEdit.canResetOwnPassword,
-      canComment: roleToEdit.canComment,
-      notes: roleToEdit.notes ?? '',
-    });
-
-    setRoleModalOpen(true);
-
-    // 加载权限列表 + 当前角色权限关系
-    if (typeof roleId === 'number') {
-      setMatrixLoading(true);
-      try {
-        const [permsPage, rolePerms] = await Promise.all([
-          queryPermissions({ pageNum: 1, pageSize: 200 }),
-          listRolePermissionsByRole(roleId),
-        ]);
-        setPermissions(permsPage.content ?? []);
-        setRolePermissions(rolePerms as RolePermissionEntityLike[]);
-      } catch (e) {
-        console.error(e);
-        alert('加载角色权限矩阵失败');
-      } finally {
-        setMatrixLoading(false);
-      }1
-    }
-  };
-
-  const handleDeleteRole = async (id?: number | string) => {
-    const roleId = Number(id);
-    if (!Number.isFinite(roleId)) {
-      console.warn('Delete role aborted: invalid id', id);
-      alert('删除失败：角色 ID 缺失或非法');
-      return;
-    }
-    if (!window.confirm('确定要删除该角色吗？')) return;
-    try {
-      await rolesService.deleteRole(roleId);
-      await fetchRoles();
-    } catch (e) {
-      console.error(e);
-      alert('删除角色失败');
-    }
-  };
-
-  const handleSubmitRole = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      // 兜底：提交前再尝试补齐 tenantId（避免用户打开页面后 tenantId 延迟加载）
-      let payload: RoleCreateDTO = roleForm;
-      if (payload.tenantId == null) {
+        // 预加载权限列表，并初始化矩阵
+        setMatrixLoading(true);
+        setRoleModalOpen(true);
         try {
-          const admin = await getCurrentAdmin();
-          if (typeof admin?.tenantId === 'number') {
-            payload = { ...payload, tenantId: admin.tenantId };
-            setRoleForm(payload);
-          }
-        } catch {
-          // ignore
+            const permsPage = await queryPermissions({pageNum: 1, pageSize: 1000});
+            const perms = permsPage.content ?? [];
+            setPermissions(perms);
+
+            setDraft(initDraftFromPermissions(perms));
+        } catch (e) {
+            console.error(e);
+            alert('加载权限列表失败');
+        } finally {
+            setMatrixLoading(false);
         }
-      }
+    };
 
-      if (payload.tenantId == null) {
-        alert('tenantId 不能为空（无法从当前登录用户推断，请手动填写 tenantId）');
-        return;
-      }
+    const openEditRole = async (roleId: number) => {
+        setEditingRoleId(roleId);
+        setRoleModalOpen(true);
 
-      const editingId = parseRoleId(currentRole);
-      if (typeof editingId === 'number') {
-        await rolesService.updateRole(editingId, payload);
-      } else {
-        await rolesService.createRole(payload);
-      }
-      setRoleModalOpen(false);
-      await fetchRoles();
-    } catch (e) {
-      console.error(e);
-      alert('保存角色失败');
-    }
-  };
+        setMatrixLoading(true);
+        try {
+            const [permsPage, rolePerms] = await Promise.all([
+                queryPermissions({pageNum: 1, pageSize: 1000}),
+                listRolePermissionsByRole(roleId),
+            ]);
+            const perms = permsPage.content ?? [];
+            setPermissions(perms);
+            setRolePermissions(rolePerms ?? []);
 
-  const togglePermissionAllow = async (permissionId: number, currentlyAllowed: boolean) => {
-    const roleId = parseRoleId(currentRole);
-    if (!roleId) {
-      alert('请先保存角色，再配置权限');
-      return;
-    }
+            const existingName = rolePerms?.find(x => x.roleName && String(x.roleName).trim())?.roleName;
+            setRoleNameInput(existingName ? String(existingName) : '');
 
-    try {
-      if (currentlyAllowed) {
-        await deleteRolePermission(roleId, permissionId);
-      } else {
-        await upsertRolePermission({ roleId, permissionId, allow: true });
-      }
+            setDraft(initDraftFromRolePerms(perms, rolePerms ?? []));
+        } catch (e) {
+            console.error(e);
+            alert('加载角色权限矩阵失败');
+        } finally {
+            setMatrixLoading(false);
+        }
+    };
 
-      // 刷新当前角色的权限关系
-      const updated = await listRolePermissionsByRole(roleId);
-      setRolePermissions(updated as RolePermissionEntityLike[]);
-    } catch (e) {
-      console.error(e);
-      alert('更新角色权限失败');
-    }
-  };
+    const handleCreateRoleWithMatrix = async () => {
+        const {payload, trimmedName} = buildUpsertPayload({
+            mode: 'create',
+            roleNameInput,
+            permissions,
+            draft,
+            rolePermMap,
+        });
+
+        if (!trimmedName) {
+            setFeedback({type: 'error', message: '请输入角色名'});
+            return;
+        }
+
+        if (payload.length === 0) {
+            setFeedback({type: 'error', message: '请至少配置一个权限为 允许 或 拒绝'});
+            return;
+        }
+
+        setCreating(true);
+        setFeedback(null);
+        try {
+            const saved = await createRoleWithMatrix(payload);
+            const newRoleId = saved?.[0]?.roleId;
+            if (typeof newRoleId !== 'number') {
+                setFeedback({type: 'error', message: '创建失败：后端未返回 roleId'});
+                return;
+            }
+
+            // 刷新列表（会带回 roleName）
+            await refreshRoleIds();
+
+            // 自动切到“编辑该角色”的状态
+            setEditingRoleId(newRoleId);
+            setRolePermissions(saved ?? []);
+
+            // 将 draft 与后端返回对齐
+            setDraft(initDraftFromRolePerms(permissions, saved ?? []));
+
+            setFeedback({type: 'success', message: `创建成功，roleId=${newRoleId}`});
+        } catch (e) {
+            console.error(e);
+            setFeedback({type: 'error', message: '创建角色失败'});
+        } finally {
+            setCreating(false);
+        }
+    };
+
+
+    const handleSave = async () => {
+        if (!editingRoleId) return;
+
+        const {payload} = buildUpsertPayload({
+            mode: 'edit',
+            roleId: editingRoleId,
+            roleNameInput,
+            permissions,
+            draft,
+            rolePermMap,
+        });
+
+        setSaving(true);
+        setFeedback(null);
+        try {
+            await replaceRolePermissions(editingRoleId, payload);
+
+            const latest = await listRolePermissionsByRole(editingRoleId);
+            setRolePermissions(latest ?? []);
+
+            await refreshRoleIds();
+
+            setFeedback({type: 'success', message: '保存成功'});
+        } catch (e) {
+            console.error(e);
+            setFeedback({type: 'error', message: '保存失败'});
+        } finally {
+            setSaving(false);
+        }
+    };
 
   return (
     <div className="space-y-4 p-4 bg-white rounded-lg shadow">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold">角色管理</h2>
-        <Button onClick={openCreateRole}>新增角色</Button>
+          <div className="flex gap-2">
+              <Button variant="secondary" onClick={refreshRoleIds}>
+                  <FaSync className="mr-2"/> 刷新列表
+              </Button>
+              <Button
+                  variant="outline"
+                  onClick={() => access.refresh()}
+                  title="手动刷新当前会话权限；若你刚刚移除了自己访问本页的权限，刷新后可能会被路由守卫重定向"
+              >
+                  <FaSync className="mr-2" /> 刷新当前会话权限
+              </Button>
+              <Button onClick={openCreateRole}>
+                  <FaPlus className="mr-2"/> 新增角色
+              </Button>
+          </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto] md:items-center">
         <Input
-          placeholder="角色名称关键字（本地过滤）"
+            placeholder="按 角色名 过滤（本地过滤）"
           value={nameKeyword}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNameKeyword(e.target.value)}
         />
-        <Button onClick={handleSearch} variant="secondary" className="whitespace-nowrap">
+          <Button onClick={() => setNameKeyword(v => v)} variant="secondary" className="whitespace-nowrap">
           <FaSearch className="mr-2" /> 搜索
         </Button>
       </div>
@@ -364,42 +582,41 @@ const RolesManagement: React.FC = () => {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">角色</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">备注</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">roleId</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">角色名</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {loading ? (
               <tr>
-                <td colSpan={4} className="text-center py-4">
+                  <td colSpan={3} className="text-center py-4">
                   加载中...
                 </td>
               </tr>
             ) : filteredRoles.length === 0 ? (
               <tr>
-                <td colSpan={4} className="text-center py-4">
-                  暂无数据
+                  <td colSpan={3} className="text-center py-4">
+                      暂无角色数据
                 </td>
               </tr>
             ) : (
               filteredRoles.map(r => (
-                <tr key={parseRoleId(r) ?? r.roles}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{parseRoleId(r) ?? '—'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{r.roles}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{r.notes ?? '—'}</td>
+                  <tr key={r.roleId}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{r.roleId}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{r.roleName ?? '-'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                    <Button size="sm" variant="outline" onClick={() => openEditRole(r)}>
-                      编辑/配置权限
+                      <Button size="sm" variant="outline" onClick={() => openEditRole(r.roleId)}>
+                          <FaEdit className="mr-2"/> 配置权限
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary"
                       className="bg-red-100 text-red-600 hover:bg-red-200"
-                      onClick={() => handleDeleteRole(parseRoleId(r) ?? r.id ?? r.roleId)}
+                      onClick={() => handleDeleteRoleId(r.roleId)}
+                      title="从列表移除（不影响用户分配关系）"
                     >
-                      删除
+                        <FaTrash className="mr-2"/> 移除
                     </Button>
                   </td>
                 </tr>
@@ -409,159 +626,211 @@ const RolesManagement: React.FC = () => {
         </table>
       </div>
 
-      <div className="flex justify-between items-center mt-4">
-        <div className="text-sm text-gray-500">共 {rolesPage.totalElements} 条记录</div>
-        <div className="space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pageNum === 1}
-            onClick={() => setPageNum(p => Math.max(1, p - 1))}
-          >
-            上一页
-          </Button>
-          <span className="text-sm text-gray-600">第 {pageNum} 页</span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={rolesPage.totalPages ? pageNum >= rolesPage.totalPages : filteredRoles.length < pageSize}
-            onClick={() => setPageNum(p => p + 1)}
-          >
-            下一页
-          </Button>
-        </div>
-      </div>
+        <Modal
+            isOpen={isRoleModalOpen}
+            onClose={() => setRoleModalOpen(false)}
+            title={editingRoleId ? '编辑角色权限' : '新增角色权限'}
+        >
+            {/* Top bar moved into RolePermissionEditor to keep everything on one line */}
 
-      <Modal
-        isOpen={isRoleModalOpen}
-        onClose={() => setRoleModalOpen(false)}
-        title={currentRole ? `编辑角色：${currentRole.roles}` : '新增角色'}
-      >
-        <form onSubmit={handleSubmitRole} className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label>角色名称</Label>
-              <Input
-                required
-                value={roleForm.roles}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRoleForm({ ...roleForm, roles: e.target.value })}
-                placeholder="例如：ADMIN"
-              />
-            </div>
-
-            <div>
-              <Label>tenantId</Label>
-              <Input
-                value={roleForm.tenantId ?? ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  const raw = e.target.value.trim();
-                  setRoleForm({
-                    ...roleForm,
-                    tenantId: raw === '' ? undefined : Number(raw),
-                  });
-                }}
-                placeholder={defaultTenantId != null ? `默认：${defaultTenantId}` : '例如：1'}
-                inputMode="numeric"
-              />
-              <div className="mt-1 text-xs text-gray-500">
-                新建角色时后端要求 tenantId；通常会从当前登录管理员自动推断。
-              </div>
-            </div>
-
-            <div>
-              <Label>备注</Label>
-              <Input
-                value={roleForm.notes ?? ''}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRoleForm({ ...roleForm, notes: e.target.value })}
-                placeholder="可选"
-              />
-            </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                checked={!!roleForm.canLogin}
-                onCheckedChange={(v) => setRoleForm({ ...roleForm, canLogin: Boolean(v) })}
-              />
-              <Label>可登录</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                checked={!!roleForm.canComment}
-                onCheckedChange={(v) => setRoleForm({ ...roleForm, canComment: Boolean(v) })}
-              />
-              <Label>可评论</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                checked={!!roleForm.canViewAnnouncement}
-                onCheckedChange={(v) => setRoleForm({ ...roleForm, canViewAnnouncement: Boolean(v) })}
-              />
-              <Label>可查看公告</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                checked={!!roleForm.canViewHelpArticles}
-                onCheckedChange={(v) => setRoleForm({ ...roleForm, canViewHelpArticles: Boolean(v) })}
-              />
-              <Label>可查看帮助文章</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                checked={!!roleForm.canResetOwnPassword}
-                onCheckedChange={(v) => setRoleForm({ ...roleForm, canResetOwnPassword: Boolean(v) })}
-              />
-              <Label>可重置自己的密码</Label>
-            </div>
-          </div>
-
-          {/* 角色-权限矩阵 */}
-          {typeof parseRoleId(currentRole) === 'number' ? (
-            <div className="border rounded-md p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <div className="text-base font-semibold">角色权限</div>
-                  <div className="text-sm text-gray-500">
-                    勾选表示 allow=true；取消勾选会删除 role-permission 记录。
-                  </div>
+            {feedback ? (
+                <div
+                    className={
+                        'mb-3 rounded border px-3 py-2 text-sm ' +
+                        (feedback.type === 'success'
+                            ? 'border-green-200 bg-green-50 text-green-700'
+                            : feedback.type === 'error'
+                                ? 'border-red-200 bg-red-50 text-red-700'
+                                : 'border-blue-200 bg-blue-50 text-blue-700')
+                    }
+                >
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="whitespace-pre-wrap">{feedback.message}</div>
+                        <button
+                            type="button"
+                            className="text-gray-500 hover:text-gray-700"
+                            onClick={() => setFeedback(null)}
+                            aria-label="close"
+                        >
+                            ×
+                        </button>
+                    </div>
                 </div>
-              </div>
+            ) : null}
 
-              {matrixLoading ? (
-                <div className="text-sm text-gray-500">加载中...</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-auto pr-2">
-                  {permissions.map(p => {
-                    const key = `${p.id}:${p.resource}:${p.action}`;
-                    const allowed = rolePermAllowSet.has(p.id);
-                    return (
-                      <label key={key} className="flex items-start gap-2 p-2 rounded hover:bg-gray-50">
-                        <Checkbox checked={allowed} onCheckedChange={() => togglePermissionAllow(p.id, allowed)} />
-                        <span className="text-sm">
-                          <span className="font-medium">{p.resource}</span>
-                          <span className="text-gray-500"> / {p.action}</span>
-                          {p.description ? <span className="text-gray-400">（{p.description}）</span> : null}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500">新角色需要先保存后才能配置权限。</div>
-          )}
+            <RolePermissionEditor
+                mode={editingRoleId ? 'edit' : 'create'}
+                roleId={editingRoleId}
+                matrixLoading={matrixLoading}
+                submitting={editingRoleId ? saving : creating}
+                roleNameInput={roleNameInput}
+                setRoleNameInput={setRoleNameInput}
+                permKeyword={permKeyword}
+                setPermKeyword={setPermKeyword}
+                onSubmit={editingRoleId ? handleSave : handleCreateRoleWithMatrix}
+                submitLabel={editingRoleId ? '保存' : '创建'}
+                onRefreshAccess={undefined}
+                bulkBar={
+                    <>
+                        <span className="text-gray-500">批量：</span>
+                        <Button type="button" size="sm" variant="outline" onClick={() => setAllVisible('ALLOW')}>
+                            全允许
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => setAllVisible('DENY')}>
+                            全拒绝
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => setAllVisible('UNSET')}>
+                            全清空
+                        </Button>
+                    </>
+                }
+                matrix={
+                    <div className="space-y-3 max-h-[80vh] overflow-auto pr-1 text-base">
+                        {filteredTree.map(g1 => {
+                            const isCollapsed = collapsedL1[g1.key] ?? false;
 
-          <div className="flex justify-end space-x-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setRoleModalOpen(false)}>
-              取消
-            </Button>
-            <Button type="submit">保存</Button>
-          </div>
-        </form>
+                            return (
+                                <div key={g1.key} className="border rounded">
+                                    <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
+                                        <div className="font-semibold text-base">
+                                            {g1.label} <span className="text-sm text-gray-400">({g1.key})</span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {(g1.key === 'admin' || g1.key === 'portal') ? (
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    className="whitespace-nowrap"
+                                                    aria-expanded={!isCollapsed}
+                                                    onClick={() =>
+                                                        setCollapsedL1(prev => ({
+                                                            ...prev,
+                                                            [g1.key]: !(prev[g1.key] ?? false),
+                                                        }))
+                                                    }
+                                                >
+                                                    {isCollapsed ? '全部展开' : '全部折叠'}
+                                                </Button>
+                                            ) : null}
+                                            <Button type="button" size="sm" variant="outline"
+                                                    onClick={() => bulkSet(groupPermissionIds(g1.key), 'ALLOW')}>
+                                                允许
+                                            </Button>
+                                            <Button type="button" size="sm" variant="outline"
+                                                    onClick={() => bulkSet(groupPermissionIds(g1.key), 'DENY')}>
+                                                拒绝
+                                            </Button>
+                                            <Button type="button" size="sm" variant="outline"
+                                                    onClick={() => bulkSet(groupPermissionIds(g1.key), 'UNSET')}>
+                                                清空
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {!isCollapsed ? (
+                                        <div className="p-3 space-y-4">
+                                            {g1.subGroups.map((g2: SubGroupVM) => {
+                                                return (
+                                                    <div key={`${g1.key}/${g2.key}`} className="border rounded">
+                                                        <div
+                                                            className="flex items-center justify-between px-3 py-2 bg-white">
+                                                            <div className="text-base font-medium">
+                                                                {g2.label}{' '}
+                                                                <span
+                                                                    className="text-sm text-gray-400">({g1.key}_{g2.key})</span>
+                                                            </div>
+                                                            <div className="flex gap-2">
+                                                                <Button type="button" size="sm" variant="outline"
+                                                                        onClick={() => bulkSet(groupPermissionIds(g1.key, g2.key), 'ALLOW')}>
+                                                                    允许
+                                                                </Button>
+                                                                <Button type="button" size="sm" variant="outline"
+                                                                        onClick={() => bulkSet(groupPermissionIds(g1.key, g2.key), 'DENY')}>
+                                                                    拒绝
+                                                                </Button>
+                                                                <Button type="button" size="sm" variant="outline"
+                                                                        onClick={() => bulkSet(groupPermissionIds(g1.key, g2.key), 'UNSET')}>
+                                                                    清空
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="p-2 overflow-x-auto">
+                                                            <table
+                                                                className="min-w-full divide-y divide-gray-200 text-base">
+                                                                <thead className="bg-gray-50">
+                                                                <tr>
+                                                                    <th className="px-3 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">
+                                                                        resource
+                                                                    </th>
+                                                                    {(['READ', 'WRITE', 'UPDATE', 'DELETE', 'EXEC', 'OTHER'] as StandardAction[]).map(a => (
+                                                                        <th
+                                                                            key={a}
+                                                                            className="px-2 py-2 text-center text-sm font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap"
+                                                                        >
+                                                                            {stdActionLabel(a)}
+                                                                        </th>
+                                                                    ))}
+                                                                </tr>
+                                                                </thead>
+                                                                <tbody className="bg-white divide-y divide-gray-200">
+                                                                {g2.resources.map((rg: ResourceGroupVM) => {
+                                                                    const buckets = actionBucket(rg.perms);
+                                                                    const resIds = rg.perms.map((p: PermissionVM) => p.id);
+
+                                                                    const states = resIds.map(getState);
+                                                                    const unique = new Set(states);
+                                                                    const agg: TriState | 'MIXED' = unique.size === 1 ? states[0] : 'MIXED';
+                                                                    const aggLabel = agg === 'MIXED' ? '部分' : triStateLabel(agg);
+
+                                                                    return (
+                                                                        <tr key={rg.resourceKey}>
+                                                                            <td className="px-3 py-2 text-base text-gray-700 whitespace-nowrap">
+                                                                                <div
+                                                                                    className="font-medium">{rg.resourceKey}</div>
+                                                                                <ActionDescriptions perms={rg.perms}/>
+                                                                                {agg === 'MIXED' ? (
+                                                                                    <div
+                                                                                        className="text-sm text-gray-400">{aggLabel}</div>
+                                                                                ) : null}
+                                                                            </td>
+                                                                            <td className="px-2 py-2">{renderActionCell(buckets.READ, `${rg.resourceKey} / 读`)}</td>
+                                                                            <td className="px-2 py-2">{renderActionCell(buckets.WRITE, `${rg.resourceKey} / 写`)}</td>
+                                                                            <td className="px-2 py-2">{renderActionCell(buckets.UPDATE, `${rg.resourceKey} / 更`)}</td>
+                                                                            <td className="px-2 py-2">{renderActionCell(buckets.DELETE, `${rg.resourceKey} / 删`)}</td>
+                                                                            <td className="px-2 py-2">{renderActionCell(buckets.EXEC, `${rg.resourceKey} / 执行`)}</td>
+                                                                            <td className="px-2 py-2">{renderActionCell(buckets.OTHER, `${rg.resourceKey} / 更多`)}</td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : null}
+                                </div>
+                            );
+                        })}
+
+                        {filteredTree.length === 0 ? <div className="text-base text-gray-500">无匹配权限</div> : null}
+                    </div>
+                }
+            />
       </Modal>
     </div>
   );
+
+    async function handleDeleteRoleId(roleId: number) {
+        if (!window.confirm(`确定要从“角色列表”移除 roleId=${roleId} 吗？\n\n注意：这不会删除 user_role_links（用户分配关系）。\n如果你希望该 roleId 不再出现在自动列表里，请先清空它的 role_permissions。`)) {
+            return;
+        }
+        setRoles(prev => prev.filter(r => r.roleId !== roleId));
+    }
 };
 
-export default RolesManagement;
 
+export default RolesManagement;

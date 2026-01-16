@@ -4,6 +4,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import Login from './components/login/Login';
 import AdminSetup from './components/login/AdminSetup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AccessProvider, useAccess } from './contexts/AccessContext';
 import { checkInitialSetupStatus } from './services/authService';
 import CommunityPortalLayout from './pages/portal/CommunityPortalLayout';
 import AdminDashboardLayout from './pages/admin/AdminDashboardLayout';
@@ -43,6 +44,10 @@ import AccountConnectionsPage from './pages/portal/account/pages/AccountConnecti
 import SearchLayout from './pages/portal/search/SearchLayout';
 import SearchIndexRedirect from './pages/portal/search/SearchIndexRedirect';
 import SearchPostsPage from './pages/portal/search/pages/SearchPostsPage';
+import { RequirePermission } from './components/auth/RequirePermission';
+import { RequireAccess } from './components/auth/RequireAccess';
+import ForbiddenPage from './pages/ForbiddenPage';
+
 // NOTE: admin sections are lazy-loaded to reduce main-thread EvaluateScript on menu switch.
 const ContentMgmtPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.ContentMgmtPage })));
 const ReviewCenterPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.ReviewCenterPage })));
@@ -66,8 +71,29 @@ const ProtectedRoute = () => {
     return <Outlet />;
 };
 
+// Admin index redirect: if user can't access content, don't use it as default homepage.
+function AdminIndexRedirect() {
+    const { hasPerm, hasRole, loading } = useAccess();
+    if (loading) return <div className="p-4">加载中...</div>;
+
+    // If user isn't allowed into admin UI at all, go to 403.
+    const canEnterAdmin = hasPerm('admin_ui', 'access') || hasRole('ADMIN');
+    if (!canEnterAdmin) return <Navigate to="/forbidden" replace />;
+
+    // Pick first accessible admin section.
+    if (hasPerm('admin_content', 'access')) return <Navigate to="content" replace />;
+    if (hasPerm('admin_review', 'access')) return <Navigate to="review" replace />;
+    if (hasPerm('admin_semantic', 'access')) return <Navigate to="semantic" replace />;
+    if (hasPerm('admin_retrieval', 'access')) return <Navigate to="retrieval" replace />;
+    if (hasPerm('admin_metrics', 'access')) return <Navigate to="metrics" replace />;
+    if (hasPerm('admin_users', 'access')) return <Navigate to="users" replace />;
+
+    // No section perms at all -> forbidden.
+    return <Navigate to="/forbidden" replace />;
+}
+
 function AppRoutes() {
-    const { isAuthenticated } = useAuth();
+    useAuth();
     const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -111,76 +137,149 @@ function AppRoutes() {
             <Route path="/login" element={
                 setupRequired
                     ? <Navigate to="/admin-setup" replace />
-                    : (isAuthenticated ? <Navigate to="/portal/discover" replace /> : <Login />)
+                    : <Login />
             } />
 
-            {/* 前台门户（普通用户/访客） - 公开访问 */}
+            {/* 前台门户（普通用户/访客） */}
             <Route path="/portal" element={<CommunityPortalLayout />}>
                 <Route path="discover" element={<DiscoverLayout />}>
                     <Route index element={<DiscoverIndexRedirect />} />
-                    <Route path="home" element={<DiscoverHomePage />} />
-                    <Route path="boards" element={<DiscoverBoardsPage />} />
-                    <Route path="tags" element={<DiscoverTagsPage />} />
+
+                    {/* 发现：按权限控制（portal_discover_home/boards/tags/hot:view） */}
+                    <Route element={<RequireAccess requiresAuth resource="portal_discover_home" action="view" />}>
+                        <Route path="home" element={<DiscoverHomePage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_discover_boards" action="view" />}>
+                        <Route path="boards" element={<DiscoverBoardsPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_discover_tags" action="view" />}>
+                        <Route path="tags" element={<DiscoverTagsPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_discover_hot" action="view" />}>
+                        <Route path="hot" element={<DiscoverHotPage />} />
+                    </Route>
+
+                    {/* discover/search 快捷入口仍然保留，但 search 页面本身也有权限控制 */}
                     <Route path="search" element={<Navigate to="/portal/search/posts" replace />} />
-                    <Route path="hot" element={<DiscoverHotPage />} />
                 </Route>
 
                 <Route path="search" element={<SearchLayout />}>
                     <Route index element={<SearchIndexRedirect />} />
-                    <Route path="posts" element={<SearchPostsPage />} />
+                    <Route element={<RequireAccess requiresAuth resource="portal_search_posts" action="view" />}>
+                        <Route path="posts" element={<SearchPostsPage />} />
+                    </Route>
                 </Route>
 
                 <Route path="posts" element={<PostsLayout />}>
                     <Route index element={<PostsIndexRedirect />} />
-                    <Route path="create" element={<PostsCreatePage />} />
-                    <Route path="edit/:postId" element={<PostsCreatePage />} />
+
+                    {/* 写作相关：需要登录 + portal_posts:create */}
+                    <Route element={<RequireAccess requiresAuth resource="portal_posts" action="create" /> }>
+                        <Route path="create" element={<PostsCreatePage />} />
+                        <Route path="edit/:postId" element={<PostsCreatePage />} />
+                    </Route>
+
+                    {/* 草稿/我的/收藏：需要登录 + 对应 view 权限 */}
+                    <Route element={<RequireAccess requiresAuth resource="portal_posts_drafts" action="view" /> }>
+                        <Route path="drafts" element={<PostsDraftsPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_posts_mine" action="view" /> }>
+                        <Route path="mine" element={<PostsMinePage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_posts_bookmarks" action="view" /> }>
+                        <Route path="bookmarks" element={<PostsBookmarksPage />} />
+                    </Route>
+
+                    {/* 详情页：公开 */}
                     <Route path="detail/:postId" element={<PostDetailPage />} />
-                    <Route path="drafts" element={<PostsDraftsPage />} />
-                    <Route path="mine" element={<PostsMinePage />} />
-                    <Route path="bookmarks" element={<PostsBookmarksPage />} />
                 </Route>
 
+                {/* 互动中心：需要登录 + 对应 view 权限 */}
                 <Route path="interact" element={<InteractLayout />}>
                     <Route index element={<InteractIndexRedirect />} />
-                    {/* 二级菜单“通知”删除：原 /portal/interact/notifications 不再暴露为独立页 */}
-                    <Route path="replies" element={<InteractRepliesPage />} />
-                    <Route path="likes" element={<InteractLikesPage />} />
-                    <Route path="mentions" element={<InteractMentionsPage />} />
-                    <Route path="reports" element={<InteractReportsPage />} />
+
+                    <Route element={<RequireAccess requiresAuth resource="portal_interact_replies" action="view" /> }>
+                        <Route path="replies" element={<InteractRepliesPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_interact_likes" action="view" /> }>
+                        <Route path="likes" element={<InteractLikesPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_interact_mentions" action="view" /> }>
+                        <Route path="mentions" element={<InteractMentionsPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_interact_reports" action="view" /> }>
+                        <Route path="reports" element={<InteractReportsPage />} />
+                    </Route>
                 </Route>
 
+                {/* 智能助手：需要登录 + 对应 view 权限 */}
                 <Route path="assistant" element={<AssistantLayout />}>
                     <Route index element={<AssistantIndexRedirect />} />
-                    <Route path="chat" element={<AssistantChatPage />} />
-                    <Route path="history" element={<AssistantHistoryPage />} />
-                    <Route path="collections" element={<AssistantCollectionsPage />} />
-                    <Route path="settings" element={<AssistantSettingsPage />} />
+
+                    <Route element={<RequireAccess requiresAuth resource="portal_assistant_chat" action="view" /> }>
+                        <Route path="chat" element={<AssistantChatPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_assistant_history" action="view" /> }>
+                        <Route path="history" element={<AssistantHistoryPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_assistant_collections" action="view" /> }>
+                        <Route path="collections" element={<AssistantCollectionsPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_assistant_settings" action="view" /> }>
+                        <Route path="settings" element={<AssistantSettingsPage />} />
+                    </Route>
                 </Route>
 
+                {/* 账号中心：需要登录 + 对应 view 权限 */}
                 <Route path="account" element={<AccountLayout />}>
                     <Route index element={<AccountIndexRedirect />} />
-                    <Route path="profile" element={<AccountProfilePage />} />
-                    <Route path="security" element={<AccountSecurityPage />} />
-                    <Route path="preferences" element={<AccountPreferencesPage />} />
-                    <Route path="connections" element={<AccountConnectionsPage />} />
-                    <Route path="mine" element={<PostsMinePage />} />
-                    <Route path="bookmarks" element={<PostsBookmarksPage />} />
+
+                    <Route element={<RequireAccess requiresAuth resource="portal_account_profile" action="view" /> }>
+                        <Route path="profile" element={<AccountProfilePage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_account_security" action="view" /> }>
+                        <Route path="security" element={<AccountSecurityPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_account_preferences" action="view" /> }>
+                        <Route path="preferences" element={<AccountPreferencesPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_account_connections" action="view" /> }>
+                        <Route path="connections" element={<AccountConnectionsPage />} />
+                    </Route>
+
+                    {/* 账号中心里的“我的/收藏”复用 posts 权限 */}
+                    <Route element={<RequireAccess requiresAuth resource="portal_posts_mine" action="view" /> }>
+                        <Route path="mine" element={<PostsMinePage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth resource="portal_posts_bookmarks" action="view" /> }>
+                        <Route path="bookmarks" element={<PostsBookmarksPage />} />
+                    </Route>
                 </Route>
 
                 <Route index element={<Navigate to="discover" replace />} />
             </Route>
 
+            {/* 403 无权限 */}
+            <Route path="/forbidden" element={<ForbiddenPage />} />
+
             {/* 受保护的路由组 */}
             <Route element={<ProtectedRoute />}>
-                {/* 后台管理（审核员/管理员） */}
-                <Route path="/admin" element={<AdminDashboardLayout />}>
-                    <Route path="content" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><ContentMgmtPage /></Suspense>} />
-                    <Route path="review" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><ReviewCenterPage /></Suspense>} />
-                    <Route path="semantic" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><SemanticBoostPage /></Suspense>} />
-                    <Route path="retrieval" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><RetrievalRagPage /></Suspense>} />
-                    <Route path="metrics" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><MetricsMonitorPage /></Suspense>} />
-                    <Route path="users" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><UsersRBACPage /></Suspense>} />
-                    <Route index element={<Navigate to="content" replace />} />
+                {/**
+                 * 管理员后台入口：
+                 * - 生产建议使用细粒度权限 admin_ui:access
+                 * - 开发阶段允许 ROLE_ADMIN 直接进入，避免权限矩阵未初始化导致误判 403
+                 */}
+                <Route element={<RequirePermission resource="admin_ui" action="access" allowRoles={["ADMIN"]} />}>
+                    {/* 后台管理（审核员/管理员） */}
+                    <Route path="/admin" element={<AdminDashboardLayout />}>
+                        <Route path="content" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><ContentMgmtPage /></Suspense>} />
+                        <Route path="review" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><ReviewCenterPage /></Suspense>} />
+                        <Route path="semantic" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><SemanticBoostPage /></Suspense>} />
+                        <Route path="retrieval" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><RetrievalRagPage /></Suspense>} />
+                        <Route path="metrics" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><MetricsMonitorPage /></Suspense>} />
+                        <Route path="users" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><UsersRBACPage /></Suspense>} />
+                        <Route index element={<AdminIndexRedirect />} />
+                    </Route>
                 </Route>
 
             </Route>
@@ -198,9 +297,11 @@ function AppRoutes() {
 function App() {
     return (
         <AuthProvider>
-            <BrowserRouter>
-                <AppRoutes />
-            </BrowserRouter>
+            <AccessProvider>
+                <BrowserRouter>
+                    <AppRoutes />
+                </BrowserRouter>
+            </AccessProvider>
         </AuthProvider>
     )
 }

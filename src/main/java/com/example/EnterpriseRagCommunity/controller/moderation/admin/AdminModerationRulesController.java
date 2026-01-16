@@ -5,9 +5,11 @@ import com.example.EnterpriseRagCommunity.dto.moderation.ModerationRulesUpdateDT
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationRulesEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.RuleType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.Severity;
+import com.example.EnterpriseRagCommunity.security.Permissions;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationRulesService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -22,6 +24,7 @@ public class AdminModerationRulesController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_rules','read'))")
     public Page<ModerationRulesEntity> list(@RequestParam(value = "page", defaultValue = "1") int page,
                                            @RequestParam(value = "pageSize", defaultValue = "50") int pageSize,
                                            @RequestParam(value = "q", required = false) String q,
@@ -33,11 +36,13 @@ public class AdminModerationRulesController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_rules','write'))")
     public ModerationRulesEntity create(@Valid @RequestBody ModerationRulesCreateDTO dto) {
         return service.create(dto);
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_rules','write'))")
     public ModerationRulesEntity update(@PathVariable("id") Long id,
                                         @RequestBody ModerationRulesUpdateDTO dto) {
         // allow frontend to omit dto.id and only use path id
@@ -46,8 +51,8 @@ public class AdminModerationRulesController {
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_rules','write'))")
     public void delete(@PathVariable("id") Long id) {
         service.delete(id);
     }
 }
-

@@ -28,3 +28,4 @@ public class UserRoleLinksEntity {
     @Column(name = "role_id", nullable = false)
     private Long roleId;
 }
+

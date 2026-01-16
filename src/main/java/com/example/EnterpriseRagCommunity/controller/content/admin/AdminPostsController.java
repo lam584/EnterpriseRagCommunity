@@ -3,9 +3,11 @@ package com.example.EnterpriseRagCommunity.controller.content.admin;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
+import com.example.EnterpriseRagCommunity.security.Permissions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -26,6 +28,7 @@ public class AdminPostsController {
      * - 传 DRAFT/PENDING/PUBLISHED/REJECTED/ARCHIVED => 精确过滤
      */
     @GetMapping
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_posts','read'))")
     public Page<PostsEntity> list(@RequestParam(value = "keyword", required = false) String keyword,
                                  @RequestParam(value = "postId", required = false) Long postId,
                                  @RequestParam(value = "searchMode", required = false) String searchMode,
@@ -52,4 +55,3 @@ public class AdminPostsController {
                 createdFrom, createdTo, page, pageSize, sortBy, sortOrderDirection);
     }
 }
-

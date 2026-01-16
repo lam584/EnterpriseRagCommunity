@@ -5,8 +5,15 @@ import lombok.Data;
 
 @Data
 public class RolePermissionUpsertDTO {
-    @NotNull
+    /**
+     * 角色ID：
+     * - 编辑/覆盖更新（/role/{roleId}）时由 path 参数决定，body 中可不传
+     * - 新建角色（自动分配 roleId）时也可不传
+     */
     private Long roleId;
+
+    /** 角色名（可选） */
+    private String roleName;
 
     @NotNull
     private Long permissionId;
@@ -17,4 +24,3 @@ public class RolePermissionUpsertDTO {
     @NotNull
     private Boolean allow;
 }
-

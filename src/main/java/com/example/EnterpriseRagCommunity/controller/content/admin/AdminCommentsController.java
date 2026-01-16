@@ -4,10 +4,12 @@ import com.example.EnterpriseRagCommunity.dto.content.admin.CommentAdminDTO;
 import com.example.EnterpriseRagCommunity.dto.content.admin.CommentSetDeletedRequest;
 import com.example.EnterpriseRagCommunity.dto.content.admin.CommentUpdateStatusRequest;
 import com.example.EnterpriseRagCommunity.service.content.admin.AdminCommentsService;
+import com.example.EnterpriseRagCommunity.security.Permissions;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -21,6 +23,7 @@ public class AdminCommentsController {
     private AdminCommentsService adminCommentsService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_comments','read'))")
     public Page<CommentAdminDTO> list(@RequestParam(value = "page", defaultValue = "1") int page,
                                      @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
                                      @RequestParam(value = "postId", required = false) Long postId,
@@ -37,12 +40,14 @@ public class AdminCommentsController {
     }
 
     @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_comments','update'))")
     public CommentAdminDTO updateStatus(@PathVariable("id") Long id,
                                         @Valid @RequestBody CommentUpdateStatusRequest req) {
         return adminCommentsService.updateStatus(id, req);
     }
 
     @PatchMapping("/{id}/deleted")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_comments','update'))")
     public CommentAdminDTO setDeleted(@PathVariable("id") Long id,
                                       @Valid @RequestBody CommentSetDeletedRequest req) {
         return adminCommentsService.setDeleted(id, req);
