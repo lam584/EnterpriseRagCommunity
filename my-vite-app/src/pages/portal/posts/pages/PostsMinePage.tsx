@@ -302,10 +302,6 @@ export default function PostsMinePage() {
             </button>
           </div>
         </div>
-
-        <p className="mt-3 text-xs text-gray-500">
-          当前用户：{authorId ? `#${authorId}` : '未识别'}。提示：当前前台页面通过 localStorage 的 “userData” 读取用户ID；如果登录时未勾选“记住我”，这里可能无法获取ID。
-        </p>
       </div>
 
       {showNoUserHint ? (
@@ -320,7 +316,6 @@ export default function PostsMinePage() {
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center justify-between gap-2 mb-4">
           <h4 className="text-base font-semibold">帖子列表</h4>
-          <div className="text-xs text-gray-500">共 {sorted.length} 条</div>
         </div>
 
         {listPage ? (

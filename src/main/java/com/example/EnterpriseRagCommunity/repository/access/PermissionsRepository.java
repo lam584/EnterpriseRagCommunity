@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -12,5 +13,6 @@ import java.util.Optional;
 public interface PermissionsRepository extends JpaRepository<PermissionsEntity, Long>, JpaSpecificationExecutor<PermissionsEntity> {
     Optional<PermissionsEntity> findByResourceAndAction(String resource, String action);
     List<PermissionsEntity> findByResource(String resource);
-}
 
+    long countByIdIn(Collection<Long> ids);
+}

@@ -257,8 +257,6 @@ export default function CommunityPortalLayout() {
 
                     <a
                       href="http://127.0.0.1:8099/admin"
-                      target="_blank"
-                      rel="noopener noreferrer"
                       role="menuitem"
                       className="flex items-center gap-3 px-3 py-2.5 text-gray-700 hover:bg-gray-50 transition-colors text-sm"
                       onClick={() => setUserMenuOpen(false)}
