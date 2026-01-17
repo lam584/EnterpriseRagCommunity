@@ -220,7 +220,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                     e.setContentType(ContentType.POST);
                     e.setContentId(postId);
                     e.setStatus(QueueStatus.PENDING);
-                    e.setCurrentStage(QueueStage.HUMAN);
+                    // start pipeline at RULE stage
+                    e.setCurrentStage(QueueStage.RULE);
                     e.setPriority(0);
                     e.setAssignedToId(null);
                     e.setCreatedAt(LocalDateTime.now());
@@ -239,7 +240,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                     e.setContentType(ContentType.COMMENT);
                     e.setContentId(commentId);
                     e.setStatus(QueueStatus.PENDING);
-                    e.setCurrentStage(QueueStage.HUMAN);
+                    // start pipeline at RULE stage
+                    e.setCurrentStage(QueueStage.RULE);
                     e.setPriority(0);
                     e.setAssignedToId(null);
                     e.setCreatedAt(LocalDateTime.now());

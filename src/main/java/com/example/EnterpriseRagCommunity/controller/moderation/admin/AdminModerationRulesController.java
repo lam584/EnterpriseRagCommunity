@@ -5,7 +5,6 @@ import com.example.EnterpriseRagCommunity.dto.moderation.ModerationRulesUpdateDT
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationRulesEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.RuleType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.Severity;
-import com.example.EnterpriseRagCommunity.security.Permissions;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationRulesService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -24,7 +23,7 @@ public class AdminModerationRulesController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_rules','read'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
     public Page<ModerationRulesEntity> list(@RequestParam(value = "page", defaultValue = "1") int page,
                                            @RequestParam(value = "pageSize", defaultValue = "50") int pageSize,
                                            @RequestParam(value = "q", required = false) String q,

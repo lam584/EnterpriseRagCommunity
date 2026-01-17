@@ -148,4 +148,3 @@ export async function adminExportAuditLogsCsv(query: Omit<AuditLogPageQuery, 'pa
 
   return res.blob();
 }
-

@@ -20,11 +20,13 @@ public class AdminModerationLlmController {
     }
 
     @GetMapping("/config")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
     public LlmModerationConfigDTO getConfig() {
         return service.getConfig();
     }
 
     @PutMapping("/config")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
     public LlmModerationConfigDTO upsertConfig(@RequestBody LlmModerationConfigDTO payload, Principal principal) {
         // NOTE: current project doesn't expose userId in Principal directly.
         // We'll store updatedBy as null for now, and keep username in response.
@@ -33,8 +35,8 @@ public class AdminModerationLlmController {
     }
 
     @PostMapping("/test")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
     public LlmModerationTestResponse test(@RequestBody LlmModerationTestRequest req) {
         return service.test(req);
     }
 }
-
