@@ -2,17 +2,26 @@ package com.example.EnterpriseRagCommunity.service.moderation.jobs;
 
 import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestResponse;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationConfidenceFallbackConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationLlmConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationLlmDecisionsEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRunEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineStepEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.Verdict;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationConfidenceFallbackConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationLlmConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationLlmDecisionsRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineStepRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationFallbackDecisionService;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmService;
+import com.example.EnterpriseRagCommunity.service.moderation.trace.ModerationPipelineTraceService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,8 +35,8 @@ import java.util.*;
 /**
  * LLM 自动审核 runner：
  * - 仅在 moderation_llm_config.auto_run=true 时启用
- * - 拉取 moderation_queue 中待处理记录，统一调用 LLM
  * - decision=APPROVE/REJECT 自动落库并更新帖子/评论状态；decision=HUMAN 转人工
+ * - 同时受“置信回退机制”控制：可关闭 LLM 或按配置阈值解释 score
  */
 @Component
 @RequiredArgsConstructor
@@ -40,6 +49,11 @@ public class ModerationLlmAutoRunner {
     private final AdminModerationLlmService llmService;
     private final AdminModerationQueueService queueService;
     private final ModerationLlmDecisionsRepository llmDecisionsRepository;
+    private final ModerationConfidenceFallbackConfigRepository fallbackRepository;
+
+    private final ModerationPipelineTraceService pipelineTraceService;
+    private final ModerationPipelineStepRepository pipelineStepRepository;
+    private final AuditLogWriter auditLogWriter;
 
     /**
      * 每 15 秒扫一次，单次最多处理 20 条，避免对上游模型造成瞬时压力。
@@ -98,36 +112,207 @@ public class ModerationLlmAutoRunner {
         if (q == null || q.getId() == null) return;
         if (q.getStatus() != QueueStatus.PENDING) return;
 
-        // 先把 stage 置为 LLM，避免多实例/多线程重复处理（轻量 best-effort）
+        // Enforce pipeline order:
+        // if no previous step records, drop back to RULE.
+        ModerationPipelineRunEntity run;
+        try {
+            run = pipelineTraceService.ensureRun(q);
+        } catch (Exception e) {
+            run = null;
+        }
+        if (run == null) {
+            q.setCurrentStage(QueueStage.RULE);
+            q.setUpdatedAt(LocalDateTime.now());
+            queueRepository.save(q);
+            return;
+        }
+
+        boolean hasRule = pipelineStepRepository.findByRunIdAndStage(run.getId(), ModerationPipelineStepEntity.Stage.RULE).isPresent();
+        boolean hasVec = pipelineStepRepository.findByRunIdAndStage(run.getId(), ModerationPipelineStepEntity.Stage.VEC).isPresent();
+        if (!hasRule || !hasVec) {
+            q.setCurrentStage(QueueStage.RULE);
+            q.setUpdatedAt(LocalDateTime.now());
+            queueRepository.save(q);
+
+            auditLogWriter.writeSystem(
+                    "LLM_DECISION",
+                    "MODERATION_QUEUE",
+                    q.getId(),
+                    AuditResult.SUCCESS,
+                    "LLM skipped: missing prev steps (RULE=" + hasRule + ", VEC=" + hasVec + ")",
+                    run.getTraceId(),
+                    Map.of("runId", run.getId(), "stage", "LLM", "decision", "SKIP", "missingRule", !hasRule, "missingVec", !hasVec)
+            );
+            return;
+        }
+
+        ModerationConfidenceFallbackConfigEntity fb = fallbackRepository.findAll(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "updatedAt"))
+                .stream().findFirst().orElse(null);
+        if (fb == null) fb = defaultFallback();
+
+        if (!Boolean.TRUE.equals(fb.getLlmEnabled())) {
+            q.setCurrentStage(QueueStage.HUMAN);
+            q.setUpdatedAt(LocalDateTime.now());
+            queueRepository.save(q);
+
+            auditLogWriter.writeSystem(
+                    "LLM_DECISION",
+                    "MODERATION_QUEUE",
+                    q.getId(),
+                    AuditResult.SUCCESS,
+                    "LLM skipped (disabled)",
+                    run.getTraceId(),
+                    Map.of("runId", run.getId(), "stage", "LLM", "decision", "SKIP")
+            );
+            return;
+        }
+
+        // best-effort set stage to LLM
         if (q.getCurrentStage() != QueueStage.LLM) {
             q.setCurrentStage(QueueStage.LLM);
             q.setUpdatedAt(LocalDateTime.now());
             queueRepository.save(q);
         }
 
+        // Start LLM step with prior results summary
+        Long llmStepId = null;
+        Map<String, Object> prior = new LinkedHashMap<>();
+        pipelineStepRepository.findByRunIdAndStage(run.getId(), ModerationPipelineStepEntity.Stage.RULE)
+                .ifPresent(s -> prior.put("rule", s.getDetailsJson()));
+        pipelineStepRepository.findByRunIdAndStage(run.getId(), ModerationPipelineStepEntity.Stage.VEC)
+                .ifPresent(s -> prior.put("vec", s.getDetailsJson()));
+
+        try {
+            ModerationPipelineStepEntity step = pipelineTraceService.startStep(
+                    run.getId(),
+                    ModerationPipelineStepEntity.Stage.LLM,
+                    3,
+                    fb.getLlmRejectThreshold(),
+                    Map.of("prior", prior)
+            );
+            llmStepId = step.getId();
+        } catch (Exception ignore) {
+        }
+
         LlmModerationTestRequest req = new LlmModerationTestRequest();
         req.setQueueId(q.getId());
-        LlmModerationTestResponse res = llmService.test(req);
+        LlmModerationTestResponse res;
+        try {
+            res = llmService.test(req);
+        } catch (Exception ex) {
+            // On upstream error: mark run fail + route to HUMAN
+            q.setCurrentStage(QueueStage.HUMAN);
+            q.setUpdatedAt(LocalDateTime.now());
+            queueRepository.save(q);
 
-        String decision = res == null ? null : res.getDecision();
-        decision = decision == null ? null : decision.trim().toUpperCase(Locale.ROOT);
+            if (llmStepId != null) {
+                pipelineTraceService.finishStepError(llmStepId, "LLM_CALL_FAILED", ex.getMessage(), Map.of());
+            }
+            pipelineTraceService.finishRunFail(run.getId(), "LLM_CALL_FAILED", ex.getMessage());
 
+            auditLogWriter.writeSystem(
+                    "LLM_DECISION",
+                    "MODERATION_QUEUE",
+                    q.getId(),
+                    AuditResult.FAIL,
+                    "LLM call failed: " + ex.getMessage(),
+                    run.getTraceId(),
+                    Map.of("runId", run.getId(), "stage", "LLM", "decision", "ERROR")
+            );
+            return;
+        }
+
+        String decision = res == null ? null : ModerationFallbackDecisionService.normalizeDecision(res.getDecision());
+
+        Verdict verdict;
         if ("APPROVE".equals(decision)) {
+            verdict = Verdict.APPROVE;
+        } else if ("REJECT".equals(decision)) {
+            verdict = Verdict.REJECT;
+        } else if ("HUMAN".equals(decision)) {
+            verdict = Verdict.REVIEW;
+        } else {
+            verdict = ModerationFallbackDecisionService.verdictFromLlmScore(
+                    res == null ? null : res.getScore(),
+                    fb.getLlmRejectThreshold(),
+                    fb.getLlmHumanThreshold()
+            );
+        }
+
+        // Save step details
+        if (llmStepId != null) {
+            Map<String, Object> details = new LinkedHashMap<>();
+            if (res != null) {
+                details.put("model", res.getModel());
+                details.put("decision", res.getDecision());
+                details.put("score", res.getScore());
+                details.put("reasons", res.getReasons());
+                details.put("riskTags", res.getRiskTags());
+                // raw output may be big; still store but truncate
+                String raw = res.getRawModelOutput();
+                if (raw != null && raw.length() > 2000) raw = raw.substring(0, 2000);
+                details.put("rawModelOutput", raw);
+                details.put("latencyMs", res.getLatencyMs());
+                details.put("usage", res.getUsage());
+            }
+            pipelineTraceService.finishStepOk(
+                    llmStepId,
+                    verdict == Verdict.APPROVE ? "APPROVE" : (verdict == Verdict.REJECT ? "REJECT" : "HUMAN"),
+                    res == null ? null : res.getScore(),
+                    details
+            );
+        }
+
+        // Update run decision
+        if (verdict == Verdict.APPROVE) {
             queueService.approve(q.getId(), "LLM auto approve");
             saveDecision(q, res, Verdict.APPROVE);
+            pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.APPROVE);
+
+            auditLogWriter.writeSystem(
+                    "LLM_DECISION",
+                    "MODERATION_QUEUE",
+                    q.getId(),
+                    AuditResult.SUCCESS,
+                    "LLM auto approve",
+                    run.getTraceId(),
+                    Map.of("runId", run.getId(), "stage", "LLM", "decision", "APPROVE")
+            );
             return;
         }
-        if ("REJECT".equals(decision)) {
+        if (verdict == Verdict.REJECT) {
             queueService.reject(q.getId(), "LLM auto reject");
             saveDecision(q, res, Verdict.REJECT);
+            pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
+
+            auditLogWriter.writeSystem(
+                    "LLM_DECISION",
+                    "MODERATION_QUEUE",
+                    q.getId(),
+                    AuditResult.SUCCESS,
+                    "LLM auto reject",
+                    run.getTraceId(),
+                    Map.of("runId", run.getId(), "stage", "LLM", "decision", "REJECT")
+            );
             return;
         }
 
-        // HUMAN 或解析失败：转人工
+        // REVIEW: go HUMAN
         q.setCurrentStage(QueueStage.HUMAN);
         q.setUpdatedAt(LocalDateTime.now());
         queueRepository.save(q);
         saveDecision(q, res, Verdict.REVIEW);
+        pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.HUMAN);
+
+        auditLogWriter.writeSystem(
+                "LLM_DECISION",
+                "MODERATION_QUEUE",
+                q.getId(),
+                AuditResult.SUCCESS,
+                "LLM routed to HUMAN",
+                run.getTraceId(),
+                Map.of("runId", run.getId(), "stage", "LLM", "decision", "HUMAN")
+        );
     }
 
     private void saveDecision(ModerationQueueEntity q, LlmModerationTestResponse res, Verdict verdict) {
@@ -163,6 +348,24 @@ public class ModerationLlmAutoRunner {
         } catch (Exception ignore) {
             // decision 落库失败不影响主流程
         }
+    }
+
+    private static ModerationConfidenceFallbackConfigEntity defaultFallback() {
+        ModerationConfidenceFallbackConfigEntity e = new ModerationConfidenceFallbackConfigEntity();
+        e.setRuleEnabled(Boolean.TRUE);
+        e.setRuleHighAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
+        e.setRuleMediumAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
+        e.setRuleLowAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
+        e.setVecEnabled(Boolean.TRUE);
+        e.setVecThreshold(0.2);
+        e.setVecHitAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
+        e.setVecMissAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
+        e.setLlmEnabled(Boolean.TRUE);
+        e.setLlmRejectThreshold(0.75);
+        e.setLlmHumanThreshold(0.5);
+        e.setVersion(0);
+        e.setUpdatedAt(LocalDateTime.now());
+        return e;
     }
 }
 

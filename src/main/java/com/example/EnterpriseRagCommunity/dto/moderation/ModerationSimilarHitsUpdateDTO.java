@@ -36,3 +36,14 @@ public class ModerationSimilarHitsUpdateDTO {
     private Optional<LocalDateTime> matchedAt = Optional.empty();
 }
 
+/**
+ * Global config for similarity (VEC) checks.
+ */
+@lombok.Data
+class ModerationSimilarityConfigDTO {
+    private Long id;
+    private Boolean enabled;
+    private Integer version;
+    private String updatedAt;
+    private String updatedBy;
+}
