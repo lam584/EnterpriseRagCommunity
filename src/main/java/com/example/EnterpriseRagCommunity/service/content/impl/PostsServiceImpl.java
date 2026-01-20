@@ -14,6 +14,9 @@ import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepositor
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
@@ -43,6 +46,15 @@ public class PostsServiceImpl implements PostsService {
 
     @Autowired
     private AdminModerationQueueService adminModerationQueueService;
+
+    @Autowired
+    private ModerationRuleAutoRunner moderationRuleAutoRunner;
+
+    @Autowired
+    private ModerationVecAutoRunner moderationVecAutoRunner;
+
+    @Autowired
+    private ModerationLlmAutoRunner moderationLlmAutoRunner;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -81,6 +93,13 @@ public class PostsServiceImpl implements PostsService {
 
         // 新增：写入审核队列（防重复）
         adminModerationQueueService.ensureEnqueuedPost(post.getId());
+
+        try {
+            moderationRuleAutoRunner.runOnce();
+            moderationVecAutoRunner.runOnce();
+            moderationLlmAutoRunner.runOnce();
+        } catch (Exception ignore) {
+        }
 
         List<Long> attachmentIds = dto.getAttachmentIds();
         if (attachmentIds != null && !attachmentIds.isEmpty()) {

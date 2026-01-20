@@ -125,7 +125,7 @@ function AppRoutes() {
             <Route path="/" element={
                 setupRequired
                     ? <Navigate to="/admin-setup" replace />
-                    : <Navigate to="/portal/discover" replace />
+                    : <Navigate to="/portal/discover/home" replace />
             } />
 
             {/* 初始管理员设置页面 */}

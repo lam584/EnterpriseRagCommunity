@@ -19,6 +19,10 @@ java {
     }
 }
 
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.addAll(['-parameters'])
+}
+
 repositories {
     // 使用阿里云Maven仓库镜像
     maven { url 'https://maven.aliyun.com/repository/public/' }
@@ -79,6 +83,23 @@ tasks.named('bootWar') {
 
 tasks.register('buildVite', Exec) {
     workingDir 'my-vite-app'
+
+    inputs.dir('my-vite-app/src')
+    inputs.dir('my-vite-app/public')
+    inputs.files(
+            'my-vite-app/package.json',
+            'my-vite-app/package-lock.json',
+            'my-vite-app/index.html',
+            'my-vite-app/vite.config.ts',
+            'my-vite-app/tsconfig.json',
+            'my-vite-app/tsconfig.app.json',
+            'my-vite-app/tsconfig.node.json',
+            'my-vite-app/postcss.config.js',
+            'my-vite-app/tailwind.config.js',
+            'my-vite-app/eslint.config.js',
+            'my-vite-app/vitest.config.ts'
+    )
+    outputs.dir('my-vite-app/dist')
 
     // 捕获标准输出/错误
     def stdoutBuffer = new ByteArrayOutputStream()

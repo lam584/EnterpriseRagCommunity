@@ -49,7 +49,8 @@ public class ModerationVecAutoRunner {
             List<ModerationQueueEntity> vecStage = queueRepository.findAllByCurrentStage(QueueStage.VEC);
             if (vecStage != null) {
                 for (ModerationQueueEntity q : vecStage) {
-                    if (q != null && q.getStatus() == QueueStatus.PENDING) pending.add(q);
+                    // After RULE marks status=REVIEWING, downstream stages should still proceed.
+                    if (q != null && (q.getStatus() == QueueStatus.PENDING || q.getStatus() == QueueStatus.REVIEWING)) pending.add(q);
                 }
             }
         } catch (Exception e) {
@@ -76,7 +77,11 @@ public class ModerationVecAutoRunner {
 
     private void handleOne(ModerationQueueEntity q) {
         if (q == null || q.getId() == null) return;
-        if (q.getStatus() != QueueStatus.PENDING) return;
+        try {
+            q = queueRepository.findById(q.getId()).orElse(q);
+        } catch (Exception ignore) {
+        }
+        if (q.getStatus() != QueueStatus.PENDING && q.getStatus() != QueueStatus.REVIEWING) return;
 
         // Require pipeline run (created in RULE stage). If missing, force back to RULE.
         ModerationPipelineRunEntity run;
@@ -109,8 +114,7 @@ public class ModerationVecAutoRunner {
         // best-effort set stage to VEC (avoid double processing)
         if (q.getCurrentStage() != QueueStage.VEC) {
             q.setCurrentStage(QueueStage.VEC);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfPendingOrReviewing(q.getId(), QueueStage.VEC, LocalDateTime.now());
         }
 
         ModerationConfidenceFallbackConfigEntity cfg = fallbackRepository.findAll(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "updatedAt"))
@@ -121,8 +125,7 @@ public class ModerationVecAutoRunner {
             // skip VEC -> decide miss action
             QueueStage next = mapAction(cfg.getVecMissAction());
             q.setCurrentStage(next);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
 
             if (vecStepId > 0) {
                 pipelineTraceService.finishStepOk(vecStepId, "SKIP", null, Map.of("reason", "vec disabled", "nextStage", String.valueOf(next)));
@@ -146,8 +149,7 @@ public class ModerationVecAutoRunner {
             // If no text, treat as miss
             QueueStage next = mapAction(cfg.getVecMissAction());
             q.setCurrentStage(next);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
 
             if (vecStepId > 0) {
                 pipelineTraceService.finishStepOk(vecStepId, "SKIP", null, Map.of("reason", "empty text", "nextStage", String.valueOf(next)));
@@ -178,8 +180,7 @@ public class ModerationVecAutoRunner {
         QueueStage next = hit ? mapAction(cfg.getVecHitAction()) : mapAction(cfg.getVecMissAction());
 
         q.setCurrentStage(next);
-        q.setUpdatedAt(LocalDateTime.now());
-        queueRepository.save(q);
+        queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
 
         if (vecStepId > 0) {
             Map<String, Object> details = new LinkedHashMap<>();

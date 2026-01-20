@@ -85,6 +85,33 @@ public class ModerationRuleAutoRunner {
         if (q == null || q.getId() == null) return;
         if (q.getStatus() != QueueStatus.PENDING) return;
 
+        // Mark as in-progress as soon as RULE starts (and prevent concurrent runners from double-processing)
+        // NOTE: we only allow locking from PENDING here because RULE is the first stage.
+        LocalDateTime now = LocalDateTime.now();
+        String locker = "RULE_AUTO";
+        LocalDateTime lockExpiredBefore = now.minusMinutes(5);
+        int locked = 0;
+        try {
+            locked = queueRepository.tryLockForAutoRun(
+                    q.getId(),
+                    QueueStage.RULE,
+                    java.util.List.of(QueueStatus.PENDING),
+                    QueueStatus.REVIEWING,
+                    locker,
+                    now,
+                    lockExpiredBefore
+            );
+        } catch (Exception ignore) {
+            locked = 0;
+        }
+        if (locked <= 0) return;
+
+        // Refresh entity after status/lock update (best-effort)
+        try {
+            q = queueRepository.findById(q.getId()).orElse(q);
+        } catch (Exception ignore) {
+        }
+
         // Ensure pipeline run exists
         ModerationPipelineRunEntity run = pipelineTraceService.ensureRun(q);
 
@@ -111,8 +138,7 @@ public class ModerationRuleAutoRunner {
         // best-effort set stage to RULE
         if (q.getCurrentStage() != QueueStage.RULE) {
             q.setCurrentStage(QueueStage.RULE);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.RULE, locker, LocalDateTime.now());
         }
 
         ModerationConfidenceFallbackConfigEntity cfg = fallbackRepository.findAll().stream().findFirst().orElse(null);
@@ -120,8 +146,7 @@ public class ModerationRuleAutoRunner {
 
         if (!Boolean.TRUE.equals(cfg.getRuleEnabled())) {
             q.setCurrentStage(QueueStage.VEC);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
 
             if (ruleStepId > 0) {
                 pipelineTraceService.finishStepOk(ruleStepId, "SKIP", null, Map.of("reason", "rule disabled"));
@@ -141,8 +166,7 @@ public class ModerationRuleAutoRunner {
         String text = textLoader.load(q);
         if (text == null || text.isBlank()) {
             q.setCurrentStage(QueueStage.VEC);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
 
             if (ruleStepId > 0) {
                 pipelineTraceService.finishStepOk(ruleStepId, "SKIP", null, Map.of("reason", "empty text"));
@@ -162,8 +186,7 @@ public class ModerationRuleAutoRunner {
         List<ModerationRulesEntity> rules = rulesRepository.findAll();
         if (rules == null || rules.isEmpty()) {
             q.setCurrentStage(QueueStage.VEC);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
 
             if (ruleStepId > 0) {
                 pipelineTraceService.finishStepOk(ruleStepId, "SKIP", null, Map.of("reason", "no rules"));
@@ -181,7 +204,7 @@ public class ModerationRuleAutoRunner {
         }
 
         Severity maxSeverity = null;
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime matchedAt = LocalDateTime.now();
         int hitCount = 0;
         List<Map<String, Object>> hitDetails = new ArrayList<>();
 
@@ -214,7 +237,7 @@ public class ModerationRuleAutoRunner {
             hit.setContentId(q.getContentId());
             hit.setRuleId(r.getId());
             hit.setSnippet(snippet);
-            hit.setMatchedAt(now);
+            hit.setMatchedAt(matchedAt);
             try {
                 ruleHitsRepository.save(hit);
             } catch (Exception ignore) {
@@ -237,8 +260,7 @@ public class ModerationRuleAutoRunner {
 
         if (maxSeverity == null) {
             q.setCurrentStage(QueueStage.VEC);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
 
             if (ruleStepId > 0) {
                 pipelineTraceService.finishStepOk(ruleStepId, "PASS", null, Map.of(
@@ -275,7 +297,7 @@ public class ModerationRuleAutoRunner {
         }
 
         q.setUpdatedAt(LocalDateTime.now());
-        queueRepository.save(q);
+        queueRepository.updateStageIfLockedBy(q.getId(), q.getCurrentStage(), locker, q.getUpdatedAt());
 
         if (ruleStepId > 0) {
             pipelineTraceService.finishStepOk(ruleStepId, decision, null, Map.of(

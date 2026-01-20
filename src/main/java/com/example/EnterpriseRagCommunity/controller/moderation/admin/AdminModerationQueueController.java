@@ -9,7 +9,6 @@ import com.example.EnterpriseRagCommunity.dto.moderation.ModerationQueueQueryDTO
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
-import com.example.EnterpriseRagCommunity.security.Permissions;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,7 +49,8 @@ public class AdminModerationQueueController {
         q.setId(id);
         q.setContentType(contentType);
         q.setContentId(contentId);
-        q.setStatus(status == null ? QueueStatus.PENDING : status);
+        // When status is omitted, treat it as "all statuses" (no status filter).
+        q.setStatus(status);
         q.setCurrentStage(currentStage);
         q.setAssignedToId(assignedToId);
         q.setMinPriority(minPriority);
@@ -86,5 +86,33 @@ public class AdminModerationQueueController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
     public AdminModerationQueueBackfillResponse backfill(@RequestBody(required = false) AdminModerationQueueBackfillRequest req) {
         return adminModerationQueueService.backfill(req);
+    }
+
+    @PostMapping("/{id}/claim")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    public AdminModerationQueueDetailDTO claim(@PathVariable("id") Long id) {
+        return adminModerationQueueService.claim(id);
+    }
+
+    @PostMapping("/{id}/release")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    public AdminModerationQueueDetailDTO release(@PathVariable("id") Long id) {
+        return adminModerationQueueService.release(id);
+    }
+
+    @PostMapping("/{id}/requeue")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    public AdminModerationQueueDetailDTO requeue(@PathVariable("id") Long id,
+                                                @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
+        String reason = req == null ? null : req.getReason();
+        return adminModerationQueueService.requeueToAuto(id, reason);
+    }
+
+    @PostMapping("/{id}/to-human")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    public AdminModerationQueueDetailDTO toHuman(@PathVariable("id") Long id,
+                                                 @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
+        String reason = req == null ? null : req.getReason();
+        return adminModerationQueueService.toHuman(id, reason);
     }
 }

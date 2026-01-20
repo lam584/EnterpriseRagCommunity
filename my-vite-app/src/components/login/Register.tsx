@@ -38,6 +38,7 @@ const Register: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [message, setMessage] = useState({ type: '', text: '' });
+    const [registeredEmail, setRegisteredEmail] = useState<string>('');
 
     // 表单验证
     const validateForm = () => {
@@ -86,10 +87,12 @@ const Register: React.FC = () => {
 
         setLoading(true);
         setMessage({ type: '', text: '' });
+        setRegisteredEmail('');
 
         try {
+            const email = formData.email.trim();
             await register({
-                email: formData.email.trim(),
+                email,
                 password: formData.password,
                 username: formData.username.trim()
             });
@@ -98,10 +101,7 @@ const Register: React.FC = () => {
                 type: 'success',
                 text: '注册成功！请使用您的邮箱和密码登录'
             });
-
-            setTimeout(() => {
-                navigate('/login', { state: { email: formData.email.trim() } });
-            }, 1500);
+            setRegisteredEmail(email);
         } catch (error) {
             setMessage({
                 type: 'error',
@@ -130,7 +130,18 @@ const Register: React.FC = () => {
                                     : 'bg-red-100 text-red-700'
                             }`}
                         >
-                            {message.text}
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1">{message.text}</div>
+                                {message.type === 'success' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate('/login', { state: { email: registeredEmail } })}
+                                        className="shrink-0 inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                                    >
+                                        去登录
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     )}
 

@@ -23,10 +23,10 @@ public class NotificationsController {
 
     @GetMapping
     public ResponseEntity<Page<NotificationsEntity>> listMyNotifications(
-            @RequestParam(required = false) String type,
-            @RequestParam(required = false) Boolean unreadOnly,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int pageSize
+            @RequestParam(name = "type", required = false) String type,
+            @RequestParam(name = "unreadOnly", required = false) Boolean unreadOnly,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "pageSize", defaultValue = "20") int pageSize
     ) {
         int safePage = Math.max(page, 1);
         int safeSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
@@ -47,7 +47,7 @@ public class NotificationsController {
     }
 
     @PatchMapping("/{id}/read")
-    public ResponseEntity<NotificationsEntity> markRead(@PathVariable Long id) {
+    public ResponseEntity<NotificationsEntity> markRead(@PathVariable("id") Long id) {
         return ResponseEntity.ok(notificationsService.markMyNotificationRead(id));
     }
 
@@ -63,7 +63,7 @@ public class NotificationsController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Long id) {
+    public ResponseEntity<?> delete(@PathVariable("id") Long id) {
         notificationsService.deleteMyNotification(id);
         return ResponseEntity.noContent().build();
     }

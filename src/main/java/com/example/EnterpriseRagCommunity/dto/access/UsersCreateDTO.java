@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.Map;
+import java.util.List;
 
 @Data
 public class UsersCreateDTO {
@@ -41,4 +42,7 @@ public class UsersCreateDTO {
 
     @ApiModelProperty("扩展元数据(JSON)")
     private Map<String, Object> metadata;
+
+    @ApiModelProperty("创建用户时分配的角色ID列表(可选)")
+    private List<Long> roleIds;
 }

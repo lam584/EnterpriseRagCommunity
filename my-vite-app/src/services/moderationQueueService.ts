@@ -54,6 +54,7 @@ export type ModerationQueueListQuery = {
   contentType?: ContentType;
   contentId?: number;
   status?: QueueStatus;
+  assignedToId?: number;
 };
 
 export type ModerationQueueBackfillRequest = {
@@ -103,6 +104,7 @@ export async function adminListModerationQueue(query: ModerationQueueListQuery =
     contentType: query.contentType,
     contentId: query.contentId,
     status: query.status,
+    assignedToId: query.assignedToId,
   });
 
   const res = await fetch(apiUrl(`/api/admin/moderation/queue${qs}`), {
@@ -177,4 +179,72 @@ export async function adminBackfillModerationQueue(
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '补齐历史待审数据失败');
   return data as ModerationQueueBackfillResponse;
+}
+
+export async function adminClaimModerationQueue(id: number): Promise<ModerationQueueDetail> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/claim`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({}),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '认领失败');
+  return data as ModerationQueueDetail;
+}
+
+export async function adminReleaseModerationQueue(id: number): Promise<ModerationQueueDetail> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/release`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({}),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '释放失败');
+  return data as ModerationQueueDetail;
+}
+
+export async function adminRequeueModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/requeue`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '重新进入自动审核失败');
+  return data as ModerationQueueDetail;
+}
+
+export async function adminToHumanModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/to-human`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '进入人工审核失败');
+  return data as ModerationQueueDetail;
 }

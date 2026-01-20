@@ -22,6 +22,10 @@ export type LlmModerationConfig = {
   maxTokens?: number | null;
   threshold?: number | null;
   autoRun?: boolean | null;
+  // auto runner throttling
+  maxConcurrent?: number | null;
+  minDelayMs?: number | null;
+  qps?: number | null;
 };
 
 export type LlmModerationConfigDTO = LlmModerationConfig & {
@@ -96,4 +100,3 @@ export async function adminTestLlmModeration(payload: LlmModerationTestRequest):
   if (!res.ok) throw new Error(getBackendMessage(data) || 'LLM 试运行失败');
   return data as LlmModerationTestResponse;
 }
-

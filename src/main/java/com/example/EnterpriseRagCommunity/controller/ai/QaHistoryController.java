@@ -37,37 +37,37 @@ public class QaHistoryController {
 
     @GetMapping("/sessions")
     public Page<QaSessionDTO> listSessions(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size
     ) {
         Long me = currentUserIdOrThrow();
         return qaHistoryService.listMySessions(me, page, size);
     }
 
     @GetMapping("/sessions/{sessionId}/messages")
-    public List<QaMessageDTO> listSessionMessages(@PathVariable Long sessionId) {
+    public List<QaMessageDTO> listSessionMessages(@PathVariable("sessionId") Long sessionId) {
         Long me = currentUserIdOrThrow();
         return qaHistoryService.getMySessionMessages(me, sessionId);
     }
 
     @PatchMapping("/sessions/{sessionId}")
-    public QaSessionDTO updateSession(@PathVariable Long sessionId, @Valid @RequestBody QaSessionUpdateRequest req) {
+    public QaSessionDTO updateSession(@PathVariable("sessionId") Long sessionId, @Valid @RequestBody QaSessionUpdateRequest req) {
         Long me = currentUserIdOrThrow();
         return qaHistoryService.updateMySession(me, sessionId, req);
     }
 
     @GetMapping("/search")
     public Page<QaSearchHitDTO> search(
-            @RequestParam String q,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(name = "q") String q,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size
     ) {
         Long me = currentUserIdOrThrow();
         return qaHistoryService.searchMyHistory(me, q, page, size);
     }
 
     @DeleteMapping("/sessions/{sessionId}")
-    public ResponseEntity<Void> deleteSession(@PathVariable Long sessionId) {
+    public ResponseEntity<Void> deleteSession(@PathVariable("sessionId") Long sessionId) {
         Long me = currentUserIdOrThrow();
         qaHistoryService.deleteMySession(me, sessionId);
         return ResponseEntity.noContent().build();

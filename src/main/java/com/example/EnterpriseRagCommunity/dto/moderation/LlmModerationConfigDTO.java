@@ -16,7 +16,11 @@ public class LlmModerationConfigDTO {
     private Double threshold;
     private Boolean autoRun;
 
+    // LLM auto runner throttling
+    private Integer maxConcurrent;
+    private Integer minDelayMs;
+    private Double qps;
+
     private LocalDateTime updatedAt;
     private String updatedBy;
 }
-
