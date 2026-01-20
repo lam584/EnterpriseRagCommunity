@@ -40,6 +40,19 @@ public class ModerationQueueEntity {
     @Column(name = "assigned_to")
     private Long assignedToId;
 
+    @Column(name = "locked_by", length = 64)
+    private String lockedBy;
+
+    @Column(name = "locked_at")
+    private LocalDateTime lockedAt;
+
+    @Column(name = "finished_at")
+    private LocalDateTime finishedAt;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Integer version;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

@@ -16,7 +16,10 @@ import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
@@ -37,6 +40,18 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     @Autowired
     private CommentsRepository commentsRepository;
+
+    @Autowired
+    private com.example.EnterpriseRagCommunity.service.AdministratorService administratorService;
+
+    @Autowired
+    private ModerationPipelineRunRepository moderationPipelineRunRepository;
+
+    @Autowired
+    private ModerationRuleAutoRunner moderationRuleAutoRunner;
+
+    @Autowired
+    private ModerationVecAutoRunner moderationVecAutoRunner;
 
     @Override
     public Page<AdminModerationQueueItemDTO> list(ModerationQueueQueryDTO query) {
@@ -151,9 +166,11 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         ModerationQueueEntity q = moderationQueueRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + id));
 
-        if (q.getStatus() == QueueStatus.APPROVED || q.getStatus() == QueueStatus.REJECTED) {
-            // 幂等：直接返回最新详情
+        if (q.getStatus() == QueueStatus.APPROVED) {
             return getDetail(id);
+        }
+        if (q.getStatus() == QueueStatus.REJECTED) {
+            throw new IllegalStateException("该任务已驳回，不能直接通过；如需再次处理请先进入人工审核");
         }
         if (q.getContentType() == ContentType.POST) {
             PostsEntity post = postsRepository.findById(q.getContentId())
@@ -172,6 +189,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         }
 
         q.setStatus(QueueStatus.APPROVED);
+        q.setFinishedAt(LocalDateTime.now());
         q.setUpdatedAt(LocalDateTime.now());
         moderationQueueRepository.save(q);
 
@@ -184,8 +202,11 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         ModerationQueueEntity q = moderationQueueRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + id));
 
-        if (q.getStatus() == QueueStatus.APPROVED || q.getStatus() == QueueStatus.REJECTED) {
+        if (q.getStatus() == QueueStatus.REJECTED) {
             return getDetail(id);
+        }
+        if (q.getStatus() == QueueStatus.APPROVED) {
+            throw new IllegalStateException("该任务已通过，不能直接驳回；如需再次处理请先进入人工审核");
         }
 
         if (q.getContentType() == ContentType.POST) {
@@ -204,6 +225,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         }
 
         q.setStatus(QueueStatus.REJECTED);
+        q.setFinishedAt(LocalDateTime.now());
         q.setUpdatedAt(LocalDateTime.now());
         moderationQueueRepository.save(q);
 
@@ -469,5 +491,83 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         cc.setStatus(c.getStatus() == null ? null : c.getStatus().name());
         cc.setCreatedAt(c.getCreatedAt());
         return cc;
+    }
+
+    @Override
+    @Transactional
+    public AdminModerationQueueDetailDTO claim(Long id) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        Long userId = currentUserIdOrThrow();
+        int updated = moderationQueueRepository.claimHuman(id, userId, LocalDateTime.now());
+        if (updated <= 0) {
+            throw new IllegalStateException("认领失败：任务不存在、不是待人工审核或已被认领");
+        }
+        return getDetail(id);
+    }
+
+    @Override
+    @Transactional
+    public AdminModerationQueueDetailDTO release(Long id) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        Long userId = currentUserIdOrThrow();
+        int updated = moderationQueueRepository.releaseHuman(id, userId, LocalDateTime.now());
+        if (updated <= 0) {
+            throw new IllegalStateException("释放失败：只能释放自己认领的任务");
+        }
+        return getDetail(id);
+    }
+
+    @Override
+    @Transactional
+    public AdminModerationQueueDetailDTO requeueToAuto(Long id, String reason) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        // 允许任何有 action 权限的管理员执行；reason 目前仅保留参数位
+        int updated = moderationQueueRepository.requeueToAuto(id, QueueStatus.PENDING, QueueStage.RULE, LocalDateTime.now());
+        if (updated <= 0) {
+            throw new IllegalStateException("重新入队失败：任务不存在或状态不允许");
+        }
+
+        // 清空该任务之前的审核/流水线信息：删除 pipeline run/step trace，让后续自动审核从 RULE 全新开始。
+        // best-effort：即便清理失败，也不影响 requeue 主流程。
+        try {
+            moderationPipelineRunRepository.deleteAllByQueueId(id);
+        } catch (Exception ignore) {
+        }
+
+        // 关键：点击后要求立刻推进 RULE/VEC/LLM。
+        // 注意：各 runner 内部自带条件判断/锁/开关；这里 best-effort 串联触发一次。
+        try {
+            moderationRuleAutoRunner.runOnce();
+        } catch (Exception ignore) {
+        }
+        try {
+            moderationVecAutoRunner.runOnce();
+        } catch (Exception ignore) {
+        }
+
+        return getDetail(id);
+    }
+
+    @Override
+    @Transactional
+    public AdminModerationQueueDetailDTO toHuman(Long id, String reason) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        int updated = moderationQueueRepository.toHuman(id, QueueStatus.HUMAN, QueueStage.HUMAN, LocalDateTime.now());
+        if (updated <= 0) {
+            throw new IllegalStateException("进入人工审核失败：仅允许已终态任务进入人工审核");
+        }
+        return getDetail(id);
+    }
+
+    private Long currentUserIdOrThrow() {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
+            };
+        }
+        String email = auth.getName();
+        return administratorService.findByUsername(email)
+                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
+                .getId();
     }
 }

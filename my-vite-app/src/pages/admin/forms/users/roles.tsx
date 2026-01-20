@@ -6,9 +6,11 @@ import {
     createRoleWithMatrix,
     listRoleIds,
     listRolePermissionsByRole,
+    listRoleSummaries,
     replaceRolePermissions,
     type RolePermissionUpsertDTO,
     type RolePermissionViewDTO,
+    type RoleSummaryDTO,
 } from '../../../../services/rolePermissionsService';
 import {FaEdit, FaPlus, FaSearch, FaSync, FaTrash} from 'react-icons/fa';
 import {useAccess} from '../../../../contexts/AccessContext';
@@ -16,6 +18,10 @@ import Modal from './roles/Modal';
 import RolePermissionEditor from './roles/RolePermissionEditor';
 import ActionDescriptions from './roles/ActionDescriptions';
 import {type PermissionVM, safeStr, type StandardAction, stdActionLabel, stdActionOf} from './roles/permissionUtils';
+import {
+    getRegistrationSettings,
+    updateRegistrationSettings,
+} from '../../../../services/adminSettingsService';
 
 type RoleRow = { roleId: number; roleName?: string };
 type ResourceGroupVM = {
@@ -190,6 +196,11 @@ const RolesManagement: React.FC = () => {
     const [draft, setDraft] = useState<Record<number, TriState>>({});
     const [permKeyword, setPermKeyword] = useState('');
     const [collapsedL1, setCollapsedL1] = useState<Record<string, boolean>>({});
+
+    const [registrationLoading, setRegistrationLoading] = useState(false);
+    const [registrationSaving, setRegistrationSaving] = useState(false);
+    const [defaultRegisterRoleId, setDefaultRegisterRoleId] = useState<number>(1);
+    const [roleSummaries, setRoleSummaries] = useState<RoleSummaryDTO[]>([]);
     const rolePermMap = useMemo(() => {
         const map = new Map<number, RolePermissionViewDTO>();
     for (const rp of rolePermissions) {
@@ -407,11 +418,41 @@ const RolesManagement: React.FC = () => {
         setPermissions(permsPage.content ?? []);
     };
 
+    const refreshRegistration = async () => {
+        setRegistrationLoading(true);
+        try {
+            const [settings, summaries] = await Promise.all([
+                getRegistrationSettings(),
+                listRoleSummaries(),
+            ]);
+            setDefaultRegisterRoleId(Number(settings.defaultRegisterRoleId) || 1);
+            setRoleSummaries(summaries ?? []);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setRegistrationLoading(false);
+        }
+    };
+
+    const saveRegistration = async () => {
+        setRegistrationSaving(true);
+        try {
+            const roleId = Number(defaultRegisterRoleId) || 1;
+            await updateRegistrationSettings({defaultRegisterRoleId: roleId});
+            setFeedback({type: 'success', message: '注册默认角色已保存'});
+        } catch (e) {
+            console.error(e);
+            setFeedback({type: 'error', message: '保存注册默认角色失败'});
+        } finally {
+            setRegistrationSaving(false);
+        }
+    };
+
   useEffect(() => {
       (async () => {
           setLoading(true);
           try {
-              await Promise.all([refreshRoleIds(), refreshPermissions()]);
+              await Promise.all([refreshRoleIds(), refreshPermissions(), refreshRegistration()]);
           } finally {
               setLoading(false);
       }
@@ -566,6 +607,51 @@ const RolesManagement: React.FC = () => {
               </Button>
           </div>
       </div>
+
+        <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
+            <div className="flex items-center justify-between">
+                <div className="font-medium">用户注册默认角色</div>
+                <div className="flex gap-2">
+                    <Button
+                        variant="secondary"
+                        onClick={refreshRegistration}
+                        disabled={registrationLoading || registrationSaving}
+                        className="whitespace-nowrap"
+                    >
+                        <FaSync className="mr-2" /> 刷新
+                    </Button>
+                    <Button
+                        onClick={saveRegistration}
+                        disabled={registrationLoading || registrationSaving}
+                        className="whitespace-nowrap"
+                    >
+                        保存
+                    </Button>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                <select
+                    className="border rounded px-3 py-2 bg-white"
+                    value={String(defaultRegisterRoleId)}
+                    onChange={(e) => setDefaultRegisterRoleId(Number(e.target.value))}
+                    disabled={registrationLoading || registrationSaving}
+                >
+                    {roleSummaries.length === 0 ? (
+                        <option value={String(defaultRegisterRoleId)}>
+                            roleId={defaultRegisterRoleId}
+                        </option>
+                    ) : null}
+                    {roleSummaries.map(r => (
+                        <option key={r.roleId} value={String(r.roleId)}>
+                            {r.roleName ? `${r.roleName} (roleId=${r.roleId})` : `roleId=${r.roleId}`}
+                        </option>
+                    ))}
+                </select>
+                <div className="text-sm text-gray-500">
+                    影响 /register 新注册用户默认分配的 roleId
+                </div>
+            </div>
+        </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_auto] md:items-center">
         <Input

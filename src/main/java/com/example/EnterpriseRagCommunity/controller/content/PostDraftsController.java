@@ -21,15 +21,15 @@ public class PostDraftsController {
 
     @GetMapping
     public Page<PostDraftsDTO> listMine(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size
     ) {
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100));
         return postDraftsService.listMine(pageable);
     }
 
     @GetMapping("/{id}")
-    public PostDraftsDTO getMine(@PathVariable Long id) {
+    public PostDraftsDTO getMine(@PathVariable("id") Long id) {
         return postDraftsService.getMine(id);
     }
 
@@ -39,12 +39,12 @@ public class PostDraftsController {
     }
 
     @PutMapping("/{id}")
-    public PostDraftsDTO updateMine(@PathVariable Long id, @Valid @RequestBody PostDraftsUpdateDTO dto) {
+    public PostDraftsDTO updateMine(@PathVariable("id") Long id, @Valid @RequestBody PostDraftsUpdateDTO dto) {
         return postDraftsService.updateMine(id, dto);
     }
 
     @DeleteMapping("/{id}")
-    public void deleteMine(@PathVariable Long id) {
+    public void deleteMine(@PathVariable("id") Long id) {
         postDraftsService.deleteMine(id);
     }
 }

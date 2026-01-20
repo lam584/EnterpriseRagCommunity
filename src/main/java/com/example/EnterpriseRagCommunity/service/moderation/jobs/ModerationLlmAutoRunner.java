@@ -72,7 +72,7 @@ public class ModerationLlmAutoRunner {
             List<ModerationQueueEntity> llmStage = queueRepository.findAllByCurrentStage(QueueStage.LLM);
             if (llmStage != null) {
                 for (ModerationQueueEntity q : llmStage) {
-                    if (q != null && q.getStatus() == QueueStatus.PENDING) pending.add(q);
+                    if (q != null && (q.getStatus() == QueueStatus.PENDING || q.getStatus() == QueueStatus.REVIEWING)) pending.add(q);
                 }
             }
 
@@ -80,7 +80,7 @@ public class ModerationLlmAutoRunner {
                 List<ModerationQueueEntity> humanStage = queueRepository.findAllByCurrentStage(QueueStage.HUMAN);
                 if (humanStage != null) {
                     for (ModerationQueueEntity q : humanStage) {
-                        if (q != null && q.getStatus() == QueueStatus.PENDING) pending.add(q);
+                        if (q != null && (q.getStatus() == QueueStatus.PENDING || q.getStatus() == QueueStatus.REVIEWING)) pending.add(q);
                     }
                 }
             }
@@ -110,7 +110,11 @@ public class ModerationLlmAutoRunner {
 
     private void handleOne(ModerationQueueEntity q) {
         if (q == null || q.getId() == null) return;
-        if (q.getStatus() != QueueStatus.PENDING) return;
+        try {
+            q = queueRepository.findById(q.getId()).orElse(q);
+        } catch (Exception ignore) {
+        }
+        if (q.getStatus() != QueueStatus.PENDING && q.getStatus() != QueueStatus.REVIEWING) return;
 
         // Enforce pipeline order:
         // if no previous step records, drop back to RULE.
@@ -122,8 +126,7 @@ public class ModerationLlmAutoRunner {
         }
         if (run == null) {
             q.setCurrentStage(QueueStage.RULE);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfPendingOrReviewing(q.getId(), QueueStage.RULE, LocalDateTime.now());
             return;
         }
 
@@ -131,8 +134,7 @@ public class ModerationLlmAutoRunner {
         boolean hasVec = pipelineStepRepository.findByRunIdAndStage(run.getId(), ModerationPipelineStepEntity.Stage.VEC).isPresent();
         if (!hasRule || !hasVec) {
             q.setCurrentStage(QueueStage.RULE);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfPendingOrReviewing(q.getId(), QueueStage.RULE, LocalDateTime.now());
 
             auditLogWriter.writeSystem(
                     "LLM_DECISION",
@@ -151,9 +153,52 @@ public class ModerationLlmAutoRunner {
         if (fb == null) fb = defaultFallback();
 
         if (!Boolean.TRUE.equals(fb.getLlmEnabled())) {
+            String ruleDecision = pipelineStepRepository.findByRunIdAndStage(run.getId(), ModerationPipelineStepEntity.Stage.RULE)
+                    .map(ModerationPipelineStepEntity::getDecision)
+                    .orElse(null);
+            String vecDecision = pipelineStepRepository.findByRunIdAndStage(run.getId(), ModerationPipelineStepEntity.Stage.VEC)
+                    .map(ModerationPipelineStepEntity::getDecision)
+                    .orElse(null);
+
+            boolean lowRisk = "PASS".equalsIgnoreCase(ruleDecision) && "MISS".equalsIgnoreCase(vecDecision);
+            if (lowRisk) {
+                Long llmStepId = null;
+                try {
+                    ModerationPipelineStepEntity step = pipelineTraceService.startStep(
+                            run.getId(),
+                            ModerationPipelineStepEntity.Stage.LLM,
+                            3,
+                            fb.getLlmRejectThreshold(),
+                            Map.of("llmEnabled", false, "autoApproved", true)
+                    );
+                    llmStepId = step.getId();
+                } catch (Exception ignore) {
+                }
+                try {
+                    if (llmStepId != null) {
+                        pipelineTraceService.finishStepOk(llmStepId, "SKIP", null, Map.of("llmEnabled", false, "autoApproved", true));
+                    }
+                } catch (Exception ignore) {
+                }
+
+                queueService.approve(q.getId(), "LLM disabled; auto approve by RULE+VEC");
+                pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.APPROVE);
+
+                auditLogWriter.writeSystem(
+                        "LLM_DECISION",
+                        "MODERATION_QUEUE",
+                        q.getId(),
+                        AuditResult.SUCCESS,
+                        "LLM skipped (disabled) -> auto approve",
+                        run.getTraceId(),
+                        Map.of("runId", run.getId(), "stage", "LLM", "decision", "APPROVE", "llmEnabled", false, "ruleDecision", String.valueOf(ruleDecision), "vecDecision", String.valueOf(vecDecision))
+                );
+                return;
+            }
+
             q.setCurrentStage(QueueStage.HUMAN);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            q.setStatus(QueueStatus.HUMAN);
+            queueRepository.updateStageAndStatusIfPendingOrReviewing(q.getId(), QueueStage.HUMAN, QueueStatus.HUMAN, LocalDateTime.now());
 
             auditLogWriter.writeSystem(
                     "LLM_DECISION",
@@ -162,7 +207,7 @@ public class ModerationLlmAutoRunner {
                     AuditResult.SUCCESS,
                     "LLM skipped (disabled)",
                     run.getTraceId(),
-                    Map.of("runId", run.getId(), "stage", "LLM", "decision", "SKIP")
+                    Map.of("runId", run.getId(), "stage", "LLM", "decision", "SKIP", "ruleDecision", String.valueOf(ruleDecision), "vecDecision", String.valueOf(vecDecision))
             );
             return;
         }
@@ -170,8 +215,7 @@ public class ModerationLlmAutoRunner {
         // best-effort set stage to LLM
         if (q.getCurrentStage() != QueueStage.LLM) {
             q.setCurrentStage(QueueStage.LLM);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            queueRepository.updateStageIfPendingOrReviewing(q.getId(), QueueStage.LLM, LocalDateTime.now());
         }
 
         // Start LLM step with prior results summary
@@ -202,8 +246,8 @@ public class ModerationLlmAutoRunner {
         } catch (Exception ex) {
             // On upstream error: mark run fail + route to HUMAN
             q.setCurrentStage(QueueStage.HUMAN);
-            q.setUpdatedAt(LocalDateTime.now());
-            queueRepository.save(q);
+            q.setStatus(QueueStatus.HUMAN);
+            queueRepository.updateStageAndStatusIfPendingOrReviewing(q.getId(), QueueStage.HUMAN, QueueStatus.HUMAN, LocalDateTime.now());
 
             if (llmStepId != null) {
                 pipelineTraceService.finishStepError(llmStepId, "LLM_CALL_FAILED", ex.getMessage(), Map.of());
@@ -299,8 +343,8 @@ public class ModerationLlmAutoRunner {
 
         // REVIEW: go HUMAN
         q.setCurrentStage(QueueStage.HUMAN);
-        q.setUpdatedAt(LocalDateTime.now());
-        queueRepository.save(q);
+        q.setStatus(QueueStatus.HUMAN);
+        queueRepository.updateStageAndStatusIfPendingOrReviewing(q.getId(), QueueStage.HUMAN, QueueStatus.HUMAN, LocalDateTime.now());
         saveDecision(q, res, Verdict.REVIEW);
         pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.HUMAN);
 

@@ -40,7 +40,7 @@ public class TagsController {
 
     @PutMapping("/{id}")
     @ApiOperation("更新标签")
-    public ResponseEntity<TagsDTO> update(@PathVariable Long id, @RequestBody TagsUpdateDTO updateDTO) {
+    public ResponseEntity<TagsDTO> update(@PathVariable("id") Long id, @RequestBody TagsUpdateDTO updateDTO) {
         updateDTO.setId(id);
         TagsEntity saved = tagsService.update(updateDTO);
         return ResponseEntity.ok(toDTO(saved));
@@ -48,7 +48,7 @@ public class TagsController {
 
     @DeleteMapping("/{id}")
     @ApiOperation("删除标签")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         tagsService.delete(id);
         return ResponseEntity.noContent().build();
     }

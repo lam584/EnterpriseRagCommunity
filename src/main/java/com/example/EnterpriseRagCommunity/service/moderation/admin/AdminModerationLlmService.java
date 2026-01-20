@@ -61,6 +61,9 @@ public class AdminModerationLlmService {
         cfg.setMaxTokens(payload.getMaxTokens());
         cfg.setThreshold(payload.getThreshold());
         cfg.setAutoRun(payload.getAutoRun() != null ? payload.getAutoRun() : Boolean.FALSE);
+        cfg.setMaxConcurrent(payload.getMaxConcurrent());
+        cfg.setMinDelayMs(payload.getMinDelayMs());
+        cfg.setQps(payload.getQps());
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg.setUpdatedBy(actorUserId);
 
@@ -178,6 +181,9 @@ public class AdminModerationLlmService {
         m.setVersion(base.getVersion());
         m.setUpdatedAt(base.getUpdatedAt());
         m.setUpdatedBy(base.getUpdatedBy());
+        m.setMaxConcurrent(base.getMaxConcurrent());
+        m.setMinDelayMs(base.getMinDelayMs());
+        m.setQps(base.getQps());
 
         if (o == null) return m;
         if (o.getPromptTemplate() != null) m.setPromptTemplate(o.getPromptTemplate());
@@ -186,6 +192,9 @@ public class AdminModerationLlmService {
         if (o.getMaxTokens() != null) m.setMaxTokens(o.getMaxTokens());
         if (o.getThreshold() != null) m.setThreshold(o.getThreshold());
         if (o.getAutoRun() != null) m.setAutoRun(o.getAutoRun());
+        if (o.getMaxConcurrent() != null) m.setMaxConcurrent(o.getMaxConcurrent());
+        if (o.getMinDelayMs() != null) m.setMinDelayMs(o.getMinDelayMs());
+        if (o.getQps() != null) m.setQps(o.getQps());
         return m;
     }
 
@@ -200,6 +209,9 @@ public class AdminModerationLlmService {
         e.setVersion(0);
         e.setUpdatedAt(LocalDateTime.now());
         e.setUpdatedBy(null);
+        e.setMaxConcurrent(4);
+        e.setMinDelayMs(0);
+        e.setQps(0.0);
         return e;
     }
 
@@ -213,6 +225,9 @@ public class AdminModerationLlmService {
         dto.setMaxTokens(e.getMaxTokens());
         dto.setThreshold(e.getThreshold());
         dto.setAutoRun(e.getAutoRun());
+        dto.setMaxConcurrent(e.getMaxConcurrent());
+        dto.setMinDelayMs(e.getMinDelayMs());
+        dto.setQps(e.getQps());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setUpdatedBy(updatedByName);
         return dto;

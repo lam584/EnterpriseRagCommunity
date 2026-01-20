@@ -36,6 +36,15 @@ public class ModerationLlmConfigEntity {
     @Column(name = "auto_run", nullable = false)
     private Boolean autoRun;
 
+    @Column(name = "max_concurrent")
+    private Integer maxConcurrent;
+
+    @Column(name = "min_delay_ms")
+    private Integer minDelayMs;
+
+    @Column(name = "qps")
+    private Double qps;
+
     @Version
     @Column(name = "version", nullable = false)
     private Integer version;

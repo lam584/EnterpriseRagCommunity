@@ -31,7 +31,7 @@ public class RolePermissionsController {
     @GetMapping("/role/{roleId}")
     @ApiOperation("查询某个角色的权限列表")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
-    public ResponseEntity<List<RolePermissionViewDTO>> listByRole(@PathVariable Long roleId) {
+    public ResponseEntity<List<RolePermissionViewDTO>> listByRole(@PathVariable("roleId") Long roleId) {
         return ResponseEntity.ok(rolePermissionsService.listByRoleId(roleId));
     }
 
@@ -54,7 +54,7 @@ public class RolePermissionsController {
     @ApiOperation("覆盖更新某角色的权限矩阵")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
     public ResponseEntity<List<RolePermissionViewDTO>> replaceAllForRole(
-            @PathVariable Long roleId,
+            @PathVariable("roleId") Long roleId,
             @RequestBody List<@Valid RolePermissionUpsertDTO> dtoList) {
         return ResponseEntity.ok(rolePermissionsService.replaceAllForRole(roleId, dtoList));
     }
@@ -62,7 +62,7 @@ public class RolePermissionsController {
     @DeleteMapping
     @ApiOperation("删除 角色-权限")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
-    public ResponseEntity<Void> delete(@RequestParam Long roleId, @RequestParam Long permissionId) {
+    public ResponseEntity<Void> delete(@RequestParam("roleId") Long roleId, @RequestParam("permissionId") Long permissionId) {
         rolePermissionsService.delete(roleId, permissionId);
         return ResponseEntity.ok().build();
     }
@@ -70,7 +70,7 @@ public class RolePermissionsController {
     @DeleteMapping("/role/{roleId}")
     @ApiOperation("清空某角色的权限矩阵")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
-    public ResponseEntity<Void> clearRole(@PathVariable Long roleId) {
+    public ResponseEntity<Void> clearRole(@PathVariable("roleId") Long roleId) {
         rolePermissionsService.clearRole(roleId);
         return ResponseEntity.ok().build();
     }

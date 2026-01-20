@@ -16,6 +16,9 @@ public class LlmModerationTestRequest {
         private Integer maxTokens;
         private Double threshold;
         private Boolean autoRun;
+
+        private Integer maxConcurrent;
+        private Integer minDelayMs;
+        private Double qps;
     }
 }
-
