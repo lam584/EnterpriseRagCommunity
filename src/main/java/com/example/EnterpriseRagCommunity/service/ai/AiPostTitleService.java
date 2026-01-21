@@ -3,64 +3,56 @@ package com.example.EnterpriseRagCommunity.service.ai;
 import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostTitleSuggestRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostTitleSuggestResponse;
+import com.example.EnterpriseRagCommunity.entity.ai.PostTitleGenConfigEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.PostTitleGenHistoryEntity;
 import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
+@RequiredArgsConstructor
 public class AiPostTitleService {
 
-    private static final int DEFAULT_COUNT = 5;
-    private static final int MAX_COUNT = 10;
-
     private final AiProperties aiProperties;
+    private final PostTitleGenConfigService postTitleGenConfigService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public AiPostTitleService(AiProperties aiProperties) {
-        this.aiProperties = aiProperties;
-    }
-
-    public AiPostTitleSuggestResponse suggestTitles(AiPostTitleSuggestRequest req) {
-        int count = req.getCount() == null ? DEFAULT_COUNT : req.getCount();
-        if (count <= 0) count = DEFAULT_COUNT;
-        if (count > MAX_COUNT) count = MAX_COUNT;
-
-        String model = (req.getModel() != null && !req.getModel().isBlank()) ? req.getModel() : aiProperties.getModel();
-        Double temperature = req.getTemperature();
-        if (temperature == null) temperature = 0.4; // more stable for titles
-
-        String content = req.getContent();
-        // avoid huge prompt cost
-        if (content.length() > 4000) {
-            content = content.substring(0, 4000);
+    public AiPostTitleSuggestResponse suggestTitles(AiPostTitleSuggestRequest req, Long actorUserId) {
+        PostTitleGenConfigEntity cfg = postTitleGenConfigService.getConfigEntityOrDefault();
+        if (!Boolean.TRUE.equals(cfg.getEnabled())) {
+            throw new IllegalStateException("标题生成已关闭");
         }
 
-        StringBuilder userPrompt = new StringBuilder();
-        userPrompt.append("请为下面这段社区帖子内容生成 ").append(count)
-                .append(" 个中文标题候选。\n")
-                .append("要求：\n")
-                .append("- 每个标题不超过 30 个汉字\n")
-                .append("- 风格适度多样（提问式/总结式/爆点式），但不要低俗\n")
-                .append("- 标题之间不要重复\n")
-                .append("- 只输出严格 JSON，不要输出任何解释文字\n")
-                .append("- JSON 格式：{\"titles\":[\"...\",...]}\n");
+        int defaultCount = cfg.getDefaultCount() == null ? PostTitleGenConfigService.DEFAULT_DEFAULT_COUNT : cfg.getDefaultCount();
+        int maxCount = cfg.getMaxCount() == null ? PostTitleGenConfigService.DEFAULT_MAX_COUNT : cfg.getMaxCount();
 
-        if (req.getBoardName() != null && !req.getBoardName().isBlank()) {
-            userPrompt.append("版块：").append(req.getBoardName()).append("\n");
-        }
-        if (req.getTags() != null && !req.getTags().isEmpty()) {
-            userPrompt.append("标签：").append(String.join("、", req.getTags())).append("\n");
+        int count = req.getCount() == null ? defaultCount : req.getCount();
+        if (count <= 0) count = defaultCount;
+        if (count > maxCount) count = maxCount;
+
+        String model = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : aiProperties.getModel();
+        Double temperature = cfg.getTemperature();
+        if (temperature == null) temperature = 0.4;
+
+        String content = req.getContent() == null ? "" : req.getContent();
+        content = content.trim();
+        int contentLen = content.length();
+
+        int maxChars = cfg.getMaxContentChars() == null ? PostTitleGenConfigService.DEFAULT_MAX_CONTENT_CHARS : cfg.getMaxContentChars();
+        if (maxChars > 0 && content.length() > maxChars) {
+            content = content.substring(0, maxChars);
         }
 
-        userPrompt.append("帖子内容：\n").append(content);
+        String userPrompt = renderPrompt(cfg.getPromptTemplate(), count, req.getBoardName(), req.getTags(), content);
 
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", "你是专业的中文社区运营编辑，擅长给帖子拟标题。"));
-        messages.add(Map.of("role", "user", "content", userPrompt.toString()));
+        messages.add(Map.of("role", "system", "content", cfg.getSystemPrompt()));
+        messages.add(Map.of("role", "user", "content", userPrompt));
 
         long started = System.currentTimeMillis();
         String rawJson;
@@ -75,6 +67,25 @@ public class AiPostTitleService {
         List<String> titles = parseTitlesFromAssistantText(assistantText, count);
 
         long latency = System.currentTimeMillis() - started;
+
+        if (Boolean.TRUE.equals(cfg.getHistoryEnabled()) && actorUserId != null) {
+            PostTitleGenHistoryEntity h = new PostTitleGenHistoryEntity();
+            h.setUserId(actorUserId);
+            h.setCreatedAt(LocalDateTime.now());
+            h.setBoardName(blankToNull(req.getBoardName()));
+            h.setTagsJson(req.getTags() == null ? List.of() : new ArrayList<>(req.getTags()));
+            h.setRequestedCount(count);
+            h.setAppliedMaxContentChars(maxChars);
+            h.setContentLen(contentLen);
+            h.setContentExcerpt(buildExcerpt(req.getContent()));
+            h.setTitlesJson(new ArrayList<>(titles));
+            h.setModel(model);
+            h.setTemperature(temperature);
+            h.setLatencyMs(latency);
+            h.setPromptVersion(cfg.getVersion());
+            postTitleGenConfigService.recordHistory(h);
+        }
+
         return new AiPostTitleSuggestResponse(titles, model, latency);
     }
 
@@ -151,6 +162,50 @@ public class AiPostTitleService {
         // hard length guard (roughly chars)
         if (t.length() > 50) t = t.substring(0, 50);
         return t.trim();
+    }
+
+    private static String buildExcerpt(String content) {
+        if (content == null) return null;
+        String t = content.trim();
+        if (t.isEmpty()) return null;
+        if (t.length() > 240) t = t.substring(0, 240);
+        return t;
+    }
+
+    private static String renderPrompt(String template, int count, String boardName, List<String> tags, String content) {
+        String safeTemplate = (template == null || template.isBlank())
+                ? PostTitleGenConfigService.DEFAULT_PROMPT_TEMPLATE
+                : template;
+
+        String bn = boardName == null ? "" : boardName.trim();
+        String boardLine = bn.isBlank() ? "" : ("版块：" + bn + "\n");
+
+        String tagsLine = "";
+        if (tags != null && !tags.isEmpty()) {
+            List<String> cleaned = new ArrayList<>();
+            for (String s : tags) {
+                if (s == null) continue;
+                String tt = s.trim();
+                if (!tt.isBlank()) cleaned.add(tt);
+            }
+            if (!cleaned.isEmpty()) tagsLine = "标签：" + String.join("、", cleaned) + "\n";
+        }
+
+        String out = safeTemplate;
+        out = out.replace("{{count}}", String.valueOf(count));
+        out = out.replace("{{boardLine}}", boardLine);
+        out = out.replace("{{tagsLine}}", tagsLine);
+        out = out.replace("{{content}}", content == null ? "" : content);
+
+        out = out.replace("{{boardName}}", bn);
+        out = out.replace("{{tags}}", (tagsLine.isBlank() ? "" : tagsLine.replace("标签：", "").trim()));
+        return out;
+    }
+
+    private static String blankToNull(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
     }
 }
 

@@ -30,7 +30,7 @@ const Login: React.FC = () => {
 
     useEffect(() => {
         const interval = setInterval(() => {
-            setCurrentImage(prevImage => {
+            setCurrentImage((prevImage: string) => {
                 const currentIndex = images.indexOf(prevImage);
                 const nextIndex = (currentIndex + 1) % images.length;
                 return images[nextIndex];
