@@ -7,16 +7,18 @@ import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.ContextStrategy;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.MessageRole;
+import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -27,6 +29,8 @@ import java.util.*;
 @RequiredArgsConstructor
 public class AiChatService {
 
+    private static final Logger logger = LoggerFactory.getLogger(AiChatService.class);
+
     private final AiProperties aiProperties;
     private final QaSessionsRepository qaSessionsRepository;
     private final QaMessagesRepository qaMessagesRepository;
@@ -36,38 +40,66 @@ public class AiChatService {
         return new BailianOpenAiSseClient(aiProperties);
     }
 
-    @Transactional
     public void streamChat(AiChatStreamRequest req, Long currentUserId, HttpServletResponse response) throws IOException {
         if (currentUserId == null) {
             throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
         }
 
+        logger.info(
+                "ai_chat_stream_start userId={} reqSessionId={} dryRun={} historyLimit={}",
+                currentUserId,
+                req.getSessionId(),
+                req.getDryRun(),
+                req.getHistoryLimit()
+        );
+
         // 1) session
         QaSessionsEntity session = ensureSession(req.getSessionId(), currentUserId, req.getDryRun());
+        logger.info("ai_chat_session_resolved userId={} sessionId={}", currentUserId, session.getId());
 
-        // 2) persist user msg
+        // 2) setup SSE response (after session validation)
+        response.setStatus(200);
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("text/event-stream;charset=UTF-8");
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
+
+        PrintWriter out = response.getWriter();
+
+        // 3) persist user msg + turn shell
         QaMessagesEntity userMsg = null;
-        if (!req.getDryRun()) {
-            userMsg = new QaMessagesEntity();
-            userMsg.setSessionId(session.getId());
-            userMsg.setRole(MessageRole.USER);
-            userMsg.setContent(req.getMessage());
-            userMsg.setCreatedAt(LocalDateTime.now());
-            userMsg = qaMessagesRepository.save(userMsg);
-        }
-
-        // 2.1) persist turn shell
         QaTurnsEntity turn = null;
-        if (!req.getDryRun() && userMsg != null) {
-            turn = new QaTurnsEntity();
-            turn.setSessionId(session.getId());
-            turn.setQuestionMessageId(userMsg.getId());
-            turn.setAnswerMessageId(null);
-            turn.setCreatedAt(LocalDateTime.now());
-            turn = qaTurnsRepository.save(turn);
+        if (!req.getDryRun()) {
+            try {
+                userMsg = new QaMessagesEntity();
+                userMsg.setSessionId(session.getId());
+                userMsg.setRole(MessageRole.USER);
+                userMsg.setContent(req.getMessage());
+                userMsg.setCreatedAt(LocalDateTime.now());
+                userMsg = qaMessagesRepository.save(userMsg);
+
+                turn = new QaTurnsEntity();
+                turn.setSessionId(session.getId());
+                turn.setQuestionMessageId(userMsg.getId());
+                turn.setAnswerMessageId(null);
+                turn.setCreatedAt(LocalDateTime.now());
+                turn = qaTurnsRepository.save(turn);
+            } catch (Exception ex) {
+                logger.error("ai_chat_persist_turn_failed userId={} sessionId={}", currentUserId, session.getId(), ex);
+                out.write("event: error\n");
+                out.write("data: {\"message\":\"" + jsonEscape("数据操作失败：" + String.valueOf(ex.getMessage())) + "\"}\n\n");
+                out.write("event: done\n");
+                out.write("data: {}\n\n");
+                out.flush();
+                return;
+            }
         }
 
-        // 3) load history for context
+        out.write("event: meta\n");
+        out.write("data: {\"sessionId\":" + session.getId() + (userMsg != null ? ",\"userMessageId\":" + userMsg.getId() : "") + "}\n\n");
+        out.flush();
+
+        // 4) load history for context
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", "你是一个严谨、专业的中文助手。"));
 
@@ -78,7 +110,7 @@ public class AiChatService {
                     (root, _query, cb) -> cb.equal(root.get("sessionId"), session.getId()),
                     PageRequest.of(0, historyLimit, Sort.by(Sort.Direction.DESC, "createdAt"))
             );
-            List<QaMessagesEntity> histDesc = page.getContent();
+            List<QaMessagesEntity> histDesc = new ArrayList<>(page.getContent());
             Collections.reverse(histDesc); // to asc
             for (QaMessagesEntity m : histDesc) {
                 if (userMsg != null && Objects.equals(m.getId(), userMsg.getId())) continue;
@@ -92,18 +124,6 @@ public class AiChatService {
         }
 
         messages.add(Map.of("role", "user", "content", req.getMessage()));
-
-        // 4) setup SSE response
-        response.setStatus(200);
-        response.setCharacterEncoding("UTF-8");
-        response.setContentType("text/event-stream;charset=UTF-8");
-        response.setHeader("Cache-Control", "no-cache, no-transform");
-        response.setHeader("X-Accel-Buffering", "no");
-
-        PrintWriter out = response.getWriter();
-        out.write("event: meta\n");
-        out.write("data: {\"sessionId\":" + session.getId() + (userMsg != null ? ",\"userMessageId\":" + userMsg.getId() : "") + "}\n\n");
-        out.flush();
 
         StringBuilder assistantAccum = new StringBuilder();
         long startedAt = System.currentTimeMillis();
@@ -166,11 +186,13 @@ public class AiChatService {
                 }
             }
         } catch (Exception ex) {
+            logger.error("ai_chat_stream_failed userId={} sessionId={} model={}", currentUserId, session.getId(), model, ex);
             out.write("event: error\n");
             out.write("data: {\"message\":\"" + jsonEscape(String.valueOf(ex.getMessage())) + "\"}\n\n");
             out.flush();
         } finally {
             long latency = System.currentTimeMillis() - startedAt;
+            logger.info("ai_chat_stream_done userId={} sessionId={} latencyMs={}", currentUserId, session.getId(), latency);
             out.write("event: done\n");
             out.write("data: {\"latencyMs\":" + latency + "}\n\n");
             out.flush();
@@ -180,7 +202,7 @@ public class AiChatService {
     private QaSessionsEntity ensureSession(Long sessionId, Long currentUserId, boolean dryRun) {
         if (sessionId != null) {
             QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, currentUserId)
-                    .orElseThrow(() -> new IllegalArgumentException("sessionId not found"));
+                    .orElseThrow(() -> new ResourceNotFoundException("session not found"));
             if (Boolean.FALSE.equals(s.getIsActive())) {
                 throw new IllegalArgumentException("session inactive");
             }

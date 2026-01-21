@@ -43,7 +43,7 @@ export default function AssistantChatPage() {
     return Number.isFinite(n) ? n : undefined;
   }, [searchParams]);
 
-  const [sessionId, setSessionId] = useState<number | undefined>(initialSessionId);
+  const [sessionId, setSessionId] = useState<number | undefined>(undefined);
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -62,10 +62,13 @@ export default function AssistantChatPage() {
   useEffect(() => {
     // when url sessionId changes, load that session
     if (initialSessionId === undefined) return;
+    if (isStreaming) return;
 
     let cancelled = false;
     setError(null);
     setIsStreaming(false);
+    setSessionId(undefined);
+    setMessages([]);
 
     void (async () => {
       try {
@@ -82,7 +85,10 @@ export default function AssistantChatPage() {
         setMessages(mapped);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (!cancelled) setError(msg || '加载会话失败');
+        if (!cancelled) {
+          setSessionId(undefined);
+          setError(msg || '加载会话失败');
+        }
       }
     })();
 
@@ -113,7 +119,7 @@ export default function AssistantChatPage() {
 
     try {
       await chatStream(
-        { sessionId, message: text },
+        { sessionId: sessionId && sessionId > 0 ? sessionId : undefined, message: text },
         (ev: AiStreamEvent) => {
           if (ev.type === 'meta') {
             if (Number.isFinite(ev.sessionId)) {

@@ -6,6 +6,7 @@ import com.example.EnterpriseRagCommunity.dto.ai.QaSessionDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSessionUpdateRequest;
 import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
+import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
@@ -36,7 +37,7 @@ public class QaHistoryService {
 
     public List<QaMessageDTO> getMySessionMessages(Long userId, Long sessionId) {
         QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, userId)
-                .orElseThrow(() -> new IllegalArgumentException("session not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
         // ensure active
         if (Boolean.FALSE.equals(s.getIsActive())) {
             throw new IllegalArgumentException("session inactive");
@@ -49,7 +50,7 @@ public class QaHistoryService {
     @Transactional
     public QaSessionDTO updateMySession(Long userId, Long sessionId, QaSessionUpdateRequest req) {
         QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, userId)
-                .orElseThrow(() -> new IllegalArgumentException("session not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
 
         if (req.getTitle() != null) {
             String t = req.getTitle().trim();
@@ -116,7 +117,7 @@ public class QaHistoryService {
     @Transactional
     public void deleteMySession(Long userId, Long sessionId) {
         QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, userId)
-                .orElseThrow(() -> new IllegalArgumentException("session not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
 
         // 子表先删，避免外键/逻辑引用
         qaTurnsRepository.deleteBySessionId(s.getId());
