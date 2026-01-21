@@ -12,6 +12,7 @@ import {
 } from '../../../../services/draftService';
 import { listBoards, type BoardDTO } from '../../../../services/boardService';
 import { suggestPostTitles } from '../../../../services/aiTitleService';
+import { getPostTitleGenPublicConfig, type PostTitleGenPublicConfigDTO } from '../../../../services/titleGenPublicService';
 
 function getErrorMessage(e: unknown, fallback: string) {
   if (e && typeof e === 'object' && 'message' in e) {
@@ -58,6 +59,9 @@ export default function PostsCreatePage() {
   const [titleSuggesting, setTitleSuggesting] = useState(false);
   const [titleSuggestError, setTitleSuggestError] = useState<string | null>(null);
   const [titleCandidates, setTitleCandidates] = useState<string[]>([]);
+  const [titleGenConfig, setTitleGenConfig] = useState<PostTitleGenPublicConfigDTO | null>(null);
+  const [titleGenConfigError, setTitleGenConfigError] = useState<string | null>(null);
+  const [titleGenCount, setTitleGenCount] = useState<number>(5);
 
   const isEditingDraft = useMemo(() => Boolean(draftId), [draftId]);
   // const isEditingPost = useMemo(() => postId !== null, [postId]);
@@ -78,6 +82,33 @@ export default function PostsCreatePage() {
       }
     };
     loadBoards();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setTitleGenConfigError(null);
+      try {
+        const cfg = await getPostTitleGenPublicConfig();
+        if (!mounted) return;
+        setTitleGenConfig(cfg);
+        setTitleGenCount(cfg?.defaultCount ?? 5);
+        if (cfg && cfg.enabled === false) {
+          setUseAiTitle(false);
+          setTitleCandidates([]);
+          setTitleSuggestError(null);
+        }
+      } catch (e: unknown) {
+        if (!mounted) return;
+        setTitleGenConfig(null);
+        setTitleGenConfigError(getErrorMessage(e, '获取标题生成配置失败'));
+        setTitleGenCount(5);
+      }
+    };
+    void load();
     return () => {
       mounted = false;
     };
@@ -285,7 +316,7 @@ export default function PostsCreatePage() {
       const boardName = boards.find((b) => b.id === draft.boardId)?.name;
       const resp = await suggestPostTitles({
         content,
-        count: 5,
+        count: titleGenCount,
         boardName,
         tags: draft.tags,
       });
@@ -329,6 +360,7 @@ export default function PostsCreatePage() {
                     <input
                       type="checkbox"
                       checked={useAiTitle}
+                      disabled={titleGenConfig?.enabled === false}
                       onChange={(e) => {
                         const v = e.target.checked;
                         setUseAiTitle(v);
@@ -350,6 +382,23 @@ export default function PostsCreatePage() {
                 {useAiTitle && (
                   <div className="mt-2 space-y-2">
                     <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-gray-600">生成数量</div>
+                        <select
+                          value={titleGenCount}
+                          onChange={(e) => setTitleGenCount(Number(e.target.value))}
+                          className="border border-gray-300 rounded-md px-2 py-1 text-xs bg-white"
+                        >
+                          {Array.from(
+                            { length: Math.max(1, Math.min(titleGenConfig?.maxCount ?? 10, 50)) },
+                            (_, i) => i + 1
+                          ).map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <button
                         type="button"
                         disabled={titleSuggesting}
@@ -358,8 +407,19 @@ export default function PostsCreatePage() {
                       >
                         {titleSuggesting ? '生成中...' : '生成候选标题'}
                       </button>
-                      <div className="text-xs text-gray-500">根据正文内容生成 5 个候选标题，点击即可填充。</div>
+                      <div className="text-xs text-gray-500">根据正文内容生成 {titleGenCount} 个候选标题，点击即可填充。</div>
                     </div>
+
+                    {titleGenConfig?.enabled === false && (
+                      <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                        标题生成已被管理员关闭。
+                      </div>
+                    )}
+                    {titleGenConfigError && (
+                      <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                        {titleGenConfigError}
+                      </div>
+                    )}
 
                     {titleSuggestError && (
                       <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
