@@ -1,7 +1,9 @@
 package com.example.EnterpriseRagCommunity.service.moderation.es;
 
-import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
-import lombok.RequiredArgsConstructor;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
@@ -10,8 +12,10 @@ import org.springframework.data.elasticsearch.core.document.Document;
 import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.stereotype.Service;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
+import com.example.EnterpriseRagCommunity.service.es.ElasticsearchIkAnalyzerProbe;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -21,10 +25,20 @@ public class ModerationSamplesIndexService {
 
     private final ElasticsearchTemplate template;
     private final ModerationSimilarityProperties props;
+    private final ElasticsearchIkAnalyzerProbe ikProbe;
+    private final AtomicBoolean ikDisabledWarned = new AtomicBoolean(false);
 
     public boolean indexExists() {
         IndexOperations ops = template.indexOps(IndexCoordinates.of(props.getEs().getIndex()));
         return ops.exists();
+    }
+
+    public void recreateIndex(int embeddingDims) {
+        IndexOperations ops = template.indexOps(IndexCoordinates.of(props.getEs().getIndex()));
+        if (ops.exists()) {
+            ops.delete();
+        }
+        tryCreate(ops, resolveIkEnabled(), embeddingDims);
     }
 
     /**
@@ -44,10 +58,75 @@ public class ModerationSamplesIndexService {
      */
     public void ensureIndex(int embeddingDims) {
         IndexOperations ops = template.indexOps(IndexCoordinates.of(props.getEs().getIndex()));
-        if (ops.exists()) return;
+        if (ops.exists()) {
+            if (embeddingDims > 0) {
+                Integer existingDims = readEmbeddingDims(ops);
+                if (existingDims == null || existingDims != embeddingDims) {
+                    ops.delete();
+                    tryCreate(ops, resolveIkEnabled(), embeddingDims);
+                }
+            }
+            return;
+        }
 
-        // 1) try create with current config
-        tryCreate(ops, props.getEs().isIkEnabled(), embeddingDims);
+        tryCreate(ops, resolveIkEnabled(), embeddingDims);
+    }
+
+    private boolean resolveIkEnabled() {
+        boolean configured = props.getEs().isIkEnabled();
+        if (!configured) return false;
+        boolean supported = ikProbe.isIkSupported();
+        if (!supported && ikDisabledWarned.compareAndSet(false, true)) {
+            log.warn("IK analyzer is enabled in config but not available on this Elasticsearch cluster. Falling back to standard analyzer. index={}", props.getEs().getIndex());
+        }
+        return supported;
+    }
+
+    private Integer readEmbeddingDims(IndexOperations ops) {
+        try {
+            Map<String, Object> mapping = ops.getMapping();
+            return extractEmbeddingDims(mapping);
+        } catch (Exception e) {
+            log.warn("Read ES mapping failed. err={}", e.getMessage());
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Integer extractEmbeddingDims(Map<String, Object> mapping) {
+        if (mapping == null) return null;
+        Object props0 = mapping.get("properties");
+        Integer dims = extractEmbeddingDimsFromProperties(props0);
+        if (dims != null) return dims;
+
+        Object mappings0 = mapping.get("mappings");
+        if (mappings0 instanceof Map<?, ?> mm) {
+            Object props1 = ((Map<String, Object>) mm).get("properties");
+            dims = extractEmbeddingDimsFromProperties(props1);
+            if (dims != null) return dims;
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Integer extractEmbeddingDimsFromProperties(Object props0) {
+        if (!(props0 instanceof Map<?, ?>)) return null;
+        Map<String, Object> props = (Map<String, Object>) props0;
+        Object emb0 = props.get("embedding");
+        if (!(emb0 instanceof Map<?, ?>)) return null;
+        Map<String, Object> emb = (Map<String, Object>) emb0;
+        Object dims0 = emb.get("dims");
+        if (dims0 instanceof Number n) return n.intValue();
+        if (dims0 instanceof String s) {
+            String t = s.trim();
+            if (t.isBlank()) return null;
+            try {
+                return Integer.parseInt(t);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private void tryCreate(IndexOperations ops, boolean ikEnabled) {

@@ -15,6 +15,12 @@ public class SimilarityCheckResponse {
 
     private Double threshold;
 
+    private Integer topK;
+    private Integer numCandidates;
+    private Integer embeddingDims;
+    private String embeddingModel;
+    private Integer maxInputChars;
+
     private List<Hit> hits = new ArrayList<>();
 
     @Data

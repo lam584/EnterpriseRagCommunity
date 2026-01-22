@@ -83,6 +83,12 @@ public interface PostsRepository extends JpaRepository<PostsEntity, Long>, JpaSp
     @Query("select p.id from PostsEntity p where p.isDeleted = false and p.status = :status")
     List<Long> findIdsByStatusAndIsDeletedFalse(@Param("status") PostStatus status);
 
+    @Query("select p from PostsEntity p where p.isDeleted = false and p.status = :status and (:boardId is null or p.boardId = :boardId) and (:fromId is null or p.id >= :fromId) order by p.id asc")
+    Page<PostsEntity> scanByStatusAndBoardFromId(@Param("status") PostStatus status,
+                                                 @Param("boardId") Long boardId,
+                                                 @Param("fromId") Long fromId,
+                                                 Pageable pageable);
+
     java.util.Optional<PostsEntity> findByIdAndIsDeletedFalse(Long id);
 
     // Used by user hard-delete pre-checks (avoid FK constraint errors)

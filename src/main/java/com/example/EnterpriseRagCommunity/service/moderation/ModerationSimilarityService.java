@@ -4,8 +4,10 @@ import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
 import com.example.EnterpriseRagCommunity.dto.moderation.SimilarityCheckRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.SimilarityCheckResponse;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarHitsEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarHitsRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,7 @@ public class ModerationSimilarityService {
     private final AiEmbeddingService embeddingService;
     private final ModerationSamplesIndexService indexService;
     private final ModerationSimilarHitsRepository similarHitsRepository;
+    private final ModerationSimilarityConfigRepository configRepository;
 
     @Value("${spring.elasticsearch.uris:http://127.0.0.1:9200}")
     private String elasticsearchUris;
@@ -41,16 +44,39 @@ public class ModerationSimilarityService {
         String text = req.getText();
         if (text == null || text.isBlank()) throw new IllegalArgumentException("text is required");
 
-        int topK = req.getTopK() != null ? req.getTopK() : props.getEs().getTopK();
+        ModerationSimilarityConfigEntity cfg = loadConfigOrNull();
+
+        int topK = firstNonNull(req.getTopK(), cfg == null ? null : cfg.getDefaultTopK(), props.getEs().getTopK());
         topK = Math.min(Math.max(topK, 1), 50);
 
-        double threshold = req.getThreshold() != null ? req.getThreshold() : props.getEs().getThreshold();
+        double threshold = firstNonNull(req.getThreshold(), cfg == null ? null : cfg.getDefaultThreshold(), props.getEs().getThreshold());
         if (threshold < 0) threshold = 0;
+
+        Integer numCandidates0 = firstNonNull(req.getNumCandidates(), cfg == null ? null : cfg.getDefaultNumCandidates(), null);
+        int numCandidates;
+        if (numCandidates0 == null || numCandidates0 <= 0) {
+            numCandidates = Math.max(100, topK * 10);
+        } else {
+            numCandidates = Math.max(10, Math.min(10_000, numCandidates0));
+        }
+
+        Integer maxInputChars0 = firstNonNull(req.getMaxInputChars(), cfg == null ? null : cfg.getMaxInputChars(), 0);
+        int maxInputChars = Math.max(0, maxInputChars0 == null ? 0 : maxInputChars0);
+
+        String modelToUse = toNonBlank(req.getEmbeddingModel());
+        if (modelToUse == null) modelToUse = toNonBlank(cfg == null ? null : cfg.getEmbeddingModel());
+        if (modelToUse == null) modelToUse = toNonBlank(props.getEs().getEmbeddingModel());
+
+        Integer configuredDimsOverride = req.getEmbeddingDims();
+        Integer configuredDimsCfg = cfg == null ? null : cfg.getEmbeddingDims();
+        int configuredDims = firstNonNull(configuredDimsOverride, configuredDimsCfg, props.getEs().getEmbeddingDims());
+        if (configuredDims < 0) configuredDims = 0;
 
         // Embedding
         AiEmbeddingService.EmbeddingResult er;
         try {
-            er = embeddingService.embedOnce(text, props.getEs().getEmbeddingModel());
+            String inputText = truncateByChars(text, maxInputChars);
+            er = embeddingService.embedOnce(inputText, modelToUse);
         } catch (Exception e) {
             throw new IllegalStateException("Embedding failed: " + e.getMessage(), e);
         }
@@ -61,7 +87,6 @@ public class ModerationSimilarityService {
         }
 
         // Prefer configured dims, but allow auto-infer from embedding result when not configured.
-        int configuredDims = props.getEs().getEmbeddingDims();
         int inferredDims = vec.length;
         if (configuredDims > 0 && configuredDims != inferredDims) {
             throw new IllegalStateException(
@@ -74,10 +99,15 @@ public class ModerationSimilarityService {
         int dimsToUse = configuredDims > 0 ? configuredDims : inferredDims;
         indexService.ensureIndex(dimsToUse);
 
-        List<SimilarityCheckResponse.Hit> hits = queryKnn(topK, vec);
+        List<SimilarityCheckResponse.Hit> hits = queryKnn(topK, numCandidates, vec);
 
         SimilarityCheckResponse resp = new SimilarityCheckResponse();
         resp.setThreshold(threshold);
+        resp.setTopK(topK);
+        resp.setNumCandidates(numCandidates);
+        resp.setEmbeddingDims(dimsToUse);
+        resp.setEmbeddingModel(er == null ? null : er.model());
+        resp.setMaxInputChars(maxInputChars);
         resp.setHits(hits);
 
         Double best = hits.isEmpty() ? null : hits.get(0).getDistance();
@@ -90,6 +120,39 @@ public class ModerationSimilarityService {
         }
 
         return resp;
+    }
+
+    private ModerationSimilarityConfigEntity loadConfigOrNull() {
+        try {
+            return configRepository.findAll().stream().findFirst().orElse(null);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static String truncateByChars(String s, int maxChars) {
+        if (s == null) return "";
+        if (maxChars <= 0) return s;
+        if (s.length() <= maxChars) return s;
+        return s.substring(0, maxChars);
+    }
+
+    private static String toNonBlank(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isBlank() ? null : t;
+    }
+
+    private static Integer firstNonNull(Integer a, Integer b, Integer c) {
+        if (a != null) return a;
+        if (b != null) return b;
+        return c;
+    }
+
+    private static Double firstNonNull(Double a, Double b, Double c) {
+        if (a != null) return a;
+        if (b != null) return b;
+        return c;
     }
 
     private void persistHits(ContentType contentType, Long contentId, double threshold, List<SimilarityCheckResponse.Hit> hits) {
@@ -114,9 +177,8 @@ public class ModerationSimilarityService {
      * Query ES kNN and return hits with cosine distance.
      * Uses a minimal REST call to avoid tight coupling to client internals.
      */
-    private List<SimilarityCheckResponse.Hit> queryKnn(int topK, float[] queryVector) {
+    private List<SimilarityCheckResponse.Hit> queryKnn(int topK, int numCandidates, float[] queryVector) {
         try {
-            int numCandidates = Math.max(100, topK * 10);
             String body = buildKnnSearchBody(topK, numCandidates, queryVector);
 
             String endpoint = elasticsearchUris;

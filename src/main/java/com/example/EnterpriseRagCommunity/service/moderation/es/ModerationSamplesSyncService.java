@@ -4,6 +4,8 @@ import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesReindexResponse;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesSyncResult;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSamplesEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSamplesRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ public class ModerationSamplesSyncService {
     private final ModerationSamplesIndexService indexService;
     private final ModerationSamplesRepository samplesRepository;
     private final AiEmbeddingService embeddingService;
+    private final ModerationSimilarityConfigRepository configRepository;
 
     public ModerationSamplesSyncResult upsertById(Long id) {
         ModerationSamplesSyncResult r = new ModerationSamplesSyncResult();
@@ -60,9 +63,17 @@ public class ModerationSamplesSyncService {
 
         try {
             // embed by normalized_text for best determinism
-            String input = e.getNormalizedText() != null ? e.getNormalizedText() : "";
+            ModerationSimilarityConfigEntity cfg = loadConfigOrNull();
+            String input0 = e.getNormalizedText() != null ? e.getNormalizedText() : "";
 
-            AiEmbeddingService.EmbeddingResult er = embeddingService.embedOnce(input, props.getEs().getEmbeddingModel());
+            Integer maxInputChars0 = cfg == null ? null : cfg.getMaxInputChars();
+            int maxInputChars = Math.max(0, maxInputChars0 == null ? 0 : maxInputChars0);
+            String input = truncateByChars(input0, maxInputChars);
+
+            String modelToUse = toNonBlank(cfg == null ? null : cfg.getEmbeddingModel());
+            if (modelToUse == null) modelToUse = toNonBlank(props.getEs().getEmbeddingModel());
+
+            AiEmbeddingService.EmbeddingResult er = embeddingService.embedOnce(input, modelToUse);
             float[] vec = er == null ? null : er.vector();
             if (vec == null || vec.length == 0) {
                 r.setSuccess(false);
@@ -70,7 +81,8 @@ public class ModerationSamplesSyncService {
                 return r;
             }
 
-            int configuredDims = props.getEs().getEmbeddingDims();
+            Integer cfgDims0 = cfg == null ? null : cfg.getEmbeddingDims();
+            int configuredDims = cfgDims0 != null ? cfgDims0 : props.getEs().getEmbeddingDims();
             int inferredDims = vec.length;
             if (configuredDims > 0 && configuredDims != inferredDims) {
                 r.setSuccess(false);
@@ -102,6 +114,27 @@ public class ModerationSamplesSyncService {
             r.setMessage(ex.getMessage());
             return r;
         }
+    }
+
+    private ModerationSimilarityConfigEntity loadConfigOrNull() {
+        try {
+            return configRepository.findAll().stream().findFirst().orElse(null);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static String truncateByChars(String s, int maxChars) {
+        if (s == null) return "";
+        if (maxChars <= 0) return s;
+        if (s.length() <= maxChars) return s;
+        return s.substring(0, maxChars);
+    }
+
+    private static String toNonBlank(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isBlank() ? null : t;
     }
 
     public ModerationSamplesSyncResult deleteById(Long id) {

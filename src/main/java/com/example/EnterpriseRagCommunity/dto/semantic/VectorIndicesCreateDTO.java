@@ -27,9 +27,9 @@ public class VectorIndicesCreateDTO {
     @Size(max = 32)
     private String metric;
 
-    @ApiModelProperty(value = "向量维度", required = true, example = "1536")
+    @ApiModelProperty(value = "向量维度（0 表示自动推断）", required = true, example = "1024")
     @NotNull
-    @Min(1)
+    @Min(0)
     private Integer dim;
 
     @ApiModelProperty(value = "状态", required = true, example = "READY")
