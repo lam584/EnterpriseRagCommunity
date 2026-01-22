@@ -9,8 +9,18 @@ function apiUrl(path: string): string {
 export type AiStreamEvent =
   | { type: 'meta'; sessionId: number; userMessageId?: number }
   | { type: 'delta'; content: string }
+  | { type: 'sources'; sources: AiCitationSource[] }
   | { type: 'error'; message: string }
   | { type: 'done'; latencyMs?: number };
+
+export type AiCitationSource = {
+  index: number;
+  postId?: number | null;
+  chunkIndex?: number | null;
+  score?: number | null;
+  title?: string | null;
+  url?: string | null;
+};
 
 export type AiChatStreamRequest = {
   sessionId?: number;
@@ -54,6 +64,23 @@ function parseEventBlock(block: string): AiStreamEvent | null {
         return { type: 'meta', sessionId: Number(obj.sessionId), userMessageId: obj.userMessageId as number | undefined };
       case 'delta':
         return { type: 'delta', content: String(obj.content ?? '') };
+      case 'sources': {
+        const arr = (obj.sources as unknown) as unknown[];
+        const sources = Array.isArray(arr)
+          ? arr
+              .map((x) => (x && typeof x === 'object' ? (x as Record<string, unknown>) : null))
+              .filter(Boolean)
+              .map((x) => ({
+                index: Number((x as Record<string, unknown>).index ?? 0),
+                postId: (x as Record<string, unknown>).postId as number | null | undefined,
+                chunkIndex: (x as Record<string, unknown>).chunkIndex as number | null | undefined,
+                score: (x as Record<string, unknown>).score as number | null | undefined,
+                title: ((x as Record<string, unknown>).title as string | null | undefined) ?? null,
+                url: ((x as Record<string, unknown>).url as string | null | undefined) ?? null,
+              }))
+          : [];
+        return { type: 'sources', sources };
+      }
       case 'error':
         return { type: 'error', message: String(obj.message ?? '请求失败') };
       case 'done':

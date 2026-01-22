@@ -6,7 +6,7 @@ import remarkBreaks from 'remark-breaks';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 
-import { chatStream, type AiStreamEvent } from '../../../../services/aiChatService';
+import { chatStream, type AiCitationSource, type AiStreamEvent } from '../../../../services/aiChatService';
 import { getQaSessionMessages, type QaMessageDTO } from '../../../../services/qaHistoryService';
 
 type ChatMsg = {
@@ -48,6 +48,15 @@ export default function AssistantChatPage() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSources, setShowSources] = useState<boolean>(() => {
+    try {
+      const v = localStorage.getItem('assistant.showSources');
+      return v === null ? true : v === 'true';
+    } catch {
+      return true;
+    }
+  });
+  const [sourcesByMsgId, setSourcesByMsgId] = useState<Record<string, AiCitationSource[]>>({});
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -112,6 +121,11 @@ export default function AssistantChatPage() {
       { id: userId, role: 'user', content: text },
       { id: assistantId, role: 'assistant', content: '' }
     ]);
+    setSourcesByMsgId((prev) => {
+      const next = { ...prev };
+      delete next[assistantId];
+      return next;
+    });
 
     setIsStreaming(true);
     const ac = new AbortController();
@@ -161,6 +175,8 @@ export default function AssistantChatPage() {
           } else if (ev.type === 'delta') {
             if (!ev.content) return;
             setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + ev.content } : m)));
+          } else if (ev.type === 'sources') {
+            setSourcesByMsgId((prev) => ({ ...prev, [assistantId]: ev.sources ?? [] }));
           } else if (ev.type === 'error') {
             setError(ev.message || '生成失败');
           } else if (ev.type === 'done') {
@@ -191,6 +207,7 @@ export default function AssistantChatPage() {
     setError(null);
     setSessionId(undefined);
     setMessages([]);
+    setSourcesByMsgId({});
     lastSyncedSessionIdRef.current = undefined;
     pendingUrlSyncRef.current = null;
     urlSyncScheduledRef.current = false;
@@ -205,6 +222,21 @@ export default function AssistantChatPage() {
             <h3 className="text-lg font-semibold">对话</h3>
             <p className="text-gray-600">直连百炼 Qwen3（流式输出）。已支持历史会话继续对话。</p>
             {sessionId !== undefined && <div className="mt-1 text-xs text-gray-500">SessionId：{sessionId}</div>}
+            <label className="mt-2 inline-flex items-center gap-2 text-xs text-gray-600">
+              <input
+                type="checkbox"
+                checked={showSources}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  setShowSources(next);
+                  try {
+                    localStorage.setItem('assistant.showSources', String(next));
+                  } catch {
+                  }
+                }}
+              />
+              显示来源（sources）
+            </label>
           </div>
           <button
             type="button"
@@ -244,6 +276,24 @@ export default function AssistantChatPage() {
                     m.content
                   )}
                 </div>
+                {m.role === 'assistant' && showSources && (sourcesByMsgId[m.id]?.length ?? 0) > 0 && (
+                  <div className="mt-2 inline-block max-w-[90%] rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700">
+                    <div className="font-medium text-gray-900 mb-1">来源</div>
+                    <div className="space-y-1">
+                      {(sourcesByMsgId[m.id] ?? []).slice(0, 20).map((s) => (
+                        <div key={`${s.index}-${s.postId ?? 'x'}`} className="break-words">
+                          <span className="text-gray-500">[{s.index}] </span>
+                          {s.title ? <span className="mr-2">{s.title}</span> : null}
+                          {s.url ? (
+                            <a className="text-blue-600 hover:underline" href={s.url} target="_blank" rel="noreferrer">
+                              {s.url}
+                            </a>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

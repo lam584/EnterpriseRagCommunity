@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,12 +19,15 @@ import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatStreamRequest;
+import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
+import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.ContextStrategy;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.MessageRole;
+import com.example.EnterpriseRagCommunity.entity.semantic.ContextWindowsEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.RetrievalEventsEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.RetrievalHitsEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType;
@@ -32,11 +36,14 @@ import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.ContextWindowsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalEventsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalHitsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
 import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostChatRetrievalService;
+import com.example.EnterpriseRagCommunity.service.retrieval.admin.CitationConfigService;
+import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextClipConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalConfigService;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -55,8 +62,12 @@ public class AiChatService {
     private final RagPostChatRetrievalService ragRetrievalService;
     private final HybridRetrievalConfigService hybridRetrievalConfigService;
     private final HybridRagRetrievalService hybridRagRetrievalService;
+    private final ContextClipConfigService contextClipConfigService;
+    private final CitationConfigService citationConfigService;
+    private final RagContextPromptService ragContextPromptService;
     private final RetrievalEventsRepository retrievalEventsRepository;
     private final RetrievalHitsRepository retrievalHitsRepository;
+    private final ContextWindowsRepository contextWindowsRepository;
     private final PostsRepository postsRepository;
 
     private BailianOpenAiSseClient sseClient() {
@@ -150,13 +161,20 @@ public class AiChatService {
         Long retrievalEventId = null;
         HybridRetrievalConfigDTO hybridCfg = null;
         HybridRagRetrievalService.RetrieveResult hybridResult = null;
+        ContextClipConfigDTO contextCfg = null;
+        CitationConfigDTO citationCfg = null;
+        RagContextPromptService.AssembleResult contextAssembled = null;
         try {
+            contextCfg = contextClipConfigService.getConfigOrDefault();
+            citationCfg = citationConfigService.getConfigOrDefault();
+
             hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
             if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
                 hybridResult = hybridRagRetrievalService.retrieve(req.getMessage(), null, hybridCfg, false);
                 ragHits = toRagHits(hybridResult == null ? null : hybridResult.getFinalHits());
             } else {
-                ragHits = ragRetrievalService.retrieve(req.getMessage(), 6, null);
+                int k = contextCfg == null || contextCfg.getMaxItems() == null ? 6 : Math.max(1, contextCfg.getMaxItems());
+                ragHits = ragRetrievalService.retrieve(req.getMessage(), Math.min(50, k), null);
             }
             if (!req.getDryRun()) {
                 RetrievalEventsEntity ev = new RetrievalEventsEntity();
@@ -206,7 +224,23 @@ public class AiChatService {
             }
 
             if (ragHits != null && !ragHits.isEmpty()) {
-                messages.add(Map.of("role", "system", "content", buildRagContextPrompt(ragHits, hybridCfg)));
+                contextAssembled = ragContextPromptService.assemble(req.getMessage(), ragHits, contextCfg, citationCfg);
+                String prompt = contextAssembled == null ? null : contextAssembled.getContextPrompt();
+                if (prompt != null && !prompt.isBlank()) {
+                    messages.add(Map.of("role", "system", "content", prompt));
+                }
+                if (!req.getDryRun() && retrievalEventId != null && contextAssembled != null && contextCfg != null && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
+                    double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
+                    if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                        ContextWindowsEntity cw = new ContextWindowsEntity();
+                        cw.setEventId(retrievalEventId);
+                        cw.setPolicy(contextAssembled.getPolicy());
+                        cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                        cw.setChunkIds(contextAssembled.getChunkIds());
+                        cw.setCreatedAt(LocalDateTime.now());
+                        contextWindowsRepository.save(cw);
+                    }
+                }
             }
         } catch (Exception ex) {
             logger.warn("ai_chat_rag_retrieval_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
@@ -233,9 +267,6 @@ public class AiChatService {
 
                         String data = line.substring("data:".length()).trim();
                         if ("[DONE]".equals(data)) {
-                            out.write("event: done\n");
-                            out.write("data: {}\n\n");
-                            out.flush();
                             return;
                         }
 
@@ -249,6 +280,41 @@ public class AiChatService {
                         out.flush();
                     }
             );
+
+            if (contextAssembled != null) {
+                String sourcesText = contextAssembled.getSourcesText();
+                if (sourcesText != null && !sourcesText.isBlank()) {
+                    String delta = "\n\n" + sourcesText.trim();
+                    assistantAccum.append(delta);
+                    out.write("event: delta\n");
+                    out.write("data: {\"content\":\"" + jsonEscape(delta) + "\"}\n\n");
+                    out.flush();
+                }
+
+                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
+                if (sources != null && !sources.isEmpty()) {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("{\"sources\":[");
+                    int n = Math.min(200, sources.size());
+                    for (int i = 0; i < n; i++) {
+                        RagContextPromptService.CitationSource s = sources.get(i);
+                        if (s == null) continue;
+                        if (sb.charAt(sb.length() - 1) != '[') sb.append(',');
+                        sb.append('{');
+                        sb.append("\"index\":").append(s.getIndex() == null ? "null" : s.getIndex());
+                        sb.append(",\"postId\":").append(s.getPostId() == null ? "null" : s.getPostId());
+                        sb.append(",\"chunkIndex\":").append(s.getChunkIndex() == null ? "null" : s.getChunkIndex());
+                        sb.append(",\"score\":").append(s.getScore() == null ? "null" : String.format(Locale.ROOT, "%.6f", s.getScore()));
+                        sb.append(",\"title\":\"").append(jsonEscape(s.getTitle() == null ? "" : s.getTitle())).append('"');
+                        sb.append(",\"url\":\"").append(jsonEscape(s.getUrl() == null ? "" : s.getUrl())).append('"');
+                        sb.append('}');
+                    }
+                    sb.append("]}");
+                    out.write("event: sources\n");
+                    out.write("data: " + sb + "\n\n");
+                    out.flush();
+                }
+            }
 
             // finalize persistence
             if (!req.getDryRun()) {
