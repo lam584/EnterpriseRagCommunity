@@ -18,7 +18,7 @@ public class RetrievalHitsEntity {
     @Column(name = "event_id", nullable = false)
     private Long eventId;
 
-    @Column(name = "rank", nullable = false)
+    @Column(name = "`rank`", nullable = false)
     private Integer rank;
 
     @Enumerated(EnumType.STRING)
