@@ -28,8 +28,8 @@ public class VectorIndicesUpdateDTO {
     @Size(max = 32)
     private Optional<String> metric;
 
-    @ApiModelProperty(value = "向量维度", example = "1536")
-    @Min(1)
+    @ApiModelProperty(value = "向量维度（0 表示自动推断）", example = "1024")
+    @Min(0)
     private Optional<Integer> dim;
 
     @ApiModelProperty(value = "状态", example = "READY")

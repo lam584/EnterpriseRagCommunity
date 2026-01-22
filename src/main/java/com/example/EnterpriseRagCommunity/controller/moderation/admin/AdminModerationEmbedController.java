@@ -10,6 +10,7 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSample
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarHitsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationSimilarityService;
+import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSampleCreateRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSampleDTO;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSampleUpdateRequest;
@@ -43,6 +44,7 @@ public class AdminModerationEmbedController {
 
     private final ModerationSimilarityService similarityService;
     private final ModerationSimilarityConfigRepository configRepository;
+    private final ModerationSimilarityProperties similarityProps;
     private final ModerationSamplesRepository samplesRepository;
     private final ModerationSimilarHitsRepository hitsRepository;
     private final ModerationSamplesSyncService samplesSyncService;
@@ -59,6 +61,12 @@ public class AdminModerationEmbedController {
         ModerationSimilarityConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(() -> {
             ModerationSimilarityConfigEntity e = new ModerationSimilarityConfigEntity();
             e.setEnabled(true);
+            e.setEmbeddingModel(similarityProps.getEs().getEmbeddingModel());
+            e.setEmbeddingDims(similarityProps.getEs().getEmbeddingDims());
+            e.setMaxInputChars(0);
+            e.setDefaultTopK(similarityProps.getEs().getTopK());
+            e.setDefaultThreshold(similarityProps.getEs().getThreshold());
+            e.setDefaultNumCandidates(0);
             e.setUpdatedAt(LocalDateTime.now());
             return configRepository.save(e);
         });
@@ -74,11 +82,28 @@ public class AdminModerationEmbedController {
         ModerationSimilarityConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(() -> {
             ModerationSimilarityConfigEntity e = new ModerationSimilarityConfigEntity();
             e.setEnabled(true);
+            e.setEmbeddingModel(similarityProps.getEs().getEmbeddingModel());
+            e.setEmbeddingDims(similarityProps.getEs().getEmbeddingDims());
+            e.setMaxInputChars(0);
+            e.setDefaultTopK(similarityProps.getEs().getTopK());
+            e.setDefaultThreshold(similarityProps.getEs().getThreshold());
+            e.setDefaultNumCandidates(0);
             e.setUpdatedAt(LocalDateTime.now());
             return e;
         });
 
         cfg.setEnabled(enabled);
+        if (payload != null) {
+            if (payload.getEmbeddingModel() != null) {
+                String m = payload.getEmbeddingModel().trim();
+                cfg.setEmbeddingModel(m.isBlank() ? null : m);
+            }
+            if (payload.getEmbeddingDims() != null) cfg.setEmbeddingDims(Math.max(0, payload.getEmbeddingDims()));
+            if (payload.getMaxInputChars() != null) cfg.setMaxInputChars(Math.max(0, payload.getMaxInputChars()));
+            if (payload.getDefaultTopK() != null) cfg.setDefaultTopK(Math.max(1, Math.min(50, payload.getDefaultTopK())));
+            if (payload.getDefaultThreshold() != null) cfg.setDefaultThreshold(Math.max(0, Math.min(1, payload.getDefaultThreshold())));
+            if (payload.getDefaultNumCandidates() != null) cfg.setDefaultNumCandidates(Math.max(0, payload.getDefaultNumCandidates()));
+        }
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg = configRepository.save(cfg);
         return ResponseEntity.ok(cfg);

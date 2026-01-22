@@ -7,11 +7,17 @@ import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.ContextStrategy;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.MessageRole;
+import com.example.EnterpriseRagCommunity.entity.semantic.RetrievalEventsEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.RetrievalHitsEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType;
 import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalEventsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalHitsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagPostChatRetrievalService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -35,6 +41,9 @@ public class AiChatService {
     private final QaSessionsRepository qaSessionsRepository;
     private final QaMessagesRepository qaMessagesRepository;
     private final QaTurnsRepository qaTurnsRepository;
+    private final RagPostChatRetrievalService ragRetrievalService;
+    private final RetrievalEventsRepository retrievalEventsRepository;
+    private final RetrievalHitsRepository retrievalHitsRepository;
 
     private BailianOpenAiSseClient sseClient() {
         return new BailianOpenAiSseClient(aiProperties);
@@ -121,6 +130,47 @@ public class AiChatService {
                 };
                 messages.add(Map.of("role", role, "content", m.getContent()));
             }
+        }
+
+        List<RagPostChatRetrievalService.Hit> ragHits = List.of();
+        Long retrievalEventId = null;
+        try {
+            ragHits = ragRetrievalService.retrieve(req.getMessage(), 6, null);
+            if (!req.getDryRun()) {
+                RetrievalEventsEntity ev = new RetrievalEventsEntity();
+                ev.setUserId(currentUserId);
+                ev.setQueryText(req.getMessage());
+                ev.setBm25K(0);
+                ev.setVecK(6);
+                ev.setHybridK(null);
+                ev.setRerankModel(null);
+                ev.setRerankK(null);
+                ev.setCreatedAt(LocalDateTime.now());
+                ev = retrievalEventsRepository.save(ev);
+                retrievalEventId = ev.getId();
+
+                if (retrievalEventId != null && ragHits != null && !ragHits.isEmpty()) {
+                    List<RetrievalHitsEntity> outHits = new ArrayList<>();
+                    for (int i = 0; i < ragHits.size(); i++) {
+                        RagPostChatRetrievalService.Hit h = ragHits.get(i);
+                        RetrievalHitsEntity rh = new RetrievalHitsEntity();
+                        rh.setEventId(retrievalEventId);
+                        rh.setRank(i + 1);
+                        rh.setHitType(RetrievalHitType.VEC);
+                        rh.setDocumentId(h == null ? null : h.getPostId());
+                        rh.setChunkId(null);
+                        rh.setScore(h == null || h.getScore() == null ? 0.0 : h.getScore());
+                        outHits.add(rh);
+                    }
+                    retrievalHitsRepository.saveAll(outHits);
+                }
+            }
+
+            if (ragHits != null && !ragHits.isEmpty()) {
+                messages.add(Map.of("role", "system", "content", buildRagContextPrompt(ragHits)));
+            }
+        } catch (Exception ex) {
+            logger.warn("ai_chat_rag_retrieval_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
         }
 
         messages.add(Map.of("role", "user", "content", req.getMessage()));
@@ -300,6 +350,31 @@ public class AiChatService {
             }
         }
         return sb.toString();
+    }
+
+    private static String buildRagContextPrompt(List<RagPostChatRetrievalService.Hit> hits) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("以下为从社区帖子检索到的参考资料（仅供参考，回答时请结合用户问题，不要编造不存在的来源）：\n\n");
+        int n = Math.min(6, hits == null ? 0 : hits.size());
+        for (int i = 0; i < n; i++) {
+            RagPostChatRetrievalService.Hit h = hits.get(i);
+            if (h == null) continue;
+            sb.append('[').append(i + 1).append("] ");
+            if (h.getPostId() != null) sb.append("post_id=").append(h.getPostId()).append(' ');
+            if (h.getChunkIndex() != null) sb.append("chunk=").append(h.getChunkIndex()).append(' ');
+            if (h.getScore() != null) sb.append("score=").append(String.format(Locale.ROOT, "%.4f", h.getScore())).append(' ');
+            if (h.getTitle() != null && !h.getTitle().isBlank()) sb.append("\n标题：").append(h.getTitle().trim());
+            sb.append('\n');
+            String text = h.getContentText();
+            if (text != null) {
+                String t = text.trim();
+                if (t.length() > 600) t = t.substring(0, 600) + "...";
+                sb.append(t);
+            }
+            sb.append("\n\n");
+            if (sb.length() > 6000) break;
+        }
+        return sb.toString().trim();
     }
 }
 

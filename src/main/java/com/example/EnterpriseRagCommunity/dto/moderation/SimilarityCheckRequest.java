@@ -16,4 +16,9 @@ public class SimilarityCheckRequest {
     /** Optional override. */
     private Integer topK;
     private Double threshold;
+
+    private Integer numCandidates;
+    private String embeddingModel;
+    private Integer embeddingDims;
+    private Integer maxInputChars;
 }

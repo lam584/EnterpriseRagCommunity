@@ -20,6 +20,24 @@ public class ModerationSimilarityConfigEntity {
     @Column(name = "enabled", nullable = false)
     private Boolean enabled;
 
+    @Column(name = "embedding_model", length = 128)
+    private String embeddingModel;
+
+    @Column(name = "embedding_dims", nullable = false)
+    private Integer embeddingDims;
+
+    @Column(name = "max_input_chars", nullable = false)
+    private Integer maxInputChars;
+
+    @Column(name = "default_top_k", nullable = false)
+    private Integer defaultTopK;
+
+    @Column(name = "default_threshold", nullable = false)
+    private Double defaultThreshold;
+
+    @Column(name = "default_num_candidates", nullable = false)
+    private Integer defaultNumCandidates;
+
     @Version
     @Column(name = "version", nullable = false)
     private Integer version;

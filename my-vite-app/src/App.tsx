@@ -1,5 +1,5 @@
 // src/App.tsx
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useState, useEffect, lazy, Suspense } from 'react';
 import Login from './components/login/Login';
 import AdminSetup from './components/login/AdminSetup';
@@ -135,9 +135,7 @@ function AppRoutes() {
 
             {/* 登录页面 - 如果需要初始设置则重定向到初始设置页面 */}
             <Route path="/login" element={
-                setupRequired
-                    ? <Navigate to="/admin-setup" replace />
-                    : <Login />
+                <LoginRouteElement setupRequired={setupRequired} onBypassSetup={() => setSetupRequired(false)} />
             } />
 
             {/* 前台门户（普通用户/访客） */}
@@ -292,6 +290,19 @@ function AppRoutes() {
             <Route path="*" element={<Navigate to="/portal/discover" replace />} />
         </Routes>
     );
+}
+
+function LoginRouteElement({ setupRequired, onBypassSetup }: { setupRequired: boolean | null; onBypassSetup: () => void }) {
+    const location = useLocation();
+    const state = location.state as { setupJustCompleted?: boolean } | null;
+    const bypass = Boolean(state?.setupJustCompleted);
+
+    useEffect(() => {
+        if (bypass) onBypassSetup();
+    }, [bypass, onBypassSetup]);
+
+    if (setupRequired && !bypass) return <Navigate to="/admin-setup" replace />;
+    return <Login />;
 }
 
 function App() {

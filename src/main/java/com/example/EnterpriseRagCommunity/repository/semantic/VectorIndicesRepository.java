@@ -14,5 +14,6 @@ public interface VectorIndicesRepository extends JpaRepository<VectorIndicesEnti
     List<VectorIndicesEntity> findByProvider(VectorIndexProvider provider);
     List<VectorIndicesEntity> findByStatus(VectorIndexStatus status);
     List<VectorIndicesEntity> findByCollectionName(String collectionName);
+    boolean existsByProviderAndCollectionName(VectorIndexProvider provider, String collectionName);
 }
 
