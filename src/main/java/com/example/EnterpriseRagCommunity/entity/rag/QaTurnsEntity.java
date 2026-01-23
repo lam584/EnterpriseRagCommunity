@@ -32,6 +32,9 @@ public class QaTurnsEntity {
     @Column(name = "latency_ms")
     private Integer latencyMs;
 
+    @Column(name = "first_token_latency_ms")
+    private Integer firstTokenLatencyMs;
+
     // 上下文窗口ID，可空
     @Column(name = "context_window_id")
     private Long contextWindowId;

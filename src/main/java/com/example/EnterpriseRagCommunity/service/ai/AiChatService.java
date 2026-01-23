@@ -18,11 +18,15 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.config.AiProperties;
+import com.example.EnterpriseRagCommunity.dto.ai.AiChatRegenerateStreamRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatStreamRequest;
+import com.example.EnterpriseRagCommunity.dto.ai.OpenSearchTokenizeRequest;
+import com.example.EnterpriseRagCommunity.dto.ai.OpenSearchTokenizeResponse;
 import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
+import com.example.EnterpriseRagCommunity.entity.rag.QaMessageSourcesEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.ContextStrategy;
@@ -33,6 +37,7 @@ import com.example.EnterpriseRagCommunity.entity.semantic.RetrievalHitsEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType;
 import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.repository.rag.QaMessageSourcesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
@@ -69,6 +74,8 @@ public class AiChatService {
     private final RetrievalHitsRepository retrievalHitsRepository;
     private final ContextWindowsRepository contextWindowsRepository;
     private final PostsRepository postsRepository;
+    private final QaMessageSourcesRepository qaMessageSourcesRepository;
+    private final OpenSearchTokenizeService openSearchTokenizeService;
 
     private BailianOpenAiSseClient sseClient() {
         return new BailianOpenAiSseClient(aiProperties);
@@ -135,7 +142,11 @@ public class AiChatService {
 
         // 4) load history for context
         List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", "你是一个严谨、专业的中文助手。"));
+        boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
+        String systemPrompt = deepThink
+                ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
+                : "你是一个严谨、专业的中文助手。";
+        messages.add(Map.of("role", "system", "content", systemPrompt));
 
         int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
         if (!req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
@@ -250,7 +261,10 @@ public class AiChatService {
 
         StringBuilder assistantAccum = new StringBuilder();
         long startedAt = System.currentTimeMillis();
+        long[] firstDeltaAtMs = new long[] {0L};
         String model = (req.getModel() != null && !req.getModel().isBlank()) ? req.getModel() : aiProperties.getModel();
+        Double temperature = req.getTemperature();
+        if (temperature == null && deepThink) temperature = 0.2;
 
         QaMessagesEntity assistantMsg = null;
 
@@ -260,7 +274,7 @@ public class AiChatService {
                     aiProperties.getBaseUrl(),
                     model,
                     messages,
-                    req.getTemperature(),
+                    temperature,
                     line -> {
                         if (line == null || line.isBlank()) return;
                         if (!line.startsWith("data:")) return;
@@ -273,6 +287,7 @@ public class AiChatService {
                         String delta = extractDeltaContent(data);
                         if (delta == null || delta.isEmpty()) return;
 
+                        if (firstDeltaAtMs[0] == 0L) firstDeltaAtMs[0] = System.currentTimeMillis();
                         assistantAccum.append(delta);
 
                         out.write("event: delta\n");
@@ -318,6 +333,12 @@ public class AiChatService {
 
             // finalize persistence
             if (!req.getDryRun()) {
+                Integer userTokensIn = tryTokenCountText(req.getMessage());
+                if (userMsg != null && userTokensIn != null) {
+                    userMsg.setTokensIn(userTokensIn);
+                    qaMessagesRepository.save(userMsg);
+                }
+
                 assistantMsg = new QaMessagesEntity();
                 assistantMsg.setSessionId(session.getId());
                 assistantMsg.setRole(MessageRole.ASSISTANT);
@@ -329,7 +350,21 @@ public class AiChatService {
                 if (turn != null) {
                     turn.setAnswerMessageId(assistantMsg.getId());
                     turn.setLatencyMs((int) (System.currentTimeMillis() - startedAt));
+                    Integer firstTokenLatencyMs = firstDeltaAtMs[0] > 0 ? (int) Math.max(0, firstDeltaAtMs[0] - startedAt) : null;
+                    turn.setFirstTokenLatencyMs(firstTokenLatencyMs);
                     qaTurnsRepository.save(turn);
+                }
+
+                Integer tokensIn = tryTokenCountChatMessages(messages);
+                Integer tokensOut = tryTokenCountText(assistantAccum.toString());
+                if (tokensIn != null || tokensOut != null) {
+                    assistantMsg.setTokensIn(tokensIn);
+                    assistantMsg.setTokensOut(tokensOut);
+                    assistantMsg = qaMessagesRepository.save(assistantMsg);
+                }
+
+                if (contextAssembled != null) {
+                    persistAssistantSources(assistantMsg.getId(), contextAssembled.getSources());
                 }
 
                 // auto title if empty
@@ -351,6 +386,364 @@ public class AiChatService {
             out.write("event: done\n");
             out.write("data: {\"latencyMs\":" + latency + "}\n\n");
             out.flush();
+        }
+    }
+
+    public void streamRegenerate(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
+            throws IOException {
+        if (currentUserId == null) {
+            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
+        }
+        if (questionMessageId == null) throw new IllegalArgumentException("questionMessageId is required");
+        if (req == null) throw new IllegalArgumentException("req is required");
+
+        QaMessagesEntity questionMsg = qaMessagesRepository.findById(questionMessageId)
+                .orElseThrow(() -> new ResourceNotFoundException("message not found"));
+        if (questionMsg.getRole() != MessageRole.USER) {
+            throw new IllegalArgumentException("只能对用户问题消息进行重新生成");
+        }
+
+        QaSessionsEntity session = qaSessionsRepository.findByIdAndUserId(questionMsg.getSessionId(), currentUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
+        if (Boolean.FALSE.equals(session.getIsActive())) {
+            throw new IllegalArgumentException("session inactive");
+        }
+
+        response.setStatus(200);
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("text/event-stream;charset=UTF-8");
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
+
+        PrintWriter out = response.getWriter();
+
+        QaTurnsEntity turn = qaTurnsRepository.findByQuestionMessageId(questionMessageId).orElse(null);
+        if (!Boolean.TRUE.equals(req.getDryRun())) {
+            if (turn == null) {
+                turn = new QaTurnsEntity();
+                turn.setSessionId(session.getId());
+                turn.setQuestionMessageId(questionMsg.getId());
+                turn.setAnswerMessageId(null);
+                turn.setCreatedAt(LocalDateTime.now());
+                turn = qaTurnsRepository.save(turn);
+            } else if (turn.getAnswerMessageId() != null) {
+                Long oldAnswerId = turn.getAnswerMessageId();
+                turn.setAnswerMessageId(null);
+                qaTurnsRepository.save(turn);
+                qaMessagesRepository.deleteById(oldAnswerId);
+            }
+        }
+
+        out.write("event: meta\n");
+        out.write("data: {\"sessionId\":" + session.getId() + ",\"questionMessageId\":" + questionMsg.getId() + "}\n\n");
+        out.flush();
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
+        String systemPrompt = deepThink
+                ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
+                : "你是一个严谨、专业的中文助手。";
+        messages.add(Map.of("role", "system", "content", systemPrompt));
+
+        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
+        if (session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
+            List<QaMessagesEntity> all = qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
+            List<QaMessagesEntity> before = new ArrayList<>();
+            for (QaMessagesEntity m : all) {
+                if (m == null) continue;
+                if (Objects.equals(m.getId(), questionMsg.getId())) break;
+                if (questionMsg.getCreatedAt() != null && m.getCreatedAt() != null && m.getCreatedAt().isAfter(questionMsg.getCreatedAt())) break;
+                before.add(m);
+            }
+            int from = Math.max(0, before.size() - historyLimit);
+            for (int i = from; i < before.size(); i++) {
+                QaMessagesEntity m = before.get(i);
+                String role = switch (m.getRole()) {
+                    case USER -> "user";
+                    case ASSISTANT -> "assistant";
+                    case SYSTEM -> "system";
+                };
+                messages.add(Map.of("role", role, "content", m.getContent()));
+            }
+        }
+
+        String questionText = questionMsg.getContent();
+        messages.add(Map.of("role", "user", "content", questionText));
+
+        List<RagPostChatRetrievalService.Hit> ragHits = List.of();
+        Long retrievalEventId = null;
+        HybridRetrievalConfigDTO hybridCfg = null;
+        HybridRagRetrievalService.RetrieveResult hybridResult = null;
+        ContextClipConfigDTO contextCfg = null;
+        CitationConfigDTO citationCfg = null;
+        RagContextPromptService.AssembleResult contextAssembled = null;
+        try {
+            contextCfg = contextClipConfigService.getConfigOrDefault();
+            citationCfg = citationConfigService.getConfigOrDefault();
+
+            hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
+            if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                hybridResult = hybridRagRetrievalService.retrieve(questionText, null, hybridCfg, false);
+                ragHits = toRagHits(hybridResult == null ? null : hybridResult.getFinalHits());
+            } else {
+                int k = contextCfg == null || contextCfg.getMaxItems() == null ? 6 : Math.max(1, contextCfg.getMaxItems());
+                ragHits = ragRetrievalService.retrieve(questionText, Math.min(50, k), null);
+            }
+            if (!Boolean.TRUE.equals(req.getDryRun())) {
+                RetrievalEventsEntity ev = new RetrievalEventsEntity();
+                ev.setUserId(currentUserId);
+                ev.setQueryText(questionText);
+                if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                    ev.setBm25K(hybridCfg.getBm25K());
+                    ev.setVecK(hybridCfg.getVecK());
+                    ev.setHybridK(hybridCfg.getHybridK());
+                    ev.setRerankModel(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankModel() : null);
+                    ev.setRerankK(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankK() : null);
+                } else {
+                    ev.setBm25K(0);
+                    ev.setVecK(6);
+                    ev.setHybridK(null);
+                    ev.setRerankModel(null);
+                    ev.setRerankK(null);
+                }
+                ev.setCreatedAt(LocalDateTime.now());
+                ev = retrievalEventsRepository.save(ev);
+                retrievalEventId = ev.getId();
+
+                if (retrievalEventId != null) {
+                    List<RetrievalHitsEntity> outHits = new ArrayList<>();
+                    if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                        appendStageHits(outHits, retrievalEventId, RetrievalHitType.BM25, hybridResult == null ? null : hybridResult.getBm25Hits());
+                        appendStageHits(outHits, retrievalEventId, RetrievalHitType.VEC, hybridResult == null ? null : hybridResult.getVecHits());
+                        appendStageHits(outHits, retrievalEventId, RetrievalHitType.RERANK, hybridResult == null ? null : hybridResult.getFinalHits());
+                    } else if (ragHits != null && !ragHits.isEmpty()) {
+                        for (int i = 0; i < ragHits.size(); i++) {
+                            RagPostChatRetrievalService.Hit h = ragHits.get(i);
+                            RetrievalHitsEntity rh = new RetrievalHitsEntity();
+                            rh.setEventId(retrievalEventId);
+                            rh.setRank(i + 1);
+                            rh.setHitType(RetrievalHitType.VEC);
+                            rh.setDocumentId(h == null ? null : h.getPostId());
+                            rh.setChunkId(null);
+                            rh.setScore(h == null || h.getScore() == null ? 0.0 : h.getScore());
+                            outHits.add(rh);
+                        }
+                    }
+                    if (!outHits.isEmpty()) {
+                        sanitizeHitPostIds(outHits);
+                        retrievalHitsRepository.saveAll(outHits);
+                    }
+                }
+            }
+
+            if (ragHits != null && !ragHits.isEmpty()) {
+                contextAssembled = ragContextPromptService.assemble(questionText, ragHits, contextCfg, citationCfg);
+                String prompt = contextAssembled == null ? null : contextAssembled.getContextPrompt();
+                if (prompt != null && !prompt.isBlank()) {
+                    messages.add(1, Map.of("role", "system", "content", prompt));
+                }
+                if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null && contextAssembled != null && contextCfg != null
+                        && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
+                    double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
+                    if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                        ContextWindowsEntity cw = new ContextWindowsEntity();
+                        cw.setEventId(retrievalEventId);
+                        cw.setPolicy(contextAssembled.getPolicy());
+                        cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                        cw.setChunkIds(contextAssembled.getChunkIds());
+                        cw.setCreatedAt(LocalDateTime.now());
+                        contextWindowsRepository.save(cw);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            logger.warn("ai_chat_regenerate_rag_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
+        }
+
+        StringBuilder assistantAccum = new StringBuilder();
+        long startedAt = System.currentTimeMillis();
+        long[] firstDeltaAtMs = new long[] {0L};
+        String model = (req.getModel() != null && !req.getModel().isBlank()) ? req.getModel() : aiProperties.getModel();
+        Double temperature = req.getTemperature();
+        if (temperature == null && deepThink) temperature = 0.2;
+
+        QaMessagesEntity assistantMsg = null;
+
+        try {
+            sseClient().chatCompletionsStream(
+                    null,
+                    aiProperties.getBaseUrl(),
+                    model,
+                    messages,
+                    temperature,
+                    line -> {
+                        if (line == null || line.isBlank()) return;
+                        if (!line.startsWith("data:")) return;
+
+                        String data = line.substring("data:".length()).trim();
+                        if ("[DONE]".equals(data)) {
+                            return;
+                        }
+
+                        String delta = extractDeltaContent(data);
+                        if (delta == null || delta.isEmpty()) return;
+
+                        if (firstDeltaAtMs[0] == 0L) firstDeltaAtMs[0] = System.currentTimeMillis();
+                        assistantAccum.append(delta);
+
+                        out.write("event: delta\n");
+                        out.write("data: {\"content\":\"" + jsonEscape(delta) + "\"}\n\n");
+                        out.flush();
+                    }
+            );
+
+            if (contextAssembled != null) {
+                String sourcesText = contextAssembled.getSourcesText();
+                if (sourcesText != null && !sourcesText.isBlank()) {
+                    String delta = "\n\n" + sourcesText.trim();
+                    assistantAccum.append(delta);
+                    out.write("event: delta\n");
+                    out.write("data: {\"content\":\"" + jsonEscape(delta) + "\"}\n\n");
+                    out.flush();
+                }
+
+                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
+                if (sources != null && !sources.isEmpty()) {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("{\"sources\":[");
+                    int n = Math.min(200, sources.size());
+                    for (int i = 0; i < n; i++) {
+                        RagContextPromptService.CitationSource s = sources.get(i);
+                        if (s == null) continue;
+                        if (sb.charAt(sb.length() - 1) != '[') sb.append(',');
+                        sb.append('{');
+                        sb.append("\"index\":").append(s.getIndex() == null ? "null" : s.getIndex());
+                        sb.append(",\"postId\":").append(s.getPostId() == null ? "null" : s.getPostId());
+                        sb.append(",\"chunkIndex\":").append(s.getChunkIndex() == null ? "null" : s.getChunkIndex());
+                        sb.append(",\"score\":").append(s.getScore() == null ? "null" : String.format(Locale.ROOT, "%.6f", s.getScore()));
+                        sb.append(",\"title\":\"").append(jsonEscape(s.getTitle() == null ? "" : s.getTitle())).append('"');
+                        sb.append(",\"url\":\"").append(jsonEscape(s.getUrl() == null ? "" : s.getUrl())).append('"');
+                        sb.append('}');
+                    }
+                    sb.append("]}");
+                    out.write("event: sources\n");
+                    out.write("data: " + sb + "\n\n");
+                    out.flush();
+                }
+            }
+
+            if (!Boolean.TRUE.equals(req.getDryRun())) {
+                Integer userTokensIn = tryTokenCountText(questionText);
+                if (userTokensIn != null) {
+                    questionMsg.setTokensIn(userTokensIn);
+                    qaMessagesRepository.save(questionMsg);
+                }
+
+                assistantMsg = new QaMessagesEntity();
+                assistantMsg.setSessionId(session.getId());
+                assistantMsg.setRole(MessageRole.ASSISTANT);
+                assistantMsg.setContent(assistantAccum.toString());
+                assistantMsg.setModel(model);
+                assistantMsg.setCreatedAt(LocalDateTime.now());
+                assistantMsg = qaMessagesRepository.save(assistantMsg);
+
+                if (turn != null) {
+                    turn.setAnswerMessageId(assistantMsg.getId());
+                    turn.setLatencyMs((int) (System.currentTimeMillis() - startedAt));
+                    Integer firstTokenLatencyMs = firstDeltaAtMs[0] > 0 ? (int) Math.max(0, firstDeltaAtMs[0] - startedAt) : null;
+                    turn.setFirstTokenLatencyMs(firstTokenLatencyMs);
+                    qaTurnsRepository.save(turn);
+                }
+
+                Integer tokensIn = tryTokenCountChatMessages(messages);
+                Integer tokensOut = tryTokenCountText(assistantAccum.toString());
+                if (tokensIn != null || tokensOut != null) {
+                    assistantMsg.setTokensIn(tokensIn);
+                    assistantMsg.setTokensOut(tokensOut);
+                    assistantMsg = qaMessagesRepository.save(assistantMsg);
+                }
+
+                if (contextAssembled != null) {
+                    persistAssistantSources(assistantMsg.getId(), contextAssembled.getSources());
+                }
+            }
+        } catch (Exception ex) {
+            logger.error("ai_chat_regenerate_stream_failed userId={} sessionId={} model={}", currentUserId, session.getId(), model, ex);
+            out.write("event: error\n");
+            out.write("data: {\"message\":\"" + jsonEscape(String.valueOf(ex.getMessage())) + "\"}\n\n");
+            out.flush();
+        } finally {
+            long latency = System.currentTimeMillis() - startedAt;
+            out.write("event: done\n");
+            out.write("data: {\"latencyMs\":" + latency + "}\n\n");
+            out.flush();
+        }
+    }
+
+    private void persistAssistantSources(Long answerMessageId, List<RagContextPromptService.CitationSource> sources) {
+        if (answerMessageId == null) return;
+        if (sources == null || sources.isEmpty()) return;
+        try {
+            int n = Math.min(200, sources.size());
+            List<QaMessageSourcesEntity> rows = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                RagContextPromptService.CitationSource s = sources.get(i);
+                if (s == null) continue;
+                QaMessageSourcesEntity e = new QaMessageSourcesEntity();
+                e.setMessageId(answerMessageId);
+                e.setSourceIndex(s.getIndex() != null ? s.getIndex() : (i + 1));
+                e.setPostId(s.getPostId());
+                e.setChunkIndex(s.getChunkIndex());
+                e.setScore(s.getScore());
+                e.setTitle(s.getTitle());
+                e.setUrl(s.getUrl());
+                rows.add(e);
+            }
+            if (!rows.isEmpty()) {
+                qaMessageSourcesRepository.saveAll(rows);
+            }
+        } catch (Exception ex) {
+            logger.warn("ai_chat_sources_persist_failed messageId={} err={}", answerMessageId, ex.getMessage());
+        }
+    }
+
+    private Integer tryTokenCountText(String text) {
+        String t = text == null ? null : text.trim();
+        if (t == null || t.isEmpty()) return null;
+        try {
+            OpenSearchTokenizeRequest req = new OpenSearchTokenizeRequest();
+            req.setText(t);
+            OpenSearchTokenizeResponse resp = openSearchTokenizeService.tokenize(req);
+            if (resp == null || resp.getUsage() == null) return null;
+            return resp.getUsage().getInputTokens();
+        } catch (Exception ex) {
+            logger.warn("ai_chat_token_count_text_failed err={}", ex.getMessage());
+            return null;
+        }
+    }
+
+    private Integer tryTokenCountChatMessages(List<Map<String, String>> messages) {
+        if (messages == null || messages.isEmpty()) return null;
+        try {
+            List<OpenSearchTokenizeRequest.Message> list = new ArrayList<>(messages.size());
+            for (Map<String, String> m : messages) {
+                if (m == null) continue;
+                String role = m.get("role");
+                if (role == null || role.isBlank()) continue;
+                OpenSearchTokenizeRequest.Message mm = new OpenSearchTokenizeRequest.Message();
+                mm.setRole(role);
+                mm.setContent(m.getOrDefault("content", ""));
+                list.add(mm);
+            }
+            if (list.isEmpty()) return null;
+            OpenSearchTokenizeRequest req = new OpenSearchTokenizeRequest();
+            req.setMessages(list);
+            OpenSearchTokenizeResponse resp = openSearchTokenizeService.tokenize(req);
+            if (resp == null || resp.getUsage() == null) return null;
+            return resp.getUsage().getInputTokens();
+        } catch (Exception ex) {
+            logger.warn("ai_chat_token_count_messages_failed err={}", ex.getMessage());
+            return null;
         }
     }
 
@@ -580,4 +973,3 @@ public class AiChatService {
         return s.substring(0, end);
     }
 }
-

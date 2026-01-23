@@ -27,6 +27,10 @@ public class AiChatStreamRequest {
     /** Optional max history messages to include (excluding current user message). */
     private Integer historyLimit;
 
+    /** If true, use a more thorough system instruction and a steadier default temperature. */
+    @NotNull
+    private Boolean deepThink = false;
+
     /** If true, backend won't persist to DB (useful for debugging). Default false. */
     @NotNull
     private Boolean dryRun = false;

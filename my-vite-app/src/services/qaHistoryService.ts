@@ -1,4 +1,5 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import type { AiCitationSource } from './aiChatService';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 function apiUrl(path: string): string {
@@ -24,7 +25,10 @@ export type QaMessageDTO = {
   model?: string | null;
   tokensIn?: number | null;
   tokensOut?: number | null;
+  latencyMs?: number | null;
+  firstTokenLatencyMs?: number | null;
   createdAt: string;
+  sources?: AiCitationSource[] | null;
 };
 
 export type QaSearchHitDTO = {
@@ -87,6 +91,19 @@ export async function updateQaSession(sessionId: number, payload: { title?: stri
 
 export async function deleteQaSession(sessionId: number) {
   return apiFetch<void>(`/api/ai/qa/sessions/${sessionId}`, {
+    method: 'DELETE'
+  });
+}
+
+export async function updateQaMessage(messageId: number, payload: { content: string }) {
+  return apiFetch<void>(`/api/ai/qa/messages/${messageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
+export async function deleteQaMessage(messageId: number) {
+  return apiFetch<void>(`/api/ai/qa/messages/${messageId}`, {
     method: 'DELETE'
   });
 }
