@@ -1,12 +1,17 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
 import com.example.EnterpriseRagCommunity.dto.ai.QaMessageDTO;
+import com.example.EnterpriseRagCommunity.dto.ai.QaCitationSourceDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSearchHitDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSessionDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSessionUpdateRequest;
 import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
+import com.example.EnterpriseRagCommunity.entity.rag.QaMessageSourcesEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
+import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
+import com.example.EnterpriseRagCommunity.entity.rag.enums.MessageRole;
 import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
+import com.example.EnterpriseRagCommunity.repository.rag.QaMessageSourcesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
@@ -19,7 +24,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +35,7 @@ public class QaHistoryService {
     private final QaSessionsRepository qaSessionsRepository;
     private final QaMessagesRepository qaMessagesRepository;
     private final QaTurnsRepository qaTurnsRepository;
+    private final QaMessageSourcesRepository qaMessageSourcesRepository;
 
     public Page<QaSessionDTO> listMySessions(Long userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -42,9 +50,45 @@ public class QaHistoryService {
         if (Boolean.FALSE.equals(s.getIsActive())) {
             throw new IllegalArgumentException("session inactive");
         }
-        return qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(sessionId).stream()
-                .map(this::toMessageDTO)
+        List<QaMessagesEntity> msgs = qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+
+        Map<Long, QaTurnsEntity> turnByAnswerMessageId = new HashMap<>();
+        List<QaTurnsEntity> turns = qaTurnsRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+        for (QaTurnsEntity t : turns) {
+            if (t == null || t.getAnswerMessageId() == null) continue;
+            turnByAnswerMessageId.put(t.getAnswerMessageId(), t);
+        }
+
+        Map<Long, List<QaCitationSourceDTO>> sourcesByMessageId = new HashMap<>();
+        List<Long> assistantMessageIds = msgs.stream()
+                .filter(m -> m.getRole() == MessageRole.ASSISTANT)
+                .map(QaMessagesEntity::getId)
                 .toList();
+        if (!assistantMessageIds.isEmpty()) {
+            List<QaMessageSourcesEntity> rows = qaMessageSourcesRepository
+                    .findByMessageIdInOrderByMessageIdAscSourceIndexAsc(assistantMessageIds);
+            for (QaMessageSourcesEntity r : rows) {
+                if (r == null || r.getMessageId() == null) continue;
+                sourcesByMessageId.computeIfAbsent(r.getMessageId(), k -> new ArrayList<>()).add(toSourceDTO(r));
+            }
+        }
+
+        List<QaMessageDTO> out = new ArrayList<>(msgs.size());
+        for (QaMessagesEntity e : msgs) {
+            QaMessageDTO dto = toMessageDTO(e);
+            if (e.getRole() == MessageRole.ASSISTANT) {
+                dto.setSources(sourcesByMessageId.getOrDefault(e.getId(), List.of()));
+                QaTurnsEntity t = turnByAnswerMessageId.get(e.getId());
+                if (t != null) {
+                    dto.setLatencyMs(t.getLatencyMs());
+                    dto.setFirstTokenLatencyMs(t.getFirstTokenLatencyMs());
+                }
+            } else {
+                dto.setSources(null);
+            }
+            out.add(dto);
+        }
+        return out;
     }
 
     @Transactional
@@ -148,6 +192,17 @@ public class QaHistoryService {
         return dto;
     }
 
+    private static QaCitationSourceDTO toSourceDTO(QaMessageSourcesEntity e) {
+        QaCitationSourceDTO dto = new QaCitationSourceDTO();
+        dto.setIndex(e.getSourceIndex());
+        dto.setPostId(e.getPostId());
+        dto.setChunkIndex(e.getChunkIndex());
+        dto.setScore(e.getScore());
+        dto.setTitle(e.getTitle());
+        dto.setUrl(e.getUrl());
+        return dto;
+    }
+
     static String toBooleanModeQuery(String raw) {
         // Split by whitespace; convert token -> +token*
         String[] parts = raw.trim().split("\\s+");
@@ -171,4 +226,3 @@ public class QaHistoryService {
         return t.substring(0, max) + "…";
     }
 }
-

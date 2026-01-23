@@ -1,4 +1,4 @@
-import { getCsrfToken } from '../utils/csrfUtils';
+  import { getCsrfToken } from '../utils/csrfUtils';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 function apiUrl(path: string): string {
@@ -7,7 +7,7 @@ function apiUrl(path: string): string {
 }
 
 export type AiStreamEvent =
-  | { type: 'meta'; sessionId: number; userMessageId?: number }
+  | { type: 'meta'; sessionId: number; userMessageId?: number; questionMessageId?: number }
   | { type: 'delta'; content: string }
   | { type: 'sources'; sources: AiCitationSource[] }
   | { type: 'error'; message: string }
@@ -28,6 +28,15 @@ export type AiChatStreamRequest = {
   model?: string;
   temperature?: number;
   historyLimit?: number;
+  deepThink?: boolean;
+  dryRun?: boolean;
+};
+
+export type AiChatRegenerateStreamRequest = {
+  model?: string;
+  temperature?: number;
+  historyLimit?: number;
+  deepThink?: boolean;
   dryRun?: boolean;
 };
 
@@ -61,7 +70,12 @@ function parseEventBlock(block: string): AiStreamEvent | null {
 
     switch (eventType) {
       case 'meta':
-        return { type: 'meta', sessionId: Number(obj.sessionId), userMessageId: obj.userMessageId as number | undefined };
+        return {
+          type: 'meta',
+          sessionId: Number(obj.sessionId),
+          userMessageId: obj.userMessageId as number | undefined,
+          questionMessageId: obj.questionMessageId as number | undefined
+        };
       case 'delta':
         return { type: 'delta', content: String(obj.content ?? '') };
       case 'sources': {
@@ -109,7 +123,7 @@ export async function chatStream(
       Accept: 'text/event-stream'
     },
     credentials: 'include',
-    body: JSON.stringify({ ...payload, dryRun: payload.dryRun ?? false }),
+    body: JSON.stringify({ ...payload, dryRun: payload.dryRun ?? false, deepThink: payload.deepThink ?? false }),
     signal
   });
 
@@ -133,6 +147,56 @@ export async function chatStream(
     buffer += decoder.decode(value, { stream: true });
 
     // SSE events are separated by double newline
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const block = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+
+      const ev = parseEventBlock(block);
+      if (ev) onEvent(ev);
+    }
+  }
+}
+
+export async function regenerateStream(
+  questionMessageId: number,
+  payload: AiChatRegenerateStreamRequest,
+  onEvent: (ev: AiStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const csrfToken = await getCsrfToken();
+
+  const res = await fetch(apiUrl(`/api/ai/qa/messages/${questionMessageId}/regenerate/stream`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+      Accept: 'text/event-stream'
+    },
+    credentials: 'include',
+    body: JSON.stringify({ ...payload, dryRun: payload.dryRun ?? false, deepThink: payload.deepThink ?? false }),
+    signal
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `请求失败: ${res.status}`);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) {
+    throw new Error('浏览器不支持流式响应');
+  }
+
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
     let idx: number;
     while ((idx = buffer.indexOf('\n\n')) >= 0) {
       const block = buffer.slice(0, idx);

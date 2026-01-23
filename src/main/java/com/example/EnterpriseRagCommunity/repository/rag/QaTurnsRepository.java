@@ -6,11 +6,16 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface QaTurnsRepository extends JpaRepository<QaTurnsEntity, Long>, JpaSpecificationExecutor<QaTurnsEntity> {
     // 按 sessionId 查询轮次列表（基于字段名 sessionId）
     List<QaTurnsEntity> findBySessionIdOrderByCreatedAtAsc(Long sessionId);
+
+    Optional<QaTurnsEntity> findByQuestionMessageId(Long questionMessageId);
+
+    Optional<QaTurnsEntity> findByAnswerMessageId(Long answerMessageId);
 
     @org.springframework.data.jpa.repository.Modifying
     void deleteBySessionId(Long sessionId);
