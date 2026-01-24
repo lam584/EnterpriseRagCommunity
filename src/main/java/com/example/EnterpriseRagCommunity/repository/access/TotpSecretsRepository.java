@@ -10,6 +10,9 @@ import java.util.Optional;
 
 @Repository
 public interface TotpSecretsRepository extends JpaRepository<TotpSecretsEntity, Long>, JpaSpecificationExecutor<TotpSecretsEntity> {
+    List<TotpSecretsEntity> findByUserId(Long userId);
     List<TotpSecretsEntity> findByUserIdAndEnabledTrue(Long userId);
+    List<TotpSecretsEntity> findTop5ByUserIdAndEnabledFalseOrderByCreatedAtDesc(Long userId);
+    Optional<TotpSecretsEntity> findTopByUserIdAndEnabledTrueOrderByCreatedAtDesc(Long userId);
     Optional<TotpSecretsEntity> findTopByUserIdOrderByCreatedAtDesc(Long userId);
 }

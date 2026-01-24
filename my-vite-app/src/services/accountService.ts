@@ -20,6 +20,8 @@ export interface UpdateAccountRequest {
 export interface ChangePasswordRequest {
   currentPassword: string;
   newPassword: string;
+  totpCode?: string;
+  emailCode?: string;
 }
 
 const BASE_URL = '/api/account';

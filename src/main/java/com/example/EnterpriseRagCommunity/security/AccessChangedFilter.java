@@ -36,6 +36,7 @@ import java.util.List;
 public class AccessChangedFilter extends OncePerRequestFilter {
 
     public static final String SESSION_ACCESS_TS_KEY = "ACCESS_TS";
+    public static final String SESSION_INVALIDATED_TS_KEY = "AUTH_INVALIDATED_AT";
 
     private final AccessControlService accessControlService;
 
@@ -80,6 +81,28 @@ public class AccessChangedFilter extends OncePerRequestFilter {
             Object v = session.getAttribute(SESSION_ACCESS_TS_KEY);
             long sessionTs = (v instanceof Number) ? ((Number) v).longValue() : 0L;
 
+            long dbInvalidatedTs = user.getSessionInvalidatedAt() == null
+                    ? 0L
+                    : user.getSessionInvalidatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+            Object inv = session.getAttribute(SESSION_INVALIDATED_TS_KEY);
+            long sessionInvalidatedTs = (inv instanceof Number) ? ((Number) inv).longValue() : 0L;
+
+            if (dbInvalidatedTs > 0L && dbInvalidatedTs != sessionInvalidatedTs && dbInvalidatedTs > sessionInvalidatedTs) {
+                try {
+                    session.invalidate();
+                } catch (IllegalStateException ignored) {
+                }
+                SecurityContextHolder.clearContext();
+                response.setStatus(401);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"message\":\"登录状态已失效，请重新登录\"}");
+                return;
+            }
+
+            if (dbInvalidatedTs > 0L && sessionInvalidatedTs == 0L) {
+                session.setAttribute(SESSION_INVALIDATED_TS_KEY, dbInvalidatedTs);
+            }
+
             if (dbTs > 0L && (sessionTs == 0L || dbTs != sessionTs)) {
                 List<GrantedAuthority> newAuthorities = accessControlService.buildAuthorities(user.getId());
                 Authentication newAuth = new UsernamePasswordAuthenticationToken(auth.getPrincipal(), auth.getCredentials(), newAuthorities);
@@ -89,8 +112,21 @@ public class AccessChangedFilter extends OncePerRequestFilter {
                 ctx.setAuthentication(newAuth);
                 session.setAttribute(SESSION_ACCESS_TS_KEY, dbTs);
             }
+        } catch (java.util.NoSuchElementException e) {
+            boolean hasSessionMarker =
+                    session.getAttribute(SESSION_ACCESS_TS_KEY) != null || session.getAttribute(SESSION_INVALIDATED_TS_KEY) != null;
+            if (hasSessionMarker) {
+                try {
+                    session.invalidate();
+                } catch (IllegalStateException ignored) {
+                }
+                SecurityContextHolder.clearContext();
+                response.setStatus(401);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"message\":\"登录状态已失效，请重新登录\"}");
+                return;
+            }
         } catch (Exception ignored) {
-            // Never break requests due to refresh logic.
         }
 
         filterChain.doFilter(request, response);

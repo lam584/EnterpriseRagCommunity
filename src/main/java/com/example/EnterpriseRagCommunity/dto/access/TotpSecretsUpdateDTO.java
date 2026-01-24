@@ -22,6 +22,18 @@ public class TotpSecretsUpdateDTO {
     @Size(max = 512)
     private Optional<byte[]> secretEncrypted = Optional.empty();
 
+    @ApiModelProperty("HMAC 算法（SHA1/SHA256/SHA512）")
+    private Optional<String> algorithm = Optional.empty();
+
+    @ApiModelProperty("验证码位数（6/8）")
+    private Optional<Integer> digits = Optional.empty();
+
+    @ApiModelProperty("时间步长（秒）")
+    private Optional<Integer> periodSeconds = Optional.empty();
+
+    @ApiModelProperty("允许时间偏移窗口（步数）")
+    private Optional<Integer> skew = Optional.empty();
+
     @ApiModelProperty("是否启用二次验证")
     private Optional<Boolean> enabled = Optional.empty();
 

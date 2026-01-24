@@ -24,6 +24,18 @@ public class TotpSecretsEntity {
     @Column(name = "secret_encrypted", nullable = false)
     private byte[] secretEncrypted;
 
+    @Column(name = "algorithm", nullable = false, length = 16)
+    private String algorithm;
+
+    @Column(name = "digits", nullable = false)
+    private Integer digits;
+
+    @Column(name = "period_seconds", nullable = false)
+    private Integer periodSeconds;
+
+    @Column(name = "skew", nullable = false)
+    private Integer skew;
+
     @Column(name = "enabled", nullable = false)
     private Boolean enabled;
 

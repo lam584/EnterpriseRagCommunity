@@ -14,5 +14,17 @@ import java.util.Optional;
 public interface EmailVerificationsRepository extends JpaRepository<EmailVerificationsEntity, Long>, JpaSpecificationExecutor<EmailVerificationsEntity> {
     Optional<EmailVerificationsEntity> findByCode(String code);
     List<EmailVerificationsEntity> findByUserIdAndPurposeAndConsumedAtIsNull(Long userId, EmailVerificationPurpose purpose);
+    Optional<EmailVerificationsEntity> findFirstByUserIdAndPurposeAndConsumedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
+            Long userId,
+            EmailVerificationPurpose purpose,
+            LocalDateTime now
+    );
+    Optional<EmailVerificationsEntity> findFirstByUserIdAndPurposeAndTargetEmailAndConsumedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(
+            Long userId,
+            EmailVerificationPurpose purpose,
+            String targetEmail,
+            LocalDateTime now
+    );
+    Optional<EmailVerificationsEntity> findFirstByUserIdAndPurposeOrderByCreatedAtDesc(Long userId, EmailVerificationPurpose purpose);
     List<EmailVerificationsEntity> findByExpiresAtBefore(LocalDateTime time);
 }

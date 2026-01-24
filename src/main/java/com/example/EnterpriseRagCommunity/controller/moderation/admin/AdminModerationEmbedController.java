@@ -127,7 +127,7 @@ public class AdminModerationEmbedController {
                 Sort.by(Sort.Direction.DESC, "id")
         );
 
-        Specification<ModerationSamplesEntity> spec = (root, _, cb) -> {
+        Specification<ModerationSamplesEntity> spec = (root, query, cb) -> {
             var p = cb.conjunction();
             if (id != null) p = cb.and(p, cb.equal(root.get("id"), id));
             if (category != null) p = cb.and(p, cb.equal(root.get("category"), category));
@@ -330,7 +330,7 @@ public class AdminModerationEmbedController {
                 Sort.by(Sort.Direction.DESC, "matchedAt").and(Sort.by(Sort.Direction.DESC, "id"))
         );
 
-        Specification<ModerationSimilarHitsEntity> spec = (root, _, cb) -> {
+        Specification<ModerationSimilarHitsEntity> spec = (root, query, cb) -> {
             var p = cb.conjunction();
             if (contentType != null) p = cb.and(p, cb.equal(root.get("contentType"), contentType));
             if (contentId != null) p = cb.and(p, cb.equal(root.get("contentId"), contentId));

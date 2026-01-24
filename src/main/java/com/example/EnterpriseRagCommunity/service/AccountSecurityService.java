@@ -7,6 +7,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.NoSuchElementException;
 
 @Service
@@ -39,7 +40,22 @@ public class AccountSecurityService {
         }
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setSessionInvalidatedAt(LocalDateTime.now());
         usersRepository.save(user);
+    }
+
+    @Transactional(readOnly = true)
+    public void verifyPasswordByEmail(String email, String password) {
+        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new NoSuchElementException("User not found: " + email));
+
+        if (password == null || password.isBlank()) {
+            throw new IllegalArgumentException("请输入密码");
+        }
+
+        if (!passwordEncoder.matches(password, user.getPasswordHash())) {
+            throw new IllegalArgumentException("密码不正确");
+        }
     }
 }
 

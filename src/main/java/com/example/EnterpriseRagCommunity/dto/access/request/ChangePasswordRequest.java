@@ -13,5 +13,9 @@ public class ChangePasswordRequest {
     @NotBlank(message = "请输入新密码")
     @Size(min = 6, message = "新密码长度至少 6 位")
     private String newPassword;
+
+    private String totpCode;
+
+    private String emailCode;
 }
 
