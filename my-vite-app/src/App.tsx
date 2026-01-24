@@ -1,6 +1,7 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useState, useEffect, lazy, Suspense } from 'react';
+import { Toaster } from 'react-hot-toast';
 import Login from './components/login/Login';
 import AdminSetup from './components/login/AdminSetup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -9,6 +10,7 @@ import { checkInitialSetupStatus } from './services/authService';
 import CommunityPortalLayout from './pages/portal/CommunityPortalLayout';
 import AdminDashboardLayout from './pages/admin/AdminDashboardLayout';
 import Register from './components/login/Register';
+import ForgotPassword from './components/login/ForgotPassword';
 import DiscoverLayout, { DiscoverIndexRedirect } from './pages/portal/discover/DiscoverLayout';
 import PostsLayout, { PostsIndexRedirect } from './pages/portal/posts/PostsLayout';
 import InteractLayout, { InteractIndexRedirect } from './pages/portal/interact/InteractLayout';
@@ -285,6 +287,7 @@ function AppRoutes() {
             {/* 新闻相关页面 - 公开访问 */}
 
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
 
             {/* 兜底路由 */}
             <Route path="*" element={<Navigate to="/portal/discover" replace />} />
@@ -311,6 +314,7 @@ function App() {
             <AccessProvider>
                 <BrowserRouter>
                     <AppRoutes />
+                    <Toaster position="top-right" />
                 </BrowserRouter>
             </AccessProvider>
         </AuthProvider>

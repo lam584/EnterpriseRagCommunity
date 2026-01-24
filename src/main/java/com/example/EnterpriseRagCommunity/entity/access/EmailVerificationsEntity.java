@@ -23,6 +23,9 @@ public class EmailVerificationsEntity {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @Column(name = "target_email", length = 191)
+    private String targetEmail;
+
     @Column(name = "code", nullable = false, length = 64)
     private String code;
 

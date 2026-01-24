@@ -21,6 +21,18 @@ public class TotpSecretsCreateDTO {
     @Size(max = 512)
     private byte[] secretEncrypted;
 
+    @ApiModelProperty("HMAC 算法（SHA1/SHA256/SHA512），默认 SHA1")
+    private String algorithm = "SHA1";
+
+    @ApiModelProperty("验证码位数（6/8），默认 6")
+    private Integer digits = 6;
+
+    @ApiModelProperty("时间步长（秒），默认 30")
+    private Integer periodSeconds = 30;
+
+    @ApiModelProperty("允许时间偏移窗口（步数），默认 1")
+    private Integer skew = 1;
+
     @ApiModelProperty("是否启用二次验证，默认 false")
     private Boolean enabled = Boolean.FALSE;
 

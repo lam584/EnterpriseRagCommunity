@@ -20,6 +20,18 @@ public class TotpSecretsQueryDTO extends PageRequestDTO {
     @ApiModelProperty("TOTP密钥加密值")
     private byte[] secretEncrypted;
 
+    @ApiModelProperty("HMAC 算法（SHA1/SHA256/SHA512）")
+    private String algorithm;
+
+    @ApiModelProperty("验证码位数（6/8）")
+    private Integer digits;
+
+    @ApiModelProperty("时间步长（秒）")
+    private Integer periodSeconds;
+
+    @ApiModelProperty("允许时间偏移窗口（步数）")
+    private Integer skew;
+
     @ApiModelProperty("验证时间")
     private LocalDateTime verifiedAt;
 

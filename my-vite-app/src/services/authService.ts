@@ -28,6 +28,24 @@ export interface InitialAdminRegisterRequest {
   code?: string;
 }
 
+export interface TotpMasterKeySetupResult {
+  envVarName?: string;
+  keyBase64?: string;
+  attempted?: boolean;
+  succeeded?: boolean;
+  scope?: 'SYSTEM' | 'USER' | string;
+  command?: string;
+  fallbackCommand?: string;
+  message?: string;
+  error?: string;
+  restartRequired?: boolean;
+}
+
+export interface InitialAdminRegisterResponse {
+  user?: AdminDTO;
+  totpMasterKeySetup?: TotpMasterKeySetupResult;
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;
@@ -47,7 +65,15 @@ export async function login(email: string, password: string, csrfToken: string):
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    throw new Error((errorData && errorData.message) || '登录失败');
+    const message = (errorData && (errorData as any).message) || '登录失败';
+    const err = new Error(message) as Error & { code?: string; email?: string };
+    if (errorData && typeof errorData === 'object') {
+      const code = (errorData as any).code;
+      const respEmail = (errorData as any).email;
+      if (typeof code === 'string') err.code = code;
+      if (typeof respEmail === 'string') err.email = respEmail;
+    }
+    throw err;
   }
 
   // 登录成功后，会话ID改变，CSRF令牌也会改变
@@ -108,7 +134,7 @@ export async function checkInitialSetupStatus(): Promise<InitialSetupStatusRespo
  * 注册初始管理员账户
  * @param registerData 注册信息（仅 email、password、displayName）
  */
-export async function registerInitialAdmin(registerData: InitialAdminRegisterRequest): Promise<void> {
+export async function registerInitialAdmin(registerData: InitialAdminRegisterRequest): Promise<InitialAdminRegisterResponse> {
   // 获取 CSRF 令牌
   const csrfToken = await getCsrfToken();
 
@@ -137,10 +163,10 @@ export async function registerInitialAdmin(registerData: InitialAdminRegisterReq
     if (!data.success) {
       throw new Error(data.message || '注册初始管理员失败');
     }
-    return;
+    return (data.data ?? {}) as InitialAdminRegisterResponse;
   }
 
-  return;
+  return data as InitialAdminRegisterResponse;
 }
 
 /**
@@ -177,5 +203,84 @@ export async function register(registerData: RegisterRequest): Promise<void> {
     if (!api.success) {
       throw new Error(api.message || '注册失败');
     }
+  }
+}
+
+export async function registerAndGetStatus(registerData: RegisterRequest): Promise<{ message?: string; status?: string }> {
+  const csrfToken = await getCsrfToken();
+
+  const res = await fetch('/api/auth/register', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify(registerData),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const fieldErrMsg = typeof data === 'object' && data !== null
+      ? (data.message || data.username || data.email || data.password)
+      : undefined;
+    throw new Error(fieldErrMsg || '注册失败');
+  }
+
+  if (data && typeof data === 'object' && 'success' in data) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api: any = data;
+    if (!api.success) {
+      throw new Error(api.message || '注册失败');
+    }
+    const status = api?.data?.status;
+    const message = api?.message;
+    return { message: typeof message === 'string' ? message : undefined, status: typeof status === 'string' ? status : undefined };
+  }
+
+  return {};
+}
+
+export async function verifyRegister(email: string, code: string): Promise<void> {
+  const res = await fetch('/api/auth/register/verify', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ email, code }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = typeof data?.message === 'string' ? data.message : undefined;
+    throw new Error(msg || '激活失败');
+  }
+
+  if (data && typeof data === 'object' && 'success' in data) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api: any = data;
+    if (!api.success) {
+      throw new Error(api.message || '激活失败');
+    }
+  }
+}
+
+export async function resendRegisterCode(email: string): Promise<void> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch('/api/auth/register/resend-code', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({ email }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = typeof (data as any)?.message === 'string' ? (data as any).message : undefined;
+    throw new Error(msg || '发送失败');
   }
 }

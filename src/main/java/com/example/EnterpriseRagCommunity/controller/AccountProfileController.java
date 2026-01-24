@@ -1,23 +1,36 @@
 package com.example.EnterpriseRagCommunity.controller;
 
-import com.example.EnterpriseRagCommunity.dto.access.UpdateMyProfileRequest;
-import com.example.EnterpriseRagCommunity.dto.access.UsersDTO;
-import com.example.EnterpriseRagCommunity.dto.access.request.ChangePasswordRequest;
-import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
-import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
-import com.example.EnterpriseRagCommunity.service.AccountSecurityService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import com.example.EnterpriseRagCommunity.dto.access.UpdateMyProfileRequest;
+import com.example.EnterpriseRagCommunity.dto.access.UsersDTO;
+import com.example.EnterpriseRagCommunity.dto.access.request.ChangePasswordRequest;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.service.AccountSecurityService;
+import com.example.EnterpriseRagCommunity.service.AccountTotpService;
+import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
+import com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/account")
@@ -27,6 +40,9 @@ public class AccountProfileController {
 
     private final UsersRepository usersRepository;
     private final AccountSecurityService accountSecurityService;
+    private final AccountTotpService accountTotpService;
+    private final EmailVerificationService emailVerificationService;
+    private final EmailVerificationMailer emailVerificationMailer;
 
     @PutMapping("/profile")
     public ResponseEntity<?> updateMyProfile(@RequestBody @Valid UpdateMyProfileRequest req) {
@@ -79,7 +95,7 @@ public class AccountProfileController {
     }
 
     @PostMapping("/password")
-    public ResponseEntity<?> changeMyPassword(@RequestBody @Valid ChangePasswordRequest req) {
+    public ResponseEntity<?> changeMyPassword(@RequestBody @Valid ChangePasswordRequest req, HttpServletRequest servletRequest) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
             Map<String, String> response = new HashMap<>();
@@ -90,9 +106,53 @@ public class AccountProfileController {
         String email = auth.getName();
 
         try {
+            UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+            boolean emailSvcEnabled = emailVerificationMailer.isEnabled();
+            boolean totpEnabled = accountTotpService.isEnabledByEmail(email);
+
+            if (emailSvcEnabled && totpEnabled) {
+                // 1. If both are enabled, allow user to choose one
+                String emailCode = req.getEmailCode() == null ? "" : req.getEmailCode().trim();
+                String totpCode = req.getTotpCode() == null ? "" : req.getTotpCode().trim();
+
+                if (emailCode.isEmpty() && totpCode.isEmpty()) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入验证码（邮箱或动态验证码任选其一）"));
+                }
+
+                if (!emailCode.isEmpty()) {
+                    emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.CHANGE_PASSWORD, emailCode);
+                } else {
+                    accountTotpService.requireValidEnabledCodeByEmail(email, totpCode);
+                }
+            } else {
+                // 2. Otherwise enforce whichever is enabled
+                if (emailSvcEnabled) {
+                    String emailCode = req.getEmailCode() == null ? "" : req.getEmailCode().trim();
+                    if (emailCode.isEmpty()) {
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入邮箱验证码"));
+                    }
+                    emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.CHANGE_PASSWORD, emailCode);
+                }
+                if (totpEnabled) {
+                    String code = req.getTotpCode() == null ? "" : req.getTotpCode().trim();
+                    if (code.isEmpty()) {
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入动态验证码"));
+                    }
+                    accountTotpService.requireValidEnabledCodeByEmail(email, code);
+                }
+            }
             accountSecurityService.changePasswordByEmail(email, req.getCurrentPassword(), req.getNewPassword());
+
+            HttpSession session = servletRequest.getSession(false);
+            if (session != null) {
+                session.invalidate();
+            }
+            SecurityContextHolder.clearContext();
+
             return ResponseEntity.ok(Map.of("message", "密码修改成功"));
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }
     }
