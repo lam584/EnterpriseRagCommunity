@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.dto.content.TagsCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.content.TagsQueryDTO;
 import com.example.EnterpriseRagCommunity.dto.content.TagsUpdateDTO;
 import com.example.EnterpriseRagCommunity.entity.content.TagsEntity;
+import com.example.EnterpriseRagCommunity.repository.content.PostTagRepository;
 import com.example.EnterpriseRagCommunity.repository.content.TagsRepository;
 import com.example.EnterpriseRagCommunity.service.content.TagsService;
 import jakarta.persistence.criteria.Predicate;
@@ -17,12 +18,16 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 public class TagsServiceImpl implements TagsService {
 
     private final TagsRepository tagsRepository;
+    private final PostTagRepository postTagRepository;
+
+    private static final Pattern SLUG_PATTERN = Pattern.compile("^[a-z0-9]+(?:-[a-z0-9]+)*$");
 
     @Override
     public Page<TagsEntity> query(TagsQueryDTO queryDTO) {
@@ -43,6 +48,20 @@ public class TagsServiceImpl implements TagsService {
             }
             if (StringUtils.hasText(queryDTO.getNameLike())) {
                 predicates.add(cb.like(root.get("name"), "%" + queryDTO.getNameLike() + "%"));
+            }
+            if (StringUtils.hasText(queryDTO.getKeyword())) {
+                String k = queryDTO.getKeyword().trim();
+                List<Predicate> ors = new ArrayList<>();
+                ors.add(cb.like(cb.lower(root.get("name")), "%" + k.toLowerCase() + "%"));
+                ors.add(cb.like(cb.lower(root.get("slug")), "%" + k.toLowerCase() + "%"));
+                ors.add(cb.like(cb.lower(root.get("description")), "%" + k.toLowerCase() + "%"));
+                ors.add(cb.like(cb.lower(root.get("type").as(String.class)), "%" + k.toLowerCase() + "%"));
+                try {
+                    Long id = Long.parseLong(k);
+                    ors.add(cb.equal(root.get("id"), id));
+                } catch (NumberFormatException ignored) {
+                }
+                predicates.add(cb.or(ors.toArray(new Predicate[0])));
             }
             if (StringUtils.hasText(queryDTO.getSlug())) {
                 predicates.add(cb.equal(root.get("slug"), queryDTO.getSlug()));
@@ -91,14 +110,18 @@ public class TagsServiceImpl implements TagsService {
         TagsEntity entity = new TagsEntity();
         entity.setTenantId(createDTO.getTenantId());
         entity.setType(createDTO.getType());
-        entity.setName(createDTO.getName());
-        entity.setSlug(createDTO.getSlug());
-        entity.setDescription(createDTO.getDescription());
+        entity.setName(createDTO.getName() == null ? null : createDTO.getName().trim());
+        entity.setSlug(createDTO.getSlug() == null ? null : createDTO.getSlug().trim());
+        entity.setDescription(StringUtils.hasText(createDTO.getDescription()) ? createDTO.getDescription().trim() : null);
         entity.setIsSystem(Boolean.TRUE.equals(createDTO.getIsSystem()));
         entity.setIsActive(Boolean.TRUE.equals(createDTO.getIsActive()));
 
         // created_at 系统填写；SQL 默认 CURRENT_TIMESTAMP(3)，这里同样在应用层填充以便立即返回。
         entity.setCreatedAt(LocalDateTime.now());
+
+        if (!StringUtils.hasText(entity.getSlug()) || !SLUG_PATTERN.matcher(entity.getSlug()).matches()) {
+            throw new IllegalArgumentException("Slug 必须为 kebab-case（小写字母/数字/短横线）。");
+        }
 
         // 唯一性校验：tenantId + type + slug
         if (tagsRepository.findByTenantIdAndTypeAndSlug(entity.getTenantId(), entity.getType(), entity.getSlug()).isPresent()) {
@@ -121,13 +144,13 @@ public class TagsServiceImpl implements TagsService {
             entity.setType(updateDTO.getType().get());
         }
         if (updateDTO.getName() != null && updateDTO.getName().isPresent()) {
-            entity.setName(updateDTO.getName().get());
+            entity.setName(updateDTO.getName().get() == null ? null : updateDTO.getName().get().trim());
         }
         if (updateDTO.getSlug() != null && updateDTO.getSlug().isPresent()) {
-            entity.setSlug(updateDTO.getSlug().get());
+            entity.setSlug(updateDTO.getSlug().get() == null ? null : updateDTO.getSlug().get().trim());
         }
         if (updateDTO.getDescription() != null && updateDTO.getDescription().isPresent()) {
-            entity.setDescription(updateDTO.getDescription().get());
+            entity.setDescription(StringUtils.hasText(updateDTO.getDescription().get()) ? updateDTO.getDescription().get().trim() : null);
         }
         if (updateDTO.getIsSystem() != null && updateDTO.getIsSystem().isPresent()) {
             entity.setIsSystem(updateDTO.getIsSystem().get());
@@ -137,6 +160,12 @@ public class TagsServiceImpl implements TagsService {
         }
 
         // createdAt 只读：即使前端传入也忽略（DTO 已标注只读）
+
+        if (updateDTO.getSlug() != null && updateDTO.getSlug().isPresent()) {
+            if (!StringUtils.hasText(entity.getSlug()) || !SLUG_PATTERN.matcher(entity.getSlug()).matches()) {
+                throw new IllegalArgumentException("Slug 必须为 kebab-case（小写字母/数字/短横线）。");
+            }
+        }
 
         // 唯一性校验（排除自身）
         tagsRepository.findByTenantIdAndTypeAndSlug(entity.getTenantId(), entity.getType(), entity.getSlug())
@@ -152,9 +181,16 @@ public class TagsServiceImpl implements TagsService {
     @Override
     @Transactional
     public void delete(Long id) {
-        if (!tagsRepository.existsById(id)) {
-            throw new RuntimeException("Tag not found with id: " + id);
+        TagsEntity entity = tagsRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Tag not found with id: " + id));
+
+        if (Boolean.TRUE.equals(entity.getIsSystem())) {
+            throw new IllegalStateException("系统标签不可删除。");
         }
+        if (postTagRepository.existsByTagId(id)) {
+            throw new IllegalStateException("标签正在使用，无法删除。");
+        }
+
         tagsRepository.deleteById(id);
     }
 }

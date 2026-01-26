@@ -23,6 +23,9 @@ public class TagsQueryDTO {
     @ApiModelProperty(value = "名称模糊匹配", example = "java")
     private String nameLike;
 
+    @ApiModelProperty(value = "关键词（匹配 name/slug/description/type/id）", example = "java")
+    private String keyword;
+
     @ApiModelProperty(value = "Slug 精确匹配", example = "java")
     private String slug;
 

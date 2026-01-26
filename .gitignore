@@ -14,6 +14,7 @@ build/
 .vscode/
 *.sublime-workspace
 .trae/
+.VSCodeCounter/
 # Compiled class files
 *.class
 
@@ -51,8 +52,6 @@ uploads/
 tree.md
 temp.md
 HELP.md
-提示词-新闻发布系统-qmxm-tsc.md
 git操作指南.md
 功能清单.md
 /*.txt
-my-vite-app/src/pages/待办事项.md

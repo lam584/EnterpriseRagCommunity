@@ -40,5 +40,8 @@ public class TagsDTO {
 
     @ApiModelProperty(value = "创建时间", example = "2025-01-01T00:00:00")
     private LocalDateTime createdAt;
+
+    @ApiModelProperty(value = "使用量（被多少帖子引用）", example = "12")
+    private Long usageCount;
 }
 
