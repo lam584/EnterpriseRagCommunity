@@ -15,7 +15,7 @@ export interface TagCreateDTO {
 }
 
 export interface TagDTO extends TagCreateDTO {
-    usageCount: number;
+  usageCount: number;
   id: number;
   createdAt: string;
 }
@@ -30,6 +30,28 @@ export interface RequestOptions {
 
 const API_BASE = '/api/tags';
 
+export type TagListQuery = {
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  tenantId?: number;
+  type?: TagType;
+  isSystem?: boolean;
+  isActive?: boolean;
+  keyword?: string;
+};
+
+export type SpringPage<T> = {
+  content: T[];
+  totalElements?: number;
+  totalPages?: number;
+  number?: number;
+  size?: number;
+  first?: boolean;
+  last?: boolean;
+};
+
 type BackendTagsDTO = {
   id: number;
   tenantId?: number;
@@ -40,6 +62,7 @@ type BackendTagsDTO = {
   isSystem: boolean;
   isActive: boolean;
   createdAt: string;
+  usageCount?: number;
 };
 
 function mapToBackendPayload(dto: TagCreateDTO): Record<string, unknown> {
@@ -56,8 +79,8 @@ function mapToBackendPayload(dto: TagCreateDTO): Record<string, unknown> {
 
 function mapFromBackend(dto: BackendTagsDTO): TagDTO {
   return {
-      usageCount: 0,
-      id: dto.id,
+    usageCount: typeof dto.usageCount === 'number' ? dto.usageCount : 0,
+    id: dto.id,
     tenantId: dto.tenantId ?? undefined,
     type: dto.type,
     name: dto.name,
@@ -65,7 +88,7 @@ function mapFromBackend(dto: BackendTagsDTO): TagDTO {
     description: dto.description ?? undefined,
     system: dto.isSystem,
     active: dto.isActive,
-    createdAt: dto.createdAt
+    createdAt: dto.createdAt,
   };
 }
 
@@ -139,12 +162,17 @@ export async function createTag(payload: TagCreateDTO): Promise<TagDTO> {
   return mapFromBackend(dto);
 }
 
-export async function listTags(options: RequestOptions = {}): Promise<TagDTO[]> {
+export async function listTagsPage(query: TagListQuery = {}, options: RequestOptions = {}): Promise<SpringPage<TagDTO>> {
   const url = new URL(API_BASE, window.location.origin);
-  url.searchParams.set('page', '1');
-  url.searchParams.set('pageSize', '25');
-  url.searchParams.set('sortBy', 'createdAt');
-  url.searchParams.set('sortOrder', 'desc');
+  url.searchParams.set('page', String(query.page ?? 1));
+  url.searchParams.set('pageSize', String(query.pageSize ?? 25));
+  url.searchParams.set('sortBy', query.sortBy ?? 'createdAt');
+  url.searchParams.set('sortOrder', query.sortOrder ?? 'desc');
+  if (query.tenantId != null) url.searchParams.set('tenantId', String(query.tenantId));
+  if (query.type) url.searchParams.set('type', query.type);
+  if (query.isSystem != null) url.searchParams.set('isSystem', String(query.isSystem));
+  if (query.isActive != null) url.searchParams.set('isActive', String(query.isActive));
+  if (query.keyword && query.keyword.trim()) url.searchParams.set('keyword', query.keyword.trim());
 
   const res = await fetch(url.toString(), { credentials: 'include', signal: options.signal });
   if (!res.ok) {
@@ -152,9 +180,16 @@ export async function listTags(options: RequestOptions = {}): Promise<TagDTO[]> 
     throw new Error(getBackendMessage(data) ?? '加载失败');
   }
 
-  // 后端返回 Page<TagsDTO>
-  const page = (await res.json()) as { content?: BackendTagsDTO[] };
-  return (page.content ?? []).map(mapFromBackend);
+  const page = (await res.json()) as SpringPage<BackendTagsDTO>;
+  return {
+    ...page,
+    content: (page.content ?? []).map(mapFromBackend),
+  };
+}
+
+export async function listTags(query: TagListQuery = {}, options: RequestOptions = {}): Promise<TagDTO[]> {
+  const page = await listTagsPage(query, options);
+  return page.content ?? [];
 }
 
 export async function incrementUsage(): Promise<void> {
@@ -243,11 +278,18 @@ export async function deleteTag(id: number): Promise<void> {
 
 // helper: slugify (export for UI use)
 export function slugify(input: string): string {
-  return input
+  const s = input
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
+  if (s) return s;
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = (h * 31 + input.charCodeAt(i)) | 0;
+  }
+  const u = (h >>> 0).toString(36);
+  return `tag-${u}`;
 }

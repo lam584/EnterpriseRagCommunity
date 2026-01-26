@@ -68,11 +68,13 @@ const EmailConfigForm: React.FC = () => {
   const [inboxSelectedId, setInboxSelectedId] = useState<string | null>(null);
   const [inboxPageNum, setInboxPageNum] = useState(1);
   const [inboxPageSize, setInboxPageSize] = useState<(typeof MAILBOX_PAGE_SIZE_OPTIONS)[number]>(10);
+  const [inboxReachedEnd, setInboxReachedEnd] = useState(false);
   const [sentListing, setSentListing] = useState(false);
   const [sentMessages, setSentMessages] = useState<EmailInboxMessageDTO[]>([]);
   const [sentSelectedId, setSentSelectedId] = useState<string | null>(null);
   const [sentPageNum, setSentPageNum] = useState(1);
   const [sentPageSize, setSentPageSize] = useState<(typeof MAILBOX_PAGE_SIZE_OPTIONS)[number]>(10);
+  const [sentReachedEnd, setSentReachedEnd] = useState(false);
   const [activeBox, setActiveBox] = useState<'inbox' | 'sent' | null>(null);
   const [inboxError, setInboxError] = useState<string | null>(null);
   const [inboxExpanded, setInboxExpanded] = useState(false);
@@ -207,6 +209,7 @@ const EmailConfigForm: React.FC = () => {
       const list = await listEmailInboxMessages(limit);
       const arr = Array.isArray(list) ? list : [];
       setInboxMessages(arr);
+      setInboxReachedEnd(arr.length < limit);
       setInboxSelectedId(null);
       setSentSelectedId(null);
       setActiveBox(null);
@@ -227,6 +230,7 @@ const EmailConfigForm: React.FC = () => {
       const list = await listEmailSentMessages(limit);
       const arr = Array.isArray(list) ? list : [];
       setSentMessages(arr);
+      setSentReachedEnd(arr.length < limit);
       setSentSelectedId(null);
       setInboxSelectedId(null);
       setActiveBox(null);
@@ -241,6 +245,8 @@ const EmailConfigForm: React.FC = () => {
   };
 
   const refreshMailboxMessages = () => {
+    setSentReachedEnd(false);
+    setInboxReachedEnd(false);
     void loadSentMessages(Math.min(MAILBOX_MAX_LIMIT, sentPageNum * sentPageSize));
     void loadInboxMessages(Math.min(MAILBOX_MAX_LIMIT, inboxPageNum * inboxPageSize));
   };
@@ -254,8 +260,12 @@ const EmailConfigForm: React.FC = () => {
 
   const inboxPageStart = (inboxPageNum - 1) * inboxPageSize;
   const inboxPageItems = inboxMessages.slice(inboxPageStart, inboxPageStart + inboxPageSize);
+  const inboxLastLoadedPageNum = Math.max(1, Math.ceil(inboxMessages.length / inboxPageSize));
+  const inboxAtLoadedEnd = inboxReachedEnd && inboxPageNum >= inboxLastLoadedPageNum;
   const sentPageStart = (sentPageNum - 1) * sentPageSize;
   const sentPageItems = sentMessages.slice(sentPageStart, sentPageStart + sentPageSize);
+  const sentLastLoadedPageNum = Math.max(1, Math.ceil(sentMessages.length / sentPageSize));
+  const sentAtLoadedEnd = sentReachedEnd && sentPageNum >= sentLastLoadedPageNum;
   const selectedMsg = useMemo(() => {
     if (activeBox === 'sent') return sentMessages.find(m => m.id === sentSelectedId) ?? null;
     if (activeBox === 'inbox') return inboxMessages.find(m => m.id === inboxSelectedId) ?? null;
@@ -657,33 +667,42 @@ const EmailConfigForm: React.FC = () => {
                 <div className="px-3 py-1.5 border-b text-sm text-gray-600 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="shrink-0">已发送</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      disabled={sentListing || sentPageNum <= 1}
-                      onClick={() => {
-                        setSentPageNum(p => Math.max(1, p - 1));
-                        setSentSelectedId(null);
-                        setActiveBox(null);
-                      }}
-                    >
-                      上一页
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      disabled={sentListing || sentPageNum * sentPageSize >= MAILBOX_MAX_LIMIT}
-                      onClick={async () => {
-                        const next = sentPageNum + 1;
-                        const limit = Math.min(MAILBOX_MAX_LIMIT, next * sentPageSize);
-                        const list = await loadSentMessages(limit);
-                        if (list.length > (next - 1) * sentPageSize) setSentPageNum(next);
-                      }}
-                    >
-                      下一页
-                    </Button>
+                    {sentPageNum > 1 ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={sentListing}
+                        onClick={() => {
+                          setSentPageNum(p => Math.max(1, p - 1));
+                          setSentSelectedId(null);
+                          setActiveBox(null);
+                        }}
+                      >
+                        上一页
+                      </Button>
+                    ) : null}
+                    {sentPageNum * sentPageSize >= MAILBOX_MAX_LIMIT || sentAtLoadedEnd ? null : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={sentListing}
+                        onClick={async () => {
+                          const next = sentPageNum + 1;
+                          const limit = Math.min(MAILBOX_MAX_LIMIT, next * sentPageSize);
+                          const list = await loadSentMessages(limit);
+                          if (list.length > (next - 1) * sentPageSize) {
+                            setSentReachedEnd(false);
+                            setSentPageNum(next);
+                          } else {
+                            setSentReachedEnd(true);
+                          }
+                        }}
+                      >
+                        下一页
+                      </Button>
+                    )}
                     <select
                       className="border border-gray-300 rounded px-2 py-0 bg-white text-xs h-7"
                       value={String(sentPageSize)}
@@ -692,6 +711,7 @@ const EmailConfigForm: React.FC = () => {
                         const nextSize = Number(e.target.value) as (typeof MAILBOX_PAGE_SIZE_OPTIONS)[number];
                         setSentPageSize(nextSize);
                         setSentPageNum(1);
+                        setSentReachedEnd(false);
                         setSentSelectedId(null);
                         setActiveBox(null);
                         void loadSentMessages(Math.min(MAILBOX_MAX_LIMIT, nextSize));
@@ -744,33 +764,42 @@ const EmailConfigForm: React.FC = () => {
                 <div className="px-3 py-1.5 border-b text-sm text-gray-600 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="shrink-0">收件箱</span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      disabled={inboxListing || inboxPageNum <= 1}
-                      onClick={() => {
-                        setInboxPageNum(p => Math.max(1, p - 1));
-                        setInboxSelectedId(null);
-                        setActiveBox(null);
-                      }}
-                    >
-                      上一页
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      disabled={inboxListing || inboxPageNum * inboxPageSize >= MAILBOX_MAX_LIMIT}
-                      onClick={async () => {
-                        const next = inboxPageNum + 1;
-                        const limit = Math.min(MAILBOX_MAX_LIMIT, next * inboxPageSize);
-                        const list = await loadInboxMessages(limit);
-                        if (list.length > (next - 1) * inboxPageSize) setInboxPageNum(next);
-                      }}
-                    >
-                      下一页
-                    </Button>
+                    {inboxPageNum > 1 ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={inboxListing}
+                        onClick={() => {
+                          setInboxPageNum(p => Math.max(1, p - 1));
+                          setInboxSelectedId(null);
+                          setActiveBox(null);
+                        }}
+                      >
+                        上一页
+                      </Button>
+                    ) : null}
+                    {inboxPageNum * inboxPageSize >= MAILBOX_MAX_LIMIT || inboxAtLoadedEnd ? null : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        disabled={inboxListing}
+                        onClick={async () => {
+                          const next = inboxPageNum + 1;
+                          const limit = Math.min(MAILBOX_MAX_LIMIT, next * inboxPageSize);
+                          const list = await loadInboxMessages(limit);
+                          if (list.length > (next - 1) * inboxPageSize) {
+                            setInboxReachedEnd(false);
+                            setInboxPageNum(next);
+                          } else {
+                            setInboxReachedEnd(true);
+                          }
+                        }}
+                      >
+                        下一页
+                      </Button>
+                    )}
                     <select
                       className="border border-gray-300 rounded px-2 py-0 bg-white text-xs h-7"
                       value={String(inboxPageSize)}
@@ -779,6 +808,7 @@ const EmailConfigForm: React.FC = () => {
                         const nextSize = Number(e.target.value) as (typeof MAILBOX_PAGE_SIZE_OPTIONS)[number];
                         setInboxPageSize(nextSize);
                         setInboxPageNum(1);
+                        setInboxReachedEnd(false);
                         setInboxSelectedId(null);
                         setActiveBox(null);
                         void loadInboxMessages(Math.min(MAILBOX_MAX_LIMIT, nextSize));

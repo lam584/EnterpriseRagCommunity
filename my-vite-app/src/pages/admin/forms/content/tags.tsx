@@ -1,6 +1,6 @@
 // tags.tsx - 管理员标签管理（前端模拟，遵循后端 TagDTO 约束）
-import React, { useEffect, useMemo, useState } from 'react';
-import { createTag, listTags, updateTag, deleteTag as deleteTagApi, type TagDTO, type TagCreateDTO, slugify, type TagType } from '../../../../services/tagService'; //incrementUsage
+import React, { useEffect, useState } from 'react';
+import { createTag, listTagsPage, updateTag, deleteTag as deleteTagApi, type TagDTO, type TagCreateDTO, slugify, type TagType } from '../../../../services/tagService';
 
 const MAX_NAME = 64;
 const MAX_DESC = 255;
@@ -20,36 +20,41 @@ const TagsForm: React.FC = () => {
   const [items, setItems] = useState<TagDTO[]>([]);
   const [keyword, setKeyword] = useState('');
   const [seeding, setSeeding] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<TagType | 'ALL'>('ALL');
+  const [pageNo, setPageNo] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalPages, setTotalPages] = useState(1);
+  const [reloadToken, setReloadToken] = useState(0);
 
-  const filtered = useMemo(() => {
-    const k = keyword.trim().toLowerCase();
-    if (!k) return items;
-    return items.filter(t =>
-      (t.name?.toLowerCase().includes(k)) ||
-      (t.slug?.toLowerCase().includes(k)) ||
-      (t.type?.toLowerCase().includes(k)) ||
-      (t.description?.toLowerCase().includes(k)) ||
-      String(t.id).includes(k)
-    );
-  }, [items, keyword]);
-
-  // 初始化加载
   useEffect(() => {
     const ctrl = new AbortController();
-    (async () => {
-      setLoading(true);
-      try {
-        const rs = await listTags({ signal: ctrl.signal });
-        // 可按创建时间倒序展示
-        setItems(rs.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1)));
-      } finally {
-        setLoading(false);
-      }
-    })();
+    setLoading(true);
+    const t = window.setTimeout(() => {
+      (async () => {
+        try {
+          const page = await listTagsPage(
+            {
+              page: pageNo,
+              pageSize,
+              keyword: keyword.trim() ? keyword.trim() : undefined,
+              type: typeFilter === 'ALL' ? undefined : typeFilter,
+              sortBy: 'createdAt',
+              sortOrder: 'desc',
+            },
+            { signal: ctrl.signal }
+          );
+          setItems(page.content ?? []);
+          setTotalPages(Math.max(1, page.totalPages ?? 1));
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }, 200);
     return () => {
+      window.clearTimeout(t);
       ctrl.abort();
     };
-  }, []);
+  }, [keyword, pageNo, pageSize, reloadToken, typeFilter]);
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type, checked } = e.target as HTMLInputElement;
@@ -108,8 +113,8 @@ const TagsForm: React.FC = () => {
       setMessage(`已创建标签：${created.name} (#${created.id})`);
       // 重置 name/description/slug，保留 tenantId/type/system/active
       setForm(prev => ({ tenantId: prev.tenantId, type: prev.type, name: '', slug: '', description: '', system: prev.system, active: prev.active }));
-      // 刷新列表（插入到最前）
-      setItems(prev => [created, ...prev.filter(it => it.id !== created.id)]);
+      setPageNo(1);
+      setReloadToken(x => x + 1);
     } catch (err: unknown) {
       const fieldErrors = (err as { fieldErrors?: Record<string, string> } | undefined)?.fieldErrors;
       if (fieldErrors) setErrors(fieldErrors);
@@ -127,14 +132,7 @@ const TagsForm: React.FC = () => {
   };
 
   const refresh = async () => {
-    const ctrl = new AbortController();
-    setLoading(true);
-    try {
-      const rs = await listTags({ signal: ctrl.signal });
-      setItems(rs.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1)));
-    } finally {
-      setLoading(false);
-    }
+    setReloadToken(x => x + 1);
   };
 
   const seedSamples = async () => {
@@ -155,6 +153,7 @@ const TagsForm: React.FC = () => {
           // 忽略重复
         }
       }
+      setPageNo(1);
       await refresh();
     } finally {
       setSeeding(false);
@@ -220,6 +219,7 @@ const TagsForm: React.FC = () => {
     try {
       await deleteTagApi(id);
       setItems(prev => prev.filter(it => it.id !== id));
+      setReloadToken(x => x + 1);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '删除失败';
       alert(msg);
@@ -353,8 +353,42 @@ const TagsForm: React.FC = () => {
             className="rounded border px-3 py-2 border-gray-300 md:flex-1"
             placeholder="按名称、Slug、类型或 ID 搜索"
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={(e) => {
+              setKeyword(e.target.value);
+              setPageNo(1);
+            }}
           />
+          <select
+            className="rounded border px-3 py-2 border-gray-300"
+            value={typeFilter}
+            onChange={(e) => {
+              setTypeFilter(e.target.value as TagType | 'ALL');
+              setPageNo(1);
+            }}
+            disabled={loading}
+            title="按类型过滤"
+          >
+            <option value="ALL">全部类型</option>
+            {TYPES.map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <select
+            className="rounded border px-3 py-2 border-gray-300"
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPageNo(1);
+            }}
+            disabled={loading}
+            title="每页数量"
+          >
+            {[10, 25, 50, 100].map((n) => (
+              <option key={n} value={n}>
+                {n}/页
+              </option>
+            ))}
+          </select>
           <div className="flex gap-2">
             <button type="button" className="rounded border px-4 py-2" onClick={() => setKeyword('')} disabled={loading}>清空</button>
             <button type="button" className="rounded border px-4 py-2 text-purple-700 border-purple-300" onClick={seedSamples} disabled={seeding} title="仅前端内存模拟">
@@ -367,7 +401,7 @@ const TagsForm: React.FC = () => {
         {/* 列表 */}
         {loading ? (
           <p className="text-sm text-gray-500">加载中…</p>
-        ) : filtered.length === 0 ? (
+        ) : items.length === 0 ? (
           <p className="text-sm text-gray-500">暂无数据。</p>
         ) : (
           <div className="overflow-x-auto">
@@ -388,7 +422,7 @@ const TagsForm: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(t => (
+                {items.map(t => (
                   <tr key={t.id} className="border-b hover:bg-gray-50">
                     <td className="py-2 pr-4">{t.id}</td>
                     <td className="py-2 pr-4">{t.tenantId ?? '-'}</td>
@@ -498,6 +532,27 @@ const TagsForm: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            <div className="flex items-center justify-end gap-2 pt-3">
+              <button
+                type="button"
+                className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+                disabled={loading || pageNo <= 1}
+                onClick={() => setPageNo(p => Math.max(1, p - 1))}
+              >
+                上一页
+              </button>
+              <div className="text-sm text-gray-600">
+                第 {pageNo} 页 / 共 {Math.max(1, totalPages)} 页
+              </div>
+              <button
+                type="button"
+                className="rounded border px-3 py-1 text-sm disabled:opacity-50"
+                disabled={loading || pageNo >= totalPages}
+                onClick={() => setPageNo(p => p + 1)}
+              >
+                下一页
+              </button>
+            </div>
           </div>
         )}
       </div>

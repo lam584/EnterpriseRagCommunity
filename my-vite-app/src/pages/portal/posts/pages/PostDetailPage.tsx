@@ -7,9 +7,28 @@ import { formatPostTime, getPostCoverThumbUrl } from '../../../../utils/postMeta
 import * as StatButtonModule from '../../../../components/ui/StatButton';
 import HotScoreBadge from '../../../../components/post/HotScoreBadge';
 import { createPostComment, listPostComments, type CommentDTO } from '../../../../services/commentService';
+import { listTags, type TagDTO } from '../../../../services/tagService';
+import { getTranslateConfig, translateComment, translatePost, type TranslateResultDTO } from '../../../../services/translateService';
+import { getMyTranslatePreferences, type TranslatePreferencesDTO } from '../../../../services/accountPreferencesService';
 
 function clamp0(n: number) {
   return n < 0 ? 0 : n;
+}
+
+function normalizeLangCode(lang: string | null | undefined): string {
+  const raw = String(lang ?? '').trim().toLowerCase();
+  if (!raw) return '';
+  const base = raw.split(/[-_]/)[0] ?? raw;
+  if (base === 'zh') return 'zh';
+  return base;
+}
+
+function extractLanguagesFromMetadata(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== 'object') return [];
+  const m = metadata as Record<string, unknown>;
+  const v = m.languages;
+  if (!Array.isArray(v)) return [];
+  return v.map((x) => String(x ?? '').trim()).filter((x) => x.length > 0);
 }
 
 type StatButtonProps = {
@@ -77,6 +96,25 @@ export default function PostDetailPage() {
   const [newComment, setNewComment] = useState('');
   const [commentPending, setCommentPending] = useState(false);
 
+  const [tagDict, setTagDict] = useState<TagDTO[]>([]);
+
+  const [translateEnabled, setTranslateEnabled] = useState(false);
+  const [translateConfigError, setTranslateConfigError] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<TranslatePreferencesDTO>({
+    targetLanguage: 'zh',
+    autoTranslatePosts: false,
+    autoTranslateComments: false,
+  });
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+
+  const [postTranslatePending, setPostTranslatePending] = useState(false);
+  const [postTranslateError, setPostTranslateError] = useState<string | null>(null);
+  const [postTranslation, setPostTranslation] = useState<TranslateResultDTO | null>(null);
+
+  const [commentTranslatePending, setCommentTranslatePending] = useState<Record<number, boolean>>({});
+  const [commentTranslateErrors, setCommentTranslateErrors] = useState<Record<number, string>>({});
+  const [commentTranslations, setCommentTranslations] = useState<Record<number, TranslateResultDTO>>({});
+
   useEffect(() => {
     if (!post) return;
     setLikedByMe(!!post.likedByMe);
@@ -85,6 +123,107 @@ export default function PostDetailPage() {
     setFavoriteCount(typeof post.favoriteCount === 'number' ? post.favoriteCount : 0);
     setCommentCount(typeof post.commentCount === 'number' ? post.commentCount : 0);
   }, [post]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const ts = await listTags({ page: 1, pageSize: 200, type: 'TOPIC', isActive: true, sortBy: 'createdAt', sortOrder: 'desc' });
+        if (!mounted) return;
+        setTagDict(ts);
+      } catch {
+        if (!mounted) return;
+        setTagDict([]);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const cfg = await getTranslateConfig();
+        if (!mounted) return;
+        setTranslateEnabled(cfg.enabled !== false);
+        setTranslateConfigError(null);
+      } catch (e) {
+        if (!mounted) return;
+        setTranslateEnabled(false);
+        setTranslateConfigError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const p = await getMyTranslatePreferences();
+        if (!mounted) return;
+        setPrefs(p);
+        setPrefsLoaded(true);
+      } catch {
+        if (!mounted) return;
+        setPrefsLoaded(true);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const translatedPostMarkdown = useMemo(() => {
+    if (!postTranslation) return '';
+    const t = (postTranslation.translatedTitle ?? '').trim();
+    const md = (postTranslation.translatedMarkdown ?? '').trim();
+    if (t && md) return `# ${t}\n\n${md}`;
+    if (t) return `# ${t}`;
+    return md;
+  }, [postTranslation]);
+
+  const handleTranslatePost = async (silent?: boolean) => {
+    if (!id || !translateEnabled || postTranslatePending || !prefsLoaded) return;
+    const targetLang = prefs.targetLanguage || 'zh';
+
+    setPostTranslatePending(true);
+    if (!silent) setPostTranslateError(null);
+    try {
+      const resp = await translatePost(id, targetLang);
+      setPostTranslation(resp);
+    } catch (e) {
+      if (!silent) setPostTranslateError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPostTranslatePending(false);
+    }
+  };
+
+  const handleTranslateComment = async (commentId: number) => {
+    if (!translateEnabled || !prefsLoaded) return;
+    if (!commentId) return;
+    if (commentTranslatePending[commentId]) return;
+    const targetLang = prefs.targetLanguage || 'zh';
+
+    setCommentTranslatePending((p) => ({ ...p, [commentId]: true }));
+    setCommentTranslateErrors((p) => {
+      const next = { ...p };
+      delete next[commentId];
+      return next;
+    });
+    try {
+      const resp = await translateComment(commentId, targetLang);
+      setCommentTranslations((p) => ({ ...p, [commentId]: resp }));
+    } catch (e) {
+      setCommentTranslateErrors((p) => ({ ...p, [commentId]: e instanceof Error ? e.message : String(e) }));
+    } finally {
+      setCommentTranslatePending((p) => ({ ...p, [commentId]: false }));
+    }
+  };
 
   const loadComments = async (pageToLoad: number) => {
     if (!id) return;
@@ -205,6 +344,24 @@ export default function PostDetailPage() {
     };
   }, [id]);
 
+  useEffect(() => {
+    if (!post) return;
+    if (!translateEnabled) return;
+    if (!prefsLoaded) return;
+    if (!prefs.autoTranslatePosts) return;
+    if (postTranslation || postTranslatePending) return;
+
+    const postLangs = extractLanguagesFromMetadata(post.metadata);
+    if (postLangs.length !== 1) return;
+    const src = normalizeLangCode(postLangs[0]);
+    const dst = normalizeLangCode(prefs.targetLanguage);
+    if (!src || !dst) return;
+    if (src === dst) return;
+
+    void handleTranslatePost(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post, translateEnabled, prefsLoaded, prefs.autoTranslatePosts, prefs.targetLanguage]);
+
   // Reserve space for the left sidebar so the fixed detail layer isn't covered.
   // Sidebar width is defined by the portal layout as a CSS variable.
 
@@ -241,6 +398,24 @@ export default function PostDetailPage() {
                 </div>
 
                 <h1 className="mt-2 text-xl font-semibold text-gray-900">{post.title}</h1>
+
+                {(post.tags ?? []).length ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(post.tags ?? []).map((slugValue) => {
+                      const t = tagDict.find((x) => x.slug === slugValue);
+                      const label = t?.name ?? slugValue;
+                      return (
+                        <span
+                          key={slugValue}
+                          className="px-3 py-1.5 rounded-full border border-gray-300 bg-white text-sm text-gray-700"
+                          title={slugValue}
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : null}
 
                 <div className="mt-4">
                   <MarkdownPreview markdown={post.content || ''} />
@@ -288,8 +463,45 @@ export default function PostDetailPage() {
                   />
 
                   <HotScoreBadge value={post.hotScore} variant="badge" />
+
+                  {translateEnabled ? (
+                    <button
+                      type="button"
+                      className="px-3 py-1.5 rounded-md border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
+                      onClick={() => void handleTranslatePost(false)}
+                      disabled={!prefsLoaded || postTranslatePending}
+                      title="翻译标题与正文"
+                    >
+                      {postTranslatePending ? '翻译中...' : '翻译'}
+                    </button>
+                  ) : null}
                 </div>
               </article>
+
+              {translateConfigError ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 flex-none">
+                  翻译功能不可用：{translateConfigError}
+                </div>
+              ) : null}
+
+              {postTranslateError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 flex-none">
+                  翻译失败：{postTranslateError}
+                </div>
+              ) : null}
+
+              {postTranslation ? (
+                <div className="rounded-xl border border-gray-200 bg-white p-4 w-full min-w-0 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-base font-semibold text-gray-900">翻译</h4>
+                    <div className="text-xs text-gray-500">
+                      模型：{postTranslation.model || '（未知）'}
+                      {typeof postTranslation.cached === 'boolean' ? (postTranslation.cached ? ' · 缓存' : ' · 实时') : null}
+                    </div>
+                  </div>
+                  <MarkdownPreview markdown={translatedPostMarkdown} />
+                </div>
+              ) : null}
 
               {/* Comments: vertically stacked under the post */}
               <div
@@ -339,8 +551,38 @@ export default function PostDetailPage() {
                           </span>
                           {c.createdAt ? <span className="ml-2">· {new Date(c.createdAt).toLocaleString()}</span> : null}
                         </div>
+                        {translateEnabled ? (
+                          <button
+                            type="button"
+                            className="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
+                            onClick={() => void handleTranslateComment(Number(c.id))}
+                            disabled={!prefsLoaded || commentTranslatePending[Number(c.id)]}
+                            title="翻译评论"
+                          >
+                            {commentTranslatePending[Number(c.id)] ? '翻译中...' : '翻译'}
+                          </button>
+                        ) : null}
                       </div>
                       <div className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-800">{c.content}</div>
+
+                      {commentTranslateErrors[Number(c.id)] ? (
+                        <div className="mt-2 text-sm text-red-700">翻译失败：{commentTranslateErrors[Number(c.id)]}</div>
+                      ) : null}
+
+                      {commentTranslations[Number(c.id)] ? (
+                        <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 p-3">
+                          <div className="text-xs text-gray-500 mb-2">
+                            翻译内容（模型：{commentTranslations[Number(c.id)].model || '（未知）'}
+                            {typeof commentTranslations[Number(c.id)].cached === 'boolean'
+                              ? commentTranslations[Number(c.id)].cached
+                                ? ' · 缓存'
+                                : ' · 实时'
+                              : null}
+                            ）
+                          </div>
+                          <MarkdownPreview markdown={commentTranslations[Number(c.id)].translatedMarkdown || ''} />
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>

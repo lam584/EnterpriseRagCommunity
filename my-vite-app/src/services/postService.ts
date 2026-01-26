@@ -13,6 +13,7 @@ export interface PostCreateDTO {
   content: string;
   contentFormat?: ContentFormat; // default MARKDOWN
   tags?: string[];
+  metadata?: Record<string, unknown>;
   attachmentIds?: number[];
 }
 
@@ -22,6 +23,7 @@ export interface PostUpdateDTO {
   content: string;
   contentFormat?: ContentFormat; // default MARKDOWN
   tags?: string[];
+  metadata?: Record<string, unknown>;
   attachmentIds?: number[];
 }
 
@@ -128,8 +130,31 @@ function getPageContent<T>(data: unknown): T[] | undefined {
   return undefined;
 }
 
+function extractTagsFromMetadata(metadata: unknown): string[] {
+  if (!metadata || typeof metadata !== 'object') return [];
+  const m = metadata as Record<string, unknown>;
+  const tags = m.tags;
+  if (!Array.isArray(tags)) return [];
+  return tags.map((t) => String(t)).filter((t) => t.trim().length > 0);
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function mapPostFromBackend(data: unknown): PostDTO {
+  if (!data || typeof data !== 'object') return data as PostDTO;
+  const p = data as PostDTO;
+  const tags = Array.isArray(p.tags) ? p.tags.map(String) : extractTagsFromMetadata(p.metadata);
+  return { ...p, tags };
+}
+
 export async function createPost(payload: PostCreateDTO): Promise<PostDTO> {
   const csrfToken = await getCsrfToken();
+  const mergedMetadata: Record<string, unknown> = {
+    ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
+    ...(payload.tags ? { tags: payload.tags } : {}),
+  };
 
   const res = await fetch(apiUrl('/api/posts'), {
     method: 'POST',
@@ -144,8 +169,7 @@ export async function createPost(payload: PostCreateDTO): Promise<PostDTO> {
       content: payload.content,
       contentFormat: payload.contentFormat ?? 'MARKDOWN',
       attachmentIds: payload.attachmentIds ?? [],
-      // 将 tags 放到 metadata，后端当前用 metadata 承载扩展字段
-      metadata: payload.tags ? { tags: payload.tags } : undefined,
+      metadata: Object.keys(mergedMetadata).length ? mergedMetadata : undefined,
     }),
   });
 
@@ -158,7 +182,7 @@ export async function createPost(payload: PostCreateDTO): Promise<PostDTO> {
     throw new Error(getBackendMessage(data) || '发布失败');
   }
 
-  return data as PostDTO;
+  return mapPostFromBackend(data);
 }
 
 export async function listPosts(options: RequestOptions = {}): Promise<PostDTO[]> {
@@ -175,7 +199,8 @@ export async function listPosts(options: RequestOptions = {}): Promise<PostDTO[]
   }
 
   const data: unknown = await res.json().catch(() => ({}));
-  return getPageContent<PostDTO>(data) ?? (Array.isArray(data) ? (data as PostDTO[]) : []);
+  const rows = getPageContent<PostDTO>(data) ?? (Array.isArray(data) ? (data as PostDTO[]) : []);
+  return rows.map(mapPostFromBackend);
 }
 
 export async function searchPosts(
@@ -206,7 +231,8 @@ export async function searchPosts(
   }
 
   const data: unknown = await res.json().catch(() => ({}));
-  return getPageContent<PostDTO>(data) ?? (Array.isArray(data) ? (data as PostDTO[]) : []);
+  const rows = getPageContent<PostDTO>(data) ?? (Array.isArray(data) ? (data as PostDTO[]) : []);
+  return rows.map(mapPostFromBackend);
 }
 
 /**
@@ -393,6 +419,10 @@ export async function updatePostStatus(id: number, status: PostStatus): Promise<
 
 export async function updatePost(id: number, payload: PostUpdateDTO): Promise<PostDTO> {
   const csrfToken = await getCsrfToken();
+  const mergedMetadata: Record<string, unknown> = {
+    ...(isPlainObject(payload.metadata) ? payload.metadata : {}),
+    ...(payload.tags ? { tags: payload.tags } : {}),
+  };
 
   const res = await fetch(apiUrl(`/api/posts/${id}`), {
     method: 'PUT',
@@ -407,7 +437,7 @@ export async function updatePost(id: number, payload: PostUpdateDTO): Promise<Po
       content: payload.content,
       contentFormat: payload.contentFormat ?? 'MARKDOWN',
       attachmentIds: payload.attachmentIds ?? [],
-      metadata: payload.tags ? { tags: payload.tags } : undefined,
+      metadata: Object.keys(mergedMetadata).length ? mergedMetadata : undefined,
     }),
   });
 
@@ -420,7 +450,7 @@ export async function updatePost(id: number, payload: PostUpdateDTO): Promise<Po
     throw new Error(getBackendMessage(data) || '保存修改失败');
   }
 
-  return data as PostDTO;
+  return mapPostFromBackend(data);
 }
 
 export async function getPost(id: number): Promise<PostDTO> {
@@ -434,7 +464,7 @@ export async function getPost(id: number): Promise<PostDTO> {
     throw new Error(getBackendMessage(data) || '加载帖子失败');
   }
 
-  return data as PostDTO;
+  return mapPostFromBackend(data);
 }
 
 export async function deletePost(id: number): Promise<void> {
