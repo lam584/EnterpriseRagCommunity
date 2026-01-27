@@ -352,6 +352,118 @@ public class RagPostIndexBuildService {
         return resp;
     }
 
+    public void syncSinglePost(Long vectorIndexId, Long postId) {
+        syncSinglePost(vectorIndexId, postId, null, null, null, null);
+    }
+
+    public void syncSinglePost(Long vectorIndexId,
+                               Long postId,
+                               Integer chunkMaxChars,
+                               Integer chunkOverlapChars,
+                               String embeddingModelOverride,
+                               Integer expectedEmbeddingDims) {
+        if (vectorIndexId == null || postId == null) return;
+
+        VectorIndicesEntity vi = vectorIndicesRepository.findById(vectorIndexId)
+                .orElseThrow(() -> new IllegalArgumentException("vector index not found: " + vectorIndexId));
+
+        String indexName = (vi.getCollectionName() == null || vi.getCollectionName().isBlank())
+                ? ragProps.getEs().getIndex()
+                : vi.getCollectionName().trim();
+
+        try {
+            deleteByQuery(indexName, "{\"query\":{\"term\":{\"post_id\":" + postId + "}}}");
+        } catch (Exception ex) {
+            log.warn("RAG delete stale post docs failed. vectorIndexId={}, postId={}, err={}", vectorIndexId, postId, ex.getMessage());
+        }
+
+        PostsEntity p = postsRepository.findById(postId).orElse(null);
+        if (p == null || Boolean.TRUE.equals(p.getIsDeleted()) || p.getStatus() != PostStatus.PUBLISHED) {
+            return;
+        }
+
+        Map<String, Object> meta0ForDefaults = vi.getMetadata();
+        String metaModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingModel"));
+        if (metaModel == null) metaModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingModel"));
+        String modelToUse = toNonBlankString(embeddingModelOverride);
+        if (modelToUse == null) modelToUse = metaModel;
+        if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
+
+        Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
+        if (configuredDims == null) {
+            Integer d = vi.getDim();
+            configuredDims = d != null && d > 0 ? d : null;
+        }
+
+        Integer maxCharsMeta = toInt(meta0ForDefaults == null ? null : meta0ForDefaults.get("lastBuildChunkMaxChars"));
+        Integer overlapMeta = toInt(meta0ForDefaults == null ? null : meta0ForDefaults.get("lastBuildChunkOverlapChars"));
+        int maxChars = chunkMaxChars == null ? (maxCharsMeta == null ? 800 : maxCharsMeta) : chunkMaxChars;
+        int overlap = chunkOverlapChars == null ? (overlapMeta == null ? 80 : overlapMeta) : chunkOverlapChars;
+        if (maxChars < 200) maxChars = 800;
+        if (maxChars > 5000) maxChars = 5000;
+        if (overlap < 0) overlap = 0;
+        if (overlap >= maxChars) overlap = Math.max(0, maxChars - 1);
+
+        String title = ModerationSampleTextUtils.normalize(p.getTitle());
+        String body = ModerationSampleTextUtils.normalize(p.getContent());
+        String text = (title.isBlank() ? "" : title + "\n\n") + body;
+        if (text.isBlank()) return;
+
+        List<String> chunks = splitWithOverlap(text, maxChars, overlap);
+        boolean ensured = false;
+        Integer inferredDims = null;
+        Integer dimsToUse = null;
+
+        for (int ci = 0; ci < chunks.size(); ci++) {
+            String chunk = chunks.get(ci);
+            if (chunk == null || chunk.isBlank()) continue;
+
+            String docId = "post_" + p.getId() + "_chunk_" + ci;
+            String contentHash = ModerationSampleTextUtils.sha256Hex(chunk);
+            try {
+                AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnce(chunk, modelToUse);
+                if (emb == null || emb.vector() == null) throw new IllegalStateException("embedding is null");
+
+                if (!ensured) {
+                    inferredDims = emb.dims();
+                    validateEmbeddingDims(configuredDims, inferredDims);
+                    dimsToUse = configuredDims != null ? configuredDims : inferredDims;
+                    indexService.ensureIndex(indexName, dimsToUse);
+                    ensured = true;
+                }
+
+                Document d = Document.create();
+                d.setId(docId);
+                d.put("id", docId);
+                d.put("post_id", p.getId());
+                d.put("board_id", p.getBoardId());
+                d.put("author_id", p.getAuthorId());
+                d.put("chunk_index", ci);
+                d.put("content_hash", contentHash);
+                d.put("title", p.getTitle());
+                d.put("content_text", chunk);
+                if (p.getCreatedAt() != null) d.put("created_at", Date.from(p.getCreatedAt().toInstant(ZoneOffset.UTC)));
+                if (p.getUpdatedAt() != null) d.put("updated_at", Date.from(p.getUpdatedAt().toInstant(ZoneOffset.UTC)));
+
+                float[] vector = emb.vector();
+                if (vector.length > 0) {
+                    List<Float> vec = new ArrayList<>(vector.length);
+                    for (float v : vector) vec.add(v);
+                    d.put("embedding", vec);
+                }
+
+                esTemplate.save(d, IndexCoordinates.of(indexName));
+            } catch (Exception ex) {
+                log.warn("RAG single-post chunk upsert failed. vectorIndexId={}, postId={}, docId={}, err={}", vectorIndexId, postId, docId, summarizeException(ex), ex);
+            }
+        }
+
+        try {
+            esTemplate.indexOps(IndexCoordinates.of(indexName)).refresh();
+        } catch (Exception ignored) {
+        }
+    }
+
     private void deleteByQuery(String indexName, String body) {
         if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
         String endpoint = elasticsearchUris;
@@ -437,6 +549,21 @@ public class RagPostIndexBuildService {
             if (t.isBlank()) return null;
             try {
                 return Long.parseLong(t);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static Integer toInt(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.intValue();
+        if (v instanceof String s) {
+            String t = s.trim();
+            if (t.isBlank()) return null;
+            try {
+                return Integer.parseInt(t);
             } catch (NumberFormatException ignored) {
                 return null;
             }

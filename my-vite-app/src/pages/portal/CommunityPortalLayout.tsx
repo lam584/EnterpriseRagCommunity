@@ -7,6 +7,11 @@ import { getMyProfile } from '../../services/accountService';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+export type PortalOutletContext = {
+  composePreviewOpen: boolean;
+  setComposePreviewOpen: (v: boolean) => void;
+};
+
 /**
  * 前台门户布局：包含左侧一级菜单（浏览与发现、帖子、互动、智能助手、账户）
  * 作为路由嵌套的容器，子路由在 <Outlet /> 中渲染。
@@ -37,6 +42,25 @@ export default function CommunityPortalLayout() {
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | undefined>(undefined);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const composePreviewOpenKey = 'portal.posts.compose.previewPaneOpen';
+  const [composePreviewOpen, setComposePreviewOpen] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem(composePreviewOpenKey);
+      if (!raw) return false;
+      return raw === '1' || raw.toLowerCase() === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(composePreviewOpenKey, composePreviewOpen ? '1' : '0');
+    } catch {
+      // ignore
+    }
+  }, [composePreviewOpen]);
 
   const displayUsername = useMemo(() => {
     const name = currentUser?.username?.trim();
@@ -142,9 +166,10 @@ export default function CommunityPortalLayout() {
     return isComposeActive || isPostsActive || (isActiveFromNavLink && navId !== 'compose' && navId !== 'posts');
   };
 
-  // Keep the outer container width stable across routes to prevent sidebar "jump".
-  // Let individual pages control their own inner content widths instead.
-  const containerClassName = 'max-w-7xl';
+  const isComposeRoute =
+    location.pathname.startsWith('/portal/posts/create') || location.pathname.startsWith('/portal/posts/edit');
+  const isComposeWide = isComposeRoute && composePreviewOpen;
+  const containerClassName = isComposeWide ? 'w-full max-w-none' : 'max-w-7xl';
 
   return (
     <div className="min-h-screen bg-white">
@@ -294,7 +319,7 @@ export default function CommunityPortalLayout() {
         {/* Main Content */}
         <main className="flex-1 min-w-0 bg-white">
           <div className="w-full min-w-0">
-            <Outlet />
+            <Outlet context={{ composePreviewOpen, setComposePreviewOpen } satisfies PortalOutletContext} />
           </div>
         </main>
       </div>

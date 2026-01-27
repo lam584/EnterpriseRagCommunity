@@ -1,24 +1,30 @@
 package com.example.EnterpriseRagCommunity.service.content.impl;
 
-import com.example.EnterpriseRagCommunity.dto.content.TagsCreateDTO;
-import com.example.EnterpriseRagCommunity.dto.content.TagsQueryDTO;
-import com.example.EnterpriseRagCommunity.dto.content.TagsUpdateDTO;
-import com.example.EnterpriseRagCommunity.entity.content.TagsEntity;
-import com.example.EnterpriseRagCommunity.repository.content.PostTagRepository;
-import com.example.EnterpriseRagCommunity.repository.content.TagsRepository;
-import com.example.EnterpriseRagCommunity.service.content.TagsService;
-import jakarta.persistence.criteria.Predicate;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.*;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Pattern;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.regex.Pattern;
+import com.example.EnterpriseRagCommunity.dto.content.TagsCreateDTO;
+import com.example.EnterpriseRagCommunity.dto.content.TagsQueryDTO;
+import com.example.EnterpriseRagCommunity.dto.content.TagsUpdateDTO;
+import com.example.EnterpriseRagCommunity.entity.content.TagsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.enums.TagType;
+import com.example.EnterpriseRagCommunity.repository.content.PostTagRepository;
+import com.example.EnterpriseRagCommunity.repository.content.TagsRepository;
+import com.example.EnterpriseRagCommunity.service.content.TagsService;
+
+import jakarta.persistence.criteria.Predicate;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -27,7 +33,8 @@ public class TagsServiceImpl implements TagsService {
     private final TagsRepository tagsRepository;
     private final PostTagRepository postTagRepository;
 
-    private static final Pattern SLUG_PATTERN = Pattern.compile("^[a-z0-9]+(?:-[a-z0-9]+)*$");
+    private static final Pattern DEFAULT_SLUG_PATTERN = Pattern.compile("^[a-z0-9]+(?:-[a-z0-9]+)*$");
+    private static final Pattern RISK_SLUG_PATTERN = Pattern.compile("^[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$");
 
     @Override
     public Page<TagsEntity> query(TagsQueryDTO queryDTO) {
@@ -119,9 +126,7 @@ public class TagsServiceImpl implements TagsService {
         // created_at 系统填写；SQL 默认 CURRENT_TIMESTAMP(3)，这里同样在应用层填充以便立即返回。
         entity.setCreatedAt(LocalDateTime.now());
 
-        if (!StringUtils.hasText(entity.getSlug()) || !SLUG_PATTERN.matcher(entity.getSlug()).matches()) {
-            throw new IllegalArgumentException("Slug 必须为 kebab-case（小写字母/数字/短横线）。");
-        }
+        validateSlug(entity.getType(), entity.getSlug());
 
         // 唯一性校验：tenantId + type + slug
         if (tagsRepository.findByTenantIdAndTypeAndSlug(entity.getTenantId(), entity.getType(), entity.getSlug()).isPresent()) {
@@ -162,9 +167,7 @@ public class TagsServiceImpl implements TagsService {
         // createdAt 只读：即使前端传入也忽略（DTO 已标注只读）
 
         if (updateDTO.getSlug() != null && updateDTO.getSlug().isPresent()) {
-            if (!StringUtils.hasText(entity.getSlug()) || !SLUG_PATTERN.matcher(entity.getSlug()).matches()) {
-                throw new IllegalArgumentException("Slug 必须为 kebab-case（小写字母/数字/短横线）。");
-            }
+            validateSlug(entity.getType(), entity.getSlug());
         }
 
         // 唯一性校验（排除自身）
@@ -192,6 +195,19 @@ public class TagsServiceImpl implements TagsService {
         }
 
         tagsRepository.deleteById(id);
+    }
+
+    static void validateSlug(TagType type, String slug) {
+        if (!StringUtils.hasText(slug)) {
+            throw new IllegalArgumentException("Slug 不能为空。");
+        }
+        Pattern pattern = (type == TagType.RISK) ? RISK_SLUG_PATTERN : DEFAULT_SLUG_PATTERN;
+        if (!pattern.matcher(slug).matches()) {
+            if (type == TagType.RISK) {
+                throw new IllegalArgumentException("Slug 必须为 kebab-case（中文/字母数字/短横线）。");
+            }
+            throw new IllegalArgumentException("Slug 必须为 kebab-case（小写字母/数字/短横线）。");
+        }
     }
 }
 

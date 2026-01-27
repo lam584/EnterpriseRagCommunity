@@ -46,19 +46,12 @@ export default function PostsCreatePreviewSidebar() {
   }, [location.pathname]);
 
   return (
-    <aside className="hidden lg:block sticky top-4 self-start">
-      <div className="border border-gray-200 rounded-md bg-white p-3">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-medium text-gray-700">实时预览</div>
-          <div className="text-xs text-gray-500">跟随编辑内容自动更新</div>
-        </div>
-        <div className="mt-2 max-h-[calc(100vh-120px)] overflow-auto">
-          {markdown.trim() ? (
-            <MarkdownPreview markdown={markdown} />
-          ) : (
-            <div className="text-sm text-gray-400">（这里会显示预览）</div>
-          )}
-        </div>
+    <aside className="h-full min-h-0 flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium text-gray-700">实时预览</div>
+      </div>
+      <div className="w-full flex-1 min-h-0 border border-gray-300 rounded-md px-3 py-2 bg-white overflow-auto">
+        {markdown.trim() ? <MarkdownPreview markdown={markdown} /> : <div className="text-sm text-gray-400">（这里会显示预览）</div>}
       </div>
     </aside>
   );

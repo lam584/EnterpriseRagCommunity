@@ -35,77 +35,9 @@ type FormState = {
   qps: string;
 };
 
-const DEFAULT_PROMPT_TEMPLATE = `你是一个【社区内容审核】模型。你只负责审核，不要与用户聊天，也不要提供任何建议。
-你的任务：依据【审核标准】审查【待审核内容】，并且【只输出严格 JSON】。
-
-【关键要求（必须遵守）】
-1) 你必须只输出 1 个 JSON 对象（不要 Markdown、不要代码块、不要解释、不要多余换行前后缀）。
-2) JSON 必须能被直接解析：使用双引号、布尔/数字合法、数组合法、无尾逗号、无评论。
-3) 你不得输出除下述字段外的任何字段；不得输出待审核内容的复述/摘抄。
-4) 如遇信息不足、语境不清、疑似转述/引用导致无法判断真实意图：decision=HUMAN，并在 reasons 写明缺失信息。
-5) 输出必须稳定：decision 与 score 区间必须匹配（见【评分与决策映射】）。
-
-【输入说明】
-- 待审核内容可能来自：帖子标题/正文/评论/用户签名/链接描述/转发文本。
-- 待审核内容可能包含：URL、账号、群号、二维码描述、联系方式、口语、错别字、谐音、拆字、emoji。
-
-【输出字段】
-- decision: "APPROVE" | "REJECT" | "HUMAN"
-- score: 0~1 风险分（越高越危险）
-- reasons: 1~5 条简短原因（中文，尽量不复述敏感细节，不包含个人信息；每条<=25字为佳）
-- riskTags: 风险标签数组（字符串，尽量用给定示例；可为空数组）
-
-【评分与决策映射（默认）】
-- 明确违规：decision=REJECT 且 score>=0.85
-- 高风险/不确定：decision=HUMAN 且 0.60<=score<0.85
-- 低风险：decision=APPROVE 且 score<0.60
-注意：当 decision 为 REJECT/HUMAN 时，score 也必须落在对应区间内（不要出现 REJECT 却给 0.3）。
-
-【审核标准（更细化）】
-A. 直接拒绝（REJECT）——出现以下任一类，且语义明确：
-- 色情/性服务："sexual_content"、"sex_service"、"porn_ad"
-  - 成人内容引流、露骨性描写、招嫖、性交易、涉未成年人性内容（极高危）
-- 暴恐/血腥/武器："terror"、"violence"、"weapon"、"extremism"
-  - 暴力威胁、虐杀血腥、极端主义宣传、武器/爆炸物制作与购买渠道
-- 诈骗/赌博/黑产/引流："fraud"、"gambling"、"black_market"、"traffic_diversion"
-  - 诈骗话术、博彩引流、售卖违禁品、灰黑产导流、提供联系方式/群号/二维码/外链
-- 隐私泄露/人肉："privacy"、"doxxing"
-  - 身份证/手机号/住址/银行卡/人脸等敏感信息，或诱导收集与曝光
-- 明确违法教程/交易："illegal_instruction"
-  - 教唆违法、提供可操作步骤/渠道/价格/购买方式（含暗语）
-
-B. 转人工（HUMAN）——高风险但需要上下文判断：
-- 仇恨/辱骂/人身攻击："hate"、"harassment"
-  - 针对群体的歧视/仇恨；强烈辱骂、威胁但语境不清（如玩笑/互喷/引用）
-- 涉政敏感/煽动："politics"、"incitement"
-  - 号召动员、煽动对立、可能引战的内容
-- 高风险建议："medical"、"legal"、"finance"
-  - 医疗/法律/金融建议可能造成现实伤害，且缺少资质声明或上下文
-- 上下文不足："insufficient_context"
-  - 断章取义、引用不明、无法判断是否为讽刺/转述/学术讨论
-
-C. 允许通过（APPROVE）——风险低且不包含上述违规：
-- 正常交流、技术讨论、学习资料、日常吐槽、客观新闻/科普（不含引流与隐私）
-
-【riskTags 选取建议】
-- 可多选；如无法归类可留空数组。
-- 引流/联系方式优先加："traffic_diversion"。
-
-【输出格式（再次强调）】
-你必须只输出一个 JSON 对象，结构如下：
-{
-  "decision": "APPROVE"|"REJECT"|"HUMAN",
-  "score": number,
-  "reasons": string[],
-  "riskTags": string[]
-}
-
-【待审核内容】
-{{text}}`;
-
 function defaultConfig(): LlmModerationConfig {
   return {
-    promptTemplate: DEFAULT_PROMPT_TEMPLATE,
+    promptTemplate: '',
     temperature: 0.2,
     threshold: 0.75,
     autoRun: false,
@@ -230,12 +162,11 @@ const LlmForm: React.FC = () => {
       const cfg = await adminGetLlmModerationConfig();
       const prompt = cfg?.promptTemplate?.trim();
       if (!prompt) {
-        // 后端返回空配置时，使用前端默认值兜底
         const next = toFormState({ ...defaultConfig(), ...cfg });
         setForm(next);
         setCommittedForm(next);
         setIsEditing(false);
-        setSavedHint('后端配置为空，已加载内置默认值提示词（可点击「编辑配置」后保存写入数据库）');
+        setSavedHint('后端配置为空，请点击「编辑配置」并保存提示词写入数据库');
       } else {
         const next = toFormState(cfg);
         setForm(next);
@@ -243,13 +174,11 @@ const LlmForm: React.FC = () => {
         setIsEditing(false);
       }
     } catch (e) {
-      // 后端未实现/网络问题时，允许页面仍可用
       const next = toFormState(defaultConfig());
       setForm(next);
       setCommittedForm(next);
       setIsEditing(false);
       setError(e instanceof Error ? e.message : String(e));
-      setSavedHint('后端接口不可用，已加载前端默认提示词（可用于快速演示）');
     } finally {
       setLoading(false);
     }
@@ -343,16 +272,14 @@ const LlmForm: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  if (!isEditing) return;
-                  setForm(toFormState(defaultConfig()));
-                  setSavedHint('已恢复为内置默认提示词（记得点「保存配置」写入数据库）');
+                  void loadConfig();
                   setError(null);
                 }}
                 className="rounded border px-3 py-2 disabled:opacity-60"
-                disabled={!isEditing || loading || saving || testing}
-                title={!isEditing ? '请先点击「编辑配置」' : '将表单恢复为内置默认提示词（不会自动保存）'}
+                disabled={loading || saving || testing}
+                title="从后端重新加载配置（会覆盖未保存的修改）"
               >
-                恢复默认
+                重新加载
               </button>
 
               {!isEditing ? (

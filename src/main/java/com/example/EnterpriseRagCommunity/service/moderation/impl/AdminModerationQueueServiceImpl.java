@@ -13,13 +13,16 @@ import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntit
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.Source;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
+import com.example.EnterpriseRagCommunity.service.moderation.RiskLabelingService;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexVisibilitySyncService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
@@ -52,6 +55,12 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     @Autowired
     private ModerationVecAutoRunner moderationVecAutoRunner;
+
+    @Autowired
+    private RiskLabelingService riskLabelingService;
+
+    @Autowired
+    private RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
 
     @Override
     public Page<AdminModerationQueueItemDTO> list(ModerationQueueQueryDTO query) {
@@ -135,7 +144,15 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         }
         Map<Long, PostsEntity> commentPostsById = loadPostsByIds(commentPostIds);
 
-        return entityPage.map(e -> toItemDTO(e, postsById.get(e.getContentId()), commentsById.get(e.getContentId()), commentPostsById));
+        Map<Long, List<String>> postRiskTagsById = riskLabelingService.getRiskTagSlugsByTargets(ContentType.POST, postIds);
+        Map<Long, List<String>> commentRiskTagsById = riskLabelingService.getRiskTagSlugsByTargets(ContentType.COMMENT, commentIds);
+
+        return entityPage.map(e -> {
+            List<String> riskTags = e.getContentType() == ContentType.POST
+                    ? postRiskTagsById.getOrDefault(e.getContentId(), List.of())
+                    : commentRiskTagsById.getOrDefault(e.getContentId(), List.of());
+            return toItemDTO(e, postsById.get(e.getContentId()), commentsById.get(e.getContentId()), commentPostsById, riskTags);
+        });
     }
 
     @Override
@@ -145,6 +162,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + id));
 
         AdminModerationQueueDetailDTO dto = baseDetail(q);
+        dto.setRiskTags(riskLabelingService.getRiskTagSlugs(q.getContentType(), q.getContentId()));
 
         if (q.getContentType() == ContentType.POST) {
             PostsEntity p = postsRepository.findById(q.getContentId()).orElse(null);
@@ -178,7 +196,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             if (Boolean.TRUE.equals(post.getIsDeleted())) throw new IllegalArgumentException("帖子已删除: " + post.getId());
             post.setStatus(PostStatus.PUBLISHED);
             if (post.getPublishedAt() == null) post.setPublishedAt(LocalDateTime.now());
-            postsRepository.save(post);
+            PostsEntity saved = postsRepository.save(post);
+            ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
         } else if (q.getContentType() == ContentType.COMMENT) {
             CommentsEntity c = commentsRepository.findById(q.getContentId())
                     .orElseThrow(() -> new IllegalArgumentException("评论不存在: " + q.getContentId()));
@@ -214,7 +233,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                     .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + q.getContentId()));
             if (Boolean.TRUE.equals(post.getIsDeleted())) throw new IllegalArgumentException("帖子已删除: " + post.getId());
             post.setStatus(PostStatus.REJECTED);
-            postsRepository.save(post);
+            PostsEntity saved = postsRepository.save(post);
+            ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
         } else if (q.getContentType() == ContentType.COMMENT) {
             CommentsEntity c = commentsRepository.findById(q.getContentId())
                     .orElseThrow(() -> new IllegalArgumentException("评论不存在: " + q.getContentId()));
@@ -403,7 +423,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         return map;
     }
 
-    private AdminModerationQueueItemDTO toItemDTO(ModerationQueueEntity q, PostsEntity post, CommentsEntity comment, Map<Long, PostsEntity> commentPostsById) {
+    private AdminModerationQueueItemDTO toItemDTO(ModerationQueueEntity q, PostsEntity post, CommentsEntity comment, Map<Long, PostsEntity> commentPostsById, List<String> riskTags) {
         AdminModerationQueueItemDTO dto = new AdminModerationQueueItemDTO();
         dto.setId(q.getId());
         dto.setContentType(q.getContentType());
@@ -414,6 +434,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         dto.setAssignedToId(q.getAssignedToId());
         dto.setCreatedAt(q.getCreatedAt());
         dto.setUpdatedAt(q.getUpdatedAt());
+        dto.setRiskTags(riskTags == null ? List.of() : riskTags);
 
         if (q.getContentType() == ContentType.POST) {
             dto.setSummary(buildPostSummary(post));
@@ -557,6 +578,29 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             throw new IllegalStateException("进入人工审核失败：仅允许已终态任务进入人工审核");
         }
         return getDetail(id);
+    }
+
+    @Override
+    public List<String> getRiskTags(Long queueId) {
+        if (queueId == null) throw new IllegalArgumentException("queueId 不能为空");
+        ModerationQueueEntity q = moderationQueueRepository.findById(queueId)
+                .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + queueId));
+        return riskLabelingService.getRiskTagSlugs(q.getContentType(), q.getContentId());
+    }
+
+    @Override
+    @Transactional
+    public AdminModerationQueueDetailDTO setRiskTags(Long queueId, List<String> riskTags) {
+        if (queueId == null) throw new IllegalArgumentException("queueId 不能为空");
+        ModerationQueueEntity q = moderationQueueRepository.findById(queueId)
+                .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + queueId));
+
+        if (q.getStatus() != QueueStatus.HUMAN) {
+            throw new IllegalStateException("仅允许在人工审核状态下设置风险标签");
+        }
+
+        riskLabelingService.replaceRiskTags(q.getContentType(), q.getContentId(), Source.HUMAN, riskTags, null, true);
+        return getDetail(queueId);
     }
 
     private Long currentUserIdOrThrow() {

@@ -348,7 +348,7 @@ export const ReviewCenterPage: React.FC = () => (
       { id: 'llm', label: 'LLM 审核层' },
       { id: 'fallback', label: '置信回退机制' },
       { id: 'logs', label: '审核日志与追溯' },
-      { id: 'risk-tags', label: '风险标签生成' },
+      { id: 'risk-tags', label: '风险标签管理' },
     ]}
   />
 );

@@ -6,6 +6,7 @@ import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 public class AdminModerationQueueItemDTO {
@@ -22,6 +23,8 @@ public class AdminModerationQueueItemDTO {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    private List<String> riskTags;
 
     /** 统一的展示用摘要 */
     private Summary summary;

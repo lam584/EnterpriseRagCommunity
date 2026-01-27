@@ -18,7 +18,7 @@ public class EmailVerificationMailer {
     private final EmailSenderService emailSenderService;
 
     public boolean isEnabled() {
-        return appSettingsService.getLongOrDefault("email_enabled", 0L) == 1L;
+        return appSettingsService.getLongOrDefault("email_enabled", 1L) == 1L;
     }
 
     public void sendVerificationCode(String to, String code, EmailVerificationPurpose purpose) {
@@ -30,7 +30,7 @@ public class EmailVerificationMailer {
     }
 
     public EmailTransportConfig loadTransportConfig() {
-        String host = appSettingsService.getString("email_host").orElse("").trim();
+        String host = appSettingsService.getString("email_host").orElse("smtp.qiye.aliyun.com").trim();
         if (host.isEmpty()) throw new IllegalStateException("邮箱服务器 host 未配置");
 
         String encryptionRaw = appSettingsService.getString("email_encryption").orElse("SSL").trim().toUpperCase(Locale.ROOT);

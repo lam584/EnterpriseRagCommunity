@@ -134,7 +134,7 @@ public class AdminSettingsController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
     public ResponseEntity<EmailAdminSettingsDTO> getEmail() {
         EmailAdminSettingsDTO dto = new EmailAdminSettingsDTO();
-        dto.setEnabled(appSettingsService.getLongOrDefault(KEY_EMAIL_ENABLED, 0L) == 1L);
+        dto.setEnabled(appSettingsService.getLongOrDefault(KEY_EMAIL_ENABLED, 1L) == 1L);
         dto.setProtocol(appSettingsService.getString(KEY_EMAIL_PROTOCOL).orElse("SMTP"));
         dto.setHost(appSettingsService.getString(KEY_EMAIL_HOST).orElse("smtp.qiye.aliyun.com"));
         dto.setPortPlain((int) appSettingsService.getLongOrDefault(KEY_EMAIL_PORT_PLAIN, 25L));

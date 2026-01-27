@@ -20,6 +20,8 @@ import org.springframework.stereotype.Service;
 import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
+import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
+import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
@@ -38,6 +40,7 @@ public class HybridRagRetrievalService {
     private final AiEmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
     private final AiProperties aiProperties;
+    private final PostsRepository postsRepository;
 
     @Value("${spring.elasticsearch.uris:http://127.0.0.1:9200}")
     private String elasticsearchUris;
@@ -125,7 +128,7 @@ public class HybridRagRetrievalService {
 
         String body = buildBm25Body(queryText, boardId, size, titleBoost, contentBoost);
         JsonNode root = postSearch(indexName, body);
-        return parseEsHits(root);
+        return filterVisibleHits(parseEsHits(root));
     }
 
     private List<DocHit> vecSearch(String queryText, Long boardId, int topK) {
@@ -156,7 +159,31 @@ public class HybridRagRetrievalService {
 
         String body = buildKnnBody(k, Math.max(100, Math.min(20_000, k * 10)), boardId, vec);
         JsonNode root = postSearch(indexName, body);
-        return parseEsHits(root);
+        return filterVisibleHits(parseEsHits(root));
+    }
+
+    private List<DocHit> filterVisibleHits(List<DocHit> hits) {
+        if (hits == null || hits.isEmpty()) return List.of();
+        java.util.LinkedHashSet<Long> postIds = new java.util.LinkedHashSet<>();
+        for (DocHit h : hits) {
+            if (h == null || h.getPostId() == null) continue;
+            postIds.add(h.getPostId());
+        }
+        if (postIds.isEmpty()) return hits;
+
+        List<Long> ids = new ArrayList<>(postIds);
+        java.util.HashSet<Long> ok = new java.util.HashSet<>();
+        postsRepository.findByIdInAndIsDeletedFalseAndStatus(ids, PostStatus.PUBLISHED)
+                .forEach(p -> {
+                    if (p != null && p.getId() != null) ok.add(p.getId());
+                });
+
+        List<DocHit> out = new ArrayList<>();
+        for (DocHit h : hits) {
+            if (h == null || h.getPostId() == null) continue;
+            if (ok.contains(h.getPostId())) out.add(h);
+        }
+        return out;
     }
 
     private List<DocHit> fuse(List<DocHit> bm25, List<DocHit> vec, HybridRetrievalConfigDTO cfg, int maxDocs) {

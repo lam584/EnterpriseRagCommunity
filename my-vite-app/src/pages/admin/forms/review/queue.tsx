@@ -5,6 +5,7 @@ import {
     adminApproveModerationQueue,
     adminBackfillModerationQueue,
     adminGetModerationQueueDetail,
+    adminSetModerationQueueRiskTags,
     adminListModerationQueue,
     adminRejectModerationQueue,
     adminClaimModerationQueue,
@@ -19,6 +20,7 @@ import {
 } from '../../../../services/moderationQueueService';
 import { getCurrentAdmin } from '../../../../services/authService';
 import { ModerationPipelineTracePanel } from '../../../../components/admin/ModerationPipelineTracePanel';
+import { createRiskTag, listRiskTagsPage, type RiskTagDTO } from '../../../../services/riskTagService';
 
 function formatDateTime(s?: string | null): string {
     if (!s) return '—';
@@ -104,6 +106,15 @@ const QueueForm: React.FC = () => {
     const [detailOpen, setDetailOpen] = useState(false);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detail, setDetail] = useState<ModerationQueueDetail | null>(null);
+
+    const [riskEditorOpen, setRiskEditorOpen] = useState(false);
+    const [riskEditorLoading, setRiskEditorLoading] = useState(false);
+    const [riskEditorSaving, setRiskEditorSaving] = useState(false);
+    const [riskEditorError, setRiskEditorError] = useState<string | null>(null);
+    const [riskQuery, setRiskQuery] = useState('');
+    const [riskOptions, setRiskOptions] = useState<RiskTagDTO[]>([]);
+    const [riskSelected, setRiskSelected] = useState<string[]>([]);
+    const [riskNewName, setRiskNewName] = useState('');
 
     const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
 
@@ -191,6 +202,87 @@ const QueueForm: React.FC = () => {
             setDetailLoading(false);
         }
     }, []);
+
+    useEffect(() => {
+        if (!riskEditorOpen) return;
+        const t = window.setTimeout(() => {
+            (async () => {
+                setRiskEditorLoading(true);
+                setRiskEditorError(null);
+                try {
+                    const res = await listRiskTagsPage({ page: 1, pageSize: 30, keyword: riskQuery.trim() ? riskQuery.trim() : undefined });
+                    setRiskOptions(res.content ?? []);
+                } catch (e) {
+                    setRiskEditorError(e instanceof Error ? e.message : String(e));
+                } finally {
+                    setRiskEditorLoading(false);
+                }
+            })();
+        }, 200);
+        return () => window.clearTimeout(t);
+    }, [riskEditorOpen, riskQuery]);
+
+    const openRiskEditor = useCallback(() => {
+        if (!detail) return;
+        setRiskEditorOpen(true);
+        setRiskEditorError(null);
+        setRiskQuery('');
+        setRiskOptions([]);
+        setRiskSelected(detail.riskTags ?? []);
+        setRiskNewName('');
+    }, [detail]);
+
+    const closeRiskEditor = useCallback(() => {
+        setRiskEditorOpen(false);
+        setRiskEditorError(null);
+        setRiskQuery('');
+        setRiskOptions([]);
+        setRiskSelected([]);
+        setRiskNewName('');
+    }, []);
+
+    const addRiskSlug = useCallback((slug: string) => {
+        const s = (slug ?? '').trim();
+        if (!s) return;
+        setRiskSelected((prev) => (prev.includes(s) ? prev : [...prev, s]));
+    }, []);
+
+    const removeRiskSlug = useCallback((slug: string) => {
+        setRiskSelected((prev) => prev.filter((x) => x !== slug));
+    }, []);
+
+    const createAndSelectRiskTag = useCallback(async () => {
+        if (!riskNewName.trim()) return;
+        setRiskEditorSaving(true);
+        setRiskEditorError(null);
+        try {
+            const created = await createRiskTag({ tenantId: 1, name: riskNewName.trim(), active: true });
+            addRiskSlug(created.slug);
+            setRiskNewName('');
+            const res = await listRiskTagsPage({ page: 1, pageSize: 30, keyword: riskQuery.trim() ? riskQuery.trim() : undefined });
+            setRiskOptions(res.content ?? []);
+        } catch (e) {
+            setRiskEditorError(e instanceof Error ? e.message : String(e));
+        } finally {
+            setRiskEditorSaving(false);
+        }
+    }, [addRiskSlug, riskNewName, riskQuery]);
+
+    const saveRiskTags = useCallback(async () => {
+        if (!detail) return;
+        setRiskEditorSaving(true);
+        setRiskEditorError(null);
+        try {
+            const updated = await adminSetModerationQueueRiskTags(detail.id, riskSelected);
+            setDetail(updated);
+            await load();
+            closeRiskEditor();
+        } catch (e) {
+            setRiskEditorError(e instanceof Error ? e.message : String(e));
+        } finally {
+            setRiskEditorSaving(false);
+        }
+    }, [closeRiskEditor, detail, load, riskSelected]);
 
     const approve = useCallback(
         async (id: number) => {
@@ -460,6 +552,19 @@ const QueueForm: React.FC = () => {
                                             {it.summary?.title || '—'}
                                         </div>
                                         <div className="text-gray-500 truncate max-w-[520px]">{it.summary?.snippet || '—'}</div>
+                                        {it.riskTags && it.riskTags.length ? (
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {it.riskTags.map((t) => (
+                                                    <span
+                                                        key={t}
+                                                        className="inline-flex px-2 py-0.5 rounded-full text-xs border border-amber-200 bg-amber-50 text-amber-900"
+                                                        title={t}
+                                                    >
+                                                        {t}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : null}
                                         {it.contentType === 'COMMENT' && it.summary?.postId ? (
                                             <div className="text-gray-400">所属帖子ID: {it.summary.postId}</div>
                                         ) : null}
@@ -647,6 +752,36 @@ const QueueForm: React.FC = () => {
                                             className="text-sm text-gray-700">内容：{detail.summary?.snippet || '—'}</div>
                                     </div>
 
+                                    <div className="border rounded p-3 space-y-2">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="font-medium">风险标签</div>
+                                            {detail.status === 'HUMAN' ? (
+                                                <button
+                                                    type="button"
+                                                    className="rounded border px-3 py-1 hover:bg-gray-50"
+                                                    onClick={openRiskEditor}
+                                                >
+                                                    编辑风险标签
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                        {detail.riskTags && detail.riskTags.length ? (
+                                            <div className="flex flex-wrap gap-1">
+                                                {detail.riskTags.map((t) => (
+                                                    <span
+                                                        key={t}
+                                                        className="inline-flex px-2 py-0.5 rounded-full text-xs border border-amber-200 bg-amber-50 text-amber-900"
+                                                        title={t}
+                                                    >
+                                                        {t}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div className="text-sm text-gray-500">（暂无）</div>
+                                        )}
+                                    </div>
+
                                     {detail.contentType === 'POST' ? (
                                         <div className="border rounded p-3">
                                             <div className="font-medium mb-1">帖子内容</div>
@@ -743,6 +878,128 @@ const QueueForm: React.FC = () => {
                             ) : (
                                 <div className="text-gray-600">无详情数据</div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
+            {riskEditorOpen ? (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+                    <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[85vh] overflow-auto">
+                        <div className="flex items-center justify-between px-4 py-3 border-b">
+                            <div className="font-semibold">编辑风险标签</div>
+                            <button
+                                type="button"
+                                className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-60"
+                                onClick={closeRiskEditor}
+                                disabled={riskEditorSaving}
+                            >
+                                关闭
+                            </button>
+                        </div>
+
+                        <div className="p-4 space-y-4">
+                            {riskEditorError ? <div className="text-sm text-red-700">{riskEditorError}</div> : null}
+
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-700">已选择</div>
+                                {riskSelected.length ? (
+                                    <div className="flex flex-wrap gap-2">
+                                        {riskSelected.map((t) => (
+                                            <span
+                                                key={t}
+                                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-900"
+                                                title={t}
+                                            >
+                                                <span>{t}</span>
+                                                <button
+                                                    type="button"
+                                                    className="text-amber-800 hover:text-amber-950"
+                                                    onClick={() => removeRiskSlug(t)}
+                                                    disabled={riskEditorSaving}
+                                                >
+                                                    ×
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-gray-500">（未选择）</div>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-700">搜索已有风险标签</div>
+                                <input
+                                    className="w-full rounded border px-3 py-2 border-gray-300"
+                                    placeholder="输入关键字搜索 name/slug"
+                                    value={riskQuery}
+                                    onChange={(e) => setRiskQuery(e.target.value)}
+                                    disabled={riskEditorSaving}
+                                />
+                                {riskEditorLoading ? <div className="text-sm text-gray-500">加载中...</div> : null}
+                                {riskOptions.length ? (
+                                    <div className="max-h-[260px] overflow-auto border rounded">
+                                        {riskOptions.map((t) => (
+                                            <button
+                                                key={t.id}
+                                                type="button"
+                                                className="w-full text-left px-3 py-2 hover:bg-gray-50 disabled:opacity-60"
+                                                onClick={() => addRiskSlug(t.slug)}
+                                                disabled={riskEditorSaving}
+                                                title={t.slug}
+                                            >
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="text-sm text-gray-900">{t.name}</span>
+                                                    <span className="text-xs text-gray-500">{t.slug}</span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-gray-500">（无匹配结果）</div>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-gray-700">快速新增</div>
+                                <div className="flex gap-2">
+                                    <input
+                                        className="flex-1 rounded border px-3 py-2 border-gray-300"
+                                        placeholder="输入新风险标签名称（将自动生成 slug）"
+                                        value={riskNewName}
+                                        onChange={(e) => setRiskNewName(e.target.value)}
+                                        disabled={riskEditorSaving}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
+                                        onClick={() => void createAndSelectRiskTag()}
+                                        disabled={riskEditorSaving || !riskNewName.trim()}
+                                    >
+                                        新增并选中
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded border px-4 py-2 hover:bg-gray-50 disabled:opacity-60"
+                                    onClick={closeRiskEditor}
+                                    disabled={riskEditorSaving}
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
+                                    onClick={() => void saveRiskTags()}
+                                    disabled={riskEditorSaving}
+                                >
+                                    {riskEditorSaving ? '保存中...' : '保存'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -86,9 +86,11 @@ public class AdminModerationLlmService {
         if (text == null || text.isBlank()) throw new IllegalArgumentException("text 不能为空（或 queueId 无法解析到内容）");
         if (text.length() > 6000) text = text.substring(0, 6000); // avoid huge prompt cost
 
-        String prompt = (merged.getPromptTemplate() == null || merged.getPromptTemplate().isBlank())
-                ? DefaultLlmModerationPrompt.TEMPLATE
-                : merged.getPromptTemplate();
+        String promptTemplate = merged.getPromptTemplate();
+        if (promptTemplate == null || promptTemplate.isBlank()) {
+            throw new IllegalStateException("LLM 审核提示词未配置，请先在后台保存配置或在 configOverride 中提供 promptTemplate");
+        }
+        String prompt = promptTemplate;
         prompt = prompt.replace("{{text}}", text);
 
         String model = (merged.getModel() != null && !merged.getModel().isBlank()) ? merged.getModel() : aiProperties.getModel();
@@ -200,7 +202,7 @@ public class AdminModerationLlmService {
 
     private ModerationLlmConfigEntity defaultEntity() {
         ModerationLlmConfigEntity e = new ModerationLlmConfigEntity();
-        e.setPromptTemplate(DefaultLlmModerationPrompt.TEMPLATE);
+        e.setPromptTemplate("");
         e.setModel(null);
         e.setTemperature(0.2);
         e.setMaxTokens(null);

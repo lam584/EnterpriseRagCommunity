@@ -73,7 +73,7 @@ public class PostDraftsServiceImpl implements PostDraftsService {
         e.setBoardId(dto.getBoardId());
         e.setAuthorId(me);
         e.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
-        e.setContent(dto.getContent());
+        e.setContent(dto.getContent() == null ? "" : dto.getContent());
         e.setContentFormat(dto.getContentFormat());
         e.setMetadata(dto.getMetadata());
         e = postDraftsRepository.save(e);
@@ -88,7 +88,7 @@ public class PostDraftsServiceImpl implements PostDraftsService {
                 .orElseThrow(() -> new IllegalArgumentException("草稿不存在或无权访问"));
         e.setBoardId(dto.getBoardId());
         e.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
-        e.setContent(dto.getContent());
+        e.setContent(dto.getContent() == null ? "" : dto.getContent());
         e.setContentFormat(dto.getContentFormat());
         e.setMetadata(dto.getMetadata());
         e = postDraftsRepository.save(e);

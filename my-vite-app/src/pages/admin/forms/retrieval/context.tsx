@@ -96,6 +96,10 @@ const ContextClipForm: React.FC = () => {
 
   const [config, setConfig] = useState<ContextClipConfigDTO>({ ...DEFAULT_CFG });
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [committedConfig, setCommittedConfig] = useState<ContextClipConfigDTO>({ ...DEFAULT_CFG });
+  const [editing, setEditing] = useState(false);
+
+  const hasUnsavedChanges = useMemo(() => JSON.stringify(config) !== JSON.stringify(committedConfig), [config, committedConfig]);
 
   const loadConfig = useCallback(async () => {
     setError(null);
@@ -103,7 +107,10 @@ const ContextClipForm: React.FC = () => {
     setLoading(true);
     try {
       const cfg = await adminGetContextClipConfig();
-      setConfig({ ...DEFAULT_CFG, ...(cfg ?? {}), policy: clampPolicy((cfg as ContextClipConfigDTO | undefined)?.policy) });
+      const next = { ...DEFAULT_CFG, ...(cfg ?? {}), policy: clampPolicy((cfg as ContextClipConfigDTO | undefined)?.policy) };
+      setConfig(next);
+      setCommittedConfig(next);
+      setEditing(false);
       setConfigLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载配置失败');
@@ -119,19 +126,23 @@ const ContextClipForm: React.FC = () => {
   }, [canAccess, loadConfig]);
 
   const onSave = useCallback(async () => {
+    if (!canWrite || !editing) return;
     setError(null);
     setMessage(null);
     setLoading(true);
     try {
       const saved = await adminUpdateContextClipConfig(config);
-      setConfig({ ...DEFAULT_CFG, ...(saved ?? {}), policy: clampPolicy((saved as ContextClipConfigDTO | undefined)?.policy) });
+      const next = { ...DEFAULT_CFG, ...(saved ?? {}), policy: clampPolicy((saved as ContextClipConfigDTO | undefined)?.policy) };
+      setConfig(next);
+      setCommittedConfig(next);
+      setEditing(false);
       setMessage('配置已保存');
     } catch (e) {
       setError(e instanceof Error ? e.message : '保存失败');
     } finally {
       setLoading(false);
     }
-  }, [config]);
+  }, [canWrite, config, editing]);
 
   const [testQuery, setTestQuery] = useState('');
   const [testBoardId, setTestBoardId] = useState<number | ''>('');
@@ -236,9 +247,37 @@ const ContextClipForm: React.FC = () => {
           <button className={btnSecondaryClass} onClick={loadConfig} disabled={loading}>
             刷新
           </button>
-          <button className={btnPrimaryClass} onClick={onSave} disabled={loading || !canWrite}>
-            保存配置
-          </button>
+          {!editing ? (
+            <button
+              className={btnSecondaryClass}
+              onClick={() => {
+                setEditing(true);
+                setError(null);
+                setMessage(null);
+              }}
+              disabled={loading || !canWrite}
+            >
+              编辑
+            </button>
+          ) : (
+            <>
+              <button
+                className={btnSecondaryClass}
+                onClick={() => {
+                  setConfig(committedConfig);
+                  setEditing(false);
+                  setError(null);
+                  setMessage(null);
+                }}
+                disabled={loading}
+              >
+                取消
+              </button>
+              <button className={btnPrimaryClass} onClick={onSave} disabled={loading || !canWrite || !hasUnsavedChanges}>
+                保存
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -257,7 +296,7 @@ const ContextClipForm: React.FC = () => {
               type="checkbox"
               checked={Boolean(config.enabled)}
               onChange={(e) => setConfig((v) => ({ ...v, enabled: e.target.checked }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
             启用上下文注入（Chat RAG system prompt）
           </label>
@@ -267,7 +306,7 @@ const ContextClipForm: React.FC = () => {
               className={inputClass}
               value={config.policy ?? 'TOPK'}
               onChange={(e) => setConfig((v) => ({ ...v, policy: e.target.value }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             >
               {POLICIES.map((p) => (
                 <option key={p.value} value={p.value}>
@@ -283,7 +322,7 @@ const ContextClipForm: React.FC = () => {
                 className={inputClass}
                 value={config.maxContextTokens ?? ''}
                 onChange={(e) => setConfig((v) => ({ ...v, maxContextTokens: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
             </div>
             <div>
@@ -292,7 +331,7 @@ const ContextClipForm: React.FC = () => {
                 className={inputClass}
                 value={config.reserveAnswerTokens ?? ''}
                 onChange={(e) => setConfig((v) => ({ ...v, reserveAnswerTokens: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
             </div>
             <div>
@@ -301,7 +340,7 @@ const ContextClipForm: React.FC = () => {
                 className={inputClass}
                 value={config.perItemMaxTokens ?? ''}
                 onChange={(e) => setConfig((v) => ({ ...v, perItemMaxTokens: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
             </div>
             <div>
@@ -310,7 +349,7 @@ const ContextClipForm: React.FC = () => {
                 className={inputClass}
                 value={config.maxItems ?? ''}
                 onChange={(e) => setConfig((v) => ({ ...v, maxItems: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
             </div>
             <div>
@@ -319,7 +358,7 @@ const ContextClipForm: React.FC = () => {
                 className={inputClass}
                 value={config.maxPromptChars ?? ''}
                 onChange={(e) => setConfig((v) => ({ ...v, maxPromptChars: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
             </div>
           </div>
@@ -334,7 +373,7 @@ const ContextClipForm: React.FC = () => {
                 className={inputClass}
                 value={config.minScore ?? ''}
                 onChange={(e) => setConfig((v) => ({ ...v, minScore: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
             </div>
             <div>
@@ -343,7 +382,7 @@ const ContextClipForm: React.FC = () => {
                 className={inputClass}
                 value={config.maxSamePostItems ?? ''}
                 onChange={(e) => setConfig((v) => ({ ...v, maxSamePostItems: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
             </div>
           </div>
@@ -352,7 +391,7 @@ const ContextClipForm: React.FC = () => {
               type="checkbox"
               checked={Boolean(config.requireTitle)}
               onChange={(e) => setConfig((v) => ({ ...v, requireTitle: e.target.checked }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
             必须有标题（无标题命中将被剔除）
           </label>
@@ -362,7 +401,7 @@ const ContextClipForm: React.FC = () => {
                 type="checkbox"
                 checked={Boolean(config.dedupByPostId)}
                 onChange={(e) => setConfig((v) => ({ ...v, dedupByPostId: e.target.checked }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
               去重：postId
             </label>
@@ -371,7 +410,7 @@ const ContextClipForm: React.FC = () => {
                 type="checkbox"
                 checked={Boolean(config.dedupByTitle)}
                 onChange={(e) => setConfig((v) => ({ ...v, dedupByTitle: e.target.checked }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
               去重：标题
             </label>
@@ -380,7 +419,7 @@ const ContextClipForm: React.FC = () => {
                 type="checkbox"
                 checked={Boolean(config.dedupByContentHash)}
                 onChange={(e) => setConfig((v) => ({ ...v, dedupByContentHash: e.target.checked }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
               去重：内容hash
             </label>
@@ -396,7 +435,7 @@ const ContextClipForm: React.FC = () => {
             className={inputClass}
             value={config.sectionTitle ?? ''}
             onChange={(e) => setConfig((v) => ({ ...v, sectionTitle: e.target.value }))}
-            disabled={!canWrite}
+            disabled={!canWrite || !editing}
             rows={2}
           />
         </div>
@@ -407,7 +446,7 @@ const ContextClipForm: React.FC = () => {
               className={inputClass}
               value={config.itemHeaderTemplate ?? ''}
               onChange={(e) => setConfig((v) => ({ ...v, itemHeaderTemplate: e.target.value }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
               rows={4}
             />
           </div>
@@ -418,7 +457,7 @@ const ContextClipForm: React.FC = () => {
                 className={inputClass}
                 value={config.separator ?? ''}
                 onChange={(e) => setConfig((v) => ({ ...v, separator: e.target.value }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -427,7 +466,7 @@ const ContextClipForm: React.FC = () => {
                   type="checkbox"
                   checked={Boolean(config.showPostId)}
                   onChange={(e) => setConfig((v) => ({ ...v, showPostId: e.target.checked }))}
-                  disabled={!canWrite}
+                  disabled={!canWrite || !editing}
                 />
                 展示 postId
               </label>
@@ -436,7 +475,7 @@ const ContextClipForm: React.FC = () => {
                   type="checkbox"
                   checked={Boolean(config.showChunkIndex)}
                   onChange={(e) => setConfig((v) => ({ ...v, showChunkIndex: e.target.checked }))}
-                  disabled={!canWrite}
+                  disabled={!canWrite || !editing}
                 />
                 展示 chunkIndex
               </label>
@@ -445,7 +484,7 @@ const ContextClipForm: React.FC = () => {
                   type="checkbox"
                   checked={Boolean(config.showScore)}
                   onChange={(e) => setConfig((v) => ({ ...v, showScore: e.target.checked }))}
-                  disabled={!canWrite}
+                  disabled={!canWrite || !editing}
                 />
                 展示 score
               </label>
@@ -454,7 +493,7 @@ const ContextClipForm: React.FC = () => {
                   type="checkbox"
                   checked={Boolean(config.showTitle)}
                   onChange={(e) => setConfig((v) => ({ ...v, showTitle: e.target.checked }))}
-                  disabled={!canWrite}
+                  disabled={!canWrite || !editing}
                 />
                 展示标题
               </label>
@@ -467,7 +506,7 @@ const ContextClipForm: React.FC = () => {
             className={inputClass}
             value={config.extraInstruction ?? ''}
             onChange={(e) => setConfig((v) => ({ ...v, extraInstruction: e.target.value }))}
-            disabled={!canWrite}
+            disabled={!canWrite || !editing}
             rows={2}
           />
         </div>
@@ -480,7 +519,7 @@ const ContextClipForm: React.FC = () => {
             type="checkbox"
             checked={Boolean(config.logEnabled)}
             onChange={(e) => setConfig((v) => ({ ...v, logEnabled: e.target.checked }))}
-            disabled={!canWrite}
+            disabled={!canWrite || !editing}
           />
           启用裁剪日志落库
         </label>
@@ -491,7 +530,7 @@ const ContextClipForm: React.FC = () => {
               className={inputClass}
               value={config.logSampleRate ?? ''}
               onChange={(e) => setConfig((v) => ({ ...v, logSampleRate: safeNumber(e.target.value) }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
           </div>
           <div>
@@ -500,7 +539,7 @@ const ContextClipForm: React.FC = () => {
               className={inputClass}
               value={config.logMaxDays ?? ''}
               onChange={(e) => setConfig((v) => ({ ...v, logMaxDays: safeNumber(e.target.value) }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
           </div>
           <div className="flex items-end">

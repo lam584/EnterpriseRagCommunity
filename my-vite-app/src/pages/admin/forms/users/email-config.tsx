@@ -97,7 +97,7 @@ const EmailConfigForm: React.FC = () => {
         p === 'IMAP' ? { plain: 143, enc: 993, host: DEFAULT_IMAP_HOST } :
         { plain: 25, enc: 465, host: DEFAULT_SMTP_HOST };
       setSettings({
-        enabled: Boolean(s.enabled),
+        enabled: s.enabled ?? true,
         protocol: p,
         host: (s.host ?? '').trim() || defaults.host,
         portPlain: Number.isFinite(Number(s.portPlain)) ? Number(s.portPlain) : defaults.plain,

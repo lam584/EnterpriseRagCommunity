@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
 import MarkdownEditor from '../../../../components/ui/MarkdownEditor';
 import { createPost, getPost, updatePost, type PostDTO } from '../../../../services/postService';
 import { uploadFile, type UploadResult } from '../../../../services/uploadService';
@@ -17,6 +17,7 @@ import { createTag, listTags, slugify, type TagDTO } from '../../../../services/
 import { suggestPostTags } from '../../../../services/aiTagService';
 import { getPostTagGenPublicConfig, type PostTagGenPublicConfigDTO } from '../../../../services/tagGenPublicService';
 import { getLangLabelGenConfig, suggestPostLangLabels, type LangLabelGenPublicConfigDTO } from '../../../../services/aiLangLabelService';
+import type { PostsOutletContext } from '../PostsLayout';
 
 function getErrorMessage(e: unknown, fallback: string) {
   if (e && typeof e === 'object' && 'message' in e) {
@@ -39,6 +40,7 @@ export default function PostsCreatePage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { postId: postIdParam } = useParams();
+  const { composePreviewOpen, setComposePreviewOpen } = useOutletContext<PostsOutletContext>();
 
   const draftId = searchParams.get('draftId');
   const postId = useMemo(() => {
@@ -58,6 +60,8 @@ export default function PostsCreatePage() {
   const [boards, setBoards] = useState<BoardDTO[]>([]);
 
   const [draft, setDraft] = useState<PostDraftDTO>(() => createEmptyDraft());
+  const contentEditorWrapRef = useRef<HTMLDivElement | null>(null);
+  const [contentEditorHeightPx, setContentEditorHeightPx] = useState<number | null>(null);
 
   const [useAiTitle, setUseAiTitle] = useState(false);
   const [titleSuggesting, setTitleSuggesting] = useState(false);
@@ -86,6 +90,36 @@ export default function PostsCreatePage() {
 
   const isEditingDraft = useMemo(() => Boolean(draftId), [draftId]);
   // const isEditingPost = useMemo(() => postId !== null, [postId]);
+
+  useEffect(() => {
+    let raf = 0;
+
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(() => {
+        const wrap = contentEditorWrapRef.current;
+        if (!wrap) return;
+
+        const textarea = wrap.querySelector('textarea');
+        const top = (textarea ?? wrap).getBoundingClientRect().top;
+        const bottomReservePx = 220;
+        const minPx = 240;
+        const maxPx = 1200;
+        const next = Math.floor(window.innerHeight - top - bottomReservePx);
+        const clamped = Math.max(minPx, Math.min(maxPx, next));
+        setContentEditorHeightPx((prev) => (prev === clamped ? prev : clamped));
+      });
+    };
+
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -312,7 +346,12 @@ export default function PostsCreatePage() {
       }
       navigate('/portal/posts/drafts', { replace: false });
     } catch (e: unknown) {
-      setError(getErrorMessage(e, '保存草稿失败'));
+      const fieldErrors = getFieldErrors(e);
+      if (fieldErrors) {
+        setError(Object.values(fieldErrors).join('；'));
+      } else {
+        setError(getErrorMessage(e, '保存草稿失败'));
+      }
     } finally {
       setSaving(false);
     }
@@ -618,7 +657,10 @@ export default function PostsCreatePage() {
     try {
       localStorage.setItem(
         key,
-        JSON.stringify({ markdown: draft.content ?? '', updatedAt: new Date().toISOString() })
+        JSON.stringify({
+          markdown: draft.content ?? '',
+          updatedAt: new Date().toISOString(),
+        })
       );
       window.dispatchEvent(new Event('posts-compose-preview-update'));
     } catch {
@@ -670,12 +712,11 @@ export default function PostsCreatePage() {
   return (
     <div className="space-y-4">
       {/* Left: existing page content */}
-      <div className="space-y-4">
         <div>
           <h3 className="text-lg font-semibold">{postId !== null ? '编辑帖子' : '发帖'}</h3>
           <p className="text-gray-600">
-            使用 Markdown 编写内容。你可以插入图片与附件（先模拟上传）
-            {postId !== null ? '，保存修改后会回到“我的帖子”。' : '，并保存到草稿箱后继续编辑。'}
+            使用 Markdown 编写内容。你可以插入图片与附件
+            {postId !== null ? '，保存修改后会回到“我的帖子”。' : '，保存到草稿箱后还可以继续编辑。'}
           </p>
         </div>
 
@@ -813,41 +854,41 @@ export default function PostsCreatePage() {
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
-                <label className="block text-sm font-medium text-gray-700">标签</label>
-                <div className="flex items-center gap-2 text-xs text-gray-600">
-                  {loadingTags ? <span>加载中...</span> : null}
-                  {tagsError ? <span className="text-red-600">{tagsError}</span> : null}
-                </div>
-              </div>
+              {(draft.tags ?? []).length ? (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="block text-sm font-medium text-gray-700">标签</label>
+                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                      {loadingTags ? <span>加载中...</span> : null}
+                      {tagsError ? <span className="text-red-600">{tagsError}</span> : null}
+                    </div>
+                  </div>
 
-              <div className="flex flex-wrap gap-2">
-                {(draft.tags ?? []).length ? (
-                  (draft.tags ?? []).map((slugValue) => {
-                    const t = availableTags.find((x) => x.slug === slugValue);
-                    const label = t?.name ?? slugValue;
-                    return (
-                      <span
-                        key={slugValue}
-                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-sm"
-                        title={slugValue}
-                      >
-                        <span>{label}</span>
-                        <button
-                          type="button"
-                          className="text-gray-500 hover:text-gray-800"
-                          onClick={() => removeTagSlug(slugValue)}
-                          title="移除"
+                  <div className="flex flex-wrap gap-2">
+                    {(draft.tags ?? []).map((slugValue) => {
+                      const t = availableTags.find((x) => x.slug === slugValue);
+                      const label = t?.name ?? slugValue;
+                      return (
+                        <span
+                          key={slugValue}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-sm"
+                          title={slugValue}
                         >
-                          ×
-                        </button>
-                      </span>
-                    );
-                  })
-                ) : (
-                  <span className="text-sm text-gray-500">（未选择标签）</span>
-                )}
-              </div>
+                          <span>{label}</span>
+                          <button
+                            type="button"
+                            className="text-gray-500 hover:text-gray-800"
+                            onClick={() => removeTagSlug(slugValue)}
+                            title="移除"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : null}
 
               <div className="relative">
                 <div className="flex gap-2">
@@ -983,14 +1024,25 @@ export default function PostsCreatePage() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">内容（Markdown）</label>
+            <div ref={contentEditorWrapRef}>
               <MarkdownEditor
                 value={{ markdown: draft.content }}
                 onChange={(v) => setDraft((p) => ({ ...p, content: v.markdown }))}
                 onInsertImage={(file) => uploadAndGetMarkdown(file, 'image')}
                 onInsertAttachment={(file) => uploadAndGetMarkdown(file, 'attachment')}
                 placeholder="写点什么..."
+                editorHeightPx={contentEditorHeightPx ?? undefined}
+                toolbarAfterTabs={
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700 select-none">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={composePreviewOpen}
+                      onChange={(e) => setComposePreviewOpen(e.target.checked)}
+                    />
+                    实时预览
+                  </label>
+                }
               />
             </div>
 
@@ -1050,7 +1102,6 @@ export default function PostsCreatePage() {
             </div>
           </form>
         )}
-      </div>
     </div>
   );
 }

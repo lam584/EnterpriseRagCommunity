@@ -5,10 +5,12 @@ import java.io.PrintWriter;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.slf4j.Logger;
@@ -297,7 +299,13 @@ public class AiChatService {
             );
 
             if (contextAssembled != null) {
-                String sourcesText = contextAssembled.getSourcesText();
+                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
+                List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
+                        sources,
+                        assistantAccum.toString()
+                );
+
+                String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSources);
                 if (sourcesText != null && !sourcesText.isBlank()) {
                     String delta = "\n\n" + sourcesText.trim();
                     assistantAccum.append(delta);
@@ -306,13 +314,12 @@ public class AiChatService {
                     out.flush();
                 }
 
-                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                if (sources != null && !sources.isEmpty()) {
+                if (citedSources != null && !citedSources.isEmpty()) {
                     StringBuilder sb = new StringBuilder();
                     sb.append("{\"sources\":[");
-                    int n = Math.min(200, sources.size());
+                    int n = Math.min(200, citedSources.size());
                     for (int i = 0; i < n; i++) {
-                        RagContextPromptService.CitationSource s = sources.get(i);
+                        RagContextPromptService.CitationSource s = citedSources.get(i);
                         if (s == null) continue;
                         if (sb.charAt(sb.length() - 1) != '[') sb.append(',');
                         sb.append('{');
@@ -364,7 +371,11 @@ public class AiChatService {
                 }
 
                 if (contextAssembled != null) {
-                    persistAssistantSources(assistantMsg.getId(), contextAssembled.getSources());
+                    List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
+                            contextAssembled.getSources(),
+                            assistantMsg.getContent()
+                    );
+                    persistAssistantSources(assistantMsg.getId(), citedSources);
                 }
 
                 // auto title if empty
@@ -598,7 +609,13 @@ public class AiChatService {
             );
 
             if (contextAssembled != null) {
-                String sourcesText = contextAssembled.getSourcesText();
+                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
+                List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
+                        sources,
+                        assistantAccum.toString()
+                );
+
+                String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSources);
                 if (sourcesText != null && !sourcesText.isBlank()) {
                     String delta = "\n\n" + sourcesText.trim();
                     assistantAccum.append(delta);
@@ -607,13 +624,12 @@ public class AiChatService {
                     out.flush();
                 }
 
-                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                if (sources != null && !sources.isEmpty()) {
+                if (citedSources != null && !citedSources.isEmpty()) {
                     StringBuilder sb = new StringBuilder();
                     sb.append("{\"sources\":[");
-                    int n = Math.min(200, sources.size());
+                    int n = Math.min(200, citedSources.size());
                     for (int i = 0; i < n; i++) {
-                        RagContextPromptService.CitationSource s = sources.get(i);
+                        RagContextPromptService.CitationSource s = citedSources.get(i);
                         if (s == null) continue;
                         if (sb.charAt(sb.length() - 1) != '[') sb.append(',');
                         sb.append('{');
@@ -664,7 +680,11 @@ public class AiChatService {
                 }
 
                 if (contextAssembled != null) {
-                    persistAssistantSources(assistantMsg.getId(), contextAssembled.getSources());
+                    List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
+                            contextAssembled.getSources(),
+                            assistantMsg.getContent()
+                    );
+                    persistAssistantSources(assistantMsg.getId(), citedSources);
                 }
             }
         } catch (Exception ex) {
@@ -678,6 +698,75 @@ public class AiChatService {
             out.write("data: {\"latencyMs\":" + latency + "}\n\n");
             out.flush();
         }
+    }
+
+    private static List<RagContextPromptService.CitationSource> filterSourcesByCitations(
+            List<RagContextPromptService.CitationSource> sources,
+            String answerText
+    ) {
+        if (sources == null || sources.isEmpty()) return List.of();
+        if (answerText == null || answerText.isBlank()) return List.of();
+
+        int maxIndex = 0;
+        for (RagContextPromptService.CitationSource s : sources) {
+            if (s == null || s.getIndex() == null) continue;
+            maxIndex = Math.max(maxIndex, s.getIndex());
+        }
+        if (maxIndex <= 0) return List.of();
+
+        Set<Integer> cited = extractCitationIndexes(answerText, maxIndex);
+        if (cited.isEmpty()) return List.of();
+
+        List<RagContextPromptService.CitationSource> out = new ArrayList<>();
+        for (RagContextPromptService.CitationSource s : sources) {
+            if (s == null || s.getIndex() == null) continue;
+            if (cited.contains(s.getIndex())) out.add(s);
+        }
+        return out;
+    }
+
+    private static Set<Integer> extractCitationIndexes(String text, int maxIndex) {
+        Set<Integer> out = new HashSet<>();
+        if (text == null || text.isEmpty()) return out;
+
+        boolean inFence = false;
+        boolean inInlineCode = false;
+        int n = text.length();
+
+        for (int i = 0; i < n; i++) {
+            char c = text.charAt(i);
+
+            if (c == '`') {
+                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
+                    inFence = !inFence;
+                    i += 2;
+                    continue;
+                }
+                if (!inFence) inInlineCode = !inInlineCode;
+                continue;
+            }
+
+            if (inFence || inInlineCode) continue;
+            if (c != '[') continue;
+
+            int j = i + 1;
+            int value = 0;
+            int digits = 0;
+            while (j < n && digits < 3) {
+                char d = text.charAt(j);
+                if (d < '0' || d > '9') break;
+                value = value * 10 + (d - '0');
+                digits++;
+                j++;
+            }
+            if (digits == 0) continue;
+            if (j >= n || text.charAt(j) != ']') continue;
+            if (j + 1 < n && text.charAt(j + 1) == '(') continue;
+            if (value <= 0 || value > maxIndex) continue;
+            out.add(value);
+        }
+
+        return out;
     }
 
     private void persistAssistantSources(Long answerMessageId, List<RagContextPromptService.CitationSource> sources) {

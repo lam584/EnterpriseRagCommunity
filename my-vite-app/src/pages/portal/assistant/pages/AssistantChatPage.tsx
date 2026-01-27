@@ -83,6 +83,26 @@ function linkifyCitations(md: string): string {
   return parts.join('');
 }
 
+function extractCitationIndexes(md: string): Set<number> {
+  const out = new Set<number>();
+  if (!md) return out;
+  const reCode = /```[\s\S]*?```/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const extractFromText = (txt: string) => {
+    for (const m of txt.matchAll(/\[(\d{1,3})\](?!\()/g)) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > 0) out.add(n);
+    }
+  };
+  while ((match = reCode.exec(md)) !== null) {
+    extractFromText(md.slice(lastIndex, match.index));
+    lastIndex = match.index + match[0].length;
+  }
+  extractFromText(md.slice(lastIndex));
+  return out;
+}
+
 export default function AssistantChatPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -657,11 +677,18 @@ export default function AssistantChatPage() {
                     </div>
 
                     {/* Sources (Assistant only) */}
-                    {m.role === 'assistant' && showSources && (sourcesByMsgId[m.id]?.length ?? 0) > 0 && (
+                    {(() => {
+                      if (m.role !== 'assistant') return null;
+                      if (!showSources) return null;
+                      const cited = extractCitationIndexes(m.content || '');
+                      if (cited.size === 0) return null;
+                      const shownSources = (sourcesByMsgId[m.id] ?? []).filter((s) => cited.has(Number(s.index))).slice(0, 20);
+                      if (shownSources.length === 0) return null;
+                      return (
                       <div className="mt-2 w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
                         <div className="font-medium text-gray-900 mb-1">来源</div>
                         <div className="space-y-1">
-                          {(sourcesByMsgId[m.id] ?? []).slice(0, 20).map((s) => {
+                          {shownSources.map((s) => {
                             const idx = Number(s.index);
                             const cls = colorClassForCitationIndex(idx);
                             return (
@@ -682,7 +709,8 @@ export default function AssistantChatPage() {
                           })}
                         </div>
                       </div>
-                    )}
+                      );
+                    })()}
 
                     {/* Actions Bar (Below message) */}
                     <div className={`mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ${isUser ? 'justify-end' : 'justify-start'}`}>

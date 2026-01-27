@@ -48,6 +48,10 @@ const CitationForm: React.FC = () => {
 
   const [config, setConfig] = useState<CitationConfigDTO>({ ...DEFAULT_CFG });
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [committedConfig, setCommittedConfig] = useState<CitationConfigDTO>({ ...DEFAULT_CFG });
+  const [editing, setEditing] = useState(false);
+
+  const hasUnsavedChanges = useMemo(() => JSON.stringify(config) !== JSON.stringify(committedConfig), [config, committedConfig]);
 
   const loadConfig = useCallback(async () => {
     setError(null);
@@ -55,7 +59,10 @@ const CitationForm: React.FC = () => {
     setLoading(true);
     try {
       const cfg = await adminGetCitationConfig();
-      setConfig({ ...DEFAULT_CFG, ...(cfg ?? {}) });
+      const next = { ...DEFAULT_CFG, ...(cfg ?? {}) };
+      setConfig(next);
+      setCommittedConfig(next);
+      setEditing(false);
       setConfigLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载配置失败');
@@ -71,19 +78,23 @@ const CitationForm: React.FC = () => {
   }, [canAccess, loadConfig]);
 
   const onSave = useCallback(async () => {
+    if (!canWrite || !editing) return;
     setError(null);
     setMessage(null);
     setLoading(true);
     try {
       const saved = await adminUpdateCitationConfig(config);
-      setConfig({ ...DEFAULT_CFG, ...(saved ?? {}) });
+      const next = { ...DEFAULT_CFG, ...(saved ?? {}) };
+      setConfig(next);
+      setCommittedConfig(next);
+      setEditing(false);
       setMessage('配置已保存');
     } catch (e) {
       setError(e instanceof Error ? e.message : '保存失败');
     } finally {
       setLoading(false);
     }
-  }, [config]);
+  }, [canWrite, config, editing]);
 
   const [useSavedConfig, setUseSavedConfig] = useState(false);
   const [items, setItems] = useState<CitationTestItem[]>([
@@ -159,9 +170,37 @@ const CitationForm: React.FC = () => {
           <button className={btnSecondaryClass} onClick={loadConfig} disabled={loading}>
             刷新
           </button>
-          <button className={btnPrimaryClass} onClick={onSave} disabled={loading || !canWrite}>
-            保存配置
-          </button>
+          {!editing ? (
+            <button
+              className={btnSecondaryClass}
+              onClick={() => {
+                setEditing(true);
+                setError(null);
+                setMessage(null);
+              }}
+              disabled={loading || !canWrite}
+            >
+              编辑
+            </button>
+          ) : (
+            <>
+              <button
+                className={btnSecondaryClass}
+                onClick={() => {
+                  setConfig(committedConfig);
+                  setEditing(false);
+                  setError(null);
+                  setMessage(null);
+                }}
+                disabled={loading}
+              >
+                取消
+              </button>
+              <button className={btnPrimaryClass} onClick={onSave} disabled={loading || !canWrite || !hasUnsavedChanges}>
+                保存
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -179,7 +218,7 @@ const CitationForm: React.FC = () => {
             type="checkbox"
             checked={Boolean(config.enabled)}
             onChange={(e) => setConfig((v) => ({ ...v, enabled: e.target.checked }))}
-            disabled={!canWrite}
+            disabled={!canWrite || !editing}
           />
           启用引用与来源功能
         </label>
@@ -190,7 +229,7 @@ const CitationForm: React.FC = () => {
               className={inputClass}
               value={config.citationMode ?? 'MODEL_INLINE'}
               onChange={(e) => setConfig((v) => ({ ...v, citationMode: e.target.value }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             >
               <option value="MODEL_INLINE">MODEL_INLINE（仅要求模型用 [n] 引用）</option>
               <option value="SOURCES_SECTION">SOURCES_SECTION（自动追加“来源区”）</option>
@@ -203,7 +242,7 @@ const CitationForm: React.FC = () => {
               className={inputClass}
               value={config.maxSources ?? ''}
               onChange={(e) => setConfig((v) => ({ ...v, maxSources: safeNumber(e.target.value) }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
           </div>
         </div>
@@ -213,7 +252,7 @@ const CitationForm: React.FC = () => {
             className={inputClass}
             value={config.instructionTemplate ?? ''}
             onChange={(e) => setConfig((v) => ({ ...v, instructionTemplate: e.target.value }))}
-            disabled={!canWrite}
+            disabled={!canWrite || !editing}
             rows={3}
           />
         </div>
@@ -228,7 +267,7 @@ const CitationForm: React.FC = () => {
               className={inputClass}
               value={config.sourcesTitle ?? ''}
               onChange={(e) => setConfig((v) => ({ ...v, sourcesTitle: e.target.value }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
           </div>
           <div>
@@ -237,7 +276,7 @@ const CitationForm: React.FC = () => {
               className={inputClass}
               value={config.postUrlTemplate ?? ''}
               onChange={(e) => setConfig((v) => ({ ...v, postUrlTemplate: e.target.value }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
           </div>
         </div>
@@ -247,7 +286,7 @@ const CitationForm: React.FC = () => {
               type="checkbox"
               checked={Boolean(config.includeTitle)}
               onChange={(e) => setConfig((v) => ({ ...v, includeTitle: e.target.checked }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
             title
           </label>
@@ -256,7 +295,7 @@ const CitationForm: React.FC = () => {
               type="checkbox"
               checked={Boolean(config.includeUrl)}
               onChange={(e) => setConfig((v) => ({ ...v, includeUrl: e.target.checked }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
             url
           </label>
@@ -265,7 +304,7 @@ const CitationForm: React.FC = () => {
               type="checkbox"
               checked={Boolean(config.includeScore)}
               onChange={(e) => setConfig((v) => ({ ...v, includeScore: e.target.checked }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
             score
           </label>
@@ -274,7 +313,7 @@ const CitationForm: React.FC = () => {
               type="checkbox"
               checked={Boolean(config.includePostId)}
               onChange={(e) => setConfig((v) => ({ ...v, includePostId: e.target.checked }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
             postId
           </label>
@@ -283,7 +322,7 @@ const CitationForm: React.FC = () => {
               type="checkbox"
               checked={Boolean(config.includeChunkIndex)}
               onChange={(e) => setConfig((v) => ({ ...v, includeChunkIndex: e.target.checked }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
             chunkIndex
           </label>
