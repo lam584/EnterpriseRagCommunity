@@ -29,10 +29,15 @@ const Label: React.FC<React.PropsWithChildren> = ({ children }) => (
   <div className="text-sm text-gray-700 font-medium">{children}</div>
 );
 
-const Select: React.FC<{ value: FallbackAction; onChange: (v: FallbackAction) => void }> = ({ value, onChange }) => (
+const Select: React.FC<{ value: FallbackAction; onChange: (v: FallbackAction) => void; disabled?: boolean }> = ({
+  value,
+  onChange,
+  disabled,
+}) => (
   <select
     className="rounded border px-3 py-2 w-full"
     value={value}
+    disabled={disabled}
     onChange={(e) => onChange(e.target.value as FallbackAction)}
   >
     {actionOptions.map((o) => (
@@ -43,9 +48,20 @@ const Select: React.FC<{ value: FallbackAction; onChange: (v: FallbackAction) =>
   </select>
 );
 
-const Switch: React.FC<{ checked: boolean; onChange: (v: boolean) => void; label: string }> = ({ checked, onChange, label }) => (
+const Switch: React.FC<{ checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }> = ({
+  checked,
+  onChange,
+  label,
+  disabled,
+}) => (
   <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-    <input type="checkbox" className="h-4 w-4" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    <input
+      type="checkbox"
+      className="h-4 w-4"
+      checked={checked}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.checked)}
+    />
     <span>{label}</span>
   </label>
 );
@@ -57,6 +73,9 @@ const FallbackForm: React.FC = () => {
   const [ok, setOk] = useState<string | null>(null);
 
   const [cfg, setCfg] = useState<ModerationConfidenceFallbackConfig | null>(null);
+  const [committedCfg, setCommittedCfg] = useState<ModerationConfidenceFallbackConfig | null>(null);
+  const [editing, setEditing] = useState(false);
+  const hasUnsavedChanges = useMemo(() => JSON.stringify(cfg) !== JSON.stringify(committedCfg), [cfg, committedCfg]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,6 +84,8 @@ const FallbackForm: React.FC = () => {
     try {
       const data = await getFallbackConfig();
       setCfg(data);
+      setCommittedCfg(data);
+      setEditing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败');
     } finally {
@@ -76,10 +97,11 @@ const FallbackForm: React.FC = () => {
     void load();
   }, [load]);
 
-  const canSave = useMemo(() => !!cfg && !saving, [cfg, saving]);
+  const canSave = useMemo(() => !!cfg && !saving && editing && hasUnsavedChanges, [cfg, editing, hasUnsavedChanges, saving]);
 
   const save = useCallback(async () => {
     if (!cfg) return;
+    if (!editing) return;
 
     setSaving(true);
     setError(null);
@@ -108,13 +130,15 @@ const FallbackForm: React.FC = () => {
 
       const saved = await updateFallbackConfig(payload);
       setCfg(saved);
+      setCommittedCfg(saved);
+      setEditing(false);
       setOk('已保存');
     } catch (e) {
       setError(e instanceof Error ? e.message : '保存失败');
     } finally {
       setSaving(false);
     }
-  }, [cfg]);
+  }, [cfg, editing]);
 
   if (loading || !cfg) {
     return (
@@ -145,14 +169,44 @@ const FallbackForm: React.FC = () => {
           >
             刷新
           </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            className="rounded bg-blue-600 text-white px-4 py-2 text-sm disabled:opacity-60"
-            disabled={!canSave}
-          >
-            {saving ? '保存中…' : '保存配置'}
-          </button>
+          {!editing ? (
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(true);
+                setError(null);
+                setOk(null);
+              }}
+              className="rounded border px-3 py-2 text-sm disabled:opacity-60"
+              disabled={loading || saving}
+            >
+              编辑
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setCfg(committedCfg);
+                  setEditing(false);
+                  setError(null);
+                  setOk(null);
+                }}
+                className="rounded border px-3 py-2 text-sm disabled:opacity-60"
+                disabled={loading || saving}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void save()}
+                className="rounded bg-blue-600 text-white px-4 py-2 text-sm disabled:opacity-60"
+                disabled={!canSave}
+              >
+                {saving ? '保存中…' : '保存'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -168,20 +222,33 @@ const FallbackForm: React.FC = () => {
             checked={cfg.ruleEnabled}
             onChange={(v) => setCfg((prev) => (prev ? { ...prev, ruleEnabled: v } : prev))}
             label="启用规则过滤层"
+            disabled={!editing}
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <Label>HIGH 命中动作</Label>
-            <Select value={cfg.ruleHighAction} onChange={(v) => setCfg((p) => (p ? { ...p, ruleHighAction: v } : p))} />
+            <Select
+              value={cfg.ruleHighAction}
+              disabled={!editing}
+              onChange={(v) => setCfg((p) => (p ? { ...p, ruleHighAction: v } : p))}
+            />
           </div>
           <div>
             <Label>MEDIUM 命中动作</Label>
-            <Select value={cfg.ruleMediumAction} onChange={(v) => setCfg((p) => (p ? { ...p, ruleMediumAction: v } : p))} />
+            <Select
+              value={cfg.ruleMediumAction}
+              disabled={!editing}
+              onChange={(v) => setCfg((p) => (p ? { ...p, ruleMediumAction: v } : p))}
+            />
           </div>
           <div>
             <Label>LOW 命中动作</Label>
-            <Select value={cfg.ruleLowAction} onChange={(v) => setCfg((p) => (p ? { ...p, ruleLowAction: v } : p))} />
+            <Select
+              value={cfg.ruleLowAction}
+              disabled={!editing}
+              onChange={(v) => setCfg((p) => (p ? { ...p, ruleLowAction: v } : p))}
+            />
           </div>
         </div>
       </Section>
@@ -195,6 +262,7 @@ const FallbackForm: React.FC = () => {
             checked={cfg.vecEnabled}
             onChange={(v) => setCfg((prev) => (prev ? { ...prev, vecEnabled: v } : prev))}
             label="启用嵌入相似检测"
+            disabled={!editing}
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -205,6 +273,7 @@ const FallbackForm: React.FC = () => {
               step="0.0001"
               className="rounded border px-3 py-2 w-full"
               value={cfg.vecThreshold}
+              disabled={!editing}
               onChange={(e) => setCfg((p) => (p ? { ...p, vecThreshold: Number(e.target.value) } : p))}
             />
             <div className="text-xs text-gray-500 mt-1">建议范围 0.05 ~ 0.4（根据 embedding 模型与样本密度调整）</div>
@@ -212,11 +281,19 @@ const FallbackForm: React.FC = () => {
           <div className="grid grid-cols-1 gap-3">
             <div>
               <Label>命中动作</Label>
-              <Select value={cfg.vecHitAction} onChange={(v) => setCfg((p) => (p ? { ...p, vecHitAction: v } : p))} />
+              <Select
+                value={cfg.vecHitAction}
+                disabled={!editing}
+                onChange={(v) => setCfg((p) => (p ? { ...p, vecHitAction: v } : p))}
+              />
             </div>
             <div>
               <Label>未命中动作</Label>
-              <Select value={cfg.vecMissAction} onChange={(v) => setCfg((p) => (p ? { ...p, vecMissAction: v } : p))} />
+              <Select
+                value={cfg.vecMissAction}
+                disabled={!editing}
+                onChange={(v) => setCfg((p) => (p ? { ...p, vecMissAction: v } : p))}
+              />
             </div>
           </div>
         </div>
@@ -231,6 +308,7 @@ const FallbackForm: React.FC = () => {
             checked={cfg.llmEnabled}
             onChange={(v) => setCfg((prev) => (prev ? { ...prev, llmEnabled: v } : prev))}
             label="启用 LLM 审核"
+            disabled={!editing}
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -243,6 +321,7 @@ const FallbackForm: React.FC = () => {
               max={1}
               className="rounded border px-3 py-2 w-full"
               value={cfg.llmRejectThreshold}
+              disabled={!editing}
               onChange={(e) => setCfg((p) => (p ? { ...p, llmRejectThreshold: Number(e.target.value) } : p))}
             />
           </div>
@@ -255,6 +334,7 @@ const FallbackForm: React.FC = () => {
               max={1}
               className="rounded border px-3 py-2 w-full"
               value={cfg.llmHumanThreshold}
+              disabled={!editing}
               onChange={(e) => setCfg((p) => (p ? { ...p, llmHumanThreshold: Number(e.target.value) } : p))}
             />
             <div className="text-xs text-gray-500 mt-1">会自动保证 humanThreshold ≤ rejectThreshold</div>

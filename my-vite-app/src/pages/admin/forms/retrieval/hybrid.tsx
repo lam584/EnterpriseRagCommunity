@@ -63,7 +63,11 @@ const HybridSearchForm: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
 
   const [config, setConfig] = useState<HybridRetrievalConfigDTO>({ ...DEFAULT_CFG });
+  const [committedConfig, setCommittedConfig] = useState<HybridRetrievalConfigDTO>({ ...DEFAULT_CFG });
   const [configLoaded, setConfigLoaded] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  const hasUnsavedChanges = useMemo(() => JSON.stringify(config) !== JSON.stringify(committedConfig), [config, committedConfig]);
 
   const loadConfig = useCallback(async () => {
     setError(null);
@@ -71,7 +75,10 @@ const HybridSearchForm: React.FC = () => {
     setLoading(true);
     try {
       const cfg = await adminGetHybridRetrievalConfig();
-      setConfig({ ...DEFAULT_CFG, ...(cfg ?? {}) });
+      const next = { ...DEFAULT_CFG, ...(cfg ?? {}) };
+      setConfig(next);
+      setCommittedConfig(next);
+      setEditing(false);
       setConfigLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载配置失败');
@@ -87,19 +94,23 @@ const HybridSearchForm: React.FC = () => {
   }, [canAccess, loadConfig]);
 
   const onSave = useCallback(async () => {
+    if (!canWrite || !editing) return;
     setError(null);
     setMessage(null);
     setLoading(true);
     try {
       const saved = await adminUpdateHybridRetrievalConfig(config);
-      setConfig({ ...DEFAULT_CFG, ...(saved ?? {}) });
+      const next = { ...DEFAULT_CFG, ...(saved ?? {}) };
+      setConfig(next);
+      setCommittedConfig(next);
+      setEditing(false);
       setMessage('配置已保存');
     } catch (e) {
       setError(e instanceof Error ? e.message : '保存失败');
     } finally {
       setLoading(false);
     }
-  }, [config]);
+  }, [canWrite, config, editing]);
 
   const [testQuery, setTestQuery] = useState('');
   const [testBoardId, setTestBoardId] = useState<number | ''>('');
@@ -199,9 +210,37 @@ const HybridSearchForm: React.FC = () => {
           <button className={btnSecondaryClass} onClick={loadConfig} disabled={loading}>
             刷新
           </button>
-          <button className={btnPrimaryClass} onClick={onSave} disabled={loading || !canWrite}>
-            保存配置
-          </button>
+          {!editing ? (
+            <button
+              className={btnSecondaryClass}
+              onClick={() => {
+                setEditing(true);
+                setError(null);
+                setMessage(null);
+              }}
+              disabled={loading || !canWrite}
+            >
+              编辑
+            </button>
+          ) : (
+            <>
+              <button
+                className={btnSecondaryClass}
+                onClick={() => {
+                  setConfig(committedConfig);
+                  setEditing(false);
+                  setError(null);
+                  setMessage(null);
+                }}
+                disabled={loading}
+              >
+                取消
+              </button>
+              <button className={btnPrimaryClass} onClick={onSave} disabled={loading || !canWrite || !hasUnsavedChanges}>
+                保存
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -220,7 +259,7 @@ const HybridSearchForm: React.FC = () => {
               type="checkbox"
               checked={Boolean(config.enabled)}
               onChange={e => setConfig(v => ({ ...v, enabled: e.target.checked }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
             启用 Hybrid 检索（用于 Chat RAG）
           </label>
@@ -231,7 +270,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.bm25K ?? ''}
                 onChange={e => setConfig(v => ({ ...v, bm25K: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="50"
               />
             </div>
@@ -241,7 +280,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.vecK ?? ''}
                 onChange={e => setConfig(v => ({ ...v, vecK: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="50"
               />
             </div>
@@ -251,7 +290,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.hybridK ?? ''}
                 onChange={e => setConfig(v => ({ ...v, hybridK: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="30"
               />
             </div>
@@ -261,7 +300,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.maxDocs ?? ''}
                 onChange={e => setConfig(v => ({ ...v, maxDocs: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="500"
               />
             </div>
@@ -277,7 +316,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.bm25TitleBoost ?? ''}
                 onChange={e => setConfig(v => ({ ...v, bm25TitleBoost: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="2.0"
               />
             </div>
@@ -287,7 +326,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.bm25ContentBoost ?? ''}
                 onChange={e => setConfig(v => ({ ...v, bm25ContentBoost: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="1.0"
               />
             </div>
@@ -301,7 +340,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={String(config.fusionMode ?? 'RRF')}
                 onChange={e => setConfig(v => ({ ...v, fusionMode: e.target.value }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
               >
                 <option value="RRF">RRF（推荐）</option>
                 <option value="LINEAR">线性加权（min-max）</option>
@@ -313,7 +352,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.rrfK ?? ''}
                 onChange={e => setConfig(v => ({ ...v, rrfK: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="60"
               />
             </div>
@@ -323,7 +362,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.bm25Weight ?? ''}
                 onChange={e => setConfig(v => ({ ...v, bm25Weight: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="1.0"
               />
             </div>
@@ -333,7 +372,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.vecWeight ?? ''}
                 onChange={e => setConfig(v => ({ ...v, vecWeight: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="1.0"
               />
             </div>
@@ -347,7 +386,7 @@ const HybridSearchForm: React.FC = () => {
               type="checkbox"
               checked={Boolean(config.rerankEnabled)}
               onChange={e => setConfig(v => ({ ...v, rerankEnabled: e.target.checked }))}
-              disabled={!canWrite}
+              disabled={!canWrite || !editing}
             />
             启用重排
           </label>
@@ -359,7 +398,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.rerankModel ?? ''}
                 onChange={e => setConfig(v => ({ ...v, rerankModel: e.target.value }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="qwen3-rerank"
               />
             </div>
@@ -369,7 +408,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.rerankK ?? ''}
                 onChange={e => setConfig(v => ({ ...v, rerankK: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="30"
               />
             </div>
@@ -379,7 +418,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.rerankTemperature ?? ''}
                 onChange={e => setConfig(v => ({ ...v, rerankTemperature: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="0.0"
               />
             </div>
@@ -395,7 +434,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.perDocMaxTokens ?? ''}
                 onChange={e => setConfig(v => ({ ...v, perDocMaxTokens: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="4000"
               />
             </div>
@@ -405,7 +444,7 @@ const HybridSearchForm: React.FC = () => {
                 className={inputClass}
                 value={config.maxInputTokens ?? ''}
                 onChange={e => setConfig(v => ({ ...v, maxInputTokens: safeNumber(e.target.value) }))}
-                disabled={!canWrite}
+                disabled={!canWrite || !editing}
                 placeholder="30000"
               />
             </div>

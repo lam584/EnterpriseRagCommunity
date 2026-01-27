@@ -1,0 +1,2 @@
+ALTER TABLE app_settings
+  MODIFY COLUMN v LONGTEXT NOT NULL COMMENT '设置值(字符串)';

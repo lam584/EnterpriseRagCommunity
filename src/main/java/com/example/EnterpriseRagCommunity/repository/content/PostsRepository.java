@@ -90,6 +90,7 @@ public interface PostsRepository extends JpaRepository<PostsEntity, Long>, JpaSp
                                                  Pageable pageable);
 
     java.util.Optional<PostsEntity> findByIdAndIsDeletedFalse(Long id);
+    List<PostsEntity> findByIdInAndIsDeletedFalseAndStatus(List<Long> ids, PostStatus status);
 
     // Used by user hard-delete pre-checks (avoid FK constraint errors)
     long countByAuthorId(Long authorId);

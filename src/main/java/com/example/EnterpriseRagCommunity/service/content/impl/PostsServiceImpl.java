@@ -1,33 +1,50 @@
 package com.example.EnterpriseRagCommunity.service.content.impl;
 
-import com.example.EnterpriseRagCommunity.dto.content.PostsPublishDTO;
-import com.example.EnterpriseRagCommunity.dto.content.PostsUpdateDTO;
-import com.example.EnterpriseRagCommunity.entity.content.PostAttachmentsEntity;
-import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
-import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
-import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
-import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity;
-import com.example.EnterpriseRagCommunity.entity.monitor.enums.FileAssetStatus;
-import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepository;
-import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
-import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
-import com.example.EnterpriseRagCommunity.service.AdministratorService;
-import com.example.EnterpriseRagCommunity.service.content.PostsService;
-import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
-import jakarta.transaction.Transactional;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.*;
+import com.example.EnterpriseRagCommunity.dto.content.PostsPublishDTO;
+import com.example.EnterpriseRagCommunity.dto.content.PostsUpdateDTO;
+import com.example.EnterpriseRagCommunity.entity.content.PostAttachmentsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.TagsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
+import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
+import com.example.EnterpriseRagCommunity.entity.content.enums.TagType;
+import com.example.EnterpriseRagCommunity.entity.moderation.RiskLabelingEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.Source;
+import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity;
+import com.example.EnterpriseRagCommunity.entity.monitor.enums.FileAssetStatus;
+import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.TagsRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.RiskLabelingRepository;
+import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
+import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.ai.AiPostRiskTagService;
+import com.example.EnterpriseRagCommunity.service.content.PostsService;
+import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexVisibilitySyncService;
+
+import jakarta.transaction.Transactional;
 
 @Service
 public class PostsServiceImpl implements PostsService {
@@ -55,6 +72,18 @@ public class PostsServiceImpl implements PostsService {
 
     @Autowired
     private ModerationLlmAutoRunner moderationLlmAutoRunner;
+
+    @Autowired
+    private AiPostRiskTagService aiPostRiskTagService;
+
+    @Autowired
+    private TagsRepository tagsRepository;
+
+    @Autowired
+    private RiskLabelingRepository riskLabelingRepository;
+
+    @Autowired
+    private RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -90,6 +119,42 @@ public class PostsServiceImpl implements PostsService {
         post.setMetadata(dto.getMetadata());
 
         post = postsRepository.save(post);
+
+        try {
+            List<String> suggested = aiPostRiskTagService.suggestRiskTags(post.getTitle(), post.getContent());
+            if (suggested != null && !suggested.isEmpty()) {
+                for (String raw : suggested) {
+                    String slug = normalizeRiskTagSlug(raw);
+                    if (slug == null || slug.isBlank()) continue;
+
+                    TagsEntity tag = tagsRepository.findByTenantIdAndTypeAndSlug(1L, TagType.RISK, slug).orElse(null);
+                    if (tag == null) {
+                        TagsEntity created = new TagsEntity();
+                        created.setTenantId(1L);
+                        created.setType(TagType.RISK);
+                        created.setName(normalizeRiskTagName(raw, slug));
+                        created.setSlug(slug);
+                        created.setDescription(null);
+                        created.setIsSystem(false);
+                        created.setIsActive(true);
+                        created.setCreatedAt(LocalDateTime.now());
+                        tag = tagsRepository.save(created);
+                    }
+
+                    if (riskLabelingRepository.findByTargetTypeAndTargetIdAndTagIdAndSource(ContentType.POST, post.getId(), tag.getId(), Source.LLM).isEmpty()) {
+                        RiskLabelingEntity rl = new RiskLabelingEntity();
+                        rl.setTargetType(ContentType.POST);
+                        rl.setTargetId(post.getId());
+                        rl.setTagId(tag.getId());
+                        rl.setSource(Source.LLM);
+                        rl.setConfidence(null);
+                        rl.setCreatedAt(LocalDateTime.now());
+                        riskLabelingRepository.save(rl);
+                    }
+                }
+            }
+        } catch (Exception ignore) {
+        }
 
         // 新增：写入审核队列（防重复）
         adminModerationQueueService.ensureEnqueuedPost(post.getId());
@@ -141,6 +206,28 @@ public class PostsServiceImpl implements PostsService {
         }
 
         return post;
+    }
+
+    private static String normalizeRiskTagName(String raw, String slug) {
+        String n = raw == null ? "" : raw.trim();
+        if (n.isBlank()) n = slug;
+        n = n.replaceAll("[\\r\\n\\t]+", " ");
+        if (n.length() > 64) n = n.substring(0, 64);
+        return n.trim();
+    }
+
+    private static String normalizeRiskTagSlug(String raw) {
+        if (raw == null) return null;
+        String s = raw.trim().toLowerCase(Locale.ROOT);
+        if (s.isBlank()) return null;
+        s = s.replace('_', '-');
+        s = s.replaceAll("[^a-z0-9\\-\\s]+", "");
+        s = s.replaceAll("\\s+", "-");
+        s = s.replaceAll("-{2,}", "-");
+        s = s.replaceAll("^-+|-+$", "");
+        if (s.length() > 96) s = s.substring(0, 96);
+        s = s.replaceAll("^-+|-+$", "");
+        return s.isBlank() ? null : s;
     }
 
     private static boolean isLikelyFullTextUnfriendlyKeyword(String keyword) {
@@ -312,7 +399,9 @@ public class PostsServiceImpl implements PostsService {
         }
         post.setStatus(status);
 
-        return postsRepository.save(post);
+        PostsEntity saved = postsRepository.save(post);
+        ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+        return saved;
     }
 
     @Override
@@ -388,6 +477,10 @@ public class PostsServiceImpl implements PostsService {
             }
         }
 
-        return postsRepository.save(post);
+        PostsEntity saved = postsRepository.save(post);
+        if (saved.getStatus() == PostStatus.PUBLISHED && !Boolean.TRUE.equals(saved.getIsDeleted())) {
+            ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+        }
+        return saved;
     }
 }

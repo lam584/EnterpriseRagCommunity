@@ -15,6 +15,14 @@ export default function AccountPreferencesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedHint, setSavedHint] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [committed, setCommitted] = useState(() => ({
+    compact: true,
+    emailNoti: false,
+    targetLanguage: 'zh',
+    autoTranslatePosts: false,
+    autoTranslateComments: false,
+  }));
 
   useEffect(() => {
     let mounted = true;
@@ -24,9 +32,20 @@ export default function AccountPreferencesPage() {
       try {
         const p = await getMyTranslatePreferences();
         if (!mounted) return;
-        setTargetLanguage(p.targetLanguage || 'zh');
-        setAutoTranslatePosts(!!p.autoTranslatePosts);
-        setAutoTranslateComments(!!p.autoTranslateComments);
+        const next = {
+          compact: true,
+          emailNoti: false,
+          targetLanguage: p.targetLanguage || 'zh',
+          autoTranslatePosts: !!p.autoTranslatePosts,
+          autoTranslateComments: !!p.autoTranslateComments,
+        };
+        setCompact(next.compact);
+        setEmailNoti(next.emailNoti);
+        setTargetLanguage(next.targetLanguage);
+        setAutoTranslatePosts(next.autoTranslatePosts);
+        setAutoTranslateComments(next.autoTranslateComments);
+        setCommitted(next);
+        setEditing(false);
       } catch (e) {
         if (!mounted) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -57,36 +76,90 @@ export default function AccountPreferencesPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold">偏好</h3>
-        <p className="text-gray-600">这里管理展示、通知与翻译偏好设置。</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold">偏好</h3>
+          <p className="text-gray-600">这里管理展示、通知与翻译偏好设置。</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {!editing ? (
+            <button
+              type="button"
+              className="rounded border px-3 py-1.5 text-sm disabled:opacity-60"
+              disabled={loading || saving}
+              onClick={() => {
+                setEditing(true);
+                setError(null);
+                setSavedHint(null);
+              }}
+            >
+              编辑
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="rounded border px-3 py-1.5 text-sm disabled:opacity-60"
+                disabled={loading || saving}
+                onClick={() => {
+                  setCompact(committed.compact);
+                  setEmailNoti(committed.emailNoti);
+                  setTargetLanguage(committed.targetLanguage);
+                  setAutoTranslatePosts(committed.autoTranslatePosts);
+                  setAutoTranslateComments(committed.autoTranslateComments);
+                  setEditing(false);
+                  setError(null);
+                  setSavedHint(null);
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm disabled:bg-blue-300"
+                disabled={saving}
+                onClick={async () => {
+                  setSaving(true);
+                  setError(null);
+                  setSavedHint(null);
+                  try {
+                    const saved = await updateMyTranslatePreferences({
+                      targetLanguage: targetLanguage.trim() || 'zh',
+                      autoTranslatePosts,
+                      autoTranslateComments,
+                    });
+                    const next = {
+                      compact,
+                      emailNoti,
+                      targetLanguage: saved.targetLanguage || 'zh',
+                      autoTranslatePosts: !!saved.autoTranslatePosts,
+                      autoTranslateComments: !!saved.autoTranslateComments,
+                    };
+                    setTargetLanguage(next.targetLanguage);
+                    setAutoTranslatePosts(next.autoTranslatePosts);
+                    setAutoTranslateComments(next.autoTranslateComments);
+                    setCommitted(next);
+                    setEditing(false);
+                    setSavedHint('保存成功');
+                  } catch (e2) {
+                    setError(e2 instanceof Error ? e2.message : String(e2));
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+              >
+                {saving ? '保存中...' : '保存'}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {error ? <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
       {savedHint ? <div className="text-sm text-green-700">{savedHint}</div> : null}
       {loading ? <div className="text-sm text-gray-600">加载中...</div> : null}
 
-      <form
-        className="space-y-4"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          setSaving(true);
-          setError(null);
-          setSavedHint(null);
-          try {
-            await updateMyTranslatePreferences({
-              targetLanguage: targetLanguage.trim() || 'zh',
-              autoTranslatePosts,
-              autoTranslateComments,
-            });
-            setSavedHint('保存成功');
-          } catch (e2) {
-            setError(e2 instanceof Error ? e2.message : String(e2));
-          } finally {
-            setSaving(false);
-          }
-        }}
-      >
+      <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
         <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
           <div className="text-sm font-medium text-gray-900">翻译偏好</div>
 
@@ -97,6 +170,7 @@ export default function AccountPreferencesPage() {
                 className="w-full rounded border border-gray-300 px-3 py-2 text-sm bg-white"
                 value={targetLanguage}
                 onChange={(e) => setTargetLanguage(e.target.value)}
+                disabled={!editing || saving || loading}
               >
                 {!availableTargetLanguages.includes(targetLanguage) ? (
                   <option value={targetLanguage}>{targetLanguage}</option>
@@ -115,6 +189,7 @@ export default function AccountPreferencesPage() {
                   type="checkbox"
                   checked={autoTranslatePosts}
                   onChange={(e) => setAutoTranslatePosts(e.target.checked)}
+                  disabled={!editing || saving || loading}
                 />
                 帖子自动翻译
               </label>
@@ -123,6 +198,7 @@ export default function AccountPreferencesPage() {
                   type="checkbox"
                   checked={autoTranslateComments}
                   onChange={(e) => setAutoTranslateComments(e.target.checked)}
+                  disabled={!editing || saving || loading}
                 />
                 评论区自动翻译
               </label>
@@ -135,23 +211,25 @@ export default function AccountPreferencesPage() {
 
         <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
           <div className="text-sm font-medium text-gray-900">展示与通知</div>
-        <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" checked={compact} onChange={(e) => setCompact(e.target.checked)} />
-          紧凑模式
-        </label>
-        <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-          <input type="checkbox" checked={emailNoti} onChange={(e) => setEmailNoti(e.target.checked)} />
-          邮件通知
-        </label>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={compact}
+              disabled={!editing || saving || loading}
+              onChange={(e) => setCompact(e.target.checked)}
+            />
+            紧凑模式
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={emailNoti}
+              disabled={!editing || saving || loading}
+              onChange={(e) => setEmailNoti(e.target.checked)}
+            />
+            邮件通知
+          </label>
         </div>
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-        >
-          {saving ? '保存中...' : '保存'}
-        </button>
       </form>
     </div>
   );

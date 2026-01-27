@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAccess } from '../../contexts/AccessContext';
 
@@ -40,6 +40,7 @@ export const RequireAccess: React.FC<RequireAccessProps> = ({
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { hasPerm, hasRole, loading: accessLoading, refresh } = useAccess();
   const location = useLocation();
+  const parentOutletContext = useOutletContext<unknown>();
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -63,5 +64,5 @@ export const RequireAccess: React.FC<RequireAccessProps> = ({
     return <Navigate to={forbiddenPath} replace state={{ from: location }} />;
   }
 
-  return <Outlet />;
+  return <Outlet context={parentOutletContext} />;
 };

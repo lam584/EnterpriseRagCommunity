@@ -5,6 +5,8 @@ import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueIte
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationQueueQueryDTO;
 import org.springframework.data.domain.Page;
 
+import java.util.List;
+
 public interface AdminModerationQueueService {
     Page<AdminModerationQueueItemDTO> list(ModerationQueueQueryDTO query);
 
@@ -35,4 +37,8 @@ public interface AdminModerationQueueService {
 
     /** 终态任务进入人工审核：重置为 HUMAN + HUMAN，并清理人工认领/锁/完成时间 */
     AdminModerationQueueDetailDTO toHuman(Long id, String reason);
+
+    List<String> getRiskTags(Long queueId);
+
+    AdminModerationQueueDetailDTO setRiskTags(Long queueId, List<String> riskTags);
 }

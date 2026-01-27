@@ -300,7 +300,7 @@ public class RagContextPromptService {
         return out;
     }
 
-    private static String renderSourcesText(CitationConfigDTO cfg, List<CitationSource> sources) {
+    static String renderSourcesText(CitationConfigDTO cfg, List<CitationSource> sources) {
         if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return "";
         String mode = cfg.getCitationMode() == null ? "" : cfg.getCitationMode().trim().toUpperCase();
         if (!mode.equals("SOURCES_SECTION") && !mode.equals("BOTH")) return "";

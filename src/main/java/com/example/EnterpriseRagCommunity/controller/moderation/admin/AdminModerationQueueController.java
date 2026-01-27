@@ -5,6 +5,7 @@ import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueBac
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueBackfillResponse;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueDetailDTO;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueItemDTO;
+import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueRiskTagsRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationQueueQueryDTO;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
@@ -18,6 +19,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/admin/moderation/queue")
@@ -64,6 +66,20 @@ public class AdminModerationQueueController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read'))")
     public AdminModerationQueueDetailDTO getDetail(@PathVariable("id") Long id) {
         return adminModerationQueueService.getDetail(id);
+    }
+
+    @GetMapping("/{id}/risk-tags")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read'))")
+    public List<String> getRiskTags(@PathVariable("id") Long id) {
+        return adminModerationQueueService.getRiskTags(id);
+    }
+
+    @PostMapping("/{id}/risk-tags")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    public AdminModerationQueueDetailDTO setRiskTags(@PathVariable("id") Long id,
+                                                     @Valid @RequestBody(required = false) AdminModerationQueueRiskTagsRequest req) {
+        List<String> tags = req == null ? null : req.getRiskTags();
+        return adminModerationQueueService.setRiskTags(id, tags);
     }
 
     @PostMapping("/{id}/approve")

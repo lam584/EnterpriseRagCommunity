@@ -1,6 +1,8 @@
 package com.example.EnterpriseRagCommunity.service.retrieval;
 
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
+import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
+import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -16,7 +18,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -26,6 +30,7 @@ public class RagPostChatRetrievalService {
     private final RagPostsIndexService indexService;
     private final AiEmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
+    private final PostsRepository postsRepository;
 
     @Value("${spring.elasticsearch.uris:http://127.0.0.1:9200}")
     private String elasticsearchUris;
@@ -79,7 +84,31 @@ public class RagPostChatRetrievalService {
                 hits.add(out);
             }
         }
-        return hits;
+        return filterVisibleHits(hits);
+    }
+
+    private List<Hit> filterVisibleHits(List<Hit> hits) {
+        if (hits == null || hits.isEmpty()) return List.of();
+        Set<Long> postIds = new LinkedHashSet<>();
+        for (Hit h : hits) {
+            if (h == null || h.getPostId() == null) continue;
+            postIds.add(h.getPostId());
+        }
+        if (postIds.isEmpty()) return hits;
+
+        List<Long> ids = new ArrayList<>(postIds);
+        Set<Long> ok = new java.util.HashSet<>();
+        postsRepository.findByIdInAndIsDeletedFalseAndStatus(ids, PostStatus.PUBLISHED)
+                .forEach(p -> {
+                    if (p != null && p.getId() != null) ok.add(p.getId());
+                });
+
+        List<Hit> out = new ArrayList<>();
+        for (Hit h : hits) {
+            if (h == null || h.getPostId() == null) continue;
+            if (ok.contains(h.getPostId())) out.add(h);
+        }
+        return out;
     }
 
     private JsonNode postSearch(String indexName, String body) {

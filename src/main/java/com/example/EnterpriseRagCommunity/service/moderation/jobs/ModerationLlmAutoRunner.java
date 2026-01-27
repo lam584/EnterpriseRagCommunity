@@ -1,5 +1,18 @@
 package com.example.EnterpriseRagCommunity.service.moderation.jobs;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
 import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestResponse;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
@@ -11,6 +24,7 @@ import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineSt
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.Source;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.Verdict;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationConfidenceFallbackConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationLlmConfigRepository;
@@ -20,17 +34,11 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueR
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationFallbackDecisionService;
+import com.example.EnterpriseRagCommunity.service.moderation.RiskLabelingService;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmService;
 import com.example.EnterpriseRagCommunity.service.moderation.trace.ModerationPipelineTraceService;
-import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.*;
+import lombok.RequiredArgsConstructor;
 
 /**
  * LLM 自动审核 runner：
@@ -54,6 +62,7 @@ public class ModerationLlmAutoRunner {
     private final ModerationPipelineTraceService pipelineTraceService;
     private final ModerationPipelineStepRepository pipelineStepRepository;
     private final AuditLogWriter auditLogWriter;
+    private final RiskLabelingService riskLabelingService;
 
     /**
      * 每 15 秒扫一次，单次最多处理 20 条，避免对上游模型造成瞬时压力。
@@ -389,6 +398,11 @@ public class ModerationLlmAutoRunner {
             e.setDecidedAt(LocalDateTime.now());
 
             llmDecisionsRepository.save(e);
+
+            try {
+                riskLabelingService.replaceRiskTags(q.getContentType(), q.getContentId(), Source.LLM, res == null ? null : res.getRiskTags(), BigDecimal.valueOf(score), false);
+            } catch (Exception ignore) {
+            }
         } catch (Exception ignore) {
             // decision 落库失败不影响主流程
         }

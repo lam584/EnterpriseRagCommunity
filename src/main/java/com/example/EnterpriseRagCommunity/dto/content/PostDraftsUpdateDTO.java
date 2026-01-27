@@ -2,7 +2,6 @@ package com.example.EnterpriseRagCommunity.dto.content;
 
 import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
 import io.swagger.annotations.ApiModelProperty;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -15,13 +14,11 @@ public class PostDraftsUpdateDTO {
     @ApiModelProperty(value = "板块ID", required = true)
     private Long boardId;
 
-    @NotBlank
     @Size(max = 191)
-    @ApiModelProperty(value = "标题", required = true)
+    @ApiModelProperty(value = "标题(可选，草稿允许为空)", required = false)
     private String title;
 
-    @NotBlank
-    @ApiModelProperty(value = "内容", required = true)
+    @ApiModelProperty(value = "内容(可选，草稿允许为空)", required = false)
     private String content;
 
     @NotNull

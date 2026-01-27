@@ -23,6 +23,7 @@ export type ModerationQueueItem = {
   assignedToId?: number | null;
   createdAt: string;
   updatedAt: string;
+  riskTags?: string[];
   summary?: ModerationQueueSummary | null;
 };
 
@@ -125,6 +126,32 @@ export async function adminGetModerationQueueDetail(id: number): Promise<Moderat
 
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '获取审核任务详情失败');
+  return data as ModerationQueueDetail;
+}
+
+export async function adminGetModerationQueueRiskTags(id: number): Promise<string[]> {
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/risk-tags`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取风险标签失败');
+  return (data as string[]) ?? [];
+}
+
+export async function adminSetModerationQueueRiskTags(id: number, riskTags: string[]): Promise<ModerationQueueDetail> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/risk-tags`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({ riskTags: riskTags ?? [] }),
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '设置风险标签失败');
   return data as ModerationQueueDetail;
 }
 

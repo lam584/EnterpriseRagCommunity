@@ -1,23 +1,23 @@
-package com.example.EnterpriseRagCommunity.service.moderation.admin;
+-- Seed default LLM moderation prompt (only when table is empty)
 
-/**
- * Default prompt for LLM moderation demo.
- *
- * Goal: stable, strict JSON output for UI integration.
- */
-public final class DefaultLlmModerationPrompt {
-
-    private DefaultLlmModerationPrompt() {
-    }
-
-    public static final String TEMPLATE = """
-你是一个社区内容审核模型。你的任务是根据【审核标准】对【待审核内容】做出决定，并且只输出严格 JSON。
+INSERT INTO moderation_llm_config (
+  prompt_template,
+  model,
+  temperature,
+  max_tokens,
+  threshold,
+  auto_run,
+  version,
+  updated_by
+)
+SELECT
+  '你是一个社区内容审核模型。你的任务是根据【审核标准】对【待审核内容】做出决定，并且只输出严格 JSON。
 
 【目标】
 - 给出 decision: APPROVE / REJECT / HUMAN
 - 给出 score: 0~1 的风险分（越高越危险）
 - 给出 reasons: 1~5 条简短原因（中文）
-- 给出 riskTags: 风险标签数组（中文或英文均可，但建议英文固定集合）
+- 给出 riskTags: 风险标签数组（中文）
 
 【审核标准】
 1) 明确违规直接 REJECT（score>=0.85）：
@@ -48,9 +48,16 @@ JSON schema:
 
 【示例】
 待审核内容："加我微信xxx，带你稳赚。"
-输出：{"decision":"REJECT","score":0.93,"reasons":["疑似诈骗/引流"],"riskTags":["SCAM","LEAD"]}
+输出：{"decision":"REJECT","score":0.93,"reasons":["疑似诈骗/引流"],"riskTags":["诈骗","引流"]}
 
 【待审核内容】
 {{text}}
-""";
-}
+',
+  NULL,
+  0.2,
+  NULL,
+  0.75,
+  0,
+  0,
+  NULL
+WHERE NOT EXISTS (SELECT 1 FROM moderation_llm_config);
