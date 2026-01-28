@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.entity.moderation;
 
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import jakarta.persistence.*;
@@ -18,6 +19,10 @@ public class ModerationQueueEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private Long id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "case_type", nullable = false, length = 16)
+    private ModerationCaseType caseType;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "content_type", nullable = false, length = 16)

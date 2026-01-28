@@ -37,6 +37,7 @@ import com.example.EnterpriseRagCommunity.repository.moderation.RiskLabelingRepo
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.AiPostRiskTagService;
+import com.example.EnterpriseRagCommunity.service.ai.AiPostSummaryTriggerService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
@@ -75,6 +76,9 @@ public class PostsServiceImpl implements PostsService {
 
     @Autowired
     private AiPostRiskTagService aiPostRiskTagService;
+
+    @Autowired
+    private AiPostSummaryTriggerService aiPostSummaryTriggerService;
 
     @Autowired
     private TagsRepository tagsRepository;
@@ -203,6 +207,11 @@ public class PostsServiceImpl implements PostsService {
                 pa.setCreatedAt(LocalDateTime.now());
                 postAttachmentsRepository.save(pa);
             }
+        }
+
+        try {
+            aiPostSummaryTriggerService.scheduleGenerateAfterCommit(post.getId(), me);
+        } catch (Exception ignore) {
         }
 
         return post;

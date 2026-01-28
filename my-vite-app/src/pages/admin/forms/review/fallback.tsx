@@ -122,6 +122,8 @@ const FallbackForm: React.FC = () => {
         llmEnabled: cfg.llmEnabled,
         llmRejectThreshold: clamp(cfg.llmRejectThreshold, 0, 1),
         llmHumanThreshold: clamp(cfg.llmHumanThreshold, 0, 1),
+
+        reportHumanThreshold: clamp(cfg.reportHumanThreshold, 1, 1000000),
       };
 
       if (payload.llmHumanThreshold! > payload.llmRejectThreshold!) {
@@ -157,7 +159,7 @@ const FallbackForm: React.FC = () => {
             统一控制 RULE / VEC / LLM 三层在达到阈值或命中条件后：直接拒绝 / 进入 LLM / 转人工。
           </div>
           <div className="text-xs text-gray-500 mt-2">
-            updatedAt: {cfg.updatedAt ?? '—'}{cfg.updatedBy ? ` · updatedBy: ${cfg.updatedBy}` : ''}
+            更新时间：{cfg.updatedAt ?? '—'}{cfg.updatedBy ? ` · 更新人：${cfg.updatedBy}` : ''}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -227,7 +229,7 @@ const FallbackForm: React.FC = () => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <Label>HIGH 命中动作</Label>
+            <Label>高风险命中动作</Label>
             <Select
               value={cfg.ruleHighAction}
               disabled={!editing}
@@ -235,7 +237,7 @@ const FallbackForm: React.FC = () => {
             />
           </div>
           <div>
-            <Label>MEDIUM 命中动作</Label>
+            <Label>中风险命中动作</Label>
             <Select
               value={cfg.ruleMediumAction}
               disabled={!editing}
@@ -243,7 +245,7 @@ const FallbackForm: React.FC = () => {
             />
           </div>
           <div>
-            <Label>LOW 命中动作</Label>
+            <Label>低风险命中动作</Label>
             <Select
               value={cfg.ruleLowAction}
               disabled={!editing}
@@ -255,7 +257,7 @@ const FallbackForm: React.FC = () => {
 
       <Section
         title="嵌入相似检测 (VEC)"
-        desc="distance 越小越相似。distance <= 阈值视为命中。"
+        desc="距离越小越相似。距离 ≤ 阈值视为命中。"
       >
         <div className="flex items-center justify-between">
           <Switch
@@ -276,7 +278,7 @@ const FallbackForm: React.FC = () => {
               disabled={!editing}
               onChange={(e) => setCfg((p) => (p ? { ...p, vecThreshold: Number(e.target.value) } : p))}
             />
-            <div className="text-xs text-gray-500 mt-1">建议范围 0.05 ~ 0.4（根据 embedding 模型与样本密度调整）</div>
+            <div className="text-xs text-gray-500 mt-1">建议范围 0.05 ~ 0.4（根据向量模型与样本密度调整）</div>
           </div>
           <div className="grid grid-cols-1 gap-3">
             <div>
@@ -301,7 +303,7 @@ const FallbackForm: React.FC = () => {
 
       <Section
         title="LLM 审核层"
-        desc="LLM 输出 risk score(0~1)。score >= rejectThreshold -> REJECT；介于 humanThreshold 与 rejectThreshold -> 转人工；低于 humanThreshold -> APPROVE。"
+        desc="LLM 输出风险分(0~1)。风险分 ≥ 拒绝阈值 -> 直接拒绝；介于转人工阈值与拒绝阈值 -> 转人工；低于转人工阈值 -> 通过。"
       >
         <div className="flex items-center justify-between">
           <Switch
@@ -337,7 +339,28 @@ const FallbackForm: React.FC = () => {
               disabled={!editing}
               onChange={(e) => setCfg((p) => (p ? { ...p, llmHumanThreshold: Number(e.target.value) } : p))}
             />
-            <div className="text-xs text-gray-500 mt-1">会自动保证 humanThreshold ≤ rejectThreshold</div>
+            <div className="text-xs text-gray-500 mt-1">会自动保证转人工阈值 ≤ 拒绝阈值</div>
+          </div>
+        </div>
+      </Section>
+
+      <Section
+        title="举报转人工"
+        desc="当同一目标累计举报次数达到阈值后，直接进入人工审核（不再进入自动审核队列）。"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label>转人工阈值 (reportHumanThreshold)</Label>
+            <input
+              type="number"
+              step="1"
+              min={1}
+              className="rounded border px-3 py-2 w-full"
+              value={cfg.reportHumanThreshold}
+              disabled={!editing}
+              onChange={(e) => setCfg((p) => (p ? { ...p, reportHumanThreshold: Number(e.target.value) } : p))}
+            />
+            <div className="text-xs text-gray-500 mt-1">默认 5，可根据社区规模与滥用情况调整</div>
           </div>
         </div>
       </Section>

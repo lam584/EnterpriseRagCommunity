@@ -6,14 +6,14 @@ vi.mock('../../services/authService', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/authService')>();
   return {
     ...actual,
-    register: vi.fn(),
+    registerAndGetStatus: vi.fn(),
   };
 });
 
 import Register from './Register';
-import { register } from '../../services/authService';
+import { registerAndGetStatus } from '../../services/authService';
 
-const mockRegister = vi.mocked(register);
+const mockRegisterAndGetStatus = vi.mocked(registerAndGetStatus);
 
 function LoginPage() {
   const location = useLocation();
@@ -27,7 +27,7 @@ describe('Register (success navigation)', () => {
   });
 
   it('shows "去登录" after success and navigates with email state', async () => {
-    mockRegister.mockResolvedValue(undefined as never);
+    mockRegisterAndGetStatus.mockResolvedValue({ status: 'ACTIVE', message: '注册成功！请使用您的邮箱和密码登录' } as never);
 
     render(
       <MemoryRouter initialEntries={['/register']}>

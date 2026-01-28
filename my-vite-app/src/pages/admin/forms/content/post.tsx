@@ -16,6 +16,8 @@ const STATUS_OPTIONS: Array<{ value: PostStatus; label: string }> = [
   { value: 'ARCHIVED', label: '已归档' },
 ];
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+
 const PostAdminManage: React.FC = () => {
   const { hasPerm, loading: accessLoading } = useAccess();
   const canRead = hasPerm('admin_posts', 'read');
@@ -38,7 +40,7 @@ const PostAdminManage: React.FC = () => {
 
   // 分页（后端 page 从 1 开始）
   const [page, setPage] = useState(1);
-  const pageSize = 25;
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
 
   // 预览弹窗
   const [previewing, setPreviewing] = useState<PostDTO | null>(null);
@@ -75,7 +77,7 @@ const PostAdminManage: React.FC = () => {
     return fallback;
   };
 
-  const runQuery = async (nextPage: number) => {
+  const runQuery = async (nextPage: number, nextPageSize: number = pageSize) => {
     // 取消上一请求
     queryAbortController?.abort();
     const ctrl = new AbortController();
@@ -92,7 +94,7 @@ const PostAdminManage: React.FC = () => {
           createdFrom: createdFrom || undefined,
           createdTo: createdTo || undefined,
           page: nextPage,
-          pageSize,
+          pageSize: nextPageSize,
         },
         { signal: ctrl.signal },
       );
@@ -333,31 +335,7 @@ const PostAdminManage: React.FC = () => {
           >
             重置
           </button>
-
-          <div className="ml-auto flex items-center gap-2 text-sm">
-            <span className="text-gray-600">第 {page} 页</span>
-            <button
-              type="button"
-              className="rounded border px-3 py-1 disabled:opacity-50"
-              onClick={() => runQuery(Math.max(1, page - 1))}
-              disabled={loading || page <= 1}
-            >
-              上一页
-            </button>
-            <button
-              type="button"
-              className="rounded border px-3 py-1 disabled:opacity-50"
-              onClick={() => runQuery(page + 1)}
-              disabled={loading || items.length < pageSize}
-              title={items.length < pageSize ? '当前页数量不足，可能没有下一页' : undefined}
-            >
-              下一页
-            </button>
-            <span className="text-gray-500">每页 {pageSize}</span>
-          </div>
         </div>
-
-        <p className="mt-3 text-xs text-gray-500">提示：本页数据来自后端数据库接口（需要已登录会话）。</p>
       </div>
 
       {/* 结果列表 */}
@@ -423,6 +401,41 @@ const PostAdminManage: React.FC = () => {
             </table>
           </div>
         )}
+        <div className="mt-4 flex w-full items-center justify-end gap-2 text-sm">
+            <span className="text-gray-500">每页</span>
+            <select
+              className="rounded border px-2 py-1 border-gray-300 disabled:bg-gray-100 disabled:text-gray-500"
+              value={pageSize}
+              disabled={loading}
+              onChange={(e) => {
+                const next = Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number];
+                setPageSize(next);
+                void runQuery(1, next);
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="rounded border px-3 py-1 disabled:opacity-50"
+              onClick={() => runQuery(Math.max(1, page - 1))}
+              disabled={loading || page <= 1}
+            >
+              上一页
+            </button>
+            <span className="text-gray-600">第 {page} 页</span>
+            <button
+              type="button"
+              className="rounded border px-3 py-1 disabled:opacity-50"
+              onClick={() => runQuery(page + 1)}
+              disabled={loading || items.length < pageSize}
+              title={items.length < pageSize ? '当前页数量不足，可能没有下一页' : undefined}
+            >
+              下一页
+            </button>
+          </div>
       </div>
 
       {previewing ? <PreviewModal post={previewing} onClose={() => setPreviewing(null)} /> : null}

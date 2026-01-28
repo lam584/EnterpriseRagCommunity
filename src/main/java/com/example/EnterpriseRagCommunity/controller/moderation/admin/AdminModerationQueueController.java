@@ -33,6 +33,8 @@ public class AdminModerationQueueController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read'))")
     public Page<AdminModerationQueueItemDTO> list(@RequestParam(value = "page", defaultValue = "1") int page,
                                                  @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+                                                 @RequestParam(value = "orderBy", required = false) String orderBy,
+                                                 @RequestParam(value = "sort", required = false) String sort,
                                                  @RequestParam(value = "id", required = false) Long id,
                                                  @RequestParam(value = "contentType", required = false) ContentType contentType,
                                                  @RequestParam(value = "contentId", required = false) Long contentId,
@@ -48,6 +50,8 @@ public class AdminModerationQueueController {
         ModerationQueueQueryDTO q = new ModerationQueueQueryDTO();
         q.setPageNum(page);
         q.setPageSize(pageSize);
+        q.setOrderBy(orderBy);
+        q.setSort(sort);
         q.setId(id);
         q.setContentType(contentType);
         q.setContentId(contentId);
@@ -90,12 +94,28 @@ public class AdminModerationQueueController {
         return adminModerationQueueService.approve(id, reason);
     }
 
+    @PostMapping("/{id}/override-approve")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    public AdminModerationQueueDetailDTO overrideApprove(@PathVariable("id") Long id,
+                                                         @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
+        String reason = req == null ? null : req.getReason();
+        return adminModerationQueueService.overrideApprove(id, reason);
+    }
+
     @PostMapping("/{id}/reject")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
     public AdminModerationQueueDetailDTO reject(@PathVariable("id") Long id,
                                                 @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
         String reason = req == null ? null : req.getReason();
         return adminModerationQueueService.reject(id, reason);
+    }
+
+    @PostMapping("/{id}/override-reject")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    public AdminModerationQueueDetailDTO overrideReject(@PathVariable("id") Long id,
+                                                        @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
+        String reason = req == null ? null : req.getReason();
+        return adminModerationQueueService.overrideReject(id, reason);
     }
 
     @PostMapping("/backfill")

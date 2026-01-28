@@ -6,6 +6,7 @@ import { logout } from '../../services/authService';
 import { getMyProfile } from '../../services/accountService';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import HotSidebar from './discover/components/HotSidebar';
 
 export type PortalOutletContext = {
   composePreviewOpen: boolean;
@@ -170,6 +171,7 @@ export default function CommunityPortalLayout() {
     location.pathname.startsWith('/portal/posts/create') || location.pathname.startsWith('/portal/posts/edit');
   const isComposeWide = isComposeRoute && composePreviewOpen;
   const containerClassName = isComposeWide ? 'w-full max-w-none' : 'max-w-7xl';
+  const showDiscoverHotSidebar = location.pathname.startsWith('/portal/discover');
 
   return (
     <div className="min-h-screen bg-white">
@@ -323,6 +325,12 @@ export default function CommunityPortalLayout() {
           </div>
         </main>
       </div>
+
+      {showDiscoverHotSidebar ? (
+        <aside className="hidden lg:block fixed top-0 right-0 min-[1920px]:right-[calc((100vw-80rem)/2-20rem)] w-80 bg-white border-l border-gray-200 h-screen shrink-0 p-4 overflow-y-auto z-20">
+          <HotSidebar />
+        </aside>
+      ) : null}
     </div>
   );
 }

@@ -1,11 +1,13 @@
 package com.example.EnterpriseRagCommunity.entity.content;
 
 import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
+import com.example.EnterpriseRagCommunity.entity.converter.MapJsonConverter;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
@@ -36,6 +38,10 @@ public class CommentsEntity {
 
     @Column(name = "is_deleted", nullable = false)
     private Boolean isDeleted;
+
+    @Convert(converter = MapJsonConverter.class)
+    @Column(name = "metadata", columnDefinition = "json")
+    private Map<String, Object> metadata;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;

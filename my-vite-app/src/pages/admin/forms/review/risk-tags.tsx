@@ -153,21 +153,34 @@ const RiskTagsForm: React.FC = () => {
       setSubmitting(false);
     }
   };
-
   const canPrev = pageNo > 1;
   const canNext = pageNo < totalPages;
 
+  const inputBase =
+    'w-full h-9 rounded-md border bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500';
+  const textareaBase =
+    'w-full rounded-md border bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500';
+  const labelBase = 'block text-xs font-medium text-gray-600 mb-1';
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow p-6 space-y-4">
-        <h3 className="text-lg font-semibold">风险标签管理</h3>
-        {message ? <div className="text-sm text-gray-700">{message}</div> : null}
-
-        <form onSubmit={submitCreate} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="space-y-4">
+      <div className="border border-gray-200 bg-white shadow-sm">
+        <div className="flex items-start justify-between gap-4 px-4 pt-4 md:px-5 md:pt-5">
           <div>
-            <label className="block text-sm text-gray-700 mb-1">名称</label>
+            <h3 className="text-base font-semibold text-gray-900">风险标签管理</h3>
+            <div className="text-xs text-gray-500 mt-1">新增审核流程使用的风险标签</div>
+          </div>
+          {message ? (
+            <div className="text-xs text-blue-900 bg-blue-50 border border-blue-100 rounded-md px-3 py-2 max-w-[28rem]">
+              {message}
+            </div>
+          ) : null}
+        </div>
+
+        <form onSubmit={submitCreate} className="px-4 pb-4 pt-3 md:px-5 md:pb-5 grid grid-cols-1 md:grid-cols-12 gap-3">
+          <div className="md:col-span-4">
+            <label className={labelBase}>名称</label>
             <input
-              className={`w-full rounded border px-3 py-2 ${errors.name ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${inputBase} ${errors.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-300'}`}
               value={createForm.name}
               onChange={(e) => setCreateForm((p) => ({ ...p, name: e.target.value }))}
               onBlur={onCreateNameBlur}
@@ -177,10 +190,10 @@ const RiskTagsForm: React.FC = () => {
             {errors.name ? <div className="text-xs text-red-600 mt-1">{errors.name}</div> : null}
           </div>
 
-          <div>
-            <label className="block text-sm text-gray-700 mb-1">Slug</label>
+          <div className="md:col-span-4">
+            <label className={labelBase}>Slug</label>
             <input
-              className={`w-full rounded border px-3 py-2 ${errors.slug ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${inputBase} ${errors.slug ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-300'}`}
               value={createForm.slug}
               onChange={(e) => setCreateForm((p) => ({ ...p, slug: e.target.value }))}
               placeholder="kebab-case"
@@ -190,9 +203,32 @@ const RiskTagsForm: React.FC = () => {
           </div>
 
           <div className="md:col-span-2">
-            <label className="block text-sm text-gray-700 mb-1">描述（可选）</label>
+            <label className={labelBase}>启用</label>
+            <select
+              className={`${inputBase} border-gray-300`}
+              value={createForm.active ? 'true' : 'false'}
+              onChange={(e) => setCreateForm((p) => ({ ...p, active: e.target.value === 'true' }))}
+              disabled={submitting}
+            >
+              <option value="true">启用</option>
+              <option value="false">禁用</option>
+            </select>
+          </div>
+
+          <div className="md:col-span-2 flex items-end">
+            <button
+              type="submit"
+              className="h-9 w-full rounded-md bg-blue-600 text-white px-4 text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={submitting}
+            >
+              {submitting ? '提交中...' : '新增风险标签'}
+            </button>
+          </div>
+
+          <div className="md:col-span-12">
+            <label className={labelBase}>描述（可选）</label>
             <textarea
-              className={`w-full rounded border px-3 py-2 ${errors.description ? 'border-red-500' : 'border-gray-300'}`}
+              className={`${textareaBase} ${errors.description ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-300'}`}
               value={createForm.description}
               onChange={(e) => setCreateForm((p) => ({ ...p, description: e.target.value }))}
               rows={2}
@@ -200,29 +236,8 @@ const RiskTagsForm: React.FC = () => {
             />
             {errors.description ? <div className="text-xs text-red-600 mt-1">{errors.description}</div> : null}
           </div>
-
-          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={createForm.active}
-              onChange={(e) => setCreateForm((p) => ({ ...p, active: e.target.checked }))}
-              disabled={submitting}
-            />
-            启用
-          </label>
-
-          <div className="md:col-span-2">
-            <button
-              type="submit"
-              className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-              disabled={submitting}
-            >
-              {submitting ? '提交中...' : '新增风险标签'}
-            </button>
-          </div>
         </form>
       </div>
-
       <div className="bg-white rounded-lg shadow p-6 space-y-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">

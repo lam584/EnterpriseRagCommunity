@@ -1,21 +1,29 @@
 package com.example.EnterpriseRagCommunity.controller;
 
-import com.example.EnterpriseRagCommunity.dto.access.TranslatePreferencesDTO;
-import com.example.EnterpriseRagCommunity.dto.access.UpdateTranslatePreferencesRequest;
-import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
-import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import com.example.EnterpriseRagCommunity.dto.access.TranslatePreferencesDTO;
+import com.example.EnterpriseRagCommunity.dto.access.UpdateTranslatePreferencesRequest;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.service.ai.SupportedLanguageService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/account")
@@ -23,9 +31,8 @@ import java.util.Map;
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
 public class AccountPreferencesController {
 
-    private static final String DEFAULT_TARGET_LANGUAGE = "zh";
-
     private final UsersRepository usersRepository;
+    private final SupportedLanguageService supportedLanguageService;
 
     @GetMapping("/preferences")
     public ResponseEntity<?> getPreferences() {
@@ -82,7 +89,7 @@ public class AccountPreferencesController {
         if (req.isTargetLanguagePresent()) {
             String tl = req.getTargetLanguage() == null ? null : req.getTargetLanguage().trim();
             if (tl != null && tl.isEmpty()) tl = null;
-            translate.put("targetLanguage", tl);
+            translate.put("targetLanguage", tl == null ? null : supportedLanguageService.normalizeToLanguageCode(tl));
         }
 
         if (req.isAutoTranslatePostsPresent()) {
@@ -104,7 +111,7 @@ public class AccountPreferencesController {
     }
 
     @SuppressWarnings("unchecked")
-    private static TranslatePreferencesDTO toTranslatePreferencesDto(Map<String, Object> metadata) {
+    private TranslatePreferencesDTO toTranslatePreferencesDto(Map<String, Object> metadata) {
         TranslatePreferencesDTO dto = new TranslatePreferencesDTO();
         Map<String, Object> prefs = null;
         if (metadata != null) {
@@ -133,10 +140,9 @@ public class AccountPreferencesController {
             if (ac instanceof Boolean) autoTranslateComments = (Boolean) ac;
         }
 
-        dto.setTargetLanguage(targetLanguage == null ? DEFAULT_TARGET_LANGUAGE : targetLanguage);
+        dto.setTargetLanguage(supportedLanguageService.normalizeToLanguageCode(targetLanguage));
         dto.setAutoTranslatePosts(autoTranslatePosts != null && autoTranslatePosts);
         dto.setAutoTranslateComments(autoTranslateComments != null && autoTranslateComments);
         return dto;
     }
 }
-

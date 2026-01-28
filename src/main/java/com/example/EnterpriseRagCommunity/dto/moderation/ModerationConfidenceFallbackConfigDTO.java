@@ -28,6 +28,8 @@ public class ModerationConfidenceFallbackConfigDTO {
     private Double llmRejectThreshold;
     private Double llmHumanThreshold;
 
+    private Integer reportHumanThreshold;
+
     private LocalDateTime updatedAt;
     private String updatedBy;
 }

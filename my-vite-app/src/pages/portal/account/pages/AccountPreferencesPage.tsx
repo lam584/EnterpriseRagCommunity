@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getMyTranslatePreferences, updateMyTranslatePreferences } from '../../../../services/accountPreferencesService';
 import { getTranslateConfig } from '../../../../services/translateService';
-import { LLM_SUPPORTED_LANGUAGES } from '../../../../constants/llmSupportedLanguages';
+import { listSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
 
 export default function AccountPreferencesPage() {
   const [compact, setCompact] = useState(true);
   const [emailNoti, setEmailNoti] = useState(false);
 
-  const [targetLanguage, setTargetLanguage] = useState('zh');
-  const [availableTargetLanguages, setAvailableTargetLanguages] = useState<string[]>(LLM_SUPPORTED_LANGUAGES);
+  const [targetLanguage, setTargetLanguage] = useState('zh-CN');
+  const [supportedLanguages, setSupportedLanguages] = useState<SupportedLanguageDTO[]>([]);
+  const [allowedTargetLanguageCodes, setAllowedTargetLanguageCodes] = useState<string[]>([]);
   const [autoTranslatePosts, setAutoTranslatePosts] = useState(false);
   const [autoTranslateComments, setAutoTranslateComments] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -19,10 +20,18 @@ export default function AccountPreferencesPage() {
   const [committed, setCommitted] = useState(() => ({
     compact: true,
     emailNoti: false,
-    targetLanguage: 'zh',
+    targetLanguage: 'zh-CN',
     autoTranslatePosts: false,
     autoTranslateComments: false,
   }));
+
+  const availableTargetLanguages = useMemo(() => {
+    if (!supportedLanguages.length) return [];
+    if (!allowedTargetLanguageCodes.length) return supportedLanguages;
+    const allowed = new Set(allowedTargetLanguageCodes);
+    const filtered = supportedLanguages.filter((x) => allowed.has(x.languageCode));
+    return filtered.length ? filtered : supportedLanguages;
+  }, [supportedLanguages, allowedTargetLanguageCodes]);
 
   useEffect(() => {
     let mounted = true;
@@ -35,7 +44,7 @@ export default function AccountPreferencesPage() {
         const next = {
           compact: true,
           emailNoti: false,
-          targetLanguage: p.targetLanguage || 'zh',
+          targetLanguage: p.targetLanguage || 'zh-CN',
           autoTranslatePosts: !!p.autoTranslatePosts,
           autoTranslateComments: !!p.autoTranslateComments,
         };
@@ -62,10 +71,27 @@ export default function AccountPreferencesPage() {
     let mounted = true;
     (async () => {
       try {
-        const cfg = await getTranslateConfig();
-        const langs = (cfg.allowedTargetLanguages ?? []).filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+        const langs = await listSupportedLanguages();
         if (!mounted) return;
-        if (langs.length > 0) setAvailableTargetLanguages(langs);
+        setSupportedLanguages((langs ?? []).filter((x) => x && typeof x.languageCode === 'string' && typeof x.displayName === 'string'));
+      } catch {
+        if (!mounted) return;
+        setSupportedLanguages([]);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const cfg = await getTranslateConfig();
+        if (!mounted) return;
+        const codes = (cfg.allowedTargetLanguages ?? []).filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+        setAllowedTargetLanguageCodes(codes);
       } catch {
       }
     })();
@@ -124,14 +150,14 @@ export default function AccountPreferencesPage() {
                   setSavedHint(null);
                   try {
                     const saved = await updateMyTranslatePreferences({
-                      targetLanguage: targetLanguage.trim() || 'zh',
+                      targetLanguage: targetLanguage.trim() || 'zh-CN',
                       autoTranslatePosts,
                       autoTranslateComments,
                     });
                     const next = {
                       compact,
                       emailNoti,
-                      targetLanguage: saved.targetLanguage || 'zh',
+                      targetLanguage: saved.targetLanguage || 'zh-CN',
                       autoTranslatePosts: !!saved.autoTranslatePosts,
                       autoTranslateComments: !!saved.autoTranslateComments,
                     };
@@ -172,12 +198,12 @@ export default function AccountPreferencesPage() {
                 onChange={(e) => setTargetLanguage(e.target.value)}
                 disabled={!editing || saving || loading}
               >
-                {!availableTargetLanguages.includes(targetLanguage) ? (
+                {!availableTargetLanguages.some((x) => x.languageCode === targetLanguage) ? (
                   <option value={targetLanguage}>{targetLanguage}</option>
                 ) : null}
                 {availableTargetLanguages.map((lang) => (
-                  <option key={lang} value={lang}>
-                    {lang}
+                  <option key={lang.languageCode} value={lang.languageCode}>
+                    {lang.displayName}
                   </option>
                 ))}
               </select>

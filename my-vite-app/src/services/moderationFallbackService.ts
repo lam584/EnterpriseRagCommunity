@@ -31,6 +31,8 @@ export interface ModerationConfidenceFallbackConfig {
   llmRejectThreshold: number;
   llmHumanThreshold: number;
 
+  reportHumanThreshold: number;
+
   updatedAt?: string;
   updatedBy?: string | null;
 }

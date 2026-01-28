@@ -7,8 +7,11 @@ import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestRespon
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationLlmConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
+import com.example.EnterpriseRagCommunity.entity.content.enums.ReportStatus;
+import com.example.EnterpriseRagCommunity.entity.content.enums.ReportTargetType;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.ReportsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationLlmConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
@@ -29,6 +32,7 @@ public class AdminModerationLlmService {
     private final ModerationQueueRepository queueRepository;
     private final PostsRepository postsRepository;
     private final CommentsRepository commentsRepository;
+    private final ReportsRepository reportsRepository;
     private final AiProperties aiProperties;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -159,16 +163,50 @@ public class AdminModerationLlmService {
             if (p == null) return null;
             String title = p.getTitle() == null ? "" : p.getTitle();
             String content = p.getContent() == null ? "" : p.getContent();
-            return ("[POST]\n标题: " + title + "\n内容: " + content).trim();
+            String base = ("[POST]\n标题: " + title + "\n内容: " + content).trim();
+            String reports = buildReportsBlock(ReportTargetType.POST, q.getContentId());
+            if (reports != null && !reports.isBlank()) return (reports + "\n\n" + base).trim();
+            return base;
         }
         if (q.getContentType() == ContentType.COMMENT) {
             var c = commentsRepository.findById(q.getContentId()).orElse(null);
             if (c == null) return null;
             String content = c.getContent() == null ? "" : c.getContent();
-            return ("[COMMENT]\n内容: " + content).trim();
+            String base = ("[COMMENT]\n内容: " + content).trim();
+            String reports = buildReportsBlock(ReportTargetType.COMMENT, q.getContentId());
+            if (reports != null && !reports.isBlank()) return (reports + "\n\n" + base).trim();
+            return base;
         }
 
         return null;
+    }
+
+    private String buildReportsBlock(ReportTargetType targetType, Long targetId) {
+        if (targetType == null || targetId == null) return null;
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                0,
+                10,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.desc("createdAt"), org.springframework.data.domain.Sort.Order.desc("id"))
+        );
+        var page = reportsRepository.findByTargetTypeAndTargetId(targetType, targetId, pageable);
+        if (page == null || page.getContent() == null || page.getContent().isEmpty()) return null;
+
+        List<String> lines = new ArrayList<>();
+        for (var r : page.getContent()) {
+            if (r == null) continue;
+            if (r.getStatus() != ReportStatus.PENDING && r.getStatus() != ReportStatus.REVIEWING) continue;
+            String code = r.getReasonCode() == null ? "" : r.getReasonCode().trim();
+            String text = r.getReasonText() == null ? "" : r.getReasonText().trim();
+            if (code.isEmpty() && text.isEmpty()) continue;
+            if (!text.isEmpty()) {
+                lines.add("- " + code + ": " + text);
+            } else {
+                lines.add("- " + code);
+            }
+            if (lines.size() >= 3) break;
+        }
+        if (lines.isEmpty()) return null;
+        return ("[REPORTS]\n" + String.join("\n", lines)).trim();
     }
 
     private ModerationLlmConfigEntity merge(ModerationLlmConfigEntity base, LlmModerationTestRequest.LlmModerationConfigOverrideDTO o) {

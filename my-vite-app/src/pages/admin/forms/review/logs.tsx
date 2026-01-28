@@ -30,6 +30,51 @@ function parsePositiveInt(s: string | null): number | undefined {
   return Math.floor(n);
 }
 
+const ACTION_LABELS: Record<string, string> = {
+  LLM_DECISION: 'LLM 自动审核',
+  RULE_DECISION: '规则自动审核',
+  VEC_DECISION: '向量相似度审核',
+  MODERATION_MANUAL_APPROVE: '人工：通过/驳回举报',
+  MODERATION_MANUAL_REJECT: '人工：驳回/核实举报',
+  MODERATION_MANUAL_CLAIM: '人工：认领',
+  MODERATION_MANUAL_RELEASE: '人工：释放',
+  MODERATION_MANUAL_TO_HUMAN: '人工：进入人工审核',
+  MODERATION_MANUAL_REQUEUE: '人工：重新自动审核',
+  MODERATION_MANUAL_SET_RISK_TAGS: '人工：更新风险标签',
+  MODERATION_MANUAL_BACKFILL: '人工：补齐历史待审入队',
+  EMAIL_SEND: '邮件发送',
+};
+
+function actionLabel(action?: string | null): string {
+  if (!action) return '—';
+  return ACTION_LABELS[action] ?? action;
+}
+
+const ENTITY_TYPE_LABELS: Record<string, string> = {
+  MODERATION_QUEUE: '审核队列',
+  POST: '帖子',
+  COMMENT: '评论',
+  SYSTEM: '系统',
+  VECTOR_INDEX: '向量索引',
+  EMAIL: '邮件',
+};
+
+function entityTypeLabel(entityType?: string | null): string {
+  if (!entityType) return '—';
+  return ENTITY_TYPE_LABELS[entityType] ?? entityType;
+}
+
+const RESULT_LABELS: Record<string, string> = {
+  SUCCESS: '成功',
+  FAIL: '失败',
+  SKIP: '跳过',
+};
+
+function resultLabel(result?: string | null): string {
+  if (!result) return '—';
+  return RESULT_LABELS[result] ?? result;
+}
+
 type QueryState = {
   keyword: string;
   actorId: string;
@@ -289,7 +334,7 @@ const LogsForm: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input
             className="rounded border px-3 py-2"
-            placeholder="Action（例如 LLM_DECISION）"
+            placeholder="操作（例如 LLM_DECISION）"
             value={query.action}
             onChange={(e) => {
               setQuery((q) => ({ ...q, action: e.target.value }));
@@ -306,15 +351,15 @@ const LogsForm: React.FC = () => {
             }}
           >
             <option value="">全部实体类型</option>
-            <option value="MODERATION_QUEUE">MODERATION_QUEUE</option>
-            <option value="POST">POST</option>
-            <option value="COMMENT">COMMENT</option>
-            <option value="SYSTEM">SYSTEM</option>
+            <option value="MODERATION_QUEUE">审核队列（MODERATION_QUEUE）</option>
+            <option value="POST">帖子（POST）</option>
+            <option value="COMMENT">评论（COMMENT）</option>
+            <option value="SYSTEM">系统（SYSTEM）</option>
           </select>
 
           <input
             className="rounded border px-3 py-2"
-            placeholder="EntityId（可选）"
+            placeholder="实体ID（可选）"
             value={query.entityId}
             onChange={(e) => {
               setQuery((q) => ({ ...q, entityId: e.target.value }));
@@ -331,9 +376,9 @@ const LogsForm: React.FC = () => {
             }}
           >
             <option value="">全部结果</option>
-            <option value="SUCCESS">SUCCESS</option>
-            <option value="FAIL">FAIL</option>
-            <option value="SKIP">SKIP</option>
+            <option value="SUCCESS">成功（SUCCESS）</option>
+            <option value="FAIL">失败（FAIL）</option>
+            <option value="SKIP">跳过（SKIP）</option>
           </select>
         </div>
 
@@ -400,11 +445,11 @@ const LogsForm: React.FC = () => {
           <thead className="bg-gray-50 text-gray-700">
             <tr className="text-left">
               <th className="px-3 py-2">时间</th>
-              <th className="px-3 py-2">Action</th>
+              <th className="px-3 py-2">操作</th>
               <th className="px-3 py-2">实体</th>
               <th className="px-3 py-2">操作者</th>
               <th className="px-3 py-2">结果</th>
-              <th className="px-3 py-2">Trace</th>
+              <th className="px-3 py-2">追溯ID</th>
               <th className="px-3 py-2">消息</th>
             </tr>
           </thead>
@@ -417,9 +462,11 @@ const LogsForm: React.FC = () => {
                 title="点击查看详情"
               >
                 <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(it.createdAt)}</td>
-                <td className="px-3 py-2 whitespace-nowrap font-mono">{it.action}</td>
-                <td className="px-3 py-2 whitespace-nowrap font-mono">
-                  {it.entityType}{it.entityId ? `#${it.entityId}` : ''}
+                <td className="px-3 py-2 whitespace-nowrap" title={it.action ?? undefined}>
+                  {actionLabel(it.action)}
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap" title={it.entityType ?? undefined}>
+                  {entityTypeLabel(it.entityType)}{it.entityId ? `#${it.entityId}` : ''}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   <div className="flex flex-col">
@@ -427,7 +474,7 @@ const LogsForm: React.FC = () => {
                     <span className="text-xs text-gray-500">{it.actorType || '—'}{it.actorId ? `#${it.actorId}` : ''}</span>
                   </div>
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap">{it.result ?? '—'}</td>
+                <td className="px-3 py-2 whitespace-nowrap" title={it.result ?? undefined}>{resultLabel(it.result)}</td>
                 <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{it.traceId ?? '—'}</td>
                 <td className="px-3 py-2 max-w-[520px] truncate">{it.message ?? '—'}</td>
               </tr>
@@ -505,11 +552,11 @@ const LogsForm: React.FC = () => {
                     </div>
                     <div className="rounded border p-3">
                       <div className="text-xs text-gray-500">结果</div>
-                      <div>{detail.result ?? '—'}</div>
+                      <div title={detail.result ?? undefined}>{resultLabel(detail.result)}</div>
                     </div>
                     <div className="rounded border p-3">
-                      <div className="text-xs text-gray-500">Action</div>
-                      <div className="font-mono break-all">{detail.action}</div>
+                      <div className="text-xs text-gray-500">操作</div>
+                      <div className="break-all" title={detail.action ?? undefined}>{actionLabel(detail.action)}</div>
                     </div>
                     <div className="rounded border p-3">
                       <div className="text-xs text-gray-500">操作者</div>
@@ -518,7 +565,9 @@ const LogsForm: React.FC = () => {
                     </div>
                     <div className="rounded border p-3 md:col-span-2">
                       <div className="text-xs text-gray-500">实体</div>
-                      <div className="font-mono break-all">{detail.entityType}{detail.entityId ? `#${detail.entityId}` : ''}</div>
+                      <div className="break-all" title={detail.entityType ?? undefined}>
+                        {entityTypeLabel(detail.entityType)}{detail.entityId ? `#${detail.entityId}` : ''}
+                      </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {detail.entityType === 'MODERATION_QUEUE' && detail.entityId ? (
                           <button
@@ -586,12 +635,12 @@ const LogsForm: React.FC = () => {
                   </div>
 
                   <div className="rounded border p-3">
-                    <div className="text-xs text-gray-500 mb-2">Details(JSON)</div>
+                    <div className="text-xs text-gray-500 mb-2">详情（JSON）</div>
                     <pre className="text-xs bg-gray-50 rounded p-3 overflow-auto max-h-[320px]">{safeJson(detail.details ?? {})}</pre>
                   </div>
 
                   <div className="rounded border p-3">
-                    <div className="text-xs text-gray-500 mb-2">Raw</div>
+                    <div className="text-xs text-gray-500 mb-2">原始数据</div>
                     <pre className="text-xs bg-gray-50 rounded p-3 overflow-auto max-h-[320px]">{safeJson(detail)}</pre>
                   </div>
                 </>

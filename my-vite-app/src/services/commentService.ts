@@ -9,15 +9,25 @@ export type CommentDTO = {
   parentId?: number | null;
   authorId?: number | null;
   authorName?: string | null;
+  authorAvatarUrl?: string | null;
+  authorLocation?: string | null;
+  likeCount?: number | null;
+  likedByMe?: boolean | null;
   content: string;
   status?: CommentStatus | null;
   createdAt?: string;
   updatedAt?: string;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type CommentCreateRequest = {
   content: string;
   parentId?: number | null;
+};
+
+export type CommentToggleResponseDTO = {
+  likedByMe: boolean;
+  likeCount: number;
 };
 
 export type CommentAdminDTO = {
@@ -72,8 +82,8 @@ function buildQuery(params: Record<string, unknown>): string {
   return qs ? `?${qs}` : '';
 }
 
-export async function listPostComments(postId: number, page = 1, pageSize = 20): Promise<SpringPage<CommentDTO>> {
-  const res = await fetch(apiUrl(`/api/posts/${postId}/comments?page=${page}&pageSize=${pageSize}`), {
+export async function listPostComments(postId: number, page = 1, pageSize = 20, includeMinePending = false): Promise<SpringPage<CommentDTO>> {
+  const res = await fetch(apiUrl(`/api/posts/${postId}/comments?page=${page}&pageSize=${pageSize}&includeMinePending=${includeMinePending ? 'true' : 'false'}`), {
     method: 'GET',
     credentials: 'include',
   });
@@ -98,6 +108,22 @@ export async function createPostComment(postId: number, payload: CommentCreateRe
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '发表评论失败');
   return data as CommentDTO;
+}
+
+export async function toggleCommentLike(commentId: number): Promise<CommentToggleResponseDTO> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/comments/${commentId}/like`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '点赞失败');
+  return data as CommentToggleResponseDTO;
 }
 
 export async function adminListComments(query: CommentAdminQuery = {}): Promise<SpringPage<CommentAdminDTO>> {

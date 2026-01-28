@@ -243,7 +243,26 @@ const ContextClipForm: React.FC = () => {
           <h3 className="text-lg font-semibold">动态上下文裁剪</h3>
           <div className="text-xs text-gray-500">控制 Chat RAG 的上下文预算、格式、去重、日志与测试预览</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">上下文注入：</span>
+            <select
+              value={Boolean(config.enabled) ? 'true' : 'false'}
+              onChange={(e) => setConfig((v) => ({ ...v, enabled: e.target.value === 'true' }))}
+              disabled={!canWrite || !editing || loading}
+              className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                Boolean(config.enabled) ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
+              } disabled:opacity-60 disabled:bg-gray-100`}
+              title={!editing ? '只读（点击右侧「编辑」后可修改）' : '修改开关（需保存生效）'}
+            >
+              <option value="true" className="text-green-600">
+                开启
+              </option>
+              <option value="false" className="text-red-600">
+                关闭
+              </option>
+            </select>
+          </div>
           <button className={btnSecondaryClass} onClick={loadConfig} disabled={loading}>
             刷新
           </button>
@@ -291,15 +310,6 @@ const ContextClipForm: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-3 rounded border border-gray-200 p-3">
           <div className="font-medium">开关与策略</div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={Boolean(config.enabled)}
-              onChange={(e) => setConfig((v) => ({ ...v, enabled: e.target.checked }))}
-              disabled={!canWrite || !editing}
-            />
-            启用上下文注入（Chat RAG system prompt）
-          </label>
           <div>
             <div className="text-xs text-gray-500 mb-1">策略 Policy</div>
             <select

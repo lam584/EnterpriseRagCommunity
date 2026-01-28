@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.repository.moderation;
 
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,6 +17,7 @@ import java.util.Optional;
 public interface ModerationQueueRepository extends JpaRepository<ModerationQueueEntity, Long>, JpaSpecificationExecutor<ModerationQueueEntity> {
     // 唯一查询：content_type + content_id，防止重复入队
     Optional<ModerationQueueEntity> findByContentTypeAndContentId(ContentType contentType, Long contentId);
+    Optional<ModerationQueueEntity> findByCaseTypeAndContentTypeAndContentId(ModerationCaseType caseType, ContentType contentType, Long contentId);
 
     // 状态/阶段/指派/时间范围
     List<ModerationQueueEntity> findAllByStatus(QueueStatus status);
@@ -28,6 +30,7 @@ public interface ModerationQueueRepository extends JpaRepository<ModerationQueue
     List<ModerationQueueEntity> findAllByStatusAndCreatedAtBetween(QueueStatus status, LocalDateTime start, LocalDateTime end);
 
     @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
     @org.springframework.data.jpa.repository.Query("update ModerationQueueEntity q set q.status = :newStatus, q.lockedBy = :lockedBy, q.lockedAt = :lockedAt, q.updatedAt = :lockedAt " +
             "where q.id = :id and q.status in (:allowedStatuses) and q.currentStage = :stage and (q.lockedAt is null or q.lockedAt < :lockExpiredBefore)")
     int tryLockForAutoRun(@org.springframework.data.repository.query.Param("id") Long id,
@@ -75,6 +78,7 @@ public interface ModerationQueueRepository extends JpaRepository<ModerationQueue
                 @org.springframework.data.repository.query.Param("now") LocalDateTime now);
 
     @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.transaction.annotation.Transactional
     @org.springframework.data.jpa.repository.Query("update ModerationQueueEntity q set q.lockedBy = null, q.lockedAt = null, q.updatedAt = :now where q.id = :id and q.lockedBy = :lockedBy")
     int unlockAutoRun(@org.springframework.data.repository.query.Param("id") Long id,
                       @org.springframework.data.repository.query.Param("lockedBy") String lockedBy,
