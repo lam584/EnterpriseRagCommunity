@@ -19,8 +19,9 @@ public class PostCommentsController {
     @GetMapping("/{postId}/comments")
     public Page<CommentDTO> list(@PathVariable("postId") Long postId,
                                  @RequestParam(value = "page", defaultValue = "1") int page,
-                                 @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
-        return commentsService.listByPostId(postId, page, pageSize);
+                                 @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
+                                 @RequestParam(value = "includeMinePending", defaultValue = "false") boolean includeMinePending) {
+        return commentsService.listByPostId(postId, page, pageSize, includeMinePending);
     }
 
     @PostMapping("/{postId}/comments")

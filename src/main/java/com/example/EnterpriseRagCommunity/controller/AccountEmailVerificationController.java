@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.dto.access.request.EmailVerificationSe
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
 import com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer;
 import jakarta.validation.Valid;
@@ -30,6 +31,7 @@ public class AccountEmailVerificationController {
     private final UsersRepository usersRepository;
     private final EmailVerificationService emailVerificationService;
     private final EmailVerificationMailer emailVerificationMailer;
+    private final NotificationsService notificationsService;
 
     @PostMapping("/send")
     public ResponseEntity<?> send(@RequestBody @Valid EmailVerificationSendRequest req) {
@@ -47,6 +49,14 @@ public class AccountEmailVerificationController {
         UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email).orElseThrow(() -> new IllegalArgumentException("User not found"));
         String code = emailVerificationService.issueCode(user.getId(), purpose);
         emailVerificationMailer.sendVerificationCode(email, code, purpose);
+        try {
+            if (purpose == EmailVerificationPurpose.CHANGE_PASSWORD) {
+                notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在进入修改密码流程，验证码已发送。");
+            } else if (purpose == EmailVerificationPurpose.TOTP_ENABLE) {
+                notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在进入修改 TOTP 流程，验证码已发送。");
+            }
+        } catch (Exception ignore) {
+        }
         return ResponseEntity.ok(Map.of("message", "验证码已发送"));
     }
 

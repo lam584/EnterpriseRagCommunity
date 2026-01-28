@@ -255,7 +255,26 @@ const TitleGenForm: React.FC = () => {
       <div className="bg-white rounded-lg shadow p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-lg font-semibold">标题生成</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">启用标题生成：</span>
+              <select
+                value={form.enabled ? 'true' : 'false'}
+                onChange={(e) => setForm((p) => ({ ...p, enabled: e.target.value === 'true' }))}
+                disabled={!editing || loading || saving}
+                className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                  form.enabled ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
+                } disabled:opacity-60 disabled:bg-gray-100`}
+                title={!editing ? '只读（点击右侧「编辑」后可修改）' : '修改开关（需保存生效）'}
+              >
+                <option value="true" className="text-green-600">
+                  开启
+                </option>
+                <option value="false" className="text-red-600">
+                  关闭
+                </option>
+              </select>
+            </div>
             <button
               type="button"
               onClick={() => void loadConfig()}
@@ -306,34 +325,6 @@ const TitleGenForm: React.FC = () => {
             ))}
           </div>
         )}
-
-        <div className="flex flex-wrap items-center gap-6 border rounded-md p-3 bg-gray-50 mb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-700">启用标题生成：</span>
-            <select
-              value={form.enabled ? 'true' : 'false'}
-              onChange={(e) => setForm((p) => ({ ...p, enabled: e.target.value === 'true' }))}
-              disabled={!editing || loading || saving}
-              className={`rounded border px-3 py-1.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                form.enabled ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
-              } disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed`}
-            >
-              <option value="true" className="text-green-600">开启 (Enabled)</option>
-              <option value="false" className="text-red-600">关闭 (Disabled)</option>
-            </select>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={form.historyEnabled}
-              onChange={(e) => setForm((p) => ({ ...p, historyEnabled: e.target.checked }))}
-              disabled={!editing || loading || saving}
-              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-            />
-            记录生成历史
-          </label>
-        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>

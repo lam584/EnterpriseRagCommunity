@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.dto.moderation;
 
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import lombok.Data;
@@ -11,6 +12,8 @@ import java.util.List;
 @Data
 public class AdminModerationQueueItemDTO {
     private Long id;
+
+    private ModerationCaseType caseType;
 
     private ContentType contentType;
     private Long contentId;

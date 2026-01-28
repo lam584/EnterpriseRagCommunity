@@ -64,6 +64,9 @@ public class ModerationConfidenceFallbackConfigEntity {
     @Column(name = "llm_human_threshold", nullable = false)
     private Double llmHumanThreshold;
 
+    @Column(name = "report_human_threshold", nullable = false)
+    private Integer reportHumanThreshold;
+
     @Version
     @Column(name = "version", nullable = false)
     private Integer version;

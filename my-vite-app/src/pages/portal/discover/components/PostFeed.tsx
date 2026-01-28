@@ -10,6 +10,7 @@ export type PostFeedProps = {
   onRetry?: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  showStatus?: boolean;
   /** Optional actions area rendered inside each PostCard. */
   renderActions?: (post: PostDTO) => JSX.Element | null;
 };
@@ -28,7 +29,7 @@ function SkeletonRow() {
   );
 }
 
-export default function PostFeed({ page, loading, error, onRetry, onPrev, onNext, renderActions }: PostFeedProps) {
+export default function PostFeed({ page, loading, error, onRetry, onPrev, onNext, showStatus, renderActions }: PostFeedProps) {
   const content = page?.content ?? [];
 
   const totalElements = page?.totalElements ?? content.length;
@@ -62,7 +63,7 @@ export default function PostFeed({ page, loading, error, onRetry, onPrev, onNext
       ) : null}
 
       {content.map((p: PostDTO) => (
-        <PostCard key={p.id} post={p} renderActions={renderActions} />
+        <PostCard key={p.id} post={p} showStatus={showStatus} renderActions={renderActions} />
       ))}
 
       {page ? (

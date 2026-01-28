@@ -44,6 +44,7 @@ const StatButton = pickStatButton(StatButtonModule);
 
 export type PostCardProps = {
   post: PostDTO;
+  showStatus?: boolean;
   /** Optional actions area (e.g. edit/delete buttons on "My Posts" page). */
   renderActions?: (post: PostDTO) => JSX.Element | null;
 };
@@ -67,7 +68,7 @@ function getPostStatusMeta(status?: PostDTO['status']): { label: string; classNa
   }
 }
 
-export default function PostCard({ post, renderActions }: PostCardProps) {
+export default function PostCard({ post, showStatus, renderActions }: PostCardProps) {
   const navigate = useNavigate();
 
   const authorLabel = post.authorName || (post.authorId ? `用户#${post.authorId}` : '匿名');
@@ -167,7 +168,7 @@ export default function PostCard({ post, renderActions }: PostCardProps) {
           <button type="button" className="mt-1 block text-left w-full" onClick={goDetail}>
             <div className="flex items-center justify-between gap-2">
               <h4 className="min-w-0 text-base font-semibold text-gray-900 truncate">{post.title}</h4>
-              {statusMeta ? (
+              {showStatus && statusMeta ? (
                 <span
                   className={`shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}
                   title={`状态：${statusMeta.label}`}

@@ -45,6 +45,10 @@ public class AdminModerationFallbackService {
                 && payload.getLlmHumanThreshold() > payload.getLlmRejectThreshold()) {
             throw new IllegalArgumentException("llmHumanThreshold cannot be greater than llmRejectThreshold");
         }
+        if (payload.getReportHumanThreshold() != null) {
+            int t = payload.getReportHumanThreshold();
+            if (t < 1 || t > 1000000) throw new IllegalArgumentException("reportHumanThreshold out of range");
+        }
 
         ModerationConfidenceFallbackConfigEntity cfg = repository.findAll().stream().findFirst().orElseGet(this::defaultEntity);
 
@@ -61,6 +65,8 @@ public class AdminModerationFallbackService {
         cfg.setLlmEnabled(payload.getLlmEnabled() != null ? payload.getLlmEnabled() : cfg.getLlmEnabled());
         if (payload.getLlmRejectThreshold() != null) cfg.setLlmRejectThreshold(payload.getLlmRejectThreshold());
         if (payload.getLlmHumanThreshold() != null) cfg.setLlmHumanThreshold(payload.getLlmHumanThreshold());
+
+        if (payload.getReportHumanThreshold() != null) cfg.setReportHumanThreshold(payload.getReportHumanThreshold());
 
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg.setUpdatedBy(actorUserId);
@@ -86,6 +92,8 @@ public class AdminModerationFallbackService {
         e.setLlmRejectThreshold(0.75);
         e.setLlmHumanThreshold(0.5);
 
+        e.setReportHumanThreshold(5);
+
         e.setVersion(0);
         e.setUpdatedAt(LocalDateTime.now());
         e.setUpdatedBy(null);
@@ -110,6 +118,8 @@ public class AdminModerationFallbackService {
         dto.setLlmEnabled(e.getLlmEnabled());
         dto.setLlmRejectThreshold(e.getLlmRejectThreshold());
         dto.setLlmHumanThreshold(e.getLlmHumanThreshold());
+
+        dto.setReportHumanThreshold(e.getReportHumanThreshold());
 
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setUpdatedBy(updatedByName);

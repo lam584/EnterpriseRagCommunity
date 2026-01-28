@@ -166,7 +166,26 @@ const CitationForm: React.FC = () => {
           <h3 className="text-lg font-semibold">引用与来源展示配置</h3>
           <div className="text-xs text-gray-500">控制“引用指令”与“来源区”输出格式</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">引用与来源：</span>
+            <select
+              value={Boolean(config.enabled) ? 'true' : 'false'}
+              onChange={(e) => setConfig((v) => ({ ...v, enabled: e.target.value === 'true' }))}
+              disabled={!canWrite || !editing || loading}
+              className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                Boolean(config.enabled) ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
+              } disabled:opacity-60 disabled:bg-gray-100`}
+              title={!editing ? '只读（点击右侧「编辑」后可修改）' : '修改开关（需保存生效）'}
+            >
+              <option value="true" className="text-green-600">
+                开启
+              </option>
+              <option value="false" className="text-red-600">
+                关闭
+              </option>
+            </select>
+          </div>
           <button className={btnSecondaryClass} onClick={loadConfig} disabled={loading}>
             刷新
           </button>
@@ -213,15 +232,6 @@ const CitationForm: React.FC = () => {
 
       <div className="space-y-3 rounded border border-gray-200 p-3">
         <div className="font-medium">基础配置</div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={Boolean(config.enabled)}
-            onChange={(e) => setConfig((v) => ({ ...v, enabled: e.target.checked }))}
-            disabled={!canWrite || !editing}
-          />
-          启用引用与来源功能
-        </label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <div>
             <div className="text-xs text-gray-500 mb-1">citationMode</div>

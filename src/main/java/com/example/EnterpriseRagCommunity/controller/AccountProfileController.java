@@ -25,6 +25,8 @@ import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.AccountSecurityService;
 import com.example.EnterpriseRagCommunity.service.AccountTotpService;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
+import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
+import com.example.EnterpriseRagCommunity.service.notify.AccountSecurityNotificationMailer;
 import com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,6 +45,8 @@ public class AccountProfileController {
     private final AccountTotpService accountTotpService;
     private final EmailVerificationService emailVerificationService;
     private final EmailVerificationMailer emailVerificationMailer;
+    private final NotificationsService notificationsService;
+    private final AccountSecurityNotificationMailer accountSecurityNotificationMailer;
 
     @PutMapping("/profile")
     public ResponseEntity<?> updateMyProfile(@RequestBody @Valid UpdateMyProfileRequest req) {
@@ -144,6 +148,14 @@ public class AccountProfileController {
                 }
             }
             accountSecurityService.changePasswordByEmail(email, req.getCurrentPassword(), req.getNewPassword());
+            try {
+                notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你的账号密码已修改成功。");
+            } catch (Exception ignore) {
+            }
+            try {
+                accountSecurityNotificationMailer.sendPasswordChanged(user.getEmail());
+            } catch (Exception ignore) {
+            }
 
             HttpSession session = servletRequest.getSession(false);
             if (session != null) {

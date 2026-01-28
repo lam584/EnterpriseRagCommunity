@@ -377,7 +377,7 @@ export default function AccountSecurityPage() {
               }}
               className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {totpEnrollSaving ? '生成中...' : '生成密钥'}
+              {totpEnrollSaving ? '生成密钥中...' : '启用TOTP'}
             </button>
 
             {enrollResult ? (

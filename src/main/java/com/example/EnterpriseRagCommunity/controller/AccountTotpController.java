@@ -26,6 +26,8 @@ import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.AccountTotpService;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
 import com.example.EnterpriseRagCommunity.service.access.TotpPolicyService;
+import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
+import com.example.EnterpriseRagCommunity.service.notify.AccountSecurityNotificationMailer;
 import com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer;
 
 import jakarta.validation.Valid;
@@ -41,6 +43,8 @@ public class AccountTotpController {
     private final UsersRepository usersRepository;
     private final EmailVerificationService emailVerificationService;
     private final EmailVerificationMailer emailVerificationMailer;
+    private final NotificationsService notificationsService;
+    private final AccountSecurityNotificationMailer accountSecurityNotificationMailer;
 
     @GetMapping("/policy")
     public ResponseEntity<?> policy() {
@@ -63,6 +67,11 @@ public class AccountTotpController {
         String email = currentEmailOrNull();
         if (email == null) return unauthorized();
         TotpEnrollResponse resp = accountTotpService.enrollByEmail(email, req);
+        try {
+            UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email).orElseThrow(() -> new IllegalArgumentException("User not found"));
+            notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在进入修改 TOTP 流程。");
+        } catch (Exception ignore) {
+        }
         return ResponseEntity.ok(resp);
     }
 
@@ -79,6 +88,17 @@ public class AccountTotpController {
             emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.TOTP_ENABLE, emailCode);
         }
         TotpStatusResponse resp = accountTotpService.verifyByEmail(email, req.getPassword(), req.getCode());
+        try {
+            UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email).orElseThrow(() -> new IllegalArgumentException("User not found"));
+            if (resp != null && Boolean.TRUE.equals(resp.getEnabled())) {
+                notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你的账号已启用 TOTP。");
+                try {
+                    accountSecurityNotificationMailer.sendTotpEnabled(user.getEmail());
+                } catch (Exception ignore) {
+                }
+            }
+        } catch (Exception ignore) {
+        }
         return ResponseEntity.ok(resp);
     }
 
@@ -87,6 +107,17 @@ public class AccountTotpController {
         String email = currentEmailOrNull();
         if (email == null) return unauthorized();
         TotpStatusResponse resp = accountTotpService.disableByEmail(email, req.getCode());
+        try {
+            UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email).orElseThrow(() -> new IllegalArgumentException("User not found"));
+            if (resp != null && Boolean.FALSE.equals(resp.getEnabled())) {
+                notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你的账号已关闭 TOTP。");
+                try {
+                    accountSecurityNotificationMailer.sendTotpDisabled(user.getEmail());
+                } catch (Exception ignore) {
+                }
+            }
+        } catch (Exception ignore) {
+        }
         return ResponseEntity.ok(resp);
     }
 

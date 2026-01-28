@@ -4,10 +4,14 @@ import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,12 +40,31 @@ class AdminModerationQueueControllerTest {
     @Autowired
     private PostsRepository postsRepository;
 
+    @Autowired
+    private UsersRepository usersRepository;
+
+    private void ensureUserExists(String username) {
+        if (usersRepository.findByEmailAndIsDeletedFalse(username).isPresent()) return;
+        UsersEntity u = new UsersEntity();
+        u.setTenantId(null);
+        u.setEmail(username);
+        u.setUsername(username);
+        u.setPasswordHash("x");
+        u.setStatus(AccountStatus.ACTIVE);
+        u.setIsDeleted(false);
+        u.setCreatedAt(LocalDateTime.now());
+        u.setUpdatedAt(LocalDateTime.now());
+        usersRepository.save(u);
+    }
+
     @Test
     @WithMockUser(username = "u", authorities = {"PERM_admin_moderation_queue:action"})
     void reject_shouldReturn409_whenAlreadyApproved() throws Exception {
+        ensureUserExists("u");
         LocalDateTime now = LocalDateTime.now();
 
         ModerationQueueEntity q = new ModerationQueueEntity();
+        q.setCaseType(ModerationCaseType.CONTENT);
         q.setContentType(ContentType.POST);
         q.setContentId(Math.abs(System.nanoTime()));
         q.setStatus(QueueStatus.APPROVED);
@@ -67,9 +90,11 @@ class AdminModerationQueueControllerTest {
     @Test
     @WithMockUser(username = "u", authorities = {"PERM_admin_moderation_queue:action"})
     void approve_shouldReturn409_whenAlreadyRejected() throws Exception {
+        ensureUserExists("u");
         LocalDateTime now = LocalDateTime.now();
 
         ModerationQueueEntity q = new ModerationQueueEntity();
+        q.setCaseType(ModerationCaseType.CONTENT);
         q.setContentType(ContentType.POST);
         q.setContentId(Math.abs(System.nanoTime()));
         q.setStatus(QueueStatus.REJECTED);
@@ -95,9 +120,11 @@ class AdminModerationQueueControllerTest {
     @Test
     @WithMockUser(username = "u", authorities = {"PERM_admin_moderation_queue:action"})
     void toHuman_shouldMoveToHuman_forTerminalTask() throws Exception {
+        ensureUserExists("u");
         LocalDateTime now = LocalDateTime.now();
 
         ModerationQueueEntity q = new ModerationQueueEntity();
+        q.setCaseType(ModerationCaseType.CONTENT);
         q.setContentType(ContentType.POST);
         q.setContentId(Math.abs(System.nanoTime()));
         q.setStatus(QueueStatus.APPROVED);
@@ -125,6 +152,7 @@ class AdminModerationQueueControllerTest {
     @Test
     @WithMockUser(username = "u", authorities = {"PERM_admin_moderation_queue:action"})
     void toHuman_thenReject_shouldReachRejected() throws Exception {
+        ensureUserExists("u");
         PostsEntity p = new PostsEntity();
         p.setTenantId(null);
         p.setBoardId(1L);
@@ -140,6 +168,7 @@ class AdminModerationQueueControllerTest {
         LocalDateTime now = LocalDateTime.now();
         ModerationQueueEntity q = moderationQueueRepository.findByContentTypeAndContentId(ContentType.POST, p.getId())
                 .orElseGet(ModerationQueueEntity::new);
+        if (q.getCaseType() == null) q.setCaseType(ModerationCaseType.CONTENT);
         q.setContentType(ContentType.POST);
         q.setContentId(p.getId());
         q.setStatus(QueueStatus.APPROVED);

@@ -324,6 +324,7 @@ export default function PostsMinePage() {
             loading={loading}
             error={error}
             onRetry={() => onQuery()}
+            showStatus
             renderActions={(p) => (
               <>
                 <button

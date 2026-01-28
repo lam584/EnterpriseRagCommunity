@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('qrcode.react', () => {
   return {
@@ -15,6 +16,15 @@ vi.mock('react-hot-toast', () => {
       success: vi.fn(),
       error: vi.fn(),
     },
+  };
+});
+
+vi.mock('../../../../contexts/AuthContext', () => {
+  return {
+    useAuth: () => ({
+      setCurrentUser: vi.fn(),
+      setIsAuthenticated: vi.fn(),
+    }),
   };
 });
 
@@ -77,7 +87,11 @@ describe('AccountSecurityPage (TOTP)', () => {
   });
 
   it('renders TOTP section and can enroll', async () => {
-    render(<AccountSecurityPage />);
+    render(
+      <MemoryRouter>
+        <AccountSecurityPage />
+      </MemoryRouter>,
+    );
 
     expect(await screen.findByText('二次验证（TOTP）')).not.toBeNull();
     expect(mockGetTotpPolicy).toHaveBeenCalledTimes(1);
@@ -85,7 +99,7 @@ describe('AccountSecurityPage (TOTP)', () => {
 
     expect(await screen.findByText(/当前状态：未启用/)).not.toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '生成密钥' }));
+    fireEvent.click(screen.getByRole('button', { name: '启用TOTP' }));
 
     expect(await screen.findByText('绑定信息')).not.toBeNull();
     expect(screen.getByDisplayValue('ABC')).not.toBeNull();
@@ -106,7 +120,11 @@ describe('AccountSecurityPage (TOTP)', () => {
       defaultSkew: 3,
     });
 
-    render(<AccountSecurityPage />);
+    render(
+      <MemoryRouter>
+        <AccountSecurityPage />
+      </MemoryRouter>,
+    );
 
     expect((await screen.findAllByText('二次验证（TOTP）')).length).toBeGreaterThan(0);
 
@@ -119,9 +137,13 @@ describe('AccountSecurityPage (TOTP)', () => {
   it('shows backend error message when verify fails', async () => {
     mockVerifyTotp.mockRejectedValueOnce(new Error('验证码不正确'));
 
-    render(<AccountSecurityPage />);
+    render(
+      <MemoryRouter>
+        <AccountSecurityPage />
+      </MemoryRouter>,
+    );
 
-    fireEvent.click(await screen.findByRole('button', { name: '生成密钥' }));
+    fireEvent.click(await screen.findByRole('button', { name: '启用TOTP' }));
     expect(await screen.findByText('绑定信息')).not.toBeNull();
 
     fireEvent.change(screen.getByPlaceholderText('6 或 8 位数字'), { target: { value: '000000' } });

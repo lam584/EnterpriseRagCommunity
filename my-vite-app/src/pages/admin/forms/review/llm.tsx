@@ -267,61 +267,9 @@ const LlmForm: React.FC = () => {
             <h3 className="text-lg font-semibold">LLM 审核层</h3>
             <div className="text-sm text-gray-500">配置大模型审核提示词与参数，并支持对指定内容试运行。</div>
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  void loadConfig();
-                  setError(null);
-                }}
-                className="rounded border px-3 py-2 disabled:opacity-60"
-                disabled={loading || saving || testing}
-                title="从后端重新加载配置（会覆盖未保存的修改）"
-              >
-                重新加载
-              </button>
-
-              {!isEditing ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditing(true);
-                    setSavedHint(null);
-                    setError(null);
-                  }}
-                  className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-                  disabled={loading || saving || testing}
-                  title="进入编辑模式"
-                >
-                  编辑配置
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={cancelEdit}
-                    className="rounded border px-3 py-2 disabled:opacity-60"
-                    disabled={loading || saving || testing}
-                    title="放弃未保存的修改，并恢复到最近一次加载/保存的配置"
-                  >
-                    放弃修改
-                  </button>
-                  <button
-                    type="button"
-                    onClick={save}
-                    className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-                    disabled={!canSave}
-                    title={formErrors.length ? formErrors.join('\n') : '保存并生效'}
-                  >
-                    {saving ? '保存中…' : '保存配置'}
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded border border-gray-200">
-              <span className="text-sm font-medium text-gray-700">自动运行LLM审核： </span>
+              <span className="text-sm font-medium text-gray-700">LLM自动审核：</span>
               <select
                 value={form.autoRun ? 'true' : 'false'}
                 disabled={!isEditing}
@@ -342,6 +290,56 @@ const LlmForm: React.FC = () => {
                 </option>
               </select>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                void loadConfig();
+                setError(null);
+              }}
+              className="rounded border px-3 py-2 disabled:opacity-60"
+              disabled={loading || saving || testing}
+              title="从后端重新加载配置（会覆盖未保存的修改）"
+            >
+              刷新
+            </button>
+
+            {!isEditing ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditing(true);
+                  setSavedHint(null);
+                  setError(null);
+                }}
+                className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
+                disabled={loading || saving || testing}
+                title="进入编辑模式"
+              >
+                编辑配置
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="rounded border px-3 py-2 disabled:opacity-60"
+                  disabled={loading || saving || testing}
+                  title="放弃未保存的修改，并恢复到最近一次加载/保存的配置"
+                >
+                  放弃修改
+                </button>
+                <button
+                  type="button"
+                  onClick={save}
+                  className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
+                  disabled={!canSave}
+                  title={formErrors.length ? formErrors.join('\n') : '保存并生效'}
+                >
+                  {saving ? '保存中…' : '保存配置'}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -491,7 +489,7 @@ const LlmForm: React.FC = () => {
                   setSavedHint(null);
                 }}
               />
-              <div className="text-xs text-gray-500 mt-1">用于全局限流（近似）</div>
+              <div className="text-xs text-gray-500 mt-1">用于全局限流</div>
             </div>
           </div>
 

@@ -53,133 +53,18 @@ public class SemanticTranslateConfigService {
     private final SemanticTranslateConfigRepository configRepository;
     private final SemanticTranslateHistoryRepository historyRepository;
     private final ObjectMapper objectMapper;
+    private final SupportedLanguageService supportedLanguageService;
 
     private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {
     };
 
-    private static final String DEFAULT_ALLOWED_TARGET_LANGUAGES_TEXT = """
-英语（English）
-简体中文（Simplified Chinese）
-繁体中文（Traditional Chinese）
-法语（French）
-西班牙语（Spanish）
-阿拉伯语（Arabic）
-俄语（Russian）
-葡萄牙语（Portuguese）
-德语（German）
-意大利语（Italian）
-荷兰语（Dutch）
-丹麦语（Danish）
-爱尔兰语（Irish）
-威尔士语（Welsh）
-芬兰语（Finnish）
-冰岛语（Icelandic）
-瑞典语（Swedish）
-新挪威语（Norwegian Nynorsk）
-书面挪威语（Norwegian Bokmål）
-日语（Japanese）
-朝鲜语/韩语（Korean）
-越南语（Vietnamese）
-泰语（Thai）
-印度尼西亚语（Indonesian）
-马来语（Malay）
-缅甸语（Burmese）
-他加禄语（Tagalog）
-高棉语（Khmer）
-老挝语（Lao）
-印地语（Hindi）
-孟加拉语（Bengali）
-乌尔都语（Urdu）
-尼泊尔语（Nepali）
-希伯来语（Hebrew）
-土耳其语（Turkish）
-波斯语（Persian）
-波兰语（Polish）
-乌克兰语（Ukrainian）
-捷克语（Czech）
-罗马尼亚语（Romanian）
-保加利亚语（Bulgarian）
-斯洛伐克语（Slovak）
-匈牙利语（Hungarian）
-斯洛文尼亚语（Slovenian）
-拉脱维亚语（Latvian）
-爱沙尼亚语（Estonian）
-立陶宛语（Lithuanian）
-白俄罗斯语（Belarusian）
-希腊语（Greek）
-克罗地亚语（Croatian）
-马其顿语（Macedonian）
-马耳他语（Maltese）
-塞尔维亚语（Serbian）
-波斯尼亚语（Bosnian）
-格鲁吉亚语（Georgian）
-亚美尼亚语（Armenian）
-北阿塞拜疆语（North Azerbaijani）
-哈萨克语（Kazakh）
-北乌兹别克语（Northern Uzbek）
-塔吉克语（Tajik）
-斯瓦西里语（Swahili）
-南非语（Afrikaans）
-粤语（Cantonese）
-卢森堡语（Luxembourgish）
-林堡语（Limburgish）
-加泰罗尼亚语（Catalan）
-加利西亚语（Galician）
-阿斯图里亚斯语（Asturian）
-巴斯克语（Basque）
-奥克语（Occitan）
-威尼斯语（Venetian）
-撒丁语（Sardinian）
-西西里语（Sicilian）
-弗留利语（Friulian）
-隆巴底语（Lombard）
-利古里亚语（Ligurian）
-法罗语（Faroese）
-托斯克阿尔巴尼亚语（Tosk Albanian）
-西里西亚语（Silesian）
-巴什基尔语（Bashkir）
-鞑靼语（Tatar）
-美索不达米亚阿拉伯语（Mesopotamian Arabic）
-内志阿拉伯语（Najdi Arabic）
-埃及阿拉伯语（Egyptian Arabic）
-黎凡特阿拉伯语（Levantine Arabic）
-闪米特阿拉伯语（Ta'izzi-Adeni Arabic）
-达里语（Dari）
-突尼斯阿拉伯语（Tunisian Arabic）
-摩洛哥阿拉伯语（Moroccan Arabic）
-克里奥尔语（Kabuverdianu）
-托克皮辛语（Tok Pisin）
-意第绪（Eastern Yiddish）
-信德阿拉伯语（Sindhi）
-僧伽罗语（Sinhala）
-泰卢固语（Telugu）
-旁遮普语（Punjabi）
-泰米尔语（Tamil）
-古吉拉特语（Gujarati）
-马拉雅拉姆语（Malayalam）
-马拉地语（Marathi）
-卡纳达语（Kannada）
-马加拉语（Magahi）
-奥里亚语（Oriya）
-阿瓦德语（Awadhi）
-迈蒂利语（Maithili）
-阿萨姆语（Assamese）
-切蒂斯格尔语（Chhattisgarhi）
-比哈尔语（Bhojpuri）
-米南加保语（Minangkabau）
-巴厘语（Balinese）
-爪哇语（Javanese）
-班章语（Banjar）
-巽他语（Sundanese）
-宿务语（Cebuano）
-邦阿西楠语（Pangasinan）
-伊洛卡诺语（Iloko）
-瓦莱语（Waray (Philippines)）
-海地语（Haitian）
-帕皮阿门托语（Papiamento）
-""";
-
-    private static final List<String> DEFAULT_ALLOWED_TARGET_LANGUAGES = normalizeStringList(splitLines(DEFAULT_ALLOWED_TARGET_LANGUAGES_TEXT));
+    private List<String> defaultAllowedTargetLanguageCodes() {
+        List<String> codes = supportedLanguageService.listActiveLanguageCodes();
+        if (codes == null || codes.isEmpty()) {
+            return List.of(SupportedLanguageService.DEFAULT_LANGUAGE_CODE, "en");
+        }
+        return codes;
+    }
 
     @Transactional(readOnly = true)
     public SemanticTranslateConfigDTO getAdminConfig() {
@@ -196,7 +81,7 @@ public class SemanticTranslateConfigService {
         SemanticTranslatePublicConfigDTO dto = new SemanticTranslatePublicConfigDTO();
         dto.setEnabled(Boolean.TRUE.equals(cfg.getEnabled()));
         List<String> allowed = parseAllowedTargetLanguages(cfg.getAllowedTargetLangs());
-        if (allowed == null || allowed.isEmpty()) allowed = DEFAULT_ALLOWED_TARGET_LANGUAGES;
+        if (allowed == null || allowed.isEmpty()) allowed = defaultAllowedTargetLanguageCodes();
         dto.setAllowedTargetLanguages(allowed);
         return dto;
     }
@@ -248,7 +133,7 @@ public class SemanticTranslateConfigService {
         e.setHistoryEnabled(Boolean.TRUE);
         e.setHistoryKeepDays(30);
         e.setHistoryKeepRows(5000);
-        e.setAllowedTargetLangs(serializeAllowedTargetLanguages(DEFAULT_ALLOWED_TARGET_LANGUAGES));
+        e.setAllowedTargetLangs(serializeAllowedTargetLanguages(defaultAllowedTargetLanguageCodes()));
         e.setVersion(0);
         e.setUpdatedAt(LocalDateTime.now());
         e.setUpdatedBy(null);
@@ -299,7 +184,7 @@ public class SemanticTranslateConfigService {
         base.setHistoryKeepDays(historyKeepDays);
         base.setHistoryKeepRows(historyKeepRows);
         base.setAllowedTargetLangs(
-                serializeAllowedTargetLanguages(allowedTargetLanguages.isEmpty() ? DEFAULT_ALLOWED_TARGET_LANGUAGES : allowedTargetLanguages)
+                serializeAllowedTargetLanguages(allowedTargetLanguages.isEmpty() ? defaultAllowedTargetLanguageCodes() : allowedTargetLanguages)
         );
         return base;
     }
@@ -318,7 +203,7 @@ public class SemanticTranslateConfigService {
         dto.setHistoryKeepDays(e.getHistoryKeepDays());
         dto.setHistoryKeepRows(e.getHistoryKeepRows());
         List<String> allowed = parseAllowedTargetLanguages(e.getAllowedTargetLangs());
-        dto.setAllowedTargetLanguages((allowed == null || allowed.isEmpty()) ? DEFAULT_ALLOWED_TARGET_LANGUAGES : allowed);
+        dto.setAllowedTargetLanguages((allowed == null || allowed.isEmpty()) ? defaultAllowedTargetLanguageCodes() : allowed);
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setUpdatedBy(updatedByName);
         return dto;
@@ -347,9 +232,9 @@ public class SemanticTranslateConfigService {
         if (json == null || json.isBlank()) return null;
         try {
             List<String> list = objectMapper.readValue(json, STRING_LIST_TYPE);
-            return normalizeStringList(list);
+            return normalizeStringList(list).stream().map(supportedLanguageService::normalizeToLanguageCode).toList();
         } catch (Exception ignore) {
-            return normalizeStringList(splitLines(json));
+            return normalizeStringList(splitLines(json)).stream().map(supportedLanguageService::normalizeToLanguageCode).toList();
         }
     }
 

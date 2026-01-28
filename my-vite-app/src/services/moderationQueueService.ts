@@ -2,6 +2,7 @@ import { getCsrfToken } from '../utils/csrfUtils';
 import type { SpringPage } from '../types/page';
 
 export type ContentType = 'POST' | 'COMMENT';
+export type ModerationCaseType = 'CONTENT' | 'REPORT';
 export type QueueStatus = 'PENDING' | 'REVIEWING' | 'HUMAN' | 'APPROVED' | 'REJECTED';
 export type QueueStage = 'RULE' | 'VEC' | 'LLM' | 'HUMAN';
 
@@ -15,6 +16,7 @@ export type ModerationQueueSummary = {
 
 export type ModerationQueueItem = {
   id: number;
+  caseType: ModerationCaseType;
   contentType: ContentType;
   contentId: number;
   status: QueueStatus;
@@ -46,11 +48,21 @@ export type ModerationQueueDetail = ModerationQueueItem & {
     status?: string | null;
     createdAt?: string | null;
   } | null;
+  reports?: Array<{
+    id: number;
+    reporterId?: number | null;
+    reasonCode?: string | null;
+    reasonText?: string | null;
+    status?: string | null;
+    createdAt?: string | null;
+  }>;
 };
 
 export type ModerationQueueListQuery = {
   page?: number;
   pageSize?: number;
+  orderBy?: string;
+  sort?: 'asc' | 'desc';
   id?: number;
   contentType?: ContentType;
   contentId?: number;
@@ -101,6 +113,8 @@ export async function adminListModerationQueue(query: ModerationQueueListQuery =
   const qs = buildQuery({
     page: query.page ?? 1,
     pageSize: query.pageSize ?? 20,
+    orderBy: query.orderBy,
+    sort: query.sort,
     id: query.id,
     contentType: query.contentType,
     contentId: query.contentId,
@@ -172,6 +186,23 @@ export async function adminApproveModerationQueue(id: number, reason?: string): 
   return data as ModerationQueueDetail;
 }
 
+export async function adminOverrideApproveModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/override-approve`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '覆核通过失败');
+  return data as ModerationQueueDetail;
+}
+
 export async function adminRejectModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/reject`), {
@@ -186,6 +217,23 @@ export async function adminRejectModerationQueue(id: number, reason?: string): P
 
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '驳回失败');
+  return data as ModerationQueueDetail;
+}
+
+export async function adminOverrideRejectModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/override-reject`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '覆核驳回失败');
   return data as ModerationQueueDetail;
 }
 

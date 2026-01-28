@@ -316,7 +316,7 @@ const Login: React.FC = () => {
             <div className="text-center text-white p-4">
                 <h2 className="text-3xl font-bold">解锁知识的世界</h2>
                 <p className="text-lg">加入我们的社区，探索成千上万的新闻</p>
-                <p className="text-sm mt-4">©2024. 版权所有。</p>
+                <p className="text-sm mt-4">©2026. 版权所有。</p>
             </div>
         </div>
     );

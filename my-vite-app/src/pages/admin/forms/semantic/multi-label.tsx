@@ -565,7 +565,26 @@ const MultiLabelForm: React.FC = () => {
       <div className="bg-white rounded-lg shadow p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-lg font-semibold">主题标签生成</h3>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">主题标签生成：</span>
+              <select
+                value={form.enabled ? 'true' : 'false'}
+                disabled={!editing || loading || saving}
+                onChange={(e) => setForm((p) => ({ ...p, enabled: e.target.value === 'true' }))}
+                className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                  form.enabled ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
+                } disabled:opacity-60 disabled:bg-gray-100`}
+                title={!editing ? '只读（点击右侧「编辑」后可修改）' : '修改开关（需保存生效）'}
+              >
+                <option value="true" className="text-green-600">
+                  开启
+                </option>
+                <option value="false" className="text-red-600">
+                  关闭
+                </option>
+              </select>
+            </div>
             <button
               type="button"
               className="rounded border px-3 py-1.5 text-sm disabled:opacity-60"
@@ -620,28 +639,6 @@ const MultiLabelForm: React.FC = () => {
             ))}
           </div>
         ) : null}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={form.enabled}
-              disabled={!editing}
-              onChange={(e) => setForm((p) => ({ ...p, enabled: e.target.checked }))}
-            />
-            启用主题标签生成
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={form.historyEnabled}
-              disabled={!editing}
-              onChange={(e) => setForm((p) => ({ ...p, historyEnabled: e.target.checked }))}
-            />
-            记录生成历史
-          </label>
-        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
           <div>

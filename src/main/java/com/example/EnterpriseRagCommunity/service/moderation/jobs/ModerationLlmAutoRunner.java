@@ -190,7 +190,7 @@ public class ModerationLlmAutoRunner {
                 } catch (Exception ignore) {
                 }
 
-                queueService.approve(q.getId(), "LLM disabled; auto approve by RULE+VEC");
+                queueService.autoApprove(q.getId(), "LLM disabled; auto approve by RULE+VEC", run.getTraceId());
                 pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.APPROVE);
 
                 auditLogWriter.writeSystem(
@@ -318,7 +318,7 @@ public class ModerationLlmAutoRunner {
 
         // Update run decision
         if (verdict == Verdict.APPROVE) {
-            queueService.approve(q.getId(), "LLM auto approve");
+            queueService.autoApprove(q.getId(), "LLM auto approve", run.getTraceId());
             saveDecision(q, res, Verdict.APPROVE);
             pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.APPROVE);
 
@@ -334,7 +334,7 @@ public class ModerationLlmAutoRunner {
             return;
         }
         if (verdict == Verdict.REJECT) {
-            queueService.reject(q.getId(), "LLM auto reject");
+            queueService.autoReject(q.getId(), "LLM auto reject", run.getTraceId());
             saveDecision(q, res, Verdict.REJECT);
             pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
 

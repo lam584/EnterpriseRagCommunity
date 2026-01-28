@@ -16,6 +16,20 @@ public interface AdminModerationQueueService {
 
     AdminModerationQueueDetailDTO reject(Long id, String reason);
 
+    AdminModerationQueueDetailDTO autoApprove(Long id, String reason, String traceId);
+
+    AdminModerationQueueDetailDTO autoReject(Long id, String reason, String traceId);
+
+    /**
+     * 覆核通过：当任务已处于终态(APPROVED/REJECTED)时，先重置进入人工审核，再执行 approve。
+     */
+    AdminModerationQueueDetailDTO overrideApprove(Long id, String reason);
+
+    /**
+     * 覆核驳回：当任务已处于终态(APPROVED/REJECTED)时，先重置进入人工审核，再执行 reject。
+     */
+    AdminModerationQueueDetailDTO overrideReject(Long id, String reason);
+
     /** 供发帖/评论创建时调用：确保存在一条 PENDING 队列记录 */
     void ensureEnqueuedPost(Long postId);
 

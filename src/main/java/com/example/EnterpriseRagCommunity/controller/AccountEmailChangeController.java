@@ -26,6 +26,7 @@ import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.AccountSecurityService;
 import com.example.EnterpriseRagCommunity.service.AccountTotpService;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
+import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import com.example.EnterpriseRagCommunity.service.notify.AccountEmailChangeNotificationMailer;
 import com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer;
 
@@ -49,6 +50,7 @@ public class AccountEmailChangeController {
     private final AccountTotpService accountTotpService;
     private final AccountSecurityService accountSecurityService;
     private final AccountEmailChangeNotificationMailer accountEmailChangeNotificationMailer;
+    private final NotificationsService notificationsService;
 
     @PostMapping("/verify-password")
     public ResponseEntity<?> verifyPassword(@RequestBody @Valid VerifyPasswordRequest req, HttpServletRequest servletRequest) {
@@ -61,6 +63,12 @@ public class AccountEmailChangeController {
             HttpSession session = servletRequest.getSession(true);
             session.setAttribute(SESSION_PASSWORD_VERIFIED_AT, LocalDateTime.now());
             session.removeAttribute(SESSION_OLD_VERIFIED_AT);
+            try {
+                UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(currentEmail)
+                        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在进入修改邮箱流程。");
+            } catch (Exception ignore) {
+            }
             return ResponseEntity.ok(Map.of("message", "密码验证通过"));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
@@ -203,6 +211,10 @@ public class AccountEmailChangeController {
             try {
                 accountEmailChangeNotificationMailer.sendChangeEmailSuccessNotifications(oldEmail, newEmail);
             } catch (Exception ignored) {
+            }
+            try {
+                notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你的账号邮箱已更换成功。");
+            } catch (Exception ignore) {
             }
 
             HttpSession session = servletRequest.getSession(false);

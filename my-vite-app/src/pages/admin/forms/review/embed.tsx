@@ -617,16 +617,25 @@ const EmbedForm: React.FC = () => {
               <div className="text-sm text-gray-600">用于控制 VEC 阶段使用的 embedding 模型/维度/最大输入长度，以及手动测试的默认参数。</div>
             </div>
             <div className="flex items-center gap-2">
-              <select
-                className={`rounded border px-3 py-2 text-sm disabled:opacity-100 disabled:bg-gray-50 ${cfgForm.enabled ? 'text-green-700' : 'text-red-700'}`}
-                value={cfgForm.enabled ? 'on' : 'off'}
-                disabled={!cfgEditing || cfgLoading || cfgSaving}
-                onChange={(e) => setCfgForm((p) => ({ ...p, enabled: e.target.value === 'on' }))}
-                title={!cfgEditing ? '只读（点击右侧「编辑配置」后可修改）' : '修改开关（需保存生效）'}
-              >
-                <option value="on">开启功能</option>
-                <option value="off">关闭功能</option>
-              </select>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700">运行时配置：</span>
+                <select
+                  value={cfgForm.enabled ? 'true' : 'false'}
+                  disabled={!cfgEditing || cfgLoading || cfgSaving}
+                  onChange={(e) => setCfgForm((p) => ({ ...p, enabled: e.target.value === 'true' }))}
+                  className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                    cfgForm.enabled ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
+                  } disabled:opacity-60 disabled:bg-gray-100`}
+                  title={!cfgEditing ? '只读（点击右侧「编辑配置」后可修改）' : '修改开关（需保存生效）'}
+                >
+                  <option value="true" className="text-green-600">
+                    开启
+                  </option>
+                  <option value="false" className="text-red-600">
+                    关闭
+                  </option>
+                </select>
+              </div>
 
               {!cfgEditing ? (
                 <button

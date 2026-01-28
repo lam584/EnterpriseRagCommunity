@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * So admin endpoints must check PERM_* (not hasRole('ADMIN')).
  */
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 class AdminUsersAccessSecurityTest {
 
     @Resource

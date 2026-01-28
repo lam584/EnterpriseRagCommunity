@@ -33,6 +33,7 @@ import InteractRepliesPage from './pages/portal/interact/pages/InteractRepliesPa
 import InteractLikesPage from './pages/portal/interact/pages/InteractLikesPage';
 import InteractMentionsPage from './pages/portal/interact/pages/InteractMentionsPage';
 import InteractReportsPage from './pages/portal/interact/pages/InteractReportsPage';
+import InteractSecurityPage from './pages/portal/interact/pages/InteractSecurityPage';
 
 import AssistantChatPage from './pages/portal/assistant/pages/AssistantChatPage';
 import AssistantHistoryPage from './pages/portal/assistant/pages/AssistantHistoryPage';
@@ -209,6 +210,9 @@ function AppRoutes() {
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_interact_reports" action="view" /> }>
                         <Route path="reports" element={<InteractReportsPage />} />
+                    </Route>
+                    <Route element={<RequireAccess requiresAuth /> }>
+                        <Route path="security" element={<InteractSecurityPage />} />
                     </Route>
                 </Route>
 

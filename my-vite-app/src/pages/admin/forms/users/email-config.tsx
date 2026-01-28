@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
-import { Checkbox } from '../../../../components/ui/checkbox';
 import { Label } from '../../../../components/ui/label';
 import {
   getEmailAdminSettings,
@@ -23,10 +22,6 @@ const DEFAULT_IMAP_HOST = 'imap.qiye.aliyun.com';
 const DEFAULT_SMTP_HOST = 'smtp.qiye.aliyun.com';
 const MAILBOX_MAX_LIMIT = 50;
 const MAILBOX_PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
-
-function normalizeBool(v: boolean | 'indeterminate'): boolean {
-  return v === true;
-}
 
 function toInt(v: string, fallback: number) {
   const n = Number(v);
@@ -276,7 +271,26 @@ const EmailConfigForm: React.FC = () => {
     <div className="bg-white rounded-lg shadow p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-base font-semibold">邮箱服务器配置（用于验证码）</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-gray-700">邮箱验证码：</span>
+            <select
+              value={Boolean(settings?.enabled) ? 'true' : 'false'}
+              disabled={!settings || !editing || loading || saving}
+              onChange={(e) => setSettings((s) => (s ? { ...s, enabled: e.target.value === 'true' } : s))}
+              className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                Boolean(settings?.enabled) ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
+              } disabled:opacity-60 disabled:bg-gray-100`}
+              title={!editing ? '只读（点击右侧「编辑」后可修改）' : '修改开关（需保存生效）'}
+            >
+              <option value="true" className="text-green-600">
+                开启
+              </option>
+              <option value="false" className="text-red-600">
+                关闭
+              </option>
+            </select>
+          </div>
           <Button variant="secondary" size="sm" onClick={load} disabled={loading || saving}>
             刷新
           </Button>
@@ -326,18 +340,6 @@ const EmailConfigForm: React.FC = () => {
         <div className="text-sm text-gray-500">{loading ? '加载中...' : '暂无配置'}</div>
       ) : (
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="email-enabled"
-              checked={Boolean(settings.enabled)}
-              disabled={!editing}
-              onCheckedChange={(v) => setSettings(s => (s ? { ...s, enabled: normalizeBool(v) } : s))}
-            />
-            <label htmlFor="email-enabled" className="text-sm cursor-pointer select-none">
-              启用邮箱验证码（注册/改密/TOTP 启用时需要）
-            </label>
-          </div>
-
           <div className="grid grid-cols-2 gap-2 md:grid-cols-12">
             <div className="space-y-0.5 md:col-span-1">
               <Label className="text-xs">协议</Label>
