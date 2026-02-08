@@ -64,6 +64,21 @@ public class ModerationConfidenceFallbackConfigEntity {
     @Column(name = "llm_human_threshold", nullable = false)
     private Double llmHumanThreshold;
 
+    @Column(name = "llm_text_risk_threshold", nullable = false)
+    private Double llmTextRiskThreshold;
+
+    @Column(name = "llm_image_risk_threshold", nullable = false)
+    private Double llmImageRiskThreshold;
+
+    @Column(name = "llm_strong_reject_threshold", nullable = false)
+    private Double llmStrongRejectThreshold;
+
+    @Column(name = "llm_strong_pass_threshold", nullable = false)
+    private Double llmStrongPassThreshold;
+
+    @Column(name = "llm_cross_modal_threshold", nullable = false)
+    private Double llmCrossModalThreshold;
+
     @Column(name = "report_human_threshold", nullable = false)
     private Integer reportHumanThreshold;
 

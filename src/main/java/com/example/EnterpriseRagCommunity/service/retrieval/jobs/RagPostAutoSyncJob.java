@@ -50,9 +50,11 @@ public class RagPostAutoSyncJob {
             Integer chunkMaxChars = toInt(meta == null ? null : meta.get("lastBuildChunkMaxChars"));
             Integer chunkOverlapChars = toInt(meta == null ? null : meta.get("lastBuildChunkOverlapChars"));
             String embeddingModel = toStr(meta == null ? null : meta.get("lastBuildEmbeddingModel"));
+            String embeddingProviderId = toStr(meta == null ? null : meta.get("embeddingProviderId"));
+            if (embeddingProviderId == null) embeddingProviderId = toStr(meta == null ? null : meta.get("lastBuildEmbeddingProviderId"));
             Integer embeddingDims = toInt(meta == null ? null : meta.get("lastBuildEmbeddingDims"));
 
-            buildService.syncPostsIncremental(vi.getId(), boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingDims);
+            buildService.syncPostsIncremental(vi.getId(), boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
         }
     }
 

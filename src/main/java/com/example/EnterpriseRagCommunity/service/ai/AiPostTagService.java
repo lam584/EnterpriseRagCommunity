@@ -3,9 +3,10 @@ package com.example.EnterpriseRagCommunity.service.ai;
 import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostTagSuggestRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostTagSuggestResponse;
-import com.example.EnterpriseRagCommunity.entity.ai.PostTagGenConfigEntity;
-import com.example.EnterpriseRagCommunity.entity.ai.PostTagGenHistoryEntity;
-import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenHistoryEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +21,11 @@ public class AiPostTagService {
 
     private final AiProperties aiProperties;
     private final PostTagGenConfigService postTagGenConfigService;
+    private final LlmGateway llmGateway;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AiPostTagSuggestResponse suggestTags(AiPostTagSuggestRequest req, Long actorUserId) {
-        PostTagGenConfigEntity cfg = postTagGenConfigService.getConfigEntityOrDefault();
+        PostSuggestionGenConfigEntity cfg = postTagGenConfigService.getConfigEntityOrDefault();
         if (!Boolean.TRUE.equals(cfg.getEnabled())) {
             throw new IllegalStateException("主题标签生成已关闭");
         }
@@ -35,7 +37,7 @@ public class AiPostTagService {
         if (count <= 0) count = defaultCount;
         if (count > maxCount) count = maxCount;
 
-        String model = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : aiProperties.getModel();
+        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
         if (temperature == null) temperature = 0.4;
 
@@ -50,15 +52,19 @@ public class AiPostTagService {
 
         String userPrompt = renderPrompt(cfg.getPromptTemplate(), count, req.getBoardName(), req.getTitle(), req.getTags(), content);
 
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", cfg.getSystemPrompt()));
-        messages.add(Map.of("role", "user", "content", userPrompt));
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system(cfg.getSystemPrompt()));
+        messages.add(ChatMessage.user(userPrompt));
 
         long started = System.currentTimeMillis();
         String rawJson;
+        String usedProviderId;
+        String usedModel;
         try {
-            rawJson = new BailianOpenAiSseClient(aiProperties)
-                    .chatCompletionsOnce(null, aiProperties.getBaseUrl(), model, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.TOPIC_TAG_GEN, cfg.getProviderId(), modelOverride, messages, temperature);
+            rawJson = routed == null ? null : routed.text();
+            usedProviderId = routed == null ? null : routed.providerId();
+            usedModel = routed == null ? null : routed.model();
         } catch (Exception e) {
             throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);
         }
@@ -69,7 +75,8 @@ public class AiPostTagService {
         long latency = System.currentTimeMillis() - started;
 
         if (Boolean.TRUE.equals(cfg.getHistoryEnabled()) && actorUserId != null) {
-            PostTagGenHistoryEntity h = new PostTagGenHistoryEntity();
+            PostSuggestionGenHistoryEntity h = new PostSuggestionGenHistoryEntity();
+            h.setKind(SuggestionKind.TOPIC_TAG);
             h.setUserId(actorUserId);
             h.setCreatedAt(LocalDateTime.now());
             h.setBoardName(blankToNull(req.getBoardName()));
@@ -78,15 +85,16 @@ public class AiPostTagService {
             h.setAppliedMaxContentChars(maxChars);
             h.setContentLen(contentLen);
             h.setContentExcerpt(buildExcerpt(req.getContent()));
-            h.setTagsJson(new ArrayList<>(tags));
-            h.setModel(model);
+            h.setOutputJson(new ArrayList<>(tags));
+            h.setModel(usedModel);
+            h.setProviderId(usedProviderId);
             h.setTemperature(temperature);
             h.setLatencyMs(latency);
             h.setPromptVersion(cfg.getVersion());
             postTagGenConfigService.recordHistory(h);
         }
 
-        return new AiPostTagSuggestResponse(tags, model, latency);
+        return new AiPostTagSuggestResponse(tags, usedModel, latency);
     }
 
     private String extractAssistantContent(String rawJson) {
@@ -109,21 +117,25 @@ public class AiPostTagService {
         return rawJson;
     }
 
-    private List<String> parseTagsFromAssistantText(String assistantText, int expectedCount) {
+    List<String> parseTagsFromAssistantText(String assistantText, int expectedCount) {
         if (assistantText == null) assistantText = "";
         assistantText = assistantText.trim();
 
         String json = assistantText;
-        int l = json.indexOf('{');
-        int r = json.lastIndexOf('}');
-        if (l >= 0 && r > l) {
-            json = json.substring(l, r + 1);
+        int lObj = json.indexOf('{');
+        int rObj = json.lastIndexOf('}');
+        int lArr = json.indexOf('[');
+        int rArr = json.lastIndexOf(']');
+        if (lObj >= 0 && rObj > lObj && (lArr < 0 || lObj < lArr)) {
+            json = json.substring(lObj, rObj + 1);
+        } else if (lArr >= 0 && rArr > lArr) {
+            json = json.substring(lArr, rArr + 1);
         }
 
         List<String> tags = new ArrayList<>();
         try {
             JsonNode root = objectMapper.readTree(json);
-            JsonNode arr = root.path("tags");
+            JsonNode arr = root.isArray() ? root : root.path("tags");
             if (arr.isArray()) {
                 for (JsonNode n : arr) {
                     if (!n.isTextual()) continue;
@@ -212,4 +224,3 @@ public class AiPostTagService {
         return t.isEmpty() ? null : t;
     }
 }
-

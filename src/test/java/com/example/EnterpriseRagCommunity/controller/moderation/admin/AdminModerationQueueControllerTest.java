@@ -1,8 +1,5 @@
 package com.example.EnterpriseRagCommunity.controller.moderation.admin;
 
-import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
-import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
-import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
@@ -10,7 +7,8 @@ import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
-import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
+import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import org.junit.jupiter.api.Test;
@@ -18,9 +16,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.sql.PreparedStatement;
+import java.sql.Statement;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,29 +42,33 @@ class AdminModerationQueueControllerTest {
     private ModerationQueueRepository moderationQueueRepository;
 
     @Autowired
-    private PostsRepository postsRepository;
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private UsersRepository usersRepository;
 
-    private void ensureUserExists(String username) {
-        if (usersRepository.findByEmailAndIsDeletedFalse(username).isPresent()) return;
-        UsersEntity u = new UsersEntity();
-        u.setTenantId(null);
-        u.setEmail(username);
-        u.setUsername(username);
-        u.setPasswordHash("x");
-        u.setStatus(AccountStatus.ACTIVE);
-        u.setIsDeleted(false);
-        u.setCreatedAt(LocalDateTime.now());
-        u.setUpdatedAt(LocalDateTime.now());
-        usersRepository.save(u);
+    @Autowired
+    private BoardsRepository boardsRepository;
+
+    private UsersEntity ensureUser(String username) {
+        return usersRepository.findByEmailAndIsDeletedFalse(username).orElseGet(() -> {
+            UsersEntity u = new UsersEntity();
+            u.setTenantId(null);
+            u.setEmail(username);
+            u.setUsername(username);
+            u.setPasswordHash("x");
+            u.setStatus(AccountStatus.ACTIVE);
+            u.setIsDeleted(false);
+            u.setCreatedAt(LocalDateTime.now());
+            u.setUpdatedAt(LocalDateTime.now());
+            return usersRepository.save(u);
+        });
     }
 
     @Test
     @WithMockUser(username = "u", authorities = {"PERM_admin_moderation_queue:action"})
     void reject_shouldReturn409_whenAlreadyApproved() throws Exception {
-        ensureUserExists("u");
+        ensureUser("u");
         LocalDateTime now = LocalDateTime.now();
 
         ModerationQueueEntity q = new ModerationQueueEntity();
@@ -78,7 +86,7 @@ class AdminModerationQueueControllerTest {
 
         String body = mockMvc.perform(post("/api/admin/moderation/queue/{id}/reject", q.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"reason\":\"x\"}"))
                 .andExpect(status().isConflict())
                 .andReturn()
                 .getResponse()
@@ -90,7 +98,7 @@ class AdminModerationQueueControllerTest {
     @Test
     @WithMockUser(username = "u", authorities = {"PERM_admin_moderation_queue:action"})
     void approve_shouldReturn409_whenAlreadyRejected() throws Exception {
-        ensureUserExists("u");
+        ensureUser("u");
         LocalDateTime now = LocalDateTime.now();
 
         ModerationQueueEntity q = new ModerationQueueEntity();
@@ -108,7 +116,7 @@ class AdminModerationQueueControllerTest {
 
         String body = mockMvc.perform(post("/api/admin/moderation/queue/{id}/approve", q.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"reason\":\"x\"}"))
                 .andExpect(status().isConflict())
                 .andReturn()
                 .getResponse()
@@ -120,7 +128,7 @@ class AdminModerationQueueControllerTest {
     @Test
     @WithMockUser(username = "u", authorities = {"PERM_admin_moderation_queue:action"})
     void toHuman_shouldMoveToHuman_forTerminalTask() throws Exception {
-        ensureUserExists("u");
+        ensureUser("u");
         LocalDateTime now = LocalDateTime.now();
 
         ModerationQueueEntity q = new ModerationQueueEntity();
@@ -138,7 +146,7 @@ class AdminModerationQueueControllerTest {
 
         String body = mockMvc.perform(post("/api/admin/moderation/queue/{id}/to-human", q.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"reason\":\"x\"}"))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
@@ -152,25 +160,16 @@ class AdminModerationQueueControllerTest {
     @Test
     @WithMockUser(username = "u", authorities = {"PERM_admin_moderation_queue:action"})
     void toHuman_thenReject_shouldReachRejected() throws Exception {
-        ensureUserExists("u");
-        PostsEntity p = new PostsEntity();
-        p.setTenantId(null);
-        p.setBoardId(1L);
-        p.setAuthorId(1L);
-        p.setTitle("t");
-        p.setContent("c");
-        p.setContentFormat(ContentFormat.MARKDOWN);
-        p.setStatus(PostStatus.PUBLISHED);
-        p.setPublishedAt(LocalDateTime.now());
-        p.setIsDeleted(false);
-        postsRepository.save(p);
-
+        UsersEntity u = ensureUser("u");
         LocalDateTime now = LocalDateTime.now();
-        ModerationQueueEntity q = moderationQueueRepository.findByContentTypeAndContentId(ContentType.POST, p.getId())
+        Long boardId = boardsRepository.save(board("b", now)).getId();
+        Long postId = insertPost(boardId, u.getId(), "t", "c", "PUBLISHED", now);
+
+        ModerationQueueEntity q = moderationQueueRepository.findByContentTypeAndContentId(ContentType.POST, postId)
                 .orElseGet(ModerationQueueEntity::new);
         if (q.getCaseType() == null) q.setCaseType(ModerationCaseType.CONTENT);
         q.setContentType(ContentType.POST);
-        q.setContentId(p.getId());
+        q.setContentId(postId);
         q.setStatus(QueueStatus.APPROVED);
         q.setCurrentStage(QueueStage.HUMAN);
         if (q.getPriority() == null) q.setPriority(0);
@@ -182,17 +181,55 @@ class AdminModerationQueueControllerTest {
 
         mockMvc.perform(post("/api/admin/moderation/queue/{id}/to-human", q.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"reason\":\"x\"}"))
                 .andExpect(status().isOk());
 
         String body = mockMvc.perform(post("/api/admin/moderation/queue/{id}/reject", q.getId())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
+                        .content("{\"reason\":\"x\"}"))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
         assertThat(body).contains("\"status\":\"REJECTED\"");
+    }
+
+    private static BoardsEntity board(String name, LocalDateTime now) {
+        BoardsEntity b = new BoardsEntity();
+        b.setTenantId(null);
+        b.setName(name);
+        b.setVisible(true);
+        b.setSortOrder(0);
+        b.setCreatedAt(now);
+        b.setUpdatedAt(now);
+        return b;
+    }
+
+    private Long insertPost(Long boardId, Long authorId, String title, String content, String status, LocalDateTime now) {
+        KeyHolder kh = new GeneratedKeyHolder();
+        jdbcTemplate.update(con -> {
+            PreparedStatement ps = con.prepareStatement(
+                    "insert into posts (tenant_id, board_id, author_id, title, content, content_format, status, published_at, is_deleted, metadata, created_at, updated_at) " +
+                            "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    Statement.RETURN_GENERATED_KEYS
+            );
+            ps.setObject(1, null);
+            ps.setLong(2, boardId);
+            ps.setLong(3, authorId);
+            ps.setString(4, title);
+            ps.setString(5, content);
+            ps.setString(6, "MARKDOWN");
+            ps.setString(7, status);
+            ps.setTimestamp(8, Timestamp.valueOf(now));
+            ps.setBoolean(9, false);
+            ps.setObject(10, null);
+            ps.setTimestamp(11, Timestamp.valueOf(now));
+            ps.setTimestamp(12, Timestamp.valueOf(now));
+            return ps;
+        }, kh);
+        Number key = kh.getKey();
+        if (key == null) throw new IllegalStateException("Failed to insert post");
+        return key.longValue();
     }
 }

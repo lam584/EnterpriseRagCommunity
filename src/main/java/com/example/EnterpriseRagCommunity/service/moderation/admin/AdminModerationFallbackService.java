@@ -45,6 +45,25 @@ public class AdminModerationFallbackService {
                 && payload.getLlmHumanThreshold() > payload.getLlmRejectThreshold()) {
             throw new IllegalArgumentException("llmHumanThreshold cannot be greater than llmRejectThreshold");
         }
+        if (payload.getLlmTextRiskThreshold() != null && (payload.getLlmTextRiskThreshold() < 0 || payload.getLlmTextRiskThreshold() > 1)) {
+            throw new IllegalArgumentException("llmTextRiskThreshold must be within [0,1]");
+        }
+        if (payload.getLlmImageRiskThreshold() != null && (payload.getLlmImageRiskThreshold() < 0 || payload.getLlmImageRiskThreshold() > 1)) {
+            throw new IllegalArgumentException("llmImageRiskThreshold must be within [0,1]");
+        }
+        if (payload.getLlmStrongRejectThreshold() != null && (payload.getLlmStrongRejectThreshold() < 0 || payload.getLlmStrongRejectThreshold() > 1)) {
+            throw new IllegalArgumentException("llmStrongRejectThreshold must be within [0,1]");
+        }
+        if (payload.getLlmStrongPassThreshold() != null && (payload.getLlmStrongPassThreshold() < 0 || payload.getLlmStrongPassThreshold() > 1)) {
+            throw new IllegalArgumentException("llmStrongPassThreshold must be within [0,1]");
+        }
+        if (payload.getLlmCrossModalThreshold() != null && (payload.getLlmCrossModalThreshold() < 0 || payload.getLlmCrossModalThreshold() > 1)) {
+            throw new IllegalArgumentException("llmCrossModalThreshold must be within [0,1]");
+        }
+        if (payload.getLlmStrongRejectThreshold() != null && payload.getLlmStrongPassThreshold() != null
+                && payload.getLlmStrongPassThreshold() > payload.getLlmStrongRejectThreshold()) {
+            throw new IllegalArgumentException("llmStrongPassThreshold cannot be greater than llmStrongRejectThreshold");
+        }
         if (payload.getReportHumanThreshold() != null) {
             int t = payload.getReportHumanThreshold();
             if (t < 1 || t > 1000000) throw new IllegalArgumentException("reportHumanThreshold out of range");
@@ -65,6 +84,11 @@ public class AdminModerationFallbackService {
         cfg.setLlmEnabled(payload.getLlmEnabled() != null ? payload.getLlmEnabled() : cfg.getLlmEnabled());
         if (payload.getLlmRejectThreshold() != null) cfg.setLlmRejectThreshold(payload.getLlmRejectThreshold());
         if (payload.getLlmHumanThreshold() != null) cfg.setLlmHumanThreshold(payload.getLlmHumanThreshold());
+        if (payload.getLlmTextRiskThreshold() != null) cfg.setLlmTextRiskThreshold(payload.getLlmTextRiskThreshold());
+        if (payload.getLlmImageRiskThreshold() != null) cfg.setLlmImageRiskThreshold(payload.getLlmImageRiskThreshold());
+        if (payload.getLlmStrongRejectThreshold() != null) cfg.setLlmStrongRejectThreshold(payload.getLlmStrongRejectThreshold());
+        if (payload.getLlmStrongPassThreshold() != null) cfg.setLlmStrongPassThreshold(payload.getLlmStrongPassThreshold());
+        if (payload.getLlmCrossModalThreshold() != null) cfg.setLlmCrossModalThreshold(payload.getLlmCrossModalThreshold());
 
         if (payload.getReportHumanThreshold() != null) cfg.setReportHumanThreshold(payload.getReportHumanThreshold());
 
@@ -91,6 +115,11 @@ public class AdminModerationFallbackService {
         e.setLlmEnabled(Boolean.TRUE);
         e.setLlmRejectThreshold(0.75);
         e.setLlmHumanThreshold(0.5);
+        e.setLlmTextRiskThreshold(0.80);
+        e.setLlmImageRiskThreshold(0.30);
+        e.setLlmStrongRejectThreshold(0.95);
+        e.setLlmStrongPassThreshold(0.10);
+        e.setLlmCrossModalThreshold(0.75);
 
         e.setReportHumanThreshold(5);
 
@@ -118,6 +147,11 @@ public class AdminModerationFallbackService {
         dto.setLlmEnabled(e.getLlmEnabled());
         dto.setLlmRejectThreshold(e.getLlmRejectThreshold());
         dto.setLlmHumanThreshold(e.getLlmHumanThreshold());
+        dto.setLlmTextRiskThreshold(e.getLlmTextRiskThreshold());
+        dto.setLlmImageRiskThreshold(e.getLlmImageRiskThreshold());
+        dto.setLlmStrongRejectThreshold(e.getLlmStrongRejectThreshold());
+        dto.setLlmStrongPassThreshold(e.getLlmStrongPassThreshold());
+        dto.setLlmCrossModalThreshold(e.getLlmCrossModalThreshold());
 
         dto.setReportHumanThreshold(e.getReportHumanThreshold());
 

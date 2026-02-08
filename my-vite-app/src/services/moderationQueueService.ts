@@ -36,6 +36,17 @@ export type ModerationQueueDetail = ModerationQueueItem & {
     authorId?: number | null;
     title?: string | null;
     content?: string | null;
+    attachments?: Array<{
+      id: number;
+      fileAssetId?: number | null;
+      url: string;
+      fileName?: string | null;
+      mimeType?: string | null;
+      sizeBytes?: number | null;
+      width?: number | null;
+      height?: number | null;
+      createdAt?: string | null;
+    }> | null;
     status?: string | null;
     createdAt?: string | null;
   } | null;
@@ -64,6 +75,7 @@ export type ModerationQueueListQuery = {
   orderBy?: string;
   sort?: 'asc' | 'desc';
   id?: number;
+  boardId?: number;
   contentType?: ContentType;
   contentId?: number;
   status?: QueueStatus;
@@ -116,6 +128,7 @@ export async function adminListModerationQueue(query: ModerationQueueListQuery =
     orderBy: query.orderBy,
     sort: query.sort,
     id: query.id,
+    boardId: query.boardId,
     contentType: query.contentType,
     contentId: query.contentId,
     status: query.status,
@@ -169,7 +182,7 @@ export async function adminSetModerationQueueRiskTags(id: number, riskTags: stri
   return data as ModerationQueueDetail;
 }
 
-export async function adminApproveModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+export async function adminApproveModerationQueue(id: number, reason: string): Promise<ModerationQueueDetail> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/approve`), {
     method: 'POST',
@@ -178,7 +191,7 @@ export async function adminApproveModerationQueue(id: number, reason?: string): 
       'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
-    body: JSON.stringify(reason ? { reason } : {}),
+    body: JSON.stringify({ reason }),
   });
 
   const data: unknown = await res.json().catch(() => ({}));
@@ -186,7 +199,7 @@ export async function adminApproveModerationQueue(id: number, reason?: string): 
   return data as ModerationQueueDetail;
 }
 
-export async function adminOverrideApproveModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+export async function adminOverrideApproveModerationQueue(id: number, reason: string): Promise<ModerationQueueDetail> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/override-approve`), {
     method: 'POST',
@@ -195,7 +208,7 @@ export async function adminOverrideApproveModerationQueue(id: number, reason?: s
       'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
-    body: JSON.stringify(reason ? { reason } : {}),
+    body: JSON.stringify({ reason }),
   });
 
   const data: unknown = await res.json().catch(() => ({}));
@@ -203,7 +216,7 @@ export async function adminOverrideApproveModerationQueue(id: number, reason?: s
   return data as ModerationQueueDetail;
 }
 
-export async function adminRejectModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+export async function adminRejectModerationQueue(id: number, reason: string): Promise<ModerationQueueDetail> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/reject`), {
     method: 'POST',
@@ -212,7 +225,7 @@ export async function adminRejectModerationQueue(id: number, reason?: string): P
       'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
-    body: JSON.stringify(reason ? { reason } : {}),
+    body: JSON.stringify({ reason }),
   });
 
   const data: unknown = await res.json().catch(() => ({}));
@@ -220,7 +233,7 @@ export async function adminRejectModerationQueue(id: number, reason?: string): P
   return data as ModerationQueueDetail;
 }
 
-export async function adminOverrideRejectModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+export async function adminOverrideRejectModerationQueue(id: number, reason: string): Promise<ModerationQueueDetail> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/override-reject`), {
     method: 'POST',
@@ -229,7 +242,7 @@ export async function adminOverrideRejectModerationQueue(id: number, reason?: st
       'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
-    body: JSON.stringify(reason ? { reason } : {}),
+    body: JSON.stringify({ reason }),
   });
 
   const data: unknown = await res.json().catch(() => ({}));
@@ -290,7 +303,7 @@ export async function adminReleaseModerationQueue(id: number): Promise<Moderatio
   return data as ModerationQueueDetail;
 }
 
-export async function adminRequeueModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+export async function adminRequeueModerationQueue(id: number, reason: string): Promise<ModerationQueueDetail> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/requeue`), {
     method: 'POST',
@@ -299,7 +312,7 @@ export async function adminRequeueModerationQueue(id: number, reason?: string): 
       'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
-    body: JSON.stringify(reason ? { reason } : {}),
+    body: JSON.stringify({ reason }),
   });
 
   const data: unknown = await res.json().catch(() => ({}));
@@ -307,7 +320,7 @@ export async function adminRequeueModerationQueue(id: number, reason?: string): 
   return data as ModerationQueueDetail;
 }
 
-export async function adminToHumanModerationQueue(id: number, reason?: string): Promise<ModerationQueueDetail> {
+export async function adminToHumanModerationQueue(id: number, reason: string): Promise<ModerationQueueDetail> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/to-human`), {
     method: 'POST',
@@ -316,7 +329,7 @@ export async function adminToHumanModerationQueue(id: number, reason?: string): 
       'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
-    body: JSON.stringify(reason ? { reason } : {}),
+    body: JSON.stringify({ reason }),
   });
 
   const data: unknown = await res.json().catch(() => ({}));

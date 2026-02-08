@@ -1,21 +1,38 @@
 import type { PostDTO } from '../../../../services/postService';
 import { formatPostTime, getPostCoverThumbUrl, getPostExcerpt } from '../../../../utils/postMeta';
+import { resolveAssetUrl } from '../../../../utils/urlUtils';
+import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';
+import { useNavigate } from 'react-router-dom';
 
 export default function PostFeedItem({ post }: { post: PostDTO }) {
+  const navigate = useNavigate();
   const cover = getPostCoverThumbUrl(post);
   const authorLabel = post.authorName || (post.authorId ? `用户#${post.authorId}` : '匿名');
+  const authorAvatarUrl = resolveAssetUrl(post.authorAvatarUrl);
   const timeLabel = formatPostTime(post);
   const excerpt = getPostExcerpt(post.content);
 
+  const goAuthorProfile = () => {
+    if (!post.authorId) return;
+    navigate(`/portal/users/${post.authorId}`);
+  };
+
   return (
     <article className="flex gap-3 rounded-xl border border-gray-200 bg-white p-4 hover:bg-gray-50 transition-colors">
-      <div className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white flex items-center justify-center font-semibold">
-        {authorLabel.slice(0, 1).toUpperCase()}
-      </div>
+      <button type="button" className="shrink-0" onClick={goAuthorProfile}>
+        <Avatar className="h-10 w-10">
+          <AvatarImage src={authorAvatarUrl} alt={authorLabel} />
+          <AvatarFallback className="font-semibold">
+            {authorLabel.slice(0, 1).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+      </button>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-sm text-gray-500">
-          <span className="font-medium text-gray-900 truncate">{authorLabel}</span>
+          <button type="button" className="font-medium text-gray-900 truncate hover:underline" onClick={goAuthorProfile}>
+            {authorLabel}
+          </button>
           {timeLabel ? <span className="shrink-0">· {timeLabel}</span> : null}
           {post.boardName ? <span className="ml-auto text-gray-400 truncate">#{post.boardName}</span> : null}
         </div>

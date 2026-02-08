@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import type { PostDTO } from '../../../../services/postService';
 import { togglePostFavorite, togglePostLike } from '../../../../services/postService';
 import { formatPostTime, getPostCoverThumbUrl } from '../../../../utils/postMeta';
+import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import CollapsedMarkdownPreview from './CollapsedMarkdownPreview';
 import ImageLightbox from '../../../../components/ui/ImageLightbox';
 import * as StatButtonModule from '../../../../components/ui/StatButton';
 import HotScoreBadge from '../../../../components/post/HotScoreBadge';
+import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';
 
 function clamp0(n: number) {
   return n < 0 ? 0 : n;
@@ -72,6 +74,7 @@ export default function PostCard({ post, showStatus, renderActions }: PostCardPr
   const navigate = useNavigate();
 
   const authorLabel = post.authorName || (post.authorId ? `用户#${post.authorId}` : '匿名');
+  const authorAvatarUrl = resolveAssetUrl(post.authorAvatarUrl);
   const timeLabel = formatPostTime(post);
   const statusMeta = getPostStatusMeta(post.status);
 
@@ -90,6 +93,12 @@ export default function PostCard({ post, showStatus, renderActions }: PostCardPr
 
   const goDetail = () => {
     navigate(`/portal/posts/detail/${post.id}`);
+  };
+
+  const goAuthorProfile = (e?: { stopPropagation: () => void }) => {
+    if (e) e.stopPropagation();
+    if (!post.authorId) return;
+    navigate(`/portal/users/${post.authorId}`);
   };
 
   const onToggleLike = async () => {
@@ -152,13 +161,18 @@ export default function PostCard({ post, showStatus, renderActions }: PostCardPr
       }}
     >
       <div className="flex items-start gap-3">
-        <div className="h-10 w-10 shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white flex items-center justify-center font-semibold">
-          {authorLabel.slice(0, 1).toUpperCase()}
-        </div>
+        <button type="button" className="shrink-0" onClick={goAuthorProfile}>
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={authorAvatarUrl} alt={authorLabel} />
+            <AvatarFallback className="font-semibold">
+              {authorLabel.slice(0, 1).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+        </button>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-sm text-gray-500">
-            <button type="button" className="font-medium text-gray-900 truncate hover:underline" onClick={goDetail}>
+            <button type="button" className="font-medium text-gray-900 truncate hover:underline" onClick={goAuthorProfile}>
               {authorLabel}
             </button>
             {timeLabel ? <span className="shrink-0">· {timeLabel}</span> : null}

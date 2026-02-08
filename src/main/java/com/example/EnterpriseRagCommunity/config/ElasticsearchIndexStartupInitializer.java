@@ -3,6 +3,8 @@ package com.example.EnterpriseRagCommunity.config;
 import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexProvider;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
+import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +28,9 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
     private final VectorIndicesRepository vectorIndicesRepository;
     private final RetrievalRagProperties ragProps;
     private final RagPostsIndexService ragPostsIndexService;
-    private final ModerationSimilarityProperties moderationProps;
     private final ModerationSamplesIndexService moderationSamplesIndexService;
+    private final ModerationSamplesIndexConfigService moderationSamplesIndexConfigService;
+    private final ModerationSimilarityConfigRepository moderationSimilarityConfigRepository;
 
     @Value("${app.es.init.enabled:true}")
     private boolean enabled;
@@ -47,9 +50,10 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
     }
 
     private void tryInitModerationSamplesIndex() {
-        int dims = moderationProps.getEs().getEmbeddingDims();
+        Integer dims0 = moderationSimilarityConfigRepository.findAll().stream().findFirst().map(c -> c.getEmbeddingDims()).orElse(null);
+        int dims = dims0 == null ? moderationSamplesIndexConfigService.getEmbeddingDimsOrDefault() : dims0;
         if (dims <= 0) {
-            log.info("ES init skip moderation samples index recreate: embeddingDims not configured (app.moderation.similarity.es.embedding-dims=0)");
+            log.info("ES init skip moderation samples index recreate: embeddingDims not configured (<=0)");
             return;
         }
         try {
@@ -58,10 +62,10 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
             } else {
                 moderationSamplesIndexService.ensureIndex(dims);
             }
-            log.info("ES init moderation samples index ok. index={}, dims={}", moderationProps.getEs().getIndex(), dims);
+            log.info("ES init moderation samples index ok. index={}, dims={}", moderationSamplesIndexService.getIndexName(), dims);
         } catch (Exception ex) {
             if (failOnError) throw ex;
-            log.warn("ES init moderation samples index failed. index={}, err={}", moderationProps.getEs().getIndex(), ex.getMessage());
+            log.warn("ES init moderation samples index failed. index={}, err={}", moderationSamplesIndexService.getIndexName(), ex.getMessage());
         }
     }
 

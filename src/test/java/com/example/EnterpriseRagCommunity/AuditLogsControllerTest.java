@@ -32,8 +32,8 @@ class AuditLogsControllerTest {
     void list_shouldReturn200() throws Exception {
         // insert one row
         AuditLogsEntity e = new AuditLogsEntity();
-        e.setTenantId(1L);
-        e.setActorUserId(1L);
+        e.setTenantId(null);
+        e.setActorUserId(null);
         e.setAction("TEST");
         e.setEntityType("SYSTEM");
         e.setEntityId(1L);

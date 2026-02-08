@@ -1,11 +1,13 @@
 package com.example.EnterpriseRagCommunity.controller;
 
 import com.example.EnterpriseRagCommunity.dto.access.request.EmailVerificationSendRequest;
+import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicyStatusDTO;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
+import com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService;
 import com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ public class AccountEmailVerificationController {
     private final EmailVerificationService emailVerificationService;
     private final EmailVerificationMailer emailVerificationMailer;
     private final NotificationsService notificationsService;
+    private final Security2faPolicyService security2faPolicyService;
 
     @PostMapping("/send")
     public ResponseEntity<?> send(@RequestBody @Valid EmailVerificationSendRequest req) {
@@ -47,6 +50,10 @@ public class AccountEmailVerificationController {
         }
 
         UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email).orElseThrow(() -> new IllegalArgumentException("User not found"));
+        Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(user.getId());
+        if (!policy.isEmailOtpAllowed()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "管理员已禁止使用邮箱验证码"));
+        }
         String code = emailVerificationService.issueCode(user.getId(), purpose);
         emailVerificationMailer.sendVerificationCode(email, code, purpose);
         try {

@@ -34,6 +34,20 @@ const Login: React.FC = () => {
     const [currentImage, setCurrentImage] = useState(backgroundImage1);
     const images = [backgroundImage1, backgroundImage2];
 
+    // 初始化时加载记住的邮箱和密码
+    useEffect(() => {
+        const rememberedEmail = localStorage.getItem('rememberedEmail');
+        const rememberedPassword = localStorage.getItem('rememberedPassword');
+        if (rememberedEmail) {
+            setFormData(prev => ({
+                ...prev,
+                email: rememberedEmail,
+                password: rememberedPassword || '',
+                rememberMe: true
+            }));
+        }
+    }, []);
+
     useEffect(() => {
         const interval = setInterval(() => {
             setCurrentImage((prevImage: string) => {
@@ -41,7 +55,7 @@ const Login: React.FC = () => {
                 const nextIndex = (currentIndex + 1) % images.length;
                 return images[nextIndex];
             });
-        }, 2000); // 每5秒切换图片
+        }, 10000); // 每10秒切换图片
 
         return () => clearInterval(interval);
     }, []);
@@ -128,6 +142,11 @@ const Login: React.FC = () => {
             // 保存到 localStorage 以实现记住我功能
             if (formData.rememberMe) {
                 localStorage.setItem('userData', JSON.stringify(userData));
+                localStorage.setItem('rememberedEmail', formData.email);
+                localStorage.setItem('rememberedPassword', formData.password);
+            } else {
+                localStorage.removeItem('rememberedEmail');
+                localStorage.removeItem('rememberedPassword');
             }
 
             // 导航到主页面
@@ -281,17 +300,17 @@ const Login: React.FC = () => {
                                 </div>
                             </div>
                         )}
-                        <div className="mb-4">
+                        <div className="mb-4 flex items-center">
                             <input
                                 type="checkbox"
                                 id="rememberMe"
                                 name="rememberMe"
-                                className="mr-2 leading-tight"
+                                className="mr-2 leading-tight cursor-pointer"
                                 checked={formData.rememberMe}
                                 onChange={handleInputChange}
                             />
-                            <label htmlFor="rememberMe" className="text-sm text-gray-700">
-                                自动登录
+                            <label htmlFor="rememberMe" className="text-sm text-gray-700 cursor-pointer select-none">
+                                记住密码
                             </label>
                         </div>
                         <div className="flex items-center justify-between">
@@ -301,14 +320,14 @@ const Login: React.FC = () => {
                                 disabled={loading}>
                                 {loading ? '登录中...' : '登录'}
                             </button>
-                            <Link to="/register" className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
-                                注册
-                            </Link>
-                        </div>
-                        <div className="mt-3 text-right">
-                            <Link to="/forgot-password" className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
-                                忘记密码？
-                            </Link>
+                            <div className="flex gap-4">
+                                <Link to="/forgot-password" title="忘记密码" className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
+                                    忘记密码？
+                                </Link>
+                                <Link to="/register" className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
+                                    注册
+                                </Link>
+                            </div>
                         </div>
                     </form>
                 </div>

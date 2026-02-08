@@ -8,5 +8,5 @@ import java.util.Optional;
 
 @Repository
 public interface PostRiskTagGenConfigRepository extends JpaRepository<PostRiskTagGenConfigEntity, Long> {
-    Optional<PostRiskTagGenConfigEntity> findTopByOrderByUpdatedAtDesc();
+    Optional<PostRiskTagGenConfigEntity> findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(String groupCode, String subType);
 }

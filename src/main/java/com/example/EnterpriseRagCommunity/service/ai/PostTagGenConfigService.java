@@ -3,10 +3,11 @@ package com.example.EnterpriseRagCommunity.service.ai;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTagGenConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTagGenHistoryDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTagGenPublicConfigDTO;
-import com.example.EnterpriseRagCommunity.entity.ai.PostTagGenConfigEntity;
-import com.example.EnterpriseRagCommunity.entity.ai.PostTagGenHistoryEntity;
-import com.example.EnterpriseRagCommunity.repository.ai.PostTagGenConfigRepository;
-import com.example.EnterpriseRagCommunity.repository.ai.PostTagGenHistoryRepository;
+import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenHistoryEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
+import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenConfigRepository;
+import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -43,19 +44,26 @@ public class PostTagGenConfigService {
 {{content}}
 """;
 
-    private final PostTagGenConfigRepository configRepository;
-    private final PostTagGenHistoryRepository historyRepository;
+    private static final SuggestionKind KIND = SuggestionKind.TOPIC_TAG;
+    private static final String GROUP_CODE = "POST_SUGGESTION";
+
+    private final PostSuggestionGenConfigRepository configRepository;
+    private final PostSuggestionGenHistoryRepository historyRepository;
 
     @Transactional(readOnly = true)
     public PostTagGenConfigDTO getAdminConfig() {
-        PostTagGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostSuggestionGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndKindOrderByUpdatedAtDesc(GROUP_CODE, KIND)
+                .orElse(null);
         if (cfg == null) return toDto(defaultEntity(), null);
         return toDto(cfg, null);
     }
 
     @Transactional(readOnly = true)
     public PostTagGenPublicConfigDTO getPublicConfig() {
-        PostTagGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostSuggestionGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndKindOrderByUpdatedAtDesc(GROUP_CODE, KIND)
+                .orElse(null);
         if (cfg == null) cfg = defaultEntity();
 
         PostTagGenPublicConfigDTO dto = new PostTagGenPublicConfigDTO();
@@ -68,9 +76,11 @@ public class PostTagGenConfigService {
 
     @Transactional
     public PostTagGenConfigDTO upsertAdminConfig(PostTagGenConfigDTO payload, Long actorUserId, String actorUsername) {
-        PostTagGenConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(this::defaultEntity);
+        PostSuggestionGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndKindOrderByUpdatedAtDesc(GROUP_CODE, KIND)
+                .orElseGet(this::defaultEntity);
 
-        PostTagGenConfigEntity merged = mergeAndValidate(cfg, payload);
+        PostSuggestionGenConfigEntity merged = mergeAndValidate(cfg, payload);
         merged.setUpdatedAt(LocalDateTime.now());
         merged.setUpdatedBy(actorUserId);
 
@@ -84,29 +94,34 @@ public class PostTagGenConfigService {
         int safeSize = Math.min(100, Math.max(1, size));
         Pageable pageable = PageRequest.of(safePage, safeSize);
 
-        Page<PostTagGenHistoryEntity> rows = (userId == null)
-                ? historyRepository.findAllByOrderByCreatedAtDesc(pageable)
-                : historyRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+        Page<PostSuggestionGenHistoryEntity> rows = (userId == null)
+                ? historyRepository.findByKindOrderByCreatedAtDesc(KIND, pageable)
+                : historyRepository.findByKindAndUserIdOrderByCreatedAtDesc(KIND, userId, pageable);
 
         return rows.map(this::toHistoryDto);
     }
 
     @Transactional
-    public void recordHistory(PostTagGenHistoryEntity e) {
+    public void recordHistory(PostSuggestionGenHistoryEntity e) {
         if (e == null) return;
         historyRepository.save(e);
     }
 
-    public PostTagGenConfigEntity getConfigEntityOrDefault() {
-        return configRepository.findTopByOrderByUpdatedAtDesc().orElseGet(this::defaultEntity);
+    public PostSuggestionGenConfigEntity getConfigEntityOrDefault() {
+        return configRepository
+                .findTopByGroupCodeAndKindOrderByUpdatedAtDesc(GROUP_CODE, KIND)
+                .orElseGet(this::defaultEntity);
     }
 
-    private PostTagGenConfigEntity defaultEntity() {
-        PostTagGenConfigEntity e = new PostTagGenConfigEntity();
+    private PostSuggestionGenConfigEntity defaultEntity() {
+        PostSuggestionGenConfigEntity e = new PostSuggestionGenConfigEntity();
+        e.setGroupCode(GROUP_CODE);
+        e.setKind(KIND);
         e.setEnabled(Boolean.TRUE);
         e.setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
         e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
         e.setModel(null);
+        e.setProviderId(null);
         e.setTemperature(0.4);
         e.setDefaultCount(DEFAULT_DEFAULT_COUNT);
         e.setMaxCount(DEFAULT_MAX_COUNT);
@@ -120,7 +135,7 @@ public class PostTagGenConfigService {
         return e;
     }
 
-    private PostTagGenConfigEntity mergeAndValidate(PostTagGenConfigEntity base, PostTagGenConfigDTO payload) {
+    private PostSuggestionGenConfigEntity mergeAndValidate(PostSuggestionGenConfigEntity base, PostTagGenConfigDTO payload) {
         if (payload == null) throw new IllegalArgumentException("payload 不能为空");
 
         String systemPrompt = payload.getSystemPrompt() == null ? "" : payload.getSystemPrompt().trim();
@@ -157,6 +172,8 @@ public class PostTagGenConfigService {
 
         String model = payload.getModel();
         base.setModel(model == null || model.isBlank() ? null : model.trim());
+        String providerId = payload.getProviderId();
+        base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         base.setTemperature(temperature);
 
         base.setDefaultCount(defaultCount);
@@ -169,7 +186,7 @@ public class PostTagGenConfigService {
         return base;
     }
 
-    private PostTagGenConfigDTO toDto(PostTagGenConfigEntity e, String updatedByName) {
+    private PostTagGenConfigDTO toDto(PostSuggestionGenConfigEntity e, String updatedByName) {
         PostTagGenConfigDTO dto = new PostTagGenConfigDTO();
         dto.setId(e.getId());
         dto.setVersion(e.getVersion());
@@ -177,6 +194,7 @@ public class PostTagGenConfigService {
         dto.setSystemPrompt(e.getSystemPrompt());
         dto.setPromptTemplate(e.getPromptTemplate());
         dto.setModel(e.getModel());
+        dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
         dto.setDefaultCount(e.getDefaultCount());
         dto.setMaxCount(e.getMaxCount());
@@ -190,7 +208,7 @@ public class PostTagGenConfigService {
     }
 
     @SuppressWarnings("unchecked")
-    private PostTagGenHistoryDTO toHistoryDto(PostTagGenHistoryEntity e) {
+    private PostTagGenHistoryDTO toHistoryDto(PostSuggestionGenHistoryEntity e) {
         PostTagGenHistoryDTO dto = new PostTagGenHistoryDTO();
         dto.setId(e.getId());
         dto.setUserId(e.getUserId());
@@ -208,7 +226,7 @@ public class PostTagGenConfigService {
         dto.setLatencyMs(e.getLatencyMs());
         dto.setPromptVersion(e.getPromptVersion());
 
-        dto.setTags(toStringList(e.getTagsJson()));
+        dto.setTags(toStringList(e.getOutputJson()));
         return dto;
     }
 
@@ -232,4 +250,3 @@ public class PostTagGenConfigService {
         return List.of();
     }
 }
-

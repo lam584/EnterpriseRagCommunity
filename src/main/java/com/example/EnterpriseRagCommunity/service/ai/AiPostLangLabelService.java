@@ -4,7 +4,7 @@ import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostLangLabelSuggestRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostLangLabelSuggestResponse;
 import com.example.EnterpriseRagCommunity.entity.ai.PostLangLabelGenConfigEntity;
-import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +18,7 @@ public class AiPostLangLabelService {
 
     private final AiProperties aiProperties;
     private final PostLangLabelGenConfigService postLangLabelGenConfigService;
+    private final LlmGateway llmGateway;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AiPostLangLabelSuggestResponse suggestLanguages(AiPostLangLabelSuggestRequest req) {
@@ -26,7 +27,7 @@ public class AiPostLangLabelService {
             throw new IllegalStateException("语言标签生成已关闭");
         }
 
-        String model = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : aiProperties.getModel();
+        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
         if (temperature == null) temperature = 0.0;
 
@@ -39,15 +40,17 @@ public class AiPostLangLabelService {
         }
 
         String userPrompt = renderPrompt(cfg.getPromptTemplate(), title, content);
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", cfg.getSystemPrompt()));
-        messages.add(Map.of("role", "user", "content", userPrompt));
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system(cfg.getSystemPrompt()));
+        messages.add(ChatMessage.user(userPrompt));
 
         long started = System.currentTimeMillis();
         String rawJson;
+        String usedModel;
         try {
-            rawJson = new BailianOpenAiSseClient(aiProperties)
-                    .chatCompletionsOnce(null, aiProperties.getBaseUrl(), model, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.LANGUAGE_TAG_GEN, cfg.getProviderId(), modelOverride, messages, temperature);
+            rawJson = routed == null ? null : routed.text();
+            usedModel = routed == null ? null : routed.model();
         } catch (Exception e) {
             throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);
         }
@@ -55,7 +58,7 @@ public class AiPostLangLabelService {
 
         String assistantText = extractAssistantContent(rawJson);
         List<String> langs = parseLanguagesFromAssistantText(assistantText);
-        return new AiPostLangLabelSuggestResponse(langs, model, latency);
+        return new AiPostLangLabelSuggestResponse(langs, usedModel, latency);
     }
 
     private String extractAssistantContent(String rawJson) {
@@ -128,4 +131,3 @@ public class AiPostLangLabelService {
         return out;
     }
 }
-

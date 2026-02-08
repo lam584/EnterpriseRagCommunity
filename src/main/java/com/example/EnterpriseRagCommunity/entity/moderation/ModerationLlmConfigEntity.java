@@ -21,14 +21,33 @@ public class ModerationLlmConfigEntity {
     @Column(name = "prompt_template", nullable = false)
     private String promptTemplate;
 
+    @Lob
+    @Column(name = "vision_prompt_template")
+    private String visionPromptTemplate;
+
     @Column(name = "model", length = 128)
     private String model;
+
+    @Column(name = "provider_id", length = 64)
+    private String providerId;
+
+    @Column(name = "vision_model", length = 128)
+    private String visionModel;
+
+    @Column(name = "vision_provider_id", length = 64)
+    private String visionProviderId;
 
     @Column(name = "temperature")
     private Double temperature;
 
+    @Column(name = "vision_temperature")
+    private Double visionTemperature;
+
     @Column(name = "max_tokens")
     private Integer maxTokens;
+
+    @Column(name = "vision_max_tokens")
+    private Integer visionMaxTokens;
 
     @Column(name = "threshold")
     private Double threshold;

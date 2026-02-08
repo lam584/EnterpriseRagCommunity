@@ -20,11 +20,11 @@ export default function AssistantHistoryPage() {
   const [totalElements, setTotalElements] = useState(0);
 
   const [page, setPage] = useState(0);
-  const size = 20;
+  const [size, setSize] = useState(20);
 
   const isSearchMode = useMemo(() => q.trim().length > 0, [q]);
 
-  const showPagination = useMemo(() => totalElements >= 15, [totalElements]);
+  const showPagination = useMemo(() => totalElements > size, [totalElements, size]);
   const hasNextPage = useMemo(() => (page + 1) * size < totalElements, [page, size, totalElements]);
 
   useEffect(() => {
@@ -58,7 +58,7 @@ export default function AssistantHistoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [isSearchMode, q, page]);
+  }, [isSearchMode, q, page, size]);
 
   function openSession(sessionId: number) {
     navigate(`/portal/assistant/chat?sessionId=${sessionId}`);
@@ -96,28 +96,48 @@ export default function AssistantHistoryPage() {
         <p className="text-gray-600">支持搜索标题与全文，点击即可继续对话。</p>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(0);
-          }}
-          placeholder="搜索：标题 / 对话内容..."
-          className="w-full border border-gray-300 rounded-md px-3 py-2"
-        />
-        {q && (
-          <button
-            type="button"
-            className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm"
-            onClick={() => {
-              setQ('');
+      <div className="flex flex-col md:flex-row md:items-center gap-2">
+        <div className="flex items-center gap-2 flex-1">
+          <input
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(0);
+            }}
+            placeholder="搜索：标题 / 对话内容..."
+            className="w-full border border-gray-300 rounded-md px-3 py-2"
+          />
+          {q && (
+            <button
+              type="button"
+              className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm"
+              onClick={() => {
+                setQ('');
+                setPage(0);
+              }}
+            >
+              清空
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-sm text-gray-600">每页</div>
+          <select
+            className="border border-gray-300 rounded-md px-2 py-2 text-sm bg-white"
+            value={String(size)}
+            disabled={isLoading}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              setSize(Number.isFinite(n) && n > 0 ? n : 20);
               setPage(0);
             }}
           >
-            清空
-          </button>
-        )}
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </div>
       </div>
 
       {error && <div className="border border-red-200 bg-red-50 text-red-700 rounded-md px-3 py-2 text-sm">{error}</div>}

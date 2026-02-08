@@ -8,6 +8,5 @@ import java.util.Optional;
 
 @Repository
 public interface PostSummaryGenConfigRepository extends JpaRepository<PostSummaryGenConfigEntity, Long> {
-    Optional<PostSummaryGenConfigEntity> findTopByOrderByUpdatedAtDesc();
+    Optional<PostSummaryGenConfigEntity> findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(String groupCode, String subType);
 }
-

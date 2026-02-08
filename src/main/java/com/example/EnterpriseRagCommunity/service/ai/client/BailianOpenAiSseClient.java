@@ -1,6 +1,8 @@
 package com.example.EnterpriseRagCommunity.service.ai.client;
 
 import com.example.EnterpriseRagCommunity.config.AiProperties;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -23,6 +25,7 @@ public class BailianOpenAiSseClient {
     }
 
     private final AiProperties props;
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     public BailianOpenAiSseClient(AiProperties props) {
         this.props = props;
@@ -32,16 +35,13 @@ public class BailianOpenAiSseClient {
             String apiKey,
             String baseUrl,
             String model,
-            List<Map<String, String>> messages,
+            List<ChatMessage> messages,
             Double temperature,
             SseLineConsumer consumer
     ) throws IOException {
         if (baseUrl == null || baseUrl.isBlank()) baseUrl = props.getBaseUrl();
         if (model == null || model.isBlank()) model = props.getModel();
         if (apiKey == null || apiKey.isBlank()) apiKey = props.getApiKey();
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IOException("Missing app.ai.api-key (or env injection)");
-        }
 
         String endpoint = baseUrl;
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
@@ -52,7 +52,9 @@ public class BailianOpenAiSseClient {
         conn.setDoOutput(true);
         conn.setConnectTimeout(props.getConnectTimeoutMs());
         conn.setReadTimeout(props.getReadTimeoutMs());
-        conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+        if (apiKey != null && !apiKey.isBlank()) {
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+        }
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         conn.setRequestProperty("Accept", "text/event-stream");
 
@@ -84,15 +86,12 @@ public class BailianOpenAiSseClient {
             String apiKey,
             String baseUrl,
             String model,
-            List<Map<String, String>> messages,
+            List<ChatMessage> messages,
             Double temperature
     ) throws IOException {
         if (baseUrl == null || baseUrl.isBlank()) baseUrl = props.getBaseUrl();
         if (model == null || model.isBlank()) model = props.getModel();
         if (apiKey == null || apiKey.isBlank()) apiKey = props.getApiKey();
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IOException("Missing app.ai.api-key (or env injection)");
-        }
 
         String endpoint = baseUrl;
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
@@ -103,7 +102,9 @@ public class BailianOpenAiSseClient {
         conn.setDoOutput(true);
         conn.setConnectTimeout(props.getConnectTimeoutMs());
         conn.setReadTimeout(props.getReadTimeoutMs());
-        conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+        if (apiKey != null && !apiKey.isBlank()) {
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+        }
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
         conn.setRequestProperty("Accept", "application/json");
 
@@ -157,7 +158,7 @@ public class BailianOpenAiSseClient {
         return sb.toString();
     }
 
-    private static String buildBodyJson(String model, List<Map<String, String>> messages, Double temperature) {
+    private static String buildBodyJson(String model, List<ChatMessage> messages, Double temperature) {
         StringBuilder sb = new StringBuilder();
         sb.append('{');
         sb.append("\"model\":\"").append(escapeJson(model)).append("\"");
@@ -167,11 +168,24 @@ public class BailianOpenAiSseClient {
         }
         sb.append(",\"messages\":[");
         for (int i = 0; i < messages.size(); i++) {
-            Map<String, String> m = messages.get(i);
+            ChatMessage m = messages.get(i);
             if (i > 0) sb.append(',');
             sb.append('{');
-            sb.append("\"role\":\"").append(escapeJson(m.getOrDefault("role", "user"))).append("\"");
-            sb.append(",\"content\":\"").append(escapeJson(m.getOrDefault("content", ""))).append("\"");
+            String role = (m == null || m.role() == null || m.role().isBlank()) ? "user" : m.role();
+            sb.append("\"role\":\"").append(escapeJson(role)).append("\"");
+            Object content = (m == null) ? "" : m.content();
+            sb.append(",\"content\":");
+            if (content == null) {
+                sb.append("\"\"");
+            } else if (content instanceof String s) {
+                sb.append('"').append(escapeJson(s)).append('"');
+            } else {
+                try {
+                    sb.append(objectMapper.writeValueAsString(content));
+                } catch (Exception e) {
+                    sb.append('"').append(escapeJson(String.valueOf(content))).append('"');
+                }
+            }
             sb.append('}');
         }
         sb.append(']');
@@ -179,7 +193,7 @@ public class BailianOpenAiSseClient {
         return sb.toString();
     }
 
-    private static String buildBodyJsonOnce(String model, List<Map<String, String>> messages, Double temperature) {
+    private static String buildBodyJsonOnce(String model, List<ChatMessage> messages, Double temperature) {
         StringBuilder sb = new StringBuilder();
         sb.append('{');
         sb.append("\"model\":\"").append(escapeJson(model)).append("\"");
@@ -189,11 +203,24 @@ public class BailianOpenAiSseClient {
         }
         sb.append(",\"messages\":[");
         for (int i = 0; i < messages.size(); i++) {
-            Map<String, String> m = messages.get(i);
+            ChatMessage m = messages.get(i);
             if (i > 0) sb.append(',');
             sb.append('{');
-            sb.append("\"role\":\"").append(escapeJson(m.getOrDefault("role", "user"))).append("\"");
-            sb.append(",\"content\":\"").append(escapeJson(m.getOrDefault("content", ""))).append("\"");
+            String role = (m == null || m.role() == null || m.role().isBlank()) ? "user" : m.role();
+            sb.append("\"role\":\"").append(escapeJson(role)).append("\"");
+            Object content = (m == null) ? "" : m.content();
+            sb.append(",\"content\":");
+            if (content == null) {
+                sb.append("\"\"");
+            } else if (content instanceof String s) {
+                sb.append('"').append(escapeJson(s)).append('"');
+            } else {
+                try {
+                    sb.append(objectMapper.writeValueAsString(content));
+                } catch (Exception e) {
+                    sb.append('"').append(escapeJson(String.valueOf(content))).append('"');
+                }
+            }
             sb.append('}');
         }
         sb.append(']');

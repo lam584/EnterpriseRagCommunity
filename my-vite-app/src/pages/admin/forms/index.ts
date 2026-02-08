@@ -34,6 +34,8 @@ export const formsLoaders: Partial<Record<string, FormLoader>> = {
   'metrics': () => import('./metrics/metrics'),
   'abtest': () => import('./metrics/abtest'),
   'token': () => import('./metrics/token'),
+  'llm-queue': () => import('./metrics/llm-queue'),
+  'llm-routing-monitor': () => import('./metrics/llm-routing-monitor'),
   'label-quality': () => import('./metrics/label-quality'),
   'cost': () => import('./metrics/cost'),
 
@@ -41,6 +43,9 @@ export const formsLoaders: Partial<Record<string, FormLoader>> = {
   'roles': () => import('./users/roles'),
   'matrix': () => import('./users/matrix'),
   '2fa': () => import('./users/2fa'),
+
+  'ai-providers': () => import('./ai/providers'),
+  'llm-routing-config': () => import('./metrics/llm-routing-config'),
 };
 
 function UnknownForm({ id }: { id?: string }) {

@@ -19,8 +19,7 @@ public class TotpSecretsUpdateDTO {
     private Optional<Long> userId = Optional.empty();
 
     @ApiModelProperty("TOTP密钥加密值 (最长512字节)")
-    @Size(max = 512)
-    private Optional<byte[]> secretEncrypted = Optional.empty();
+    private Optional<@Size(max = 512) byte[]> secretEncrypted = Optional.empty();
 
     @ApiModelProperty("HMAC 算法（SHA1/SHA256/SHA512）")
     private Optional<String> algorithm = Optional.empty();

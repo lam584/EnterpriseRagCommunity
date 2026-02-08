@@ -7,7 +7,7 @@ import com.example.EnterpriseRagCommunity.entity.ai.PostSummaryGenHistoryEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.PostAiSummaryRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
-import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +32,7 @@ public class AiPostSummaryService {
     private final PostSummaryGenConfigService postSummaryGenConfigService;
     private final PostsRepository postsRepository;
     private final PostAiSummaryRepository postAiSummaryRepository;
+    private final LlmGateway llmGateway;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -48,7 +49,7 @@ public class AiPostSummaryService {
         int maxChars = cfg.getMaxContentChars() == null ? PostSummaryGenConfigService.DEFAULT_MAX_CONTENT_CHARS : cfg.getMaxContentChars();
         if (maxChars <= 0) maxChars = PostSummaryGenConfigService.DEFAULT_MAX_CONTENT_CHARS;
 
-        String model = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : aiProperties.getModel();
+        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
 
         String rawTitle = post.getTitle() == null ? "" : post.getTitle();
@@ -61,17 +62,21 @@ public class AiPostSummaryService {
 
         String userPrompt = renderPrompt(cfg.getPromptTemplate(), rawTitle, clippedContent, extractTagsLine(post.getMetadata()));
 
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", "你是专业的中文社区内容摘要助手。只输出严格 JSON，不要输出解释文字。"));
-        messages.add(Map.of("role", "user", "content", userPrompt));
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system("你是专业的中文社区内容摘要助手。只输出严格 JSON，不要输出解释文字。"));
+        messages.add(ChatMessage.user(userPrompt));
 
         long started = System.currentTimeMillis();
         String rawJson;
+        String usedProviderId = null;
+        String usedModel = null;
         try {
-            rawJson = new BailianOpenAiSseClient(aiProperties)
-                    .chatCompletionsOnce(null, aiProperties.getBaseUrl(), model, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.SUMMARY_GEN, cfg.getProviderId(), modelOverride, messages, temperature);
+            rawJson = routed == null ? null : routed.text();
+            usedProviderId = routed == null ? null : routed.providerId();
+            usedModel = routed == null ? null : routed.model();
         } catch (Exception e) {
-            recordFailure(postId, actorUserId, model, temperature, maxChars, cfg.getVersion(), System.currentTimeMillis() - started, e);
+            recordFailure(postId, actorUserId, cfg.getProviderId(), modelOverride, temperature, maxChars, cfg.getVersion(), System.currentTimeMillis() - started, e);
             return;
         }
 
@@ -79,15 +84,16 @@ public class AiPostSummaryService {
         try {
             String assistantText = extractAssistantContent(rawJson);
             ParsedSummary parsed = parseSummaryFromAssistantText(assistantText);
-            saveSuccess(postId, actorUserId, model, temperature, maxChars, cfg.getVersion(), latency, parsed);
+            saveSuccess(postId, actorUserId, usedProviderId, usedModel, temperature, maxChars, cfg.getVersion(), latency, parsed);
         } catch (Exception e) {
-            recordFailure(postId, actorUserId, model, temperature, maxChars, cfg.getVersion(), latency, e);
+            recordFailure(postId, actorUserId, usedProviderId, usedModel, temperature, maxChars, cfg.getVersion(), latency, e);
         }
     }
 
     private void saveSuccess(
             Long postId,
             Long actorUserId,
+            String providerId,
             String model,
             Double temperature,
             int maxChars,
@@ -103,6 +109,7 @@ public class AiPostSummaryService {
         s.setSummaryTitle(cleanTitle(parsed.title));
         s.setSummaryText(cleanSummary(parsed.summary));
         s.setModel(model);
+        s.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         s.setTemperature(temperature);
         s.setAppliedMaxContentChars(maxChars);
         s.setLatencyMs(latency);
@@ -117,6 +124,7 @@ public class AiPostSummaryService {
         h.setStatus(STATUS_SUCCESS);
         h.setCreatedAt(now);
         h.setModel(model);
+        h.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         h.setTemperature(temperature);
         h.setAppliedMaxContentChars(maxChars);
         h.setLatencyMs(latency);
@@ -128,6 +136,7 @@ public class AiPostSummaryService {
     private void recordFailure(
             Long postId,
             Long actorUserId,
+            String providerId,
             String model,
             Double temperature,
             int maxChars,
@@ -146,6 +155,7 @@ public class AiPostSummaryService {
         s.setSummaryTitle(null);
         s.setSummaryText(null);
         s.setModel(model);
+        s.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         s.setTemperature(temperature);
         s.setAppliedMaxContentChars(maxChars);
         s.setLatencyMs(latency);
@@ -160,6 +170,7 @@ public class AiPostSummaryService {
         h.setStatus(STATUS_FAILED);
         h.setCreatedAt(now);
         h.setModel(model);
+        h.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         h.setTemperature(temperature);
         h.setAppliedMaxContentChars(maxChars);
         h.setLatencyMs(latency);
@@ -188,22 +199,32 @@ public class AiPostSummaryService {
         return rawJson;
     }
 
-    private ParsedSummary parseSummaryFromAssistantText(String assistantText) {
+    ParsedSummary parseSummaryFromAssistantText(String assistantText) {
         if (assistantText == null) assistantText = "";
-        String t = assistantText.trim();
-        int l = t.indexOf('{');
-        int r = t.lastIndexOf('}');
-        if (l >= 0 && r > l) t = t.substring(l, r + 1);
+        String raw = assistantText.trim();
+        if (raw.isBlank()) {
+            throw new IllegalArgumentException("AI 输出为空");
+        }
+
+        String t = raw;
+        int lObj = t.indexOf('{');
+        int rObj = t.lastIndexOf('}');
+        if (lObj >= 0 && rObj > lObj) {
+            t = t.substring(lObj, rObj + 1);
+        } else {
+            return new ParsedSummary(null, raw);
+        }
+
         try {
             JsonNode root = objectMapper.readTree(t);
             String title = root.path("title").isTextual() ? root.path("title").asText() : null;
             String summary = root.path("summary").isTextual() ? root.path("summary").asText() : null;
             if (summary == null || summary.trim().isBlank()) {
-                throw new IllegalArgumentException("AI 输出缺少 summary 字段");
+                return new ParsedSummary(title, raw);
             }
             return new ParsedSummary(title, summary);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("AI 输出无法解析为摘要 JSON", e);
+        } catch (Exception ignore) {
+            return new ParsedSummary(null, raw);
         }
     }
 
@@ -254,7 +275,6 @@ public class AiPostSummaryService {
         return sw.toString();
     }
 
-    private record ParsedSummary(String title, String summary) {
+    record ParsedSummary(String title, String summary) {
     }
 }
-

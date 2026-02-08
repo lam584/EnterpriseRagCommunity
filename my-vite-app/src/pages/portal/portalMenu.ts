@@ -3,11 +3,12 @@ export type PortalSubNavItem = {
   label: string;
   /** relative path under section, e.g. 'home' */
   path: string;
+  to?: `/${string}`;
   description?: string;
 };
 
 export type PortalSection = {
-  id: 'discover' | 'posts' | 'interact' | 'assistant' | 'account' | 'compose' | 'search';
+  id: 'discover' | 'posts' | 'interact' | 'assistant' | 'account' | 'compose' | 'search' | 'moderation';
   label: string;
   basePath: `/portal/${string}`;
   children: PortalSubNavItem[];
@@ -35,6 +36,7 @@ export const portalSections: PortalSection[] = [
     label: '通知',
     basePath: '/portal/interact',
     children: [
+      { id: 'all', label: '全部', path: 'all', description: '全部通知' },
       { id: 'replies', label: '回复', path: 'replies', description: '回复我的评论/帖子' },
       { id: 'likes', label: '点赞', path: 'likes', description: '我点赞过的内容' },
       { id: 'mentions', label: '提及', path: 'mentions', description: '有人 @ 我' },
@@ -51,6 +53,15 @@ export const portalSections: PortalSection[] = [
       { id: 'history', label: '历史', path: 'history', description: '历史会话与追问' },
       { id: 'collections', label: '收藏夹', path: 'collections', description: '引用/知识片段收藏' },
       { id: 'settings', label: '设置', path: 'settings', description: '检索与生成偏好' },
+    ],
+  },
+  {
+    id: 'moderation',
+    label: '版主中心',
+    basePath: '/portal/moderation',
+    children: [
+      { id: 'queue', label: '审核队列', path: 'queue', description: '处理你负责版块的待审内容' },
+      { id: 'logs', label: '我的治理记录', path: 'logs', description: '查看并导出自己的治理审计记录' },
     ],
   },
   {
@@ -85,7 +96,7 @@ export const portalSections: PortalSection[] = [
 export const cardInlineRowClass =
   'mt-3 inline-flex max-w-full flex-wrap items-center gap-2 align-top';
 
-export function getPortalSection(id: PortalSection['id']): PortalSection {
+export function getPortalSection(id: PortalSection['id'] | string): PortalSection {
   const s = portalSections.find((x) => x.id === id);
   if (!s) throw new Error(`Unknown portal section: ${id}`);
   return s;

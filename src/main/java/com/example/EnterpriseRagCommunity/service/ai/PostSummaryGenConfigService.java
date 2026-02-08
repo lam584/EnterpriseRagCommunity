@@ -21,6 +21,8 @@ import java.time.LocalDateTime;
 public class PostSummaryGenConfigService {
 
     public static final int DEFAULT_MAX_CONTENT_CHARS = 4000;
+    private static final String GROUP_CODE = "POST_SUMMARY";
+    private static final String SUB_TYPE = "DEFAULT";
 
     public static final String DEFAULT_PROMPT_TEMPLATE = """
 请为以下社区帖子生成“帖子摘要”。
@@ -42,14 +44,18 @@ public class PostSummaryGenConfigService {
 
     @Transactional(readOnly = true)
     public PostSummaryGenConfigDTO getAdminConfig() {
-        PostSummaryGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostSummaryGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElse(null);
         if (cfg == null) return toDto(defaultEntity(), null);
         return toDto(cfg, null);
     }
 
     @Transactional(readOnly = true)
     public PostSummaryGenPublicConfigDTO getPublicConfig() {
-        PostSummaryGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostSummaryGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElse(null);
         if (cfg == null) cfg = defaultEntity();
         PostSummaryGenPublicConfigDTO dto = new PostSummaryGenPublicConfigDTO();
         dto.setEnabled(Boolean.TRUE.equals(cfg.getEnabled()));
@@ -58,7 +64,9 @@ public class PostSummaryGenConfigService {
 
     @Transactional
     public PostSummaryGenConfigDTO upsertAdminConfig(PostSummaryGenConfigDTO payload, Long actorUserId, String actorUsername) {
-        PostSummaryGenConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(this::defaultEntity);
+        PostSummaryGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElseGet(this::defaultEntity);
         PostSummaryGenConfigEntity merged = mergeAndValidate(cfg, payload);
         merged.setUpdatedAt(LocalDateTime.now());
         merged.setUpdatedBy(actorUserId);
@@ -84,13 +92,18 @@ public class PostSummaryGenConfigService {
     }
 
     public PostSummaryGenConfigEntity getConfigEntityOrDefault() {
-        return configRepository.findTopByOrderByUpdatedAtDesc().orElseGet(this::defaultEntity);
+        return configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElseGet(this::defaultEntity);
     }
 
     private PostSummaryGenConfigEntity defaultEntity() {
         PostSummaryGenConfigEntity e = new PostSummaryGenConfigEntity();
+        e.setGroupCode(GROUP_CODE);
+        e.setSubType(SUB_TYPE);
         e.setEnabled(Boolean.TRUE);
         e.setModel(null);
+        e.setProviderId(null);
         e.setTemperature(0.3);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
         e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
@@ -118,6 +131,8 @@ public class PostSummaryGenConfigService {
 
         String model = payload.getModel();
         base.setModel(model == null || model.isBlank() ? null : model.trim());
+        String providerId = payload.getProviderId();
+        base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
 
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
         base.setTemperature(temperature);
@@ -132,6 +147,7 @@ public class PostSummaryGenConfigService {
         dto.setVersion(e.getVersion());
         dto.setEnabled(e.getEnabled());
         dto.setModel(e.getModel());
+        dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
         dto.setMaxContentChars(e.getMaxContentChars());
         dto.setPromptTemplate(e.getPromptTemplate());

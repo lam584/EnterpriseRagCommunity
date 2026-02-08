@@ -254,9 +254,23 @@ const SectionCard: React.FC<SectionCardProps> = ({ children, form, className = '
 );
 
 // 新增：可复用的 AdminSection，收敛重复的 active + form + SubMenu 逻辑
-type AdminSectionProps = { title: string; items: SubItem[]; defaultActiveId?: string; className?: string };
+type AdminSectionProps = {
+  title: string;
+  items: SubItem[];
+  defaultActiveId?: string;
+  className?: string;
+  resetQueryOnTabChange?: boolean;
+  preserveQueryKeysOnTabChange?: string[];
+};
 
-const AdminSection: React.FC<AdminSectionProps> = ({ title, items, defaultActiveId, className }) => {
+const AdminSection: React.FC<AdminSectionProps> = ({
+  title,
+  items,
+  defaultActiveId,
+  className,
+  resetQueryOnTabChange = false,
+  preserveQueryKeysOnTabChange = [],
+}) => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeFromUrl = searchParams.get('active') ?? undefined;
@@ -273,12 +287,12 @@ const AdminSection: React.FC<AdminSectionProps> = ({ title, items, defaultActive
     if (!activeFromUrl) return;
     if (!items.some((i) => i.id === activeFromUrl)) return;
 
-    // 避免同值反复 setState 造成额外渲染/副作用链
-    if (activeFromUrl === active) return;
-
-    if (debug) console.log('[admin][active] sync from url -> state', { activeFromUrl, prev: active });
-    setActive(activeFromUrl);
-  }, [activeFromUrl, items, active, debug]);
+    setActive((prev) => {
+      if (prev === activeFromUrl) return prev;
+      if (debug) console.log('[admin][active] sync from url -> state', { activeFromUrl, prev });
+      return activeFromUrl;
+    });
+  }, [activeFromUrl, items, debug]);
 
   const ActiveForm = getLazyForm(active);
 
@@ -315,6 +329,16 @@ const AdminSection: React.FC<AdminSectionProps> = ({ title, items, defaultActive
             const current = prev.get('active') ?? undefined;
             if (current === id) return prev;
 
+            if (resetQueryOnTabChange) {
+              const next = new URLSearchParams();
+              for (const k of preserveQueryKeysOnTabChange) {
+                const v = prev.get(k);
+                if (v !== null) next.set(k, v);
+              }
+              next.set('active', id);
+              return next;
+            }
+
             const next = new URLSearchParams(prev);
             next.set('active', id);
             return next;
@@ -341,6 +365,8 @@ export const ContentMgmtPage: React.FC = () => (
 export const ReviewCenterPage: React.FC = () => (
   <AdminSection
     title="审核中心"
+    resetQueryOnTabChange
+    preserveQueryKeysOnTabChange={['queueId']}
     items={[
       { id: 'queue', label: '审核队列面板' },
       { id: 'rules', label: '规则过滤层' },
@@ -384,6 +410,8 @@ export const MetricsMonitorPage: React.FC = () => (
       { id: 'metrics', label: '指标采集层' },
       { id: 'abtest', label: '实验对比脚本' },
       { id: 'token', label: 'Token 成本统计' },
+      { id: 'llm-queue', label: 'LLM 调用队列' },
+      { id: 'llm-routing-monitor', label: '负载均衡与路由状态' },
       { id: 'label-quality', label: '标签质量评估工具' },
       { id: 'cost', label: '审核成本分析' },
     ]}
@@ -398,6 +426,16 @@ export const UsersRBACPage: React.FC = () => (
       { id: 'roles', label: '角色管理' },
       { id: 'matrix', label: '权限管理' },
       { id: '2fa', label: '高权限操作 2FA 策略' },
+    ]}
+  />
+);
+
+export const LlmConfigPage: React.FC = () => (
+  <AdminSection
+    title="LLM 配置"
+    items={[
+      { id: 'ai-providers', label: '模型来源' },
+      { id: 'llm-routing-config', label: '负载均衡配置' },
     ]}
   />
 );

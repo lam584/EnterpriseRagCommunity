@@ -62,6 +62,7 @@ export type RagPostsBuildResponse = {
   chunkOverlapChars?: number | null;
   embeddingDims?: number | null;
   embeddingModel?: string | null;
+  embeddingProviderId?: string | null;
   cleared?: boolean | null;
   clearError?: string | null;
   tookMs?: number | null;
@@ -78,6 +79,7 @@ export type RagPostsTestQueryRequest = {
   boardId?: number;
   numCandidates?: number;
   embeddingModel?: string;
+  embeddingProviderId?: string;
 };
 
 export type RagPostsTestQueryResponse = {
@@ -86,6 +88,7 @@ export type RagPostsTestQueryResponse = {
   boardId?: number | null;
   embeddingDims?: number | null;
   embeddingModel?: string | null;
+  embeddingProviderId?: string | null;
   numCandidates?: number | null;
   tookMs?: number | null;
   hits?: Array<{
@@ -175,6 +178,7 @@ export async function adminBuildPostRagIndex(params: {
   chunkOverlapChars?: number;
   clear?: boolean;
   embeddingModel?: string;
+  embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagPostsBuildResponse> {
   const sp = new URLSearchParams();
@@ -185,6 +189,7 @@ export async function adminBuildPostRagIndex(params: {
   if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
   if (params.clear) sp.set('clear', 'true');
   if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
+  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
   if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
 
   const csrf = await getCsrfToken();
@@ -208,6 +213,7 @@ export async function adminRebuildPostRagIndex(params: {
   chunkMaxChars?: number;
   chunkOverlapChars?: number;
   embeddingModel?: string;
+  embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagPostsBuildResponse> {
   const sp = new URLSearchParams();
@@ -216,6 +222,7 @@ export async function adminRebuildPostRagIndex(params: {
   if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
   if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
   if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
+  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
   if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
 
   const csrf = await getCsrfToken();
@@ -239,6 +246,7 @@ export async function adminSyncPostRagIndex(params: {
   chunkMaxChars?: number;
   chunkOverlapChars?: number;
   embeddingModel?: string;
+  embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagPostsBuildResponse> {
   const sp = new URLSearchParams();
@@ -247,6 +255,7 @@ export async function adminSyncPostRagIndex(params: {
   if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
   if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
   if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
+  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
   if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
 
   const csrf = await getCsrfToken();

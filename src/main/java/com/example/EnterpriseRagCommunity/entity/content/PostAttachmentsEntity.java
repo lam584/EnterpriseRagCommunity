@@ -25,7 +25,7 @@ public class PostAttachmentsEntity {
     @Column(name = "url", nullable = false, length = 512)
     private String url;
 
-    @Column(name = "file_name", nullable = false, length = 191)
+    @Column(name = "file_name", nullable = false, length = 512)
     private String fileName;
 
     @Column(name = "mime_type", nullable = false, length = 64)

@@ -16,6 +16,7 @@ function getBackendMessage(data: unknown): string | undefined {
 export type PostSummaryGenConfig = {
   enabled: boolean;
   model?: string | null;
+  providerId?: string | null;
   temperature?: number | null;
   maxContentChars: number;
   promptTemplate: string;
@@ -91,4 +92,20 @@ export async function adminListPostSummaryHistory(params?: {
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '获取帖子摘要生成日志失败');
   return data as Page<PostSummaryGenHistoryDTO>;
+}
+
+export async function adminRegeneratePostSummary(postId: number): Promise<void> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl('/api/admin/semantic/summary/regenerate'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({ postId }),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '提交重新生成失败');
 }

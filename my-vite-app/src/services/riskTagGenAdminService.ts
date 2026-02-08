@@ -18,6 +18,7 @@ export type PostRiskTagGenConfig = {
   systemPrompt: string;
   promptTemplate: string;
   model?: string | null;
+  providerId?: string | null;
   temperature?: number | null;
   maxCount: number;
   maxContentChars: number;

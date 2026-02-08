@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.init;
 
-import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
@@ -8,8 +7,10 @@ import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexProvi
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexStatus;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
-import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
-import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
+import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
+import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesSyncService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexBuildService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexBuildService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,25 +29,28 @@ public class InitialAdminIndexBootstrapService {
 
     private final VectorIndicesRepository vectorIndicesRepository;
     private final RetrievalRagProperties ragProps;
-    private final RagPostsIndexService ragPostsIndexService;
+    private final RagPostIndexBuildService ragPostIndexBuildService;
+    private final RagCommentIndexBuildService ragCommentIndexBuildService;
 
-    private final ModerationSimilarityProperties moderationProps;
-    private final ModerationSamplesIndexService moderationSamplesIndexService;
+    private final ModerationSamplesSyncService moderationSamplesSyncService;
     private final ModerationSimilarityConfigRepository moderationSimilarityConfigRepository;
+    private final ModerationSamplesIndexConfigService moderationSamplesIndexConfigService;
 
     public void bootstrap(Long initialAdminUserId) {
-        ensureDefaultVectorIndexRecord();
+        ensureDefaultRagVectorIndexRecordsIfEmpty();
+        moderationSamplesIndexConfigService.getOrSeedDefault(initialAdminUserId);
         ensureModerationConfigRecord(initialAdminUserId);
-        ensureElasticsearchIndices();
+        rebuildElasticsearchIndicesFromSqlConfig();
     }
 
-    private void ensureDefaultVectorIndexRecord() {
-        String indexName = toNonBlank(ragProps.getEs().getIndex());
-        if (indexName == null) return;
-
-        if (vectorIndicesRepository.existsByProviderAndCollectionName(VectorIndexProvider.OTHER, indexName)) {
+    private void ensureDefaultRagVectorIndexRecordsIfEmpty() {
+        List<VectorIndicesEntity> existing = vectorIndicesRepository.findByProvider(VectorIndexProvider.OTHER);
+        if (existing != null && !existing.isEmpty()) {
             return;
         }
+
+        String indexName = toNonBlank(ragProps.getEs().getIndex());
+        if (indexName == null) return;
 
         int dims = ragProps.getEs().getEmbeddingDims();
         if (dims <= 0) dims = 1024;
@@ -59,6 +63,7 @@ public class InitialAdminIndexBootstrapService {
         e.setStatus(VectorIndexStatus.READY);
 
         Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("sourceType", "POST");
         meta.put("embeddingModel", toNonBlank(ragProps.getEs().getEmbeddingModel()));
         meta.put("defaultChunkMaxChars", 800);
         meta.put("defaultChunkOverlapChars", 80);
@@ -67,6 +72,24 @@ public class InitialAdminIndexBootstrapService {
         vectorIndicesRepository.save(e);
         log.info("Seeded default vector_indices record. provider={}, collectionName={}, dim={}",
                 e.getProvider(), e.getCollectionName(), e.getDim());
+
+        VectorIndicesEntity c = new VectorIndicesEntity();
+        c.setProvider(VectorIndexProvider.OTHER);
+        c.setCollectionName(indexName + "_comments");
+        c.setMetric("cosine");
+        c.setDim(dims);
+        c.setStatus(VectorIndexStatus.READY);
+
+        Map<String, Object> meta2 = new LinkedHashMap<>();
+        meta2.put("sourceType", "COMMENT");
+        meta2.put("embeddingModel", toNonBlank(ragProps.getEs().getEmbeddingModel()));
+        meta2.put("defaultChunkMaxChars", 800);
+        meta2.put("defaultChunkOverlapChars", 80);
+        c.setMetadata(meta2);
+
+        vectorIndicesRepository.save(c);
+        log.info("Seeded default comment vector_indices record. provider={}, collectionName={}, dim={}",
+                c.getProvider(), c.getCollectionName(), c.getDim());
     }
 
     private void ensureModerationConfigRecord(Long initialAdminUserId) {
@@ -76,11 +99,11 @@ public class InitialAdminIndexBootstrapService {
         if (cfg == null) {
             ModerationSimilarityConfigEntity e = new ModerationSimilarityConfigEntity();
             e.setEnabled(true);
-            e.setEmbeddingModel(toNonBlank(moderationProps.getEs().getEmbeddingModel()));
-            e.setEmbeddingDims(Math.max(0, moderationProps.getEs().getEmbeddingDims()));
+            e.setEmbeddingModel(toNonBlank(moderationSamplesIndexConfigService.getEmbeddingModelOrDefault()));
+            e.setEmbeddingDims(Math.max(0, moderationSamplesIndexConfigService.getEmbeddingDimsOrDefault()));
             e.setMaxInputChars(0);
-            e.setDefaultTopK(Math.max(1, moderationProps.getEs().getTopK()));
-            e.setDefaultThreshold(Math.max(0, moderationProps.getEs().getThreshold()));
+            e.setDefaultTopK(Math.max(1, moderationSamplesIndexConfigService.getDefaultTopKOrDefault()));
+            e.setDefaultThreshold(Math.max(0, moderationSamplesIndexConfigService.getDefaultThresholdOrDefault()));
             e.setDefaultNumCandidates(0);
             e.setUpdatedAt(LocalDateTime.now());
             e.setUpdatedBy(initialAdminUserId);
@@ -91,23 +114,23 @@ public class InitialAdminIndexBootstrapService {
         }
 
         boolean changed = false;
-        if (toNonBlank(cfg.getEmbeddingModel()) == null && toNonBlank(moderationProps.getEs().getEmbeddingModel()) != null) {
-            cfg.setEmbeddingModel(toNonBlank(moderationProps.getEs().getEmbeddingModel()));
+        if (toNonBlank(cfg.getEmbeddingModel()) == null && toNonBlank(moderationSamplesIndexConfigService.getEmbeddingModelOrDefault()) != null) {
+            cfg.setEmbeddingModel(toNonBlank(moderationSamplesIndexConfigService.getEmbeddingModelOrDefault()));
             changed = true;
         }
         if (cfg.getEmbeddingDims() == null || cfg.getEmbeddingDims() <= 0) {
-            int dims = moderationProps.getEs().getEmbeddingDims();
+            int dims = moderationSamplesIndexConfigService.getEmbeddingDimsOrDefault();
             if (dims > 0) {
                 cfg.setEmbeddingDims(dims);
                 changed = true;
             }
         }
         if (cfg.getDefaultTopK() == null || cfg.getDefaultTopK() <= 0) {
-            cfg.setDefaultTopK(Math.max(1, moderationProps.getEs().getTopK()));
+            cfg.setDefaultTopK(Math.max(1, moderationSamplesIndexConfigService.getDefaultTopKOrDefault()));
             changed = true;
         }
         if (cfg.getDefaultThreshold() == null || cfg.getDefaultThreshold() < 0) {
-            cfg.setDefaultThreshold(Math.max(0, moderationProps.getEs().getThreshold()));
+            cfg.setDefaultThreshold(Math.max(0, moderationSamplesIndexConfigService.getDefaultThresholdOrDefault()));
             changed = true;
         }
         if (cfg.getMaxInputChars() == null || cfg.getMaxInputChars() < 0) {
@@ -128,30 +151,23 @@ public class InitialAdminIndexBootstrapService {
         }
     }
 
-    private void ensureElasticsearchIndices() {
-        ensureModerationSamplesIndex();
-        ensureRagIndices();
+    private void rebuildElasticsearchIndicesFromSqlConfig() {
+        rebuildModerationSamplesIndexAndData();
+        rebuildRagIndicesAndData();
     }
 
-    private void ensureModerationSamplesIndex() {
-        int dims = moderationProps.getEs().getEmbeddingDims();
-        if (dims <= 0) dims = 1024;
+    private void rebuildModerationSamplesIndexAndData() {
         try {
-            moderationSamplesIndexService.ensureIndex(dims);
-            log.info("Ensured moderation samples ES index. index={}, dims={}", moderationProps.getEs().getIndex(), dims);
+            moderationSamplesSyncService.reindexAll(true, 200, null);
+            log.info("Reindexed moderation samples ES index. index={}", moderationSamplesIndexConfigService.getIndexNameOrDefault());
         } catch (Exception ex) {
-            log.warn("Ensure moderation samples ES index failed. index={}, err={}", moderationProps.getEs().getIndex(), ex.getMessage());
+            log.warn("Reindex moderation samples ES index failed. index={}, err={}", moderationSamplesIndexConfigService.getIndexNameOrDefault(), ex.getMessage());
         }
     }
 
-    private void ensureRagIndices() {
+    private void rebuildRagIndicesAndData() {
         List<VectorIndicesEntity> list = vectorIndicesRepository.findByProvider(VectorIndexProvider.OTHER);
         if (list == null || list.isEmpty()) {
-            String indexName = toNonBlank(ragProps.getEs().getIndex());
-            if (indexName == null) return;
-            int dims = ragProps.getEs().getEmbeddingDims();
-            if (dims <= 0) dims = 1024;
-            ensureOrRecreateRagIndex(indexName, dims);
             return;
         }
 
@@ -161,27 +177,25 @@ public class InitialAdminIndexBootstrapService {
             if (indexName == null) indexName = toNonBlank(ragProps.getEs().getIndex());
             if (indexName == null) continue;
 
-            Integer dims0 = vi.getDim();
-            int dims = (dims0 != null && dims0 > 0) ? dims0 : ragProps.getEs().getEmbeddingDims();
-            if (dims <= 0) dims = 1024;
-
-            ensureOrRecreateRagIndex(indexName, dims);
-        }
-    }
-
-    private void ensureOrRecreateRagIndex(String indexName, int dims) {
-        try {
-            ragPostsIndexService.ensureIndex(indexName, dims);
-            log.info("Ensured RAG ES index. index={}, dims={}", indexName, dims);
-        } catch (IllegalStateException mismatch) {
-            try {
-                ragPostsIndexService.recreateIndex(indexName, dims);
-                log.info("Recreated RAG ES index due to dims mismatch. index={}, dims={}", indexName, dims);
-            } catch (Exception ex) {
-                log.warn("Recreate RAG ES index failed. index={}, err={}", indexName, ex.getMessage());
+            String sourceType = vi.getMetadata() == null || vi.getMetadata().get("sourceType") == null
+                    ? null
+                    : String.valueOf(vi.getMetadata().get("sourceType")).trim();
+            if (sourceType == null || sourceType.isBlank()) sourceType = "POST";
+            if ("COMMENT".equalsIgnoreCase(sourceType)) {
+                try {
+                    ragCommentIndexBuildService.rebuildComments(vi.getId(), null, null, null, null, vi.getDim());
+                    log.info("Rebuilt RAG comment index. index={}, vectorIndexId={}", indexName, vi.getId());
+                } catch (Exception ex) {
+                    log.warn("Rebuild RAG comment index failed. index={}, vectorIndexId={}, err={}", indexName, vi.getId(), ex.getMessage());
+                }
+            } else {
+                try {
+                    ragPostIndexBuildService.rebuildPosts(vi.getId(), null, null, null, null, null, null, vi.getDim());
+                    log.info("Rebuilt RAG posts index. index={}, vectorIndexId={}", indexName, vi.getId());
+                } catch (Exception ex) {
+                    log.warn("Rebuild RAG posts index failed. index={}, vectorIndexId={}, err={}", indexName, vi.getId(), ex.getMessage());
+                }
             }
-        } catch (Exception ex) {
-            log.warn("Ensure RAG ES index failed. index={}, err={}", indexName, ex.getMessage());
         }
     }
 
@@ -191,4 +205,3 @@ public class InitialAdminIndexBootstrapService {
         return t.isBlank() ? null : t;
     }
 }
-

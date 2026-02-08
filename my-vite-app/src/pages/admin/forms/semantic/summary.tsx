@@ -2,15 +2,20 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   adminGetPostSummaryConfig,
   adminListPostSummaryHistory,
+  adminRegeneratePostSummary,
   adminUpsertPostSummaryConfig,
   type Page,
   type PostSummaryGenConfigDTO,
   type PostSummaryGenHistoryDTO,
 } from '../../../../services/postSummaryAdminService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 
 type FormState = {
   enabled: boolean;
   model: string;
+  providerId: string;
   temperature: string;
   maxContentChars: string;
   promptTemplate: string;
@@ -28,7 +33,7 @@ function defaultConfig(): PostSummaryGenConfigDTO {
     enabled: true,
     model: null,
     temperature: 0.3,
-    maxContentChars: 4000,
+    maxContentChars: 8000,
     promptTemplate: `请为以下社区帖子生成“帖子摘要”。\n要求：\n- 只输出严格 JSON，不要输出任何解释文字，不要包裹 \`\`\`；\n- JSON 字段：{\"title\":\"...\",\"summary\":\"...\"}；\n- title：可选，若原文标题已足够清晰可直接复用或略微改写；\n- summary：中文摘要，建议 80~200 字，尽量覆盖关键信息、结论与可执行要点；\n\n帖子标题：\n{{title}}\n\n帖子正文：\n{{content}}\n`,
   };
 }
@@ -37,6 +42,7 @@ function toFormState(cfg?: PostSummaryGenConfigDTO | null): FormState {
   return {
     enabled: Boolean(cfg?.enabled),
     model: cfg?.model ?? '',
+    providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
     promptTemplate: cfg?.promptTemplate ?? '',
@@ -64,6 +70,7 @@ function buildPayload(s: FormState) {
   return {
     enabled: s.enabled,
     model: s.model.trim() ? s.model.trim() : null,
+    providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
     maxContentChars: maxContentChars === undefined ? 4000 : Math.trunc(maxContentChars),
     promptTemplate: s.promptTemplate,
@@ -77,12 +84,52 @@ const SummaryForm: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [savedHint, setSavedHint] = useState<string | null>(null);
 
+  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
+  const [activeProviderId, setActiveProviderId] = useState<string>('');
+  const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
+
   const [form, setForm] = useState<FormState>(() => toFormState(defaultConfig()));
   const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(defaultConfig()));
 
   const formErrors = useMemo(() => validateForm(form), [form]);
   const canSave = formErrors.length === 0 && !loading && !saving;
   const hasUnsavedChanges = useMemo(() => JSON.stringify(form) !== JSON.stringify(committedForm), [form, committedForm]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await adminGetAiProvidersConfig();
+        if (cancelled) return;
+        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
+        setActiveProviderId(cfg.activeProviderId ?? '');
+      } catch {
+        if (cancelled) return;
+        setProviders([]);
+        setActiveProviderId('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const opts = await getAiChatOptions();
+        if (cancelled) return;
+        setChatProviders((opts.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[]);
+      } catch {
+        if (cancelled) return;
+        setChatProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -138,6 +185,8 @@ const SummaryForm: React.FC = () => {
   const [historyPageNo, setHistoryPageNo] = useState(0);
   const [historyPageSize, setHistoryPageSize] = useState(20);
   const [historyPage, setHistoryPage] = useState<Page<PostSummaryGenHistoryDTO> | null>(null);
+  const [historyHint, setHistoryHint] = useState<string | null>(null);
+  const [regeneratingPostId, setRegeneratingPostId] = useState<number | null>(null);
 
   const loadHistory = useCallback(async (pageNo: number, pageSize?: number) => {
     setHistoryLoading(true);
@@ -168,6 +217,27 @@ const SummaryForm: React.FC = () => {
 
   const [errorOpen, setErrorOpen] = useState(false);
   const [errorText, setErrorText] = useState<string>('');
+
+  const onRegenerate = useCallback(
+    async (postId: number) => {
+      if (!postId) return;
+      if (regeneratingPostId !== null) return;
+      setRegeneratingPostId(postId);
+      setHistoryError(null);
+      try {
+        await adminRegeneratePostSummary(postId);
+        setHistoryHint(`已提交重新生成（帖子ID=${postId}）。请稍后刷新查看结果。`);
+        setTimeout(() => {
+          void loadHistory(historyPageNo);
+        }, 1500);
+      } catch (e) {
+        setHistoryError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setRegeneratingPostId(null);
+      }
+    },
+    [historyPageNo, loadHistory, regeneratingPostId]
+  );
 
   return (
     <div className="space-y-4">
@@ -246,14 +316,17 @@ const SummaryForm: React.FC = () => {
         ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <div className="text-xs text-gray-600 mb-1">模型名称</div>
-            <input
-              value={form.model}
-              onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
+          <div className="md:col-span-2">
+            <ProviderModelSelect
+              providers={providers}
+              activeProviderId={activeProviderId}
+              chatProviders={chatProviders}
+              mode="chat"
+              providerId={form.providerId}
+              model={form.model}
               disabled={!editing || loading || saving}
-              className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-              placeholder="例如 qwen-plus（留空使用全局默认）"
+              selectClassName="w-full rounded border px-3 py-2 text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+              onChange={(next) => setForm((p) => ({ ...p, providerId: next.providerId, model: next.model }))}
             />
           </div>
           <div>
@@ -273,7 +346,7 @@ const SummaryForm: React.FC = () => {
               onChange={(e) => setForm((p) => ({ ...p, maxContentChars: e.target.value }))}
               disabled={!editing || loading || saving}
               className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-              placeholder="例如 4000"
+              placeholder="例如 8000"
             />
           </div>
         </div>
@@ -306,6 +379,9 @@ const SummaryForm: React.FC = () => {
           </button>
         </div>
 
+        {historyHint ? (
+          <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">{historyHint}</div>
+        ) : null}
         {historyError ? <div className="text-sm text-red-700">{historyError}</div> : null}
         {historyLoading ? <div className="text-sm text-gray-600">加载中...</div> : null}
 
@@ -347,17 +423,29 @@ const SummaryForm: React.FC = () => {
                       <td className="py-2 pr-4 whitespace-nowrap text-gray-600">{new Date(h.createdAt).toLocaleString()}</td>
                       <td className="py-2 pr-4 whitespace-nowrap text-gray-700">{h.latencyMs ? `${h.latencyMs}ms` : '-'}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">
-                        <button
-                          type="button"
-                          className="rounded border px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-                          disabled={isSuccess || !h.errorMessage}
-                          onClick={() => {
-                            setErrorText(String(h.errorMessage || ''));
-                            setErrorOpen(true);
-                          }}
-                        >
-                          查看错误
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="rounded border px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                            disabled={isSuccess || !h.errorMessage}
+                            onClick={() => {
+                              setErrorText(String(h.errorMessage || ''));
+                              setErrorOpen(true);
+                            }}
+                          >
+                            查看错误
+                          </button>
+                          {!isSuccess ? (
+                            <button
+                              type="button"
+                              className="rounded border px-3 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                              disabled={historyLoading || regeneratingPostId === h.postId}
+                              onClick={() => void onRegenerate(h.postId)}
+                            >
+                              {regeneratingPostId === h.postId ? '重新生成中...' : '重新生成'}
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   );

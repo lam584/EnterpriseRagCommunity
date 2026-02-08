@@ -79,4 +79,20 @@ public class QaMessageService {
             qaMessagesRepository.delete(msg);
         }
     }
+
+    @Transactional
+    public boolean toggleMyMessageFavorite(Long userId, Long messageId) {
+        if (userId == null) throw new IllegalArgumentException("userId is required");
+        if (messageId == null) throw new IllegalArgumentException("messageId is required");
+
+        QaMessagesEntity msg = qaMessagesRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("message not found"));
+
+        QaSessionsEntity session = qaSessionsRepository.findByIdAndUserId(msg.getSessionId(), userId)
+                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
+
+        msg.setIsFavorite(!Boolean.TRUE.equals(msg.getIsFavorite()));
+        qaMessagesRepository.save(msg);
+        return msg.getIsFavorite();
+    }
 }

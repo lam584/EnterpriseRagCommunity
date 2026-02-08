@@ -72,4 +72,13 @@ public class QaHistoryController {
         qaHistoryService.deleteMySession(me, sessionId);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/favorites")
+    public Page<QaMessageDTO> listFavorites(
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size
+    ) {
+        Long me = currentUserIdOrThrow();
+        return qaHistoryService.listMyFavoriteMessages(me, page, size);
+    }
 }

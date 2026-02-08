@@ -5,6 +5,13 @@ import { Checkbox } from '../../../../components/ui/checkbox';
 import { Label } from '../../../../components/ui/label';
 import EmailConfigForm from './email-config';
 import type { UserQueryDTO } from '../../../../types/userAccess';
+import { getEmailAdminSettings } from '../../../../services/emailAdminService';
+import { listRoleSummaries, type RoleSummaryDTO } from '../../../../services/rolePermissionsService';
+import {
+  getSecurity2faPolicySettings,
+  type Security2faPolicySettingsDTO,
+  updateSecurity2faPolicySettings,
+} from '../../../../services/security2faPolicyAdminService';
 import {
   type AdminUserTotpStatusDTO,
   getTotpAdminSettings,
@@ -17,6 +24,14 @@ import {
 const ALG_OPTIONS = ['SHA1', 'SHA256', 'SHA512'] as const;
 const DIGIT_OPTIONS = [6, 8] as const;
 const PERIOD_OPTIONS = [30, 60] as const;
+
+const ENABLE_POLICY_OPTIONS = [
+  { value: 'FORBID_ALL', label: '禁止所有人启用' },
+  { value: 'ALLOW_ALL', label: '全部用户可选启用' },
+  { value: 'ALLOW_ROLES', label: '指定角色可选启用' },
+  { value: 'REQUIRE_ALL', label: '全部用户强制启用' },
+  { value: 'REQUIRE_ROLES', label: '指定角色强制启用' },
+] as const;
 
 function uniq<T>(arr: T[]): T[] {
   return Array.from(new Set(arr));
@@ -34,6 +49,16 @@ function normalizeChecked(v: boolean | 'indeterminate'): boolean {
 }
 
 const TwoFAForm: React.FC = () => {
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policySaving, setPolicySaving] = useState(false);
+  const [policyEditing, setPolicyEditing] = useState(false);
+  const [policy, setPolicy] = useState<Security2faPolicySettingsDTO | null>(null);
+  const [policySnapshot, setPolicySnapshot] = useState<Security2faPolicySettingsDTO | null>(null);
+  const [policyError, setPolicyError] = useState<string | null>(null);
+  const [roleSummaries, setRoleSummaries] = useState<RoleSummaryDTO[]>([]);
+  const [roleSummariesError, setRoleSummariesError] = useState<string | null>(null);
+  const [emailSvcEnabled, setEmailSvcEnabled] = useState<boolean | null>(null);
+
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsEditing, setSettingsEditing] = useState(false);
@@ -82,6 +107,60 @@ const TwoFAForm: React.FC = () => {
     }
   };
 
+  const loadPolicy = async () => {
+    setPolicyLoading(true);
+    setPolicyError(null);
+    setRoleSummariesError(null);
+    try {
+      const [p, emailCfg] = await Promise.all([
+        getSecurity2faPolicySettings(),
+        getEmailAdminSettings().catch(() => null),
+      ]);
+
+      setEmailSvcEnabled(emailCfg ? Boolean(emailCfg.enabled) : null);
+      setPolicy({
+        totpPolicy: String(p.totpPolicy ?? 'ALLOW_ALL').trim().toUpperCase(),
+        totpRoleIds: uniq((p.totpRoleIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
+        emailOtpPolicy: String(p.emailOtpPolicy ?? 'ALLOW_ALL').trim().toUpperCase(),
+        emailOtpRoleIds: uniq((p.emailOtpRoleIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
+      });
+
+      try {
+        const roles = await listRoleSummaries();
+        setRoleSummaries((roles ?? []).filter(r => Number.isFinite(Number(r.roleId))));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '加载角色列表失败';
+        setRoleSummariesError(msg);
+        setRoleSummaries([]);
+      }
+
+      setPolicyEditing(false);
+      setPolicySnapshot(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '加载失败';
+      setPolicyError(msg);
+    } finally {
+      setPolicyLoading(false);
+    }
+  };
+
+  const savePolicy = async () => {
+    if (!policy) return;
+    setPolicySaving(true);
+    setPolicyError(null);
+    try {
+      const saved = await updateSecurity2faPolicySettings(policy);
+      setPolicy(saved);
+      setPolicyEditing(false);
+      setPolicySnapshot(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '保存失败';
+      setPolicyError(msg);
+    } finally {
+      setPolicySaving(false);
+    }
+  };
+
   const saveSettings = async () => {
     if (!settings) return;
     setSettingsSaving(true);
@@ -116,6 +195,7 @@ const TwoFAForm: React.FC = () => {
 
   useEffect(() => {
     void loadSettings();
+    void loadPolicy();
   }, []);
 
   useEffect(() => {
@@ -123,10 +203,179 @@ const TwoFAForm: React.FC = () => {
   }, [queryPayload]);
 
   const canEditSettings = settingsEditing && !settingsLoading && !settingsSaving;
+  const canEditPolicy = policyEditing && !policyLoading && !policySaving;
+
+  const policyNeedsRoles = (v?: string | null) => String(v ?? '').toUpperCase().includes('_ROLES');
+  const toggleRoleId = (list: number[] | undefined, roleId: number, nextChecked: boolean): number[] => {
+    const src = Array.isArray(list) ? list : [];
+    const next = toggleValue(src, roleId, nextChecked);
+    return uniq(next.map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)).sort((a, b) => a - b);
+  };
+  const policyLabel = (v?: string | null) => ENABLE_POLICY_OPTIONS.find(x => x.value === String(v ?? '').toUpperCase())?.label ?? String(v ?? '');
 
   return (
     <div className="space-y-4">
       <EmailConfigForm />
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold">2FA 启用策略（TOTP / 邮箱验证码）</h3>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={loadPolicy} disabled={policyLoading || policySaving || policyEditing}>
+              刷新
+            </Button>
+            {policyEditing ? (
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (policySnapshot) setPolicy(policySnapshot);
+                    setPolicyEditing(false);
+                    setPolicySnapshot(null);
+                    setPolicyError(null);
+                  }}
+                  disabled={policyLoading || policySaving}
+                >
+                  取消
+                </Button>
+                <Button onClick={savePolicy} disabled={policyLoading || policySaving || !policy}>
+                  {policySaving ? '保存中...' : '保存'}
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => {
+                  if (!policy) return;
+                  setPolicySnapshot(policy);
+                  setPolicyEditing(true);
+                  setPolicyError(null);
+                }}
+                disabled={policyLoading || policySaving || !policy}
+              >
+                编辑
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {policyError ? (
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{policyError}</div>
+        ) : null}
+
+        {roleSummariesError ? (
+          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            {roleSummariesError}
+          </div>
+        ) : null}
+
+        {!policy ? (
+          <div className="text-sm text-gray-500">{policyLoading ? '加载中...' : '暂无配置'}</div>
+        ) : (
+          <div className="space-y-3">
+            {String(policy.emailOtpPolicy ?? '').toUpperCase().startsWith('REQUIRE') && emailSvcEnabled === false ? (
+              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                邮箱服务当前处于关闭状态；邮箱验证码的“强制启用”策略将无法生效（用户侧会按不可用处理）。
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded border p-3 space-y-2">
+                <div className="font-medium text-sm">TOTP 启用策略</div>
+                <select
+                  className="border border-gray-300 rounded px-2 py-0 bg-white text-sm w-full h-9"
+                  value={String(policy.totpPolicy ?? 'ALLOW_ALL').toUpperCase()}
+                  disabled={!canEditPolicy}
+                  onChange={(e) => setPolicy(p => (p ? { ...p, totpPolicy: e.target.value } : p))}
+                >
+                  {ENABLE_POLICY_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+
+                {policyNeedsRoles(policy.totpPolicy) ? (
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-600">指定角色（命中任意一个 roleId 即生效）</div>
+                    {roleSummaries.length === 0 ? (
+                      <div className="text-xs text-gray-500">暂无角色数据</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {roleSummaries.map(r => (
+                          <div key={r.roleId} className="flex items-center gap-1.5">
+                            <Checkbox
+                              id={`totp-role-${r.roleId}`}
+                              className="h-3.5 w-3.5"
+                              checked={(policy.totpRoleIds ?? []).includes(r.roleId)}
+                              disabled={!canEditPolicy}
+                              onCheckedChange={(v) => {
+                                const next = toggleRoleId(policy.totpRoleIds ?? [], r.roleId, normalizeChecked(v));
+                                setPolicy(p => (p ? { ...p, totpRoleIds: next } : p));
+                              }}
+                            />
+                            <label htmlFor={`totp-role-${r.roleId}`} className="text-xs cursor-pointer select-none">
+                              {(r.roleName ? r.roleName : `roleId=${r.roleId}`) + ` (#${r.roleId})`}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded border p-3 space-y-2">
+                <div className="font-medium text-sm">邮箱验证码策略</div>
+                <select
+                  className="border border-gray-300 rounded px-2 py-0 bg-white text-sm w-full h-9"
+                  value={String(policy.emailOtpPolicy ?? 'ALLOW_ALL').toUpperCase()}
+                  disabled={!canEditPolicy}
+                  onChange={(e) => setPolicy(p => (p ? { ...p, emailOtpPolicy: e.target.value } : p))}
+                >
+                  {ENABLE_POLICY_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                <div className="text-[10px] text-gray-500">
+                  邮箱验证码是否可用还取决于 SMTP 配置是否开启。
+                </div>
+
+                {policyNeedsRoles(policy.emailOtpPolicy) ? (
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-600">指定角色（命中任意一个 roleId 即生效）</div>
+                    {roleSummaries.length === 0 ? (
+                      <div className="text-xs text-gray-500">暂无角色数据</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {roleSummaries.map(r => (
+                          <div key={r.roleId} className="flex items-center gap-1.5">
+                            <Checkbox
+                              id={`email-role-${r.roleId}`}
+                              className="h-3.5 w-3.5"
+                              checked={(policy.emailOtpRoleIds ?? []).includes(r.roleId)}
+                              disabled={!canEditPolicy}
+                              onCheckedChange={(v) => {
+                                const next = toggleRoleId(policy.emailOtpRoleIds ?? [], r.roleId, normalizeChecked(v));
+                                setPolicy(p => (p ? { ...p, emailOtpRoleIds: next } : p));
+                              }}
+                            />
+                            <label htmlFor={`email-role-${r.roleId}`} className="text-xs cursor-pointer select-none">
+                              {(r.roleName ? r.roleName : `roleId=${r.roleId}`) + ` (#${r.roleId})`}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {!canEditPolicy ? (
+              <div className="text-xs text-gray-500">
+                当前策略：TOTP「{policyLabel(policy.totpPolicy)}」；邮箱验证码「{policyLabel(policy.emailOtpPolicy)}」。
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
       <div className="bg-white rounded-lg shadow p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-lg font-semibold">TOTP 策略配置（允许用户选择的范围）</h3>

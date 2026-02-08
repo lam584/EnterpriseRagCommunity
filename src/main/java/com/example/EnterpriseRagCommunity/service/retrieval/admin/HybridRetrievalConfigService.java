@@ -70,7 +70,7 @@ public class HybridRetrievalConfigService {
         dto.setRrfK(60);
 
         dto.setRerankEnabled(true);
-        dto.setRerankModel("qwen3-rerank");
+        dto.setRerankModel(null);
         dto.setRerankTemperature(0.0);
         dto.setRerankK(30);
 
@@ -106,7 +106,7 @@ public class HybridRetrievalConfigService {
 
         dto.setRerankEnabled(Boolean.TRUE.equals(dto.getRerankEnabled()));
         String rm = dto.getRerankModel();
-        dto.setRerankModel(rm == null || rm.isBlank() ? "qwen3-rerank" : rm.trim());
+        dto.setRerankModel(rm == null || rm.isBlank() ? null : rm.trim());
         dto.setRerankTemperature(clampDouble(dto.getRerankTemperature(), 0.0, 2.0, 0.0));
         dto.setRerankK(clampInt(dto.getRerankK(), 0, 500, 30));
 

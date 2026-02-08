@@ -95,6 +95,14 @@ export const userAccessService = {
         return res.json();
     },
 
+    async getUserById(userId: number): Promise<UserDTO> {
+        const res = await fetch(`${API_BASE_URL}/${userId}`, {
+            credentials: 'include'
+        });
+        if (!res.ok) throw new Error('Failed to get user');
+        return res.json();
+    },
+
     async assignRoles(userId: number, roleIds: number[]): Promise<void> {
         // Normalize/validate payload to avoid sending nested arrays or nulls.
         const normalizedRoleIds = Array.from(

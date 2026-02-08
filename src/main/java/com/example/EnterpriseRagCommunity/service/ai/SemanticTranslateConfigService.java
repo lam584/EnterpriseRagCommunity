@@ -28,6 +28,8 @@ import lombok.RequiredArgsConstructor;
 public class SemanticTranslateConfigService {
 
     public static final int DEFAULT_MAX_CONTENT_CHARS = 8000;
+    private static final String GROUP_CODE = "SEMANTIC_TRANSLATE";
+    private static final String SUB_TYPE = "DEFAULT";
 
     public static final String DEFAULT_SYSTEM_PROMPT = """
 你是一个专业的翻译助手。
@@ -68,14 +70,18 @@ public class SemanticTranslateConfigService {
 
     @Transactional(readOnly = true)
     public SemanticTranslateConfigDTO getAdminConfig() {
-        SemanticTranslateConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        SemanticTranslateConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElse(null);
         if (cfg == null) return toDto(defaultEntity(), null);
         return toDto(cfg, null);
     }
 
     @Transactional(readOnly = true)
     public SemanticTranslatePublicConfigDTO getPublicConfig() {
-        SemanticTranslateConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        SemanticTranslateConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElse(null);
         if (cfg == null) cfg = defaultEntity();
 
         SemanticTranslatePublicConfigDTO dto = new SemanticTranslatePublicConfigDTO();
@@ -88,7 +94,9 @@ public class SemanticTranslateConfigService {
 
     @Transactional
     public SemanticTranslateConfigDTO upsertAdminConfig(SemanticTranslateConfigDTO payload, Long actorUserId, String actorUsername) {
-        SemanticTranslateConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(this::defaultEntity);
+        SemanticTranslateConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElseGet(this::defaultEntity);
 
         SemanticTranslateConfigEntity merged = mergeAndValidate(cfg, payload);
         merged.setUpdatedAt(LocalDateTime.now());
@@ -119,15 +127,20 @@ public class SemanticTranslateConfigService {
 
     @Transactional(readOnly = true)
     public SemanticTranslateConfigEntity getConfigEntityOrDefault() {
-        return configRepository.findTopByOrderByUpdatedAtDesc().orElseGet(this::defaultEntity);
+        return configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElseGet(this::defaultEntity);
     }
 
     private SemanticTranslateConfigEntity defaultEntity() {
         SemanticTranslateConfigEntity e = new SemanticTranslateConfigEntity();
+        e.setGroupCode(GROUP_CODE);
+        e.setSubType(SUB_TYPE);
         e.setEnabled(Boolean.TRUE);
         e.setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
         e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
         e.setModel(null);
+        e.setProviderId(null);
         e.setTemperature(0.2);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
         e.setHistoryEnabled(Boolean.TRUE);
@@ -177,6 +190,8 @@ public class SemanticTranslateConfigService {
 
         String model = payload.getModel();
         base.setModel(model == null || model.isBlank() ? null : model.trim());
+        String providerId = payload.getProviderId();
+        base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         base.setTemperature(temperature);
         base.setMaxContentChars(maxContentChars);
 
@@ -197,6 +212,7 @@ public class SemanticTranslateConfigService {
         dto.setSystemPrompt(e.getSystemPrompt());
         dto.setPromptTemplate(e.getPromptTemplate());
         dto.setModel(e.getModel());
+        dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
         dto.setMaxContentChars(e.getMaxContentChars());
         dto.setHistoryEnabled(e.getHistoryEnabled());

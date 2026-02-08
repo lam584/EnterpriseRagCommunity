@@ -1,8 +1,13 @@
 package com.example.EnterpriseRagCommunity;
 
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
+import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,24 +32,50 @@ class PostsSortByWhitelistTest {
     @Autowired
     PostsRepository postsRepository;
 
+    @Autowired
+    BoardsRepository boardsRepository;
+
+    @Autowired
+    UsersRepository usersRepository;
+
     @Test
     void listPosts_sortByHotScore_shouldNot500() throws Exception {
+        UsersEntity u = new UsersEntity();
+        u.setTenantId(null);
+        u.setEmail("u1@example.com");
+        u.setUsername("u1");
+        u.setPasswordHash("x");
+        u.setStatus(AccountStatus.ACTIVE);
+        u = usersRepository.save(u);
+
+        LocalDateTime now = LocalDateTime.now();
+        BoardsEntity b = new BoardsEntity();
+        b.setTenantId(null);
+        b.setParentId(null);
+        b.setName("b1");
+        b.setDescription(null);
+        b.setVisible(true);
+        b.setSortOrder(0);
+        b.setCreatedAt(now);
+        b.setUpdatedAt(now);
+        b = boardsRepository.save(b);
+
         // Ensure there is at least one published post, so the endpoint has something to return.
         // We keep fields minimal; DB defaults handle createdAt/updatedAt.
         PostsEntity p = new PostsEntity();
         p.setTenantId(null);
-        p.setBoardId(1L);
-        p.setAuthorId(1L);
+        p.setBoardId(b.getId());
+        p.setAuthorId(u.getId());
         p.setTitle("sort test");
         p.setContent("content");
         p.setContentFormat(ContentFormat.MARKDOWN);
         p.setStatus(PostStatus.PUBLISHED);
-        p.setPublishedAt(LocalDateTime.now());
+        p.setPublishedAt(now);
         p.setIsDeleted(false);
         postsRepository.save(p);
 
         mockMvc.perform(get("/api/posts")
-                        .param("boardId", "1")
+                        .param("boardId", String.valueOf(b.getId()))
                         .param("page", "1")
                         .param("pageSize", "20")
                         .param("status", "PUBLISHED")

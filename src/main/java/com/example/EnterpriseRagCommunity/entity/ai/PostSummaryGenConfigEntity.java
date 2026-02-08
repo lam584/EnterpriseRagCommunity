@@ -9,13 +9,19 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @Entity
-@Table(name = "post_summary_gen_config")
+@Table(name = "ai_gen_task_config")
 public class PostSummaryGenConfigEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private Long id;
+
+    @Column(name = "group_code", length = 64, nullable = false)
+    private String groupCode;
+
+    @Column(name = "sub_type", length = 32, nullable = false)
+    private String subType;
 
     @Column(name = "enabled", nullable = false)
     private Boolean enabled;
@@ -26,6 +32,9 @@ public class PostSummaryGenConfigEntity {
 
     @Column(name = "model", length = 128)
     private String model;
+
+    @Column(name = "provider_id", length = 64)
+    private String providerId;
 
     @Column(name = "temperature")
     private Double temperature;
@@ -43,4 +52,3 @@ public class PostSummaryGenConfigEntity {
     @Column(name = "updated_by")
     private Long updatedBy;
 }
-

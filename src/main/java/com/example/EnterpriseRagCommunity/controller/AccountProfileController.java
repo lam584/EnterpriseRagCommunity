@@ -10,6 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.EnterpriseRagCommunity.dto.access.UpdateMyProfileRequest;
 import com.example.EnterpriseRagCommunity.dto.access.UsersDTO;
+import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicyStatusDTO;
 import com.example.EnterpriseRagCommunity.dto.access.request.ChangePasswordRequest;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
@@ -25,6 +27,7 @@ import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.AccountSecurityService;
 import com.example.EnterpriseRagCommunity.service.AccountTotpService;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
+import com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import com.example.EnterpriseRagCommunity.service.notify.AccountSecurityNotificationMailer;
 import com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer;
@@ -45,8 +48,26 @@ public class AccountProfileController {
     private final AccountTotpService accountTotpService;
     private final EmailVerificationService emailVerificationService;
     private final EmailVerificationMailer emailVerificationMailer;
+    private final Security2faPolicyService security2faPolicyService;
     private final NotificationsService notificationsService;
     private final AccountSecurityNotificationMailer accountSecurityNotificationMailer;
+
+    @GetMapping("/security-2fa-policy")
+    public ResponseEntity<?> getMySecurity2faPolicy() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "未登录或会话已过期");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+
+        String email = auth.getName();
+        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(user.getId());
+        return ResponseEntity.ok(policy);
+    }
 
     @PutMapping("/profile")
     public ResponseEntity<?> updateMyProfile(@RequestBody @Valid UpdateMyProfileRequest req) {
@@ -113,38 +134,60 @@ public class AccountProfileController {
             UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
                     .orElseThrow(() -> new IllegalArgumentException("User not found"));
 
-            boolean emailSvcEnabled = emailVerificationMailer.isEnabled();
+            Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(user.getId());
+
             boolean totpEnabled = accountTotpService.isEnabledByEmail(email);
+            boolean canUseTotp = totpEnabled && policy.isTotpAllowed();
+            boolean canUseEmail = policy.isEmailOtpAllowed();
 
-            if (emailSvcEnabled && totpEnabled) {
-                // 1. If both are enabled, allow user to choose one
-                String emailCode = req.getEmailCode() == null ? "" : req.getEmailCode().trim();
-                String totpCode = req.getTotpCode() == null ? "" : req.getTotpCode().trim();
+            boolean requireTotp = policy.isTotpRequired();
+            boolean requireEmail = policy.isEmailOtpRequired();
 
-                if (emailCode.isEmpty() && totpCode.isEmpty()) {
-                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入验证码（邮箱或动态验证码任选其一）"));
-                }
+            String emailCode = req.getEmailCode() == null ? "" : req.getEmailCode().trim();
+            String totpCode = req.getTotpCode() == null ? "" : req.getTotpCode().trim();
 
-                if (!emailCode.isEmpty()) {
-                    emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.CHANGE_PASSWORD, emailCode);
+            if (requireTotp && !totpEnabled) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "管理员已强制启用 TOTP，请先在账号安全页启用后再修改密码"));
+            }
+
+            if (requireEmail && emailCode.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入邮箱验证码"));
+            }
+            if (requireTotp && totpCode.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入动态验证码"));
+            }
+
+            if (!requireEmail && !requireTotp) {
+                if (canUseEmail && canUseTotp) {
+                    if (emailCode.isEmpty() && totpCode.isEmpty()) {
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入验证码（邮箱或动态验证码任选其一）"));
+                    }
+                    if (!emailCode.isEmpty()) {
+                        emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.CHANGE_PASSWORD, emailCode);
+                    }
+                    if (!totpCode.isEmpty()) {
+                        accountTotpService.requireValidEnabledCodeByEmail(email, totpCode);
+                    }
                 } else {
-                    accountTotpService.requireValidEnabledCodeByEmail(email, totpCode);
+                    if (canUseEmail) {
+                        if (emailCode.isEmpty()) {
+                            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入邮箱验证码"));
+                        }
+                        emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.CHANGE_PASSWORD, emailCode);
+                    }
+                    if (canUseTotp) {
+                        if (totpCode.isEmpty()) {
+                            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入动态验证码"));
+                        }
+                        accountTotpService.requireValidEnabledCodeByEmail(email, totpCode);
+                    }
                 }
             } else {
-                // 2. Otherwise enforce whichever is enabled
-                if (emailSvcEnabled) {
-                    String emailCode = req.getEmailCode() == null ? "" : req.getEmailCode().trim();
-                    if (emailCode.isEmpty()) {
-                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入邮箱验证码"));
-                    }
+                if (requireEmail) {
                     emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.CHANGE_PASSWORD, emailCode);
                 }
-                if (totpEnabled) {
-                    String code = req.getTotpCode() == null ? "" : req.getTotpCode().trim();
-                    if (code.isEmpty()) {
-                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入动态验证码"));
-                    }
-                    accountTotpService.requireValidEnabledCodeByEmail(email, code);
+                if (requireTotp) {
+                    accountTotpService.requireValidEnabledCodeByEmail(email, totpCode);
                 }
             }
             accountSecurityService.changePasswordByEmail(email, req.getCurrentPassword(), req.getNewPassword());

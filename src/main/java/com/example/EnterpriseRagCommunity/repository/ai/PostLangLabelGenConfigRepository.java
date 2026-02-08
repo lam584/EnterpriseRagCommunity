@@ -8,6 +8,5 @@ import java.util.Optional;
 
 @Repository
 public interface PostLangLabelGenConfigRepository extends JpaRepository<PostLangLabelGenConfigEntity, Long> {
-    Optional<PostLangLabelGenConfigEntity> findTopByOrderByUpdatedAtDesc();
+    Optional<PostLangLabelGenConfigEntity> findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(String groupCode, String subType);
 }
-

@@ -21,16 +21,13 @@ public class VectorIndicesUpdateDTO {
     private Optional<VectorIndexProvider> provider;
 
     @ApiModelProperty(value = "集合名", example = "docs_collection")
-    @Size(max = 128)
-    private Optional<String> collectionName;
+    private Optional<@Size(max = 128) String> collectionName;
 
     @ApiModelProperty(value = "距离度量(eg. cosine, l2)", example = "cosine")
-    @Size(max = 32)
-    private Optional<String> metric;
+    private Optional<@Size(max = 32) String> metric;
 
     @ApiModelProperty(value = "向量维度（0 表示自动推断）", example = "1024")
-    @Min(0)
-    private Optional<Integer> dim;
+    private Optional<@Min(0) Integer> dim;
 
     @ApiModelProperty(value = "状态", example = "READY")
     private Optional<VectorIndexStatus> status;

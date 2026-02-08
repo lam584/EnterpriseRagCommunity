@@ -19,6 +19,9 @@ public class RetrievalEventsEntity {
     @Column(name = "user_id")
     private Long userId;
 
+    @Column(name = "session_id")
+    private Long sessionId;
+
     @Lob
     @Column(name = "query_text", nullable = false)
     private String queryText;

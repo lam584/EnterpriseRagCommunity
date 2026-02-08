@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getMyProfile, updateMyProfile } from '../../../../services/accountService';
+import { listMyPostsPage, type PostDTO } from '../../../../services/postService';
+import type { SpringPage } from '../../../../types/page';
 import type { UpdateUserProfileRequest, UserProfile } from '../../../../types/userProfile';
 import ProfileAvatarUploader from '../components/ProfileAvatarUploader';
+import PostFeed from '../../discover/components/PostFeed';
 
 function isValidWebsite(v: string): boolean {
   if (!v.trim()) return true;
@@ -14,6 +18,7 @@ function isValidWebsite(v: string): boolean {
 }
 
 export default function AccountProfilePage() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -30,6 +35,12 @@ export default function AccountProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState('');
   const [location, setLocation] = useState('');
   const [website, setWebsite] = useState('');
+
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postsErr, setPostsErr] = useState<string | null>(null);
+  const [postsPage, setPostsPage] = useState<SpringPage<PostDTO> | null>(null);
+  const [postsPageNo, setPostsPageNo] = useState(1);
+  const [postsReloadTick, setPostsReloadTick] = useState(0);
 
   function resetDraftFrom(p: UserProfile) {
     setUsername(p.username ?? '');
@@ -66,6 +77,40 @@ export default function AccountProfilePage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!profile) return;
+
+      setPostsLoading(true);
+      setPostsErr(null);
+      try {
+        const page = await listMyPostsPage({
+          status: 'PUBLISHED',
+          page: postsPageNo,
+          pageSize: 10,
+          sortBy: 'publishedAt',
+          sortOrderDirection: 'DESC',
+        });
+        if (cancelled) return;
+        setPostsPage(page);
+      } catch (e: unknown) {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : undefined;
+        setPostsErr(msg || '加载帖子失败');
+        setPostsPage(null);
+      } finally {
+        if (!cancelled) setPostsLoading(false);
+      }
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [profile, postsPageNo, postsReloadTick]);
 
   const validationError = useMemo(() => {
     const u = username.trim();
@@ -212,7 +257,6 @@ export default function AccountProfilePage() {
     <div className="space-y-5">
       <div>
         <h3 className="text-lg font-semibold">个人资料</h3>
-        <p className="text-gray-600">修改昵称、头像与个人简介。邮箱为登录名，不能在这里修改。</p>
       </div>
 
       {loadErr ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{loadErr}</div> : null}
@@ -325,6 +369,41 @@ export default function AccountProfilePage() {
           )}
         </div>
       </form>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h4 className="text-base font-semibold">我发布的帖子</h4>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50 text-sm"
+              onClick={() => {
+                setPostsPageNo(1);
+                setPostsReloadTick((n) => n + 1);
+              }}
+              disabled={postsLoading}
+            >
+              刷新
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800 text-sm"
+              onClick={() => navigate('/portal/account/mine')}
+            >
+              管理
+            </button>
+          </div>
+        </div>
+
+        <PostFeed
+          page={postsPage}
+          loading={postsLoading}
+          error={postsErr}
+          onRetry={() => setPostsReloadTick((n) => n + 1)}
+          onPrev={() => setPostsPageNo((n) => Math.max(1, n - 1))}
+          onNext={() => setPostsPageNo((n) => n + 1)}
+        />
+      </div>
     </div>
   );
 }

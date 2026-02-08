@@ -9,4 +9,5 @@ public class RagPostsTestQueryRequest {
     private Long boardId;
     private Integer numCandidates;
     private String embeddingModel;
+    private String embeddingProviderId;
 }

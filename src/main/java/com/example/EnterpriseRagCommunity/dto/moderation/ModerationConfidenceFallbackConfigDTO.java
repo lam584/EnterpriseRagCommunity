@@ -28,6 +28,12 @@ public class ModerationConfidenceFallbackConfigDTO {
     private Double llmRejectThreshold;
     private Double llmHumanThreshold;
 
+    private Double llmTextRiskThreshold;
+    private Double llmImageRiskThreshold;
+    private Double llmStrongRejectThreshold;
+    private Double llmStrongPassThreshold;
+    private Double llmCrossModalThreshold;
+
     private Integer reportHumanThreshold;
 
     private LocalDateTime updatedAt;

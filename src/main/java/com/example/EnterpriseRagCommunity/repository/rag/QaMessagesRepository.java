@@ -24,4 +24,7 @@ public interface QaMessagesRepository extends JpaRepository<QaMessagesEntity, Lo
 
     @Query(value = "SELECT m.* FROM qa_messages m JOIN qa_sessions s ON s.id = m.session_id WHERE s.user_id = :userId AND s.is_active = 1 AND MATCH(m.content) AGAINST(:q IN BOOLEAN MODE)", nativeQuery = true)
     Page<QaMessagesEntity> searchMyMessagesFulltext(@Param("userId") Long userId, @Param("q") String q, Pageable pageable);
+
+    @Query("SELECT m FROM QaMessagesEntity m JOIN QaSessionsEntity s ON s.id = m.sessionId WHERE s.userId = :userId AND m.isFavorite = true ORDER BY m.createdAt DESC")
+    Page<QaMessagesEntity> findMyFavorites(@Param("userId") Long userId, Pageable pageable);
 }

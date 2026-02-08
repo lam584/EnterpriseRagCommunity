@@ -1,12 +1,10 @@
 package com.example.EnterpriseRagCommunity.service.content.impl;
 
 import com.example.EnterpriseRagCommunity.dto.content.PostToggleResponseDTO;
-import com.example.EnterpriseRagCommunity.entity.content.FavoritesEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.ReactionsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionTargetType;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionType;
-import com.example.EnterpriseRagCommunity.repository.content.FavoritesRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
@@ -23,9 +21,6 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
 
     @Autowired
     private ReactionsRepository reactionsRepository;
-
-    @Autowired
-    private FavoritesRepository favoritesRepository;
 
     @Autowired
     private AdministratorService administratorService;
@@ -81,9 +76,13 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
         long likeCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
                 ReactionTargetType.POST, postId, ReactionType.LIKE
         );
-        long favCount = favoritesRepository.countByPostId(postId);
+        long favCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
+                ReactionTargetType.POST, postId, ReactionType.FAVORITE
+        );
         boolean likedByMe = !existed;
-        boolean favByMe = favoritesRepository.existsByUserIdAndPostId(me, postId);
+        boolean favByMe = reactionsRepository.existsByUserIdAndTargetTypeAndTargetIdAndType(
+                me, ReactionTargetType.POST, postId, ReactionType.FAVORITE
+        );
         return new PostToggleResponseDTO(likedByMe, favByMe, likeCount, favCount);
     }
 
@@ -93,21 +92,29 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
         if (postId == null) throw new IllegalArgumentException("postId 不能为空");
         Long me = currentUserIdOrThrow();
 
-        boolean existed = favoritesRepository.existsByUserIdAndPostId(me, postId);
+        boolean existed = reactionsRepository.existsByUserIdAndTargetTypeAndTargetIdAndType(
+                me, ReactionTargetType.POST, postId, ReactionType.FAVORITE
+        );
         if (existed) {
-            favoritesRepository.deleteByUserIdAndPostId(me, postId);
+            reactionsRepository.deleteByUserIdAndTargetTypeAndTargetIdAndType(
+                    me, ReactionTargetType.POST, postId, ReactionType.FAVORITE
+            );
         } else {
-            FavoritesEntity e = new FavoritesEntity();
-            e.setPostId(postId);
+            ReactionsEntity e = new ReactionsEntity();
             e.setUserId(me);
+            e.setTargetType(ReactionTargetType.POST);
+            e.setTargetId(postId);
+            e.setType(ReactionType.FAVORITE);
             e.setCreatedAt(LocalDateTime.now());
-            favoritesRepository.save(e);
+            reactionsRepository.save(e);
         }
 
         long likeCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
                 ReactionTargetType.POST, postId, ReactionType.LIKE
         );
-        long favCount = favoritesRepository.countByPostId(postId);
+        long favCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
+                ReactionTargetType.POST, postId, ReactionType.FAVORITE
+        );
         boolean likedByMe = reactionsRepository.existsByUserIdAndTargetTypeAndTargetIdAndType(
                 me, ReactionTargetType.POST, postId, ReactionType.LIKE
         );
@@ -122,12 +129,16 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
         Long me = currentUserIdOrThrow();
 
         // deleteBy.. 本身是幂等的：无记录不会报错
-        favoritesRepository.deleteByUserIdAndPostId(me, postId);
+        reactionsRepository.deleteByUserIdAndTargetTypeAndTargetIdAndType(
+                me, ReactionTargetType.POST, postId, ReactionType.FAVORITE
+        );
 
         long likeCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
                 ReactionTargetType.POST, postId, ReactionType.LIKE
         );
-        long favCount = favoritesRepository.countByPostId(postId);
+        long favCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
+                ReactionTargetType.POST, postId, ReactionType.FAVORITE
+        );
         boolean likedByMe = reactionsRepository.existsByUserIdAndTargetTypeAndTargetIdAndType(
                 me, ReactionTargetType.POST, postId, ReactionType.LIKE
         );
@@ -146,7 +157,9 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
     @Override
     public long countFavorites(Long postId) {
         if (postId == null) return 0;
-        return favoritesRepository.countByPostId(postId);
+        return reactionsRepository.countByTargetTypeAndTargetIdAndType(
+                ReactionTargetType.POST, postId, ReactionType.FAVORITE
+        );
     }
 
     @Override
@@ -162,6 +175,8 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
     public boolean favoritedByMe(Long postId) {
         if (postId == null) return false;
         Long me = currentUserIdOrThrow();
-        return favoritesRepository.existsByUserIdAndPostId(me, postId);
+        return reactionsRepository.existsByUserIdAndTargetTypeAndTargetIdAndType(
+                me, ReactionTargetType.POST, postId, ReactionType.FAVORITE
+        );
     }
 }

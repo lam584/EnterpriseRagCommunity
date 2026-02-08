@@ -229,12 +229,11 @@ const CitationForm: React.FC = () => {
       {message && (
         <div className="rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">{message}</div>
       )}
-
       <div className="space-y-3 rounded border border-gray-200 p-3">
         <div className="font-medium">基础配置</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <div>
-            <div className="text-xs text-gray-500 mb-1">citationMode</div>
+            <div className="text-xs text-gray-500 mb-1">引用模式</div>
             <select
               className={inputClass}
               value={config.citationMode ?? 'MODEL_INLINE'}
@@ -247,7 +246,7 @@ const CitationForm: React.FC = () => {
             </select>
           </div>
           <div>
-            <div className="text-xs text-gray-500 mb-1">maxSources</div>
+            <div className="text-xs text-gray-500 mb-1">最大来源数</div>
             <input
               className={inputClass}
               value={config.maxSources ?? ''}
@@ -257,7 +256,7 @@ const CitationForm: React.FC = () => {
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-500 mb-1">instructionTemplate（会拼到 system prompt）</div>
+          <div className="text-xs text-gray-500 mb-1">指令模板（会拼到 system prompt）</div>
           <textarea
             className={inputClass}
             value={config.instructionTemplate ?? ''}
@@ -272,7 +271,7 @@ const CitationForm: React.FC = () => {
         <div className="font-medium">来源区渲染</div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           <div>
-            <div className="text-xs text-gray-500 mb-1">sourcesTitle</div>
+            <div className="text-xs text-gray-500 mb-1">来源标题</div>
             <input
               className={inputClass}
               value={config.sourcesTitle ?? ''}
@@ -281,7 +280,7 @@ const CitationForm: React.FC = () => {
             />
           </div>
           <div>
-            <div className="text-xs text-gray-500 mb-1">postUrlTemplate（{`{postId}` }）</div>
+            <div className="text-xs text-gray-500 mb-1">文章链接模板（{`{postId}` }）</div>
             <input
               className={inputClass}
               value={config.postUrlTemplate ?? ''}
@@ -298,7 +297,7 @@ const CitationForm: React.FC = () => {
               onChange={(e) => setConfig((v) => ({ ...v, includeTitle: e.target.checked }))}
               disabled={!canWrite || !editing}
             />
-            title
+            标题
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -307,7 +306,7 @@ const CitationForm: React.FC = () => {
               onChange={(e) => setConfig((v) => ({ ...v, includeUrl: e.target.checked }))}
               disabled={!canWrite || !editing}
             />
-            url
+            链接
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -316,7 +315,7 @@ const CitationForm: React.FC = () => {
               onChange={(e) => setConfig((v) => ({ ...v, includeScore: e.target.checked }))}
               disabled={!canWrite || !editing}
             />
-            score
+            得分
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -325,7 +324,7 @@ const CitationForm: React.FC = () => {
               onChange={(e) => setConfig((v) => ({ ...v, includePostId: e.target.checked }))}
               disabled={!canWrite || !editing}
             />
-            postId
+            文章ID
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -334,11 +333,10 @@ const CitationForm: React.FC = () => {
               onChange={(e) => setConfig((v) => ({ ...v, includeChunkIndex: e.target.checked }))}
               disabled={!canWrite || !editing}
             />
-            chunkIndex
+            块序号
           </label>
         </div>
       </div>
-
       <div className="space-y-3 rounded border border-gray-200 p-3">
         <div className="flex items-center justify-between gap-3">
           <div>

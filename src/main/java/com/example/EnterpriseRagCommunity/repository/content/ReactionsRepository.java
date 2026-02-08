@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.repository.content;
 
 import com.example.EnterpriseRagCommunity.entity.content.ReactionsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionTargetType;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionType;
 import org.springframework.data.domain.Page;
@@ -47,4 +48,16 @@ public interface ReactionsRepository extends JpaRepository<ReactionsEntity, Long
                                         @Param("targetType") ReactionTargetType targetType,
                                         @Param("type") ReactionType type,
                                         @Param("targetIds") List<Long> targetIds);
+
+    @Query(
+            value = "select p from PostsEntity p join ReactionsEntity r on r.targetId = p.id " +
+                    "where r.userId = :userId and r.targetType = :targetType and r.type = :type and p.isDeleted = false " +
+                    "order by r.createdAt desc",
+            countQuery = "select count(p.id) from PostsEntity p join ReactionsEntity r on r.targetId = p.id " +
+                    "where r.userId = :userId and r.targetType = :targetType and r.type = :type and p.isDeleted = false"
+    )
+    Page<PostsEntity> findBookmarkedPostsByUserId(@Param("userId") Long userId,
+                                                 @Param("targetType") ReactionTargetType targetType,
+                                                 @Param("type") ReactionType type,
+                                                 Pageable pageable);
 }

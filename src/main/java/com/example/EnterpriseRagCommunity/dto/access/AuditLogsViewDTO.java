@@ -17,7 +17,7 @@ public record AuditLogsViewDTO(
         LocalDateTime createdAt,
 
         Long tenantId,
-        Long actorUserId,
+        Long actorId,
         String actorName,
 
         String action,

@@ -1,11 +1,13 @@
 package com.example.EnterpriseRagCommunity.controller.ai;
 
+import com.example.EnterpriseRagCommunity.dto.ai.AiChatResponseDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatStreamRequest;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.AiChatService;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +26,12 @@ public class AiChatController {
     public void stream(@Valid @RequestBody AiChatStreamRequest req, HttpServletResponse response) throws IOException {
         Long currentUserId = currentUserIdOrThrow();
         aiChatService.streamChat(req, currentUserId, response);
+    }
+
+    @PostMapping
+    public ResponseEntity<AiChatResponseDTO> chat(@Valid @RequestBody AiChatStreamRequest req) {
+        Long currentUserId = currentUserIdOrThrow();
+        return ResponseEntity.ok(aiChatService.chatOnce(req, currentUserId));
     }
 
     private Long currentUserIdOrThrow() {

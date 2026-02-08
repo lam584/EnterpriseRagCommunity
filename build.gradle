@@ -36,6 +36,11 @@ bootJar { enabled = false }                // jar 禁用
 tasks.named('bootRun') {
     dependsOn 'build'
     classpath = sourceSets.main.runtimeClasspath
+    jvmArgs(
+            '-Dfile.encoding=UTF-8',
+            '-Dsun.stdout.encoding=UTF-8',
+            '-Dsun.stderr.encoding=UTF-8'
+    )
 }
 dependencies {
     // 核心 Web + 内嵌 Tomcat

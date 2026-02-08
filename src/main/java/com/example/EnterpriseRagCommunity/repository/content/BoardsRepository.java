@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface BoardsRepository extends JpaRepository<BoardsEntity, Long>, JpaSpecificationExecutor<BoardsEntity> {
@@ -16,6 +17,7 @@ public interface BoardsRepository extends JpaRepository<BoardsEntity, Long>, Jpa
     List<BoardsEntity> findByParentId(Long parentId);
     List<BoardsEntity> findByTenantId(Long tenantId);
     List<BoardsEntity> findByVisibleTrueOrderBySortOrderAsc();
+    Optional<BoardsEntity> findFirstByTenantIdIsNullAndParentIdIsNullAndName(String name);
 
     // Pageable
     Page<BoardsEntity> findByTenantId(Long tenantId, Pageable pageable);

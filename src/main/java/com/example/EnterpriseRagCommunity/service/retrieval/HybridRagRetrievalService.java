@@ -1,5 +1,6 @@
 package com.example.EnterpriseRagCommunity.service.retrieval;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -17,13 +18,14 @@ import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
-import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import com.example.EnterpriseRagCommunity.service.ai.AiRerankService;
+import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,7 +41,8 @@ public class HybridRagRetrievalService {
     private final RagPostsIndexService indexService;
     private final AiEmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
-    private final AiProperties aiProperties;
+    private final AiRerankService aiRerankService;
+    private final LlmGateway llmGateway;
     private final PostsRepository postsRepository;
 
     @Value("${spring.elasticsearch.uris:http://127.0.0.1:9200}")
@@ -261,15 +264,16 @@ public class HybridRagRetrievalService {
     }
 
     private List<DocHit> rerank(String queryText, List<DocHit> fused, int rerankK, HybridRetrievalConfigDTO cfg) {
-        String model = cfg == null || cfg.getRerankModel() == null || cfg.getRerankModel().isBlank() ? aiProperties.getModel() : cfg.getRerankModel().trim();
-        Double temperature = cfg == null ? null : cfg.getRerankTemperature();
+        String modelOverride = cfg == null || cfg.getRerankModel() == null || cfg.getRerankModel().isBlank() ? null : cfg.getRerankModel().trim();
 
         int perDocMaxTokens = cfg == null || cfg.getPerDocMaxTokens() == null ? 4000 : cfg.getPerDocMaxTokens();
         int maxInputTokens = cfg == null || cfg.getMaxInputTokens() == null ? 30000 : cfg.getMaxInputTokens();
 
         List<DocHit> candidates = fused.subList(0, Math.min(rerankK, fused.size()));
-        List<Map<String, Object>> docs = new ArrayList<>();
+        List<DocHit> candidatesUsed = new ArrayList<>();
+        List<String> docTexts = new ArrayList<>();
         int budgetLeft = Math.max(500, maxInputTokens);
+        int queryTokens = approxTokens(queryText == null ? "" : queryText);
 
         for (DocHit h : candidates) {
             if (h == null || h.getDocId() == null) continue;
@@ -277,64 +281,61 @@ public class HybridRagRetrievalService {
             t = truncateByApproxTokens(t, perDocMaxTokens);
             int tokens = approxTokens(t);
             if (tokens <= 0) continue;
-            if (budgetLeft - tokens < 200) break;
-            budgetLeft -= tokens;
-            docs.add(Map.of(
-                    "doc_id", h.getDocId(),
-                    "title", h.getTitle() == null ? "" : h.getTitle(),
-                    "text", t
-            ));
+            int cost = tokens + Math.max(0, queryTokens);
+            if (budgetLeft - cost < 200) break;
+            budgetLeft -= cost;
+            candidatesUsed.add(h);
+            docTexts.add(t);
         }
 
-        if (docs.isEmpty()) return fused;
+        if (docTexts.isEmpty()) return fused;
 
-        String userPrompt = buildRerankPrompt(queryText, docs);
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", "你是文本重排模型。给定 query 与候选文档列表，请输出严格 JSON，对文档按相关性排序。只输出 JSON。"));
-        messages.add(Map.of("role", "user", "content", userPrompt));
-
-        String raw;
+        AiRerankService.RerankResult rr;
         try {
-            raw = new BailianOpenAiSseClient(aiProperties).chatCompletionsOnce(null, aiProperties.getBaseUrl(), model, messages, temperature);
-        } catch (Exception e) {
+            rr = llmGateway.rerankOnceRouted(
+                    LlmQueueTaskType.RERANK,
+                    null,
+                    modelOverride,
+                    queryText,
+                    docTexts,
+                    docTexts.size(),
+                    "Given a web search query, retrieve relevant passages that answer the query.",
+                    false,
+                    null
+            );
+        } catch (IOException e) {
             throw new IllegalStateException("Rerank upstream failed: " + e.getMessage(), e);
         }
-        String assistant = extractAssistantContent(raw);
-        List<ScoredDoc> ranking = parseRankingFromAssistant(assistant);
-        if (ranking.isEmpty()) return fused;
-
-        Map<String, Double> scoreMap = new HashMap<>();
-        List<String> ordered = new ArrayList<>();
-        for (ScoredDoc sd : ranking) {
-            if (sd == null || sd.docId == null) continue;
-            if (!scoreMap.containsKey(sd.docId)) {
-                scoreMap.put(sd.docId, sd.score);
-                ordered.add(sd.docId);
-            }
-        }
-
-        Map<String, DocHit> byId = new HashMap<>();
-        for (DocHit h : candidates) {
-            if (h == null || h.getDocId() == null) continue;
-            byId.put(h.getDocId(), h);
-        }
+        if (rr == null || rr.results() == null || rr.results().isEmpty()) return fused;
 
         List<DocHit> reranked = new ArrayList<>();
         int rank = 0;
-        for (String id : ordered) {
-            DocHit h = byId.get(id);
-            if (h == null) continue;
+        Set<String> seen = new HashSet<>();
+        for (AiRerankService.RerankHit hit : rr.results()) {
+            if (hit == null) continue;
+            int idx = hit.index();
+            if (idx < 0 || idx >= candidatesUsed.size()) continue;
+            DocHit h = candidatesUsed.get(idx);
+            if (h == null || h.getDocId() == null) continue;
+            if (!seen.add(h.getDocId())) continue;
             DocHit hh = h.copyShallow();
-            hh.setRerankScore(scoreMap.get(id));
+            hh.setRerankScore(hit.relevanceScore());
             hh.setRerankRank(++rank);
             reranked.add(hh);
         }
 
-        Set<String> seen = new HashSet<>();
-        for (DocHit h : reranked) if (h.getDocId() != null) seen.add(h.getDocId());
-        for (DocHit h : candidates) {
+        for (DocHit h : candidatesUsed) {
             if (h == null || h.getDocId() == null) continue;
             if (seen.contains(h.getDocId())) continue;
+            DocHit hh = h.copyShallow();
+            hh.setRerankScore(null);
+            hh.setRerankRank(++rank);
+            reranked.add(hh);
+        }
+
+        for (int i = candidatesUsed.size(); i < candidates.size(); i++) {
+            DocHit h = candidates.get(i);
+            if (h == null) continue;
             DocHit hh = h.copyShallow();
             hh.setRerankScore(null);
             hh.setRerankRank(++rank);

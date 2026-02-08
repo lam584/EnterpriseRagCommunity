@@ -14,6 +14,7 @@ public class PostRiskTagGenConfigDTO {
     private String promptTemplate;
 
     private String model;
+    private String providerId;
     private Double temperature;
     private Integer maxCount;
     private Integer maxContentChars;

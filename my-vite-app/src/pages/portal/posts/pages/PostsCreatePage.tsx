@@ -18,6 +18,7 @@ import { suggestPostTags } from '../../../../services/aiTagService';
 import { getPostTagGenPublicConfig, type PostTagGenPublicConfigDTO } from '../../../../services/tagGenPublicService';
 import { getLangLabelGenConfig, suggestPostLangLabels, type LangLabelGenPublicConfigDTO } from '../../../../services/aiLangLabelService';
 import type { PostsOutletContext } from '../PostsLayout';
+import PostComposeAssistantWindow from '../components/PostComposeAssistantWindow';
 
 function getErrorMessage(e: unknown, fallback: string) {
   if (e && typeof e === 'object' && 'message' in e) {
@@ -56,6 +57,7 @@ export default function PostsCreatePage() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [composeLocked, setComposeLocked] = useState(false);
 
   const [boards, setBoards] = useState<BoardDTO[]>([]);
 
@@ -63,10 +65,11 @@ export default function PostsCreatePage() {
   const contentEditorWrapRef = useRef<HTMLDivElement | null>(null);
   const [contentEditorHeightPx, setContentEditorHeightPx] = useState<number | null>(null);
 
-  const [useAiTitle, setUseAiTitle] = useState(false);
+  const [useAiTitle, setUseAiTitle] = useState(true);
   const [titleSuggesting, setTitleSuggesting] = useState(false);
   const [titleSuggestError, setTitleSuggestError] = useState<string | null>(null);
   const [titleCandidates, setTitleCandidates] = useState<string[]>([]);
+  const [selectedTitleCandidateIndex, setSelectedTitleCandidateIndex] = useState<string>('');
   const [titleGenConfig, setTitleGenConfig] = useState<PostTitleGenPublicConfigDTO | null>(null);
   const [titleGenConfigError, setTitleGenConfigError] = useState<string | null>(null);
   const [titleGenCount, setTitleGenCount] = useState<number>(5);
@@ -90,6 +93,12 @@ export default function PostsCreatePage() {
 
   const isEditingDraft = useMemo(() => Boolean(draftId), [draftId]);
   // const isEditingPost = useMemo(() => postId !== null, [postId]);
+
+  useEffect(() => {
+    if (!composeLocked) return;
+    const el = document.activeElement as HTMLElement | null;
+    if (el && typeof el.blur === 'function') el.blur();
+  }, [composeLocked]);
 
   useEffect(() => {
     let raf = 0;
@@ -174,9 +183,10 @@ export default function PostsCreatePage() {
         if (!mounted) return;
         setTitleGenConfig(cfg);
         setTitleGenCount(cfg?.defaultCount ?? 5);
+        setUseAiTitle(cfg?.enabled !== false);
         if (cfg && cfg.enabled === false) {
-          setUseAiTitle(false);
           setTitleCandidates([]);
+          setSelectedTitleCandidateIndex('');
           setTitleSuggestError(null);
         }
       } catch (e: unknown) {
@@ -184,6 +194,7 @@ export default function PostsCreatePage() {
         setTitleGenConfig(null);
         setTitleGenConfigError(getErrorMessage(e, '获取标题生成配置失败'));
         setTitleGenCount(5);
+        setUseAiTitle(true);
       }
     };
     void load();
@@ -201,8 +212,8 @@ export default function PostsCreatePage() {
         if (!mounted) return;
         setTagGenConfig(cfg);
         setTagGenCount(cfg?.defaultCount ?? 5);
+        setUseAiTags(cfg?.enabled !== false);
         if (cfg && cfg.enabled === false) {
-          setUseAiTags(false);
           setTagCandidates([]);
           setTagSuggestError(null);
         }
@@ -671,6 +682,7 @@ export default function PostsCreatePage() {
   useEffect(() => {
     // 切换草稿/帖子时，清理标题候选避免跨帖子串数据
     setTitleCandidates([]);
+    setSelectedTitleCandidateIndex('');
     setTitleSuggestError(null);
     setTitleSuggesting(false);
     setTagCandidates([]);
@@ -689,6 +701,7 @@ export default function PostsCreatePage() {
 
     setTitleSuggesting(true);
     setTitleSuggestError(null);
+    setSelectedTitleCandidateIndex('');
 
     try {
       const boardName = boards.find((b) => b.id === draft.boardId)?.name;
@@ -732,27 +745,11 @@ export default function PostsCreatePage() {
         {busy ? (
           <div className="text-sm text-gray-600">正在加载{postId !== null ? '帖子' : '草稿'}...</div>
         ) : (
+          <div className={composeLocked ? 'pointer-events-none opacity-70' : ''}>
           <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="md:col-span-2">
-                <div className="flex items-center justify-between gap-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">标题</label>
-
-                  <label className="flex items-center gap-2 text-xs text-gray-600 select-none">
-                    <input
-                      type="checkbox"
-                      checked={useAiTitle}
-                      disabled={titleGenConfig?.enabled === false}
-                      onChange={(e) => {
-                        const v = e.target.checked;
-                        setUseAiTitle(v);
-                        setTitleSuggestError(null);
-                        if (!v) setTitleCandidates([]);
-                      }}
-                    />
-                    使用AI生成标题
-                  </label>
-                </div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">标题</label>
 
                 <input
                   value={draft.title}
@@ -760,72 +757,6 @@ export default function PostsCreatePage() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="输入标题..."
                 />
-
-                {useAiTitle && (
-                  <div className="mt-2 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs text-gray-600">生成数量</div>
-                        <select
-                          value={titleGenCount}
-                          onChange={(e) => setTitleGenCount(Number(e.target.value))}
-                          className="border border-gray-300 rounded-md px-2 py-1 text-xs bg-white"
-                        >
-                          {Array.from(
-                            { length: Math.max(1, Math.min(titleGenConfig?.maxCount ?? 10, 50)) },
-                            (_, i) => i + 1
-                          ).map((n) => (
-                            <option key={n} value={n}>
-                              {n}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={titleSuggesting}
-                        onClick={() => void handleSuggestTitles()}
-                        className="px-3 py-1.5 rounded-md bg-gray-100 hover:bg-gray-200 text-sm disabled:opacity-60"
-                      >
-                        {titleSuggesting ? '生成中...' : '生成候选标题'}
-                      </button>
-                      <div className="text-xs text-gray-500">根据正文内容生成 {titleGenCount} 个候选标题，点击即可填充。</div>
-                    </div>
-
-                    {titleGenConfig?.enabled === false && (
-                      <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                        标题生成已被管理员关闭。
-                      </div>
-                    )}
-                    {titleGenConfigError && (
-                      <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                        {titleGenConfigError}
-                      </div>
-                    )}
-
-                    {titleSuggestError && (
-                      <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-                        {titleSuggestError}
-                      </div>
-                    )}
-
-                    {titleCandidates.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {titleCandidates.map((t, idx) => (
-                          <button
-                            key={`${idx}-${t}`}
-                            type="button"
-                            onClick={() => setDraft((p) => ({ ...p, title: t }))}
-                            className="px-3 py-1.5 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-sm"
-                            title="点击使用该标题"
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               <div>
@@ -918,7 +849,7 @@ export default function PostsCreatePage() {
                       setTagQuery('');
                     }}
                   >
-                    新增
+                    添加标签
                   </button>
                 </div>
 
@@ -946,29 +877,83 @@ export default function PostsCreatePage() {
               </div>
 
               <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <label className="flex items-center gap-2 text-xs text-gray-600 select-none">
-                    <input
-                      type="checkbox"
-                      checked={useAiTags}
-                      disabled={tagGenConfig?.enabled === false}
-                      onChange={(e) => {
-                        const v = e.target.checked;
-                        setUseAiTags(v);
-                        setTagSuggestError(null);
-                        if (!v) setTagCandidates([]);
-                      }}
-                    />
-                    使用AI生成主题标签
-                  </label>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-gray-600">生成数量</div>
+                      <select
+                        value={titleGenCount}
+                        onChange={(e) => setTitleGenCount(Number(e.target.value))}
+                        className="w-14 border border-gray-300 rounded-md px-2 py-1 text-xs bg-white"
+                        disabled={useAiTitle !== true || titleGenConfig?.enabled === false}
+                      >
+                        {Array.from(
+                          { length: Math.max(1, Math.min(titleGenConfig?.maxCount ?? 10, 50)) },
+                          (_, i) => i + 1
+                        ).map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={useAiTitle !== true || titleGenConfig?.enabled === false || titleSuggesting}
+                      onClick={() => void handleSuggestTitles()}
+                      className="px-3 py-1.5 rounded-md bg-white border border-gray-300 hover:bg-gray-50 text-sm disabled:opacity-60"
+                    >
+                      {titleSuggesting ? '生成中...' : '生成标题'}
+                    </button>
 
-                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedTitleCandidateIndex}
+                      onChange={(e) => {
+                        const nextIdx = e.target.value;
+                        setSelectedTitleCandidateIndex(nextIdx);
+                        if (nextIdx === '') return;
+                        const i = Number(nextIdx);
+                        const t = Number.isFinite(i) ? titleCandidates[i] : null;
+                        if (t) setDraft((p) => ({ ...p, title: t }));
+                      }}
+                      className="flex-1 min-w-[220px] border border-gray-300 rounded-md px-2 py-1 text-xs bg-white"
+                      disabled={titleCandidates.length === 0}
+                      title={titleCandidates.length ? '选择一个候选标题自动填充到标题输入框' : '先生成候选标题'}
+                    >
+                      <option value="">{titleCandidates.length ? '选择候选标题…' : '暂无候选标题'}</option>
+                      {titleCandidates.map((t, idx) => (
+                        <option key={`${idx}-${t}`} value={String(idx)}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {titleGenConfig?.enabled === false && (
+                    <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                      标题生成已被管理员关闭。
+                    </div>
+                  )}
+                  {titleGenConfigError && (
+                    <div className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                      {titleGenConfigError}
+                    </div>
+                  )}
+                  {titleSuggestError && (
+                    <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                      {titleSuggestError}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     <div className="text-xs text-gray-600">生成数量</div>
                     <select
                       value={tagGenCount}
                       onChange={(e) => setTagGenCount(Number(e.target.value))}
-                      className="border border-gray-300 rounded-md px-2 py-1 text-xs bg-white"
-                      disabled={!useAiTags}
+                      className="w-14 border border-gray-300 rounded-md px-2 py-1 text-xs bg-white"
+                      disabled={useAiTags !== true || tagGenConfig?.enabled === false}
                     >
                       {Array.from(
                         { length: Math.max(1, Math.min(tagGenConfig?.maxCount ?? 10, 50)) },
@@ -981,13 +966,29 @@ export default function PostsCreatePage() {
                     </select>
                     <button
                       type="button"
-                      disabled={!useAiTags || tagSuggesting}
+                      disabled={useAiTags !== true || tagGenConfig?.enabled === false || tagSuggesting}
                       onClick={() => void handleSuggestTags(false)}
                       className="px-3 py-1.5 rounded-md bg-white border border-gray-300 hover:bg-gray-50 text-sm disabled:opacity-60"
                     >
-                      {tagSuggesting ? '生成中...' : '生成候选标签'}
+                      {tagSuggesting ? '生成中...' : '生成标签'}
                     </button>
                   </div>
+
+                  {useAiTags && tagCandidates.length > 0 ? (
+                    <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
+                      {tagCandidates.map((t, idx) => (
+                        <button
+                          key={`${idx}-${t}`}
+                          type="button"
+                          onClick={() => void ensureTagExistsAndAdd(t)}
+                          className="shrink-0 px-3 py-1.5 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-sm"
+                          title="点击添加该标签"
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 {tagGenConfig?.enabled === false ? (
@@ -1003,22 +1004,6 @@ export default function PostsCreatePage() {
                 {tagSuggestError ? (
                   <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
                     {tagSuggestError}
-                  </div>
-                ) : null}
-
-                {useAiTags && tagCandidates.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {tagCandidates.map((t, idx) => (
-                      <button
-                        key={`${idx}-${t}`}
-                        type="button"
-                        onClick={() => void ensureTagExistsAndAdd(t)}
-                        className="px-3 py-1.5 rounded-full border border-gray-300 bg-white hover:bg-gray-50 text-sm"
-                        title="点击添加该标签"
-                      >
-                        {t}
-                      </button>
-                    ))}
                   </div>
                 ) : null}
               </div>
@@ -1049,7 +1034,7 @@ export default function PostsCreatePage() {
             <div className="flex gap-2">
               <button
                 type="button"
-                disabled={publishing || saving}
+                disabled={composeLocked || publishing || saving}
                 onClick={handlePublish}
                 className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
               >
@@ -1059,7 +1044,7 @@ export default function PostsCreatePage() {
               {postId === null && (
                 <button
                   type="button"
-                  disabled={publishing || saving}
+                  disabled={composeLocked || publishing || saving}
                   onClick={handleSaveDraft}
                   className="px-4 py-2 rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
                 >
@@ -1070,7 +1055,7 @@ export default function PostsCreatePage() {
               {draftId && postId === null && (
                 <button
                   type="button"
-                  disabled={publishing || saving}
+                  disabled={composeLocked || publishing || saving}
                   onClick={async () => {
                     await deleteDraft(draftId);
                     setSearchParams({});
@@ -1086,7 +1071,7 @@ export default function PostsCreatePage() {
               {postId !== null && (
                 <button
                   type="button"
-                  disabled={publishing || saving}
+                  disabled={composeLocked || publishing || saving}
                   onClick={() => navigate('/portal/posts/mine')}
                   className="px-4 py-2 rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-opacity-50"
                 >
@@ -1101,7 +1086,17 @@ export default function PostsCreatePage() {
               {draft.attachments?.length ? ` / ${draft.attachments.length} 个附件` : ''}
             </div>
           </form>
+          </div>
         )}
+      <PostComposeAssistantWindow
+        draft={draft}
+        setDraft={(fn) => setDraft(fn)}
+        draftId={draftId}
+        postId={postId}
+        busy={busy}
+        setComposeLocked={setComposeLocked}
+        setSearchParams={(next) => setSearchParams(next)}
+      />
     </div>
   );
 }

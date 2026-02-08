@@ -8,7 +8,10 @@ import {
   type LlmModerationConfig,
   type LlmModerationTestResponse,
 } from '../../../../services/moderationLlmService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { ModerationPipelineHistoryPanel } from '../../../../components/admin/ModerationPipelineHistoryPanel';
+import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 
 function clampNumber(v: number, min: number, max: number): number {
   if (!Number.isFinite(v)) return min;
@@ -25,14 +28,17 @@ function parseOptionalNumber(raw: string): number | undefined {
 
 type FormState = {
   promptTemplate: string;
+  visionPromptTemplate: string;
   model: string;
+  providerId: string;
+  visionModel: string;
+  visionProviderId: string;
   temperature: string;
+  visionTemperature: string;
   maxTokens: string;
+  visionMaxTokens: string;
   threshold: string;
   autoRun: boolean;
-  maxConcurrent: string;
-  minDelayMs: string;
-  qps: string;
 };
 
 function defaultConfig(): LlmModerationConfig {
@@ -47,14 +53,17 @@ function defaultConfig(): LlmModerationConfig {
 function toFormState(cfg?: LlmModerationConfig | null): FormState {
   return {
     promptTemplate: cfg?.promptTemplate ?? '',
+    visionPromptTemplate: cfg?.visionPromptTemplate ?? '',
     model: cfg?.model ?? '',
+    providerId: cfg?.providerId ?? '',
+    visionModel: cfg?.visionModel ?? '',
+    visionProviderId: cfg?.visionProviderId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
+    visionTemperature: cfg?.visionTemperature === null || cfg?.visionTemperature === undefined ? '' : String(cfg.visionTemperature),
     maxTokens: cfg?.maxTokens === null || cfg?.maxTokens === undefined ? '' : String(cfg.maxTokens),
+    visionMaxTokens: cfg?.visionMaxTokens === null || cfg?.visionMaxTokens === undefined ? '' : String(cfg.visionMaxTokens),
     threshold: cfg?.threshold === null || cfg?.threshold === undefined ? '' : String(cfg.threshold),
     autoRun: Boolean(cfg?.autoRun),
-    maxConcurrent: cfg?.maxConcurrent === null || cfg?.maxConcurrent === undefined ? '' : String(cfg.maxConcurrent),
-    minDelayMs: cfg?.minDelayMs === null || cfg?.minDelayMs === undefined ? '' : String(cfg.minDelayMs),
-    qps: cfg?.qps === null || cfg?.qps === undefined ? '' : String(cfg.qps),
   };
 }
 
@@ -65,44 +74,50 @@ function validateForm(s: FormState): string[] {
   if (prompt && prompt.length < 20) errors.push('提示词建议不少于 20 个字符（避免过短导致输出不稳定）');
   if (prompt.length > 8000) errors.push('提示词过长（> 8000），请精简或拆分');
 
+  const visionPrompt = s.visionPromptTemplate.trim();
+  if (!visionPrompt) errors.push('视觉提示词不能为空');
+  if (visionPrompt && visionPrompt.length < 20) errors.push('视觉提示词建议不少于 20 个字符（避免过短导致输出不稳定）');
+  if (visionPrompt.length > 8000) errors.push('视觉提示词过长（> 8000），请精简或拆分');
+
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
+
+  const vtemp = parseOptionalNumber(s.visionTemperature);
+  if (vtemp !== undefined && (vtemp < 0 || vtemp > 2)) errors.push('visionTemperature 需在 [0, 2] 范围内');
 
   const mt = parseOptionalNumber(s.maxTokens);
   if (mt !== undefined && (!Number.isInteger(mt) || mt < 1 || mt > 32768)) errors.push('maxTokens 需为 1~32768 的整数');
 
+  const vmt = parseOptionalNumber(s.visionMaxTokens);
+  if (vmt !== undefined && (!Number.isInteger(vmt) || vmt < 1 || vmt > 32768)) errors.push('visionMaxTokens 需为 1~32768 的整数');
+
   const th = parseOptionalNumber(s.threshold);
   if (th !== undefined && (th < 0 || th > 1)) errors.push('threshold 需在 [0, 1] 范围内');
   if (s.autoRun && th === undefined) errors.push('开启自动运行时，必须设置 threshold');
-
-  const mc = parseOptionalNumber(s.maxConcurrent);
-  if (mc !== undefined && (!Number.isInteger(mc) || mc < 1 || mc > 100)) errors.push('maxConcurrent 需为 1~100 的整数');
-  const md = parseOptionalNumber(s.minDelayMs);
-  if (md !== undefined && (!Number.isInteger(md) || md < 0 || md > 60000)) errors.push('minDelayMs 需为 0~60000 的整数(ms)');
-  const qps = parseOptionalNumber(s.qps);
-  if (qps !== undefined && (qps < 0 || qps > 1000)) errors.push('qps 需在 [0, 1000] 范围内（0 表示不限制）');
 
   return errors;
 }
 
 function buildConfigPayload(s: FormState): LlmModerationConfig {
   const temperature = parseOptionalNumber(s.temperature);
+  const visionTemperature = parseOptionalNumber(s.visionTemperature);
   const maxTokens = parseOptionalNumber(s.maxTokens);
+  const visionMaxTokens = parseOptionalNumber(s.visionMaxTokens);
   const threshold = parseOptionalNumber(s.threshold);
-  const maxConcurrent = parseOptionalNumber(s.maxConcurrent);
-  const minDelayMs = parseOptionalNumber(s.minDelayMs);
-  const qps = parseOptionalNumber(s.qps);
 
   return {
     promptTemplate: s.promptTemplate,
+    visionPromptTemplate: s.visionPromptTemplate,
     model: s.model.trim() ? s.model.trim() : undefined,
+    providerId: s.providerId.trim() ? s.providerId.trim() : undefined,
+    visionModel: s.visionModel.trim() ? s.visionModel.trim() : undefined,
+    visionProviderId: s.visionProviderId.trim() ? s.visionProviderId.trim() : undefined,
     temperature: temperature === undefined ? undefined : clampNumber(temperature, 0, 2),
+    visionTemperature: visionTemperature === undefined ? undefined : clampNumber(visionTemperature, 0, 2),
     maxTokens: maxTokens === undefined ? undefined : Math.trunc(maxTokens),
+    visionMaxTokens: visionMaxTokens === undefined ? undefined : Math.trunc(visionMaxTokens),
     threshold: threshold === undefined ? undefined : clampNumber(threshold, 0, 1),
     autoRun: s.autoRun,
-    maxConcurrent: maxConcurrent === undefined ? undefined : Math.trunc(maxConcurrent),
-    minDelayMs: minDelayMs === undefined ? undefined : Math.trunc(minDelayMs),
-    qps: qps === undefined ? undefined : clampNumber(qps, 0, 1000),
   };
 }
 
@@ -120,6 +135,14 @@ const LlmForm: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [savedHint, setSavedHint] = useState<string | null>(null);
 
+  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
+  const [activeProviderId, setActiveProviderId] = useState<string>('');
+  const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
+  const visionProviders = useMemo(() => {
+    const list = providers.filter((p) => p.supportsVision === true);
+    return list.length > 0 ? list : providers;
+  }, [providers]);
+
   const [form, setForm] = useState<FormState>(() => toFormState(null));
   const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(null));
   const [isEditing, setIsEditing] = useState(false);
@@ -134,6 +157,7 @@ const LlmForm: React.FC = () => {
   }, [initialQueueId]);
 
   const [testText, setTestText] = useState<string>('');
+  const [testImagesRaw, setTestImagesRaw] = useState<string>('');
   const [testResult, setTestResult] = useState<LlmModerationTestResponse | null>(null);
 
   const formErrors = useMemo(() => validateForm(form), [form]);
@@ -143,16 +167,55 @@ const LlmForm: React.FC = () => {
     // 简单可靠：按字段对比（避免 JSON.stringify 因 key 顺序/空格等问题导致假阳性）
     return (
       form.promptTemplate !== committedForm.promptTemplate ||
+      form.visionPromptTemplate !== committedForm.visionPromptTemplate ||
       form.model !== committedForm.model ||
+      form.providerId !== committedForm.providerId ||
+      form.visionModel !== committedForm.visionModel ||
+      form.visionProviderId !== committedForm.visionProviderId ||
       form.temperature !== committedForm.temperature ||
+      form.visionTemperature !== committedForm.visionTemperature ||
       form.maxTokens !== committedForm.maxTokens ||
+      form.visionMaxTokens !== committedForm.visionMaxTokens ||
       form.threshold !== committedForm.threshold ||
-      form.autoRun !== committedForm.autoRun ||
-      form.maxConcurrent !== committedForm.maxConcurrent ||
-      form.minDelayMs !== committedForm.minDelayMs ||
-      form.qps !== committedForm.qps
+      form.autoRun !== committedForm.autoRun
     );
   }, [form, committedForm]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await adminGetAiProvidersConfig();
+        if (cancelled) return;
+        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
+        setActiveProviderId(cfg.activeProviderId ?? '');
+      } catch {
+        if (cancelled) return;
+        setProviders([]);
+        setActiveProviderId('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const opts = await getAiChatOptions();
+        if (cancelled) return;
+        setChatProviders((opts.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[]);
+      } catch {
+        if (cancelled) return;
+        setChatProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -229,8 +292,15 @@ const LlmForm: React.FC = () => {
 
     const qid = parseOptionalNumber(queueId);
     const text = testText.trim();
-    if (!qid && !text) {
-      setError('请填写 queueId 或输入要审核的文本');
+    const images = testImagesRaw
+      .split('\n')
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .slice(0, 5)
+      .map((url) => ({ url }));
+
+    if (!qid && !text && images.length === 0) {
+      setError('请填写 queueId、测试文本或图片 URL');
       return;
     }
 
@@ -242,6 +312,7 @@ const LlmForm: React.FC = () => {
       const payload = {
         queueId: qid,
         text: text || undefined,
+        images: images.length ? images : undefined,
         // 允许试运行使用当前表单配置（避免必须先保存）
         configOverride: buildConfigPayload(form),
       };
@@ -252,7 +323,7 @@ const LlmForm: React.FC = () => {
     } finally {
       setTesting(false);
     }
-  }, [form, queueId, testText]);
+  }, [form, queueId, testText, testImagesRaw]);
 
   const qidForHistory = useMemo(() => {
     const n = Number(queueId);
@@ -260,8 +331,8 @@ const LlmForm: React.FC = () => {
   }, [queueId]);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-lg shadow p-4 space-y-4">
+    <div className="space-y-3">
+      <div className="bg-white rounded-lg shadow p-3 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold">LLM 审核层</h3>
@@ -297,7 +368,7 @@ const LlmForm: React.FC = () => {
                 void loadConfig();
                 setError(null);
               }}
-              className="rounded border px-3 py-2 disabled:opacity-60"
+              className="rounded border px-3 py-1.5 disabled:opacity-60"
               disabled={loading || saving || testing}
               title="从后端重新加载配置（会覆盖未保存的修改）"
             >
@@ -312,7 +383,7 @@ const LlmForm: React.FC = () => {
                   setSavedHint(null);
                   setError(null);
                 }}
-                className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
+                className="rounded bg-blue-600 text-white px-3 py-1.5 disabled:opacity-60"
                 disabled={loading || saving || testing}
                 title="进入编辑模式"
               >
@@ -323,7 +394,7 @@ const LlmForm: React.FC = () => {
                 <button
                   type="button"
                   onClick={cancelEdit}
-                  className="rounded border px-3 py-2 disabled:opacity-60"
+                  className="rounded border px-3 py-1.5 disabled:opacity-60"
                   disabled={loading || saving || testing}
                   title="放弃未保存的修改，并恢复到最近一次加载/保存的配置"
                 >
@@ -332,7 +403,7 @@ const LlmForm: React.FC = () => {
                 <button
                   type="button"
                   onClick={save}
-                  className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
+                  className="rounded bg-blue-600 text-white px-3 py-1.5 disabled:opacity-60"
                   disabled={!canSave}
                   title={formErrors.length ? formErrors.join('\n') : '保存并生效'}
                 >
@@ -358,138 +429,149 @@ const LlmForm: React.FC = () => {
         ) : null}
 
         {/* 配置表单 */}
-        <div className="space-y-3">
-          <div>
-            <div className="text-sm font-medium mb-1">
-              提示词（Prompt Template）
-              {!isEditing ? <span className="text-xs text-gray-500 ml-2">（只读，点击右上角「编辑配置」修改）</span> : null}
+        <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[360px_1fr]">
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-gray-700">文本审核模型</div>
+              <ProviderModelSelect
+                providers={providers}
+                activeProviderId={activeProviderId}
+                chatProviders={chatProviders}
+                mode="chat"
+                providerId={form.providerId}
+                autoOptionLabel="自动（均衡负载）"
+                model={form.model}
+                disabled={!isEditing}
+                onChange={(next) => {
+                  if (!isEditing) return;
+                  setForm((p) => ({ ...p, providerId: next.providerId, model: next.model }));
+                  setSavedHint(null);
+                }}
+              />
+
+              <div>
+                <div className="text-sm font-medium mb-1">温度</div>
+                <input
+                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
+                  placeholder="例如：0.2"
+                  value={form.temperature}
+                  readOnly={!isEditing}
+                  onChange={(e) => {
+                    if (!isEditing) return;
+                    setForm((p) => ({ ...p, temperature: e.target.value }));
+                    setSavedHint(null);
+                  }}
+                />
+              </div>
+
+              <div>
+                <div className="text-sm font-medium mb-1">上下文长度</div>
+                <input
+                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
+                  placeholder="例如：1024"
+                  value={form.maxTokens}
+                  readOnly={!isEditing}
+                  onChange={(e) => {
+                    if (!isEditing) return;
+                    setForm((p) => ({ ...p, maxTokens: e.target.value }));
+                    setSavedHint(null);
+                  }}
+                />
+              </div>
             </div>
-            <textarea
-              className="w-full rounded border px-3 py-2 font-mono text-sm disabled:bg-gray-50"
-              rows={10}
-              placeholder="请输入审核提示词。建议要求模型输出严格 JSON：{decision, score, reasons, riskTags}..."
-              value={form.promptTemplate}
-              readOnly={!isEditing}
-              onChange={(e) => {
-                if (!isEditing) return;
-                setForm((p) => ({ ...p, promptTemplate: e.target.value }));
-                setSavedHint(null);
-              }}
-            />
-            <div className="text-xs text-gray-500 mt-1">当前长度：{form.promptTemplate.length}（建议 20~8000）</div>
+
+            <div>
+              <div className="text-sm font-medium mb-1">
+                提示词（Prompt Template）
+                {!isEditing ? <span className="text-xs text-gray-500 ml-2">（只读，点击右上角「编辑配置」修改）</span> : null}
+              </div>
+              <textarea
+                className="w-full rounded border px-3 py-1.5 font-mono text-sm disabled:bg-gray-50"
+                rows={8}
+                placeholder="请输入审核提示词。建议要求模型输出严格 JSON：{decision, score, reasons, riskTags}..."
+                value={form.promptTemplate}
+                readOnly={!isEditing}
+                onChange={(e) => {
+                  if (!isEditing) return;
+                  setForm((p) => ({ ...p, promptTemplate: e.target.value }));
+                  setSavedHint(null);
+                }}
+              />
+              <div className="text-xs text-gray-500 mt-1">当前长度：{form.promptTemplate.length}（建议 20~8000）</div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <div className="text-sm font-medium mb-1">模型（可选）</div>
-              <input
-                className="w-full rounded border px-3 py-2 disabled:bg-gray-50"
-                placeholder="例如：qwen-plus / qwen-max"
-                value={form.model}
-                readOnly={!isEditing}
-                onChange={(e) => {
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-[360px_1fr]">
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-gray-700">图片审核模型</div>
+
+              <ProviderModelSelect
+                providers={visionProviders}
+                activeProviderId={activeProviderId}
+                chatProviders={chatProviders}
+                mode="chat"
+                providerId={form.visionProviderId}
+                model={form.visionModel}
+                disabled={!isEditing}
+                label="视觉模型:"
+                autoOptionLabel="自动（均衡负载）"
+                includeProviderOnlyOptions
+                onChange={(next) => {
                   if (!isEditing) return;
-                  setForm((p) => ({ ...p, model: e.target.value }));
+                  setForm((p) => ({ ...p, visionProviderId: next.providerId, visionModel: next.model }));
                   setSavedHint(null);
                 }}
               />
+
+              <div>
+                <div className="text-sm font-medium mb-1">温度</div>
+                <input
+                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
+                  placeholder="例如：0.2"
+                  value={form.visionTemperature}
+                  readOnly={!isEditing}
+                  onChange={(e) => {
+                    if (!isEditing) return;
+                    setForm((p) => ({ ...p, visionTemperature: e.target.value }));
+                    setSavedHint(null);
+                  }}
+                />
+              </div>
+
+              <div>
+                <div className="text-sm font-medium mb-1">上下文长度</div>
+                <input
+                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
+                  placeholder="例如：1024"
+                  value={form.visionMaxTokens}
+                  readOnly={!isEditing}
+                  onChange={(e) => {
+                    if (!isEditing) return;
+                    setForm((p) => ({ ...p, visionMaxTokens: e.target.value }));
+                    setSavedHint(null);
+                  }}
+                />
+              </div>
             </div>
 
             <div>
-              <div className="text-sm font-medium mb-1">temperature（可选，0~2）</div>
-              <input
-                className="w-full rounded border px-3 py-2 disabled:bg-gray-50"
-                placeholder="例如：0.2"
-                value={form.temperature}
+              <div className="text-sm font-medium mb-1">
+                视觉提示词（Prompt Template）
+                {!isEditing ? <span className="text-xs text-gray-500 ml-2">（只读，点击右上角「编辑配置」修改）</span> : null}
+              </div>
+              <textarea
+                className="w-full rounded border px-3 py-1.5 font-mono text-sm disabled:bg-gray-50"
+                rows={8}
+                placeholder="请输入视觉审核提示词。建议要求模型输出严格 JSON：{decision, score, reasons, riskTags, description}..."
+                value={form.visionPromptTemplate}
                 readOnly={!isEditing}
                 onChange={(e) => {
                   if (!isEditing) return;
-                  setForm((p) => ({ ...p, temperature: e.target.value }));
+                  setForm((p) => ({ ...p, visionPromptTemplate: e.target.value }));
                   setSavedHint(null);
                 }}
               />
-            </div>
-
-            <div>
-              <div className="text-sm font-medium mb-1">maxTokens（可选）</div>
-              <input
-                className="w-full rounded border px-3 py-2 disabled:bg-gray-50"
-                placeholder="例如：1024"
-                value={form.maxTokens}
-                readOnly={!isEditing}
-                onChange={(e) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, maxTokens: e.target.value }));
-                  setSavedHint(null);
-                }}
-              />
-            </div>
-
-            <div>
-              <div className="text-sm font-medium mb-1">threshold（可选，0~1）</div>
-              <input
-                className="w-full rounded border px-3 py-2 disabled:bg-gray-50"
-                placeholder="例如：0.75"
-                value={form.threshold}
-                readOnly={!isEditing}
-                onChange={(e) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, threshold: e.target.value }));
-                  setSavedHint(null);
-                }}
-              />
-            </div>
-
-
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <div className="text-sm font-medium mb-1">maxConcurrent（并发数，可选）</div>
-              <input
-                className="w-full rounded border px-3 py-2 disabled:bg-gray-50"
-                placeholder="例如：4"
-                value={form.maxConcurrent}
-                readOnly={!isEditing}
-                onChange={(e) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, maxConcurrent: e.target.value }));
-                  setSavedHint(null);
-                }}
-              />
-              <div className="text-xs text-gray-500 mt-1">建议 1~10；越大越容易打爆上游</div>
-            </div>
-
-            <div>
-              <div className="text-sm font-medium mb-1">minDelayMs（请求间隔，可选）</div>
-              <input
-                className="w-full rounded border px-3 py-2 disabled:bg-gray-50"
-                placeholder="例如：200"
-                value={form.minDelayMs}
-                readOnly={!isEditing}
-                onChange={(e) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, minDelayMs: e.target.value }));
-                  setSavedHint(null);
-                }}
-              />
-              <div className="text-xs text-gray-500 mt-1">0 表示不加延迟</div>
-            </div>
-
-            <div>
-              <div className="text-sm font-medium mb-1">qps（可选，0=不限）</div>
-              <input
-                className="w-full rounded border px-3 py-2 disabled:bg-gray-50"
-                placeholder="例如：2"
-                value={form.qps}
-                readOnly={!isEditing}
-                onChange={(e) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, qps: e.target.value }));
-                  setSavedHint(null);
-                }}
-              />
-              <div className="text-xs text-gray-500 mt-1">用于全局限流</div>
+              <div className="text-xs text-gray-500 mt-1">当前长度：{form.visionPromptTemplate.length}（建议 20~8000）</div>
             </div>
           </div>
 
@@ -504,112 +586,183 @@ const LlmForm: React.FC = () => {
             </div>
           ) : null}
         </div>
+      </div>
 
-        {/* 试运行 */}
-        <div className="border-t pt-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-base font-semibold">LLM 试运行</div>
-              <div className="text-sm text-gray-500">可用 queueId 直接拉取待审内容，或粘贴一段文本进行测试。</div>
-            </div>
-            <button
-              type="button"
-              onClick={runTest}
-              className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-              disabled={testing}
-            >
-              {testing ? '运行中…' : '运行试审核'}
-            </button>
+      <div className="bg-white rounded-lg shadow p-3 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">LLM 试运行</div>
+            <div className="text-sm text-gray-500">可用 queueId 拉取待审内容，也可粘贴文本或填写图片 URL 试运行。</div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <div className="text-sm font-medium mb-1">queueId（可选）</div>
-              <input
-                className="w-full rounded border px-3 py-2"
-                placeholder="例如：123"
-                value={queueId}
-                onChange={(e) => setQueueId(e.target.value)}
-              />
-              {initialQueueId ? (
-                <div className="text-xs text-gray-500 mt-1">已从 URL 读取 queueId={initialQueueId}</div>
-              ) : null}
-            </div>
-
-            <div>
-              <div className="text-sm font-medium mb-1">测试文本（可选）</div>
-              <textarea
-                className="w-full rounded border px-3 py-2 text-sm"
-                rows={4}
-                placeholder="粘贴要审核的文本..."
-                value={testText}
-                onChange={(e) => setTestText(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {testResult ? (
-            <div className="border rounded p-3 space-y-2">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-                <div>
-                  <span className="text-gray-500">Decision：</span>
-                  <span className="font-semibold">{testResult.decision}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Score：</span>
-                  <span className="font-semibold">{testResult.score ?? '—'}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">Model：</span>
-                  <span className="font-semibold">{testResult.model ?? (form.model.trim() ? form.model : '—')}</span>
-                </div>
-              </div>
-
-              {testResult.reasons?.length ? (
-                <div className="text-sm">
-                  <div className="font-medium mb-1">Reasons</div>
-                  <ul className="list-disc ml-5 text-gray-700">
-                    {testResult.reasons.map((r, idx) => (
-                      <li key={idx}>{r}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-
-              {testResult.riskTags?.length ? (
-                <div className="text-sm">
-                  <div className="font-medium mb-1">Risk Tags</div>
-                  <div className="flex flex-wrap gap-2">
-                    {testResult.riskTags.map((t) => (
-                      <span key={t} className="inline-flex px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-gray-600">
-                <div>latencyMs：{testResult.latencyMs ?? '—'}</div>
-                <div>promptTokens：{testResult.usage?.promptTokens ?? '—'}</div>
-                <div>totalTokens：{testResult.usage?.totalTokens ?? '—'}</div>
-              </div>
-
-              {testResult.rawModelOutput ? (
-                <div>
-                  <div className="text-sm font-medium mb-1">Raw Output</div>
-                  <pre className="whitespace-pre-wrap text-xs bg-gray-50 rounded p-2 overflow-auto max-h-[360px]">
-                    {testResult.rawModelOutput}
-                  </pre>
-                </div>
-              ) : (
-                <div className="text-xs text-gray-500">无 rawModelOutput（后端若不返回可忽略）</div>
-              )}
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500">还没有结果。填写 queueId 或测试文本后点击「运行试审核」。</div>
-          )}
+          <button
+            type="button"
+            onClick={runTest}
+            className="rounded bg-blue-600 text-white px-3 py-1.5 disabled:opacity-60"
+            disabled={testing}
+          >
+            {testing ? '运行中…' : '运行试审核'}
+          </button>
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <div className="text-sm font-medium mb-1">queueId（可选）</div>
+            <input
+              className="w-full md:max-w-[240px] rounded border px-3 py-1.5"
+              placeholder="例如：123"
+              value={queueId}
+              onChange={(e) => setQueueId(e.target.value)}
+            />
+            {initialQueueId ? <div className="text-xs text-gray-500 mt-1">已从 URL 读取 queueId={initialQueueId}</div> : null}
+          </div>
+
+          <div className="md:col-span-2">
+            <div className="text-sm font-medium mb-1">测试文本（可选）</div>
+            <textarea
+              className="w-full rounded border px-3 py-1.5 text-sm"
+              rows={4}
+              placeholder="粘贴要审核的文本..."
+              value={testText}
+              onChange={(e) => setTestText(e.target.value)}
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <div className="text-sm font-medium mb-1">图片 URL（可选，每行一个，最多 5 个）</div>
+            <textarea
+              className="w-full rounded border px-3 py-1.5 text-sm"
+              rows={3}
+              placeholder="https://example.com/a.png"
+              value={testImagesRaw}
+              onChange={(e) => setTestImagesRaw(e.target.value)}
+            />
+            <div className="text-xs text-gray-500 mt-1">不填写时，后端会在 queueId 指向帖子且存在图片附件时自动带入。</div>
+          </div>
+        </div>
+
+        {testResult ? (
+          <div className="border rounded p-3 space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+              <div>
+                <span className="text-gray-500">Decision：</span>
+                <span className="font-semibold">{testResult.decision}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Score：</span>
+                <span className="font-semibold">{testResult.score ?? '—'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Model：</span>
+                <span className="font-semibold">{testResult.model ?? (form.model.trim() ? form.model : '—')}</span>
+              </div>
+            </div>
+            {testResult.inputMode ? <div className="text-sm text-gray-600">inputMode：{testResult.inputMode}</div> : null}
+
+            {testResult.stages ? (
+              <div className="text-sm">
+                <div className="font-medium mb-1">Stages</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  {(['text', 'image', 'cross'] as const).map((k) => {
+                    const s = testResult.stages?.[k];
+                    if (!s) return null;
+                    const title = k === 'text' ? 'Text' : k === 'image' ? 'Image' : 'Cross';
+                    const desc = s.description ? String(s.description) : '';
+                    return (
+                      <div key={k} className="rounded border bg-gray-50 p-2 space-y-1">
+                        <div className="text-xs font-semibold text-gray-700">{title}</div>
+                        <div className="text-xs text-gray-600">
+                          <span className="text-gray-500">Decision：</span>
+                          <span className="font-semibold">{s.decision ?? '—'}</span>
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <span className="text-gray-500">Score：</span>
+                          <span className="font-semibold">{s.score ?? '—'}</span>
+                        </div>
+                        {s.model ? <div className="text-[11px] text-gray-500 break-all">Model：{s.model}</div> : null}
+                        {k === 'image' && desc ? (
+                          <div className="pt-1">
+                            <div className="text-[11px] text-gray-500 mb-1">Description</div>
+                            <pre className="whitespace-pre-wrap text-[11px] bg-white rounded border p-2 max-h-[160px] overflow-auto">{desc}</pre>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {testResult.reasons?.length ? (
+              <div className="text-sm">
+                <div className="font-medium mb-1">Reasons</div>
+                <ul className="list-disc ml-5 text-gray-700">
+                  {testResult.reasons.map((r, idx) => (
+                    <li key={idx}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {testResult.riskTags?.length ? (
+              <div className="text-sm">
+                <div className="font-medium mb-1">Risk Tags</div>
+                <div className="flex flex-wrap gap-2">
+                  {testResult.riskTags.map((t) => (
+                    <span key={t} className="inline-flex px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {testResult.images?.length ? (
+              <div className="text-sm">
+                <div className="font-medium mb-1">Images</div>
+                <div className="space-y-1">
+                  {testResult.images.slice(0, 5).map((u, idx) => (
+                    <a key={`${u}-${idx}`} href={u} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">
+                      {u}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-gray-600">
+              <div>latencyMs：{testResult.latencyMs ?? '—'}</div>
+              <div>promptTokens：{testResult.usage?.promptTokens ?? '—'}</div>
+              <div>totalTokens：{testResult.usage?.totalTokens ?? '—'}</div>
+            </div>
+
+            {testResult.promptMessages?.length ? (
+              <div>
+                <div className="text-sm font-medium mb-1">Prompt Messages</div>
+                <div className="space-y-2">
+                  {testResult.promptMessages.map((m, idx) => (
+                    <div key={idx} className="rounded border bg-white p-2">
+                      <div className="text-[11px] font-semibold text-gray-600 mb-1">{m.role}</div>
+                      <pre className="whitespace-pre-wrap text-xs bg-gray-50 rounded p-2 overflow-auto max-h-[240px]">{m.content}</pre>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {testResult.rawModelOutput ? (
+              <div>
+                <div className="text-sm font-medium mb-1">Raw Output</div>
+                <pre className="whitespace-pre-wrap text-xs bg-gray-50 rounded p-2 overflow-auto max-h-[360px]">
+                  {testResult.rawModelOutput}
+                </pre>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-500">无 rawModelOutput（后端若不返回可忽略）</div>
+            )}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500">还没有结果。填写 queueId 或测试文本后点击「运行试审核」。</div>
+        )}
       </div>
 
       <ModerationPipelineHistoryPanel

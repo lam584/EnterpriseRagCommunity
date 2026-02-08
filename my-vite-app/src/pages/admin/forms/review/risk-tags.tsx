@@ -191,7 +191,7 @@ const RiskTagsForm: React.FC = () => {
           </div>
 
           <div className="md:col-span-4">
-            <label className={labelBase}>Slug</label>
+            <label className={labelBase}>标签唯一标识（Slug）</label>
             <input
               className={`${inputBase} ${errors.slug ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-300'}`}
               value={createForm.slug}
@@ -275,7 +275,7 @@ const RiskTagsForm: React.FC = () => {
               <tr>
                 <th className="text-left px-3 py-2">ID</th>
                 <th className="text-left px-3 py-2">名称</th>
-                <th className="text-left px-3 py-2">Slug</th>
+                <th className="text-left px-3 py-2">标签唯一标识（Slug）</th>
                 <th className="text-left px-3 py-2">描述</th>
                 <th className="text-left px-3 py-2">使用次数</th>
                 <th className="text-left px-3 py-2">启用</th>

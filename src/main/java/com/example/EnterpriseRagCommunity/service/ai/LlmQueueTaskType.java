@@ -1,0 +1,21 @@
+package com.example.EnterpriseRagCommunity.service.ai;
+
+public enum LlmQueueTaskType {
+    CHAT,
+    TEXT_CHAT,
+    IMAGE_CHAT,
+    MODERATION,
+    TEXT_MODERATION,
+    IMAGE_MODERATION,
+    TITLE_GEN,
+    TOPIC_TAG_GEN,
+    RISK_TAG_GEN,
+    LANGUAGE_TAG_GEN,
+    SUMMARY_GEN,
+    TRANSLATION,
+    EMBEDDING,
+    POST_EMBEDDING,
+    SIMILARITY_EMBEDDING,
+    RERANK,
+    UNKNOWN
+}

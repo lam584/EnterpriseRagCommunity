@@ -22,7 +22,9 @@ import com.example.EnterpriseRagCommunity.dto.access.EmailInboxMessageDTO;
 import com.example.EnterpriseRagCommunity.dto.access.EmailInboxSettingsDTO;
 import com.example.EnterpriseRagCommunity.dto.access.EmailTestSendDTO;
 import com.example.EnterpriseRagCommunity.dto.access.RegistrationSettingsDTO;
+import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicySettingsDTO;
 import com.example.EnterpriseRagCommunity.dto.access.TotpAdminSettingsDTO;
+import com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 import com.example.EnterpriseRagCommunity.service.notify.EmailEncryption;
 import com.example.EnterpriseRagCommunity.service.notify.EmailInboxService;
@@ -39,6 +41,7 @@ public class AdminSettingsController {
     private final AppSettingsService appSettingsService;
     private final EmailSenderService emailSenderService;
     private final ObjectProvider<EmailInboxService> emailInboxServiceProvider;
+    private final Security2faPolicyService security2faPolicyService;
 
     @GetMapping("/registration")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
@@ -128,6 +131,18 @@ public class AdminSettingsController {
         appSettingsService.upsertString(KEY_TOTP_DEFAULT_SKEW, String.valueOf(normalized.getDefaultSkew()));
 
         return ResponseEntity.ok(normalized);
+    }
+
+    @GetMapping("/security-2fa-policy")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
+    public ResponseEntity<Security2faPolicySettingsDTO> getSecurity2faPolicy() {
+        return ResponseEntity.ok(security2faPolicyService.getAdminSettingsOrDefault());
+    }
+
+    @PutMapping("/security-2fa-policy")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
+    public ResponseEntity<Security2faPolicySettingsDTO> putSecurity2faPolicy(@RequestBody Security2faPolicySettingsDTO dto) {
+        return ResponseEntity.ok(security2faPolicyService.saveAdminSettings(dto));
     }
 
     @GetMapping("/email")

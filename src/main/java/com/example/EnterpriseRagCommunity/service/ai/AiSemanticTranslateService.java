@@ -9,7 +9,7 @@ import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.SemanticTranslateHistoryRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
-import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +31,7 @@ public class AiSemanticTranslateService {
     private final SemanticTranslateHistoryRepository semanticTranslateHistoryRepository;
     private final PostsRepository postsRepository;
     private final CommentsRepository commentsRepository;
+    private final LlmGateway llmGateway;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -99,20 +100,24 @@ public class AiSemanticTranslateService {
             return out;
         }
 
-        String model = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : aiProperties.getModel();
+        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
         if (temperature == null) temperature = 0.2;
 
         String userPrompt = renderPrompt(cfg.getPromptTemplate(), safeTargetLang, normalizedTitle, normalizedContent);
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", cfg.getSystemPrompt()));
-        messages.add(Map.of("role", "user", "content", userPrompt));
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system(cfg.getSystemPrompt()));
+        messages.add(ChatMessage.user(userPrompt));
 
         long started = System.currentTimeMillis();
         String rawJson;
+        String usedProviderId = null;
+        String usedModel = null;
         try {
-            rawJson = new BailianOpenAiSseClient(aiProperties)
-                    .chatCompletionsOnce(null, aiProperties.getBaseUrl(), model, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.UNKNOWN, cfg.getProviderId(), modelOverride, messages, temperature);
+            rawJson = routed == null ? null : routed.text();
+            usedProviderId = routed == null ? null : routed.providerId();
+            usedModel = routed == null ? null : routed.model();
         } catch (Exception e) {
             throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);
         }
@@ -139,7 +144,8 @@ public class AiSemanticTranslateService {
             h.setSourceContentExcerpt(buildExcerpt(normalizedContent));
             h.setTranslatedTitle(blankToNull(translatedTitle));
             h.setTranslatedMarkdown(translatedMarkdown);
-            h.setModel(model);
+            h.setModel(usedModel);
+            h.setProviderId(usedProviderId);
             h.setTemperature(temperature);
             h.setLatencyMs(latency);
             h.setPromptVersion(cfg.getVersion());
@@ -150,7 +156,7 @@ public class AiSemanticTranslateService {
         out.setTargetLang(safeTargetLang);
         out.setTranslatedTitle(blankToNull(translatedTitle));
         out.setTranslatedMarkdown(translatedMarkdown);
-        out.setModel(model);
+        out.setModel(usedModel);
         out.setLatencyMs(latency);
         out.setCached(Boolean.FALSE);
         return out;
@@ -214,11 +220,12 @@ public class AiSemanticTranslateService {
 
     private static String buildConfigSignature(SemanticTranslateConfigEntity cfg) {
         String model = cfg.getModel() == null ? "" : cfg.getModel().trim();
+        String providerId = cfg.getProviderId() == null ? "" : cfg.getProviderId().trim();
         String temp = cfg.getTemperature() == null ? "" : String.valueOf(cfg.getTemperature());
         String max = cfg.getMaxContentChars() == null ? "" : String.valueOf(cfg.getMaxContentChars());
         String sp = cfg.getSystemPrompt() == null ? "" : cfg.getSystemPrompt().trim();
         String pt = cfg.getPromptTemplate() == null ? "" : cfg.getPromptTemplate().trim();
-        return "model=" + model + "|temp=" + temp + "|max=" + max + "|sp=" + sp + "|pt=" + pt;
+        return "providerId=" + providerId + "|model=" + model + "|temp=" + temp + "|max=" + max + "|sp=" + sp + "|pt=" + pt;
     }
 
     private static String sha256Hex(String s) {

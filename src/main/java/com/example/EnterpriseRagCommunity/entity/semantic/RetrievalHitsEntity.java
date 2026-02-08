@@ -5,6 +5,8 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 @Data
 @NoArgsConstructor
 @Entity
@@ -33,4 +35,7 @@ public class RetrievalHitsEntity {
 
     @Column(name = "score", nullable = false)
     private Double score;
+
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
 }

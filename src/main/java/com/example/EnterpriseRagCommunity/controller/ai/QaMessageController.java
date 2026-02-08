@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.controller.ai;
 
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatRegenerateStreamRequest;
+import com.example.EnterpriseRagCommunity.dto.ai.AiChatResponseDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaMessageUpdateRequest;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.AiChatService;
@@ -58,5 +59,19 @@ public class QaMessageController {
         Long me = currentUserIdOrThrow();
         aiChatService.streamRegenerate(questionMessageId, req, me, response);
     }
-}
 
+    @PostMapping("/{questionMessageId}/regenerate")
+    public ResponseEntity<AiChatResponseDTO> regenerateOnce(
+            @PathVariable("questionMessageId") Long questionMessageId,
+            @Valid @RequestBody AiChatRegenerateStreamRequest req
+    ) {
+        Long me = currentUserIdOrThrow();
+        return ResponseEntity.ok(aiChatService.regenerateOnce(questionMessageId, req, me));
+    }
+
+    @PatchMapping("/{messageId}/favorite")
+    public ResponseEntity<Boolean> toggleFavorite(@PathVariable("messageId") Long messageId) {
+        Long me = currentUserIdOrThrow();
+        return ResponseEntity.ok(qaMessageService.toggleMyMessageFavorite(me, messageId));
+    }
+}

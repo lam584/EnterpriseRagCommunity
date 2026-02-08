@@ -1,5 +1,5 @@
 // embed.tsx
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCsrfToken } from '../../../../utils/csrfUtils';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -7,13 +7,14 @@ import {
   deleteSample,
   listSamples,
   syncSample,
-  syncSamplesIncremental,
   updateSample,
   type ModerationSample,
   type ModerationSampleCreateRequest,
   type ModerationSamplesSyncResult,
 } from '../../../../services/moderationEmbedSamplesService';
 import { ModerationPipelineHistoryPanel } from '../../../../components/admin/ModerationPipelineHistoryPanel';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 
 // ===== 后端/运行时配置 =====
 // 保持兼容：本页允许通过 Vite 环境变量配置 API_BASE；未配置时使用同域相对路径
@@ -51,6 +52,17 @@ interface SimilarityCheckResponse {
   embeddingModel?: string | null;
   maxInputChars?: number | null;
   hits?: SimilarityHit[];
+}
+
+interface ModerationSamplesIndexStatusResponse {
+  indexName?: string | null;
+  exists?: boolean | null;
+  available?: boolean | null;
+  availabilityMessage?: string | null;
+  docCount?: number | null;
+  embeddingDimsConfigured?: number | null;
+  embeddingDimsInMapping?: number | null;
+  lastIncrementalSyncAt?: string | null;
 }
 
 // NOTE: “相似命中记录（moderation_similar_hits）” 功能已移除；保留审核历史记录即可。
@@ -129,6 +141,23 @@ type SimilarityConfigForm = {
   defaultNumCandidates: string;
 };
 
+type SamplesAutoSyncConfig = {
+  enabled: boolean;
+  intervalSeconds: number;
+};
+
+type SamplesAutoSyncConfigForm = {
+  enabled: boolean;
+  intervalSeconds: string;
+};
+
+function toAutoSyncFormState(c?: SamplesAutoSyncConfig | null): SamplesAutoSyncConfigForm {
+  return {
+    enabled: c?.enabled ?? true,
+    intervalSeconds: c?.intervalSeconds == null ? '' : String(c.intervalSeconds),
+  };
+}
+
 function toCfgFormState(c?: SimilarityConfig | null): SimilarityConfigForm {
   return {
     enabled: c?.enabled ?? true,
@@ -157,20 +186,20 @@ const EmbedForm: React.FC = () => {
   const [cfg, setCfg] = useState<SimilarityConfig | null>(null);
   const [cfgForm, setCfgForm] = useState<SimilarityConfigForm>(() => toCfgFormState(null));
   const [cfgEditing, setCfgEditing] = useState(false);
+  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
+  const [activeProviderId, setActiveProviderId] = useState<string>('');
+
+  const [autoSyncLoading, setAutoSyncLoading] = useState(false);
+  const [autoSyncCfg, setAutoSyncCfg] = useState<SamplesAutoSyncConfig | null>(null);
+  const [autoSyncForm, setAutoSyncForm] = useState<SamplesAutoSyncConfigForm>(() => toAutoSyncFormState(null));
+  const autoSyncEnableEnsureInFlightRef = useRef(false);
+
+  const [samplesIndexLoading, setSamplesIndexLoading] = useState(false);
+  const [samplesIndexError, setSamplesIndexError] = useState<string | null>(null);
+  const [samplesIndexStatus, setSamplesIndexStatus] = useState<ModerationSamplesIndexStatusResponse | null>(null);
 
   // ===== Reindex (MySQL -> ES) =====
   const [reindexing, setReindexing] = useState(false);
-  const [reindexResult, setReindexResult] = useState<null | {
-    total?: number;
-    success?: number;
-    failed?: number;
-    failedIds?: number[];
-    cleared?: boolean | null;
-    clearError?: string | null;
-    orphanDeleted?: number | null;
-    orphanFailed?: number | null;
-    orphanFailedIds?: number[];
-  }>(null);
 
   // ===== Manual check =====
   const [text, setText] = useState('');
@@ -186,6 +215,48 @@ const EmbedForm: React.FC = () => {
   const [samples, setSamples] = useState<ModerationSample[]>([]);
   const [samplesTotalPages, setSamplesTotalPages] = useState(1);
   const [samplesTotalElements, setSamplesTotalElements] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await adminGetAiProvidersConfig();
+        if (cancelled) return;
+        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
+        setActiveProviderId(cfg.activeProviderId ?? '');
+      } catch {
+        if (cancelled) return;
+        setProviders([]);
+        setActiveProviderId('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadSamplesIndexStatus = useCallback(async () => {
+    setSamplesIndexLoading(true);
+    setSamplesIndexError(null);
+    try {
+      const res = await fetch(apiUrl('/api/admin/moderation/embed/index-status'), {
+        method: 'GET',
+        credentials: 'include',
+      });
+      const data: unknown = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSamplesIndexError(getBackendMessage(data) || '获取索引状态失败');
+        setSamplesIndexStatus(null);
+        return;
+      }
+      setSamplesIndexStatus(data as ModerationSamplesIndexStatusResponse);
+    } catch (e) {
+      setSamplesIndexError(e instanceof Error ? e.message : String(e));
+      setSamplesIndexStatus(null);
+    } finally {
+      setSamplesIndexLoading(false);
+    }
+  }, []);
 
   // ===== Samples CRUD UI =====
   const [sampleModalOpen, setSampleModalOpen] = useState(false);
@@ -318,12 +389,37 @@ const EmbedForm: React.FC = () => {
     }
   }, []);
 
+  const loadAutoSyncConfig = useCallback(async () => {
+    setAutoSyncLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(apiUrl('/api/admin/moderation/embed/samples/auto-sync/config'), {
+        method: 'GET',
+        credentials: 'include',
+      });
+      const data: unknown = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(getBackendMessage(data) || '获取自动增量同步配置失败');
+        return;
+      }
+      const c = data as SamplesAutoSyncConfig;
+      setAutoSyncCfg(c);
+      setAutoSyncForm(toAutoSyncFormState(c));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAutoSyncLoading(false);
+    }
+  }, []);
+
   const saveConfig = useCallback(async () => {
     setCfgSaving(true);
     setError(null);
     try {
       const csrf = await getCsrfToken();
-      const payload = {
+
+      // 1. Save SimilarityConfig
+      const payload1 = {
         enabled: cfgForm.enabled,
         embeddingModel: cfgForm.embeddingModel.trim() ? cfgForm.embeddingModel.trim() : null,
         embeddingDims: cfgForm.embeddingDims.trim() ? clampInt(Number(cfgForm.embeddingDims), 0, 100_000) : 0,
@@ -332,30 +428,63 @@ const EmbedForm: React.FC = () => {
         defaultThreshold: cfgForm.defaultThreshold.trim() ? Math.max(0, Math.min(1, Number(cfgForm.defaultThreshold))) : 0.15,
         defaultNumCandidates: cfgForm.defaultNumCandidates.trim() ? clampInt(Number(cfgForm.defaultNumCandidates), 0, 10_000) : 0,
       };
-      const res = await fetch(apiUrl('/api/admin/moderation/embed/config'), {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-XSRF-TOKEN': csrf,
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      const data: unknown = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(getBackendMessage(data) || '更新配置失败');
-        return;
+
+      // 2. Save AutoSyncConfig
+      const intervalSeconds = autoSyncForm.intervalSeconds.trim()
+        ? clampInt(Number(autoSyncForm.intervalSeconds.trim()), 5, 3600)
+        : 60;
+      const payload2 = {
+        enabled: cfgForm.enabled,
+        intervalSeconds,
+      };
+
+      // Execute both requests
+      const [res1, res2] = await Promise.all([
+        fetch(apiUrl('/api/admin/moderation/embed/config'), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-XSRF-TOKEN': csrf,
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload1),
+        }),
+        fetch(apiUrl('/api/admin/moderation/embed/samples/auto-sync/config'), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-XSRF-TOKEN': csrf,
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload2),
+        })
+      ]);
+
+      const data1: unknown = await res1.json().catch(() => ({}));
+      if (!res1.ok) {
+        throw new Error(getBackendMessage(data1) || '更新运行时配置失败');
       }
-      const c = data as SimilarityConfig;
-      setCfg(c);
-      setCfgForm(toCfgFormState(c));
+
+      const data2: unknown = await res2.json().catch(() => ({}));
+      if (!res2.ok) {
+        throw new Error(getBackendMessage(data2) || '更新自动增量同步配置失败');
+      }
+
+      const c1 = data1 as SimilarityConfig;
+      setCfg(c1);
+      setCfgForm(toCfgFormState(c1));
+
+      const c2 = data2 as SamplesAutoSyncConfig;
+      setAutoSyncCfg(c2);
+      setAutoSyncForm(toAutoSyncFormState(c2));
+      
       setCfgEditing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setCfgSaving(false);
     }
-  }, [cfgForm]);
+  }, [cfgForm, autoSyncForm]);
 
   const manualCheck = useCallback(async () => {
     setChecking(true);
@@ -434,7 +563,6 @@ const EmbedForm: React.FC = () => {
 
     setReindexing(true);
     setError(null);
-    setReindexResult(null);
     try {
       const csrf = await getCsrfToken();
       const res = await fetch(apiUrl('/api/admin/moderation/embed/reindex?onlyEnabled=true&batchSize=200'), {
@@ -449,31 +577,18 @@ const EmbedForm: React.FC = () => {
         setError(getBackendMessage(data) || '重建索引失败');
         return;
       }
-      setReindexResult(data as {
-        total?: number;
-        success?: number;
-        failed?: number;
-        failedIds?: number[];
-        cleared?: boolean | null;
-        clearError?: string | null;
-        orphanDeleted?: number | null;
-        orphanFailed?: number | null;
-        orphanFailedIds?: number[];
-      });
 
       // Optional UX: refresh sample list after reindex
       void loadSamples();
+      void loadSamplesIndexStatus();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setReindexing(false);
     }
-  }, [loadSamples]);
+  }, [loadSamples, loadSamplesIndexStatus]);
 
-  // ===== ES Sync (incremental / one) =====
-  const [syncFromId, setSyncFromId] = useState<string>('');
-  const [syncBatching, setSyncBatching] = useState(false);
-  const [syncBatchResult, setSyncBatchResult] = useState<{ total?: number; success?: number; failed?: number; failedIds?: number[] } | null>(null);
+  // ===== ES Sync (one) =====
   const [syncingId, setSyncingId] = useState<number | null>(null);
 
   const syncOneSample = useCallback(
@@ -497,33 +612,61 @@ const EmbedForm: React.FC = () => {
     [loadSamples]
   );
 
-  const syncBatch = useCallback(async () => {
-    const from = syncFromId.trim() ? Number(syncFromId.trim()) : undefined;
-    if (from !== undefined && (!Number.isFinite(from) || from <= 0)) {
-      setError('fromId 必须是正整数');
-      return;
-    }
-    setSyncBatching(true);
-    setError(null);
-    setSyncBatchResult(null);
-    try {
-      const r = await syncSamplesIncremental({ onlyEnabled: true, batchSize: 200, fromId: from });
-      setSyncBatchResult({ total: r.total, success: r.success, failed: r.failed, failedIds: r.failedIds });
-      await loadSamples();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSyncBatching(false);
-    }
-  }, [loadSamples, syncFromId]);
-
   useEffect(() => {
     void loadConfig();
   }, [loadConfig]);
 
   useEffect(() => {
+    void loadAutoSyncConfig();
+  }, [loadAutoSyncConfig]);
+
+  useEffect(() => {
+    if (autoSyncEnableEnsureInFlightRef.current) return;
+    if (cfgEditing || cfgSaving || cfgLoading || autoSyncLoading) return;
+    if (cfg?.enabled !== true) return;
+    if (!autoSyncCfg) return;
+    if (autoSyncCfg.enabled === true) return;
+
+    autoSyncEnableEnsureInFlightRef.current = true;
+    (async () => {
+      try {
+        const csrf = await getCsrfToken();
+        const intervalSeconds = autoSyncCfg.intervalSeconds == null ? 60 : clampInt(Number(autoSyncCfg.intervalSeconds), 5, 3600);
+        const res = await fetch(apiUrl('/api/admin/moderation/embed/samples/auto-sync/config'), {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-XSRF-TOKEN': csrf,
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            enabled: true,
+            intervalSeconds,
+          }),
+        });
+        const data: unknown = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(getBackendMessage(data) || '启用自动增量同步失败');
+          return;
+        }
+        const c2 = data as SamplesAutoSyncConfig;
+        setAutoSyncCfg(c2);
+        setAutoSyncForm(toAutoSyncFormState(c2));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        autoSyncEnableEnsureInFlightRef.current = false;
+      }
+    })();
+  }, [autoSyncCfg, autoSyncLoading, cfg?.enabled, cfgEditing, cfgLoading, cfgSaving]);
+
+  useEffect(() => {
     void loadSamples();
   }, [loadSamples]);
+
+  useEffect(() => {
+    void loadSamplesIndexStatus();
+  }, [loadSamplesIndexStatus]);
 
   return (
     <div className="space-y-4">
@@ -535,9 +678,11 @@ const EmbedForm: React.FC = () => {
             className="rounded border px-3 py-2 disabled:opacity-60"
             onClick={() => {
               void loadConfig();
+              void loadAutoSyncConfig();
               void loadSamples();
+              void loadSamplesIndexStatus();
             }}
-            disabled={cfgLoading || samplesLoading}
+            disabled={cfgLoading || autoSyncLoading || samplesLoading || samplesIndexLoading}
           >
             刷新
           </button>
@@ -552,278 +697,344 @@ const EmbedForm: React.FC = () => {
           </div>
         ) : null}
 
-        {/* Reindex */}
-        <div className="rounded border bg-gray-50 p-3 space-y-2">
+        <div className="bg-white rounded-lg shadow p-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="font-semibold">样本库 → ES 同步</div>
-              <div className="text-sm text-gray-600">全量重建：先清空 ES，再全量写入，并清理孤儿文档（会调用 embedding）。</div>
+              <div className="text-lg font-semibold">样本库索引状态</div>
             </div>
-            <button
-              type="button"
-              className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-              disabled={reindexing}
-              onClick={() => void reindexSamples()}
-            >
-              {reindexing ? '重建中…' : '重建 ES 索引'}
-            </button>
           </div>
-          {reindexResult ? (
-            <div className="text-sm text-gray-700">
-              本次结果：total <b>{reindexResult.total ?? '—'}</b>，success <b>{reindexResult.success ?? '—'}</b>，failed <b>{reindexResult.failed ?? '—'}</b>
-              <div className="text-xs text-gray-500 mt-1">
-                cleared: <b>{String(reindexResult.cleared ?? '—')}</b>
-                {reindexResult.clearError ? <span className="text-red-700">（clearError: {reindexResult.clearError}）</span> : null}
-              </div>
-              <div className="text-xs text-gray-500">
-                orphanDeleted <b>{reindexResult.orphanDeleted ?? '—'}</b>，orphanFailed <b>{reindexResult.orphanFailed ?? '—'}</b>
-                {reindexResult.orphanFailedIds && reindexResult.orphanFailedIds.length ? (
-                  <span>（orphanFailedIds: {reindexResult.orphanFailedIds.join(', ')}）</span>
-                ) : null}
-              </div>
-              {reindexResult.failedIds && reindexResult.failedIds.length ? (
-                <div className="text-xs text-gray-500 mt-1">失败样本ID（最多50个）：{reindexResult.failedIds.join(', ')}</div>
-              ) : null}
-            </div>
+
+          {samplesIndexError ? (
+            <div className="rounded border border-red-200 bg-red-50 text-red-800 px-3 py-2 text-sm">错误：{samplesIndexError}</div>
           ) : null}
 
-          <div className="flex items-center gap-2 pt-2">
-            <input
-              className="rounded border px-3 py-2 text-sm"
-              placeholder="增量同步 fromId（可选）"
-              value={syncFromId}
-              onChange={(e) => setSyncFromId(e.target.value)}
+          {!samplesIndexStatus ? (
+            <div className="text-sm text-gray-500 py-4 text-center bg-gray-50 rounded border border-dashed">
+              {samplesIndexLoading ? '加载中…' : '暂无状态数据。'}
+            </div>
+          ) : (
+            <div className="overflow-x-auto border rounded-md">
+              <table className="min-w-full text-sm divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr className="text-left text-gray-500 font-medium text-sm uppercase tracking-wider">
+                    <th className="py-2 px-3">索引名</th>
+                    <th className="py-2 px-3">文档数</th>
+                    <th className="py-2 px-3">维度（配置/映射）</th>
+                    <th className="py-2 px-3">状态</th>
+                    <th className="py-2 px-3">上次增量同步</th>
+                    <th className="py-2 px-3 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  <tr className="hover:bg-gray-50 transition-colors">
+                    <td className="py-2 px-3 font-mono text-gray-900 break-all text-sm font-medium">{samplesIndexStatus.indexName ?? '—'}</td>
+                    <td className="py-2 px-3 text-gray-500 text-sm">{samplesIndexStatus.docCount ?? '—'}</td>
+                    <td className="py-2 px-3 text-gray-500 text-sm">
+                      {(samplesIndexStatus.embeddingDimsConfigured ?? '—') + ' / ' + (samplesIndexStatus.embeddingDimsInMapping ?? '—')}
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex flex-col gap-1 items-start">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase tracking-wide ${
+                              samplesIndexStatus.exists === true ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            {samplesIndexStatus.exists === true ? '存在' : '不存在'}
+                          </span>
+
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase tracking-wide ${
+                              samplesIndexStatus.available === true
+                                ? 'bg-green-100 text-green-800'
+                                : samplesIndexStatus.available === false
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {samplesIndexStatus.available === true ? '可用' : samplesIndexStatus.available === false ? '不可用' : '未知'}
+                          </span>
+
+                          {samplesIndexStatus.available === true && samplesIndexStatus.docCount === 0 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                              无样本
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {samplesIndexStatus.available === false && samplesIndexStatus.availabilityMessage ? (
+                          <div className="text-xs text-gray-500">{samplesIndexStatus.availabilityMessage}</div>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 text-gray-500 text-sm">{formatDateTime(samplesIndexStatus.lastIncrementalSyncAt)}</td>
+                    <td className="py-2 px-3 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        className="rounded bg-blue-600 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-60"
+                        disabled={reindexing}
+                        onClick={() => void reindexSamples()}
+                        title="全量重建：先清空 ES，再全量写入，并清理孤儿文档（会调用 embedding）。"
+                      >
+                        {reindexing ? '重建中…' : '重建索引'}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="rounded border bg-gray-50 p-3 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold">运行时配置</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">运行时配置：</span>
+                  <select
+                    value={cfgForm.enabled ? 'true' : 'false'}
+                    disabled={!cfgEditing || cfgLoading || cfgSaving}
+                    onChange={(e) => {
+                      const nextEnabled = e.target.value === 'true';
+                      setCfgForm((p) => ({ ...p, enabled: nextEnabled }));
+                      setAutoSyncForm((p) => ({ ...p, enabled: nextEnabled }));
+                    }}
+                    className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                      cfgForm.enabled ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
+                    } disabled:opacity-60 disabled:bg-gray-100`}
+                    title={!cfgEditing ? '只读（点击右侧「编辑配置」后可修改）' : '修改开关（需保存生效）'}
+                  >
+                    <option value="true" className="text-green-600">
+                      开启
+                    </option>
+                    <option value="false" className="text-red-600">
+                      关闭
+                    </option>
+                  </select>
+                </div>
+
+                {!cfgEditing ? (
+                  <button
+                    type="button"
+                    className="rounded bg-blue-600 text-white px-4 py-2 text-sm disabled:opacity-60"
+                    disabled={cfgLoading || cfgSaving}
+                    onClick={() => {
+                      setCfgEditing(true);
+                      setError(null);
+                    }}
+                    title="进入编辑模式"
+                  >
+                    编辑
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="rounded border px-3 py-2 text-sm disabled:opacity-60"
+                      disabled={cfgLoading || cfgSaving}
+                      onClick={() => {
+                        setCfgForm(toCfgFormState(cfg));
+                        setAutoSyncForm(toAutoSyncFormState(autoSyncCfg));
+                        setCfgEditing(false);
+                        setError(null);
+                      }}
+                      title="放弃未保存的修改，并恢复到最近一次加载/保存的配置"
+                    >
+                      放弃
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded bg-blue-600 text-white px-4 py-2 text-sm disabled:opacity-60"
+                      disabled={cfgLoading || cfgSaving}
+                      onClick={() => void saveConfig()}
+                      title="保存并生效"
+                    >
+                      {cfgSaving ? '保存中…' : '保存'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <ProviderModelSelect
+                  providers={providers}
+                  activeProviderId={activeProviderId}
+                  mode="embedding"
+                  includeProviderOnlyOptions={false}
+                  providerId=""
+                  model={cfgForm.embeddingModel}
+                  disabled={!cfgEditing || cfgLoading || cfgSaving}
+                  selectClassName="w-full rounded border px-3 py-2 text-sm bg-white disabled:bg-gray-50"
+                  onChange={(next) => {
+                    if (!cfgEditing) return;
+                    setCfgForm((p) => ({ ...p, embeddingModel: next.model }));
+                  }}
+                />
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-1">维度（0=自动）</div>
+                <input
+                  className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
+                  placeholder="0"
+                  value={cfgForm.embeddingDims}
+                  readOnly={!cfgEditing}
+                  onChange={(e) => {
+                    if (!cfgEditing) return;
+                    setCfgForm((p) => ({ ...p, embeddingDims: e.target.value }));
+                  }}
+                />
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-1">最大输入长度（0=不截断）</div>
+                <input
+                  className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
+                  placeholder="0"
+                  value={cfgForm.maxInputChars}
+                  readOnly={!cfgEditing}
+                  onChange={(e) => {
+                    if (!cfgEditing) return;
+                    setCfgForm((p) => ({ ...p, maxInputChars: e.target.value }));
+                  }}
+                />
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-1">TopK（1~50）</div>
+                <input
+                  className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
+                  placeholder="例如：5"
+                  value={cfgForm.defaultTopK}
+                  readOnly={!cfgEditing}
+                  onChange={(e) => {
+                    if (!cfgEditing) return;
+                    setCfgForm((p) => ({ ...p, defaultTopK: e.target.value }));
+                  }}
+                />
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-1">阈值（0~1）</div>
+                <input
+                  className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
+                  placeholder="例如：0.15"
+                  value={cfgForm.defaultThreshold}
+                  readOnly={!cfgEditing}
+                  onChange={(e) => {
+                    if (!cfgEditing) return;
+                    setCfgForm((p) => ({ ...p, defaultThreshold: e.target.value }));
+                  }}
+                />
+              </div>
+              <div>
+                <div className="text-sm font-medium mb-1">候选数（0=自动）</div>
+                <input
+                  className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
+                  placeholder="0"
+                  value={cfgForm.defaultNumCandidates}
+                  readOnly={!cfgEditing}
+                  onChange={(e) => {
+                    if (!cfgEditing) return;
+                    setCfgForm((p) => ({ ...p, defaultNumCandidates: e.target.value }));
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="rounded border bg-white p-3 space-y-3">
+
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-sm font-medium mb-1">自动增量同步时间间隔</div>
+                  <select
+                    value={autoSyncForm.intervalSeconds.trim() ? autoSyncForm.intervalSeconds : '60'}
+                    disabled={!cfgEditing || autoSyncLoading || cfgSaving}
+                    onChange={(e) => {
+                      if (!cfgEditing) return;
+                      setAutoSyncForm((p) => ({ ...p, intervalSeconds: e.target.value }));
+                    }}
+                    className="w-full rounded border px-3 py-2 text-sm bg-white disabled:bg-gray-50 disabled:opacity-60"
+                  >
+                    <option value="5">5 秒</option>
+                    <option value="10">10 秒</option>
+                    <option value="30">30 秒</option>
+                    <option value="60">1 分钟</option>
+                    <option value="120">2 分钟</option>
+                    <option value="300">5 分钟</option>
+                    <option value="600">10 分钟</option>
+                    <option value="1800">30 分钟</option>
+                    <option value="3600">60 分钟</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="text-xs text-gray-500">更新时间：{formatDateTime(cfg?.updatedAt)}</div>
+          </div>
+
+          <div className="rounded border bg-gray-50 p-3 space-y-3">
+            <div className="font-semibold">手动检测（用于验证 ES/Embedding 是否通）</div>
+            <textarea
+              className="w-full rounded border px-3 py-2 min-h-[90px]"
+              placeholder="输入要检测的文本（贴标题+正文或评论内容）"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
             />
-            <button
-              type="button"
-              className="rounded border px-3 py-2 text-sm disabled:opacity-60"
-              disabled={syncBatching}
-              onClick={() => void syncBatch()}
-            >
-              {syncBatching ? '同步中…' : '增量同步到 ES'}
-            </button>
-            {syncBatchResult ? (
-              <div className="text-xs text-gray-600">
-                增量结果：total {syncBatchResult.total ?? '—'}，success {syncBatchResult.success ?? '—'}，failed {syncBatchResult.failed ?? '—'}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
+                disabled={checking || !text.trim()}
+                onClick={() => void manualCheck()}
+              >
+                {checking ? '检测中…' : '检测'}
+              </button>
+            </div>
+
+            {checkResult ? (
+              <div className="rounded border bg-white p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold">检测结果</div>
+                  <span className={`text-sm font-semibold ${checkResult.hit ? 'text-red-700' : 'text-green-700'}`}>
+                    {checkResult.hit ? '命中（HIT，建议转人工）' : '未命中（MISS）'}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-700">
+                  最佳距离（bestDistance） <b>{checkResult.bestDistance ?? '—'}</b>；阈值（threshold） <b>{checkResult.threshold ?? '—'}</b>；取前K个（topK）{' '}
+                  <b>{checkResult.topK ?? '—'}</b>；候选数（numCandidates） <b>{checkResult.numCandidates ?? '—'}</b>；向量维度（dims）{' '}
+                  <b>{checkResult.embeddingDims ?? '—'}</b>；向量模型（model） <b>{checkResult.embeddingModel ?? '—'}</b>；最大输入字符数（maxInputChars）{' '}
+                  <b>{checkResult.maxInputChars ?? '—'}</b>
+                </div>
+                <div className="overflow-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-600">
+                        <th className="py-2 pr-2">样本ID</th>
+                        <th className="py-2 pr-2">距离</th>
+                        <th className="py-2 pr-2">分类</th>
+                        <th className="py-2 pr-2">风险等级</th>
+                        <th className="py-2 pr-2">文本预览</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(checkResult.hits ?? []).map((h: SimilarityHit, idx: number) => (
+                        <tr key={idx} className="border-t">
+                          <td className="py-2 pr-2">{h.sampleId ?? '—'}</td>
+                          <td className="py-2 pr-2">{h.distance ?? '—'}</td>
+                          <td className="py-2 pr-2">{categoryDisplay(h.category ? String(h.category) : null)}</td>
+                          <td className="py-2 pr-2">{h.riskLevel ?? '—'}</td>
+                          <td className="py-2 pr-2 text-gray-700">{h.rawTextPreview ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : null}
           </div>
-        </div>
-
-        <div className="rounded border bg-gray-50 p-3 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="font-semibold">运行时配置</div>
-              <div className="text-sm text-gray-600">用于控制 VEC 阶段使用的 embedding 模型/维度/最大输入长度，以及手动测试的默认参数。</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-700">运行时配置：</span>
-                <select
-                  value={cfgForm.enabled ? 'true' : 'false'}
-                  disabled={!cfgEditing || cfgLoading || cfgSaving}
-                  onChange={(e) => setCfgForm((p) => ({ ...p, enabled: e.target.value === 'true' }))}
-                  className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
-                    cfgForm.enabled ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
-                  } disabled:opacity-60 disabled:bg-gray-100`}
-                  title={!cfgEditing ? '只读（点击右侧「编辑配置」后可修改）' : '修改开关（需保存生效）'}
-                >
-                  <option value="true" className="text-green-600">
-                    开启
-                  </option>
-                  <option value="false" className="text-red-600">
-                    关闭
-                  </option>
-                </select>
-              </div>
-
-              {!cfgEditing ? (
-                <button
-                  type="button"
-                  className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-                  disabled={cfgLoading || cfgSaving}
-                  onClick={() => {
-                    setCfgEditing(true);
-                    setError(null);
-                  }}
-                  title="进入编辑模式"
-                >
-                  编辑配置
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="rounded border px-3 py-2 disabled:opacity-60"
-                    disabled={cfgLoading || cfgSaving}
-                    onClick={() => {
-                      setCfgForm(toCfgFormState(cfg));
-                      setCfgEditing(false);
-                      setError(null);
-                    }}
-                    title="放弃未保存的修改，并恢复到最近一次加载/保存的配置"
-                  >
-                    放弃修改
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-                    disabled={cfgLoading || cfgSaving}
-                    onClick={() => void saveConfig()}
-                    title="保存并生效"
-                  >
-                    {cfgSaving ? '保存中…' : '保存配置'}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <div className="text-sm font-medium mb-1">
-                Embedding 模型名（可选）
-                {!cfgEditing ? <span className="text-xs text-gray-500 ml-2">（只读，点击右上角「编辑配置」修改）</span> : null}
-              </div>
-              <input
-                className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
-                placeholder="留空使用后端默认"
-                value={cfgForm.embeddingModel}
-                readOnly={!cfgEditing}
-                onChange={(e) => {
-                  if (!cfgEditing) return;
-                  setCfgForm((p) => ({ ...p, embeddingModel: e.target.value }));
-                }}
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-1">Embedding 维度 dims（0=自动）</div>
-              <input
-                className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
-                placeholder="0"
-                value={cfgForm.embeddingDims}
-                readOnly={!cfgEditing}
-                onChange={(e) => {
-                  if (!cfgEditing) return;
-                  setCfgForm((p) => ({ ...p, embeddingDims: e.target.value }));
-                }}
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-1">最大输入长度 maxInputChars（0=不截断）</div>
-              <input
-                className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
-                placeholder="0"
-                value={cfgForm.maxInputChars}
-                readOnly={!cfgEditing}
-                onChange={(e) => {
-                  if (!cfgEditing) return;
-                  setCfgForm((p) => ({ ...p, maxInputChars: e.target.value }));
-                }}
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-1">默认 TopK（1~50）</div>
-              <input
-                className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
-                placeholder="例如：5"
-                value={cfgForm.defaultTopK}
-                readOnly={!cfgEditing}
-                onChange={(e) => {
-                  if (!cfgEditing) return;
-                  setCfgForm((p) => ({ ...p, defaultTopK: e.target.value }));
-                }}
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-1">默认阈值 threshold（0~1）</div>
-              <input
-                className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
-                placeholder="例如：0.15"
-                value={cfgForm.defaultThreshold}
-                readOnly={!cfgEditing}
-                onChange={(e) => {
-                  if (!cfgEditing) return;
-                  setCfgForm((p) => ({ ...p, defaultThreshold: e.target.value }));
-                }}
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium mb-1">默认 numCandidates（0=自动）</div>
-              <input
-                className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
-                placeholder="0"
-                value={cfgForm.defaultNumCandidates}
-                readOnly={!cfgEditing}
-                onChange={(e) => {
-                  if (!cfgEditing) return;
-                  setCfgForm((p) => ({ ...p, defaultNumCandidates: e.target.value }));
-                }}
-              />
-            </div>
-          </div>
-          <div className="text-xs text-gray-500">更新时间：{formatDateTime(cfg?.updatedAt)}</div>
-        </div>
-
-        {/* Manual check */}
-        <div className="rounded border bg-gray-50 p-3 space-y-3">
-          <div className="font-semibold">手动检测（用于验证 ES/Embedding 是否通）</div>
-          <textarea
-            className="w-full rounded border px-3 py-2 min-h-[90px]"
-            placeholder="输入要检测的文本（贴标题+正文或评论内容）"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-              disabled={checking || !text.trim()}
-              onClick={() => void manualCheck()}
-            >
-              {checking ? '检测中…' : '检测'}
-            </button>
-          </div>
-
-          {checkResult ? (
-            <div className="rounded border bg-white p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="font-semibold">检测结果</div>
-                <span className={`text-sm font-semibold ${checkResult.hit ? 'text-red-700' : 'text-green-700'}`}>
-                  {checkResult.hit ? '命中（HIT，建议转人工）' : '未命中（MISS）'}
-                </span>
-              </div>
-              <div className="text-sm text-gray-700">
-                bestDistance <b>{checkResult.bestDistance ?? '—'}</b>；threshold <b>{checkResult.threshold ?? '—'}</b>；topK <b>{checkResult.topK ?? '—'}</b>；numCandidates{' '}
-                <b>{checkResult.numCandidates ?? '—'}</b>；dims <b>{checkResult.embeddingDims ?? '—'}</b>；model <b>{checkResult.embeddingModel ?? '—'}</b>；maxInputChars{' '}
-                <b>{checkResult.maxInputChars ?? '—'}</b>
-              </div>
-              <div className="overflow-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-gray-600">
-                      <th className="py-2 pr-2">样本ID</th>
-                      <th className="py-2 pr-2">距离</th>
-                      <th className="py-2 pr-2">分类</th>
-                      <th className="py-2 pr-2">风险等级</th>
-                      <th className="py-2 pr-2">文本预览</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(checkResult.hits ?? []).map((h: SimilarityHit, idx: number) => (
-                      <tr key={idx} className="border-t">
-                        <td className="py-2 pr-2">{h.sampleId ?? '—'}</td>
-                        <td className="py-2 pr-2">{h.distance ?? '—'}</td>
-                        <td className="py-2 pr-2">{categoryDisplay(h.category ? String(h.category) : null)}</td>
-                        <td className="py-2 pr-2">{h.riskLevel ?? '—'}</td>
-                        <td className="py-2 pr-2 text-gray-700">{h.rawTextPreview ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
 

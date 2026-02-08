@@ -5,7 +5,11 @@ import { getPortalSection } from '../portalMenu';
 
 export default function AssistantLayout() {
   const section = getPortalSection('assistant');
-  const items = section.children.map((c) => ({ id: c.id, label: c.label, to: `${section.basePath}/${c.path}` }));
+  const items = section.children.map((c) => ({
+    id: c.id,
+    label: c.label,
+    to: c.to ?? `${section.basePath}/${c.path}`,
+  }));
 
   return (
     <div className="space-y-4">
@@ -19,6 +23,7 @@ export default function AssistantLayout() {
 
 export function AssistantIndexRedirect() {
   const section = getPortalSection('assistant');
-  return <Navigate to={`${section.basePath}/${section.children[0].path}`} replace />;
+  const first = section.children.find((c) => !c.to) ?? section.children[0];
+  return <Navigate to={first.to ?? `${section.basePath}/${first.path}`} replace />;
 }
 

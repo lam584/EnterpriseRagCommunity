@@ -18,5 +18,6 @@ public class QaMessageDTO {
     private Integer latencyMs;
     private Integer firstTokenLatencyMs;
     private LocalDateTime createdAt;
+    private Boolean isFavorite;
     private List<QaCitationSourceDTO> sources;
 }
