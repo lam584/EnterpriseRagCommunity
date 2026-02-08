@@ -5,7 +5,7 @@ import type { ModerationConfidenceFallbackConfig, FallbackAction } from '../../.
 import { getFallbackConfig, updateFallbackConfig } from '../../../../services/moderationFallbackService';
 
 function clamp(n: number, min: number, max: number) {
-  if (Number.isNaN(n)) return min;
+  if (!Number.isFinite(n)) return min;
   return Math.min(Math.max(n, min), max);
 }
 
@@ -122,12 +122,20 @@ const FallbackForm: React.FC = () => {
         llmEnabled: cfg.llmEnabled,
         llmRejectThreshold: clamp(cfg.llmRejectThreshold, 0, 1),
         llmHumanThreshold: clamp(cfg.llmHumanThreshold, 0, 1),
+        llmTextRiskThreshold: clamp(cfg.llmTextRiskThreshold, 0, 1),
+        llmImageRiskThreshold: clamp(cfg.llmImageRiskThreshold, 0, 1),
+        llmStrongRejectThreshold: clamp(cfg.llmStrongRejectThreshold, 0, 1),
+        llmStrongPassThreshold: clamp(cfg.llmStrongPassThreshold, 0, 1),
+        llmCrossModalThreshold: clamp(cfg.llmCrossModalThreshold, 0, 1),
 
         reportHumanThreshold: clamp(cfg.reportHumanThreshold, 1, 1000000),
       };
 
       if (payload.llmHumanThreshold! > payload.llmRejectThreshold!) {
         payload.llmHumanThreshold = payload.llmRejectThreshold;
+      }
+      if (payload.llmStrongPassThreshold! > payload.llmStrongRejectThreshold!) {
+        payload.llmStrongPassThreshold = payload.llmStrongRejectThreshold;
       }
 
       const saved = await updateFallbackConfig(payload);
@@ -216,7 +224,7 @@ const FallbackForm: React.FC = () => {
       {ok ? <div className="bg-green-50 border border-green-200 text-green-700 rounded p-3 text-sm">{ok}</div> : null}
 
       <Section
-        title="规则过滤层 (RULE)"
+        title="规则过滤层 (RULE)配置"
         desc="当规则命中时，根据命中规则的严重级别选择动作。"
       >
         <div className="flex items-center justify-between">
@@ -256,7 +264,7 @@ const FallbackForm: React.FC = () => {
       </Section>
 
       <Section
-        title="嵌入相似检测 (VEC)"
+        title="嵌入相似检测 (VEC)配置"
         desc="距离越小越相似。距离 ≤ 阈值视为命中。"
       >
         <div className="flex items-center justify-between">
@@ -302,7 +310,7 @@ const FallbackForm: React.FC = () => {
       </Section>
 
       <Section
-        title="LLM 审核层"
+        title="LLM 审核层配置"
         desc="LLM 输出风险分(0~1)。风险分 ≥ 拒绝阈值 -> 直接拒绝；介于转人工阈值与拒绝阈值 -> 转人工；低于转人工阈值 -> 通过。"
       >
         <div className="flex items-center justify-between">
@@ -341,6 +349,86 @@ const FallbackForm: React.FC = () => {
             />
             <div className="text-xs text-gray-500 mt-1">会自动保证转人工阈值 ≤ 拒绝阈值</div>
           </div>
+        </div>
+
+        <div className="mt-3 border-t pt-3">
+          <div className="text-sm font-semibold text-gray-900">图文审核阈值（文本/图片拆分 + 跨模态复核）</div>
+          <div className="text-xs text-gray-600 mt-1">
+            当待审内容包含图片时：先分别进行文本审核与图片审核（图片会生成描述），再在必要时进行跨模态复核。
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <div>
+              <Label>文本风险阈值 (llmTextRiskThreshold)</Label>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                max={1}
+                className="rounded border px-3 py-2 w-full"
+                value={cfg.llmTextRiskThreshold}
+                disabled={!editing}
+                onChange={(e) => setCfg((p) => (p ? { ...p, llmTextRiskThreshold: Number(e.target.value) } : p))}
+              />
+              <div className="text-xs text-gray-500 mt-1">阈值1：文本初审风险 ≥ 该值视为“可疑/偏高风险”</div>
+            </div>
+            <div>
+              <Label>图片风险阈值 (llmImageRiskThreshold)</Label>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                max={1}
+                className="rounded border px-3 py-2 w-full"
+                value={cfg.llmImageRiskThreshold}
+                disabled={!editing}
+                onChange={(e) => setCfg((p) => (p ? { ...p, llmImageRiskThreshold: Number(e.target.value) } : p))}
+              />
+              <div className="text-xs text-gray-500 mt-1">阈值2：图片初审风险 ≥ 该值视为“可疑/偏高风险”</div>
+            </div>
+            <div>
+              <Label>强拒绝阈值 (llmStrongRejectThreshold)</Label>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                max={1}
+                className="rounded border px-3 py-2 w-full"
+                value={cfg.llmStrongRejectThreshold}
+                disabled={!editing}
+                onChange={(e) => setCfg((p) => (p ? { ...p, llmStrongRejectThreshold: Number(e.target.value) } : p))}
+              />
+              <div className="text-xs text-gray-500 mt-1">阈值3：任一模态风险 ≥ 该值，直接拒绝（短路）</div>
+            </div>
+            <div>
+              <Label>强通过阈值 (llmStrongPassThreshold)</Label>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                max={1}
+                className="rounded border px-3 py-2 w-full"
+                value={cfg.llmStrongPassThreshold}
+                disabled={!editing}
+                onChange={(e) => setCfg((p) => (p ? { ...p, llmStrongPassThreshold: Number(e.target.value) } : p))}
+              />
+              <div className="text-xs text-gray-500 mt-1">阈值4：文本与图片风险都低于该值，直接通过（短路）</div>
+            </div>
+            <div className="md:col-span-2">
+              <Label>跨模态综合阈值 (llmCrossModalThreshold)</Label>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                max={1}
+                className="rounded border px-3 py-2 w-full"
+                value={cfg.llmCrossModalThreshold}
+                disabled={!editing}
+                onChange={(e) => setCfg((p) => (p ? { ...p, llmCrossModalThreshold: Number(e.target.value) } : p))}
+              />
+              <div className="text-xs text-gray-500 mt-1">阈值5：跨模态复核的综合风险 ≥ 该值，判定拒绝；否则通过</div>
+            </div>
+          </div>
+          <div className="text-xs text-gray-500 mt-2">会自动保证强通过阈值 ≤ 强拒绝阈值</div>
         </div>
       </Section>
 

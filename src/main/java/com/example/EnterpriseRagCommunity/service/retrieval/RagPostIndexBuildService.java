@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +36,8 @@ import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexStatu
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.ai.LlmRoutingService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationSampleTextUtils;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
 
@@ -49,6 +52,7 @@ public class RagPostIndexBuildService {
     private final VectorIndicesRepository vectorIndicesRepository;
     private final PostsRepository postsRepository;
     private final AiEmbeddingService embeddingService;
+    private final LlmRoutingService llmRoutingService;
     private final RetrievalRagProperties ragProps;
     private final RagPostsIndexService indexService;
     private final ElasticsearchTemplate esTemplate;
@@ -68,6 +72,7 @@ public class RagPostIndexBuildService {
                                            Integer chunkOverlapChars,
                                            Boolean clearIndex,
                                            String embeddingModelOverride,
+                                           String embeddingProviderId,
                                            Integer expectedEmbeddingDims) {
         long started = System.currentTimeMillis();
         VectorIndicesEntity vi = vectorIndicesRepository.findById(vectorIndexId)
@@ -95,6 +100,19 @@ public class RagPostIndexBuildService {
         if (modelToUse == null) modelToUse = metaModel;
         if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
 
+        String metaProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
+        if (metaProviderId == null) metaProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingProviderId"));
+        String providerToUse = toNonBlankString(embeddingProviderId);
+        if (providerToUse == null) providerToUse = metaProviderId;
+
+        if (modelToUse == null && providerToUse == null) {
+            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
+            if (target != null) {
+                providerToUse = target.providerId();
+                modelToUse = target.modelName();
+            }
+        }
+
         Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
         if (configuredDims == null) {
             Integer d = vi.getDim();
@@ -104,31 +122,11 @@ public class RagPostIndexBuildService {
         vi.setStatus(VectorIndexStatus.BUILDING);
         vectorIndicesRepository.save(vi);
 
+        boolean clearRequested = Boolean.TRUE.equals(clearIndex);
+        boolean clearPending = clearRequested;
         Boolean cleared = null;
         String clearError = null;
         boolean clearedOk = false;
-        if (Boolean.TRUE.equals(clearIndex)) {
-            try {
-                var ops = esTemplate.indexOps(IndexCoordinates.of(indexName));
-                if (ops.exists()) {
-                    ops.delete();
-                }
-                cleared = true;
-                clearedOk = true;
-            } catch (Exception ex) {
-                try {
-                    deleteIndexViaHttp(indexName);
-                    cleared = true;
-                    clearedOk = true;
-                } catch (Exception fallback) {
-                    cleared = false;
-                    clearError = "delete-index failed: " + ex.getMessage() + " | fallback http-delete-index failed: " + fallback.getMessage();
-                }
-            }
-            if (!clearedOk) {
-                throw new IllegalStateException("清空 ES 索引失败（需要先删除索引才能全量重建）: " + (clearError == null ? "" : clearError));
-            }
-        }
 
         long totalPosts = 0;
         long totalChunks = 0;
@@ -143,7 +141,7 @@ public class RagPostIndexBuildService {
         boolean ensured = false;
 
         boolean mayRewriteExisting = fromPostId == null || fromPostId <= 0;
-        boolean cleanupPerPost = mayRewriteExisting && !clearedOk;
+        boolean cleanupPerPost = mayRewriteExisting && !clearRequested;
 
         int page = 0;
         while (true) {
@@ -183,13 +181,37 @@ public class RagPostIndexBuildService {
                     String contentHash = ModerationSampleTextUtils.sha256Hex(chunk);
 
                     try {
-                        AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnce(chunk, modelToUse);
+                        AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnceForTask(chunk, modelToUse, providerToUse, LlmQueueTaskType.POST_EMBEDDING);
                         if (emb == null || emb.vector() == null) throw new IllegalStateException("embedding is null");
 
                         if (!ensured) {
                             inferredDims = emb.dims();
                             validateEmbeddingDims(configuredDims, inferredDims);
                             dimsToUse = configuredDims != null ? configuredDims : inferredDims;
+                            if (clearPending) {
+                                try {
+                                    var ops = esTemplate.indexOps(IndexCoordinates.of(indexName));
+                                    if (ops.exists()) {
+                                        ops.delete();
+                                    }
+                                    cleared = true;
+                                    clearedOk = true;
+                                    clearPending = false;
+                                } catch (Exception ex) {
+                                    try {
+                                        deleteIndexViaHttp(indexName);
+                                        cleared = true;
+                                        clearedOk = true;
+                                        clearPending = false;
+                                    } catch (Exception fallback) {
+                                        cleared = false;
+                                        clearError = "delete-index failed: " + ex.getMessage() + " | fallback http-delete-index failed: " + fallback.getMessage();
+                                    }
+                                }
+                                if (!clearedOk) {
+                                    throw new IllegalStateException("清空 ES 索引失败（需要先删除索引才能全量重建）: " + (clearError == null ? "" : clearError));
+                                }
+                            }
                             indexService.ensureIndex(indexName, dimsToUse);
                             ensured = true;
                         }
@@ -243,6 +265,30 @@ public class RagPostIndexBuildService {
             if (fallbackDims != null && fallbackDims > 0) {
                 try {
                     dimsToUse = fallbackDims;
+                    if (clearPending) {
+                        try {
+                            var ops = esTemplate.indexOps(IndexCoordinates.of(indexName));
+                            if (ops.exists()) {
+                                ops.delete();
+                            }
+                            cleared = true;
+                            clearedOk = true;
+                            clearPending = false;
+                        } catch (Exception ex) {
+                            try {
+                                deleteIndexViaHttp(indexName);
+                                cleared = true;
+                                clearedOk = true;
+                                clearPending = false;
+                            } catch (Exception fallback) {
+                                cleared = false;
+                                clearError = "delete-index failed: " + ex.getMessage() + " | fallback http-delete-index failed: " + fallback.getMessage();
+                            }
+                        }
+                        if (!clearedOk) {
+                            throw new IllegalStateException("清空 ES 索引失败（需要先删除索引才能全量重建）: " + (clearError == null ? "" : clearError));
+                        }
+                    }
                     indexService.ensureIndex(indexName, fallbackDims);
                     ensured = true;
                 } catch (Exception ex) {
@@ -280,6 +326,7 @@ public class RagPostIndexBuildService {
         meta.put("lastBuildChunkOverlapChars", overlap);
         if (dimsToUse != null && dimsToUse > 0) meta.put("lastBuildEmbeddingDims", dimsToUse);
         if (modelToUse != null && !modelToUse.isBlank()) meta.put("lastBuildEmbeddingModel", modelToUse);
+        if (providerToUse != null && !providerToUse.isBlank()) meta.put("lastBuildEmbeddingProviderId", providerToUse);
         if (cleared != null) meta.put("lastBuildCleared", cleared);
         if (clearError != null) meta.put("lastBuildClearError", clearError);
         vi.setMetadata(meta);
@@ -296,6 +343,7 @@ public class RagPostIndexBuildService {
         resp.setClearError(clearError);
         resp.setEmbeddingDims(dimsToUse);
         resp.setEmbeddingModel(modelToUse);
+        resp.setEmbeddingProviderId(providerToUse);
         resp.setTookMs(System.currentTimeMillis() - started);
         return resp;
     }
@@ -307,8 +355,9 @@ public class RagPostIndexBuildService {
                                               Integer chunkMaxChars,
                                               Integer chunkOverlapChars,
                                               String embeddingModelOverride,
+                                              String embeddingProviderId,
                                               Integer expectedEmbeddingDims) {
-        RagPostsBuildResponse resp = buildPosts(vectorIndexId, boardId, null, postBatchSize, chunkMaxChars, chunkOverlapChars, true, embeddingModelOverride, expectedEmbeddingDims);
+        RagPostsBuildResponse resp = buildPosts(vectorIndexId, boardId, null, postBatchSize, chunkMaxChars, chunkOverlapChars, true, embeddingModelOverride, embeddingProviderId, expectedEmbeddingDims);
         touchMetadata(vectorIndexId, meta -> {
             meta.put("lastRebuildAt", LocalDateTime.now().toString());
             meta.put("lastRebuildBoardId", boardId);
@@ -326,6 +375,7 @@ public class RagPostIndexBuildService {
                                                       Integer chunkMaxChars,
                                                       Integer chunkOverlapChars,
                                                       String embeddingModelOverride,
+                                                      String embeddingProviderId,
                                                       Integer expectedEmbeddingDims) {
         VectorIndicesEntity vi = vectorIndicesRepository.findById(vectorIndexId)
                 .orElseThrow(() -> new IllegalArgumentException("vector index not found: " + vectorIndexId));
@@ -336,7 +386,7 @@ public class RagPostIndexBuildService {
         if (last == null) last = 0L;
 
         Long from = last > 0 ? last + 1 : null;
-        RagPostsBuildResponse resp = buildPosts(vectorIndexId, boardId, from, postBatchSize, chunkMaxChars, chunkOverlapChars, false, embeddingModelOverride, expectedEmbeddingDims);
+        RagPostsBuildResponse resp = buildPosts(vectorIndexId, boardId, from, postBatchSize, chunkMaxChars, chunkOverlapChars, false, embeddingModelOverride, embeddingProviderId, expectedEmbeddingDims);
 
         Long newLast = resp.getLastPostId() == null ? last : resp.getLastPostId();
         boolean noop = resp.getTotalPosts() == 0;
@@ -389,6 +439,17 @@ public class RagPostIndexBuildService {
         if (modelToUse == null) modelToUse = metaModel;
         if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
 
+        String providerToUse = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
+        if (providerToUse == null) providerToUse = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingProviderId"));
+
+        if (modelToUse == null && providerToUse == null) {
+            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
+            if (target != null) {
+                providerToUse = target.providerId();
+                modelToUse = target.modelName();
+            }
+        }
+
         Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
         if (configuredDims == null) {
             Integer d = vi.getDim();
@@ -421,7 +482,7 @@ public class RagPostIndexBuildService {
             String docId = "post_" + p.getId() + "_chunk_" + ci;
             String contentHash = ModerationSampleTextUtils.sha256Hex(chunk);
             try {
-                AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnce(chunk, modelToUse);
+                AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnceForTask(chunk, modelToUse, providerToUse, LlmQueueTaskType.POST_EMBEDDING);
                 if (emb == null || emb.vector() == null) throw new IllegalStateException("embedding is null");
 
                 if (!ensured) {

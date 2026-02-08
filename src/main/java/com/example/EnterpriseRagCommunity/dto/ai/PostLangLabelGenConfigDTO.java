@@ -14,10 +14,10 @@ public class PostLangLabelGenConfigDTO {
     private String promptTemplate;
 
     private String model;
+    private String providerId;
     private Double temperature;
     private Integer maxContentChars;
 
     private LocalDateTime updatedAt;
     private String updatedBy;
 }
-

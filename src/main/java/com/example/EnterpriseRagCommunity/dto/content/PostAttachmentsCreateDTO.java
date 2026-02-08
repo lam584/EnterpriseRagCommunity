@@ -20,7 +20,7 @@ public class PostAttachmentsCreateDTO {
 
     @ApiModelProperty(value = "文件名", required = true)
     @NotBlank
-    @Size(max = 191)
+    @Size(max = 512)
     private String fileName;
 
     @ApiModelProperty(value = "MIME类型", required = true)

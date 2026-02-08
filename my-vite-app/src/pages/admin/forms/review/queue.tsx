@@ -99,6 +99,8 @@ const stageLabel = (stage?: string | null) => {
     }
 };
 
+const PAGE_SIZE_OPTIONS = [10, 30, 100, 200, 500] as const;
+
 const QueueForm: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -122,8 +124,9 @@ const QueueForm: React.FC = () => {
         return Number.isFinite(n) && n > 0 ? n : 1;
     });
     const [pageSize, setPageSize] = useState(() => {
-        const n = Number(searchParams.get('pageSize') ?? '20');
-        return Number.isFinite(n) && n > 0 ? n : 20;
+        const n = Number(searchParams.get('pageSize') ?? '10');
+        if (!Number.isFinite(n)) return 10;
+        return (PAGE_SIZE_OPTIONS as readonly number[]).includes(n) ? n : 10;
     });
 
     const [items, setItems] = useState<ModerationQueueItem[]>([]);
@@ -156,6 +159,15 @@ const QueueForm: React.FC = () => {
     const [onlyMine] = useState(() => searchParams.get('onlyMine') === '1');
 
     const loadSeqRef = useRef(0);
+    const mountedRef = useRef(true);
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            loadSeqRef.current += 1;
+        };
+    }, []);
 
     const parsedTaskId = useMemo(() => {
         const n = Number(taskId);
@@ -248,31 +260,51 @@ const QueueForm: React.FC = () => {
                 status: status || undefined,
                 assignedToId: status === 'HUMAN' && onlyMine ? myUserId : undefined,
             });
-            if (seq !== loadSeqRef.current) return;
+            if (!mountedRef.current || seq !== loadSeqRef.current) return;
 
             setItems(res.content ?? []);
             setTotalPages(res.totalPages ?? 1);
             setTotalElements(res.totalElements ?? 0);
         } catch (e) {
-            if (seq !== loadSeqRef.current) return;
+            if (!mountedRef.current || seq !== loadSeqRef.current) return;
             setError(e instanceof Error ? e.message : String(e));
         } finally {
-            if (seq === loadSeqRef.current) setLoading(false);
+            if (mountedRef.current && seq === loadSeqRef.current) setLoading(false);
         }
     }, [page, pageSize, orderBy, sortDir, parsedTaskId, contentType, status, onlyMine, myUserId]);
 
     useEffect(() => {
-        const next = new URLSearchParams();
-        const trimmedTaskId = taskId.trim();
-        if (trimmedTaskId) next.set('taskId', trimmedTaskId);
-        if (contentType) next.set('contentType', contentType);
-        if (status) next.set('status', status);
-        if (orderBy && orderBy !== 'createdAt') next.set('orderBy', orderBy);
-        if (sortDir !== 'desc') next.set('sort', sortDir);
-        if (onlyMine) next.set('onlyMine', '1');
-        if (page !== 1) next.set('page', String(page));
-        if (pageSize !== 20) next.set('pageSize', String(pageSize));
-        setSearchParams(next, { replace: true });
+        setSearchParams((prev) => {
+            const sp = new URLSearchParams(prev);
+
+            const trimmedTaskId = taskId.trim();
+            if (trimmedTaskId) sp.set('taskId', trimmedTaskId);
+            else sp.delete('taskId');
+
+            if (contentType) sp.set('contentType', contentType);
+            else sp.delete('contentType');
+
+            if (status) sp.set('status', status);
+            else sp.delete('status');
+
+            if (orderBy && orderBy !== 'createdAt') sp.set('orderBy', orderBy);
+            else sp.delete('orderBy');
+
+            if (sortDir !== 'desc') sp.set('sort', sortDir);
+            else sp.delete('sort');
+
+            if (onlyMine) sp.set('onlyMine', '1');
+            else sp.delete('onlyMine');
+
+            if (page !== 1) sp.set('page', String(page));
+            else sp.delete('page');
+
+            if (pageSize !== 10) sp.set('pageSize', String(pageSize));
+            else sp.delete('pageSize');
+
+            if (sp.toString() === prev.toString()) return prev;
+            return sp;
+        }, { replace: true });
     }, [taskId, contentType, status, orderBy, sortDir, onlyMine, page, pageSize, setSearchParams]);
 
     const backfill = useCallback(async () => {
@@ -411,20 +443,28 @@ const QueueForm: React.FC = () => {
 
     const approve = useCallback(
         async (it: Pick<ModerationQueueItem, 'id' | 'caseType' | 'status'>) => {
+            const isHuman = it.status === 'HUMAN';
             const isOverride = it.status === 'REJECTED';
             const ok = window.confirm(
                 it.caseType === 'REPORT'
-                    ? (isOverride ? '确认覆核通过（驳回举报并恢复内容，如已被下架）？' : '确认驳回该举报（内容正常）？')
-                    : (isOverride ? '确认覆核通过（恢复内容可见）？' : '确认内容审核通过？')
+                    ? (isHuman ? '确认人工处理：驳回该举报（内容正常）？' : (isOverride ? '确认通过（驳回举报并恢复内容，如已被下架）？' : '确认驳回该举报（内容正常）？'))
+                    : (isHuman ? '确认覆核通过（恢复内容可见）？' : (isOverride ? '确认通过（恢复内容可见）？' : '确认内容审核通过？'))
             );
             if (!ok) return;
+            const reason = window.prompt(it.caseType === 'REPORT' ? '请输入处理理由（必填）：' : '请输入通过理由（必填）：');
+            if (reason === null) return;
+            const reasonTrim = reason.trim();
+            if (!reasonTrim) {
+                window.alert('必须填写理由');
+                return;
+            }
             setActionLoadingId(it.id);
             setError(null);
             try {
                 if (isOverride) {
-                    await adminOverrideApproveModerationQueue(it.id);
+                    await adminOverrideApproveModerationQueue(it.id, reasonTrim);
                 } else {
-                    await adminApproveModerationQueue(it.id);
+                    await adminApproveModerationQueue(it.id, reasonTrim);
                 }
                 if (detail?.id === it.id) {
                     const d = await adminGetModerationQueueDetail(it.id);
@@ -442,21 +482,28 @@ const QueueForm: React.FC = () => {
 
     const reject = useCallback(
         async (it: Pick<ModerationQueueItem, 'id' | 'caseType' | 'status'>) => {
+            const isHuman = it.status === 'HUMAN';
             const isOverride = it.status === 'APPROVED';
-            const reason = window.prompt(it.caseType === 'REPORT' ? '请输入核实举报原因（可选）：' : '请输入驳回原因（可选）：') ?? undefined;
+            const reason = window.prompt(it.caseType === 'REPORT' ? '请输入核实举报原因（必填）：' : '请输入驳回原因（必填）：');
+            if (reason === null) return;
+            const reasonTrim = reason.trim();
+            if (!reasonTrim) {
+                window.alert('必须填写理由');
+                return;
+            }
             const ok = window.confirm(
                 it.caseType === 'REPORT'
-                    ? (isOverride ? '确认覆核驳回（核实举报并下架内容）？' : '确认核实该举报并下架内容？')
-                    : (isOverride ? '确认覆核驳回（下架内容）？' : '确认驳回？')
+                    ? (isHuman ? '确认人工处理：核实该举报并下架内容？' : (isOverride ? '确认驳回（核实举报并下架内容）？' : '确认核实该举报并下架内容？'))
+                    : (isHuman ? '确认覆核驳回（下架内容）？' : (isOverride ? '确认驳回（下架内容）？' : '确认驳回？'))
             );
             if (!ok) return;
             setActionLoadingId(it.id);
             setError(null);
             try {
                 if (isOverride) {
-                    await adminOverrideRejectModerationQueue(it.id, reason);
+                    await adminOverrideRejectModerationQueue(it.id, reasonTrim);
                 } else {
-                    await adminRejectModerationQueue(it.id, reason);
+                    await adminRejectModerationQueue(it.id, reasonTrim);
                 }
                 if (detail?.id === it.id) {
                     const d = await adminGetModerationQueueDetail(it.id);
@@ -509,11 +556,17 @@ const QueueForm: React.FC = () => {
     const requeue = useCallback(async (id: number) => {
         const ok = window.confirm('确认将该任务重新进入自动审核（会清空认领，并从 RULE 重新跑）？');
         if (!ok) return;
-        const reason = window.prompt('备注（可选）：') ?? undefined;
+        const reason = window.prompt('备注（必填）：');
+        if (reason === null) return;
+        const reasonTrim = reason.trim();
+        if (!reasonTrim) {
+            window.alert('必须填写理由');
+            return;
+        }
         setActionLoadingId(id);
         setError(null);
         try {
-            await adminRequeueModerationQueue(id, reason);
+            await adminRequeueModerationQueue(id, reasonTrim);
             // 后端会同步 best-effort 推进 RULE/VEC/LLM；这里稍微延迟刷新一次，提升“立刻推进”的可见性
             await new Promise((r) => setTimeout(r, 300));
             if (detail?.id === id) {
@@ -529,13 +582,17 @@ const QueueForm: React.FC = () => {
     }, [detail?.id, load]);
 
     const toHuman = useCallback(async (id: number) => {
-        const ok = window.confirm('确认将该任务进入人工审核？');
-        if (!ok) return;
-        const reason = window.prompt('备注（可选）：') ?? undefined;
+        const reason = window.prompt('确认将该任务进入人工审核？\n请输入备注（必填），取消则不处理：');
+        if (reason === null) return;
+        const reasonTrim = reason.trim();
+        if (!reasonTrim) {
+            window.alert('必须填写理由');
+            return;
+        }
         setActionLoadingId(id);
         setError(null);
         try {
-            await adminToHumanModerationQueue(id, reason);
+            await adminToHumanModerationQueue(id, reasonTrim);
             if (detail?.id === id) {
                 const d = await adminGetModerationQueueDetail(id);
                 setDetail(d);
@@ -645,7 +702,7 @@ const QueueForm: React.FC = () => {
                     }}
                 >
                     <option value={10}>每页 10</option>
-                    <option value={30}>每页 35</option>
+                    <option value={30}>每页 30</option>
                     <option value={100}>每页 100</option>
                     <option value={200}>每页 200</option>
                     <option value={500}>每页 500</option>
@@ -735,22 +792,26 @@ const QueueForm: React.FC = () => {
                                         >
                                             详情
                                         </button>
-                                        <button
-                                            type="button"
-                                            className="rounded bg-green-600 text-white px-3 py-1 mr-2 disabled:opacity-60"
-                                            onClick={() => approve(it)}
-                                            disabled={actionLoadingId === it.id || it.status === 'APPROVED'}
-                                        >
-                                            {it.caseType === 'REPORT' ? (it.status === 'REJECTED' ? '覆核驳回举报' : '驳回举报') : (it.status === 'REJECTED' ? '覆核通过' : '通过')}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="rounded bg-red-600 text-white px-3 py-1 mr-2 disabled:opacity-60"
-                                            onClick={() => reject(it)}
-                                            disabled={actionLoadingId === it.id || it.status === 'REJECTED'}
-                                        >
-                                            {it.caseType === 'REPORT' ? (it.status === 'APPROVED' ? '覆核核实举报' : '核实举报') : (it.status === 'APPROVED' ? '覆核驳回' : '驳回')}
-                                        </button>
+                                        {it.status !== 'APPROVED' ? (
+                                            <button
+                                                type="button"
+                                                className="rounded bg-green-600 text-white px-3 py-1 mr-2 disabled:opacity-60"
+                                                onClick={() => approve(it)}
+                                                disabled={actionLoadingId === it.id}
+                                            >
+                                                {it.caseType === 'REPORT' ? '驳回举报' : (it.status === 'HUMAN' ? '覆核通过' : '通过')}
+                                            </button>
+                                        ) : null}
+                                        {it.status !== 'REJECTED' && it.status !== 'APPROVED' ? (
+                                            <button
+                                                type="button"
+                                                className="rounded bg-red-600 text-white px-3 py-1 mr-2 disabled:opacity-60"
+                                                onClick={() => reject(it)}
+                                                disabled={actionLoadingId === it.id}
+                                            >
+                                                {it.caseType === 'REPORT' ? '核实举报' : (it.status === 'HUMAN' ? '覆核驳回' : '驳回')}
+                                            </button>
+                                        ) : null}
                                         {isTerminal(it.status) ? (
                                             <button
                                                 type="button"
@@ -881,14 +942,6 @@ const QueueForm: React.FC = () => {
                                         <div><span className="text-gray-500">创建时间：</span>{formatDateTime(detail.createdAt)}</div>
                                         <div><span className="text-gray-500">更新时间：</span>{formatDateTime(detail.updatedAt)}</div>
                                     </div>
-
-                                    <div className="border rounded p-3">
-                                        <div className="font-medium mb-1">摘要</div>
-                                        <div className="text-sm text-gray-700">标题：{detail.summary?.title || '—'}</div>
-                                        <div
-                                            className="text-sm text-gray-700">内容：{detail.summary?.snippet || '—'}</div>
-                                    </div>
-
                                     <div className="border rounded p-3 space-y-2">
                                         <div className="font-medium">帖子摘要</div>
                                         {(() => {
@@ -977,7 +1030,6 @@ const QueueForm: React.FC = () => {
                                             </div>
                                         </div>
                                     ) : null}
-
                                     <div className="border rounded p-3 space-y-2">
                                         <div className="flex items-center justify-between gap-3">
                                             <div className="font-medium">风险标签</div>
@@ -1017,6 +1069,84 @@ const QueueForm: React.FC = () => {
                                                 className="text-sm text-gray-500 mb-2">状态：{detail.post?.status || '—'}</div>
                                             <pre
                                                 className="whitespace-pre-wrap text-sm bg-gray-50 rounded p-2 overflow-auto max-h-[300px]">{detail.post?.content || ''}</pre>
+                                            {(() => {
+                                                const atts = detail.post?.attachments ?? [];
+                                                const images = atts.filter((a) => {
+                                                    const url = a?.url || '';
+                                                    if (!url) return false;
+                                                    const mt = (a?.mimeType || '').toLowerCase();
+                                                    if (mt.startsWith('image/')) return true;
+                                                    return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url);
+                                                });
+                                                const files = atts.filter((a) => {
+                                                    const url = a?.url || '';
+                                                    if (!url) return false;
+                                                    const mt = (a?.mimeType || '').toLowerCase();
+                                                    if (mt.startsWith('image/')) return false;
+                                                    if (/\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(url)) return false;
+                                                    return true;
+                                                });
+
+                                                if ((!images || images.length === 0) && (!files || files.length === 0)) return null;
+
+                                                return (
+                                                    <div className="mt-3 space-y-2">
+                                                        {images && images.length ? (
+                                                            <div className="space-y-2">
+                                                                <div className="text-sm font-medium text-gray-700">
+                                                                    图片（{images.length}）
+                                                                </div>
+                                                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                                    {images.slice(0, 9).map((img) => (
+                                                                        <a
+                                                                            key={img.id}
+                                                                            href={img.url}
+                                                                            target="_blank"
+                                                                            rel="noreferrer"
+                                                                            className="block rounded overflow-hidden border bg-white hover:shadow"
+                                                                            title={img.fileName || img.url}
+                                                                        >
+                                                                            <img
+                                                                                src={img.url}
+                                                                                alt={img.fileName || 'image'}
+                                                                                className="w-full h-28 object-cover"
+                                                                                loading="lazy"
+                                                                            />
+                                                                        </a>
+                                                                    ))}
+                                                                </div>
+                                                                {images.length > 9 ? (
+                                                                    <div className="text-xs text-gray-500">仅展示前 9 张</div>
+                                                                ) : null}
+                                                            </div>
+                                                        ) : null}
+
+                                                        {files && files.length ? (
+                                                            <div className="space-y-1">
+                                                                <div className="text-sm font-medium text-gray-700">
+                                                                    附件（{files.length}）
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    {files.slice(0, 10).map((f) => (
+                                                                        <a
+                                                                            key={f.id}
+                                                                            href={f.url}
+                                                                            target="_blank"
+                                                                            rel="noreferrer"
+                                                                            className="text-sm text-blue-700 hover:underline break-all"
+                                                                        >
+                                                                            {f.fileName || f.url}
+                                                                        </a>
+                                                                    ))}
+                                                                </div>
+                                                                {files.length > 10 ? (
+                                                                    <div className="text-xs text-gray-500">仅展示前 10 个</div>
+                                                                ) : null}
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     ) : (
                                         <div className="border rounded p-3">
@@ -1039,26 +1169,26 @@ const QueueForm: React.FC = () => {
                                         >
                                             LLM 试跑
                                         </button>
-                                        <button
-                                            type="button"
-                                            className="rounded bg-green-600 text-white px-4 py-2 disabled:opacity-60"
-                                            onClick={() => approve(detail)}
-                                            disabled={actionLoadingId === detail.id || detail.status === 'APPROVED'}
-                                        >
-                                            {detail.caseType === 'REPORT'
-                                                ? (detail.status === 'REJECTED' ? '覆核驳回举报' : '驳回举报')
-                                                : (detail.status === 'REJECTED' ? '覆核通过' : '通过')}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="rounded bg-red-600 text-white px-4 py-2 disabled:opacity-60"
-                                            onClick={() => reject(detail)}
-                                            disabled={actionLoadingId === detail.id || detail.status === 'REJECTED'}
-                                        >
-                                            {detail.caseType === 'REPORT'
-                                                ? (detail.status === 'APPROVED' ? '覆核核实举报' : '核实举报')
-                                                : (detail.status === 'APPROVED' ? '覆核驳回' : '驳回')}
-                                        </button>
+                                        {detail.status !== 'APPROVED' ? (
+                                            <button
+                                                type="button"
+                                                className="rounded bg-green-600 text-white px-4 py-2 disabled:opacity-60"
+                                                onClick={() => approve(detail)}
+                                                disabled={actionLoadingId === detail.id}
+                                            >
+                                                {detail.caseType === 'REPORT' ? '驳回举报' : (detail.status === 'HUMAN' ? '覆核通过' : '通过')}
+                                            </button>
+                                        ) : null}
+                                        {detail.status !== 'REJECTED' && detail.status !== 'APPROVED' ? (
+                                            <button
+                                                type="button"
+                                                className="rounded bg-red-600 text-white px-4 py-2 disabled:opacity-60"
+                                                onClick={() => reject(detail)}
+                                                disabled={actionLoadingId === detail.id}
+                                            >
+                                                {detail.caseType === 'REPORT' ? '核实举报' : (detail.status === 'HUMAN' ? '覆核驳回' : '驳回')}
+                                            </button>
+                                        ) : null}
                                         {isTerminal(detail.status) ? (
                                             <button
                                                 type="button"

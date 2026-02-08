@@ -30,12 +30,13 @@ public class AdminModerationQueueController {
     private AdminModerationQueueService adminModerationQueueService;
 
     @GetMapping
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or (#boardId != null and @boardAcl.canModerateBoard(#boardId))")
     public Page<AdminModerationQueueItemDTO> list(@RequestParam(value = "page", defaultValue = "1") int page,
                                                  @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
                                                  @RequestParam(value = "orderBy", required = false) String orderBy,
                                                  @RequestParam(value = "sort", required = false) String sort,
                                                  @RequestParam(value = "id", required = false) Long id,
+                                                 @RequestParam(value = "boardId", required = false) Long boardId,
                                                  @RequestParam(value = "contentType", required = false) ContentType contentType,
                                                  @RequestParam(value = "contentId", required = false) Long contentId,
                                                  @RequestParam(value = "status", required = false) QueueStatus status,
@@ -53,6 +54,7 @@ public class AdminModerationQueueController {
         q.setOrderBy(orderBy);
         q.setSort(sort);
         q.setId(id);
+        q.setBoardId(boardId);
         q.setContentType(contentType);
         q.setContentId(contentId);
         // When status is omitted, treat it as "all statuses" (no status filter).
@@ -67,19 +69,19 @@ public class AdminModerationQueueController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO getDetail(@PathVariable("id") Long id) {
         return adminModerationQueueService.getDetail(id);
     }
 
     @GetMapping("/{id}/risk-tags")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#id)")
     public List<String> getRiskTags(@PathVariable("id") Long id) {
         return adminModerationQueueService.getRiskTags(id);
     }
 
     @PostMapping("/{id}/risk-tags")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO setRiskTags(@PathVariable("id") Long id,
                                                      @Valid @RequestBody(required = false) AdminModerationQueueRiskTagsRequest req) {
         List<String> tags = req == null ? null : req.getRiskTags();
@@ -87,35 +89,31 @@ public class AdminModerationQueueController {
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO approve(@PathVariable("id") Long id,
-                                                 @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
-        String reason = req == null ? null : req.getReason();
-        return adminModerationQueueService.approve(id, reason);
+                                                 @Valid @RequestBody AdminModerationQueueActionRequest req) {
+        return adminModerationQueueService.approve(id, req.getReason());
     }
 
     @PostMapping("/{id}/override-approve")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO overrideApprove(@PathVariable("id") Long id,
-                                                         @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
-        String reason = req == null ? null : req.getReason();
-        return adminModerationQueueService.overrideApprove(id, reason);
+                                                         @Valid @RequestBody AdminModerationQueueActionRequest req) {
+        return adminModerationQueueService.overrideApprove(id, req.getReason());
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO reject(@PathVariable("id") Long id,
-                                                @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
-        String reason = req == null ? null : req.getReason();
-        return adminModerationQueueService.reject(id, reason);
+                                                @Valid @RequestBody AdminModerationQueueActionRequest req) {
+        return adminModerationQueueService.reject(id, req.getReason());
     }
 
     @PostMapping("/{id}/override-reject")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO overrideReject(@PathVariable("id") Long id,
-                                                        @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
-        String reason = req == null ? null : req.getReason();
-        return adminModerationQueueService.overrideReject(id, reason);
+                                                        @Valid @RequestBody AdminModerationQueueActionRequest req) {
+        return adminModerationQueueService.overrideReject(id, req.getReason());
     }
 
     @PostMapping("/backfill")
@@ -125,30 +123,28 @@ public class AdminModerationQueueController {
     }
 
     @PostMapping("/{id}/claim")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO claim(@PathVariable("id") Long id) {
         return adminModerationQueueService.claim(id);
     }
 
     @PostMapping("/{id}/release")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO release(@PathVariable("id") Long id) {
         return adminModerationQueueService.release(id);
     }
 
     @PostMapping("/{id}/requeue")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO requeue(@PathVariable("id") Long id,
-                                                @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
-        String reason = req == null ? null : req.getReason();
-        return adminModerationQueueService.requeueToAuto(id, reason);
+                                                @Valid @RequestBody AdminModerationQueueActionRequest req) {
+        return adminModerationQueueService.requeueToAuto(id, req.getReason());
     }
 
     @PostMapping("/{id}/to-human")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO toHuman(@PathVariable("id") Long id,
-                                                 @Valid @RequestBody(required = false) AdminModerationQueueActionRequest req) {
-        String reason = req == null ? null : req.getReason();
-        return adminModerationQueueService.toHuman(id, reason);
+                                                 @Valid @RequestBody AdminModerationQueueActionRequest req) {
+        return adminModerationQueueService.toHuman(id, req.getReason());
     }
 }

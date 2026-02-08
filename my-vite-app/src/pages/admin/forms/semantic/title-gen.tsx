@@ -7,13 +7,17 @@ import {
   type PostTitleGenConfigDTO,
   type PostTitleGenHistoryDTO,
 } from '../../../../services/titleGenAdminService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { suggestPostTitles, type AiPostTitleSuggestResponse } from '../../../../services/aiTitleService';
+import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 
 type FormState = {
   enabled: boolean;
   systemPrompt: string;
   promptTemplate: string;
   model: string;
+  providerId: string;
   temperature: string;
   defaultCount: string;
   maxCount: string;
@@ -51,6 +55,7 @@ function toFormState(cfg?: PostTitleGenConfigDTO | null): FormState {
     systemPrompt: cfg?.systemPrompt ?? '',
     promptTemplate: cfg?.promptTemplate ?? '',
     model: cfg?.model ?? '',
+    providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
     defaultCount: cfg?.defaultCount === null || cfg?.defaultCount === undefined ? '' : String(cfg.defaultCount),
     maxCount: cfg?.maxCount === null || cfg?.maxCount === undefined ? '' : String(cfg.maxCount),
@@ -102,6 +107,7 @@ function buildPayload(s: FormState) {
     systemPrompt: s.systemPrompt,
     promptTemplate: s.promptTemplate,
     model: s.model.trim() ? s.model.trim() : null,
+    providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
     defaultCount: defaultCount === undefined ? 5 : Math.trunc(defaultCount),
     maxCount: maxCount === undefined ? 10 : Math.trunc(maxCount),
@@ -120,6 +126,10 @@ const TitleGenForm: React.FC = () => {
   const [savedHint, setSavedHint] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
+  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
+  const [activeProviderId, setActiveProviderId] = useState<string>('');
+  const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
+
   const [form, setForm] = useState<FormState>(() => toFormState(null));
   const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(null));
 
@@ -132,6 +142,7 @@ const TitleGenForm: React.FC = () => {
       form.systemPrompt !== committedForm.systemPrompt ||
       form.promptTemplate !== committedForm.promptTemplate ||
       form.model !== committedForm.model ||
+      form.providerId !== committedForm.providerId ||
       form.temperature !== committedForm.temperature ||
       form.defaultCount !== committedForm.defaultCount ||
       form.maxCount !== committedForm.maxCount ||
@@ -141,6 +152,42 @@ const TitleGenForm: React.FC = () => {
       form.historyKeepRows !== committedForm.historyKeepRows
     );
   }, [form, committedForm]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await adminGetAiProvidersConfig();
+        if (cancelled) return;
+        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
+        setActiveProviderId(cfg.activeProviderId ?? '');
+      } catch {
+        if (cancelled) return;
+        setProviders([]);
+        setActiveProviderId('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const opts = await getAiChatOptions();
+        if (cancelled) return;
+        setChatProviders((opts.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[]);
+      } catch {
+        if (cancelled) return;
+        setChatProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -318,7 +365,7 @@ const TitleGenForm: React.FC = () => {
         {savedHint && <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">{savedHint}</div>}
         {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</div>}
 
-        {formErrors.length > 0 && (
+        {editing && formErrors.length > 0 && (
           <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2 space-y-1">
             {formErrors.map((m) => (
               <div key={m}>{m}</div>
@@ -354,20 +401,23 @@ const TitleGenForm: React.FC = () => {
               onChange={(e) => setForm((p) => ({ ...p, maxContentChars: e.target.value }))}
               disabled={!editing || loading || saving}
               className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-              placeholder="例如 4000"
+              placeholder="例如 8000"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <div className="text-xs text-gray-600 mb-1">模型名 model（可选，留空使用全局）</div>
-            <input
-              value={form.model}
-              onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
+          <div className="md:col-span-2">
+            <ProviderModelSelect
+              providers={providers}
+              activeProviderId={activeProviderId}
+              chatProviders={chatProviders}
+              mode="chat"
+              providerId={form.providerId}
+              model={form.model}
               disabled={!editing || loading || saving}
-              className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-              placeholder="例如 qwen-plus"
+              selectClassName="w-full rounded border px-3 py-2 text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+              onChange={(next) => setForm((p) => ({ ...p, providerId: next.providerId, model: next.model }))}
             />
           </div>
           <div>

@@ -18,6 +18,7 @@ export type PostLangLabelGenConfig = {
   systemPrompt: string;
   promptTemplate: string;
   model?: string | null;
+  providerId?: string | null;
   temperature?: number | null;
   maxContentChars: number;
 };
@@ -54,4 +55,3 @@ export async function adminUpsertPostLangLabelGenConfig(payload: PostLangLabelGe
   if (!res.ok) throw new Error(getBackendMessage(data) || '保存语言标签生成配置失败');
   return data as PostLangLabelGenConfigDTO;
 }
-

@@ -11,6 +11,7 @@ import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.content.admin.AdminCommentsService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -41,6 +42,9 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
 
     @Autowired
     private PostsRepository postsRepository;
+
+    @Autowired
+    private RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
 
     private static String buildPostExcerpt(String content, int maxLen) {
         if (content == null) return null;
@@ -240,6 +244,7 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
         e.setUpdatedAt(LocalDateTime.now());
 
         CommentsEntity saved = commentsRepository.save(e);
+        ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
         // try fill post info for single item as well
         PostsEntity p = saved.getPostId() == null ? null : postsRepository.findById(saved.getPostId()).orElse(null);
         return toAdminDTO(saved,
@@ -262,6 +267,7 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
         e.setUpdatedAt(LocalDateTime.now());
 
         CommentsEntity saved = commentsRepository.save(e);
+        ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
         PostsEntity p = saved.getPostId() == null ? null : postsRepository.findById(saved.getPostId()).orElse(null);
         return toAdminDTO(saved,
                 safeAuthorName(saved.getAuthorId()),

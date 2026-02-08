@@ -18,6 +18,7 @@ export type PostTagGenConfig = {
   systemPrompt: string;
   promptTemplate: string;
   model?: string | null;
+  providerId?: string | null;
   temperature?: number | null;
   defaultCount: number;
   maxCount: number;
@@ -105,4 +106,3 @@ export async function adminListPostTagGenHistory(params?: {
   if (!res.ok) throw new Error(getBackendMessage(data) || '获取主题标签生成历史失败');
   return data as Page<PostTagGenHistoryDTO>;
 }
-

@@ -21,7 +21,7 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 const PostAdminManage: React.FC = () => {
   const { hasPerm, loading: accessLoading } = useAccess();
   const canRead = hasPerm('admin_posts', 'read');
-  const canUpdate = hasPerm('admin_posts', 'update');
+  const canUpdate = hasPerm('admin_moderation_queue', 'action');
 
   // 基础数据
   const [boards, setBoards] = useState<BoardDTO[]>([]);
@@ -167,7 +167,7 @@ const PostAdminManage: React.FC = () => {
 
   const changeStatus = async (id: number, next: PostStatus) => {
     if (!canUpdate) {
-      alert('无权限：需要 admin_posts:update');
+      alert('无权限：需要 admin_moderation_queue:action');
       return;
     }
     const reason = confirmAndGetReason(next);

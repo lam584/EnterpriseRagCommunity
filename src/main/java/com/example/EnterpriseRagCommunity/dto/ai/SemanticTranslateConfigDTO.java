@@ -15,6 +15,7 @@ public class SemanticTranslateConfigDTO {
     private String promptTemplate;
 
     private String model;
+    private String providerId;
     private Double temperature;
     private Integer maxContentChars;
 

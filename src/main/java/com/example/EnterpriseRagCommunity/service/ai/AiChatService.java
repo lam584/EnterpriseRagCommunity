@@ -2,8 +2,12 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -15,22 +19,24 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.config.AiProperties;
+import com.example.EnterpriseRagCommunity.dto.ai.AiChatResponseDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatRegenerateStreamRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatStreamRequest;
-import com.example.EnterpriseRagCommunity.dto.ai.OpenSearchTokenizeRequest;
-import com.example.EnterpriseRagCommunity.dto.ai.OpenSearchTokenizeResponse;
+import com.example.EnterpriseRagCommunity.dto.retrieval.ChatRagAugmentConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
-import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaMessageSourcesEntity;
+import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.ContextStrategy;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.MessageRole;
 import com.example.EnterpriseRagCommunity.entity.semantic.ContextWindowsEntity;
@@ -38,6 +44,8 @@ import com.example.EnterpriseRagCommunity.entity.semantic.RetrievalEventsEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.RetrievalHitsEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType;
 import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessageSourcesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
@@ -46,42 +54,58 @@ import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.ContextWindowsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalEventsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalHitsRepository;
-import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
 import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagChatPostCommentAggregationService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentChatRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostChatRetrievalService;
+import com.example.EnterpriseRagCommunity.service.retrieval.admin.ChatRagAugmentConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.CitationConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextClipConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalConfigService;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
+import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
+import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
 
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
 public class AiChatService {
 
     private static final Logger logger = LoggerFactory.getLogger(AiChatService.class);
+    private static final String ENV_DEFAULT = "default";
 
     private final AiProperties aiProperties;
+    private final LlmGateway llmGateway;
+    private final LlmModelRepository llmModelRepository;
     private final QaSessionsRepository qaSessionsRepository;
     private final QaMessagesRepository qaMessagesRepository;
     private final QaTurnsRepository qaTurnsRepository;
     private final RagPostChatRetrievalService ragRetrievalService;
+    private final RagCommentChatRetrievalService ragCommentChatRetrievalService;
+    private final RagChatPostCommentAggregationService ragChatPostCommentAggregationService;
     private final HybridRetrievalConfigService hybridRetrievalConfigService;
     private final HybridRagRetrievalService hybridRagRetrievalService;
     private final ContextClipConfigService contextClipConfigService;
     private final CitationConfigService citationConfigService;
+    private final ChatRagAugmentConfigService chatRagAugmentConfigService;
     private final RagContextPromptService ragContextPromptService;
     private final RetrievalEventsRepository retrievalEventsRepository;
     private final RetrievalHitsRepository retrievalHitsRepository;
     private final ContextWindowsRepository contextWindowsRepository;
     private final PostsRepository postsRepository;
     private final QaMessageSourcesRepository qaMessageSourcesRepository;
-    private final OpenSearchTokenizeService openSearchTokenizeService;
+    private final TokenCountService tokenCountService;
+    private final UsersRepository usersRepository;
+    private final FileAssetsRepository fileAssetsRepository;
 
-    private BailianOpenAiSseClient sseClient() {
-        return new BailianOpenAiSseClient(aiProperties);
-    }
+    @Value("${app.upload.root:uploads}")
+    private String uploadRoot;
+
+    @Value("${app.upload.url-prefix:/uploads}")
+    private String urlPrefix;
 
     public void streamChat(AiChatStreamRequest req, Long currentUserId, HttpServletResponse response) throws IOException {
         if (currentUserId == null) {
@@ -109,6 +133,11 @@ public class AiChatService {
 
         PrintWriter out = response.getWriter();
 
+        List<AiChatStreamRequest.ImageInput> images = resolveImages(req);
+        String messageForHistory = images == null || images.isEmpty()
+                ? req.getMessage()
+                : appendImagesAsText(req.getMessage(), images);
+
         // 3) persist user msg + turn shell
         QaMessagesEntity userMsg = null;
         QaTurnsEntity turn = null;
@@ -117,7 +146,7 @@ public class AiChatService {
                 userMsg = new QaMessagesEntity();
                 userMsg.setSessionId(session.getId());
                 userMsg.setRole(MessageRole.USER);
-                userMsg.setContent(req.getMessage());
+                userMsg.setContent(messageForHistory);
                 userMsg.setCreatedAt(LocalDateTime.now());
                 userMsg = qaMessagesRepository.save(userMsg);
 
@@ -143,12 +172,16 @@ public class AiChatService {
         out.flush();
 
         // 4) load history for context
-        List<Map<String, String>> messages = new ArrayList<>();
+        List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
         String systemPrompt = deepThink
                 ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
                 : "你是一个严谨、专业的中文助手。";
-        messages.add(Map.of("role", "system", "content", systemPrompt));
+        messages.add(ChatMessage.system(systemPrompt));
+        String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
+        if (userSystemPrompt != null) {
+            messages.add(ChatMessage.system(userSystemPrompt));
+        }
 
         int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
         if (!req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
@@ -166,9 +199,13 @@ public class AiChatService {
                     case ASSISTANT -> "assistant";
                     case SYSTEM -> "system";
                 };
-                messages.add(Map.of("role", role, "content", m.getContent()));
+                messages.add(new ChatMessage(role, m.getContent()));
             }
         }
+
+        boolean useRag = Boolean.TRUE.equals(req.getUseRag());
+        Integer ragTopKOverride = req.getRagTopK();
+        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
         Long retrievalEventId = null;
@@ -176,82 +213,122 @@ public class AiChatService {
         HybridRagRetrievalService.RetrieveResult hybridResult = null;
         ContextClipConfigDTO contextCfg = null;
         CitationConfigDTO citationCfg = null;
+        ChatRagAugmentConfigDTO chatRagCfg = null;
         RagContextPromptService.AssembleResult contextAssembled = null;
         try {
             contextCfg = contextClipConfigService.getConfigOrDefault();
             citationCfg = citationConfigService.getConfigOrDefault();
+            chatRagCfg = chatRagAugmentConfigService.getConfigOrDefault();
 
-            hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
-            if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
-                hybridResult = hybridRagRetrievalService.retrieve(req.getMessage(), null, hybridCfg, false);
-                ragHits = toRagHits(hybridResult == null ? null : hybridResult.getFinalHits());
-            } else {
-                int k = contextCfg == null || contextCfg.getMaxItems() == null ? 6 : Math.max(1, contextCfg.getMaxItems());
-                ragHits = ragRetrievalService.retrieve(req.getMessage(), Math.min(50, k), null);
-            }
-            if (!req.getDryRun()) {
-                RetrievalEventsEntity ev = new RetrievalEventsEntity();
-                ev.setUserId(currentUserId);
-                ev.setQueryText(req.getMessage());
+            if (useRag) {
+                hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
+                List<RagPostChatRetrievalService.Hit> postHits = List.of();
+                List<RagCommentChatRetrievalService.Hit> commentHits = List.of();
                 if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
-                    ev.setBm25K(hybridCfg.getBm25K());
-                    ev.setVecK(hybridCfg.getVecK());
-                    ev.setHybridK(hybridCfg.getHybridK());
-                    ev.setRerankModel(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankModel() : null);
-                    ev.setRerankK(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankK() : null);
+                    if (safeRagTopKOverride > 0) {
+                        HybridRetrievalConfigDTO copy = new HybridRetrievalConfigDTO();
+                        org.springframework.beans.BeanUtils.copyProperties(hybridCfg, copy);
+                        copy.setHybridK(safeRagTopKOverride);
+                        hybridCfg = copy;
+                    }
+                    hybridResult = hybridRagRetrievalService.retrieve(req.getMessage(), null, hybridCfg, false);
+                    postHits = toRagHits(hybridResult == null ? null : hybridResult.getFinalHits());
                 } else {
-                    ev.setBm25K(0);
-                    ev.setVecK(6);
-                    ev.setHybridK(null);
-                    ev.setRerankModel(null);
-                    ev.setRerankK(null);
+                    int k = safeRagTopKOverride > 0
+                            ? safeRagTopKOverride
+                            : contextCfg == null || contextCfg.getMaxItems() == null ? 6 : Math.max(1, contextCfg.getMaxItems());
+                    postHits = ragRetrievalService.retrieve(req.getMessage(), Math.min(50, k), null);
                 }
-                ev.setCreatedAt(LocalDateTime.now());
-                ev = retrievalEventsRepository.save(ev);
-                retrievalEventId = ev.getId();
 
-                if (retrievalEventId != null) {
-                    List<RetrievalHitsEntity> outHits = new ArrayList<>();
-                    if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
-                        appendStageHits(outHits, retrievalEventId, RetrievalHitType.BM25, hybridResult == null ? null : hybridResult.getBm25Hits());
-                        appendStageHits(outHits, retrievalEventId, RetrievalHitType.VEC, hybridResult == null ? null : hybridResult.getVecHits());
-                        appendStageHits(outHits, retrievalEventId, RetrievalHitType.RERANK, hybridResult == null ? null : hybridResult.getFinalHits());
-                    } else if (ragHits != null && !ragHits.isEmpty()) {
-                        for (int i = 0; i < ragHits.size(); i++) {
-                            RagPostChatRetrievalService.Hit h = ragHits.get(i);
-                            RetrievalHitsEntity rh = new RetrievalHitsEntity();
-                            rh.setEventId(retrievalEventId);
-                            rh.setRank(i + 1);
-                            rh.setHitType(RetrievalHitType.VEC);
-                            rh.setDocumentId(h == null ? null : h.getPostId());
-                            rh.setChunkId(null);
-                            rh.setScore(h == null || h.getScore() == null ? 0.0 : h.getScore());
-                            outHits.add(rh);
+                boolean augmentEnabled = chatRagCfg == null || chatRagCfg.getEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getEnabled());
+                if (augmentEnabled) {
+                    boolean commentsEnabled = chatRagCfg == null || chatRagCfg.getCommentsEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getCommentsEnabled());
+                    if (commentsEnabled) {
+                        int ck = chatRagCfg == null || chatRagCfg.getCommentTopK() == null ? 20 : Math.max(1, chatRagCfg.getCommentTopK());
+                        commentHits = ragCommentChatRetrievalService.retrieve(req.getMessage(), ck);
+                    }
+                    RagChatPostCommentAggregationService.Config ac = new RagChatPostCommentAggregationService.Config();
+                    ac.setMaxPosts(chatRagCfg == null ? null : chatRagCfg.getMaxPosts());
+                    ac.setPerPostMaxCommentChunks(chatRagCfg == null ? null : chatRagCfg.getPerPostMaxCommentChunks());
+                    ac.setPostContentMaxTokens(chatRagCfg == null ? null : chatRagCfg.getPostContentMaxTokens());
+                    ac.setCommentChunkMaxTokens(chatRagCfg == null ? null : chatRagCfg.getCommentChunkMaxTokens());
+                    RagChatPostCommentAggregationService.IncludePostContentPolicy pol = null;
+                    String polRaw = chatRagCfg == null ? null : chatRagCfg.getIncludePostContentPolicy();
+                    if (polRaw != null && !polRaw.isBlank()) {
+                        try {
+                            pol = RagChatPostCommentAggregationService.IncludePostContentPolicy.valueOf(polRaw.trim().toUpperCase(Locale.ROOT));
+                        } catch (Exception ignored) {
+                            pol = null;
                         }
                     }
-                    if (!outHits.isEmpty()) {
-                        sanitizeHitPostIds(outHits);
-                        retrievalHitsRepository.saveAll(outHits);
+                    ac.setIncludePostContentPolicy(pol);
+                    ragHits = ragChatPostCommentAggregationService.aggregate(req.getMessage(), postHits, commentHits, ac);
+                } else {
+                    ragHits = postHits;
+                }
+                if (!req.getDryRun()) {
+                    RetrievalEventsEntity ev = new RetrievalEventsEntity();
+                    ev.setUserId(currentUserId);
+                    ev.setQueryText(req.getMessage());
+                    if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                        ev.setBm25K(hybridCfg.getBm25K());
+                        ev.setVecK(hybridCfg.getVecK());
+                        ev.setHybridK(hybridCfg.getHybridK());
+                        ev.setRerankModel(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankModel() : null);
+                        ev.setRerankK(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankK() : null);
+                    } else {
+                        ev.setBm25K(0);
+                        ev.setVecK(6);
+                        ev.setHybridK(null);
+                        ev.setRerankModel(null);
+                        ev.setRerankK(null);
+                    }
+                    ev.setCreatedAt(LocalDateTime.now());
+                    ev = retrievalEventsRepository.save(ev);
+                    retrievalEventId = ev.getId();
+
+                    if (retrievalEventId != null) {
+                        List<RetrievalHitsEntity> outHits = new ArrayList<>();
+                        if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                            appendStageHits(outHits, retrievalEventId, RetrievalHitType.BM25, hybridResult == null ? null : hybridResult.getBm25Hits());
+                            appendStageHits(outHits, retrievalEventId, RetrievalHitType.VEC, hybridResult == null ? null : hybridResult.getVecHits());
+                            appendStageHits(outHits, retrievalEventId, RetrievalHitType.RERANK, hybridResult == null ? null : hybridResult.getFinalHits());
+                            appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
+                            appendChatHits(outHits, retrievalEventId, RetrievalHitType.AGG, ragHits);
+                        } else if (ragHits != null && !ragHits.isEmpty()) {
+                            appendChatHits(outHits, retrievalEventId, RetrievalHitType.VEC, postHits);
+                            appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
+                            if (augmentEnabled) {
+                                appendChatHits(outHits, retrievalEventId, RetrievalHitType.AGG, ragHits);
+                            }
+                        }
+                        if (!outHits.isEmpty()) {
+                            sanitizeHitPostIds(outHits);
+                            retrievalHitsRepository.saveAll(outHits);
+                        }
                     }
                 }
-            }
 
-            if (ragHits != null && !ragHits.isEmpty()) {
-                contextAssembled = ragContextPromptService.assemble(req.getMessage(), ragHits, contextCfg, citationCfg);
-                String prompt = contextAssembled == null ? null : contextAssembled.getContextPrompt();
-                if (prompt != null && !prompt.isBlank()) {
-                    messages.add(Map.of("role", "system", "content", prompt));
-                }
-                if (!req.getDryRun() && retrievalEventId != null && contextAssembled != null && contextCfg != null && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
-                    double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
-                    if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
-                        ContextWindowsEntity cw = new ContextWindowsEntity();
-                        cw.setEventId(retrievalEventId);
-                        cw.setPolicy(contextAssembled.getPolicy());
-                        cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
-                        cw.setChunkIds(contextAssembled.getChunkIds());
-                        cw.setCreatedAt(LocalDateTime.now());
-                        contextWindowsRepository.save(cw);
+                if (ragHits != null && !ragHits.isEmpty()) {
+                    contextAssembled = ragContextPromptService.assemble(req.getMessage(), ragHits, contextCfg, citationCfg);
+                    String prompt = contextAssembled == null ? null : contextAssembled.getContextPrompt();
+                    if (prompt != null && !prompt.isBlank()) {
+                        messages.add(ChatMessage.system(prompt));
+                    }
+                    if (chatRagCfg != null && Boolean.TRUE.equals(chatRagCfg.getDebugEnabled())) {
+                        writeRagDebugEvent(out, chatRagCfg, req.getMessage(), ragHits, commentHits, contextAssembled);
+                    }
+                    if (!req.getDryRun() && retrievalEventId != null && contextAssembled != null && contextCfg != null && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
+                        double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
+                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                            ContextWindowsEntity cw = new ContextWindowsEntity();
+                            cw.setEventId(retrievalEventId);
+                            cw.setPolicy(contextAssembled.getPolicy());
+                            cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                            cw.setChunkIds(contextAssembled.getChunkIds());
+                            cw.setCreatedAt(LocalDateTime.now());
+                            contextWindowsRepository.save(cw);
+                        }
                     }
                 }
             }
@@ -259,44 +336,113 @@ public class AiChatService {
             logger.warn("ai_chat_rag_retrieval_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
         }
 
-        messages.add(Map.of("role", "user", "content", req.getMessage()));
+        String userMessageForModel = applyThinkingDirective(
+                req.getMessage(),
+                deepThink,
+                resolveModelNameForThinkDirective(req.getProviderId(), req.getModel())
+        );
+        boolean hasImages = images != null && !images.isEmpty();
+        List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
+        if (hasImages) {
+            List<Map<String, Object>> parts = new ArrayList<>();
+            parts.add(Map.of("type", "text", "text", userMessageForModel));
+            for (AiChatStreamRequest.ImageInput img : images) {
+                String url = encodeImageUrlForUpstream(img);
+                if (url == null || url.isBlank()) continue;
+                parts.add(Map.of("type", "image_url", "image_url", Map.of("url", url)));
+            }
+            messagesMultimodal.add(ChatMessage.userParts(parts));
+        } else {
+            messagesMultimodal.add(ChatMessage.user(userMessageForModel));
+        }
+
+        messages = messagesMultimodal;
 
         StringBuilder assistantAccum = new StringBuilder();
         long startedAt = System.currentTimeMillis();
         long[] firstDeltaAtMs = new long[] {0L};
-        String model = (req.getModel() != null && !req.getModel().isBlank()) ? req.getModel() : aiProperties.getModel();
+        boolean[] thinkOpen = new boolean[] {false};
+        boolean[] thinkClosed = new boolean[] {false};
+        String model = null;
         Double temperature = req.getTemperature();
         if (temperature == null && deepThink) temperature = 0.2;
+        Double topP = req.getTopP();
 
         QaMessagesEntity assistantMsg = null;
 
         try {
-            sseClient().chatCompletionsStream(
-                    null,
-                    aiProperties.getBaseUrl(),
-                    model,
-                    messages,
-                    temperature,
-                    line -> {
-                        if (line == null || line.isBlank()) return;
-                        if (!line.startsWith("data:")) return;
+            boolean[] gotDelta = new boolean[] {false};
+            OpenAiCompatClient.SseLineConsumer handler = line -> {
+                if (line == null || line.isBlank()) return;
+                if (!line.startsWith("data:")) return;
 
-                        String data = line.substring("data:".length()).trim();
-                        if ("[DONE]".equals(data)) {
-                            return;
+                String data = line.substring("data:".length()).trim();
+                if ("[DONE]".equals(data)) {
+                    return;
+                }
+
+                String reasoning = deepThink ? extractDeltaReasoningContent(data) : null;
+                String content = extractDeltaContent(data);
+
+                StringBuilder deltaOut = new StringBuilder();
+                if (reasoning != null && !reasoning.isEmpty() && !thinkClosed[0]) {
+                    if (!thinkOpen[0]) {
+                        thinkOpen[0] = true;
+                        if (!reasoning.trim().startsWith("<think>")) {
+                            deltaOut.append("<think>");
                         }
-
-                        String delta = extractDeltaContent(data);
-                        if (delta == null || delta.isEmpty()) return;
-
-                        if (firstDeltaAtMs[0] == 0L) firstDeltaAtMs[0] = System.currentTimeMillis();
-                        assistantAccum.append(delta);
-
-                        out.write("event: delta\n");
-                        out.write("data: {\"content\":\"" + jsonEscape(delta) + "\"}\n\n");
-                        out.flush();
                     }
-            );
+                    deltaOut.append(reasoning);
+                }
+                if (content != null && !content.isEmpty()) {
+                    if (thinkOpen[0] && !thinkClosed[0]) {
+                        thinkClosed[0] = true;
+                        if (!assistantAccum.toString().trim().endsWith("</think>") && !content.trim().startsWith("</think>")) {
+                            deltaOut.append("</think>");
+                        }
+                    }
+                    deltaOut.append(content);
+                }
+                if (deltaOut.isEmpty()) return;
+                String delta = deltaOut.toString();
+
+                if (firstDeltaAtMs[0] == 0L) firstDeltaAtMs[0] = System.currentTimeMillis();
+                gotDelta[0] = true;
+                assistantAccum.append(delta);
+
+                out.write("event: delta\n");
+                out.write("data: {\"content\":\"" + jsonEscape(delta) + "\"}\n\n");
+                out.flush();
+            };
+
+            LlmGateway.RoutedChatStreamResult routed;
+            LlmQueueTaskType chatTaskType = hasImages ? LlmQueueTaskType.IMAGE_CHAT : LlmQueueTaskType.TEXT_CHAT;
+            ensureVisionModelForRequest(chatTaskType, req.getProviderId(), req.getModel(), hasImages);
+            try {
+                routed = llmGateway.chatStreamRouted(
+                        chatTaskType,
+                        req.getProviderId(),
+                        req.getModel(),
+                        messages,
+                        temperature,
+                        topP,
+                        deepThink,
+                        null,
+                        handler
+                );
+            } catch (Exception ex) {
+                throw ex;
+            }
+            model = routed == null ? null : routed.model();
+
+            if (deepThink && thinkOpen[0] && !thinkClosed[0]) {
+                thinkClosed[0] = true;
+                String delta = "</think>";
+                assistantAccum.append(delta);
+                out.write("event: delta\n");
+                out.write("data: {\"content\":\"" + jsonEscape(delta) + "\"}\n\n");
+                out.flush();
+            }
 
             if (contextAssembled != null) {
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
@@ -340,7 +486,7 @@ public class AiChatService {
 
             // finalize persistence
             if (!req.getDryRun()) {
-                Integer userTokensIn = tryTokenCountText(req.getMessage());
+                Integer userTokensIn = tokenCountService.countTextTokens(req.getMessage());
                 if (userMsg != null && userTokensIn != null) {
                     userMsg.setTokensIn(userTokensIn);
                     qaMessagesRepository.save(userMsg);
@@ -362,8 +508,9 @@ public class AiChatService {
                     qaTurnsRepository.save(turn);
                 }
 
-                Integer tokensIn = tryTokenCountChatMessages(messages);
-                Integer tokensOut = tryTokenCountText(assistantAccum.toString());
+                Integer tokensIn = tokenCountService.countChatMessagesTokens(messages);
+                TokenCountService.NormalizedOutput norm = tokenCountService.normalizeOutputText(assistantAccum.toString(), deepThink);
+                Integer tokensOut = tokenCountService.countTextTokens(norm == null ? null : norm.tokenText());
                 if (tokensIn != null || tokensOut != null) {
                     assistantMsg.setTokensIn(tokensIn);
                     assistantMsg.setTokensOut(tokensOut);
@@ -398,6 +545,706 @@ public class AiChatService {
             out.write("data: {\"latencyMs\":" + latency + "}\n\n");
             out.flush();
         }
+    }
+
+    public AiChatResponseDTO chatOnce(AiChatStreamRequest req, Long currentUserId) {
+        if (currentUserId == null) {
+            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
+        }
+        if (req == null) throw new IllegalArgumentException("req is required");
+
+        logger.info(
+                "ai_chat_once_start userId={} reqSessionId={} dryRun={} historyLimit={}",
+                currentUserId,
+                req.getSessionId(),
+                req.getDryRun(),
+                req.getHistoryLimit()
+        );
+
+        QaSessionsEntity session = ensureSession(req.getSessionId(), currentUserId, req.getDryRun());
+        logger.info("ai_chat_once_session_resolved userId={} sessionId={}", currentUserId, session.getId());
+
+        List<AiChatStreamRequest.ImageInput> images = resolveImages(req);
+        String messageForHistory = images == null || images.isEmpty()
+                ? req.getMessage()
+                : appendImagesAsText(req.getMessage(), images);
+
+        QaMessagesEntity userMsg = null;
+        QaTurnsEntity turn = null;
+        if (!req.getDryRun()) {
+            userMsg = new QaMessagesEntity();
+            userMsg.setSessionId(session.getId());
+            userMsg.setRole(MessageRole.USER);
+            userMsg.setContent(messageForHistory);
+            userMsg.setCreatedAt(LocalDateTime.now());
+            userMsg = qaMessagesRepository.save(userMsg);
+
+            turn = new QaTurnsEntity();
+            turn.setSessionId(session.getId());
+            turn.setQuestionMessageId(userMsg.getId());
+            turn.setAnswerMessageId(null);
+            turn.setCreatedAt(LocalDateTime.now());
+            turn = qaTurnsRepository.save(turn);
+        }
+
+        List<ChatMessage> messages = new ArrayList<>();
+        boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
+        String systemPrompt = deepThink
+                ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
+                : "你是一个严谨、专业的中文助手。";
+        messages.add(ChatMessage.system(systemPrompt));
+        String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
+        if (userSystemPrompt != null) {
+            messages.add(ChatMessage.system(userSystemPrompt));
+        }
+
+        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
+        if (!req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
+            var page = qaMessagesRepository.findAll(
+                    (root, _query, cb) -> cb.equal(root.get("sessionId"), session.getId()),
+                    PageRequest.of(0, historyLimit, Sort.by(Sort.Direction.DESC, "createdAt"))
+            );
+            List<QaMessagesEntity> histDesc = new ArrayList<>(page.getContent());
+            Collections.reverse(histDesc);
+            for (QaMessagesEntity m : histDesc) {
+                if (userMsg != null && Objects.equals(m.getId(), userMsg.getId())) continue;
+                String role = switch (m.getRole()) {
+                    case USER -> "user";
+                    case ASSISTANT -> "assistant";
+                    case SYSTEM -> "system";
+                };
+                messages.add(new ChatMessage(role, m.getContent()));
+            }
+        }
+
+        boolean useRag = Boolean.TRUE.equals(req.getUseRag());
+        Integer ragTopKOverride = req.getRagTopK();
+        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
+
+        List<RagPostChatRetrievalService.Hit> ragHits = List.of();
+        Long retrievalEventId = null;
+        HybridRetrievalConfigDTO hybridCfg = null;
+        HybridRagRetrievalService.RetrieveResult hybridResult = null;
+        ContextClipConfigDTO contextCfg = null;
+        CitationConfigDTO citationCfg = null;
+        ChatRagAugmentConfigDTO chatRagCfg = null;
+        RagContextPromptService.AssembleResult contextAssembled = null;
+        try {
+            contextCfg = contextClipConfigService.getConfigOrDefault();
+            citationCfg = citationConfigService.getConfigOrDefault();
+            chatRagCfg = chatRagAugmentConfigService.getConfigOrDefault();
+
+            if (useRag) {
+                hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
+                List<RagPostChatRetrievalService.Hit> postHits = List.of();
+                List<RagCommentChatRetrievalService.Hit> commentHits = List.of();
+                if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                    if (safeRagTopKOverride > 0) {
+                        HybridRetrievalConfigDTO copy = new HybridRetrievalConfigDTO();
+                        org.springframework.beans.BeanUtils.copyProperties(hybridCfg, copy);
+                        copy.setHybridK(safeRagTopKOverride);
+                        hybridCfg = copy;
+                    }
+                    hybridResult = hybridRagRetrievalService.retrieve(req.getMessage(), null, hybridCfg, false);
+                    postHits = toRagHits(hybridResult == null ? null : hybridResult.getFinalHits());
+                } else {
+                    int k = safeRagTopKOverride > 0
+                            ? safeRagTopKOverride
+                            : contextCfg == null || contextCfg.getMaxItems() == null ? 6 : Math.max(1, contextCfg.getMaxItems());
+                    postHits = ragRetrievalService.retrieve(req.getMessage(), Math.min(50, k), null);
+                }
+
+                boolean augmentEnabled = chatRagCfg == null || chatRagCfg.getEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getEnabled());
+                if (augmentEnabled) {
+                    boolean commentsEnabled = chatRagCfg == null || chatRagCfg.getCommentsEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getCommentsEnabled());
+                    if (commentsEnabled) {
+                        int ck = chatRagCfg == null || chatRagCfg.getCommentTopK() == null ? 20 : Math.max(1, chatRagCfg.getCommentTopK());
+                        commentHits = ragCommentChatRetrievalService.retrieve(req.getMessage(), ck);
+                    }
+                    RagChatPostCommentAggregationService.Config ac = new RagChatPostCommentAggregationService.Config();
+                    ac.setMaxPosts(chatRagCfg == null ? null : chatRagCfg.getMaxPosts());
+                    ac.setPerPostMaxCommentChunks(chatRagCfg == null ? null : chatRagCfg.getPerPostMaxCommentChunks());
+                    ac.setPostContentMaxTokens(chatRagCfg == null ? null : chatRagCfg.getPostContentMaxTokens());
+                    ac.setCommentChunkMaxTokens(chatRagCfg == null ? null : chatRagCfg.getCommentChunkMaxTokens());
+                    RagChatPostCommentAggregationService.IncludePostContentPolicy pol = null;
+                    String polRaw = chatRagCfg == null ? null : chatRagCfg.getIncludePostContentPolicy();
+                    if (polRaw != null && !polRaw.isBlank()) {
+                        try {
+                            pol = RagChatPostCommentAggregationService.IncludePostContentPolicy.valueOf(polRaw.trim().toUpperCase(Locale.ROOT));
+                        } catch (Exception ignored) {
+                            pol = null;
+                        }
+                    }
+                    ac.setIncludePostContentPolicy(pol);
+                    ragHits = ragChatPostCommentAggregationService.aggregate(req.getMessage(), postHits, commentHits, ac);
+                } else {
+                    ragHits = postHits;
+                }
+                if (!req.getDryRun()) {
+                    RetrievalEventsEntity ev = new RetrievalEventsEntity();
+                    ev.setQueryText(req.getMessage());
+                    ev.setUserId(currentUserId);
+                    ev.setSessionId(session.getId());
+                    ev.setCreatedAt(LocalDateTime.now());
+                    retrievalEventId = retrievalEventsRepository.save(ev).getId();
+                }
+
+                if (!ragHits.isEmpty()) {
+                    if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null) {
+                        int max = Math.min(200, ragHits.size());
+                        List<RetrievalHitsEntity> hitEntities = new ArrayList<>();
+                        for (int i = 0; i < max; i++) {
+                            RagPostChatRetrievalService.Hit h = ragHits.get(i);
+                            if (h == null) continue;
+                            RetrievalHitsEntity he = new RetrievalHitsEntity();
+                            he.setEventId(retrievalEventId);
+                            he.setRank(i + 1);
+                            he.setHitType(h.getType() == null ? RetrievalHitType.POST : h.getType());
+                            he.setDocumentId(h.getPostId());
+                            he.setChunkId(h.getChunkIndex() == null ? null : h.getChunkIndex().longValue());
+                            he.setScore(h.getScore() == null ? 0.0 : h.getScore());
+                            he.setCreatedAt(LocalDateTime.now());
+                            hitEntities.add(he);
+                        }
+                        if (!hitEntities.isEmpty()) retrievalHitsRepository.saveAll(hitEntities);
+                    }
+
+                    contextAssembled = ragContextPromptService.assemble(req.getMessage(), ragHits, contextCfg, citationCfg);
+                    String prompt = contextAssembled == null ? null : contextAssembled.getContextPrompt();
+                    if (prompt != null && !prompt.isBlank()) {
+                        messages.add(1, ChatMessage.system(prompt));
+                    }
+
+                    if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null && contextAssembled != null && contextCfg != null
+                            && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
+                        double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
+                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                            ContextWindowsEntity cw = new ContextWindowsEntity();
+                            cw.setEventId(retrievalEventId);
+                            cw.setPolicy(contextAssembled.getPolicy());
+                            cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                            cw.setChunkIds(contextAssembled.getChunkIds());
+                            cw.setCreatedAt(LocalDateTime.now());
+                            contextWindowsRepository.save(cw);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            logger.warn("ai_chat_once_rag_retrieval_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
+        }
+
+        String userMessageForModel = applyThinkingDirective(
+                req.getMessage(),
+                deepThink,
+                resolveModelNameForThinkDirective(req.getProviderId(), req.getModel())
+        );
+        boolean hasImages = images != null && !images.isEmpty();
+        List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
+        if (hasImages) {
+            List<Map<String, Object>> parts = new ArrayList<>();
+            parts.add(Map.of("type", "text", "text", userMessageForModel));
+            for (AiChatStreamRequest.ImageInput img : images) {
+                String url = encodeImageUrlForUpstream(img);
+                if (url == null || url.isBlank()) continue;
+                parts.add(Map.of("type", "image_url", "image_url", Map.of("url", url)));
+            }
+            messagesMultimodal.add(ChatMessage.userParts(parts));
+        } else {
+            messagesMultimodal.add(ChatMessage.user(userMessageForModel));
+        }
+
+        messages = messagesMultimodal;
+
+        StringBuilder assistantAccum = new StringBuilder();
+        long startedAt = System.currentTimeMillis();
+        long[] firstDeltaAtMs = new long[]{0L};
+        boolean[] thinkOpen = new boolean[]{false};
+        boolean[] thinkClosed = new boolean[]{false};
+        String model = null;
+        Double temperature = req.getTemperature();
+        if (temperature == null && deepThink) temperature = 0.2;
+
+        QaMessagesEntity assistantMsg = null;
+        List<RagContextPromptService.CitationSource> citedSourcesForDto = List.of();
+        long latency;
+        try {
+            boolean[] gotDelta = new boolean[] {false};
+            OpenAiCompatClient.SseLineConsumer handler = line -> {
+                if (line == null || line.isBlank()) return;
+                if (!line.startsWith("data:")) return;
+
+                String data = line.substring("data:".length()).trim();
+                if ("[DONE]".equals(data)) {
+                    return;
+                }
+
+                String reasoning = deepThink ? extractDeltaReasoningContent(data) : null;
+                String content = extractDeltaContent(data);
+
+                StringBuilder deltaOut = new StringBuilder();
+                if (reasoning != null && !reasoning.isEmpty() && !thinkClosed[0]) {
+                    if (!thinkOpen[0]) {
+                        thinkOpen[0] = true;
+                        if (!reasoning.trim().startsWith("<think>")) {
+                            deltaOut.append("<think>");
+                        }
+                    }
+                    deltaOut.append(reasoning);
+                }
+                if (content != null && !content.isEmpty()) {
+                    if (thinkOpen[0] && !thinkClosed[0]) {
+                        thinkClosed[0] = true;
+                        if (!assistantAccum.toString().trim().endsWith("</think>") && !content.trim().startsWith("</think>")) {
+                            deltaOut.append("</think>");
+                        }
+                    }
+                    deltaOut.append(content);
+                }
+                if (deltaOut.isEmpty()) return;
+                String delta = deltaOut.toString();
+
+                if (firstDeltaAtMs[0] == 0L) firstDeltaAtMs[0] = System.currentTimeMillis();
+                gotDelta[0] = true;
+                assistantAccum.append(delta);
+            };
+
+            LlmGateway.RoutedChatStreamResult routed;
+            LlmQueueTaskType chatTaskType = hasImages ? LlmQueueTaskType.IMAGE_CHAT : LlmQueueTaskType.TEXT_CHAT;
+            ensureVisionModelForRequest(chatTaskType, req.getProviderId(), req.getModel(), hasImages);
+            try {
+                routed = llmGateway.chatStreamRouted(
+                        chatTaskType,
+                        req.getProviderId(),
+                        req.getModel(),
+                        messages,
+                        temperature,
+                        deepThink,
+                        null,
+                        handler
+                );
+            } catch (Exception ex) {
+                throw ex;
+            }
+            model = routed == null ? null : routed.model();
+
+            if (deepThink && thinkOpen[0] && !thinkClosed[0]) {
+                thinkClosed[0] = true;
+                assistantAccum.append("</think>");
+            }
+
+            if (contextAssembled != null) {
+                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
+                citedSourcesForDto = filterSourcesByCitations(sources, assistantAccum.toString());
+
+                String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSourcesForDto);
+                if (sourcesText != null && !sourcesText.isBlank()) {
+                    assistantAccum.append("\n\n").append(sourcesText.trim());
+                }
+            }
+
+            if (!req.getDryRun()) {
+                Integer userTokensIn = tokenCountService.countTextTokens(req.getMessage());
+                if (userMsg != null && userTokensIn != null) {
+                    userMsg.setTokensIn(userTokensIn);
+                    qaMessagesRepository.save(userMsg);
+                }
+
+                assistantMsg = new QaMessagesEntity();
+                assistantMsg.setSessionId(session.getId());
+                assistantMsg.setRole(MessageRole.ASSISTANT);
+                assistantMsg.setContent(assistantAccum.toString());
+                assistantMsg.setModel(model);
+                assistantMsg.setCreatedAt(LocalDateTime.now());
+                assistantMsg = qaMessagesRepository.save(assistantMsg);
+
+                if (turn != null) {
+                    turn.setAnswerMessageId(assistantMsg.getId());
+                    turn.setLatencyMs((int) (System.currentTimeMillis() - startedAt));
+                    Integer firstTokenLatencyMs = firstDeltaAtMs[0] > 0 ? (int) Math.max(0, firstDeltaAtMs[0] - startedAt) : null;
+                    turn.setFirstTokenLatencyMs(firstTokenLatencyMs);
+                    qaTurnsRepository.save(turn);
+                }
+
+                Integer tokensIn = tokenCountService.countChatMessagesTokens(messages);
+                TokenCountService.NormalizedOutput norm = tokenCountService.normalizeOutputText(assistantAccum.toString(), deepThink);
+                Integer tokensOut = tokenCountService.countTextTokens(norm == null ? null : norm.tokenText());
+                if (tokensIn != null || tokensOut != null) {
+                    assistantMsg.setTokensIn(tokensIn);
+                    assistantMsg.setTokensOut(tokensOut);
+                    assistantMsg = qaMessagesRepository.save(assistantMsg);
+                }
+
+                if (contextAssembled != null) {
+                    persistAssistantSources(assistantMsg.getId(), citedSourcesForDto);
+                }
+
+                if ((session.getTitle() == null || session.getTitle().isBlank()) && req.getMessage() != null) {
+                    String t = req.getMessage().trim();
+                    if (t.length() > 60) t = t.substring(0, 60);
+                    session.setTitle(t);
+                    qaSessionsRepository.save(session);
+                }
+            }
+        } catch (Exception ex) {
+            logger.error("ai_chat_once_failed userId={} sessionId={} model={}", currentUserId, session.getId(), model, ex);
+            throw ex;
+        } finally {
+            latency = System.currentTimeMillis() - startedAt;
+            logger.info("ai_chat_once_done userId={} sessionId={} latencyMs={}", currentUserId, session.getId(), latency);
+        }
+
+        AiChatResponseDTO dto = new AiChatResponseDTO();
+        dto.setSessionId(session.getId());
+        dto.setUserMessageId(userMsg == null ? null : userMsg.getId());
+        dto.setAssistantMessageId(assistantMsg == null ? null : assistantMsg.getId());
+        dto.setContent(assistantAccum.toString());
+        dto.setSources(toCitationSourceDtos(citedSourcesForDto));
+        dto.setLatencyMs(latency);
+        return dto;
+    }
+
+    public AiChatResponseDTO regenerateOnce(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId) {
+        if (currentUserId == null) {
+            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
+        }
+        if (questionMessageId == null) throw new IllegalArgumentException("questionMessageId is required");
+        if (req == null) throw new IllegalArgumentException("req is required");
+
+        QaMessagesEntity questionMsg = qaMessagesRepository.findById(questionMessageId)
+                .orElseThrow(() -> new ResourceNotFoundException("message not found"));
+        if (questionMsg.getRole() != MessageRole.USER) {
+            throw new IllegalArgumentException("只能对用户问题消息进行重新生成");
+        }
+
+        QaSessionsEntity session = qaSessionsRepository.findByIdAndUserId(questionMsg.getSessionId(), currentUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
+        if (Boolean.FALSE.equals(session.getIsActive())) {
+            throw new IllegalArgumentException("session inactive");
+        }
+
+        QaTurnsEntity turn = qaTurnsRepository.findByQuestionMessageId(questionMessageId).orElse(null);
+        if (!Boolean.TRUE.equals(req.getDryRun())) {
+            if (turn == null) {
+                turn = new QaTurnsEntity();
+                turn.setSessionId(session.getId());
+                turn.setQuestionMessageId(questionMsg.getId());
+                turn.setAnswerMessageId(null);
+                turn.setCreatedAt(LocalDateTime.now());
+                turn = qaTurnsRepository.save(turn);
+            } else if (turn.getAnswerMessageId() != null) {
+                Long oldAnswerId = turn.getAnswerMessageId();
+                turn.setAnswerMessageId(null);
+                qaTurnsRepository.save(turn);
+                qaMessagesRepository.deleteById(oldAnswerId);
+            }
+        }
+
+        List<ChatMessage> messages = new ArrayList<>();
+        boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
+        String systemPrompt = deepThink
+                ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
+                : "你是一个严谨、专业的中文助手。";
+        messages.add(ChatMessage.system(systemPrompt));
+        String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
+        if (userSystemPrompt != null) {
+            messages.add(ChatMessage.system(userSystemPrompt));
+        }
+
+        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
+        if (session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
+            List<QaMessagesEntity> all = qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
+            List<QaMessagesEntity> before = new ArrayList<>();
+            for (QaMessagesEntity m : all) {
+                if (m == null) continue;
+                if (Objects.equals(m.getId(), questionMsg.getId())) break;
+                if (questionMsg.getCreatedAt() != null && m.getCreatedAt() != null && m.getCreatedAt().isAfter(questionMsg.getCreatedAt())) break;
+                before.add(m);
+            }
+            int from = Math.max(0, before.size() - historyLimit);
+            for (int i = from; i < before.size(); i++) {
+                QaMessagesEntity m = before.get(i);
+                String role = switch (m.getRole()) {
+                    case USER -> "user";
+                    case ASSISTANT -> "assistant";
+                    case SYSTEM -> "system";
+                };
+                messages.add(new ChatMessage(role, m.getContent()));
+            }
+        }
+
+        String questionText = questionMsg.getContent() == null ? "" : questionMsg.getContent();
+        String userMessageForModel = applyThinkingDirective(
+                questionText,
+                deepThink,
+                resolveModelNameForThinkDirective(req.getProviderId(), req.getModel())
+        );
+        messages.add(ChatMessage.user(userMessageForModel));
+
+        boolean useRag = Boolean.TRUE.equals(req.getUseRag());
+        Integer ragTopKOverride = req.getRagTopK();
+        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
+
+        List<RagPostChatRetrievalService.Hit> ragHits = List.of();
+        Long retrievalEventId = null;
+        HybridRetrievalConfigDTO hybridCfg = null;
+        HybridRagRetrievalService.RetrieveResult hybridResult = null;
+        ContextClipConfigDTO contextCfg = null;
+        CitationConfigDTO citationCfg = null;
+        ChatRagAugmentConfigDTO chatRagCfg = null;
+        RagContextPromptService.AssembleResult contextAssembled = null;
+        List<RagCommentChatRetrievalService.Hit> commentHits = List.of();
+        try {
+            contextCfg = contextClipConfigService.getConfigOrDefault();
+            citationCfg = citationConfigService.getConfigOrDefault();
+            chatRagCfg = chatRagAugmentConfigService.getConfigOrDefault();
+
+            if (useRag) {
+                hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
+                List<RagPostChatRetrievalService.Hit> postHits = List.of();
+                if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                    if (safeRagTopKOverride > 0) {
+                        HybridRetrievalConfigDTO copy = new HybridRetrievalConfigDTO();
+                        org.springframework.beans.BeanUtils.copyProperties(hybridCfg, copy);
+                        copy.setHybridK(safeRagTopKOverride);
+                        hybridCfg = copy;
+                    }
+                    hybridResult = hybridRagRetrievalService.retrieve(questionText, null, hybridCfg, false);
+                    postHits = toRagHits(hybridResult == null ? null : hybridResult.getFinalHits());
+                } else {
+                    int k = safeRagTopKOverride > 0
+                            ? safeRagTopKOverride
+                            : contextCfg == null || contextCfg.getMaxItems() == null ? 6 : Math.max(1, contextCfg.getMaxItems());
+                    postHits = ragRetrievalService.retrieve(questionText, Math.min(50, k), null);
+                }
+
+                boolean augmentEnabled = chatRagCfg == null || chatRagCfg.getEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getEnabled());
+                if (augmentEnabled) {
+                    boolean commentsEnabled = chatRagCfg == null || chatRagCfg.getCommentsEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getCommentsEnabled());
+                    if (commentsEnabled) {
+                        int ck = chatRagCfg == null || chatRagCfg.getCommentTopK() == null ? 20 : Math.max(1, chatRagCfg.getCommentTopK());
+                        commentHits = ragCommentChatRetrievalService.retrieve(questionText, ck);
+                    }
+                    RagChatPostCommentAggregationService.Config ac = new RagChatPostCommentAggregationService.Config();
+                    ac.setMaxPosts(chatRagCfg == null ? null : chatRagCfg.getMaxPosts());
+                    ac.setPerPostMaxCommentChunks(chatRagCfg == null ? null : chatRagCfg.getPerPostMaxCommentChunks());
+                    ac.setPostContentMaxTokens(chatRagCfg == null ? null : chatRagCfg.getPostContentMaxTokens());
+                    ac.setCommentChunkMaxTokens(chatRagCfg == null ? null : chatRagCfg.getCommentChunkMaxTokens());
+                    RagChatPostCommentAggregationService.IncludePostContentPolicy pol = null;
+                    String polRaw = chatRagCfg == null ? null : chatRagCfg.getIncludePostContentPolicy();
+                    if (polRaw != null && !polRaw.isBlank()) {
+                        try {
+                            pol = RagChatPostCommentAggregationService.IncludePostContentPolicy.valueOf(polRaw.trim().toUpperCase(Locale.ROOT));
+                        } catch (Exception ignored) {
+                            pol = null;
+                        }
+                    }
+                    ac.setIncludePostContentPolicy(pol);
+                    ragHits = ragChatPostCommentAggregationService.aggregate(questionText, postHits, commentHits, ac);
+                } else {
+                    ragHits = postHits;
+                }
+
+                if (!Boolean.TRUE.equals(req.getDryRun())) {
+                    RetrievalEventsEntity ev = new RetrievalEventsEntity();
+                    ev.setQueryText(questionText);
+                    ev.setUserId(currentUserId);
+                    ev.setSessionId(session.getId());
+                    ev.setCreatedAt(LocalDateTime.now());
+                    retrievalEventId = retrievalEventsRepository.save(ev).getId();
+                }
+
+                if (!ragHits.isEmpty()) {
+                    if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null) {
+                        int max = Math.min(200, ragHits.size());
+                        List<RetrievalHitsEntity> hitEntities = new ArrayList<>();
+                        for (int i = 0; i < max; i++) {
+                            RagPostChatRetrievalService.Hit h = ragHits.get(i);
+                            if (h == null) continue;
+                            RetrievalHitsEntity he = new RetrievalHitsEntity();
+                            he.setEventId(retrievalEventId);
+                            he.setRank(i + 1);
+                            he.setHitType(h.getType() == null ? RetrievalHitType.POST : h.getType());
+                            he.setDocumentId(h.getPostId());
+                            he.setChunkId(h.getChunkIndex() == null ? null : h.getChunkIndex().longValue());
+                            he.setScore(h.getScore() == null ? 0.0 : h.getScore());
+                            he.setCreatedAt(LocalDateTime.now());
+                            hitEntities.add(he);
+                        }
+                        if (!hitEntities.isEmpty()) retrievalHitsRepository.saveAll(hitEntities);
+                    }
+
+                    contextAssembled = ragContextPromptService.assemble(questionText, ragHits, contextCfg, citationCfg);
+                    String prompt = contextAssembled == null ? null : contextAssembled.getContextPrompt();
+                    if (prompt != null && !prompt.isBlank()) {
+                        messages.add(1, ChatMessage.system(prompt));
+                    }
+
+                    if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null && contextAssembled != null && contextCfg != null
+                            && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
+                        double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
+                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                            ContextWindowsEntity cw = new ContextWindowsEntity();
+                            cw.setEventId(retrievalEventId);
+                            cw.setPolicy(contextAssembled.getPolicy());
+                            cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                            cw.setChunkIds(contextAssembled.getChunkIds());
+                            cw.setCreatedAt(LocalDateTime.now());
+                            contextWindowsRepository.save(cw);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            logger.warn("ai_chat_regenerate_once_rag_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
+        }
+
+        StringBuilder assistantAccum = new StringBuilder();
+        long startedAt = System.currentTimeMillis();
+        long[] firstDeltaAtMs = new long[]{0L};
+        boolean[] thinkOpen = new boolean[]{false};
+        boolean[] thinkClosed = new boolean[]{false};
+        String model = null;
+        Double temperature = req.getTemperature();
+        if (temperature == null && deepThink) temperature = 0.2;
+
+        QaMessagesEntity assistantMsg = null;
+        List<RagContextPromptService.CitationSource> citedSourcesForDto = List.of();
+        long latency;
+        try {
+            LlmGateway.RoutedChatStreamResult routed = llmGateway.chatStreamRouted(
+                    LlmQueueTaskType.TEXT_CHAT,
+                    req.getProviderId(),
+                    req.getModel(),
+                    messages,
+                    temperature,
+                    deepThink,
+                    null,
+                    line -> {
+                        if (line == null || line.isBlank()) return;
+                        if (!line.startsWith("data:")) return;
+
+                        String data = line.substring("data:".length()).trim();
+                        if ("[DONE]".equals(data)) {
+                            return;
+                        }
+
+                        String reasoning = deepThink ? extractDeltaReasoningContent(data) : null;
+                        String content = extractDeltaContent(data);
+
+                        StringBuilder deltaOut = new StringBuilder();
+                        if (reasoning != null && !reasoning.isEmpty() && !thinkClosed[0]) {
+                            if (!thinkOpen[0]) {
+                                thinkOpen[0] = true;
+                                if (!reasoning.trim().startsWith("<think>")) {
+                                    deltaOut.append("<think>");
+                                }
+                            }
+                            deltaOut.append(reasoning);
+                        }
+                        if (content != null && !content.isEmpty()) {
+                            if (thinkOpen[0] && !thinkClosed[0]) {
+                                thinkClosed[0] = true;
+                                if (!assistantAccum.toString().trim().endsWith("</think>") && !content.trim().startsWith("</think>")) {
+                                    deltaOut.append("</think>");
+                                }
+                            }
+                            deltaOut.append(content);
+                        }
+                        if (deltaOut.isEmpty()) return;
+                        String delta = deltaOut.toString();
+
+                        if (firstDeltaAtMs[0] == 0L) firstDeltaAtMs[0] = System.currentTimeMillis();
+                        assistantAccum.append(delta);
+                    }
+            );
+            model = routed == null ? null : routed.model();
+
+            if (deepThink && thinkOpen[0] && !thinkClosed[0]) {
+                thinkClosed[0] = true;
+                assistantAccum.append("</think>");
+            }
+
+            if (contextAssembled != null) {
+                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
+                citedSourcesForDto = filterSourcesByCitations(sources, assistantAccum.toString());
+
+                String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSourcesForDto);
+                if (sourcesText != null && !sourcesText.isBlank()) {
+                    assistantAccum.append("\n\n").append(sourcesText.trim());
+                }
+            }
+
+            if (!Boolean.TRUE.equals(req.getDryRun())) {
+                Integer userTokensIn = tokenCountService.countTextTokens(questionText);
+                if (userTokensIn != null) {
+                    questionMsg.setTokensIn(userTokensIn);
+                    qaMessagesRepository.save(questionMsg);
+                }
+
+                assistantMsg = new QaMessagesEntity();
+                assistantMsg.setSessionId(session.getId());
+                assistantMsg.setRole(MessageRole.ASSISTANT);
+                assistantMsg.setContent(assistantAccum.toString());
+                assistantMsg.setModel(model);
+                assistantMsg.setCreatedAt(LocalDateTime.now());
+                assistantMsg = qaMessagesRepository.save(assistantMsg);
+
+                if (turn != null) {
+                    turn.setAnswerMessageId(assistantMsg.getId());
+                    turn.setLatencyMs((int) (System.currentTimeMillis() - startedAt));
+                    Integer firstTokenLatencyMs = firstDeltaAtMs[0] > 0 ? (int) Math.max(0, firstDeltaAtMs[0] - startedAt) : null;
+                    turn.setFirstTokenLatencyMs(firstTokenLatencyMs);
+                    qaTurnsRepository.save(turn);
+                }
+
+                Integer tokensIn = tokenCountService.countChatMessagesTokens(messages);
+                TokenCountService.NormalizedOutput norm = tokenCountService.normalizeOutputText(assistantAccum.toString(), deepThink);
+                Integer tokensOut = tokenCountService.countTextTokens(norm == null ? null : norm.tokenText());
+                if (tokensIn != null || tokensOut != null) {
+                    assistantMsg.setTokensIn(tokensIn);
+                    assistantMsg.setTokensOut(tokensOut);
+                    assistantMsg = qaMessagesRepository.save(assistantMsg);
+                }
+
+                if (contextAssembled != null) {
+                    persistAssistantSources(assistantMsg.getId(), citedSourcesForDto);
+                }
+            }
+        } catch (Exception ex) {
+            logger.error("ai_chat_regenerate_once_failed userId={} sessionId={} model={}", currentUserId, session.getId(), model, ex);
+            throw ex;
+        } finally {
+            latency = System.currentTimeMillis() - startedAt;
+        }
+
+        AiChatResponseDTO dto = new AiChatResponseDTO();
+        dto.setSessionId(session.getId());
+        dto.setQuestionMessageId(questionMsg.getId());
+        dto.setAssistantMessageId(assistantMsg == null ? null : assistantMsg.getId());
+        dto.setContent(assistantAccum.toString());
+        dto.setSources(toCitationSourceDtos(citedSourcesForDto));
+        dto.setLatencyMs(latency);
+        return dto;
+    }
+
+    private static List<AiChatResponseDTO.AiCitationSourceDTO> toCitationSourceDtos(List<RagContextPromptService.CitationSource> sources) {
+        if (sources == null || sources.isEmpty()) return List.of();
+        int n = Math.min(200, sources.size());
+        List<AiChatResponseDTO.AiCitationSourceDTO> out = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            RagContextPromptService.CitationSource s = sources.get(i);
+            if (s == null) continue;
+            AiChatResponseDTO.AiCitationSourceDTO dto = new AiChatResponseDTO.AiCitationSourceDTO();
+            dto.setIndex(s.getIndex());
+            dto.setPostId(s.getPostId());
+            dto.setChunkIndex(s.getChunkIndex());
+            dto.setScore(s.getScore());
+            dto.setTitle(s.getTitle());
+            dto.setUrl(s.getUrl());
+            out.add(dto);
+        }
+        return out;
     }
 
     public void streamRegenerate(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
@@ -449,12 +1296,16 @@ public class AiChatService {
         out.write("data: {\"sessionId\":" + session.getId() + ",\"questionMessageId\":" + questionMsg.getId() + "}\n\n");
         out.flush();
 
-        List<Map<String, String>> messages = new ArrayList<>();
+        List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
         String systemPrompt = deepThink
                 ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
                 : "你是一个严谨、专业的中文助手。";
-        messages.add(Map.of("role", "system", "content", systemPrompt));
+        messages.add(ChatMessage.system(systemPrompt));
+        String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
+        if (userSystemPrompt != null) {
+            messages.add(ChatMessage.system(userSystemPrompt));
+        }
 
         int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
         if (session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
@@ -474,12 +1325,21 @@ public class AiChatService {
                     case ASSISTANT -> "assistant";
                     case SYSTEM -> "system";
                 };
-                messages.add(Map.of("role", role, "content", m.getContent()));
+                messages.add(new ChatMessage(role, m.getContent()));
             }
         }
 
         String questionText = questionMsg.getContent();
-        messages.add(Map.of("role", "user", "content", questionText));
+        String questionTextForModel = applyThinkingDirective(
+                questionText,
+                deepThink,
+                resolveModelNameForThinkDirective(req.getProviderId(), req.getModel())
+        );
+        messages.add(ChatMessage.user(questionTextForModel));
+
+        boolean useRag = Boolean.TRUE.equals(req.getUseRag());
+        Integer ragTopKOverride = req.getRagTopK();
+        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
         Long retrievalEventId = null;
@@ -487,83 +1347,123 @@ public class AiChatService {
         HybridRagRetrievalService.RetrieveResult hybridResult = null;
         ContextClipConfigDTO contextCfg = null;
         CitationConfigDTO citationCfg = null;
+        ChatRagAugmentConfigDTO chatRagCfg = null;
         RagContextPromptService.AssembleResult contextAssembled = null;
         try {
             contextCfg = contextClipConfigService.getConfigOrDefault();
             citationCfg = citationConfigService.getConfigOrDefault();
+            chatRagCfg = chatRagAugmentConfigService.getConfigOrDefault();
 
-            hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
-            if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
-                hybridResult = hybridRagRetrievalService.retrieve(questionText, null, hybridCfg, false);
-                ragHits = toRagHits(hybridResult == null ? null : hybridResult.getFinalHits());
-            } else {
-                int k = contextCfg == null || contextCfg.getMaxItems() == null ? 6 : Math.max(1, contextCfg.getMaxItems());
-                ragHits = ragRetrievalService.retrieve(questionText, Math.min(50, k), null);
-            }
-            if (!Boolean.TRUE.equals(req.getDryRun())) {
-                RetrievalEventsEntity ev = new RetrievalEventsEntity();
-                ev.setUserId(currentUserId);
-                ev.setQueryText(questionText);
+            if (useRag) {
+                hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
+                List<RagPostChatRetrievalService.Hit> postHits = List.of();
+                List<RagCommentChatRetrievalService.Hit> commentHits = List.of();
                 if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
-                    ev.setBm25K(hybridCfg.getBm25K());
-                    ev.setVecK(hybridCfg.getVecK());
-                    ev.setHybridK(hybridCfg.getHybridK());
-                    ev.setRerankModel(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankModel() : null);
-                    ev.setRerankK(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankK() : null);
+                    if (safeRagTopKOverride > 0) {
+                        HybridRetrievalConfigDTO copy = new HybridRetrievalConfigDTO();
+                        org.springframework.beans.BeanUtils.copyProperties(hybridCfg, copy);
+                        copy.setHybridK(safeRagTopKOverride);
+                        hybridCfg = copy;
+                    }
+                    hybridResult = hybridRagRetrievalService.retrieve(questionText, null, hybridCfg, false);
+                    postHits = toRagHits(hybridResult == null ? null : hybridResult.getFinalHits());
                 } else {
-                    ev.setBm25K(0);
-                    ev.setVecK(6);
-                    ev.setHybridK(null);
-                    ev.setRerankModel(null);
-                    ev.setRerankK(null);
+                    int k = safeRagTopKOverride > 0
+                            ? safeRagTopKOverride
+                            : contextCfg == null || contextCfg.getMaxItems() == null ? 6 : Math.max(1, contextCfg.getMaxItems());
+                    postHits = ragRetrievalService.retrieve(questionText, Math.min(50, k), null);
                 }
-                ev.setCreatedAt(LocalDateTime.now());
-                ev = retrievalEventsRepository.save(ev);
-                retrievalEventId = ev.getId();
 
-                if (retrievalEventId != null) {
-                    List<RetrievalHitsEntity> outHits = new ArrayList<>();
-                    if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
-                        appendStageHits(outHits, retrievalEventId, RetrievalHitType.BM25, hybridResult == null ? null : hybridResult.getBm25Hits());
-                        appendStageHits(outHits, retrievalEventId, RetrievalHitType.VEC, hybridResult == null ? null : hybridResult.getVecHits());
-                        appendStageHits(outHits, retrievalEventId, RetrievalHitType.RERANK, hybridResult == null ? null : hybridResult.getFinalHits());
-                    } else if (ragHits != null && !ragHits.isEmpty()) {
-                        for (int i = 0; i < ragHits.size(); i++) {
-                            RagPostChatRetrievalService.Hit h = ragHits.get(i);
-                            RetrievalHitsEntity rh = new RetrievalHitsEntity();
-                            rh.setEventId(retrievalEventId);
-                            rh.setRank(i + 1);
-                            rh.setHitType(RetrievalHitType.VEC);
-                            rh.setDocumentId(h == null ? null : h.getPostId());
-                            rh.setChunkId(null);
-                            rh.setScore(h == null || h.getScore() == null ? 0.0 : h.getScore());
-                            outHits.add(rh);
+                boolean augmentEnabled = chatRagCfg == null || chatRagCfg.getEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getEnabled());
+                if (augmentEnabled) {
+                    boolean commentsEnabled = chatRagCfg == null || chatRagCfg.getCommentsEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getCommentsEnabled());
+                    if (commentsEnabled) {
+                        int ck = chatRagCfg == null || chatRagCfg.getCommentTopK() == null ? 20 : Math.max(1, chatRagCfg.getCommentTopK());
+                        commentHits = ragCommentChatRetrievalService.retrieve(questionText, ck);
+                    }
+                    RagChatPostCommentAggregationService.Config ac = new RagChatPostCommentAggregationService.Config();
+                    ac.setMaxPosts(chatRagCfg == null ? null : chatRagCfg.getMaxPosts());
+                    ac.setPerPostMaxCommentChunks(chatRagCfg == null ? null : chatRagCfg.getPerPostMaxCommentChunks());
+                    ac.setPostContentMaxTokens(chatRagCfg == null ? null : chatRagCfg.getPostContentMaxTokens());
+                    ac.setCommentChunkMaxTokens(chatRagCfg == null ? null : chatRagCfg.getCommentChunkMaxTokens());
+                    RagChatPostCommentAggregationService.IncludePostContentPolicy pol = null;
+                    String polRaw = chatRagCfg == null ? null : chatRagCfg.getIncludePostContentPolicy();
+                    if (polRaw != null && !polRaw.isBlank()) {
+                        try {
+                            pol = RagChatPostCommentAggregationService.IncludePostContentPolicy.valueOf(polRaw.trim().toUpperCase(Locale.ROOT));
+                        } catch (Exception ignored) {
+                            pol = null;
                         }
                     }
-                    if (!outHits.isEmpty()) {
-                        sanitizeHitPostIds(outHits);
-                        retrievalHitsRepository.saveAll(outHits);
+                    ac.setIncludePostContentPolicy(pol);
+                    ragHits = ragChatPostCommentAggregationService.aggregate(questionText, postHits, commentHits, ac);
+                } else {
+                    ragHits = postHits;
+                }
+                if (!Boolean.TRUE.equals(req.getDryRun())) {
+                    RetrievalEventsEntity ev = new RetrievalEventsEntity();
+                    ev.setUserId(currentUserId);
+                    ev.setQueryText(questionText);
+                    if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                        ev.setBm25K(hybridCfg.getBm25K());
+                        ev.setVecK(hybridCfg.getVecK());
+                        ev.setHybridK(hybridCfg.getHybridK());
+                        ev.setRerankModel(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankModel() : null);
+                        ev.setRerankK(Boolean.TRUE.equals(hybridCfg.getRerankEnabled()) ? hybridCfg.getRerankK() : null);
+                    } else {
+                        ev.setBm25K(0);
+                        ev.setVecK(6);
+                        ev.setHybridK(null);
+                        ev.setRerankModel(null);
+                        ev.setRerankK(null);
+                    }
+                    ev.setCreatedAt(LocalDateTime.now());
+                    ev = retrievalEventsRepository.save(ev);
+                    retrievalEventId = ev.getId();
+
+                    if (retrievalEventId != null) {
+                        List<RetrievalHitsEntity> outHits = new ArrayList<>();
+                        if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                            appendStageHits(outHits, retrievalEventId, RetrievalHitType.BM25, hybridResult == null ? null : hybridResult.getBm25Hits());
+                            appendStageHits(outHits, retrievalEventId, RetrievalHitType.VEC, hybridResult == null ? null : hybridResult.getVecHits());
+                            appendStageHits(outHits, retrievalEventId, RetrievalHitType.RERANK, hybridResult == null ? null : hybridResult.getFinalHits());
+                            appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
+                            appendChatHits(outHits, retrievalEventId, RetrievalHitType.AGG, ragHits);
+                        } else if (ragHits != null && !ragHits.isEmpty()) {
+                            appendChatHits(outHits, retrievalEventId, RetrievalHitType.VEC, postHits);
+                            appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
+                            if (augmentEnabled) {
+                                appendChatHits(outHits, retrievalEventId, RetrievalHitType.AGG, ragHits);
+                            }
+                        }
+                        if (!outHits.isEmpty()) {
+                            sanitizeHitPostIds(outHits);
+                            retrievalHitsRepository.saveAll(outHits);
+                        }
                     }
                 }
-            }
 
-            if (ragHits != null && !ragHits.isEmpty()) {
-                contextAssembled = ragContextPromptService.assemble(questionText, ragHits, contextCfg, citationCfg);
-                String prompt = contextAssembled == null ? null : contextAssembled.getContextPrompt();
-                if (prompt != null && !prompt.isBlank()) {
-                    messages.add(1, Map.of("role", "system", "content", prompt));
-                }
-                if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null && contextAssembled != null && contextCfg != null
-                        && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
-                    double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
-                    if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
-                        ContextWindowsEntity cw = new ContextWindowsEntity();
-                        cw.setEventId(retrievalEventId);
-                        cw.setPolicy(contextAssembled.getPolicy());
-                        cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
-                        cw.setChunkIds(contextAssembled.getChunkIds());
-                        cw.setCreatedAt(LocalDateTime.now());
-                        contextWindowsRepository.save(cw);
+                if (ragHits != null && !ragHits.isEmpty()) {
+                    contextAssembled = ragContextPromptService.assemble(questionText, ragHits, contextCfg, citationCfg);
+                    String prompt = contextAssembled == null ? null : contextAssembled.getContextPrompt();
+                    if (prompt != null && !prompt.isBlank()) {
+                        messages.add(1, ChatMessage.system(prompt));
+                    }
+                    if (chatRagCfg != null && Boolean.TRUE.equals(chatRagCfg.getDebugEnabled())) {
+                        writeRagDebugEvent(out, chatRagCfg, questionText, ragHits, commentHits, contextAssembled);
+                    }
+                    if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null && contextAssembled != null && contextCfg != null
+                            && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
+                        double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
+                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                            ContextWindowsEntity cw = new ContextWindowsEntity();
+                            cw.setEventId(retrievalEventId);
+                            cw.setPolicy(contextAssembled.getPolicy());
+                            cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                            cw.setChunkIds(contextAssembled.getChunkIds());
+                            cw.setCreatedAt(LocalDateTime.now());
+                            contextWindowsRepository.save(cw);
+                        }
                     }
                 }
             }
@@ -574,19 +1474,25 @@ public class AiChatService {
         StringBuilder assistantAccum = new StringBuilder();
         long startedAt = System.currentTimeMillis();
         long[] firstDeltaAtMs = new long[] {0L};
-        String model = (req.getModel() != null && !req.getModel().isBlank()) ? req.getModel() : aiProperties.getModel();
+        boolean[] thinkOpen = new boolean[] {false};
+        boolean[] thinkClosed = new boolean[] {false};
+        String model = null;
         Double temperature = req.getTemperature();
         if (temperature == null && deepThink) temperature = 0.2;
+        Double topP = req.getTopP();
 
         QaMessagesEntity assistantMsg = null;
 
         try {
-            sseClient().chatCompletionsStream(
-                    null,
-                    aiProperties.getBaseUrl(),
-                    model,
+            LlmGateway.RoutedChatStreamResult routed = llmGateway.chatStreamRouted(
+                    LlmQueueTaskType.TEXT_CHAT,
+                    req.getProviderId(),
+                    req.getModel(),
                     messages,
                     temperature,
+                    topP,
+                    deepThink,
+                    null,
                     line -> {
                         if (line == null || line.isBlank()) return;
                         if (!line.startsWith("data:")) return;
@@ -596,8 +1502,30 @@ public class AiChatService {
                             return;
                         }
 
-                        String delta = extractDeltaContent(data);
-                        if (delta == null || delta.isEmpty()) return;
+                        String reasoning = deepThink ? extractDeltaReasoningContent(data) : null;
+                        String content = extractDeltaContent(data);
+
+                        StringBuilder deltaOut = new StringBuilder();
+                        if (reasoning != null && !reasoning.isEmpty() && !thinkClosed[0]) {
+                            if (!thinkOpen[0]) {
+                                thinkOpen[0] = true;
+                                if (!reasoning.trim().startsWith("<think>")) {
+                                    deltaOut.append("<think>");
+                                }
+                            }
+                            deltaOut.append(reasoning);
+                        }
+                        if (content != null && !content.isEmpty()) {
+                            if (thinkOpen[0] && !thinkClosed[0]) {
+                                thinkClosed[0] = true;
+                                if (!assistantAccum.toString().trim().endsWith("</think>") && !content.trim().startsWith("</think>")) {
+                                    deltaOut.append("</think>");
+                                }
+                            }
+                            deltaOut.append(content);
+                        }
+                        if (deltaOut.isEmpty()) return;
+                        String delta = deltaOut.toString();
 
                         if (firstDeltaAtMs[0] == 0L) firstDeltaAtMs[0] = System.currentTimeMillis();
                         assistantAccum.append(delta);
@@ -607,6 +1535,16 @@ public class AiChatService {
                         out.flush();
                     }
             );
+            model = routed == null ? null : routed.model();
+
+            if (deepThink && thinkOpen[0] && !thinkClosed[0]) {
+                thinkClosed[0] = true;
+                String delta = "</think>";
+                assistantAccum.append(delta);
+                out.write("event: delta\n");
+                out.write("data: {\"content\":\"" + jsonEscape(delta) + "\"}\n\n");
+                out.flush();
+            }
 
             if (contextAssembled != null) {
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
@@ -649,7 +1587,7 @@ public class AiChatService {
             }
 
             if (!Boolean.TRUE.equals(req.getDryRun())) {
-                Integer userTokensIn = tryTokenCountText(questionText);
+                Integer userTokensIn = tokenCountService.countTextTokens(questionText);
                 if (userTokensIn != null) {
                     questionMsg.setTokensIn(userTokensIn);
                     qaMessagesRepository.save(questionMsg);
@@ -671,8 +1609,9 @@ public class AiChatService {
                     qaTurnsRepository.save(turn);
                 }
 
-                Integer tokensIn = tryTokenCountChatMessages(messages);
-                Integer tokensOut = tryTokenCountText(assistantAccum.toString());
+                Integer tokensIn = tokenCountService.countChatMessagesTokens(messages);
+                TokenCountService.NormalizedOutput norm = tokenCountService.normalizeOutputText(assistantAccum.toString(), deepThink);
+                Integer tokensOut = tokenCountService.countTextTokens(norm == null ? null : norm.tokenText());
                 if (tokensIn != null || tokensOut != null) {
                     assistantMsg.setTokensIn(tokensIn);
                     assistantMsg.setTokensOut(tokensOut);
@@ -796,46 +1735,6 @@ public class AiChatService {
         }
     }
 
-    private Integer tryTokenCountText(String text) {
-        String t = text == null ? null : text.trim();
-        if (t == null || t.isEmpty()) return null;
-        try {
-            OpenSearchTokenizeRequest req = new OpenSearchTokenizeRequest();
-            req.setText(t);
-            OpenSearchTokenizeResponse resp = openSearchTokenizeService.tokenize(req);
-            if (resp == null || resp.getUsage() == null) return null;
-            return resp.getUsage().getInputTokens();
-        } catch (Exception ex) {
-            logger.warn("ai_chat_token_count_text_failed err={}", ex.getMessage());
-            return null;
-        }
-    }
-
-    private Integer tryTokenCountChatMessages(List<Map<String, String>> messages) {
-        if (messages == null || messages.isEmpty()) return null;
-        try {
-            List<OpenSearchTokenizeRequest.Message> list = new ArrayList<>(messages.size());
-            for (Map<String, String> m : messages) {
-                if (m == null) continue;
-                String role = m.get("role");
-                if (role == null || role.isBlank()) continue;
-                OpenSearchTokenizeRequest.Message mm = new OpenSearchTokenizeRequest.Message();
-                mm.setRole(role);
-                mm.setContent(m.getOrDefault("content", ""));
-                list.add(mm);
-            }
-            if (list.isEmpty()) return null;
-            OpenSearchTokenizeRequest req = new OpenSearchTokenizeRequest();
-            req.setMessages(list);
-            OpenSearchTokenizeResponse resp = openSearchTokenizeService.tokenize(req);
-            if (resp == null || resp.getUsage() == null) return null;
-            return resp.getUsage().getInputTokens();
-        } catch (Exception ex) {
-            logger.warn("ai_chat_token_count_messages_failed err={}", ex.getMessage());
-            return null;
-        }
-    }
-
     private QaSessionsEntity ensureSession(Long sessionId, Long currentUserId, boolean dryRun) {
         if (sessionId != null) {
             QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, currentUserId)
@@ -867,9 +1766,24 @@ public class AiChatService {
      * This is not a full JSON parser but works for common OpenAI-compatible SSE frames.
      */
     static String extractDeltaContent(String json) {
+        return sanitizeMarker(extractDeltaStringField(json, "content"));
+    }
+
+    static String extractDeltaReasoningContent(String json) {
+        return sanitizeMarker(extractDeltaStringField(json, "reasoning_content"));
+    }
+
+    private static String sanitizeMarker(String s) {
+        if (s == null) return null;
+        if (s.equals("reasoning_content")) return "";
+        return s;
+    }
+
+    static String extractDeltaStringField(String json, String field) {
         if (json == null) return null;
-        // try: "delta":{"content":"..."}
-        int idx = json.indexOf("\"content\"");
+        String f = field == null ? "" : field.trim();
+        if (f.isEmpty()) return null;
+        int idx = json.indexOf("\"" + f + "\"");
         if (idx < 0) return null;
         int colon = json.indexOf(':', idx);
         if (colon < 0) return null;
@@ -915,6 +1829,244 @@ public class AiChatService {
             i++;
         }
         return sb.toString();
+    }
+
+    private String resolveModelNameForThinkDirective(String providerId, String modelOverride) {
+        String m = toNonBlank(modelOverride);
+        if (m != null) return m;
+        try {
+            AiProvidersConfigService.ResolvedProvider p = llmGateway.resolve(providerId);
+            m = toNonBlank(p == null ? null : p.defaultChatModel());
+            if (m != null) return m;
+        } catch (Exception ignored) {
+        }
+        return toNonBlank(aiProperties.getModel());
+    }
+
+    private static String applyThinkingDirective(String content, boolean deepThink, String modelName) {
+        String text = content == null ? "" : content;
+        if (!supportsThinkingDirectiveModel(modelName)) return text;
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.contains("/no_think") || lower.contains("/think")) return text;
+        String directive = deepThink ? "/think" : "/no_think";
+        if (text.endsWith("\n") || text.endsWith("\r")) return text + directive;
+        return text + "\n" + directive;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String loadUserDefaultSystemPrompt(Long userId) {
+        if (userId == null) return null;
+        UsersEntity u = usersRepository.findById(userId).orElse(null);
+        if (u == null) return null;
+        Map<String, Object> metadata = u.getMetadata();
+        if (metadata == null) return null;
+        Object prefs = metadata.get("preferences");
+        if (!(prefs instanceof Map)) return null;
+        Object assistant = ((Map<String, Object>) prefs).get("assistant");
+        if (!(assistant instanceof Map)) return null;
+        Object v = ((Map<String, Object>) assistant).get("defaultSystemPrompt");
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return StringUtils.hasText(s) ? s : null;
+    }
+
+    private static boolean supportsThinkingDirectiveModel(String modelName) {
+        String raw = modelName == null ? "" : modelName.trim().toLowerCase(Locale.ROOT);
+        if (raw.isEmpty()) return false;
+
+        String base = raw;
+        int slash = base.lastIndexOf('/');
+        if (slash >= 0 && slash + 1 < base.length()) base = base.substring(slash + 1);
+        int colon = base.lastIndexOf(':');
+        if (colon >= 0 && colon + 1 < base.length()) base = base.substring(colon + 1);
+
+        if (raw.contains("thinking") || base.contains("thinking")) return false;
+        if (base.startsWith("qwen3-") || raw.startsWith("qwen3-")) return true;
+        return base.startsWith("qwen-plus-2025-04-28")
+                || base.startsWith("qwen-turbo-2025-04-28")
+                || raw.startsWith("qwen-plus-2025-04-28")
+                || raw.startsWith("qwen-turbo-2025-04-28");
+    }
+
+    private static String toNonBlank(Object v) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isBlank() ? null : s;
+    }
+
+    private boolean providerSupportsVision(String providerId) {
+        try {
+            var p = llmGateway.resolve(providerId);
+            if (p == null || p.metadata() == null) return false;
+            Object v = p.metadata().get("supportsVision");
+            if (v instanceof Boolean b) return b;
+            if (v instanceof String s) return "true".equalsIgnoreCase(s.trim());
+            return false;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void ensureVisionModelForRequest(LlmQueueTaskType taskType, String providerId, String modelOverride, boolean hasImages) {
+        if (!hasImages) return;
+        if (taskType != LlmQueueTaskType.IMAGE_CHAT) return;
+
+        String mo = toNonBlank(modelOverride);
+        String pid = toNonBlank(providerId);
+
+        if (mo != null) {
+            String effectiveProviderId = pid;
+            if (effectiveProviderId == null) {
+                try {
+                    var p = llmGateway.resolve(null);
+                    effectiveProviderId = p == null ? null : toNonBlank(p.id());
+                } catch (Exception ignored) {
+                }
+            }
+            if (effectiveProviderId == null) {
+                throw new IllegalArgumentException("未指定模型来源(providerId)，无法发送图片");
+            }
+            if (!isEnabledImageChatModel(effectiveProviderId, mo)) {
+                throw new IllegalArgumentException("当前选择的模型不支持图片，请选择视觉模型（图片聊天）或切换为“自动(均衡负载)”");
+            }
+            return;
+        }
+
+        if (pid != null) {
+            try {
+                var p = llmGateway.resolve(pid);
+                String effectiveProviderId = p == null ? null : toNonBlank(p.id());
+                String effectiveModel = p == null ? null : toNonBlank(p.defaultChatModel());
+                if (effectiveProviderId == null || effectiveModel == null) {
+                    throw new IllegalArgumentException("未配置可用的默认模型，无法发送图片");
+                }
+                if (!isEnabledImageChatModel(effectiveProviderId, effectiveModel)) {
+                    throw new IllegalArgumentException("当前选择的模型不支持图片，请选择视觉模型（图片聊天）或切换为“自动(均衡负载)”");
+                }
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalArgumentException("模型来源解析失败，无法发送图片");
+            }
+            return;
+        }
+
+        if (llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, "IMAGE_CHAT").isEmpty()) {
+            throw new IllegalArgumentException("未配置“图片聊天(IMAGE_CHAT)”模型池，请在管理端为图片聊天配置视觉模型");
+        }
+    }
+
+    private boolean isEnabledImageChatModel(String providerId, String modelName) {
+        String pid = toNonBlank(providerId);
+        String mn = toNonBlank(modelName);
+        if (pid == null || mn == null) return false;
+        return llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, "IMAGE_CHAT", mn)
+                .filter((e) -> !Boolean.FALSE.equals(e.getEnabled()))
+                .isPresent();
+    }
+
+    private static List<AiChatStreamRequest.ImageInput> resolveImages(AiChatStreamRequest req) {
+        if (req == null || req.getImages() == null || req.getImages().isEmpty()) return List.of();
+        List<AiChatStreamRequest.ImageInput> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (AiChatStreamRequest.ImageInput img : req.getImages()) {
+            if (img == null) continue;
+            if (out.size() >= 5) break;
+            String url = toNonBlank(img.getUrl());
+            if (url == null) continue;
+            if (seen.contains(url)) continue;
+            String mt = toNonBlank(img.getMimeType());
+            boolean isImg = mt != null && mt.toLowerCase().startsWith("image/");
+            if (!isImg && !isLikelyImageUrl(url)) continue;
+            out.add(img);
+            seen.add(url);
+        }
+        return out;
+    }
+
+    private static boolean isLikelyImageUrl(String url) {
+        String u = toNonBlank(url);
+        if (u == null) return false;
+        String lower = u.toLowerCase();
+        if (lower.startsWith("/uploads/")) return true;
+        return lower.endsWith(".png")
+                || lower.endsWith(".jpg")
+                || lower.endsWith(".jpeg")
+                || lower.endsWith(".gif")
+                || lower.endsWith(".webp")
+                || lower.endsWith(".bmp")
+                || lower.endsWith(".svg");
+    }
+
+    private static String appendImagesAsText(String userMsg, List<AiChatStreamRequest.ImageInput> images) {
+        String base = userMsg == null ? "" : userMsg;
+        StringBuilder sb = new StringBuilder(base);
+        sb.append("\n\n[IMAGES]\n");
+        int take = 0;
+        for (AiChatStreamRequest.ImageInput img : images) {
+            if (img == null) continue;
+            String url = toNonBlank(img.getUrl());
+            if (url == null) continue;
+            sb.append("- ").append(url).append("\n");
+            take += 1;
+            if (take >= 5) break;
+        }
+        return sb.toString();
+    }
+
+    private String encodeImageUrlForUpstream(AiChatStreamRequest.ImageInput img) {
+        if (img == null) return null;
+        String url = toNonBlank(img.getUrl());
+        if (url == null) return null;
+
+        if (url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://")) {
+            return url;
+        }
+
+        byte[] bytes = readLocalUploadBytes(img.getFileAssetId(), url);
+        if (bytes == null || bytes.length == 0) return url;
+        if (bytes.length > 4_000_000) return url;
+
+        String mimeType = toNonBlank(img.getMimeType());
+        if (!StringUtils.hasText(mimeType) && img.getFileAssetId() != null) {
+            var fa = fileAssetsRepository.findById(img.getFileAssetId()).orElse(null);
+            mimeType = fa == null ? null : toNonBlank(fa.getMimeType());
+        }
+        if (!StringUtils.hasText(mimeType)) mimeType = "application/octet-stream";
+
+        return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+    }
+
+    private byte[] readLocalUploadBytes(Long fileAssetId, String url) {
+        try {
+            if (fileAssetId != null) {
+                var fa = fileAssetsRepository.findById(fileAssetId).orElse(null);
+                if (fa != null && fa.getPath() != null && !fa.getPath().isBlank()) {
+                    Path p = Paths.get(fa.getPath()).toAbsolutePath().normalize();
+                    if (Files.exists(p) && Files.isRegularFile(p)) {
+                        return Files.readAllBytes(p);
+                    }
+                }
+            }
+
+            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
+            String u = toNonBlank(url);
+            if (u == null || prefix.isEmpty()) return null;
+            if (!u.startsWith(prefix + "/")) return null;
+
+            int q = u.indexOf('?');
+            if (q >= 0) u = u.substring(0, q);
+            String rel = u.substring(prefix.length());
+            while (rel.startsWith("/")) rel = rel.substring(1);
+
+            Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
+            Path p = root.resolve(rel).normalize();
+            if (!p.startsWith(root)) return null;
+            if (!Files.exists(p) || !Files.isRegularFile(p)) return null;
+            return Files.readAllBytes(p);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     static String jsonEscape(String s) {
@@ -1013,6 +2165,118 @@ public class AiChatService {
             rh.setScore(s);
             out.add(rh);
         }
+    }
+
+    private static void appendChatHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<RagPostChatRetrievalService.Hit> hits) {
+        if (eventId == null || hits == null || hits.isEmpty()) return;
+        int n = Math.min(1000, hits.size());
+        for (int i = 0; i < n; i++) {
+            RagPostChatRetrievalService.Hit h = hits.get(i);
+            if (h == null) continue;
+            RetrievalHitsEntity rh = new RetrievalHitsEntity();
+            rh.setEventId(eventId);
+            rh.setRank(i + 1);
+            rh.setHitType(type);
+            rh.setDocumentId(h.getPostId());
+            rh.setChunkId(null);
+            rh.setScore(h.getScore() == null ? 0.0 : h.getScore());
+            out.add(rh);
+        }
+    }
+
+    private static void appendCommentHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<RagCommentChatRetrievalService.Hit> hits) {
+        if (eventId == null || hits == null || hits.isEmpty()) return;
+        int n = Math.min(1000, hits.size());
+        for (int i = 0; i < n; i++) {
+            RagCommentChatRetrievalService.Hit h = hits.get(i);
+            if (h == null) continue;
+            RetrievalHitsEntity rh = new RetrievalHitsEntity();
+            rh.setEventId(eventId);
+            rh.setRank(i + 1);
+            rh.setHitType(type);
+            rh.setDocumentId(h.getPostId());
+            rh.setChunkId(h.getCommentId());
+            rh.setScore(h.getScore() == null ? 0.0 : h.getScore());
+            out.add(rh);
+        }
+    }
+
+    private static void writeRagDebugEvent(
+            PrintWriter out,
+            ChatRagAugmentConfigDTO cfg,
+            String queryText,
+            List<RagPostChatRetrievalService.Hit> aggHits,
+            List<RagCommentChatRetrievalService.Hit> commentHits,
+            RagContextPromptService.AssembleResult contextAssembled
+    ) {
+        if (out == null || cfg == null || !Boolean.TRUE.equals(cfg.getDebugEnabled())) return;
+        int maxChars = cfg.getDebugMaxChars() == null ? 4000 : Math.max(0, Math.min(200_000, cfg.getDebugMaxChars()));
+        if (maxChars <= 0) return;
+
+        Map<Long, RagPostChatRetrievalService.Hit> aggByPostId = new java.util.HashMap<>();
+        if (aggHits != null) {
+            for (RagPostChatRetrievalService.Hit h : aggHits) {
+                if (h == null || h.getPostId() == null) continue;
+                aggByPostId.putIfAbsent(h.getPostId(), h);
+            }
+        }
+
+        List<RagContextPromptService.Item> selected = contextAssembled == null ? List.of() : (contextAssembled.getSelected() == null ? List.of() : contextAssembled.getSelected());
+        int perItemMax = Math.max(200, Math.min(2000, maxChars / Math.max(1, selected.size())));
+
+        StringBuilder sb = new StringBuilder();
+        sb.append('{');
+        sb.append("\"query\":\"").append(jsonEscape(queryText == null ? "" : queryText)).append('"');
+
+        sb.append(",\"selected\":[");
+        int totalPreview = 0;
+        for (int i = 0; i < selected.size(); i++) {
+            RagContextPromptService.Item it = selected.get(i);
+            if (it == null) continue;
+            if (sb.charAt(sb.length() - 1) != '[') sb.append(',');
+            sb.append('{');
+            sb.append("\"rank\":").append(it.getRank() == null ? "null" : it.getRank());
+            sb.append(",\"postId\":").append(it.getPostId() == null ? "null" : it.getPostId());
+            sb.append(",\"score\":").append(it.getScore() == null ? "null" : String.format(Locale.ROOT, "%.6f", it.getScore()));
+            String preview = "";
+            if (it.getPostId() != null) {
+                RagPostChatRetrievalService.Hit h = aggByPostId.get(it.getPostId());
+                String t = h == null ? null : h.getContentText();
+                if (t != null) {
+                    String trimmed = t.trim();
+                    int remain = Math.max(0, maxChars - totalPreview);
+                    int cap = Math.min(perItemMax, remain);
+                    if (cap > 0) {
+                        preview = trimmed.length() <= cap ? trimmed : trimmed.substring(0, cap);
+                        totalPreview += preview.length();
+                    }
+                }
+            }
+            sb.append(",\"preview\":\"").append(jsonEscape(preview)).append('"');
+            sb.append('}');
+            if (totalPreview >= maxChars) break;
+        }
+        sb.append(']');
+
+        sb.append(",\"commentHits\":[");
+        int n = Math.min(50, commentHits == null ? 0 : commentHits.size());
+        for (int i = 0; i < n; i++) {
+            RagCommentChatRetrievalService.Hit h = commentHits.get(i);
+            if (h == null) continue;
+            if (sb.charAt(sb.length() - 1) != '[') sb.append(',');
+            sb.append('{');
+            sb.append("\"commentId\":").append(h.getCommentId() == null ? "null" : h.getCommentId());
+            sb.append(",\"postId\":").append(h.getPostId() == null ? "null" : h.getPostId());
+            sb.append(",\"score\":").append(h.getScore() == null ? "null" : String.format(Locale.ROOT, "%.6f", h.getScore()));
+            sb.append('}');
+        }
+        sb.append(']');
+
+        sb.append('}');
+
+        out.write("event: rag_debug\n");
+        out.write("data: " + sb + "\n\n");
+        out.flush();
     }
 
     private void sanitizeHitPostIds(List<RetrievalHitsEntity> hits) {

@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Compass, FileText, MessageCircle, Bot, User, LogOut, Search, PencilLine } from 'lucide-react';
+import { Compass, FileText, MessageCircle, Bot, User, LogOut, Search, PencilLine, Shield } from 'lucide-react';
 import { portalSections } from './portalMenu';
 import { useAuth } from '../../contexts/AuthContext';
 import { logout } from '../../services/authService';
@@ -7,6 +7,7 @@ import { getMyProfile } from '../../services/accountService';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import HotSidebar from './discover/components/HotSidebar';
+import AssistantRecentSessionsSidebar from './assistant/components/AssistantRecentSessionsSidebar';
 
 export type PortalOutletContext = {
   composePreviewOpen: boolean;
@@ -25,6 +26,7 @@ export default function CommunityPortalLayout() {
     posts: FileText,
     interact: MessageCircle,
     assistant: Bot,
+    moderation: Shield,
     account: User,
   } as const;
 
@@ -164,14 +166,28 @@ export default function CommunityPortalLayout() {
       !pathname.startsWith('/portal/posts/create') &&
       !pathname.startsWith('/portal/posts/edit');
 
-    return isComposeActive || isPostsActive || (isActiveFromNavLink && navId !== 'compose' && navId !== 'posts');
+    const isAccountActive = navId === 'account' && pathname.startsWith('/portal/users/');
+
+    return (
+      isComposeActive ||
+      isPostsActive ||
+      isAccountActive ||
+      (isActiveFromNavLink && navId !== 'compose' && navId !== 'posts')
+    );
   };
 
   const isComposeRoute =
     location.pathname.startsWith('/portal/posts/create') || location.pathname.startsWith('/portal/posts/edit');
   const isComposeWide = isComposeRoute && composePreviewOpen;
-  const containerClassName = isComposeWide ? 'w-full max-w-none' : 'max-w-7xl';
   const showDiscoverHotSidebar = location.pathname.startsWith('/portal/discover');
+  const showAssistantRecentSessionsSidebar = location.pathname.startsWith('/portal/assistant/chat');
+  const isAssistantChatWide = showAssistantRecentSessionsSidebar;
+  const containerClassName = isComposeWide || isAssistantChatWide ? 'w-full max-w-none' : 'max-w-7xl';
+  const rightSidebarSpacerClassName = showDiscoverHotSidebar
+    ? 'lg:pr-80 min-[1920px]:pr-0'
+    : showAssistantRecentSessionsSidebar
+      ? 'xl:pr-80'
+      : '';
 
   return (
     <div className="min-h-screen bg-white">
@@ -319,7 +335,7 @@ export default function CommunityPortalLayout() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-w-0 bg-white">
+        <main className={`flex-1 min-w-0 bg-white ${rightSidebarSpacerClassName}`}>
           <div className="w-full min-w-0">
             <Outlet context={{ composePreviewOpen, setComposePreviewOpen } satisfies PortalOutletContext} />
           </div>
@@ -329,6 +345,12 @@ export default function CommunityPortalLayout() {
       {showDiscoverHotSidebar ? (
         <aside className="hidden lg:block fixed top-0 right-0 min-[1920px]:right-[calc((100vw-80rem)/2-20rem)] w-80 bg-white border-l border-gray-200 h-screen shrink-0 p-4 overflow-y-auto z-20">
           <HotSidebar />
+        </aside>
+      ) : null}
+
+      {showAssistantRecentSessionsSidebar ? (
+        <aside className="hidden xl:block fixed top-0 right-0 w-80 bg-white border-l border-gray-200 h-screen shrink-0 p-4 overflow-y-auto z-20">
+          <AssistantRecentSessionsSidebar />
         </aside>
       ) : null}
     </div>

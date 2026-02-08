@@ -1,16 +1,23 @@
 package com.example.EnterpriseRagCommunity.service.content.impl;
 
 import com.example.EnterpriseRagCommunity.dto.content.PostDetailDTO;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionTargetType;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
+import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionType;
 import com.example.EnterpriseRagCommunity.repository.content.HotScoresRepository;
+import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
 import com.example.EnterpriseRagCommunity.service.content.PostInteractionsService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import com.example.EnterpriseRagCommunity.repository.content.PostViewsDailyRepository;
-import com.example.EnterpriseRagCommunity.repository.content.FavoritesRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -23,6 +30,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
 
 @Service
 public class PortalPostsServiceImpl implements PortalPostsService {
@@ -45,10 +57,19 @@ public class PortalPostsServiceImpl implements PortalPostsService {
     private HotScoresRepository hotScoresRepository;
 
     @Autowired
-    private FavoritesRepository favoritesRepository;
+    private ReactionsRepository reactionsRepository;
 
     @Autowired
     private AdministratorService administratorService;
+
+    @Autowired
+    private UsersRepository usersRepository;
+
+    @Autowired
+    private BoardsRepository boardsRepository;
+
+    @Autowired
+    private BoardAccessControlService boardAccessControlService;
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 
@@ -64,8 +85,8 @@ public class PortalPostsServiceImpl implements PortalPostsService {
         dto.setContentFormat(e.getContentFormat());
         dto.setStatus(e.getStatus());
 
-        // TODO: authorName/boardName can be filled if related tables are available.
         dto.setAuthorName(null);
+        dto.setAuthorAvatarUrl(null);
         dto.setBoardName(null);
 
         dto.setHotScore(null);
@@ -74,6 +95,33 @@ public class PortalPostsServiceImpl implements PortalPostsService {
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setPublishedAt(e.getPublishedAt());
+        return dto;
+    }
+
+    private static String readProfileString(UsersEntity user, String key) {
+        if (user == null) return null;
+        Map<String, Object> metadata = user.getMetadata();
+        if (metadata == null) return null;
+        Object profileObj = metadata.get("profile");
+        if (!(profileObj instanceof Map)) return null;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> profile = (Map<String, Object>) profileObj;
+        Object v = profile.get(key);
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    private PostDetailDTO enrichDisplay(PostDetailDTO dto, UsersEntity author, BoardsEntity board) {
+        if (author != null) {
+            String name = author.getUsername();
+            dto.setAuthorName(name == null || name.trim().isEmpty() ? null : name.trim());
+            dto.setAuthorAvatarUrl(readProfileString(author, "avatarUrl"));
+        }
+        if (board != null) {
+            String name = board.getName();
+            dto.setBoardName(name == null || name.trim().isEmpty() ? null : name.trim());
+        }
         return dto;
     }
 
@@ -108,6 +156,18 @@ public class PortalPostsServiceImpl implements PortalPostsService {
         return dto;
     }
 
+    private static <T> Map<Long, T> indexById(Collection<T> rows, java.util.function.Function<T, Long> idFn) {
+        Map<Long, T> m = new HashMap<>();
+        if (rows == null) return m;
+        for (T r : rows) {
+            if (r == null) continue;
+            Long id = idFn.apply(r);
+            if (id == null) continue;
+            m.put(id, r);
+        }
+        return m;
+    }
+
     @Override
     public Page<PostDetailDTO> query(String keyword,
                                     Long postId,
@@ -121,10 +181,32 @@ public class PortalPostsServiceImpl implements PortalPostsService {
                                     int pageSize,
                                     String sortBy,
                                     String sortOrderDirection) {
-        return postsService
-                .query(keyword, postId, searchMode, boardId, status, authorId, createdFrom, createdTo, page, pageSize, sortBy, sortOrderDirection)
+        Page<PostsEntity> rs = postsService
+                .query(keyword, postId, searchMode, boardId, status, authorId, createdFrom, createdTo, page, pageSize, sortBy, sortOrderDirection);
+
+        Set<Long> roleIds = boardAccessControlService.currentUserRoleIds();
+        var visiblePosts = rs.getContent().stream()
+                .filter(e -> e == null || e.getBoardId() == null || boardAccessControlService.canViewBoard(e.getBoardId(), roleIds))
+                .toList();
+
+        LinkedHashSet<Long> authorIds = new LinkedHashSet<>();
+        LinkedHashSet<Long> boardIds = new LinkedHashSet<>();
+        for (PostsEntity e : visiblePosts) {
+            if (e == null) continue;
+            if (e.getAuthorId() != null) authorIds.add(e.getAuthorId());
+            if (e.getBoardId() != null) boardIds.add(e.getBoardId());
+        }
+
+        Map<Long, UsersEntity> authorMap = indexById(usersRepository.findByIdInAndIsDeletedFalse(authorIds), UsersEntity::getId);
+        Map<Long, BoardsEntity> boardMap = indexById(boardsRepository.findAllById(boardIds), BoardsEntity::getId);
+
+        var content = visiblePosts.stream()
                 .map(PortalPostsServiceImpl::toBaseDto)
-                .map(this::enrichAggregates);
+                .map(dto -> enrichDisplay(dto, authorMap.get(dto.getAuthorId()), boardMap.get(dto.getBoardId())))
+                .map(this::enrichAggregates)
+                .toList();
+
+        return new PageImpl<>(content, rs.getPageable(), rs.getTotalElements());
     }
 
     @Override
@@ -161,7 +243,27 @@ public class PortalPostsServiceImpl implements PortalPostsService {
             }
         }
 
-        return enrichAggregates(toBaseDto(e));
+        if (e.getBoardId() != null) {
+            Set<Long> roleIds = boardAccessControlService.currentUserRoleIds();
+            if (!boardAccessControlService.canViewBoard(e.getBoardId(), roleIds)) {
+                throw new org.springframework.security.access.AccessDeniedException("无权访问该版块");
+            }
+        }
+
+        UsersEntity author = null;
+        BoardsEntity board = null;
+        try {
+            if (e.getAuthorId() != null) author = usersRepository.findByIdAndIsDeletedFalse(e.getAuthorId()).orElse(null);
+        } catch (Exception ignored) {
+            author = null;
+        }
+        try {
+            if (e.getBoardId() != null) board = boardsRepository.findById(e.getBoardId()).orElse(null);
+        } catch (Exception ignored) {
+            board = null;
+        }
+
+        return enrichAggregates(enrichDisplay(toBaseDto(e), author, board));
     }
 
     @Override
@@ -181,10 +283,25 @@ public class PortalPostsServiceImpl implements PortalPostsService {
                 .getId();
 
         Pageable pageable = PageRequest.of(safePage - 1, safePageSize);
-        var rs = favoritesRepository.findBookmarkedPostsByUserId(userId, pageable);
+        var rs = reactionsRepository.findBookmarkedPostsByUserId(userId, ReactionTargetType.POST, ReactionType.FAVORITE, pageable);
 
         var content = rs.getContent().stream()
                 .map(PortalPostsServiceImpl::toBaseDto)
+                .map(dto -> {
+                    UsersEntity author = null;
+                    BoardsEntity board = null;
+                    try {
+                        if (dto.getAuthorId() != null) author = usersRepository.findByIdAndIsDeletedFalse(dto.getAuthorId()).orElse(null);
+                    } catch (Exception ignored) {
+                        author = null;
+                    }
+                    try {
+                        if (dto.getBoardId() != null) board = boardsRepository.findById(dto.getBoardId()).orElse(null);
+                    } catch (Exception ignored) {
+                        board = null;
+                    }
+                    return enrichDisplay(dto, author, board);
+                })
                 .map(this::enrichAggregates)
                 .toList();
 

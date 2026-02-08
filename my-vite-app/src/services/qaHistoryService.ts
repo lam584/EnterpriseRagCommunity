@@ -28,6 +28,7 @@ export type QaMessageDTO = {
   latencyMs?: number | null;
   firstTokenLatencyMs?: number | null;
   createdAt: string;
+  isFavorite?: boolean;
   sources?: AiCitationSource[] | null;
 };
 
@@ -106,4 +107,16 @@ export async function deleteQaMessage(messageId: number) {
   return apiFetch<void>(`/api/ai/qa/messages/${messageId}`, {
     method: 'DELETE'
   });
+}
+
+export async function toggleQaMessageFavorite(messageId: number) {
+  return apiFetch<boolean>(`/api/ai/qa/messages/${messageId}/favorite`, {
+    method: 'PATCH'
+  });
+}
+
+export async function listFavoriteQaMessages(page = 0, size = 20) {
+  return apiFetch<{ content: QaMessageDTO[]; totalElements: number; number: number; size: number }>(
+    `/api/ai/qa/favorites?page=${page}&size=${size}`
+  );
 }

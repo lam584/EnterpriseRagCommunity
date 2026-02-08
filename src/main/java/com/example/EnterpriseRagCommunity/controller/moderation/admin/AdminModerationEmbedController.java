@@ -10,14 +10,18 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSample
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarHitsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationSimilarityService;
-import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSampleCreateRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSampleDTO;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSampleUpdateRequest;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationSampleTextUtils;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesReindexResponse;
+import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesIndexStatusResponse;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesSyncResult;
+import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesAutoSyncConfigDTO;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesSyncService;
+import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
+import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
+import com.example.EnterpriseRagCommunity.service.moderation.admin.ModerationSamplesAutoSyncConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
@@ -44,10 +48,12 @@ public class AdminModerationEmbedController {
 
     private final ModerationSimilarityService similarityService;
     private final ModerationSimilarityConfigRepository configRepository;
-    private final ModerationSimilarityProperties similarityProps;
+    private final ModerationSamplesIndexConfigService indexConfigService;
     private final ModerationSamplesRepository samplesRepository;
     private final ModerationSimilarHitsRepository hitsRepository;
     private final ModerationSamplesSyncService samplesSyncService;
+    private final ModerationSamplesIndexService samplesIndexService;
+    private final ModerationSamplesAutoSyncConfigService samplesAutoSyncConfigService;
 
     @PostMapping("/check")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
@@ -61,11 +67,11 @@ public class AdminModerationEmbedController {
         ModerationSimilarityConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(() -> {
             ModerationSimilarityConfigEntity e = new ModerationSimilarityConfigEntity();
             e.setEnabled(true);
-            e.setEmbeddingModel(similarityProps.getEs().getEmbeddingModel());
-            e.setEmbeddingDims(similarityProps.getEs().getEmbeddingDims());
+            e.setEmbeddingModel(null);
+            e.setEmbeddingDims(indexConfigService.getEmbeddingDimsOrDefault());
             e.setMaxInputChars(0);
-            e.setDefaultTopK(similarityProps.getEs().getTopK());
-            e.setDefaultThreshold(similarityProps.getEs().getThreshold());
+            e.setDefaultTopK(indexConfigService.getDefaultTopKOrDefault());
+            e.setDefaultThreshold(indexConfigService.getDefaultThresholdOrDefault());
             e.setDefaultNumCandidates(0);
             e.setUpdatedAt(LocalDateTime.now());
             return configRepository.save(e);
@@ -82,11 +88,11 @@ public class AdminModerationEmbedController {
         ModerationSimilarityConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(() -> {
             ModerationSimilarityConfigEntity e = new ModerationSimilarityConfigEntity();
             e.setEnabled(true);
-            e.setEmbeddingModel(similarityProps.getEs().getEmbeddingModel());
-            e.setEmbeddingDims(similarityProps.getEs().getEmbeddingDims());
+            e.setEmbeddingModel(null);
+            e.setEmbeddingDims(indexConfigService.getEmbeddingDimsOrDefault());
             e.setMaxInputChars(0);
-            e.setDefaultTopK(similarityProps.getEs().getTopK());
-            e.setDefaultThreshold(similarityProps.getEs().getThreshold());
+            e.setDefaultTopK(indexConfigService.getDefaultTopKOrDefault());
+            e.setDefaultThreshold(indexConfigService.getDefaultThresholdOrDefault());
             e.setDefaultNumCandidates(0);
             e.setUpdatedAt(LocalDateTime.now());
             return e;
@@ -107,6 +113,55 @@ public class AdminModerationEmbedController {
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg = configRepository.save(cfg);
         return ResponseEntity.ok(cfg);
+    }
+
+    @GetMapping("/index-status")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
+    public ResponseEntity<ModerationSamplesIndexStatusResponse> getIndexStatus() {
+        ModerationSamplesIndexStatusResponse r = new ModerationSamplesIndexStatusResponse();
+        r.setIndexName(samplesIndexService.getIndexName());
+        boolean exists = samplesIndexService.indexExists();
+        r.setExists(exists);
+        Integer configured = configRepository.findAll().stream().findFirst().map(ModerationSimilarityConfigEntity::getEmbeddingDims).orElse(null);
+        r.setEmbeddingDimsConfigured(configured == null ? indexConfigService.getEmbeddingDimsOrDefault() : configured);
+        r.setLastIncrementalSyncAt(samplesAutoSyncConfigService.getLastIncrementalSyncAt().orElse(null));
+        boolean available = true;
+        String availabilityMessage = null;
+        if (exists) {
+            Integer mappingDims = samplesIndexService.getEmbeddingDimsInMapping();
+            r.setEmbeddingDimsInMapping(mappingDims);
+            r.setDocCount(samplesIndexService.countDocs());
+            if (mappingDims == null || mappingDims <= 0) {
+                available = false;
+                availabilityMessage = "索引映射缺少 embedding 向量字段";
+            } else {
+                Integer configuredDims = r.getEmbeddingDimsConfigured();
+                if (configuredDims != null && configuredDims > 0 && !configuredDims.equals(mappingDims)) {
+                    available = false;
+                    availabilityMessage = "embedding 维度不一致（配置 " + configuredDims + " / 映射 " + mappingDims + "）";
+                }
+            }
+        } else {
+            available = false;
+            availabilityMessage = "索引不存在";
+        }
+        r.setAvailable(available);
+        r.setAvailabilityMessage(availabilityMessage);
+        return ResponseEntity.ok(r);
+    }
+
+    @GetMapping("/samples/auto-sync/config")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
+    public ResponseEntity<ModerationSamplesAutoSyncConfigDTO> getSamplesAutoSyncConfig() {
+        return ResponseEntity.ok(samplesAutoSyncConfigService.getConfig());
+    }
+
+    @PutMapping("/samples/auto-sync/config")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
+    public ResponseEntity<ModerationSamplesAutoSyncConfigDTO> updateSamplesAutoSyncConfig(
+            @RequestBody(required = false) ModerationSamplesAutoSyncConfigDTO payload
+    ) {
+        return ResponseEntity.ok(samplesAutoSyncConfigService.updateConfig(payload));
     }
 
     @GetMapping("/samples")

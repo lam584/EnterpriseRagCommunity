@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 public class PostLangLabelGenConfigService {
 
     public static final int DEFAULT_MAX_CONTENT_CHARS = 8000;
+    private static final String GROUP_CODE = "POST_LANG_LABEL";
+    private static final String SUB_TYPE = "DEFAULT";
 
     public static final String DEFAULT_SYSTEM_PROMPT = """
 你是一个语言识别助手。
@@ -38,14 +40,18 @@ public class PostLangLabelGenConfigService {
 
     @Transactional(readOnly = true)
     public PostLangLabelGenConfigDTO getAdminConfig() {
-        PostLangLabelGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostLangLabelGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElse(null);
         if (cfg == null) return toDto(defaultEntity(), null);
         return toDto(cfg, null);
     }
 
     @Transactional(readOnly = true)
     public PostLangLabelGenPublicConfigDTO getPublicConfig() {
-        PostLangLabelGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostLangLabelGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElse(null);
         if (cfg == null) cfg = defaultEntity();
         PostLangLabelGenPublicConfigDTO dto = new PostLangLabelGenPublicConfigDTO();
         dto.setEnabled(Boolean.TRUE.equals(cfg.getEnabled()));
@@ -55,7 +61,9 @@ public class PostLangLabelGenConfigService {
 
     @Transactional
     public PostLangLabelGenConfigDTO upsertAdminConfig(PostLangLabelGenConfigDTO payload, Long actorUserId, String actorUsername) {
-        PostLangLabelGenConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(this::defaultEntity);
+        PostLangLabelGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElseGet(this::defaultEntity);
 
         PostLangLabelGenConfigEntity merged = mergeAndValidate(cfg, payload);
         merged.setUpdatedAt(LocalDateTime.now());
@@ -67,15 +75,20 @@ public class PostLangLabelGenConfigService {
 
     @Transactional(readOnly = true)
     public PostLangLabelGenConfigEntity getConfigEntityOrDefault() {
-        return configRepository.findTopByOrderByUpdatedAtDesc().orElseGet(this::defaultEntity);
+        return configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElseGet(this::defaultEntity);
     }
 
     private PostLangLabelGenConfigEntity defaultEntity() {
         PostLangLabelGenConfigEntity e = new PostLangLabelGenConfigEntity();
+        e.setGroupCode(GROUP_CODE);
+        e.setSubType(SUB_TYPE);
         e.setEnabled(Boolean.TRUE);
         e.setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
         e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
         e.setModel(null);
+        e.setProviderId(null);
         e.setTemperature(0.0);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
         e.setVersion(0);
@@ -108,6 +121,8 @@ public class PostLangLabelGenConfigService {
 
         String model = payload.getModel();
         base.setModel(model == null || model.isBlank() ? null : model.trim());
+        String providerId = payload.getProviderId();
+        base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         base.setTemperature(temperature);
         base.setMaxContentChars(maxContentChars);
         return base;
@@ -121,6 +136,7 @@ public class PostLangLabelGenConfigService {
         dto.setSystemPrompt(e.getSystemPrompt());
         dto.setPromptTemplate(e.getPromptTemplate());
         dto.setModel(e.getModel());
+        dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
         dto.setMaxContentChars(e.getMaxContentChars());
         dto.setUpdatedAt(e.getUpdatedAt());
@@ -128,4 +144,3 @@ public class PostLangLabelGenConfigService {
         return dto;
     }
 }
-

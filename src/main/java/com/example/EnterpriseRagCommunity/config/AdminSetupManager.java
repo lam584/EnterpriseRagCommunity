@@ -1,6 +1,8 @@
 package com.example.EnterpriseRagCommunity.config;
 
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -17,6 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 @Order(1) // 确保在其他 ApplicationRunner 之前运行
 public class AdminSetupManager implements ApplicationRunner {
+    private static final Logger logger = LoggerFactory.getLogger(AdminSetupManager.class);
 
     private final AtomicBoolean setupRequired = new AtomicBoolean(false);
 
@@ -48,10 +51,10 @@ public class AdminSetupManager implements ApplicationRunner {
         if (adminCount < 1) {
             // 如果没有管理员账户，设置状态为需要初始设置
             setSetupRequired(true);
-            System.out.println("未检测到管理员账户，系统需要初始化设置");
+            logger.info("未检测到管理员账户，系统需要初始化设置");
         } else {
             setSetupRequired(false);
-            System.out.println("检测到" + adminCount + "个管理员账户，无需初始化设置");
+            logger.info("检测到 {} 个管理员账户，无需初始化设置", adminCount);
         }
     }
 }

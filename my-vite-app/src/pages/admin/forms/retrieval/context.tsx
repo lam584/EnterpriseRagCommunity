@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAccess } from '../../../../contexts/AccessContext';
+import Modal from '../users/roles/Modal';
 import {
   adminGetContextClipConfig,
   adminGetContextWindow,
@@ -80,9 +81,9 @@ const POLICIES: { value: ContextWindowPolicy; label: string }[] = [
   { value: 'DEDUP', label: 'DEDUP（去重优先）' },
   { value: 'FIXED', label: 'FIXED（固定预算）' },
   { value: 'ADAPTIVE', label: 'ADAPTIVE（随 query 自适应预算）' },
-  { value: 'SLIDING', label: 'SLIDING（滑窗/占位）' },
-  { value: 'IMPORTANCE', label: 'IMPORTANCE（重要性/占位）' },
-  { value: 'HYBRID', label: 'HYBRID（混合/占位）' },
+  { value: 'SLIDING', label: 'SLIDING（滑窗截断，尽量吃满预算）' },
+  { value: 'IMPORTANCE', label: 'IMPORTANCE（按重要性/信息密度挑选）' },
+  { value: 'HYBRID', label: 'HYBRID（命中顺序 + 重要性混合）' },
 ];
 
 const ContextClipForm: React.FC = () => {
@@ -98,8 +99,14 @@ const ContextClipForm: React.FC = () => {
   const [configLoaded, setConfigLoaded] = useState(false);
   const [committedConfig, setCommittedConfig] = useState<ContextClipConfigDTO>({ ...DEFAULT_CFG });
   const [editing, setEditing] = useState(false);
+  const [policyHelpOpen, setPolicyHelpOpen] = useState(false);
 
   const hasUnsavedChanges = useMemo(() => JSON.stringify(config) !== JSON.stringify(committedConfig), [config, committedConfig]);
+  const selectedPolicy = useMemo(() => clampPolicy(config.policy), [config.policy]);
+  const selectedPolicyLabel = useMemo(
+    () => POLICIES.find((p) => p.value === selectedPolicy)?.label ?? selectedPolicy,
+    [selectedPolicy],
+  );
 
   const loadConfig = useCallback(async () => {
     setError(null);
@@ -311,7 +318,16 @@ const ContextClipForm: React.FC = () => {
         <div className="space-y-3 rounded border border-gray-200 p-3">
           <div className="font-medium">开关与策略</div>
           <div>
-            <div className="text-xs text-gray-500 mb-1">策略 Policy</div>
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <div className="text-xs text-gray-500">策略 Policy</div>
+              <button
+                type="button"
+                className="text-xs text-blue-600 hover:text-blue-700 underline underline-offset-2"
+                onClick={() => setPolicyHelpOpen(true)}
+              >
+                帮助
+              </button>
+            </div>
             <select
               className={inputClass}
               value={config.policy ?? 'TOPK'}
@@ -436,6 +452,101 @@ const ContextClipForm: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <Modal isOpen={policyHelpOpen} onClose={() => setPolicyHelpOpen(false)} title="策略说明">
+        <div className="space-y-4 text-sm text-gray-800">
+          <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+            <div className="font-medium">当前选择：{selectedPolicyLabel}</div>
+            <div className="text-xs text-gray-600 mt-1">
+              策略决定两件事：① 这次最多能塞多少“上下文”（预算怎么计算）② 在预算内怎么把命中条目塞进去（挑选与裁剪怎么做）。页面下方的“去重/过滤”开关仍然会生效。
+            </div>
+          </div>
+
+          <div className="space-y-2 rounded border border-gray-200 p-3">
+            <div className="font-medium">先搞懂 3 个词</div>
+            <ul className="list-disc pl-5 space-y-1 text-gray-700">
+              <li>tokens：可以粗略理解成“字符/单词的计量单位”。prompt 越长，tokens 越多。</li>
+              <li>上下文预算：这次允许放进 prompt 的“检索结果内容”最多占多少 tokens。</li>
+              <li>reserveAnswerTokens：给模型回答预留的空间；预留越多，回答越不容易被挤没。</li>
+            </ul>
+          </div>
+
+          <div className="space-y-3">
+            <div className="font-medium">① 预算怎么计算（能放多少内容）</div>
+            <div className="rounded border border-gray-200 p-3 space-y-2">
+              <div className="font-medium">FIXED（固定塞满）</div>
+              <div className="text-gray-700">
+                预算 = maxContextTokens（不额外给回答预留空间）。优点是更容易把检索内容塞满；缺点是 prompt 可能过长，回答空间可能不够，出现截断/回答变短。
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 p-3 space-y-2">
+              <div className="font-medium">ADAPTIVE（随问题变动）</div>
+              <div className="text-gray-700">
+                预算 = maxContextTokens - reserveAnswerTokens - 约等于（query tokens × 2）。问题越长，给检索内容的空间越少，优先保证“问题 + 回答”不会把上下文挤爆。
+              </div>
+            </div>
+            <div className="rounded border border-gray-200 p-3 space-y-2">
+              <div className="font-medium">TOPK / DEDUP / SLIDING / IMPORTANCE / HYBRID（统一预留回答）</div>
+              <div className="text-gray-700">
+                预算 = maxContextTokens - reserveAnswerTokens。它们的差异不在“能放多少”，而在“怎么挑选/怎么裁剪”。
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="font-medium">② 怎么挑选与裁剪（放哪些内容进来）</div>
+            <div className="text-gray-700">流程可以理解成两步：</div>
+            <ul className="list-disc pl-5 space-y-1 text-gray-700">
+              <li>先做硬性筛选：分数太低（minScore）、必须有标题、去重、同帖最多入选条数、单条过长先截断等。</li>
+              <li>再按策略把剩下的条目往预算里塞：不同策略的“塞法”不一样。</li>
+            </ul>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              <div className="rounded border border-gray-200 p-3 space-y-2">
+                <div className="font-medium">TOPK（按顺序装箱）</div>
+                <div className="text-gray-700">
+                  从高分到低分依次尝试加入；某条放不下就先跳过它，继续尝试后面更短的条目。特点是“尽量不裁剪内容”，但可能留下一点没用满的空位。
+                </div>
+              </div>
+              <div className="rounded border border-gray-200 p-3 space-y-2">
+                <div className="font-medium">SLIDING（最后一条截到刚好放下）</div>
+                <div className="text-gray-700">
+                  前面类似 TOPK；遇到放不下时，会把当前这条截断到“剩余预算”并作为最后一条塞进去。特点是更容易用满预算，但最后一条可能只剩一段不完整内容。
+                </div>
+              </div>
+              <div className="rounded border border-gray-200 p-3 space-y-2">
+                <div className="font-medium">DEDUP（更分散）</div>
+                <div className="text-gray-700">
+                  更倾向从不同帖子/不同标题里各取一些，避免同一来源占满上下文。具体“怎么判重/怎么限制同帖条数”仍然由页面下方去重开关和同帖上限控制。
+                </div>
+              </div>
+              <div className="rounded border border-gray-200 p-3 space-y-2">
+                <div className="font-medium">IMPORTANCE（挑信息密度更高的组合）</div>
+                <div className="text-gray-700">
+                  候选集更大时，会优先挑“更重要/更有信息量”的片段组合，尽量用更少 tokens 放进更有用的内容。适合命中很多、但你更在乎“质量”而不是“数量”的场景。
+                </div>
+              </div>
+              <div className="rounded border border-gray-200 p-3 space-y-2 md:col-span-2">
+                <div className="font-medium">HYBRID（先保底头部，再用重要性补齐）</div>
+                <div className="text-gray-700">
+                  先保证少量最靠前（通常也是分数最高）的命中进来，再用 IMPORTANCE 从更多候选里补齐剩余预算；补齐阶段同样可能发生类似 SLIDING 的截断。适合既想“别漏掉高分命中”，又想“整体更有用”的平衡方案。
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-gray-700">
+              <div className="font-medium text-gray-800">新手怎么选（快速指南）</div>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>不想纠结：用 HYBRID（相对均衡）。</li>
+                <li>命中很多、内容很杂：用 IMPORTANCE 或 HYBRID。</li>
+                <li>想尽量塞满上下文：用 SLIDING（但最后一条可能被截断）。</li>
+                <li>想尽量不截断内容：用 TOPK。</li>
+                <li>想更去重更分散：优先调去重开关 + 同一 post 最多入选条数 + 最大条数，再考虑 DEDUP。</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </Modal>
 
       <div className="space-y-3 rounded border border-gray-200 p-3">
         <div className="font-medium">Prompt 与展示格式</div>

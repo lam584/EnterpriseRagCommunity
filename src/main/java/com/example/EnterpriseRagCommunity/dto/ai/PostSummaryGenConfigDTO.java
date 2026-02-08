@@ -11,6 +11,7 @@ public class PostSummaryGenConfigDTO {
 
     private Boolean enabled;
     private String model;
+    private String providerId;
     private Double temperature;
     private Integer maxContentChars;
     private String promptTemplate;
@@ -18,4 +19,3 @@ public class PostSummaryGenConfigDTO {
     private LocalDateTime updatedAt;
     private String updatedBy;
 }
-

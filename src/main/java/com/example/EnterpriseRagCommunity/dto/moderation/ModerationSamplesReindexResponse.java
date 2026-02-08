@@ -17,6 +17,7 @@ public class ModerationSamplesReindexResponse {
     private List<Long> failedIds;
 
     private Long fromId;
+    private Long lastId;
     private Integer batchSize;
     private Boolean onlyEnabled;
 

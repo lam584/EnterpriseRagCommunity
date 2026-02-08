@@ -86,6 +86,42 @@ export type HybridRetrievalTestResponse = {
   debugInfo?: Record<string, unknown> | null;
 };
 
+export type HybridRerankTestDocumentDTO = {
+  docId?: string | null;
+  title?: string | null;
+  text?: string | null;
+};
+
+export type HybridRerankTestRequest = {
+  queryText: string;
+  topN?: number | null;
+  debug?: boolean | null;
+  useSavedConfig?: boolean | null;
+  config?: HybridRetrievalConfigDTO | null;
+  documents: HybridRerankTestDocumentDTO[];
+};
+
+export type HybridRerankTestHitDTO = {
+  index?: number | null;
+  relevanceScore?: number | null;
+  docId?: string | null;
+  title?: string | null;
+  text?: string | null;
+};
+
+export type HybridRerankTestResponse = {
+  queryText?: string | null;
+  topN?: number | null;
+  ok?: boolean | null;
+  latencyMs?: number | null;
+  errorMessage?: string | null;
+  usedProviderId?: string | null;
+  usedModel?: string | null;
+  totalTokens?: number | null;
+  results?: HybridRerankTestHitDTO[] | null;
+  debugInfo?: Record<string, unknown> | null;
+};
+
 export type RetrievalEventLogDTO = {
   id: number;
   userId?: number | null;
@@ -148,6 +184,22 @@ export async function adminTestHybridRetrieval(payload: HybridRetrievalTestReque
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || 'Hybrid 检索测试失败');
   return data as HybridRetrievalTestResponse;
+}
+
+export async function adminTestHybridRerank(payload: HybridRerankTestRequest): Promise<HybridRerankTestResponse> {
+  const csrf = await getCsrfToken();
+  const res = await fetch(apiUrl('/api/admin/retrieval/hybrid/test-rerank'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrf,
+    },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '重排模型测试失败');
+  return data as HybridRerankTestResponse;
 }
 
 export async function adminListHybridRetrievalEvents(params?: {

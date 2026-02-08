@@ -5,6 +5,8 @@ package com.example.EnterpriseRagCommunity.config;
 import java.util.Arrays; // 替代旧User
 import java.util.Optional; // 新增导入
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -37,6 +39,7 @@ import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+    private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
 
     // 改为注入Service
     @Autowired
@@ -51,7 +54,7 @@ public class SecurityConfig {
     @Bean
     @Order(1) // API 链优先级更高，只拦截 /api/**
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        System.out.println("配置统一的安全过滤链...");
+        logger.debug("配置统一的安全过滤链...");
 
         http
                 .securityMatcher("/api/**") // 仅匹配 API 请求，避免与 Web 链重叠
@@ -59,11 +62,11 @@ public class SecurityConfig {
                 // Must run after SecurityContext is loaded from session.
                 .addFilterAfter(accessChangedFilter, SecurityContextHolderFilter.class)
                 .cors(cors -> {
-                    System.out.println("配置 CORS...");
+                    logger.debug("配置 CORS...");
                     cors.configurationSource(corsConfigurationSource());
                 })
                 .csrf(csrf -> {
-                    System.out.println("配置 CSRF...");
+                    logger.debug("配置 CSRF...");
                     // 使用 CsrfTokenRequestAttributeHandler 替代 XorCsrfTokenRequestAttributeHandler
                     // 以避免前端获取的原始 Token 与后端期望的 XOR 掩码 Token 不一致导致的 403 问题
                     CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
@@ -94,7 +97,7 @@ public class SecurityConfig {
                         );
                 })
                 .authorizeHttpRequests(authz -> {
-                    System.out.println("配置请求授权...");
+                    logger.debug("配置请求授权...");
                     authz
                         .requestMatchers(
                                 // 仅放行 API 认证相关端点
@@ -121,7 +124,8 @@ public class SecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET,
                                 "/api/boards",
                                 "/api/posts",
-                                "/api/posts/*"
+                                "/api/posts/*",
+                                "/api/portal/users/*/profile"
                         ).permitAll()
                         // 手动触发热度分重算：需要登录（建议后续改为仅管理员）
                         .requestMatchers(
@@ -133,11 +137,11 @@ public class SecurityConfig {
                 })
                 // 遇到未经认证时，直接 401，不携带 WWW-Authenticate 头
                 .exceptionHandling(ex -> {
-                    System.out.println("配置异常处理开始...");
+                    logger.debug("配置异常处理开始...");
                     ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED));
-                    System.out.println("异常处理配置完成。");
+                    logger.debug("异常处理配置完成。");
                 });
-        System.out.println("配置 API 安全过滤链完成。");
+        logger.debug("配置 API 安全过滤链完成。");
         return http.build();
     }
 
@@ -145,32 +149,32 @@ public class SecurityConfig {
     @Bean
     @Order(2) // 较低的优先级，匹配所有其他请求
     public SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
-        System.out.println("配置 Web 安全过滤链开始...");
+        logger.debug("配置 Web 安全过滤链开始...");
         http
                 .securityMatcher("/**") // 匹配所有其他请求
                 .cors(cors -> {
-                    System.out.println("配置 CORS 开始...");
+                    logger.debug("配置 CORS 开始...");
                     cors.configurationSource(corsConfigurationSource());
-                    System.out.println("CORS 配置完成。");
+                    logger.debug("CORS 配置完成。");
                 })
                 .csrf(csrf -> {
-                    System.out.println("配置 CSRF 开始...");
+                    logger.debug("配置 CSRF 开始...");
                     // 使用 CsrfTokenRequestAttributeHandler 替代 XorCsrfTokenRequestAttributeHandler
                     CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
                     requestHandler.setCsrfRequestAttributeName("_csrf");
                     
                     csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                         .csrfTokenRequestHandler(requestHandler);
-                    System.out.println("CSRF 配置完成。");
+                    logger.debug("CSRF 配置完成。");
                 })
                 .sessionManagement(session -> {
-                    System.out.println("配置会话管理开始...");
+                    logger.debug("配置会话管理开始...");
                     session
                         .sessionCreationPolicy(SessionCreationPolicy.ALWAYS);
-                    System.out.println("会话管理配置完成。");
+                    logger.debug("会话管理配置完成。");
                 })
                 .authorizeHttpRequests(authorize -> {
-                    System.out.println("配置请求授权开始...");
+                    logger.debug("配置请求授权开始...");
                     authorize
                         // 放行静态资源与前端入口
                         .requestMatchers("/", "/index.html", "/assets/**", "/fonts/**", "/favicon.ico", "/robots.txt", "/vite-manifest.json").permitAll()
@@ -178,7 +182,7 @@ public class SecurityConfig {
                         // 其余所有非 /api/** 的页面路由交给 SPA，无需鉴权
                         .anyRequest().permitAll();
                 });
-        System.out.println("配置 Web 安全过滤链完成。");
+        logger.debug("配置 Web 安全过滤链完成。");
         return http.build();
     }
 

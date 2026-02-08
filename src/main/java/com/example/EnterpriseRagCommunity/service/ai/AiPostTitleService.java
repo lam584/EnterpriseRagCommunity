@@ -3,9 +3,10 @@ package com.example.EnterpriseRagCommunity.service.ai;
 import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostTitleSuggestRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostTitleSuggestResponse;
-import com.example.EnterpriseRagCommunity.entity.ai.PostTitleGenConfigEntity;
-import com.example.EnterpriseRagCommunity.entity.ai.PostTitleGenHistoryEntity;
-import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenHistoryEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -20,10 +21,11 @@ public class AiPostTitleService {
 
     private final AiProperties aiProperties;
     private final PostTitleGenConfigService postTitleGenConfigService;
+    private final LlmGateway llmGateway;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AiPostTitleSuggestResponse suggestTitles(AiPostTitleSuggestRequest req, Long actorUserId) {
-        PostTitleGenConfigEntity cfg = postTitleGenConfigService.getConfigEntityOrDefault();
+        PostSuggestionGenConfigEntity cfg = postTitleGenConfigService.getConfigEntityOrDefault();
         if (!Boolean.TRUE.equals(cfg.getEnabled())) {
             throw new IllegalStateException("标题生成已关闭");
         }
@@ -35,7 +37,7 @@ public class AiPostTitleService {
         if (count <= 0) count = defaultCount;
         if (count > maxCount) count = maxCount;
 
-        String model = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : aiProperties.getModel();
+        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
         if (temperature == null) temperature = 0.4;
 
@@ -50,15 +52,19 @@ public class AiPostTitleService {
 
         String userPrompt = renderPrompt(cfg.getPromptTemplate(), count, req.getBoardName(), req.getTags(), content);
 
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", cfg.getSystemPrompt()));
-        messages.add(Map.of("role", "user", "content", userPrompt));
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system(cfg.getSystemPrompt()));
+        messages.add(ChatMessage.user(userPrompt));
 
         long started = System.currentTimeMillis();
         String rawJson;
+        String usedProviderId;
+        String usedModel;
         try {
-            rawJson = new BailianOpenAiSseClient(aiProperties)
-                    .chatCompletionsOnce(null, aiProperties.getBaseUrl(), model, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.TITLE_GEN, cfg.getProviderId(), modelOverride, messages, temperature);
+            rawJson = routed == null ? null : routed.text();
+            usedProviderId = routed == null ? null : routed.providerId();
+            usedModel = routed == null ? null : routed.model();
         } catch (Exception e) {
             throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);
         }
@@ -69,24 +75,26 @@ public class AiPostTitleService {
         long latency = System.currentTimeMillis() - started;
 
         if (Boolean.TRUE.equals(cfg.getHistoryEnabled()) && actorUserId != null) {
-            PostTitleGenHistoryEntity h = new PostTitleGenHistoryEntity();
+            PostSuggestionGenHistoryEntity h = new PostSuggestionGenHistoryEntity();
+            h.setKind(SuggestionKind.TITLE);
             h.setUserId(actorUserId);
             h.setCreatedAt(LocalDateTime.now());
             h.setBoardName(blankToNull(req.getBoardName()));
-            h.setTagsJson(req.getTags() == null ? List.of() : new ArrayList<>(req.getTags()));
+            h.setInputTagsJson(req.getTags() == null ? List.of() : new ArrayList<>(req.getTags()));
             h.setRequestedCount(count);
             h.setAppliedMaxContentChars(maxChars);
             h.setContentLen(contentLen);
             h.setContentExcerpt(buildExcerpt(req.getContent()));
-            h.setTitlesJson(new ArrayList<>(titles));
-            h.setModel(model);
+            h.setOutputJson(new ArrayList<>(titles));
+            h.setModel(usedModel);
+            h.setProviderId(usedProviderId);
             h.setTemperature(temperature);
             h.setLatencyMs(latency);
             h.setPromptVersion(cfg.getVersion());
             postTitleGenConfigService.recordHistory(h);
         }
 
-        return new AiPostTitleSuggestResponse(titles, model, latency);
+        return new AiPostTitleSuggestResponse(titles, usedModel, latency);
     }
 
     private String extractAssistantContent(String rawJson) {
@@ -112,22 +120,25 @@ public class AiPostTitleService {
         return rawJson;
     }
 
-    private List<String> parseTitlesFromAssistantText(String assistantText, int expectedCount) {
+    List<String> parseTitlesFromAssistantText(String assistantText, int expectedCount) {
         if (assistantText == null) assistantText = "";
         assistantText = assistantText.trim();
 
         String json = assistantText;
-        // Tolerate occasional wrapper text: extract first {...}
-        int l = json.indexOf('{');
-        int r = json.lastIndexOf('}');
-        if (l >= 0 && r > l) {
-            json = json.substring(l, r + 1);
+        int lObj = json.indexOf('{');
+        int rObj = json.lastIndexOf('}');
+        int lArr = json.indexOf('[');
+        int rArr = json.lastIndexOf(']');
+        if (lObj >= 0 && rObj > lObj && (lArr < 0 || lObj < lArr)) {
+            json = json.substring(lObj, rObj + 1);
+        } else if (lArr >= 0 && rArr > lArr) {
+            json = json.substring(lArr, rArr + 1);
         }
 
         List<String> titles = new ArrayList<>();
         try {
             JsonNode root = objectMapper.readTree(json);
-            JsonNode arr = root.path("titles");
+            JsonNode arr = root.isArray() ? root : root.path("titles");
             if (arr.isArray()) {
                 for (JsonNode n : arr) {
                     if (!n.isTextual()) continue;
@@ -208,4 +219,3 @@ public class AiPostTitleService {
         return t.isEmpty() ? null : t;
     }
 }
-

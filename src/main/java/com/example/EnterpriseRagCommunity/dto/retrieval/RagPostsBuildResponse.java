@@ -26,6 +26,7 @@ public class RagPostsBuildResponse {
     private Integer chunkOverlapChars;
     private Integer embeddingDims;
     private String embeddingModel;
+    private String embeddingProviderId;
     private Boolean cleared;
     private String clearError;
     private Long tookMs;

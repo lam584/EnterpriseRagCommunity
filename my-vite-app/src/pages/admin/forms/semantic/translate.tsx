@@ -14,12 +14,16 @@ import {
   listSupportedLanguages,
   type SupportedLanguageDTO,
 } from '../../../../services/supportedLanguagesService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 
 type FormState = {
   enabled: boolean;
   systemPrompt: string;
   promptTemplate: string;
   model: string;
+  providerId: string;
   temperature: string;
   maxContentChars: string;
   historyEnabled: boolean;
@@ -57,6 +61,7 @@ function toFormState(cfg?: SemanticTranslateConfigDTO | null): FormState {
     systemPrompt: cfg?.systemPrompt ?? '',
     promptTemplate: cfg?.promptTemplate ?? '',
     model: cfg?.model ?? '',
+    providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
     historyEnabled: Boolean(cfg?.historyEnabled),
@@ -99,6 +104,7 @@ function buildPayload(s: FormState) {
     systemPrompt: s.systemPrompt,
     promptTemplate: s.promptTemplate,
     model: s.model.trim() ? s.model.trim() : null,
+    providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
     maxContentChars: maxContentChars === undefined ? 8000 : Math.trunc(maxContentChars),
     historyEnabled: s.historyEnabled,
@@ -113,6 +119,10 @@ const TranslateForm: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedHint, setSavedHint] = useState<string | null>(null);
+
+  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
+  const [activeProviderId, setActiveProviderId] = useState<string>('');
+  const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
 
   const [editing, setEditing] = useState(false);
   const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(defaultConfig()));
@@ -135,6 +145,42 @@ const TranslateForm: React.FC = () => {
   const formErrors = useMemo(() => validateForm(form), [form]);
   const canSave = formErrors.length === 0;
   const hasUnsavedChanges = useMemo(() => JSON.stringify(form) !== JSON.stringify(committedForm), [form, committedForm]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await adminGetAiProvidersConfig();
+        if (cancelled) return;
+        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
+        setActiveProviderId(cfg.activeProviderId ?? '');
+      } catch {
+        if (cancelled) return;
+        setProviders([]);
+        setActiveProviderId('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const opts = await getAiChatOptions();
+        if (cancelled) return;
+        setChatProviders((opts.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[]);
+      } catch {
+        if (cancelled) return;
+        setChatProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadHistory = useCallback(
     async (pageNo: number, pageSize?: number) => {
@@ -404,13 +450,16 @@ const TranslateForm: React.FC = () => {
           <div className="space-y-3 xl:pr-[100px]">
             <div className="space-y-3">
               <div>
-                <div className="text-sm font-medium text-gray-700 mb-1">模型（可选）</div>
-                <input
-                  className="w-full rounded border px-3 py-2 border-gray-300"
-                  value={form.model}
+                <ProviderModelSelect
+                  providers={providers}
+                  activeProviderId={activeProviderId}
+                  chatProviders={chatProviders}
+                  mode="chat"
+                  providerId={form.providerId}
+                  model={form.model}
                   disabled={!editing}
-                  onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
-                  placeholder="留空则使用 app.ai.model"
+                  selectClassName="w-full rounded border px-3 py-2 border-gray-300 text-sm bg-white disabled:bg-gray-50"
+                  onChange={(next) => setForm((p) => ({ ...p, providerId: next.providerId, model: next.model }))}
                 />
               </div>
 

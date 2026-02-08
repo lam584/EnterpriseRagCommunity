@@ -18,6 +18,7 @@ export type SemanticTranslateConfig = {
   systemPrompt: string;
   promptTemplate: string;
   model?: string | null;
+  providerId?: string | null;
   temperature?: number | null;
   maxContentChars: number;
   historyEnabled: boolean;

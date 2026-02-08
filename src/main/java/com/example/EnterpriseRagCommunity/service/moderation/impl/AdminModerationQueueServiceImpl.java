@@ -25,6 +25,7 @@ import com.example.EnterpriseRagCommunity.dto.moderation.ModerationQueueQueryDTO
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.content.CommentsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.PostAttachmentsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.ReportsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
@@ -38,6 +39,7 @@ import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.Source;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReportsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository;
@@ -48,6 +50,7 @@ import com.example.EnterpriseRagCommunity.service.moderation.RiskLabelingService
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexVisibilitySyncService;
 
 import jakarta.transaction.Transactional;
@@ -60,6 +63,9 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     @Autowired
     private PostsRepository postsRepository;
+
+    @Autowired
+    private PostAttachmentsRepository postAttachmentsRepository;
 
     @Autowired
     private CommentsRepository commentsRepository;
@@ -89,6 +95,9 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     private RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
 
     @Autowired
+    private RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
+
+    @Autowired
     private AuditLogWriter auditLogWriter;
 
     @Override
@@ -97,6 +106,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
         // 提前提取 query 字段，避免在 lambda 中捕获非 final/非实际上 final 的局部变量
         final Long qId = query.getId();
+        final Long qBoardId = query.getBoardId();
         final ContentType qContentType = query.getContentType();
         final Long qContentId = query.getContentId();
         final QueueStatus qStatus = query.getStatus();
@@ -140,6 +150,21 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         }
         if (qContentId != null) {
             spec = spec.and((root, q, cb) -> cb.equal(root.get("contentId"), qContentId));
+        }
+        if (qBoardId != null) {
+            spec = spec.and((root, q, cb) -> {
+                var sq = q.subquery(Long.class);
+                var p = sq.from(PostsEntity.class);
+                sq.select(p.get("id"))
+                        .where(
+                                cb.equal(p.get("boardId"), qBoardId),
+                                cb.isFalse(p.get("isDeleted"))
+                        );
+                return cb.and(
+                        cb.equal(root.get("contentType"), ContentType.POST),
+                        root.get("contentId").in(sq)
+                );
+            });
         }
         if (qStatus != null) {
             spec = spec.and((root, q, cb) -> cb.equal(root.get("status"), qStatus));
@@ -211,7 +236,24 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         if (q.getContentType() == ContentType.POST) {
             PostsEntity p = postsRepository.findById(q.getContentId()).orElse(null);
             dto.setSummary(buildPostSummary(p));
-            dto.setPost(toPostContent(p));
+            AdminModerationQueueDetailDTO.PostContent pc = toPostContent(p);
+            if (pc != null && p != null && p.getId() != null) {
+                try {
+                    Pageable pageable = PageRequest.of(0, 200, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")));
+                    Page<PostAttachmentsEntity> page = postAttachmentsRepository.findByPostId(p.getId(), pageable);
+                    List<AdminModerationQueueDetailDTO.Attachment> atts = new ArrayList<>();
+                    if (page != null && page.getContent() != null) {
+                        for (PostAttachmentsEntity a : page.getContent()) {
+                            if (a == null) continue;
+                            atts.add(toAttachment(a));
+                        }
+                    }
+                    pc.setAttachments(atts.isEmpty() ? List.of() : atts);
+                } catch (Exception ignore) {
+                    pc.setAttachments(List.of());
+                }
+            }
+            dto.setPost(pc);
         } else if (q.getContentType() == ContentType.COMMENT) {
             CommentsEntity c = commentsRepository.findById(q.getContentId()).orElse(null);
             PostsEntity post = (c == null || c.getPostId() == null) ? null : postsRepository.findById(c.getPostId()).orElse(null);
@@ -249,7 +291,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     @Transactional
     public AdminModerationQueueDetailDTO approve(Long id, String reason) {
         UsersEntity actor = currentUserOrThrow();
-        return approveInternal(id, reason, actor, true, newTraceId());
+        String checkedReason = requireReason(reason);
+        return approveInternal(id, checkedReason, actor, true, newTraceId());
     }
 
     @Override
@@ -297,7 +340,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                     if (c != null && !Boolean.TRUE.equals(c.getIsDeleted()) && c.getStatus() == CommentStatus.REJECTED) {
                         c.setStatus(CommentStatus.VISIBLE);
                         c.setUpdatedAt(LocalDateTime.now());
-                        commentsRepository.save(c);
+                        CommentsEntity saved = commentsRepository.save(c);
+                        ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
                     }
                 }
             } catch (Exception ignore) {
@@ -331,7 +375,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 if (Boolean.TRUE.equals(c.getIsDeleted())) throw new IllegalArgumentException("评论已删除: " + c.getId());
                 c.setStatus(CommentStatus.VISIBLE);
                 c.setUpdatedAt(LocalDateTime.now());
-                commentsRepository.save(c);
+                CommentsEntity saved = commentsRepository.save(c);
+                ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
             }
         }
 
@@ -382,7 +427,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     @Transactional
     public AdminModerationQueueDetailDTO reject(Long id, String reason) {
         UsersEntity actor = currentUserOrThrow();
-        return rejectInternal(id, reason, actor, true, newTraceId());
+        String checkedReason = requireReason(reason);
+        return rejectInternal(id, checkedReason, actor, true, newTraceId());
     }
 
     @Override
@@ -417,7 +463,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 if (Boolean.TRUE.equals(c.getIsDeleted())) throw new IllegalArgumentException("评论已删除: " + c.getId());
                 c.setStatus(CommentStatus.REJECTED);
                 c.setUpdatedAt(LocalDateTime.now());
-                commentsRepository.save(c);
+                CommentsEntity saved = commentsRepository.save(c);
+                ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
             }
 
             Long actorId = actor == null ? null : actor.getId();
@@ -461,7 +508,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 if (Boolean.TRUE.equals(c.getIsDeleted())) throw new IllegalArgumentException("评论已删除: " + c.getId());
                 c.setStatus(CommentStatus.REJECTED);
                 c.setUpdatedAt(LocalDateTime.now());
-                commentsRepository.save(c);
+                CommentsEntity saved = commentsRepository.save(c);
+                ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
             }
         }
 
@@ -816,6 +864,20 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         return cc;
     }
 
+    private static AdminModerationQueueDetailDTO.Attachment toAttachment(PostAttachmentsEntity a) {
+        AdminModerationQueueDetailDTO.Attachment dto = new AdminModerationQueueDetailDTO.Attachment();
+        dto.setId(a.getId());
+        dto.setFileAssetId(a.getFileAssetId());
+        dto.setUrl(a.getUrl());
+        dto.setFileName(a.getFileName());
+        dto.setMimeType(a.getMimeType());
+        dto.setSizeBytes(a.getSizeBytes());
+        dto.setWidth(a.getWidth());
+        dto.setHeight(a.getHeight());
+        dto.setCreatedAt(a.getCreatedAt());
+        return dto;
+    }
+
     @Override
     @Transactional
     public AdminModerationQueueDetailDTO claim(Long id) {
@@ -867,6 +929,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     public AdminModerationQueueDetailDTO requeueToAuto(Long id, String reason) {
         if (id == null) throw new IllegalArgumentException("id 不能为空");
         UsersEntity actor = currentUserOrThrow();
+        String checkedReason = requireReason(reason);
         // 允许任何有 action 权限的管理员执行；reason 目前仅保留参数位
         int updated = moderationQueueRepository.requeueToAuto(id, QueueStatus.PENDING, QueueStage.RULE, LocalDateTime.now());
         if (updated <= 0) {
@@ -897,7 +960,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         details.put("caseType", detail.getCaseType() == null ? null : detail.getCaseType().name());
         details.put("contentType", detail.getContentType() == null ? null : detail.getContentType().name());
         details.put("contentId", detail.getContentId());
-        details.put("reason", reason);
+        details.put("reason", checkedReason);
         details.put("status", detail.getStatus() == null ? null : detail.getStatus().name());
         details.put("stage", detail.getCurrentStage() == null ? null : detail.getCurrentStage().name());
         details.put("assignedToId", detail.getAssignedToId());
@@ -910,6 +973,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     public AdminModerationQueueDetailDTO toHuman(Long id, String reason) {
         if (id == null) throw new IllegalArgumentException("id 不能为空");
         UsersEntity actor = currentUserOrThrow();
+        String checkedReason = requireReason(reason);
         int updated = moderationQueueRepository.toHuman(id, QueueStatus.HUMAN, QueueStage.HUMAN, LocalDateTime.now());
         if (updated <= 0) {
             throw new IllegalStateException("进入人工审核失败：仅允许已终态任务进入人工审核");
@@ -920,7 +984,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         details.put("caseType", detail.getCaseType() == null ? null : detail.getCaseType().name());
         details.put("contentType", detail.getContentType() == null ? null : detail.getContentType().name());
         details.put("contentId", detail.getContentId());
-        details.put("reason", reason);
+        details.put("reason", checkedReason);
         details.put("status", detail.getStatus() == null ? null : detail.getStatus().name());
         details.put("stage", detail.getCurrentStage() == null ? null : detail.getCurrentStage().name());
         details.put("assignedToId", detail.getAssignedToId());
@@ -991,6 +1055,12 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         String u = user.getUsername();
         if (u != null && !u.isBlank()) return u;
         return user.getEmail();
+    }
+
+    private String requireReason(String reason) {
+        String r = reason == null ? "" : reason.trim();
+        if (r.isEmpty()) throw new IllegalArgumentException("reason 不能为空");
+        return r;
     }
 
     private String ensureAutoTraceId(String traceId) {

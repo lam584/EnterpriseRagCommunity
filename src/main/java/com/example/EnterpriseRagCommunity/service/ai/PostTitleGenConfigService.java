@@ -3,10 +3,11 @@ package com.example.EnterpriseRagCommunity.service.ai;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTitleGenConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTitleGenHistoryDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTitleGenPublicConfigDTO;
-import com.example.EnterpriseRagCommunity.entity.ai.PostTitleGenConfigEntity;
-import com.example.EnterpriseRagCommunity.entity.ai.PostTitleGenHistoryEntity;
-import com.example.EnterpriseRagCommunity.repository.ai.PostTitleGenConfigRepository;
-import com.example.EnterpriseRagCommunity.repository.ai.PostTitleGenHistoryRepository;
+import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenHistoryEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
+import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenConfigRepository;
+import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -42,19 +43,26 @@ public class PostTitleGenConfigService {
 {{content}}
 """;
 
-    private final PostTitleGenConfigRepository configRepository;
-    private final PostTitleGenHistoryRepository historyRepository;
+    private static final SuggestionKind KIND = SuggestionKind.TITLE;
+    private static final String GROUP_CODE = "POST_SUGGESTION";
+
+    private final PostSuggestionGenConfigRepository configRepository;
+    private final PostSuggestionGenHistoryRepository historyRepository;
 
     @Transactional(readOnly = true)
     public PostTitleGenConfigDTO getAdminConfig() {
-        PostTitleGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostSuggestionGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndKindOrderByUpdatedAtDesc(GROUP_CODE, KIND)
+                .orElse(null);
         if (cfg == null) return toDto(defaultEntity(), null);
         return toDto(cfg, null);
     }
 
     @Transactional(readOnly = true)
     public PostTitleGenPublicConfigDTO getPublicConfig() {
-        PostTitleGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostSuggestionGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndKindOrderByUpdatedAtDesc(GROUP_CODE, KIND)
+                .orElse(null);
         if (cfg == null) cfg = defaultEntity();
 
         PostTitleGenPublicConfigDTO dto = new PostTitleGenPublicConfigDTO();
@@ -66,9 +74,11 @@ public class PostTitleGenConfigService {
 
     @Transactional
     public PostTitleGenConfigDTO upsertAdminConfig(PostTitleGenConfigDTO payload, Long actorUserId, String actorUsername) {
-        PostTitleGenConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(this::defaultEntity);
+        PostSuggestionGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndKindOrderByUpdatedAtDesc(GROUP_CODE, KIND)
+                .orElseGet(this::defaultEntity);
 
-        PostTitleGenConfigEntity merged = mergeAndValidate(cfg, payload);
+        PostSuggestionGenConfigEntity merged = mergeAndValidate(cfg, payload);
         merged.setUpdatedAt(LocalDateTime.now());
         merged.setUpdatedBy(actorUserId);
 
@@ -82,29 +92,34 @@ public class PostTitleGenConfigService {
         int safeSize = Math.min(100, Math.max(1, size));
         Pageable pageable = PageRequest.of(safePage, safeSize);
 
-        Page<PostTitleGenHistoryEntity> rows = (userId == null)
-                ? historyRepository.findAllByOrderByCreatedAtDesc(pageable)
-                : historyRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+        Page<PostSuggestionGenHistoryEntity> rows = (userId == null)
+                ? historyRepository.findByKindOrderByCreatedAtDesc(KIND, pageable)
+                : historyRepository.findByKindAndUserIdOrderByCreatedAtDesc(KIND, userId, pageable);
 
         return rows.map(this::toHistoryDto);
     }
 
     @Transactional
-    public void recordHistory(PostTitleGenHistoryEntity e) {
+    public void recordHistory(PostSuggestionGenHistoryEntity e) {
         if (e == null) return;
         historyRepository.save(e);
     }
 
-    public PostTitleGenConfigEntity getConfigEntityOrDefault() {
-        return configRepository.findTopByOrderByUpdatedAtDesc().orElseGet(this::defaultEntity);
+    public PostSuggestionGenConfigEntity getConfigEntityOrDefault() {
+        return configRepository
+                .findTopByGroupCodeAndKindOrderByUpdatedAtDesc(GROUP_CODE, KIND)
+                .orElseGet(this::defaultEntity);
     }
 
-    private PostTitleGenConfigEntity defaultEntity() {
-        PostTitleGenConfigEntity e = new PostTitleGenConfigEntity();
+    private PostSuggestionGenConfigEntity defaultEntity() {
+        PostSuggestionGenConfigEntity e = new PostSuggestionGenConfigEntity();
+        e.setGroupCode(GROUP_CODE);
+        e.setKind(KIND);
         e.setEnabled(Boolean.TRUE);
         e.setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
         e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
         e.setModel(null);
+        e.setProviderId(null);
         e.setTemperature(0.4);
         e.setDefaultCount(DEFAULT_DEFAULT_COUNT);
         e.setMaxCount(DEFAULT_MAX_COUNT);
@@ -118,7 +133,7 @@ public class PostTitleGenConfigService {
         return e;
     }
 
-    private PostTitleGenConfigEntity mergeAndValidate(PostTitleGenConfigEntity base, PostTitleGenConfigDTO payload) {
+    private PostSuggestionGenConfigEntity mergeAndValidate(PostSuggestionGenConfigEntity base, PostTitleGenConfigDTO payload) {
         if (payload == null) throw new IllegalArgumentException("payload 不能为空");
 
         String systemPrompt = payload.getSystemPrompt() == null ? "" : payload.getSystemPrompt().trim();
@@ -155,6 +170,8 @@ public class PostTitleGenConfigService {
 
         String model = payload.getModel();
         base.setModel(model == null || model.isBlank() ? null : model.trim());
+        String providerId = payload.getProviderId();
+        base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         base.setTemperature(temperature);
 
         base.setDefaultCount(defaultCount);
@@ -167,7 +184,7 @@ public class PostTitleGenConfigService {
         return base;
     }
 
-    private PostTitleGenConfigDTO toDto(PostTitleGenConfigEntity e, String updatedByName) {
+    private PostTitleGenConfigDTO toDto(PostSuggestionGenConfigEntity e, String updatedByName) {
         PostTitleGenConfigDTO dto = new PostTitleGenConfigDTO();
         dto.setId(e.getId());
         dto.setVersion(e.getVersion());
@@ -175,6 +192,7 @@ public class PostTitleGenConfigService {
         dto.setSystemPrompt(e.getSystemPrompt());
         dto.setPromptTemplate(e.getPromptTemplate());
         dto.setModel(e.getModel());
+        dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
         dto.setDefaultCount(e.getDefaultCount());
         dto.setMaxCount(e.getMaxCount());
@@ -188,7 +206,7 @@ public class PostTitleGenConfigService {
     }
 
     @SuppressWarnings("unchecked")
-    private PostTitleGenHistoryDTO toHistoryDto(PostTitleGenHistoryEntity e) {
+    private PostTitleGenHistoryDTO toHistoryDto(PostSuggestionGenHistoryEntity e) {
         PostTitleGenHistoryDTO dto = new PostTitleGenHistoryDTO();
         dto.setId(e.getId());
         dto.setUserId(e.getUserId());
@@ -205,8 +223,8 @@ public class PostTitleGenConfigService {
         dto.setLatencyMs(e.getLatencyMs());
         dto.setPromptVersion(e.getPromptVersion());
 
-        dto.setTags(toStringList(e.getTagsJson()));
-        dto.setTitles(toStringList(e.getTitlesJson()));
+        dto.setTags(toStringList(e.getInputTagsJson()));
+        dto.setTitles(toStringList(e.getOutputJson()));
         return dto;
     }
 
@@ -230,4 +248,3 @@ public class PostTitleGenConfigService {
         return List.of();
     }
 }
-

@@ -2,7 +2,7 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.entity.ai.SemanticTranslateConfigEntity;
-import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +31,7 @@ public class AiLanguageDetectService {
 
     private final AiProperties aiProperties;
     private final SemanticTranslateConfigService semanticTranslateConfigService;
+    private final LlmGateway llmGateway;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public List<String> detectLanguages(String content) {
@@ -45,19 +46,19 @@ public class AiLanguageDetectService {
             normalizedContent = normalizedContent.substring(0, maxChars);
         }
 
-        String model = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : aiProperties.getModel();
+        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
         if (temperature == null) temperature = 0.0;
 
         String userPrompt = renderPrompt(DEFAULT_USER_PROMPT_TEMPLATE, normalizedContent);
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", DEFAULT_SYSTEM_PROMPT));
-        messages.add(Map.of("role", "user", "content", userPrompt));
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system(DEFAULT_SYSTEM_PROMPT));
+        messages.add(ChatMessage.user(userPrompt));
 
         String rawJson;
         try {
-            rawJson = new BailianOpenAiSseClient(aiProperties)
-                    .chatCompletionsOnce(null, aiProperties.getBaseUrl(), model, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.UNKNOWN, cfg.getProviderId(), modelOverride, messages, temperature);
+            rawJson = routed == null ? null : routed.text();
         } catch (Exception e) {
             throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);
         }
@@ -134,4 +135,3 @@ public class AiLanguageDetectService {
         return safeTemplate.replace("{{content}}", content == null ? "" : content.trim());
     }
 }
-

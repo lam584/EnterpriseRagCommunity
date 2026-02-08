@@ -17,6 +17,5 @@ public class RolePermissionsUpdateDTO {
     private Long permissionId;
 
     @ApiModelProperty("是否允许")
-    @NotNull
     private Optional<Boolean> allow;
 }

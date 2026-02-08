@@ -15,6 +15,9 @@ public class ModerationQueueQueryDTO extends PageRequestDTO {
     @ApiModelProperty(value = "主键ID", example = "100")
     private Long id;
 
+    @ApiModelProperty(value = "版块ID（仅对 POST 生效）", example = "1")
+    private Long boardId;
+
     @ApiModelProperty(value = "内容类型", example = "POST")
     private ContentType contentType;
 

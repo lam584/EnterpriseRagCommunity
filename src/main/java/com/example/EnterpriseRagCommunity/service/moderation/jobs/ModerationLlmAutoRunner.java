@@ -7,6 +7,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +33,8 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationLlmDec
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineStepRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.ai.TokenCountService;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationFallbackDecisionService;
 import com.example.EnterpriseRagCommunity.service.moderation.RiskLabelingService;
@@ -63,6 +66,7 @@ public class ModerationLlmAutoRunner {
     private final ModerationPipelineStepRepository pipelineStepRepository;
     private final AuditLogWriter auditLogWriter;
     private final RiskLabelingService riskLabelingService;
+    private final TokenCountService tokenCountService;
 
     /**
      * 每 15 秒扫一次，单次最多处理 20 条，避免对上游模型造成瞬时压力。
@@ -301,6 +305,15 @@ public class ModerationLlmAutoRunner {
                 details.put("score", res.getScore());
                 details.put("reasons", res.getReasons());
                 details.put("riskTags", res.getRiskTags());
+                details.put("inputMode", res.getInputMode());
+                if (res.getStages() != null) {
+                    details.put("stages", res.getStages());
+                }
+                if (res.getImages() != null) {
+                    details.put("imageCount", res.getImages().size());
+                    int take = Math.min(5, res.getImages().size());
+                    details.put("images", res.getImages().subList(0, take));
+                }
                 // raw output may be big; still store but truncate
                 String raw = res.getRawModelOutput();
                 if (raw != null && raw.length() > 2000) raw = raw.substring(0, 2000);
@@ -382,6 +395,7 @@ public class ModerationLlmAutoRunner {
                 if (res.getReasons() != null) labels.put("reasons", res.getReasons());
                 if (res.getRiskTags() != null) labels.put("riskTags", res.getRiskTags());
                 if (res.getRawModelOutput() != null) labels.put("rawModelOutput", res.getRawModelOutput());
+                if (res.getStages() != null) labels.put("stages", res.getStages());
             }
             e.setLabels(labels);
 
@@ -393,8 +407,34 @@ public class ModerationLlmAutoRunner {
 
             e.setVerdict(verdict);
             e.setPromptId(null);
-            e.setTokensIn(res == null || res.getUsage() == null ? null : res.getUsage().getPromptTokens());
-            e.setTokensOut(res == null || res.getUsage() == null ? null : res.getUsage().getCompletionTokens());
+            Integer tokensIn = null;
+            List<ChatMessage> promptMessages = null;
+            if (res != null && res.getPromptMessages() != null && !res.getPromptMessages().isEmpty()) {
+                List<ChatMessage> list = new ArrayList<>();
+                for (var m : res.getPromptMessages()) {
+                    if (m == null) continue;
+                    String role = m.getRole();
+                    if (role == null || role.isBlank()) continue;
+                    list.add(new ChatMessage(role, Objects.requireNonNullElse(m.getContent(), "")));
+                }
+                if (!list.isEmpty()) promptMessages = list;
+            }
+            if (promptMessages != null) {
+                tokensIn = tokenCountService.countChatMessagesTokens(promptMessages);
+            }
+            if (tokensIn == null) {
+                tokensIn = res == null || res.getUsage() == null ? null : res.getUsage().getPromptTokens();
+            }
+
+            String raw = res == null ? null : res.getRawModelOutput();
+            TokenCountService.NormalizedOutput norm = tokenCountService.normalizeOutputText(raw, false);
+            Integer tokensOut = tokenCountService.countTextTokens(norm == null ? null : norm.tokenText());
+            if (tokensOut == null) {
+                tokensOut = res == null || res.getUsage() == null ? null : res.getUsage().getCompletionTokens();
+            }
+
+            e.setTokensIn(tokensIn);
+            e.setTokensOut(tokensOut);
             e.setDecidedAt(LocalDateTime.now());
 
             llmDecisionsRepository.save(e);
@@ -421,6 +461,12 @@ public class ModerationLlmAutoRunner {
         e.setLlmEnabled(Boolean.TRUE);
         e.setLlmRejectThreshold(0.75);
         e.setLlmHumanThreshold(0.5);
+        e.setLlmTextRiskThreshold(0.80);
+        e.setLlmImageRiskThreshold(0.30);
+        e.setLlmStrongRejectThreshold(0.95);
+        e.setLlmStrongPassThreshold(0.10);
+        e.setLlmCrossModalThreshold(0.75);
+        e.setReportHumanThreshold(5);
         e.setVersion(0);
         e.setUpdatedAt(LocalDateTime.now());
         return e;

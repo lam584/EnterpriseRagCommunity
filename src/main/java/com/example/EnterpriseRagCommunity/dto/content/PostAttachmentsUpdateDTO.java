@@ -22,7 +22,7 @@ public class PostAttachmentsUpdateDTO {
     private Optional<@Size(max = 512) String> url = Optional.empty();
 
     @ApiModelProperty("文件名")
-    private Optional<@Size(max = 191) String> fileName = Optional.empty();
+    private Optional<@Size(max = 512) String> fileName = Optional.empty();
 
     @ApiModelProperty("MIME类型")
     private Optional<@Size(max = 64) String> mimeType = Optional.empty();

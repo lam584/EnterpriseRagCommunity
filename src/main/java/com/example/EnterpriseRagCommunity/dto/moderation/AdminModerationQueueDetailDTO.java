@@ -55,6 +55,7 @@ public class AdminModerationQueueDetailDTO {
         private Long authorId;
         private String title;
         private String content;
+        private List<Attachment> attachments;
         private String status;
         private LocalDateTime createdAt;
     }
@@ -67,6 +68,19 @@ public class AdminModerationQueueDetailDTO {
         private Long authorId;
         private String content;
         private String status;
+        private LocalDateTime createdAt;
+    }
+
+    @Data
+    public static class Attachment {
+        private Long id;
+        private Long fileAssetId;
+        private String url;
+        private String fileName;
+        private String mimeType;
+        private Long sizeBytes;
+        private Integer width;
+        private Integer height;
         private LocalDateTime createdAt;
     }
 }

@@ -6,6 +6,8 @@ import com.example.EnterpriseRagCommunity.dto.retrieval.RagPostsTestQueryRespons
 import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.ai.LlmRoutingService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,6 +21,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 @Service
@@ -29,6 +32,7 @@ public class RagPostTestQueryService {
     private final RetrievalRagProperties ragProps;
     private final RagPostsIndexService indexService;
     private final AiEmbeddingService embeddingService;
+    private final LlmRoutingService llmRoutingService;
     private final ObjectMapper objectMapper;
 
     @Value("${spring.elasticsearch.uris:http://127.0.0.1:9200}")
@@ -71,9 +75,26 @@ public class RagPostTestQueryService {
         }
         if (modelToUse == null) modelToUse = toNonBlank(ragProps.getEs().getEmbeddingModel());
 
+        String providerToUse = toNonBlank(req.getEmbeddingProviderId());
+        if (providerToUse == null) {
+            Object metaProvider = vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingProviderId");
+            providerToUse = toNonBlank(metaProvider);
+        }
+        if (providerToUse == null) {
+            Object metaProvider = vi.getMetadata() == null ? null : vi.getMetadata().get("lastBuildEmbeddingProviderId");
+            providerToUse = toNonBlank(metaProvider);
+        }
+
         AiEmbeddingService.EmbeddingResult er;
         try {
-            er = embeddingService.embedOnce(q, modelToUse);
+            if (modelToUse == null && providerToUse == null) {
+                LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
+                if (target != null) {
+                    providerToUse = target.providerId();
+                    modelToUse = target.modelName();
+                }
+            }
+            er = embeddingService.embedOnceForTask(q, modelToUse, providerToUse, LlmQueueTaskType.POST_EMBEDDING);
         } catch (Exception e) {
             throw new IllegalStateException("Embedding failed: " + e.getMessage(), e);
         }
@@ -129,6 +150,7 @@ public class RagPostTestQueryService {
         resp.setBoardId(req.getBoardId());
         resp.setEmbeddingDims(dimsToUse);
         resp.setEmbeddingModel(modelToUse);
+        resp.setEmbeddingProviderId(providerToUse);
         resp.setNumCandidates(numCandidates);
         resp.setTookMs(System.currentTimeMillis() - started);
         resp.setHits(hits);

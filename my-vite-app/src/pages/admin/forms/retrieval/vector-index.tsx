@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAccess } from '../../../../contexts/AccessContext';
 import type { SpringPage } from '../../../../types/page';
 import {
-  adminBuildPostRagIndex,
   adminDeleteVectorIndex,
   adminGetRagAutoSyncConfig,
   adminListVectorIndices,
@@ -11,13 +10,14 @@ import {
   adminTestQueryPostRagIndex,
   adminUpdateVectorIndex,
   adminUpdateRagAutoSyncConfig,
-  type RagPostsBuildResponse,
   type RagPostsTestQueryResponse,
   type VectorIndexDTO,
   type VectorIndexProvider,
   type VectorIndexStatus,
 } from '../../../../services/retrievalVectorIndexService';
 import { adminListAuditLogs, type AuditLogDTO } from '../../../../services/auditLogService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 
 function safeNumber(v: unknown): number | undefined {
   const n = Number(v);
@@ -64,6 +64,9 @@ const VectorIndexForm: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
+  const [activeProviderId, setActiveProviderId] = useState<string>('');
+
   const [page, setPage] = useState(0);
   const [indicesPage, setIndicesPage] = useState<SpringPage<VectorIndexDTO> | null>(null);
 
@@ -78,22 +81,11 @@ const VectorIndexForm: React.FC = () => {
   const [indexConfig, setIndexConfig] = useState({
     dim: '' as number | '',
     embeddingModel: '',
+    embeddingProviderId: '',
     defaultChunkMaxChars: 800,
     defaultChunkOverlapChars: 80,
   });
   const [indexConfigEditing, setIndexConfigEditing] = useState(false);
-
-  const [buildForm, setBuildForm] = useState({
-    boardId: '' as number | '',
-    fromPostId: '' as number | '',
-    postBatchSize: 50,
-    chunkMaxChars: 800,
-    chunkOverlapChars: 80,
-    embeddingDims: '' as number | '',
-    embeddingModel: '',
-    clear: false,
-  });
-  const [lastBuild, setLastBuild] = useState<RagPostsBuildResponse | null>(null);
 
   const [autoSync, setAutoSync] = useState({ enabled: false, intervalSeconds: 30 });
   const [autoSyncLoading, setAutoSyncLoading] = useState(false);
@@ -104,6 +96,7 @@ const VectorIndexForm: React.FC = () => {
     topK: 8,
     numCandidates: '' as number | '',
     embeddingModel: '',
+    embeddingProviderId: '',
     boardId: '' as number | '',
   });
   const [testResult, setTestResult] = useState<RagPostsTestQueryResponse | null>(null);
@@ -120,6 +113,7 @@ const VectorIndexForm: React.FC = () => {
     const metaLastMax = safeNumber(metaStr(meta, 'lastBuildChunkMaxChars'));
     const metaLastOverlap = safeNumber(metaStr(meta, 'lastBuildChunkOverlapChars'));
     const metaModel = String(metaStr(meta, 'embeddingModel') ?? metaStr(meta, 'lastBuildEmbeddingModel') ?? '').trim();
+    const metaProviderId = String(metaStr(meta, 'embeddingProviderId') ?? metaStr(meta, 'lastBuildEmbeddingProviderId') ?? '').trim();
 
     const nextDefaultMax = metaDefaultMax ?? metaLastMax ?? 800;
     const nextDefaultOverlap = metaDefaultOverlap ?? metaLastOverlap ?? 80;
@@ -127,24 +121,37 @@ const VectorIndexForm: React.FC = () => {
     setIndexConfig({
       dim: selectedIndex.dim && selectedIndex.dim > 0 ? selectedIndex.dim : '',
       embeddingModel: metaModel,
+      embeddingProviderId: metaProviderId,
       defaultChunkMaxChars: nextDefaultMax,
       defaultChunkOverlapChars: nextDefaultOverlap,
     });
     setIndexConfigEditing(false);
 
-    setBuildForm((v) => ({
-      ...v,
-      chunkMaxChars: nextDefaultMax,
-      chunkOverlapChars: nextDefaultOverlap,
-      embeddingDims: selectedIndex.dim && selectedIndex.dim > 0 ? selectedIndex.dim : v.embeddingDims,
-      embeddingModel: metaModel || v.embeddingModel,
-    }));
-
     setTestForm((v) => ({
       ...v,
       embeddingModel: metaModel || v.embeddingModel,
+      embeddingProviderId: metaProviderId || v.embeddingProviderId,
     }));
   }, [selectedIndex]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await adminGetAiProvidersConfig();
+        if (cancelled) return;
+        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
+        setActiveProviderId(cfg.activeProviderId ?? '');
+      } catch {
+        if (cancelled) return;
+        setProviders([]);
+        setActiveProviderId('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     resetIndexConfigFromSelectedIndex();
@@ -234,39 +241,6 @@ const VectorIndexForm: React.FC = () => {
     }
   }, [canAction, load, selectedIndexId]);
 
-  const onBuild = useCallback(async () => {
-    if (!canAction) return;
-    if (!selectedIndexId) {
-      setError('请先选择一个索引');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setMessage(null);
-    setLastBuild(null);
-    try {
-      const res = await adminBuildPostRagIndex({
-        id: selectedIndexId,
-        boardId: buildForm.boardId === '' ? undefined : Number(buildForm.boardId),
-        fromPostId: buildForm.fromPostId === '' ? undefined : Number(buildForm.fromPostId),
-        postBatchSize: buildForm.postBatchSize,
-        chunkMaxChars: buildForm.chunkMaxChars,
-        chunkOverlapChars: buildForm.chunkOverlapChars,
-        clear: buildForm.clear,
-        embeddingDims: buildForm.embeddingDims === '' ? undefined : Number(buildForm.embeddingDims),
-        embeddingModel: buildForm.embeddingModel.trim() ? buildForm.embeddingModel.trim() : undefined,
-      });
-      setLastBuild(res);
-      setMessage(`${res.failedChunks ? '构建完成（部分失败）' : '构建完成'}：成功 ${res.successChunks ?? 0}，失败 ${res.failedChunks ?? 0}，耗时 ${res.tookMs ?? 0}ms`);
-      await load();
-    } catch (e: any) {
-      setError(e?.message || '构建失败');
-      await load();
-    } finally {
-      setLoading(false);
-    }
-  }, [buildForm, canAction, load, selectedIndexId]);
-
   const onRebuild = useCallback(async () => {
     if (!canAction) return;
     if (!selectedIndexId) {
@@ -277,18 +251,16 @@ const VectorIndexForm: React.FC = () => {
     setLoading(true);
     setError(null);
     setMessage(null);
-    setLastBuild(null);
     try {
       const res = await adminRebuildPostRagIndex({
         id: selectedIndexId,
-        boardId: buildForm.boardId === '' ? undefined : Number(buildForm.boardId),
-        postBatchSize: buildForm.postBatchSize,
-        chunkMaxChars: buildForm.chunkMaxChars,
-        chunkOverlapChars: buildForm.chunkOverlapChars,
-        embeddingDims: buildForm.embeddingDims === '' ? undefined : Number(buildForm.embeddingDims),
-        embeddingModel: buildForm.embeddingModel.trim() ? buildForm.embeddingModel.trim() : undefined,
+        postBatchSize: 50,
+        chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
+        chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
+        embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
+        embeddingModel: indexConfig.embeddingModel.trim() ? indexConfig.embeddingModel.trim() : undefined,
+        embeddingProviderId: indexConfig.embeddingProviderId.trim() ? indexConfig.embeddingProviderId.trim() : undefined,
       });
-      setLastBuild(res);
       const clearedText =
         res.cleared === true ? '已删除并重建索引' : res.cleared === false ? `清空失败：${res.clearError ?? ''}` : '';
       const msgParts = [
@@ -307,7 +279,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [buildForm, canAction, load, loadHistory, selectedIndexId]);
+  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId]);
 
   const onSync = useCallback(async () => {
     if (!canAction) return;
@@ -318,18 +290,16 @@ const VectorIndexForm: React.FC = () => {
     setLoading(true);
     setError(null);
     setMessage(null);
-    setLastBuild(null);
     try {
       const res = await adminSyncPostRagIndex({
         id: selectedIndexId,
-        boardId: buildForm.boardId === '' ? undefined : Number(buildForm.boardId),
-        postBatchSize: buildForm.postBatchSize,
-        chunkMaxChars: buildForm.chunkMaxChars,
-        chunkOverlapChars: buildForm.chunkOverlapChars,
-        embeddingDims: buildForm.embeddingDims === '' ? undefined : Number(buildForm.embeddingDims),
-        embeddingModel: buildForm.embeddingModel.trim() ? buildForm.embeddingModel.trim() : undefined,
+        postBatchSize: 50,
+        chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
+        chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
+        embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
+        embeddingModel: indexConfig.embeddingModel.trim() ? indexConfig.embeddingModel.trim() : undefined,
+        embeddingProviderId: indexConfig.embeddingProviderId.trim() ? indexConfig.embeddingProviderId.trim() : undefined,
       });
-      setLastBuild(res);
       setMessage(`${res.failedChunks ? '增量同步完成（部分失败）' : '增量同步完成'}：新增帖子 ${res.totalPosts ?? 0}，成功 ${res.successChunks ?? 0}，失败 ${res.failedChunks ?? 0}`);
       await load();
       await loadHistory();
@@ -340,7 +310,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [buildForm, canAction, load, loadHistory, selectedIndexId]);
+  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId]);
 
   const onSaveAutoSync = useCallback(async (next?: { enabled?: boolean; intervalSeconds?: number }) => {
     if (!canAction) return;
@@ -378,10 +348,12 @@ const VectorIndexForm: React.FC = () => {
     const mergedMeta = {
       ...(selectedIndex?.metadata ?? {}),
       embeddingModel: indexConfig.embeddingModel.trim() ? indexConfig.embeddingModel.trim() : undefined,
+      embeddingProviderId: indexConfig.embeddingProviderId.trim() ? indexConfig.embeddingProviderId.trim() : undefined,
       defaultChunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
       defaultChunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
     } as Record<string, unknown>;
     if (!mergedMeta.embeddingModel) delete mergedMeta.embeddingModel;
+    if (!mergedMeta.embeddingProviderId) delete mergedMeta.embeddingProviderId;
 
     setLoading(true);
     setError(null);
@@ -401,7 +373,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, load, selectedIndex?.metadata, selectedIndexId]);
+  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, selectedIndex?.metadata, selectedIndexId]);
 
   const onTestQuery = useCallback(async () => {
     if (!canAction) return;
@@ -425,6 +397,7 @@ const VectorIndexForm: React.FC = () => {
           topK: Math.max(1, Math.min(50, Math.trunc(testForm.topK))),
           numCandidates: testForm.numCandidates === '' ? undefined : Math.max(10, Math.min(10_000, Math.trunc(Number(testForm.numCandidates)))),
           embeddingModel: testForm.embeddingModel.trim() ? testForm.embeddingModel.trim() : undefined,
+          embeddingProviderId: testForm.embeddingProviderId.trim() ? testForm.embeddingProviderId.trim() : undefined,
           boardId: testForm.boardId === '' ? undefined : Number(testForm.boardId),
         },
       });
@@ -437,7 +410,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, loadHistory, selectedIndexId, testForm.boardId, testForm.embeddingModel, testForm.numCandidates, testForm.queryText, testForm.topK]);
+  }, [canAction, loadHistory, selectedIndexId, testForm.boardId, testForm.embeddingModel, testForm.embeddingProviderId, testForm.numCandidates, testForm.queryText, testForm.topK]);
 
   if (accessLoading) {
     return <div className="bg-white rounded-lg shadow p-4 text-sm text-gray-600 animate-pulse">加载中…</div>;
@@ -618,14 +591,17 @@ const VectorIndexForm: React.FC = () => {
                    </div>
 
                    <div className="grid grid-cols-2 gap-3">
-                     <div>
-                       <label className="text-xs text-gray-500 font-medium mb-1 block">模型名（默认）</label>
-                       <input
-                         className={`${inputClass} disabled:bg-gray-50 disabled:text-gray-500`}
-                         placeholder="留空使用后端默认"
-                         value={indexConfig.embeddingModel}
+                     <div className="col-span-2">
+                       <ProviderModelSelect
+                         providers={providers}
+                         activeProviderId={activeProviderId}
+                         mode="embedding"
+                         providerId={indexConfig.embeddingProviderId}
+                         model={indexConfig.embeddingModel}
                          disabled={loading || !canAction || !indexConfigEditing}
-                         onChange={(e) => setIndexConfig(v => ({ ...v, embeddingModel: e.target.value }))} />
+                         selectClassName={`${inputClass} disabled:bg-gray-50 disabled:text-gray-500`}
+                         onChange={(next) => setIndexConfig((v) => ({ ...v, embeddingProviderId: next.providerId, embeddingModel: next.model }))}
+                       />
                      </div>
                      <div>
                        <label className="text-xs text-gray-500 font-medium mb-1 block">维度 dim（0=自动）</label>
@@ -657,118 +633,42 @@ const VectorIndexForm: React.FC = () => {
                          disabled={loading || !canAction || !indexConfigEditing}
                          onChange={(e) => setIndexConfig(v => ({ ...v, defaultChunkOverlapChars: Math.max(0, Math.trunc(Number(e.target.value))) }))} />
                      </div>
+                    <div>
+                      <label className="text-xs text-gray-500 font-medium mb-1 block">自动增量同步</label>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            className="rounded text-blue-600 focus:ring-0 w-4 h-4"
+                            checked={autoSync.enabled}
+                            disabled={autoSyncLoading || !canAction || !indexConfigEditing}
+                            onChange={(e) => {
+                              const enabled = e.target.checked;
+                              setAutoSync(v => ({ ...v, enabled }));
+                              void onSaveAutoSync({ enabled });
+                            }}
+                          />
+                          <span className="font-medium">启用</span>
+                        </label>
+                        {autoSync.enabled && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-500">每</span>
+                            <input
+                              type="number"
+                              className="w-16 text-sm border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 text-center py-1"
+                              value={autoSync.intervalSeconds}
+                              disabled={autoSyncLoading || !canAction || !indexConfigEditing}
+                              onChange={(e) => setAutoSync(v => ({ ...v, intervalSeconds: Math.max(5, Math.trunc(Number(e.target.value))) }))}
+                              onBlur={() => void onSaveAutoSync()}
+                            />
+                            <span className="text-sm text-gray-500">秒</span>
+                          </div>
+                        )}
+                      </div>
+                      {autoSyncError && <div className="text-xs text-red-600 mt-1">{autoSyncError}</div>}
+                    </div>
                    </div>
                  </div>
-
-                 <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">构建参数</h4>
-                 </div>
-                 
-                 <div className="grid grid-cols-2 gap-3">
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-500 font-medium mb-1 block">Embedding 模型名（可选，留空用后端默认/索引配置）</label>
-                      <input className={inputClass} placeholder="例如：text-embedding-3-large / bge-m3 / ..." value={buildForm.embeddingModel}
-                        onChange={(e) => setBuildForm(v => ({ ...v, embeddingModel: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium mb-1 block">版块 ID</label>
-                      <input className={inputClass} placeholder="可选" value={buildForm.boardId}
-                        onChange={(e) => setBuildForm(v => ({ ...v, boardId: e.target.value ? (safeNumber(e.target.value) ?? '') : '' }))} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium mb-1 block">起始帖子 ID</label>
-                      <input className={inputClass} placeholder="可选" value={buildForm.fromPostId}
-                        onChange={(e) => setBuildForm(v => ({ ...v, fromPostId: e.target.value ? (safeNumber(e.target.value) ?? '') : '' }))} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium mb-1 block">批量大小</label>
-                      <input type="number" className={inputClass} placeholder="50" value={buildForm.postBatchSize}
-                        onChange={(e) => setBuildForm(v => ({ ...v, postBatchSize: Math.max(1, Math.trunc(Number(e.target.value))) }))} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium mb-1 block">向量维度（可选；用于校验与创建映射）</label>
-                      <input type="number" className={inputClass} placeholder="例如：1536" value={buildForm.embeddingDims}
-                        onChange={(e) => setBuildForm(v => ({ ...v, embeddingDims: e.target.value ? (safeNumber(e.target.value) ?? '') : '' }))} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium mb-1 block">最大输入长度（字符）</label>
-                      <input type="number" className={inputClass} placeholder="800" value={buildForm.chunkMaxChars}
-                        onChange={(e) => setBuildForm(v => ({ ...v, chunkMaxChars: Math.max(200, Math.trunc(Number(e.target.value))) }))} />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-500 font-medium mb-1 block">重叠长度（字符）</label>
-                      <input type="number" className={inputClass} placeholder="80" value={buildForm.chunkOverlapChars}
-                        onChange={(e) => setBuildForm(v => ({ ...v, chunkOverlapChars: Math.max(0, Math.trunc(Number(e.target.value))) }))} />
-                    </div>
-                 </div>
-
-                 {/* 自动同步配置 - Moved here */}
-                 <div className="pt-2 pb-2 border-t border-b border-gray-100">
-                    <div className="flex items-center justify-between">
-                       <label className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-                         <input type="checkbox" className="rounded text-blue-600 focus:ring-0 w-4 h-4"
-                           checked={autoSync.enabled} disabled={autoSyncLoading || !canAction}
-                           onChange={(e) => {
-                             const enabled = e.target.checked;
-                             setAutoSync(v => ({ ...v, enabled }));
-                             void onSaveAutoSync({ enabled });
-                           }} />
-                        <span className="font-medium">启用自动增量同步</span>
-                       </label>
-                       {autoSync.enabled && (
-                         <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-500">每</span>
-                            <input type="number" className="w-16 text-sm border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500 text-center py-1"
-                               value={autoSync.intervalSeconds} disabled={autoSyncLoading || !canAction}
-                               onChange={(e) => setAutoSync(v => ({ ...v, intervalSeconds: Math.max(5, Math.trunc(Number(e.target.value))) }))}
-                               onBlur={() => void onSaveAutoSync()} />
-                            <span className="text-sm text-gray-500">秒</span>
-                         </div>
-                       )}
-                    </div>
-                    {autoSyncError && <div className="text-xs text-red-600 mt-1">{autoSyncError}</div>}
-                 </div>
-
-                 <div className="flex items-center justify-between pt-2">
-                    <label className="inline-flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                      <input type="checkbox" className="rounded text-blue-600 focus:ring-0 w-4 h-4"
-                        checked={buildForm.clear} onChange={(e) => setBuildForm(v => ({ ...v, clear: e.target.checked }))} />
-                      构建前清空
-                    </label>
-                    <button className={btnPrimaryClass} disabled={loading || !canAction} onClick={() => void onBuild()}>
-                       执行自定义构建
-                    </button>
-                 </div>
-
-                 {lastBuild && (
-                    <div className="rounded border border-blue-100 bg-blue-50/30 p-3 text-sm space-y-1 mt-2">
-                      <div className="font-semibold text-blue-800 flex justify-between">
-                        <span>上次构建结果</span>
-                        <span className="font-mono text-gray-500">{lastBuild.tookMs}ms</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-x-2 text-gray-600">
-                        <span>帖子数：{lastBuild.totalPosts}</span>
-                        <span>分块数：{lastBuild.totalChunks}</span>
-                        <span className="text-green-600">成功：{lastBuild.successChunks}</span>
-                        <span className={lastBuild.failedChunks ? "text-red-600" : "text-gray-400"}>失败：{lastBuild.failedChunks}</span>
-                      </div>
-                      {lastBuild.failedDocs && lastBuild.failedDocs.length > 0 ? (
-                        <div className="border-t border-blue-100 pt-2 mt-1 space-y-1">
-                          <div className="text-red-700 font-medium">错误详情</div>
-                          <div className="max-h-24 overflow-y-auto pr-1 space-y-1">
-                            {lastBuild.failedDocs.map((fd, idx) => (
-                              <div key={fd.docId ?? String(idx)} className="text-red-600 break-words">
-                                <span className="font-mono">{fd.docId ?? 'unknown-doc'}</span>
-                                <span>：{fd.error ?? '未知错误'}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (lastBuild.failedDocIds && lastBuild.failedDocIds.length > 0 ? (
-                        <div className="text-red-600 truncate border-t border-blue-100 pt-1 mt-1">错误文档：{lastBuild.failedDocIds.join(', ')}</div>
-                      ) : null)}
-                    </div>
-                 )}
               </div>
             </div>
 
@@ -795,7 +695,7 @@ Enter 搜索，Shift + Enter 换行"
                    <div className="flex items-center justify-between">
                      <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-2">
-                           <span className="text-xs text-gray-500 font-medium">TopK（条数）</span>
+                           <span className="text-xs text-gray-500 font-medium">返回前K条结果</span>
                            <input type="number" className={`${inputClass} w-16 !py-1`} placeholder="8" value={testForm.topK}
                              onChange={(e) => setTestForm(v => ({ ...v, topK: Math.max(1, Math.min(50, Math.trunc(Number(e.target.value)))) }))} />
                         </div>
@@ -804,6 +704,30 @@ Enter 搜索，Shift + Enter 换行"
                            <input type="number" className="border-b border-gray-300 bg-transparent w-20 focus:outline-none focus:border-blue-500 text-center py-1"
                              placeholder="默认" value={testForm.numCandidates}
                              onChange={(e) => setTestForm(v => ({ ...v, numCandidates: e.target.value ? (safeNumber(e.target.value) ?? '') : '' }))} />
+                        </div>
+                        <div className="flex items-center gap-2 text-xs text-gray-500 font-medium">
+                           <span>Provider</span>
+                           <select
+                             className="border-b border-gray-300 bg-transparent w-48 focus:outline-none focus:border-blue-500 py-1"
+                             value={testForm.embeddingProviderId}
+                             onChange={(e) => setTestForm(v => ({ ...v, embeddingProviderId: e.target.value }))}
+                           >
+                             <option value="">
+                               跟随全局/索引配置（当前：{(() => {
+                                 const cur = providers.find((x) => (x.id ?? '') === activeProviderId);
+                                 const name = (cur?.name ?? '').trim();
+                                 const id = (cur?.id ?? '').trim();
+                                 return name ? `${name}${id ? ` (${id})` : ''}` : (id || '—');
+                               })()}
+                               ）
+                             </option>
+                             {providers.map((p) => (
+                               <option key={p.id ?? ''} value={p.id ?? ''}>
+                                 {((p.name ?? '').trim() ? `${p.name} (${p.id})` : p.id) || '—'}
+                                 {p.enabled === false ? ' [禁用]' : ''}
+                               </option>
+                             ))}
+                           </select>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-gray-500 font-medium">
                            <span>模型</span>

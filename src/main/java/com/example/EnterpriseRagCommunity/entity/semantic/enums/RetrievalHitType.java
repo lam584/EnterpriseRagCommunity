@@ -3,5 +3,8 @@ package com.example.EnterpriseRagCommunity.entity.semantic.enums;
 public enum RetrievalHitType {
     BM25,
     VEC,
-    RERANK
+    RERANK,
+    COMMENT_VEC,
+    AGG,
+    POST
 }

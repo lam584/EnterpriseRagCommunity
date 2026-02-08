@@ -10,9 +10,15 @@ public class LlmModerationConfigDTO {
     private Integer version;
 
     private String promptTemplate;
+    private String visionPromptTemplate;
     private String model;
+    private String providerId;
+    private String visionModel;
+    private String visionProviderId;
     private Double temperature;
+    private Double visionTemperature;
     private Integer maxTokens;
+    private Integer visionMaxTokens;
     private Double threshold;
     private Boolean autoRun;
 

@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.moderation;
 
-import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
 import com.example.EnterpriseRagCommunity.dto.moderation.SimilarityCheckRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.SimilarityCheckResponse;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarHitsEntity;
@@ -9,6 +8,9 @@ import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarHitsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
+import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,9 +28,10 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ModerationSimilarityService {
 
-    private final ModerationSimilarityProperties props;
     private final AiEmbeddingService embeddingService;
+    private final LlmGateway llmGateway;
     private final ModerationSamplesIndexService indexService;
+    private final ModerationSamplesIndexConfigService indexConfigService;
     private final ModerationSimilarHitsRepository similarHitsRepository;
     private final ModerationSimilarityConfigRepository configRepository;
 
@@ -46,10 +49,10 @@ public class ModerationSimilarityService {
 
         ModerationSimilarityConfigEntity cfg = loadConfigOrNull();
 
-        int topK = firstNonNull(req.getTopK(), cfg == null ? null : cfg.getDefaultTopK(), props.getEs().getTopK());
+        int topK = firstNonNull(req.getTopK(), cfg == null ? null : cfg.getDefaultTopK(), indexConfigService.getDefaultTopKOrDefault());
         topK = Math.min(Math.max(topK, 1), 50);
 
-        double threshold = firstNonNull(req.getThreshold(), cfg == null ? null : cfg.getDefaultThreshold(), props.getEs().getThreshold());
+        double threshold = firstNonNull(req.getThreshold(), cfg == null ? null : cfg.getDefaultThreshold(), indexConfigService.getDefaultThresholdOrDefault());
         if (threshold < 0) threshold = 0;
 
         Integer numCandidates0 = firstNonNull(req.getNumCandidates(), cfg == null ? null : cfg.getDefaultNumCandidates(), null);
@@ -65,18 +68,22 @@ public class ModerationSimilarityService {
 
         String modelToUse = toNonBlank(req.getEmbeddingModel());
         if (modelToUse == null) modelToUse = toNonBlank(cfg == null ? null : cfg.getEmbeddingModel());
-        if (modelToUse == null) modelToUse = toNonBlank(props.getEs().getEmbeddingModel());
+        if (modelToUse == null) modelToUse = toNonBlank(indexConfigService.getEmbeddingModelOrDefault());
 
         Integer configuredDimsOverride = req.getEmbeddingDims();
         Integer configuredDimsCfg = cfg == null ? null : cfg.getEmbeddingDims();
-        int configuredDims = firstNonNull(configuredDimsOverride, configuredDimsCfg, props.getEs().getEmbeddingDims());
+        int configuredDims = firstNonNull(configuredDimsOverride, configuredDimsCfg, indexConfigService.getEmbeddingDimsOrDefault());
         if (configuredDims < 0) configuredDims = 0;
 
         // Embedding
         AiEmbeddingService.EmbeddingResult er;
         try {
             String inputText = truncateByChars(text, maxInputChars);
-            er = embeddingService.embedOnce(inputText, modelToUse);
+            if (modelToUse == null) {
+                er = llmGateway.embedOnceRouted(LlmQueueTaskType.SIMILARITY_EMBEDDING, null, null, inputText);
+            } else {
+                er = embeddingService.embedOnceForTask(inputText, modelToUse, null, LlmQueueTaskType.SIMILARITY_EMBEDDING);
+            }
         } catch (Exception e) {
             throw new IllegalStateException("Embedding failed: " + e.getMessage(), e);
         }
@@ -90,7 +97,7 @@ public class ModerationSimilarityService {
         int inferredDims = vec.length;
         if (configuredDims > 0 && configuredDims != inferredDims) {
             throw new IllegalStateException(
-                    "Embedding dims mismatch: app.moderation.similarity.es.embedding-dims=" + configuredDims
+                    "Embedding dims mismatch: configuredDims=" + configuredDims
                             + " but embedding service returned vector length=" + inferredDims
                             + ". Please fix config and (re)create ES index mapping 'embedding' with correct dims.");
         }
@@ -187,7 +194,7 @@ public class ModerationSimilarityService {
             if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
             if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
 
-            URL url = new URL(endpoint + "/" + props.getEs().getIndex() + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
+            URL url = new URL(endpoint + "/" + indexService.getIndexName() + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);

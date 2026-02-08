@@ -18,6 +18,8 @@ public class PostRiskTagGenConfigService {
 
     public static final int DEFAULT_MAX_CONTENT_CHARS = 8000;
     public static final int DEFAULT_MAX_COUNT = 10;
+    private static final String GROUP_CODE = "POST_RISK_TAG";
+    private static final String SUB_TYPE = "DEFAULT";
 
     public static final String DEFAULT_SYSTEM_PROMPT = """
 你是一个社区内容风险识别助手。
@@ -42,14 +44,18 @@ public class PostRiskTagGenConfigService {
 
     @Transactional(readOnly = true)
     public PostRiskTagGenConfigDTO getAdminConfig() {
-        PostRiskTagGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostRiskTagGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElse(null);
         if (cfg == null) return toDto(defaultEntity(), null);
         return toDto(cfg, null);
     }
 
     @Transactional(readOnly = true)
     public PostRiskTagGenPublicConfigDTO getPublicConfig() {
-        PostRiskTagGenConfigEntity cfg = configRepository.findTopByOrderByUpdatedAtDesc().orElse(null);
+        PostRiskTagGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElse(null);
         if (cfg == null) cfg = defaultEntity();
         PostRiskTagGenPublicConfigDTO dto = new PostRiskTagGenPublicConfigDTO();
         dto.setEnabled(Boolean.TRUE.equals(cfg.getEnabled()));
@@ -60,7 +66,9 @@ public class PostRiskTagGenConfigService {
 
     @Transactional
     public PostRiskTagGenConfigDTO upsertAdminConfig(PostRiskTagGenConfigDTO payload, Long actorUserId, String actorUsername) {
-        PostRiskTagGenConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(this::defaultEntity);
+        PostRiskTagGenConfigEntity cfg = configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElseGet(this::defaultEntity);
 
         PostRiskTagGenConfigEntity merged = mergeAndValidate(cfg, payload);
         merged.setUpdatedAt(LocalDateTime.now());
@@ -72,15 +80,20 @@ public class PostRiskTagGenConfigService {
 
     @Transactional(readOnly = true)
     public PostRiskTagGenConfigEntity getConfigEntityOrDefault() {
-        return configRepository.findTopByOrderByUpdatedAtDesc().orElseGet(this::defaultEntity);
+        return configRepository
+                .findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(GROUP_CODE, SUB_TYPE)
+                .orElseGet(this::defaultEntity);
     }
 
     private PostRiskTagGenConfigEntity defaultEntity() {
         PostRiskTagGenConfigEntity e = new PostRiskTagGenConfigEntity();
+        e.setGroupCode(GROUP_CODE);
+        e.setSubType(SUB_TYPE);
         e.setEnabled(Boolean.TRUE);
         e.setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
         e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
         e.setModel(null);
+        e.setProviderId(null);
         e.setTemperature(0.2);
         e.setMaxCount(DEFAULT_MAX_COUNT);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
@@ -118,6 +131,8 @@ public class PostRiskTagGenConfigService {
 
         String model = payload.getModel();
         base.setModel(model == null || model.isBlank() ? null : model.trim());
+        String providerId = payload.getProviderId();
+        base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         base.setTemperature(temperature);
         base.setMaxCount(maxCount);
         base.setMaxContentChars(maxContentChars);
@@ -132,6 +147,7 @@ public class PostRiskTagGenConfigService {
         dto.setSystemPrompt(e.getSystemPrompt());
         dto.setPromptTemplate(e.getPromptTemplate());
         dto.setModel(e.getModel());
+        dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
         dto.setMaxCount(e.getMaxCount());
         dto.setMaxContentChars(e.getMaxContentChars());

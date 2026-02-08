@@ -6,6 +6,13 @@ function apiUrl(path: string): string {
   return API_BASE ? `${API_BASE}${path}` : path;
 }
 
+function getBackendMessage(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  const msg = d.message ?? d.error;
+  return msg == null ? null : String(msg);
+}
+
 export type AiStreamEvent =
   | { type: 'meta'; sessionId: number; userMessageId?: number; questionMessageId?: number }
   | { type: 'delta'; content: string }
@@ -26,18 +33,37 @@ export type AiChatStreamRequest = {
   sessionId?: number;
   message: string;
   model?: string;
+  providerId?: string;
   temperature?: number;
+  topP?: number;
   historyLimit?: number;
   deepThink?: boolean;
+  useRag?: boolean;
+  ragTopK?: number;
   dryRun?: boolean;
+  images?: Array<{ url: string; mimeType?: string; fileAssetId?: number }>;
 };
 
 export type AiChatRegenerateStreamRequest = {
   model?: string;
+  providerId?: string;
   temperature?: number;
+  topP?: number;
   historyLimit?: number;
   deepThink?: boolean;
+  useRag?: boolean;
+  ragTopK?: number;
   dryRun?: boolean;
+};
+
+export type AiChatResponse = {
+  sessionId: number;
+  userMessageId?: number;
+  questionMessageId?: number;
+  assistantMessageId?: number;
+  content: string;
+  sources?: AiCitationSource[];
+  latencyMs?: number;
 };
 
 function parseEventBlock(block: string): AiStreamEvent | null {
@@ -123,7 +149,12 @@ export async function chatStream(
       Accept: 'text/event-stream'
     },
     credentials: 'include',
-    body: JSON.stringify({ ...payload, dryRun: payload.dryRun ?? false, deepThink: payload.deepThink ?? false }),
+    body: JSON.stringify({
+      ...payload,
+      dryRun: payload.dryRun ?? false,
+      deepThink: payload.deepThink ?? false,
+      useRag: payload.useRag ?? true,
+    }),
     signal
   });
 
@@ -158,6 +189,33 @@ export async function chatStream(
   }
 }
 
+export async function chatOnce(payload: AiChatStreamRequest, signal?: AbortSignal): Promise<AiChatResponse> {
+  const csrfToken = await getCsrfToken();
+
+  const res = await fetch(apiUrl('/api/ai/chat'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+      Accept: 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      ...payload,
+      dryRun: payload.dryRun ?? false,
+      deepThink: payload.deepThink ?? false,
+      useRag: payload.useRag ?? true,
+    }),
+    signal,
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(getBackendMessage(data) || `请求失败: ${res.status}`);
+  }
+  return data as AiChatResponse;
+}
+
 export async function regenerateStream(
   questionMessageId: number,
   payload: AiChatRegenerateStreamRequest,
@@ -174,7 +232,12 @@ export async function regenerateStream(
       Accept: 'text/event-stream'
     },
     credentials: 'include',
-    body: JSON.stringify({ ...payload, dryRun: payload.dryRun ?? false, deepThink: payload.deepThink ?? false }),
+    body: JSON.stringify({
+      ...payload,
+      dryRun: payload.dryRun ?? false,
+      deepThink: payload.deepThink ?? false,
+      useRag: payload.useRag ?? true,
+    }),
     signal
   });
 
@@ -206,4 +269,35 @@ export async function regenerateStream(
       if (ev) onEvent(ev);
     }
   }
+}
+
+export async function regenerateOnce(
+  questionMessageId: number,
+  payload: AiChatRegenerateStreamRequest,
+  signal?: AbortSignal
+): Promise<AiChatResponse> {
+  const csrfToken = await getCsrfToken();
+
+  const res = await fetch(apiUrl(`/api/ai/qa/messages/${questionMessageId}/regenerate`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+      Accept: 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      ...payload,
+      dryRun: payload.dryRun ?? false,
+      deepThink: payload.deepThink ?? false,
+      useRag: payload.useRag ?? true,
+    }),
+    signal,
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(getBackendMessage(data) || `请求失败: ${res.status}`);
+  }
+  return data as AiChatResponse;
 }

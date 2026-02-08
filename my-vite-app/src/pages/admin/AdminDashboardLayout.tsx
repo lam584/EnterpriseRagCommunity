@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { FaClipboardList, FaCheckCircle, FaMagic, FaSearch, FaChartLine, FaUsersCog, FaTools } from 'react-icons/fa';
+import { FaClipboardList, FaCheckCircle, FaMagic, FaSearch, FaChartLine, FaUsersCog, FaTools, FaLink } from 'react-icons/fa';
 import { useAccess } from '../../contexts/AccessContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { logout } from '../../services/authService';
@@ -108,6 +108,7 @@ export default function AdminDashboardLayout() {
     { to: `${linkBase}/retrieval`, label: '检索与 RAG', icon: <FaSearch />, perm: { resource: 'admin_retrieval', action: 'access' } },
     { to: `${linkBase}/metrics`, label: '评估与监控', icon: <FaChartLine />, perm: { resource: 'admin_metrics', action: 'access' } },
     { to: `${linkBase}/users`, label: '用户与权限', icon: <FaUsersCog />, perm: { resource: 'admin_users', action: 'access' } },
+    { to: `${linkBase}/llm-config`, label: 'LLM 接入配置', icon: <FaLink />, perm: { resource: 'admin_semantic', action: 'access' } },
   ];
 
   // During loading, keep menu stable (avoid flicker). We'll show all items, but routes are still guarded.

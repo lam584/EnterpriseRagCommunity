@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   adminExportAuditLogsCsv,
@@ -104,6 +104,14 @@ const defaultQueryState: QueryState = {
 const LogsForm: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -189,15 +197,18 @@ const LogsForm: React.FC = () => {
         sort: 'createdAt,desc',
       });
 
+      if (!mountedRef.current) return;
+
       setItems(res.content ?? []);
       setTotalPages(res.totalPages ?? 1);
       setTotalElements(res.totalElements ?? 0);
 
       syncToUrl(query, page, pageSize);
     } catch (e) {
+      if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [actorIdParsed, entityIdParsed, page, pageSize, query, syncToUrl]);
 

@@ -169,6 +169,12 @@ public class QaHistoryService {
         qaSessionsRepository.deleteById(s.getId());
     }
 
+    public Page<QaMessageDTO> listMyFavoriteMessages(Long userId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return qaMessagesRepository.findMyFavorites(userId, pageable)
+                .map(this::toMessageDTO);
+    }
+
     private QaSessionDTO toSessionDTO(QaSessionsEntity e) {
         QaSessionDTO dto = new QaSessionDTO();
         dto.setId(e.getId());
@@ -189,6 +195,7 @@ public class QaHistoryService {
         dto.setTokensIn(e.getTokensIn());
         dto.setTokensOut(e.getTokensOut());
         dto.setCreatedAt(e.getCreatedAt());
+        dto.setIsFavorite(e.getIsFavorite());
         return dto;
     }
 

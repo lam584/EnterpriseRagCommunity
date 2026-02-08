@@ -13,13 +13,50 @@ function getBackendMessage(data: unknown): string | undefined {
   return undefined;
 }
 
+function createFetchSignal(args: { signal?: AbortSignal; timeoutMs?: number }): { signal?: AbortSignal; cleanup: () => void } {
+  const hasOuter = Boolean(args.signal);
+  const hasTimeout = typeof args.timeoutMs === 'number' && Number.isFinite(args.timeoutMs) && args.timeoutMs > 0;
+  if (!hasOuter && !hasTimeout) return { signal: undefined, cleanup: () => {} };
+
+  const controller = new AbortController();
+  const onAbort = () => {
+    try {
+      controller.abort();
+    } catch {}
+  };
+
+  let timeoutId: number | null = null;
+  if (hasTimeout) {
+    timeoutId = window.setTimeout(() => onAbort(), Math.max(1, Math.floor(args.timeoutMs as number)));
+  }
+
+  if (args.signal) {
+    if (args.signal.aborted) onAbort();
+    else args.signal.addEventListener('abort', onAbort, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+      if (args.signal) args.signal.removeEventListener('abort', onAbort);
+    },
+  };
+}
+
 export type LlmModerationDecision = 'APPROVE' | 'REJECT' | 'HUMAN';
 
 export type LlmModerationConfig = {
   promptTemplate: string;
+  visionPromptTemplate?: string | null;
   model?: string | null;
+  providerId?: string | null;
+  visionModel?: string | null;
+  visionProviderId?: string | null;
   temperature?: number | null;
+  visionTemperature?: number | null;
   maxTokens?: number | null;
+  visionMaxTokens?: number | null;
   threshold?: number | null;
   autoRun?: boolean | null;
   // auto runner throttling
@@ -38,6 +75,7 @@ export type LlmModerationConfigDTO = LlmModerationConfig & {
 export type LlmModerationTestRequest = {
   queueId?: number;
   text?: string;
+  images?: Array<{ url: string; mimeType?: string }> | null;
   configOverride?: Partial<LlmModerationConfig>;
 };
 
@@ -49,6 +87,44 @@ export type LlmModerationTestResponse = {
   rawModelOutput?: string | null;
   model?: string | null;
   latencyMs?: number | null;
+  promptMessages?: Array<{ role: string; content: string }> | null;
+  images?: string[] | null;
+  inputMode?: string | null;
+  stages?: {
+    text?: {
+      decision?: LlmModerationDecision | string | null;
+      score?: number | null;
+      reasons?: string[] | null;
+      riskTags?: string[] | null;
+      rawModelOutput?: string | null;
+      model?: string | null;
+      latencyMs?: number | null;
+      inputMode?: string | null;
+      description?: string | null;
+    } | null;
+    image?: {
+      decision?: LlmModerationDecision | string | null;
+      score?: number | null;
+      reasons?: string[] | null;
+      riskTags?: string[] | null;
+      rawModelOutput?: string | null;
+      model?: string | null;
+      latencyMs?: number | null;
+      inputMode?: string | null;
+      description?: string | null;
+    } | null;
+    cross?: {
+      decision?: LlmModerationDecision | string | null;
+      score?: number | null;
+      reasons?: string[] | null;
+      riskTags?: string[] | null;
+      rawModelOutput?: string | null;
+      model?: string | null;
+      latencyMs?: number | null;
+      inputMode?: string | null;
+      description?: string | null;
+    } | null;
+  } | null;
   usage?: {
     promptTokens?: number | null;
     completionTokens?: number | null;
@@ -84,19 +160,28 @@ export async function adminUpsertLlmModerationConfig(payload: LlmModerationConfi
   return data as LlmModerationConfigDTO;
 }
 
-export async function adminTestLlmModeration(payload: LlmModerationTestRequest): Promise<LlmModerationTestResponse> {
+export async function adminTestLlmModeration(
+  payload: LlmModerationTestRequest,
+  opts: { signal?: AbortSignal; timeoutMs?: number } = {}
+): Promise<LlmModerationTestResponse> {
   const csrfToken = await getCsrfToken();
-  const res = await fetch(apiUrl('/api/admin/moderation/llm/test'), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-XSRF-TOKEN': csrfToken,
-    },
-    credentials: 'include',
-    body: JSON.stringify(payload),
-  });
+  const { signal, cleanup } = createFetchSignal({ signal: opts.signal, timeoutMs: opts.timeoutMs });
+  try {
+    const res = await fetch(apiUrl('/api/admin/moderation/llm/test'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-XSRF-TOKEN': csrfToken,
+      },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+      signal,
+    });
 
-  const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(getBackendMessage(data) || 'LLM 试运行失败');
-  return data as LlmModerationTestResponse;
+    const data: unknown = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(getBackendMessage(data) || 'LLM 试运行失败');
+    return data as LlmModerationTestResponse;
+  } finally {
+    cleanup();
+  }
 }

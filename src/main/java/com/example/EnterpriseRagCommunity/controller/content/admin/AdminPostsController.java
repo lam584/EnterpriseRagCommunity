@@ -28,7 +28,7 @@ public class AdminPostsController {
      * - 传 DRAFT/PENDING/PUBLISHED/REJECTED/ARCHIVED => 精确过滤
      */
     @GetMapping
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_posts','read'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_posts','read')) or (#boardId != null and @boardAcl.canModerateBoard(#boardId))")
     public Page<PostsEntity> list(@RequestParam(value = "keyword", required = false) String keyword,
                                  @RequestParam(value = "postId", required = false) Long postId,
                                  @RequestParam(value = "searchMode", required = false) String searchMode,

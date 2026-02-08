@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,6 +18,7 @@ public interface UsersRepository extends JpaRepository<UsersEntity, Long>, JpaSp
     Optional<UsersEntity> findByEmailAndIsDeletedFalse(String email);
     Optional<UsersEntity> findByUsernameAndIsDeletedFalse(String username);
     Optional<UsersEntity> findByIdAndIsDeletedFalse(Long id);
+    List<UsersEntity> findByIdInAndIsDeletedFalse(Collection<Long> ids);
 
     List<UsersEntity> findByStatusAndIsDeletedFalse(AccountStatus status);
     List<UsersEntity> findByTenantId_IdAndIsDeletedFalse(Long tenantId); // 使用 tenantId.id 进行查询

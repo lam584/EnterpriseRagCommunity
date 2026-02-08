@@ -15,8 +15,7 @@ public class RetrievalRagProperties {
     public static class Es {
         private String index = "rag_post_chunks_v1";
         private boolean ikEnabled = true;
-        private String embeddingModel = "text-embedding-v4";
+        private String embeddingModel = "";
         private int embeddingDims = 0;
     }
 }
-

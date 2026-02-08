@@ -1,5 +1,8 @@
 package com.example.EnterpriseRagCommunity.controller.retrieval.admin;
 
+import com.example.EnterpriseRagCommunity.dto.retrieval.RagCommentsBuildResponse;
+import com.example.EnterpriseRagCommunity.dto.retrieval.RagCommentsTestQueryRequest;
+import com.example.EnterpriseRagCommunity.dto.retrieval.RagCommentsTestQueryResponse;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RagPostsBuildResponse;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RagPostsTestQueryRequest;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RagPostsTestQueryResponse;
@@ -10,6 +13,8 @@ import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexStatu
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexBuildService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentTestQueryService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexBuildService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostTestQueryService;
 import jakarta.validation.Valid;
@@ -34,6 +39,8 @@ public class AdminRetrievalVectorIndexController {
     private final VectorIndicesRepository vectorIndicesRepository;
     private final RagPostIndexBuildService buildService;
     private final RagPostTestQueryService testQueryService;
+    private final RagCommentIndexBuildService commentBuildService;
+    private final RagCommentTestQueryService commentTestQueryService;
     private final AuditLogWriter auditLogWriter;
 
     @GetMapping
@@ -138,11 +145,12 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
             @RequestParam(value = "clear", required = false) Boolean clear,
             @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
+            @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagPostsBuildResponse resp = buildService.buildPosts(id, boardId, fromPostId, postBatchSize, chunkMaxChars, chunkOverlapChars, clear, embeddingModel, embeddingDims);
+            RagPostsBuildResponse resp = buildService.buildPosts(id, boardId, fromPostId, postBatchSize, chunkMaxChars, chunkOverlapChars, clear, embeddingModel, embeddingProviderId, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("boardId", boardId);
             details.put("fromPostId", fromPostId);
@@ -151,6 +159,7 @@ public class AdminRetrievalVectorIndexController {
             details.put("chunkOverlapChars", chunkOverlapChars);
             details.put("clear", clear);
             details.put("embeddingModel", embeddingModel);
+            details.put("embeddingProviderId", embeddingProviderId);
             details.put("embeddingDims", embeddingDims);
             details.put("totalPosts", resp.getTotalPosts());
             details.put("totalChunks", resp.getTotalChunks());
@@ -175,17 +184,19 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
             @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
+            @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagPostsBuildResponse resp = buildService.rebuildPosts(id, boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingDims);
+            RagPostsBuildResponse resp = buildService.rebuildPosts(id, boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("boardId", boardId);
             details.put("postBatchSize", postBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
             details.put("embeddingModel", embeddingModel);
+            details.put("embeddingProviderId", embeddingProviderId);
             details.put("embeddingDims", embeddingDims);
             details.put("totalPosts", resp.getTotalPosts());
             details.put("totalChunks", resp.getTotalChunks());
@@ -210,17 +221,19 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
             @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
+            @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagPostsBuildResponse resp = buildService.syncPostsIncremental(id, boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingDims);
+            RagPostsBuildResponse resp = buildService.syncPostsIncremental(id, boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("boardId", boardId);
             details.put("postBatchSize", postBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
             details.put("embeddingModel", embeddingModel);
+            details.put("embeddingProviderId", embeddingProviderId);
             details.put("embeddingDims", embeddingDims);
             details.put("totalPosts", resp.getTotalPosts());
             details.put("totalChunks", resp.getTotalChunks());
@@ -232,6 +245,137 @@ public class AdminRetrievalVectorIndexController {
         } catch (Exception e) {
             auditLogWriter.write(null, principal == null ? null : principal.getName(),
                     "RETRIEVAL_RAG_INCREMENTAL_SYNC", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
+            throw e;
+        }
+    }
+
+    @PostMapping("/{id}/build/comments")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
+    public ResponseEntity<RagCommentsBuildResponse> buildComments(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "fromCommentId", required = false) Long fromCommentId,
+            @RequestParam(value = "commentBatchSize", required = false) Integer commentBatchSize,
+            @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
+            @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
+            @RequestParam(value = "clear", required = false) Boolean clear,
+            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
+            @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
+            Principal principal
+    ) {
+        try {
+            RagCommentsBuildResponse resp = commentBuildService.buildComments(id, fromCommentId, commentBatchSize, chunkMaxChars, chunkOverlapChars, clear, embeddingModel, embeddingDims);
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("fromCommentId", fromCommentId);
+            details.put("commentBatchSize", commentBatchSize);
+            details.put("chunkMaxChars", chunkMaxChars);
+            details.put("chunkOverlapChars", chunkOverlapChars);
+            details.put("clear", clear);
+            details.put("embeddingModel", embeddingModel);
+            details.put("embeddingDims", embeddingDims);
+            details.put("totalComments", resp.getTotalComments());
+            details.put("totalChunks", resp.getTotalChunks());
+            details.put("failedChunks", resp.getFailedChunks());
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_BUILD_COMMENTS", "VECTOR_INDEX", id, AuditResult.SUCCESS, null, null,
+                    details);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_BUILD_COMMENTS", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
+            throw e;
+        }
+    }
+
+    @PostMapping("/{id}/rebuild/comments")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
+    public ResponseEntity<RagCommentsBuildResponse> rebuildComments(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "commentBatchSize", required = false) Integer commentBatchSize,
+            @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
+            @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
+            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
+            @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
+            Principal principal
+    ) {
+        try {
+            RagCommentsBuildResponse resp = commentBuildService.rebuildComments(id, commentBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingDims);
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("commentBatchSize", commentBatchSize);
+            details.put("chunkMaxChars", chunkMaxChars);
+            details.put("chunkOverlapChars", chunkOverlapChars);
+            details.put("embeddingModel", embeddingModel);
+            details.put("embeddingDims", embeddingDims);
+            details.put("totalComments", resp.getTotalComments());
+            details.put("totalChunks", resp.getTotalChunks());
+            details.put("failedChunks", resp.getFailedChunks());
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_REBUILD_COMMENTS", "VECTOR_INDEX", id, AuditResult.SUCCESS, null, null,
+                    details);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_REBUILD_COMMENTS", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
+            throw e;
+        }
+    }
+
+    @PostMapping("/{id}/sync/comments")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
+    public ResponseEntity<RagCommentsBuildResponse> syncComments(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "commentBatchSize", required = false) Integer commentBatchSize,
+            @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
+            @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
+            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
+            @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
+            Principal principal
+    ) {
+        try {
+            RagCommentsBuildResponse resp = commentBuildService.syncCommentsIncremental(id, commentBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingDims);
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("commentBatchSize", commentBatchSize);
+            details.put("chunkMaxChars", chunkMaxChars);
+            details.put("chunkOverlapChars", chunkOverlapChars);
+            details.put("embeddingModel", embeddingModel);
+            details.put("embeddingDims", embeddingDims);
+            details.put("totalComments", resp.getTotalComments());
+            details.put("totalChunks", resp.getTotalChunks());
+            details.put("failedChunks", resp.getFailedChunks());
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_INCREMENTAL_SYNC_COMMENTS", "VECTOR_INDEX", id, AuditResult.SUCCESS, null, null,
+                    details);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_INCREMENTAL_SYNC_COMMENTS", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
+            throw e;
+        }
+    }
+
+    @PostMapping("/{id}/test-query/comments")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
+    public ResponseEntity<RagCommentsTestQueryResponse> testQueryComments(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) RagCommentsTestQueryRequest req,
+            Principal principal
+    ) {
+        try {
+            RagCommentsTestQueryResponse resp = commentTestQueryService.testQuery(id, req);
+            String qt = req == null ? null : req.getQueryText();
+            if (qt != null && qt.length() > 200) qt = qt.substring(0, 200) + "...";
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("topK", req == null ? null : req.getTopK());
+            details.put("numCandidates", req == null ? null : req.getNumCandidates());
+            details.put("embeddingModel", req == null ? null : req.getEmbeddingModel());
+            details.put("queryText", qt);
+            details.put("hitCount", resp.getHits() == null ? 0 : resp.getHits().size());
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_TEST_QUERY_COMMENTS", "VECTOR_INDEX", id, AuditResult.SUCCESS, null, null,
+                    details);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_TEST_QUERY_COMMENTS", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
             throw e;
         }
     }
@@ -252,6 +396,7 @@ public class AdminRetrievalVectorIndexController {
             details.put("topK", req == null ? null : req.getTopK());
             details.put("numCandidates", req == null ? null : req.getNumCandidates());
             details.put("embeddingModel", req == null ? null : req.getEmbeddingModel());
+            details.put("embeddingProviderId", req == null ? null : req.getEmbeddingProviderId());
             details.put("queryText", qt);
             details.put("hitCount", resp.getHits() == null ? 0 : resp.getHits().size());
             auditLogWriter.write(null, principal == null ? null : principal.getName(),

@@ -1,10 +1,11 @@
 import {JSX, useEffect, useMemo, useRef, useState} from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
 import ImageLightbox from '../../../../components/ui/ImageLightbox';
 import { getPost, togglePostFavorite, togglePostLike, type PostDTO } from '../../../../services/postService';
 import { getPostAiSummary, type PostAiSummaryDTO } from '../../../../services/aiPostSummaryService';
 import { formatPostTime, getPostCoverThumbUrl } from '../../../../utils/postMeta';
+import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import * as StatButtonModule from '../../../../components/ui/StatButton';
 import HotScoreBadge from '../../../../components/post/HotScoreBadge';
 import { createPostComment, listPostComments, toggleCommentLike, type CommentDTO } from '../../../../services/commentService';
@@ -14,6 +15,7 @@ import { getMyTranslatePreferences, type TranslatePreferencesDTO } from '../../.
 import { listSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
 import { reportComment, reportPost } from '../../../../services/reportService';
 import { extractLanguagesFromMetadata, normalizeLangBase, normalizeTargetLanguageBase } from '../../../../utils/langUtils';
+import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';
 
 function clamp0(n: number) {
   return n < 0 ? 0 : n;
@@ -63,6 +65,7 @@ const StatButton = pickStatButton(StatButtonModule);
 
 export default function PostDetailPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { postId } = useParams();
 
   const id = useMemo(() => {
@@ -79,6 +82,8 @@ export default function PostDetailPage() {
   const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
 
   const cover = post ? getPostCoverThumbUrl(post) : undefined;
+  const postAuthorLabel = post ? post.authorName || (post.authorId ? `用户#${post.authorId}` : '匿名') : '';
+  const postAuthorAvatarUrl = post ? resolveAssetUrl(post.authorAvatarUrl) : undefined;
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
   const [likePending, setLikePending] = useState(false);
@@ -99,6 +104,8 @@ export default function PostDetailPage() {
   const [commentSortMode, setCommentSortMode] = useState<CommentSortMode>('TIME');
   const [expandedRootComments, setExpandedRootComments] = useState<Record<number, boolean>>({});
   const [commentLikePending, setCommentLikePending] = useState<Record<number, boolean>>({});
+  const [targetCommentId, setTargetCommentId] = useState<number | null>(null);
+  const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
 
   const [replyTargetId, setReplyTargetId] = useState<number | null>(null);
   const [replyDraft, setReplyDraft] = useState('');
@@ -304,6 +311,15 @@ export default function PostDetailPage() {
     void loadAllComments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search || '');
+    const fromQuery = sp.get('commentId');
+    const fromHash = (location.hash || '').startsWith('#comment-') ? (location.hash || '').slice('#comment-'.length) : '';
+    const raw = (fromQuery && fromQuery.trim()) ? fromQuery : fromHash;
+    const n = raw ? Number(raw) : NaN;
+    setTargetCommentId(Number.isFinite(n) && n > 0 ? n : null);
+  }, [location.search, location.hash]);
 
   const scrollToComments = () => {
     commentsAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -578,6 +594,29 @@ export default function PostDetailPage() {
     return { byId, roots };
   }, [comments]);
 
+  useEffect(() => {
+    if (!targetCommentId) return;
+    if (commentsLoading) return;
+    if (!comments || comments.length === 0) return;
+
+    const node = commentNodes.byId.get(targetCommentId) ?? null;
+    if (!node) return;
+
+    setExpandedRootComments((p) => ({ ...p, [node.rootId]: true }));
+    setHighlightCommentId(targetCommentId);
+
+    const t = window.setTimeout(() => {
+      const el = document.getElementById(`comment-${targetCommentId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+
+    const t2 = window.setTimeout(() => setHighlightCommentId(null), 3000);
+    return () => {
+      window.clearTimeout(t);
+      window.clearTimeout(t2);
+    };
+  }, [targetCommentId, commentsLoading, comments, commentNodes.byId]);
+
   const compareNodes = (a: CommentNode, b: CommentNode, mode: CommentSortMode) => {
     if (mode === 'HOT') {
       const d = (b.hotScore || 0) - (a.hotScore || 0);
@@ -679,10 +718,11 @@ export default function PostDetailPage() {
     const shouldShowThreadToggle = node.rootId !== node.id && rootReplyCount >= 2;
     const parentNode = node.parentId == null ? null : commentNodes.byId.get(node.parentId) ?? null;
     const replyToName = relativeDepth >= 3 && parentNode ? getCommentDisplayName(parentNode.comment) : '';
+    const highlighted = highlightCommentId === node.id;
 
     return (
-      <div key={node.id} style={indent ? { marginLeft: indent } : undefined} className="space-y-2">
-        <div className="rounded-lg border border-gray-200 bg-white p-3">
+      <div id={`comment-${node.id}`} key={node.id} style={indent ? { marginLeft: indent } : undefined} className="space-y-2">
+        <div className={`rounded-lg border bg-white p-3 ${highlighted ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200'}`}>
           <div className="flex items-start gap-2 min-w-0">
             {avatarUrl ? (
               <img src={avatarUrl} alt={displayName} className="h-8 w-8 rounded-full object-cover border border-gray-200 shrink-0" />
@@ -897,7 +937,11 @@ export default function PostDetailPage() {
 
               <article className="rounded-xl border border-gray-200 bg-white p-4 w-full min-w-0">
                 <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <span className="font-medium text-gray-900">{post.authorName || (post.authorId ? `用户#${post.authorId}` : '匿名')}</span>
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={postAuthorAvatarUrl} alt={postAuthorLabel} />
+                    <AvatarFallback className="text-xs font-semibold">{postAuthorLabel.slice(0, 1).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <span className="font-medium text-gray-900">{postAuthorLabel}</span>
                   {formatPostTime(post) ? <span>· {formatPostTime(post)}</span> : null}
                   {post.boardName ? <span className="ml-auto text-gray-400">#{post.boardName}</span> : null}
                 </div>

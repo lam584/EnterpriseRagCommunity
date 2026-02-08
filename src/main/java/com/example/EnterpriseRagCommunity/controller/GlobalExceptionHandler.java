@@ -10,10 +10,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataAccessException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
+import com.example.EnterpriseRagCommunity.exception.UpstreamRequestException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -58,6 +60,14 @@ public class GlobalExceptionHandler {
 
         logger.debug("返回的错误信息: {}", response);
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<Map<String, String>> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        logger.warn("乐观锁冲突: {}", ex.getMessage());
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "保存失败：配置已被其他操作更新，请刷新后重试");
+        return new ResponseEntity<>(response, HttpStatus.CONFLICT);
     }
 
     // 针对静态资源或页面未找到的情况，返回 404 而不是 500
@@ -111,6 +121,15 @@ public class GlobalExceptionHandler {
             return new ResponseEntity<>(response, HttpStatus.SERVICE_UNAVAILABLE);
         }
         return new ResponseEntity<>(response, HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(UpstreamRequestException.class)
+    public ResponseEntity<Map<String, String>> handleUpstreamRequest(UpstreamRequestException ex) {
+        HttpStatus status = ex.getStatus() == null ? HttpStatus.BAD_GATEWAY : ex.getStatus();
+        logger.warn("上游请求失败: {}", ex.getMessage());
+        Map<String, String> response = new HashMap<>();
+        response.put("message", ex.getMessage());
+        return new ResponseEntity<>(response, status);
     }
 
     @ExceptionHandler(Exception.class)

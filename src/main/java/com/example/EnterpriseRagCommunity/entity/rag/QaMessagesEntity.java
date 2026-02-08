@@ -37,6 +37,9 @@ public class QaMessagesEntity {
     @Column(name = "tokens_out")
     private Integer tokensOut;
 
+    @Column(name = "is_favorite", nullable = false)
+    private Boolean isFavorite = false;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 }

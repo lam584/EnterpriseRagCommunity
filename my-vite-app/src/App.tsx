@@ -16,6 +16,7 @@ import PostsLayout, { PostsIndexRedirect } from './pages/portal/posts/PostsLayou
 import InteractLayout, { InteractIndexRedirect } from './pages/portal/interact/InteractLayout';
 import AssistantLayout, { AssistantIndexRedirect } from './pages/portal/assistant/AssistantLayout';
 import AccountLayout, { AccountIndexRedirect } from './pages/portal/account/AccountLayout';
+import ModerationLayout, { ModerationIndexRedirect } from './pages/portal/moderation/ModerationLayout';
 
 import DiscoverHomePage from './pages/portal/discover/pages/DiscoverHomePage';
 import DiscoverBoardsPage from './pages/portal/discover/pages/DiscoverBoardsPage';
@@ -29,6 +30,7 @@ import PostsBookmarksPage from './pages/portal/posts/pages/PostsBookmarksPage';
 import PostDetailPage from './pages/portal/posts/pages/PostDetailPage';
 
 // 删除 notifications 页路由后，该 import 不再需要
+import InteractAllPage from './pages/portal/interact/pages/InteractAllPage';
 import InteractRepliesPage from './pages/portal/interact/pages/InteractRepliesPage';
 import InteractLikesPage from './pages/portal/interact/pages/InteractLikesPage';
 import InteractMentionsPage from './pages/portal/interact/pages/InteractMentionsPage';
@@ -40,15 +42,18 @@ import AssistantHistoryPage from './pages/portal/assistant/pages/AssistantHistor
 import AssistantCollectionsPage from './pages/portal/assistant/pages/AssistantCollectionsPage';
 import AssistantSettingsPage from './pages/portal/assistant/pages/AssistantSettingsPage';
 
-import AccountProfilePage from './pages/portal/account/pages/AccountProfilePage';
 import AccountSecurityPage from './pages/portal/account/pages/AccountSecurityPage';
 import AccountPreferencesPage from './pages/portal/account/pages/AccountPreferencesPage';
 import AccountConnectionsPage from './pages/portal/account/pages/AccountConnectionsPage';
+import UserProfilePage from './pages/portal/users/pages/UserProfilePage';
 import SearchLayout from './pages/portal/search/SearchLayout';
 import SearchIndexRedirect from './pages/portal/search/SearchIndexRedirect';
 import SearchPostsPage from './pages/portal/search/pages/SearchPostsPage';
+import ModerationQueuePage from './pages/portal/moderation/pages/ModerationQueuePage';
+import ModerationMyLogsPage from './pages/portal/moderation/pages/ModerationMyLogsPage';
 import { RequirePermission } from './components/auth/RequirePermission';
 import { RequireAccess } from './components/auth/RequireAccess';
+import RequireModeratedBoards from './components/auth/RequireModeratedBoards';
 import ForbiddenPage from './pages/ForbiddenPage';
 
 // NOTE: admin sections are lazy-loaded to reduce main-thread EvaluateScript on menu switch.
@@ -58,6 +63,7 @@ const SemanticBoostPage = lazy(() => import('./pages/admin/sections').then(m => 
 const RetrievalRagPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.RetrievalRagPage })));
 const MetricsMonitorPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.MetricsMonitorPage })));
 const UsersRBACPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.UsersRBACPage })));
+const LlmConfigPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.LlmConfigPage })));
 
 // 受保护的路由组件
 const ProtectedRoute = () => {
@@ -87,6 +93,7 @@ function AdminIndexRedirect() {
     if (hasPerm('admin_content', 'access')) return <Navigate to="content" replace />;
     if (hasPerm('admin_review', 'access')) return <Navigate to="review" replace />;
     if (hasPerm('admin_semantic', 'access')) return <Navigate to="semantic" replace />;
+    if (hasPerm('admin_semantic', 'access')) return <Navigate to="llm-config" replace />;
     if (hasPerm('admin_retrieval', 'access')) return <Navigate to="retrieval" replace />;
     if (hasPerm('admin_metrics', 'access')) return <Navigate to="metrics" replace />;
     if (hasPerm('admin_users', 'access')) return <Navigate to="users" replace />;
@@ -212,6 +219,7 @@ function AppRoutes() {
                         <Route path="reports" element={<InteractReportsPage />} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth /> }>
+                        <Route path="all" element={<InteractAllPage />} />
                         <Route path="security" element={<InteractSecurityPage />} />
                     </Route>
                 </Route>
@@ -234,12 +242,22 @@ function AppRoutes() {
                     </Route>
                 </Route>
 
+                <Route element={<RequireAccess requiresAuth />}>
+                    <Route path="moderation" element={<ModerationLayout />}>
+                        <Route index element={<ModerationIndexRedirect />} />
+                        <Route element={<RequireModeratedBoards />}>
+                            <Route path="queue" element={<ModerationQueuePage />} />
+                        </Route>
+                        <Route path="logs" element={<ModerationMyLogsPage />} />
+                    </Route>
+                </Route>
+
                 {/* 账号中心：需要登录 + 对应 view 权限 */}
                 <Route path="account" element={<AccountLayout />}>
                     <Route index element={<AccountIndexRedirect />} />
 
                     <Route element={<RequireAccess requiresAuth resource="portal_account_profile" action="view" /> }>
-                        <Route path="profile" element={<AccountProfilePage />} />
+                        <Route path="profile" element={<UserProfilePage />} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_account_security" action="view" /> }>
                         <Route path="security" element={<AccountSecurityPage />} />
@@ -258,6 +276,10 @@ function AppRoutes() {
                     <Route element={<RequireAccess requiresAuth resource="portal_posts_bookmarks" action="view" /> }>
                         <Route path="bookmarks" element={<PostsBookmarksPage />} />
                     </Route>
+                </Route>
+
+                <Route element={<RequireAccess requiresAuth />}>
+                    <Route path="users/:userId" element={<UserProfilePage />} />
                 </Route>
 
                 <Route index element={<Navigate to="discover" replace />} />
@@ -280,6 +302,7 @@ function AppRoutes() {
                         <Route path="review" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><ReviewCenterPage /></Suspense>} />
                         <Route path="semantic" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><SemanticBoostPage /></Suspense>} />
                         <Route path="retrieval" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><RetrievalRagPage /></Suspense>} />
+                        <Route path="llm-config" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><LlmConfigPage /></Suspense>} />
                         <Route path="metrics" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><MetricsMonitorPage /></Suspense>} />
                         <Route path="users" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><UsersRBACPage /></Suspense>} />
                         <Route index element={<AdminIndexRedirect />} />

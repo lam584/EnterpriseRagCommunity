@@ -1,8 +1,10 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
 import com.example.EnterpriseRagCommunity.config.AiProperties;
+import com.example.EnterpriseRagCommunity.dto.ai.AiPostRiskTagSuggestRequest;
+import com.example.EnterpriseRagCommunity.dto.ai.AiPostRiskTagSuggestResponse;
 import com.example.EnterpriseRagCommunity.entity.ai.PostRiskTagGenConfigEntity;
-import com.example.EnterpriseRagCommunity.service.ai.client.BailianOpenAiSseClient;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -16,21 +18,36 @@ public class AiPostRiskTagService {
 
     private final AiProperties aiProperties;
     private final PostRiskTagGenConfigService postRiskTagGenConfigService;
+    private final LlmGateway llmGateway;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public List<String> suggestRiskTags(String title, String content) {
+        AiPostRiskTagSuggestRequest req = new AiPostRiskTagSuggestRequest();
+        req.setTitle(title);
+        req.setContent(content == null ? "" : content);
+        return suggestRiskTags(req).getRiskTags();
+    }
+
+    public AiPostRiskTagSuggestResponse suggestRiskTags(AiPostRiskTagSuggestRequest req) {
         PostRiskTagGenConfigEntity cfg = postRiskTagGenConfigService.getConfigEntityOrDefault();
         if (!Boolean.TRUE.equals(cfg.getEnabled())) {
-            return List.of();
+            throw new IllegalStateException("风险标签生成已关闭");
         }
 
         int maxCount = cfg.getMaxCount() == null ? PostRiskTagGenConfigService.DEFAULT_MAX_COUNT : cfg.getMaxCount();
         if (maxCount <= 0) maxCount = PostRiskTagGenConfigService.DEFAULT_MAX_COUNT;
         if (maxCount > 50) maxCount = 50;
 
-        String model = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : aiProperties.getModel();
+        int count = req == null || req.getCount() == null ? maxCount : req.getCount();
+        if (count <= 0) count = maxCount;
+        if (count > maxCount) count = maxCount;
+
+        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
         if (temperature == null) temperature = 0.2;
+
+        String title = req == null ? null : req.getTitle();
+        String content = req == null ? null : req.getContent();
 
         String t = title == null ? "" : title.trim();
         String c = content == null ? "" : content.trim();
@@ -41,24 +58,29 @@ public class AiPostRiskTagService {
         }
 
         String sys = cfg.getSystemPrompt() == null ? "" : cfg.getSystemPrompt();
-        sys = sys.replace("{{maxCount}}", String.valueOf(maxCount));
+        sys = sys.replace("{{maxCount}}", String.valueOf(count));
 
         String userPrompt = renderPrompt(cfg.getPromptTemplate(), t, c);
 
-        List<Map<String, String>> messages = new ArrayList<>();
-        messages.add(Map.of("role", "system", "content", sys));
-        messages.add(Map.of("role", "user", "content", userPrompt));
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system(sys));
+        messages.add(ChatMessage.user(userPrompt));
 
+        long started = System.currentTimeMillis();
         String rawJson;
+        String usedModel;
         try {
-            rawJson = new BailianOpenAiSseClient(aiProperties)
-                    .chatCompletionsOnce(null, aiProperties.getBaseUrl(), model, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.RISK_TAG_GEN, cfg.getProviderId(), modelOverride, messages, temperature);
+            rawJson = routed == null ? null : routed.text();
+            usedModel = routed == null ? null : routed.model();
         } catch (Exception e) {
             throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);
         }
 
         String assistantText = extractAssistantContent(rawJson);
-        return parseRiskTagsFromAssistantText(assistantText, maxCount);
+        List<String> tags = parseRiskTagsFromAssistantText(assistantText, count);
+        long latency = System.currentTimeMillis() - started;
+        return new AiPostRiskTagSuggestResponse(tags, usedModel, latency);
     }
 
     private String extractAssistantContent(String rawJson) {

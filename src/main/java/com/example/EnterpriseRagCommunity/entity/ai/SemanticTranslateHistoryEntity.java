@@ -54,6 +54,9 @@ public class SemanticTranslateHistoryEntity {
     @Column(name = "model", length = 128)
     private String model;
 
+    @Column(name = "provider_id", length = 64)
+    private String providerId;
+
     @Column(name = "temperature")
     private Double temperature;
 
@@ -63,4 +66,3 @@ public class SemanticTranslateHistoryEntity {
     @Column(name = "prompt_version")
     private Integer promptVersion;
 }
-

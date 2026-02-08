@@ -17,13 +17,19 @@ import {
   adminUpsertPostRiskTagGenConfig,
   type PostRiskTagGenConfigDTO,
 } from '../../../../services/riskTagGenAdminService';
-import { suggestPostTags, type AiPostTagSuggestResponse } from '../../../../services/aiTagService';
+import { suggestPostTags } from '../../../../services/aiTagService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
+import { suggestPostLangLabels } from '../../../../services/aiLangLabelService';
+import { suggestPostRiskTags } from '../../../../services/aiRiskTagService';
 
 type FormState = {
   enabled: boolean;
   systemPrompt: string;
   promptTemplate: string;
   model: string;
+  providerId: string;
   temperature: string;
   defaultCount: string;
   maxCount: string;
@@ -38,6 +44,7 @@ type LangFormState = {
   systemPrompt: string;
   promptTemplate: string;
   model: string;
+  providerId: string;
   temperature: string;
   maxContentChars: string;
 };
@@ -47,9 +54,18 @@ type RiskFormState = {
   systemPrompt: string;
   promptTemplate: string;
   model: string;
+  providerId: string;
   temperature: string;
   maxCount: string;
   maxContentChars: string;
+};
+
+type TestKind = 'TOPIC' | 'RISK' | 'LANG';
+type TestResult = {
+  kind: TestKind;
+  items: string[];
+  model?: string;
+  latencyMs?: number;
 };
 
 function parseOptionalNumber(raw: string): number | undefined {
@@ -80,6 +96,7 @@ function toFormState(cfg?: PostTagGenConfigDTO | null): FormState {
     systemPrompt: cfg?.systemPrompt ?? '',
     promptTemplate: cfg?.promptTemplate ?? '',
     model: cfg?.model ?? '',
+    providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
     defaultCount: cfg?.defaultCount === null || cfg?.defaultCount === undefined ? '' : String(cfg.defaultCount),
     maxCount: cfg?.maxCount === null || cfg?.maxCount === undefined ? '' : String(cfg.maxCount),
@@ -94,9 +111,9 @@ function defaultLangConfig(): PostLangLabelGenConfigDTO {
   return {
     enabled: true,
     systemPrompt:
-      '你是一个语言识别助手。\\n任务：根据输入的标题与正文，判断文本包含的自然语言。\\n输出要求：\\n1. 只输出 JSON（不要包裹 ```），格式：{\"languages\":[\"zh\",\"en\"]}\\n2. languages 使用简短语言代码（优先 ISO 639-1：zh/en/ja/ko/fr/de/es/ru/it/pt/...）。中文统一用 zh。\\n3. 如果文本明显由多种语言混合组成，请输出多个语言代码（最多 3 个）。\\n4. 不要输出解释、不要输出多余字段。\\n',
+      '你是一个语言识别助手。\\n任务：根据输入的标题与正文，判断文本包含的自然语言。\\n判断规则：\\n- 仅依据自然语言内容判断，忽略 URL、代码片段、emoji、标点和数字噪声。\\n- 语言代码优先使用 ISO 639-1（zh/en/ja/ko/fr/de/es/ru/it/pt/...）。中文统一用 zh。\\n- 如果文本明显由多种语言混合组成，输出多个语言代码（最多 3 个），按占比从高到低排序，去重。\\n- 如果文本过短或无法可靠判断，允许输出空数组。\\n输出要求：\\n1. 只输出 JSON（不要包裹 ```），格式：{\"languages\":[\"zh\",\"en\"]}\\n2. 不要输出解释、不要输出多余字段。\\n',
     promptTemplate:
-      '请根据以下标题与正文判断文本包含的自然语言，并严格按 systemPrompt 的要求只输出 JSON（不要输出解释文字）。\\n\\n标题：\\n{{title}}\\n\\n正文：\\n{{content}}\\n',
+      '请根据以下标题与正文判断文本包含的自然语言。\\n要求：\\n- 仅输出一个 JSON 对象，字段名为 languages，值为语言代码数组。\\n- 不要输出解释、不要输出 Markdown 代码块。\\n- 请忽略正文中的链接、代码块、表情符号，只以自然语言内容为准。\\n\\n标题：\\n{{title}}\\n\\n正文：\\n{{content}}\\n',
     temperature: 0.0,
     maxContentChars: 8000,
   };
@@ -108,6 +125,7 @@ function toLangFormState(cfg?: PostLangLabelGenConfigDTO | null): LangFormState 
     systemPrompt: cfg?.systemPrompt ?? '',
     promptTemplate: cfg?.promptTemplate ?? '',
     model: cfg?.model ?? '',
+    providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
   };
@@ -117,9 +135,9 @@ function defaultRiskConfig(): PostRiskTagGenConfigDTO {
   return {
     enabled: true,
     systemPrompt:
-      '你是一个社区内容风险识别助手。\\n任务：根据输入的标题与正文，生成该帖子可能涉及的风险标签。\\n输出要求：\\n1. 只输出 JSON（不要包裹 ```），格式：{\"riskTags\":[\"诈骗\",\"隐私泄露\",\"仇恨言论\"]}。\\n2. riskTags 必须使用中文短语（不要英文/拼音），每个标签不超过 8 个汉字。\\n3. 标签应尽量稳定、可复用、能概括风险类型；最多输出 {{maxCount}} 个。\\n4. 如果内容看起来风险很低，可以输出空数组。\\n5. 不要输出解释、不要输出多余字段。\\n',
+      '你是一个社区内容风险识别助手。\\n任务：根据输入的标题与正文，生成该帖子可能涉及的风险标签。\\n标签风格：\\n- riskTags 必须使用中文短语（不要英文/拼音），每个标签不超过 8 个汉字。\\n- 标签应稳定、可复用、能概括风险类型；最多输出 {{maxCount}} 个；去重并按风险相关性降序。\\n优先标签池（优先从中选择，必要时可补充少量自定义）：\\n诈骗、广告引流、隐私泄露、仇恨言论、暴力恐怖、涉黄低俗、赌博、毒品、违法交易、金融诱导、医疗夸大、侵权盗版、未成年人、自残自伤、政治敏感。\\n输出要求：\\n1. 只输出 JSON（不要包裹 ```），格式：{\"riskTags\":[\"诈骗\",\"隐私泄露\",\"仇恨言论\"]}。\\n2. 如果内容看起来风险很低，可以输出空数组。\\n3. 不要输出解释、不要输出多余字段。\\n',
     promptTemplate:
-      '请根据以下标题与正文生成风险标签，并严格按 systemPrompt 的要求只输出 JSON（不要输出解释文字）。\\n\\n标题：\\n{{title}}\\n\\n正文：\\n{{content}}\\n',
+      '请根据以下标题与正文生成风险标签。\\n要求：\\n- 优先使用 systemPrompt 中的“优先标签池”，只有在标签池无法覆盖时才补充自定义标签。\\n- 仅输出一个 JSON 对象，字段名为 riskTags，值为中文短语数组。\\n- 不要输出解释、不要输出 Markdown 代码块。\\n\\n标题：\\n{{title}}\\n\\n正文：\\n{{content}}\\n',
     model: '',
     temperature: 0.2,
     maxCount: 10,
@@ -133,6 +151,7 @@ function toRiskFormState(cfg?: PostRiskTagGenConfigDTO | null): RiskFormState {
     systemPrompt: cfg?.systemPrompt ?? '',
     promptTemplate: cfg?.promptTemplate ?? '',
     model: cfg?.model ?? '',
+    providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
     maxCount: cfg?.maxCount === null || cfg?.maxCount === undefined ? '' : String(cfg.maxCount),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
@@ -213,6 +232,7 @@ function buildPayload(s: FormState) {
     systemPrompt: s.systemPrompt,
     promptTemplate: s.promptTemplate,
     model: s.model.trim() ? s.model.trim() : null,
+    providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
     defaultCount: defaultCount === undefined ? 5 : Math.trunc(defaultCount),
     maxCount: maxCount === undefined ? 10 : Math.trunc(maxCount),
@@ -232,6 +252,7 @@ function buildLangPayload(s: LangFormState) {
     systemPrompt: s.systemPrompt,
     promptTemplate: s.promptTemplate,
     model: s.model.trim() ? s.model.trim() : null,
+    providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
     maxContentChars: maxContentChars === undefined ? 8000 : Math.trunc(maxContentChars),
   };
@@ -247,6 +268,7 @@ function buildRiskPayload(s: RiskFormState) {
     systemPrompt: s.systemPrompt,
     promptTemplate: s.promptTemplate,
     model: s.model.trim() ? s.model.trim() : null,
+    providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
     maxCount: maxCount === undefined ? 10 : Math.trunc(maxCount),
     maxContentChars: maxContentChars === undefined ? 8000 : Math.trunc(maxContentChars),
@@ -260,6 +282,10 @@ const MultiLabelForm: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [savedHint, setSavedHint] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+
+  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
+  const [activeProviderId, setActiveProviderId] = useState<string>('');
+  const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
 
   const [form, setForm] = useState<FormState>(() => toFormState(null));
   const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(null));
@@ -289,6 +315,7 @@ const MultiLabelForm: React.FC = () => {
       form.systemPrompt !== committedForm.systemPrompt ||
       form.promptTemplate !== committedForm.promptTemplate ||
       form.model !== committedForm.model ||
+      form.providerId !== committedForm.providerId ||
       form.temperature !== committedForm.temperature ||
       form.defaultCount !== committedForm.defaultCount ||
       form.maxCount !== committedForm.maxCount ||
@@ -313,6 +340,7 @@ const MultiLabelForm: React.FC = () => {
       langForm.systemPrompt !== langCommittedForm.systemPrompt ||
       langForm.promptTemplate !== langCommittedForm.promptTemplate ||
       langForm.model !== langCommittedForm.model ||
+      langForm.providerId !== langCommittedForm.providerId ||
       langForm.temperature !== langCommittedForm.temperature ||
       langForm.maxContentChars !== langCommittedForm.maxContentChars
     );
@@ -332,11 +360,48 @@ const MultiLabelForm: React.FC = () => {
       riskForm.systemPrompt !== riskCommittedForm.systemPrompt ||
       riskForm.promptTemplate !== riskCommittedForm.promptTemplate ||
       riskForm.model !== riskCommittedForm.model ||
+      riskForm.providerId !== riskCommittedForm.providerId ||
       riskForm.temperature !== riskCommittedForm.temperature ||
       riskForm.maxCount !== riskCommittedForm.maxCount ||
       riskForm.maxContentChars !== riskCommittedForm.maxContentChars
     );
   }, [riskForm, riskCommittedForm]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cfg = await adminGetAiProvidersConfig();
+        if (cancelled) return;
+        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
+        setActiveProviderId(cfg.activeProviderId ?? '');
+      } catch {
+        if (cancelled) return;
+        setProviders([]);
+        setActiveProviderId('');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const opts = await getAiChatOptions();
+        if (cancelled) return;
+        setChatProviders((opts.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[]);
+      } catch {
+        if (cancelled) return;
+        setChatProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
@@ -345,12 +410,12 @@ const MultiLabelForm: React.FC = () => {
     try {
       const cfg = await adminGetPostTagGenConfig();
       const prompt = cfg?.promptTemplate?.trim();
-      if (!prompt) {
-        const next = toFormState({ ...defaultConfig(), ...cfg });
+      if (!prompt || prompt.length < 50) {
+        const base = defaultConfig();
+        const next = toFormState({ ...base, ...cfg, promptTemplate: base.promptTemplate });
         setForm(next);
         setCommittedForm(next);
         setEditing(false);
-        setSavedHint('后端配置为空，已加载内置默认值（可编辑后保存写入数据库）');
       } else {
         const next = toFormState(cfg);
         setForm(next);
@@ -380,12 +445,12 @@ const MultiLabelForm: React.FC = () => {
     try {
       const cfg = await adminGetPostLangLabelGenConfig();
       const prompt = cfg?.promptTemplate?.trim();
-      if (!prompt) {
-        const next = toLangFormState({ ...defaultLangConfig(), ...cfg });
+      if (!prompt || prompt.length < 50) {
+        const base = defaultLangConfig();
+        const next = toLangFormState({ ...base, ...cfg, promptTemplate: base.promptTemplate });
         setLangForm(next);
         setLangCommittedForm(next);
         setLangEditing(false);
-        setLangSavedHint('后端配置为空，已加载内置默认值（可编辑后保存写入数据库）');
       } else {
         const next = toLangFormState(cfg);
         setLangForm(next);
@@ -415,12 +480,12 @@ const MultiLabelForm: React.FC = () => {
     try {
       const cfg = await adminGetPostRiskTagGenConfig();
       const prompt = cfg?.promptTemplate?.trim();
-      if (!prompt) {
-        const next = toRiskFormState({ ...defaultRiskConfig(), ...cfg });
+      if (!prompt || prompt.length < 50) {
+        const base = defaultRiskConfig();
+        const next = toRiskFormState({ ...base, ...cfg, promptTemplate: base.promptTemplate });
         setRiskForm(next);
         setRiskCommittedForm(next);
         setRiskEditing(false);
-        setRiskSavedHint('后端配置为空，已加载内置默认值（可编辑后保存写入数据库）');
       } else {
         const next = toRiskFormState(cfg);
         setRiskForm(next);
@@ -506,10 +571,11 @@ const MultiLabelForm: React.FC = () => {
     }
   }, [riskCanSave, riskForm, riskSaving]);
 
+  const [testKind, setTestKind] = useState<TestKind>('TOPIC');
   const [testTitle, setTestTitle] = useState('');
   const [testContent, setTestContent] = useState('');
   const [testCount, setTestCount] = useState('');
-  const [testResp, setTestResp] = useState<AiPostTagSuggestResponse | null>(null);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
 
   const onTest = useCallback(async () => {
@@ -521,21 +587,34 @@ const MultiLabelForm: React.FC = () => {
     }
     setTesting(true);
     setTestError(null);
-    setTestResp(null);
+    setTestResult(null);
     try {
       const n = parseOptionalNumber(testCount);
-      const resp = await suggestPostTags({
-        title: testTitle.trim() || undefined,
-        content,
-        count: n === undefined ? undefined : Math.trunc(n),
-      });
-      setTestResp(resp);
+      const title = testTitle.trim() || undefined;
+      if (testKind === 'TOPIC') {
+        const resp = await suggestPostTags({
+          title,
+          content,
+          count: n === undefined ? undefined : Math.trunc(n),
+        });
+        setTestResult({ kind: 'TOPIC', items: resp.tags ?? [], model: resp.model, latencyMs: resp.latencyMs });
+      } else if (testKind === 'RISK') {
+        const resp = await suggestPostRiskTags({
+          title,
+          content,
+          count: n === undefined ? undefined : Math.trunc(n),
+        });
+        setTestResult({ kind: 'RISK', items: resp.riskTags ?? [], model: resp.model, latencyMs: resp.latencyMs });
+      } else {
+        const resp = await suggestPostLangLabels({ title, content });
+        setTestResult({ kind: 'LANG', items: resp.languages ?? [], model: resp.model, latencyMs: resp.latencyMs });
+      }
     } catch (e) {
       setTestError(e instanceof Error ? e.message : String(e));
     } finally {
       setTesting(false);
     }
-  }, [testContent, testCount, testTitle, testing]);
+  }, [testContent, testCount, testKind, testTitle, testing]);
 
   const [historyPage, setHistoryPage] = useState<Page<PostTagGenHistoryDTO> | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -632,7 +711,7 @@ const MultiLabelForm: React.FC = () => {
 
         {savedHint ? <div className="text-sm text-green-700">{savedHint}</div> : null}
         {error ? <div className="text-sm text-red-700">{error}</div> : null}
-        {formErrors.length ? (
+        {editing && formErrors.length ? (
           <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 space-y-1">
             {formErrors.map((e) => (
               <div key={e}>{e}</div>
@@ -641,14 +720,17 @@ const MultiLabelForm: React.FC = () => {
         ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          <div>
-            <div className="text-sm font-medium text-gray-700 mb-1">模型（可选）</div>
-            <input
-              className="w-full rounded border px-3 py-2 border-gray-300"
-              value={form.model}
+          <div className="md:col-span-2">
+            <ProviderModelSelect
+              providers={providers}
+              activeProviderId={activeProviderId}
+              chatProviders={chatProviders}
+              mode="chat"
+              providerId={form.providerId}
+              model={form.model}
               disabled={!editing}
-              onChange={(e) => setForm((p) => ({ ...p, model: e.target.value }))}
-              placeholder="留空则使用 app.ai.model"
+              selectClassName="w-full rounded border px-3 py-2 border-gray-300 text-sm bg-white disabled:bg-gray-50"
+              onChange={(next) => setForm((p) => ({ ...p, providerId: next.providerId, model: next.model }))}
             />
           </div>
 
@@ -722,7 +804,7 @@ const MultiLabelForm: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-1">System Prompt</div>
+            <div className="text-sm font-medium text-gray-700 mb-1">系统提示</div>
             <textarea
               className="w-full rounded border px-3 py-2 border-gray-300 min-h-[80px]"
               value={form.systemPrompt}
@@ -732,12 +814,13 @@ const MultiLabelForm: React.FC = () => {
           </div>
 
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-1">Prompt Template</div>
+            <div className="text-sm font-medium text-gray-700 mb-1">提示模板</div>
             <textarea
               className="w-full rounded border px-3 py-2 border-gray-300 min-h-[180px] font-mono text-xs"
               value={form.promptTemplate}
               disabled={!editing}
               onChange={(e) => setForm((p) => ({ ...p, promptTemplate: e.target.value }))}
+              placeholder="建议不少于 50 个字符，尽量包含输出格式约束与示例。"
             />
           </div>
         </div>
@@ -794,14 +877,14 @@ const MultiLabelForm: React.FC = () => {
 
         {langSavedHint ? <div className="text-sm text-green-700">{langSavedHint}</div> : null}
         {langError ? <div className="text-sm text-red-700">{langError}</div> : null}
-        {langFormWarnings.length ? (
+        {langEditing && langFormWarnings.length ? (
           <div className="rounded border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 space-y-1">
             {langFormWarnings.map((e) => (
               <div key={e}>{e}</div>
             ))}
           </div>
         ) : null}
-        {langFormErrors.length ? (
+        {langEditing && langFormErrors.length ? (
           <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 space-y-1">
             {langFormErrors.map((e) => (
               <div key={e}>{e}</div>
@@ -822,14 +905,17 @@ const MultiLabelForm: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          <div>
-            <div className="text-sm font-medium text-gray-700 mb-1">模型（可选）</div>
-            <input
-              className="w-full rounded border px-3 py-2 border-gray-300"
-              value={langForm.model}
+          <div className="md:col-span-2">
+            <ProviderModelSelect
+              providers={providers}
+              activeProviderId={activeProviderId}
+              chatProviders={chatProviders}
+              mode="chat"
+              providerId={langForm.providerId}
+              model={langForm.model}
               disabled={!langEditing}
-              onChange={(e) => setLangForm((p) => ({ ...p, model: e.target.value }))}
-              placeholder="留空则使用 app.ai.model"
+              selectClassName="w-full rounded border px-3 py-2 border-gray-300 text-sm bg-white disabled:bg-gray-50"
+              onChange={(next) => setLangForm((p) => ({ ...p, providerId: next.providerId, model: next.model }))}
             />
           </div>
 
@@ -858,7 +944,7 @@ const MultiLabelForm: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-1">System Prompt</div>
+            <div className="text-sm font-medium text-gray-700 mb-1">系统提示词</div>
             <textarea
               className="w-full rounded border px-3 py-2 border-gray-300 min-h-[80px]"
               value={langForm.systemPrompt}
@@ -868,12 +954,13 @@ const MultiLabelForm: React.FC = () => {
           </div>
 
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-1">Prompt Template</div>
+            <div className="text-sm font-medium text-gray-700 mb-1">提示词模板</div>
             <textarea
               className="w-full rounded border px-3 py-2 border-gray-300 min-h-[180px] font-mono text-xs"
               value={langForm.promptTemplate}
               disabled={!langEditing}
               onChange={(e) => setLangForm((p) => ({ ...p, promptTemplate: e.target.value }))}
+              placeholder="建议不少于 50 个字符；可使用 {{title}}、{{content}} 变量。"
             />
           </div>
         </div>
@@ -930,14 +1017,14 @@ const MultiLabelForm: React.FC = () => {
 
         {riskSavedHint ? <div className="text-sm text-green-700">{riskSavedHint}</div> : null}
         {riskError ? <div className="text-sm text-red-700">{riskError}</div> : null}
-        {riskFormWarnings.length ? (
+        {riskEditing && riskFormWarnings.length ? (
           <div className="rounded border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 space-y-1">
             {riskFormWarnings.map((e) => (
               <div key={e}>{e}</div>
             ))}
           </div>
         ) : null}
-        {riskFormErrors.length ? (
+        {riskEditing && riskFormErrors.length ? (
           <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 space-y-1">
             {riskFormErrors.map((e) => (
               <div key={e}>{e}</div>
@@ -958,14 +1045,17 @@ const MultiLabelForm: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
-          <div>
-            <div className="text-sm font-medium text-gray-700 mb-1">模型（可选）</div>
-            <input
-              className="w-full rounded border px-3 py-2 border-gray-300"
-              value={riskForm.model}
+          <div className="md:col-span-2">
+            <ProviderModelSelect
+              providers={providers}
+              activeProviderId={activeProviderId}
+              chatProviders={chatProviders}
+              mode="chat"
+              providerId={riskForm.providerId}
+              model={riskForm.model}
               disabled={!riskEditing}
-              onChange={(e) => setRiskForm((p) => ({ ...p, model: e.target.value }))}
-              placeholder="留空则使用 app.ai.model"
+              selectClassName="w-full rounded border px-3 py-2 border-gray-300 text-sm bg-white disabled:bg-gray-50"
+              onChange={(next) => setRiskForm((p) => ({ ...p, providerId: next.providerId, model: next.model }))}
             />
           </div>
 
@@ -1005,7 +1095,7 @@ const MultiLabelForm: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-1">System Prompt</div>
+            <div className="text-sm font-medium text-gray-700 mb-1">系统提示词</div>
             <textarea
               className="w-full rounded border px-3 py-2 border-gray-300 min-h-[80px]"
               value={riskForm.systemPrompt}
@@ -1015,32 +1105,57 @@ const MultiLabelForm: React.FC = () => {
           </div>
 
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-1">Prompt Template</div>
+            <div className="text-sm font-medium text-gray-700 mb-1">提示词模板</div>
             <textarea
               className="w-full rounded border px-3 py-2 border-gray-300 min-h-[180px] font-mono text-xs"
               value={riskForm.promptTemplate}
               disabled={!riskEditing}
               onChange={(e) => setRiskForm((p) => ({ ...p, promptTemplate: e.target.value }))}
+              placeholder="建议不少于 50 个字符；可使用 {{title}}、{{content}} 变量。"
             />
           </div>
         </div>
       </div>
 
       <div className="bg-white rounded-lg shadow p-4 space-y-3">
-        <h4 className="text-base font-semibold">试运行（调用 /api/ai/posts/tag-suggestions）</h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <h4 className="text-base font-semibold">
+          试运行（调用{' '}
+          {testKind === 'TOPIC'
+            ? '/api/ai/posts/tag-suggestions'
+            : testKind === 'RISK'
+              ? '/api/ai/posts/risk-tag-suggestions'
+              : '/api/ai/posts/lang-label-suggestions'}
+          ）
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <select
+            className="rounded border px-3 py-2 border-gray-300 bg-white"
+            value={testKind}
+            onChange={(e) => {
+              const next = e.target.value as TestKind;
+              setTestKind(next);
+              setTestError(null);
+              setTestResult(null);
+            }}
+          >
+            <option value="TOPIC">主题标签生成</option>
+            <option value="RISK">风险标签生成</option>
+            <option value="LANG">语言标签生成</option>
+          </select>
           <input
-            className="rounded border px-3 py-2 border-gray-300 md:col-span-2"
+            className={`rounded border px-3 py-2 border-gray-300 ${testKind === 'LANG' ? 'md:col-span-3' : 'md:col-span-2'}`}
             placeholder="标题（可选）"
             value={testTitle}
             onChange={(e) => setTestTitle(e.target.value)}
           />
-          <input
-            className="rounded border px-3 py-2 border-gray-300"
-            placeholder="生成数量（可选）"
-            value={testCount}
-            onChange={(e) => setTestCount(e.target.value)}
-          />
+          {testKind !== 'LANG' ? (
+            <input
+              className="rounded border px-3 py-2 border-gray-300"
+              placeholder="生成数量（可选）"
+              value={testCount}
+              onChange={(e) => setTestCount(e.target.value)}
+            />
+          ) : null}
         </div>
         <textarea
           className="w-full rounded border px-3 py-2 border-gray-300 min-h-[120px]"
@@ -1055,16 +1170,16 @@ const MultiLabelForm: React.FC = () => {
             onClick={() => void onTest()}
             className="rounded bg-blue-600 text-white px-4 py-2 disabled:bg-blue-300"
           >
-            {testing ? '生成中...' : '生成标签'}
+            {testing ? (testKind === 'LANG' ? '识别中...' : '生成中...') : testKind === 'LANG' ? '识别语言' : testKind === 'RISK' ? '生成风险标签' : '生成主题标签'}
           </button>
-          {testResp?.model ? <div className="text-xs text-gray-500">model: {testResp.model}</div> : null}
-          {typeof testResp?.latencyMs === 'number' ? <div className="text-xs text-gray-500">latency: {testResp.latencyMs}ms</div> : null}
+          {testResult?.model ? <div className="text-xs text-gray-500">model: {testResult.model}</div> : null}
+          {typeof testResult?.latencyMs === 'number' ? <div className="text-xs text-gray-500">latency: {testResult.latencyMs}ms</div> : null}
         </div>
         {testError ? <div className="text-sm text-red-700">{testError}</div> : null}
-        {testResp?.tags?.length ? (
+        {testResult?.items?.length ? (
           <div className="flex flex-wrap gap-2">
-            {testResp.tags.map((t) => (
-              <span key={t} className="px-3 py-1.5 rounded-full border border-gray-300 bg-white text-sm">
+            {testResult.items.map((t, i) => (
+              <span key={`${t}-${i}`} className="px-3 py-1.5 rounded-full border border-gray-300 bg-white text-sm">
                 {t}
               </span>
             ))}

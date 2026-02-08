@@ -24,6 +24,7 @@ public class PostDetailDTO {
     private PostStatus status;
 
     private String authorName;
+    private String authorAvatarUrl;
     private String boardName;
 
     // Aggregates for discover/detail

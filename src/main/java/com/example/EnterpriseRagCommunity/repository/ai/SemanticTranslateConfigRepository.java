@@ -8,6 +8,5 @@ import java.util.Optional;
 
 @Repository
 public interface SemanticTranslateConfigRepository extends JpaRepository<SemanticTranslateConfigEntity, Long> {
-    Optional<SemanticTranslateConfigEntity> findTopByOrderByUpdatedAtDesc();
+    Optional<SemanticTranslateConfigEntity> findTopByGroupCodeAndSubTypeOrderByUpdatedAtDesc(String groupCode, String subType);
 }
-

@@ -2,7 +2,10 @@ package com.example.EnterpriseRagCommunity.controller.retrieval.admin;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,10 +19,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRerankTestDocumentDTO;
+import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRerankTestHitDTO;
+import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRerankTestRequest;
+import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRerankTestResponse;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalTestRequest;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RetrievalEventLogDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RetrievalHitLogDTO;
+import com.example.EnterpriseRagCommunity.service.ai.AiRerankService;
+import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalLogsService;
@@ -35,6 +45,8 @@ public class AdminRetrievalHybridController {
     private final HybridRetrievalConfigService hybridRetrievalConfigService;
     private final HybridRagRetrievalService hybridRagRetrievalService;
     private final HybridRetrievalLogsService hybridRetrievalLogsService;
+    private final AiRerankService aiRerankService;
+    private final LlmGateway llmGateway;
 
     @GetMapping("/config")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_hybrid','access'))")
@@ -64,6 +76,138 @@ public class AdminRetrievalHybridController {
         return hybridRagRetrievalService.retrieve(query, boardId, cfg, debug);
     }
 
+    @PostMapping("/test-rerank")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_hybrid','write'))")
+    public HybridRerankTestResponse testRerank(@RequestBody HybridRerankTestRequest req) {
+        HybridRerankTestResponse out = new HybridRerankTestResponse();
+        String query = req == null ? null : req.getQueryText();
+        String queryFinal = query == null ? "" : query;
+        boolean debug = req != null && Boolean.TRUE.equals(req.getDebug());
+        out.setQueryText(queryFinal);
+
+        List<HybridRerankTestDocumentDTO> docsIn = req == null ? null : req.getDocuments();
+        List<HybridRerankTestDocumentDTO> docs = new ArrayList<>();
+        if (docsIn != null) {
+            for (int i = 0; i < docsIn.size(); i++) {
+                HybridRerankTestDocumentDTO d = docsIn.get(i);
+                if (d == null) continue;
+                HybridRerankTestDocumentDTO dd = new HybridRerankTestDocumentDTO();
+                String id = d.getDocId() == null ? null : d.getDocId().trim();
+                dd.setDocId(id == null || id.isBlank() ? String.valueOf(i + 1) : id);
+                dd.setTitle(d.getTitle());
+                dd.setText(d.getText());
+                docs.add(dd);
+            }
+        }
+
+        if (queryFinal.isBlank()) {
+            out.setOk(false);
+            out.setErrorMessage("queryText is required");
+            out.setResults(List.of());
+            return out;
+        }
+        if (docs.isEmpty()) {
+            out.setOk(false);
+            out.setErrorMessage("documents is required");
+            out.setResults(List.of());
+            return out;
+        }
+
+        HybridRetrievalConfigDTO cfg;
+        if (req == null || Boolean.TRUE.equals(req.getUseSavedConfig()) || req.getConfig() == null) {
+            cfg = hybridRetrievalConfigService.getConfigOrDefault();
+        } else {
+            cfg = hybridRetrievalConfigService.normalizeConfig(req.getConfig());
+        }
+
+        int perDocMaxTokens = cfg == null || cfg.getPerDocMaxTokens() == null ? 4000 : cfg.getPerDocMaxTokens();
+        int maxInputTokens = cfg == null || cfg.getMaxInputTokens() == null ? 30000 : cfg.getMaxInputTokens();
+        int budgetLeft = Math.max(500, maxInputTokens);
+        int queryTokens = approxTokens(queryFinal);
+
+        List<HybridRerankTestDocumentDTO> docsUsed = new ArrayList<>();
+        List<String> docTexts = new ArrayList<>();
+        for (HybridRerankTestDocumentDTO d : docs) {
+            if (d == null) continue;
+            String t = buildDocText(d);
+            t = truncateByApproxTokens(t, perDocMaxTokens);
+            int tokens = approxTokens(t);
+            if (tokens <= 0) continue;
+            int cost = tokens + Math.max(0, queryTokens);
+            if (budgetLeft - cost < 200) break;
+            budgetLeft -= cost;
+            docsUsed.add(d);
+            docTexts.add(t);
+        }
+
+        if (docTexts.isEmpty()) {
+            out.setOk(false);
+            out.setErrorMessage("documents is empty after token budget truncation");
+            out.setResults(List.of());
+            return out;
+        }
+
+        int topN = req == null || req.getTopN() == null ? docsUsed.size() : Math.max(1, req.getTopN());
+        if (topN > docsUsed.size()) topN = docsUsed.size();
+        out.setTopN(topN);
+
+        long t0 = System.currentTimeMillis();
+        try {
+            AiRerankService.RerankResult rr = llmGateway.rerankOnceRouted(
+                    LlmQueueTaskType.RERANK,
+                    null,
+                    cfg == null ? null : cfg.getRerankModel(),
+                    queryFinal,
+                    docTexts,
+                    topN,
+                    "Given a web search query, retrieve relevant passages that answer the query.",
+                    false,
+                    null
+            );
+            out.setLatencyMs((int) (System.currentTimeMillis() - t0));
+            out.setOk(true);
+            out.setUsedProviderId(rr == null ? null : rr.providerId());
+            out.setUsedModel(rr == null ? null : rr.model());
+            out.setTotalTokens(rr == null ? null : rr.totalTokens());
+
+            List<HybridRerankTestHitDTO> hits = new ArrayList<>();
+            if (rr != null && rr.results() != null) {
+                for (AiRerankService.RerankHit h : rr.results()) {
+                    if (h == null) continue;
+                    int idx = h.index();
+                    if (idx < 0 || idx >= docsUsed.size()) continue;
+                    HybridRerankTestDocumentDTO d = docsUsed.get(idx);
+                    if (d == null) continue;
+                    HybridRerankTestHitDTO hh = new HybridRerankTestHitDTO();
+                    hh.setIndex(idx);
+                    hh.setRelevanceScore(h.relevanceScore());
+                    hh.setDocId(d.getDocId());
+                    hh.setTitle(d.getTitle());
+                    hh.setText(d.getText());
+                    hits.add(hh);
+                }
+            }
+            out.setResults(hits);
+        } catch (Exception e) {
+            out.setLatencyMs((int) (System.currentTimeMillis() - t0));
+            out.setOk(false);
+            out.setErrorMessage(e.getMessage());
+            out.setResults(List.of());
+        }
+
+        if (debug) {
+            Map<String, Object> dbg = new LinkedHashMap<>();
+            dbg.put("docCountInput", docs.size());
+            dbg.put("docCountUsed", docsUsed.size());
+            dbg.put("topN", out.getTopN());
+            dbg.put("perDocMaxTokens", perDocMaxTokens);
+            dbg.put("maxInputTokens", maxInputTokens);
+            dbg.put("queryTokensApprox", queryTokens);
+            out.setDebugInfo(dbg);
+        }
+        return out;
+    }
+
     @GetMapping("/logs/events")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_hybrid','access'))")
     public Page<RetrievalEventLogDTO> listEvents(
@@ -90,5 +234,37 @@ public class AdminRetrievalHybridController {
         } catch (DateTimeParseException ignored) {
             return null;
         }
+    }
+
+    private static String buildDocText(HybridRerankTestDocumentDTO d) {
+        StringBuilder sb = new StringBuilder();
+        if (d.getTitle() != null && !d.getTitle().isBlank()) sb.append(d.getTitle().trim()).append('\n');
+        if (d.getText() != null) sb.append(d.getText());
+        return sb.toString();
+    }
+
+    private static int approxTokens(String s) {
+        if (s == null || s.isEmpty()) return 0;
+        double t = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c <= 0x7f) t += 0.25;
+            else t += 1.0;
+        }
+        return (int) Math.ceil(t);
+    }
+
+    private static String truncateByApproxTokens(String s, int maxTokens) {
+        if (s == null) return "";
+        if (maxTokens <= 0) return "";
+        double t = 0;
+        int end = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            t += (c <= 0x7f) ? 0.25 : 1.0;
+            if (t > maxTokens) break;
+            end = i + 1;
+        }
+        return s.substring(0, end);
     }
 }

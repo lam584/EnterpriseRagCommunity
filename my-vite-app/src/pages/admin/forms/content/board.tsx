@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createBoard, BoardCreateDTO } from '../../../../services/boardService';
+import { adminCreateBoard, BoardCreateDTO } from '../../../../services/boardService';
 
 const BoardForm: React.FC = () => {
   const [form, setForm] = useState<BoardCreateDTO>({ tenantId: 1, parentId: null, name: '', description: '', visible: true, sortOrder: 0 });
@@ -37,7 +37,7 @@ const BoardForm: React.FC = () => {
     if (Object.keys(v).length) return;
     try {
       setSubmitting(true);
-      const created = await createBoard(form);
+      const created = await adminCreateBoard(form);
       setMessage(`已创建版块：${created.name} (#${created.id})`);
       setForm(prev => ({ tenantId: prev.tenantId, parentId: null, name: '', description: '', visible: true, sortOrder: 0 }));
     } catch (err: any) {

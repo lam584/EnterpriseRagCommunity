@@ -1,6 +1,4 @@
 package com.example.EnterpriseRagCommunity.service.moderation.es;
-
-import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesReindexResponse;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesSyncResult;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSamplesEntity;
@@ -8,6 +6,9 @@ import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarity
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSamplesRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
+import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.moderation.admin.ModerationSamplesAutoSyncConfigService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,12 +30,14 @@ public class ModerationSamplesSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(ModerationSamplesSyncService.class);
 
-    private final ModerationSimilarityProperties props;
     private final ElasticsearchTemplate template;
     private final ModerationSamplesIndexService indexService;
+    private final ModerationSamplesIndexConfigService indexConfigService;
     private final ModerationSamplesRepository samplesRepository;
     private final AiEmbeddingService embeddingService;
+    private final LlmGateway llmGateway;
     private final ModerationSimilarityConfigRepository configRepository;
+    private final ModerationSamplesAutoSyncConfigService autoSyncConfigService;
 
     public ModerationSamplesSyncResult upsertById(Long id) {
         ModerationSamplesSyncResult r = new ModerationSamplesSyncResult();
@@ -71,9 +74,14 @@ public class ModerationSamplesSyncService {
             String input = truncateByChars(input0, maxInputChars);
 
             String modelToUse = toNonBlank(cfg == null ? null : cfg.getEmbeddingModel());
-            if (modelToUse == null) modelToUse = toNonBlank(props.getEs().getEmbeddingModel());
+            if (modelToUse == null) modelToUse = toNonBlank(indexConfigService.getEmbeddingModelOrDefault());
 
-            AiEmbeddingService.EmbeddingResult er = embeddingService.embedOnce(input, modelToUse);
+            AiEmbeddingService.EmbeddingResult er;
+            if (modelToUse == null) {
+                er = llmGateway.embedOnceRouted(LlmQueueTaskType.SIMILARITY_EMBEDDING, null, null, input);
+            } else {
+                er = embeddingService.embedOnceForTask(input, modelToUse, null, LlmQueueTaskType.SIMILARITY_EMBEDDING);
+            }
             float[] vec = er == null ? null : er.vector();
             if (vec == null || vec.length == 0) {
                 r.setSuccess(false);
@@ -82,12 +90,12 @@ public class ModerationSamplesSyncService {
             }
 
             Integer cfgDims0 = cfg == null ? null : cfg.getEmbeddingDims();
-            int configuredDims = cfgDims0 != null ? cfgDims0 : props.getEs().getEmbeddingDims();
+            int configuredDims = cfgDims0 != null ? cfgDims0 : indexConfigService.getEmbeddingDimsOrDefault();
             int inferredDims = vec.length;
             if (configuredDims > 0 && configuredDims != inferredDims) {
                 r.setSuccess(false);
                 r.setMessage(
-                        "Embedding dims mismatch: app.moderation.similarity.es.embedding-dims=" + configuredDims
+                        "Embedding dims mismatch: configuredDims=" + configuredDims
                                 + " but embedding returned=" + inferredDims + " (sample id=" + id + ")");
                 return r;
             }
@@ -96,7 +104,7 @@ public class ModerationSamplesSyncService {
             indexService.ensureIndex(dimsToUse);
 
             Document doc = toEsDoc(e, vec);
-            IndexCoordinates idx = IndexCoordinates.of(props.getEs().getIndex());
+            IndexCoordinates idx = IndexCoordinates.of(indexService.getIndexName());
             template.save(doc, idx);
 
             // Refresh for immediate manual check UX
@@ -107,7 +115,7 @@ public class ModerationSamplesSyncService {
             }
 
             r.setSuccess(true);
-            r.setMessage("upserted into ES index=" + props.getEs().getIndex());
+            r.setMessage("upserted into ES index=" + indexService.getIndexName());
             return r;
         } catch (Exception ex) {
             r.setSuccess(false);
@@ -148,7 +156,7 @@ public class ModerationSamplesSyncService {
             return r;
         }
 
-        IndexCoordinates idx = IndexCoordinates.of(props.getEs().getIndex());
+        IndexCoordinates idx = IndexCoordinates.of(indexService.getIndexName());
         try {
             template.delete(String.valueOf(id), idx);
             try {
@@ -169,13 +177,22 @@ public class ModerationSamplesSyncService {
      * Incremental sync MySQL -> ES without clearing index or orphan cleanup.
      */
     public ModerationSamplesReindexResponse syncIncremental(Boolean onlyEnabled, Integer batchSize, Long fromId) {
-        return syncByCursor(onlyEnabled, batchSize, fromId, false, false);
+        Long effectiveFromId = fromId;
+        if (effectiveFromId == null || effectiveFromId <= 0) {
+            long cursor = autoSyncConfigService.getIncrementalSyncCursorLastIdOrDefault(0);
+            if (cursor > 0) effectiveFromId = cursor;
+        }
+        ModerationSamplesReindexResponse resp = syncByCursor(onlyEnabled, batchSize, effectiveFromId, false, false);
+        autoSyncConfigService.markIncrementalSyncFinished(resp.getLastId());
+        return resp;
     }
 
     public ModerationSamplesReindexResponse reindexAll(Boolean onlyEnabled, Integer batchSize, Long fromId) {
         boolean doClear = (fromId == null || fromId <= 0);
         boolean doCleanupOrphans = doClear; // only meaningful for full rebuild
-        return syncByCursor(onlyEnabled, batchSize, fromId, doClear, doCleanupOrphans);
+        ModerationSamplesReindexResponse resp = syncByCursor(onlyEnabled, batchSize, fromId, doClear, doCleanupOrphans);
+        autoSyncConfigService.updateIncrementalSyncCursorLastId(resp.getLastId() == null ? 0 : resp.getLastId());
+        return resp;
     }
 
     private ModerationSamplesReindexResponse syncByCursor(Boolean onlyEnabled, Integer batchSize, Long fromId,
@@ -254,16 +271,17 @@ public class ModerationSamplesSyncService {
         resp.setSuccess(success);
         resp.setFailed(failed);
         resp.setFailedIds(failedIds);
+        resp.setLastId(lastId <= 0 ? null : lastId);
         return resp;
     }
 
     private void clearAndRecreateIndex() {
-        IndexCoordinates idx = IndexCoordinates.of(props.getEs().getIndex());
+        IndexCoordinates idx = IndexCoordinates.of(indexService.getIndexName());
         var ops = template.indexOps(idx);
         if (ops.exists()) {
             boolean ok = ops.delete();
             if (!ok) {
-                throw new IllegalStateException("failed to delete ES index=" + props.getEs().getIndex());
+                throw new IllegalStateException("failed to delete ES index=" + indexService.getIndexName());
             }
         }
         // recreate using configured dims (or 0). Actual dims will be validated on first upsert.
@@ -295,7 +313,7 @@ public class ModerationSamplesSyncService {
         long failed = 0;
         List<Long> failedIds = new ArrayList<>();
 
-        IndexCoordinates idx = IndexCoordinates.of(props.getEs().getIndex());
+        IndexCoordinates idx = IndexCoordinates.of(indexService.getIndexName());
         if (!template.indexOps(idx).exists()) {
             return new OrphanCleanupStat(0, 0, List.of());
         }

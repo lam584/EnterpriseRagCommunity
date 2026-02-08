@@ -8,6 +8,10 @@ import { changePassword } from '../../../../services/accountService';
 import { sendAccountEmailVerificationCode } from '../../../../services/emailVerificationService';
 import { validateChangePasswordForm } from './accountSecurity.validation';
 import {
+  getMySecurity2faPolicy,
+  type Security2faPolicyStatusDTO,
+} from '../../../../services/security2faPolicyAccountService';
+import {
   disableTotp,
   enrollTotp,
   getTotpPolicy,
@@ -34,6 +38,7 @@ export default function AccountSecurityPage() {
 
   const [totpPolicy, setTotpPolicy] = useState<TotpAdminSettingsDTO | null>(null);
   const [totpStatus, setTotpStatus] = useState<TotpStatusResponse | null>(null);
+  const [securityPolicy, setSecurityPolicy] = useState<Security2faPolicyStatusDTO | null>(null);
   const [totpLoading, setTotpLoading] = useState(false);
   const [totpErrorMsg, setTotpErrorMsg] = useState<string | null>(null);
   const [totpEnrollSaving, setTotpEnrollSaving] = useState(false);
@@ -92,6 +97,14 @@ export default function AccountSecurityPage() {
 
   const enabled = Boolean(totpStatus?.enabled);
   const masterKeyConfigured = totpStatus?.masterKeyConfigured !== false;
+  const policyLoaded = securityPolicy != null;
+  const totpAllowedByPolicy = securityPolicy?.totpAllowed ?? true;
+  const totpRequiredByPolicy = securityPolicy?.totpRequired ?? false;
+  const totpCanDisableByPolicy = securityPolicy?.totpCanDisable ?? true;
+  const emailOtpAllowedByPolicy = securityPolicy?.emailOtpAllowed ?? true;
+  const emailOtpRequiredByPolicy = securityPolicy?.emailOtpRequired ?? false;
+  const canUseTotpForPwd = enabled && totpAllowedByPolicy;
+  const canUseEmailForPwd = emailOtpAllowedByPolicy;
 
   const maxSkew = useMemo(() => {
     const v = typeof totpPolicy?.maxSkew === 'number' ? totpPolicy.maxSkew : 2;
@@ -103,9 +116,14 @@ export default function AccountSecurityPage() {
     void (async () => {
       setTotpLoading(true);
       try {
-        const [policy, status] = await Promise.all([getTotpPolicy(), getTotpStatus()]);
+        const [policy, status, secPolicy] = await Promise.all([
+          getTotpPolicy(),
+          getTotpStatus(),
+          getMySecurity2faPolicy().catch(() => null),
+        ]);
         setTotpPolicy(policy);
         setTotpStatus(status);
+        setSecurityPolicy(secPolicy);
         setEnrollAlg(String(policy.defaultAlgorithm ?? 'SHA1'));
         setEnrollDigits(Number(policy.defaultDigits ?? 6) || 6);
         setEnrollPeriod(Number(policy.defaultPeriodSeconds ?? 30) || 30);
@@ -124,8 +142,12 @@ export default function AccountSecurityPage() {
     setTotpLoading(true);
     try {
       setTotpErrorMsg(null);
-      const status = await getTotpStatus();
+      const [status, secPolicy] = await Promise.all([
+        getTotpStatus(),
+        getMySecurity2faPolicy().catch(() => null),
+      ]);
       setTotpStatus(status);
+      setSecurityPolicy(secPolicy);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '刷新失败';
       setTotpErrorMsg(msg);
@@ -165,27 +187,78 @@ export default function AccountSecurityPage() {
       return;
     }
 
-    // Check verification code
-    if (enabled) {
-      if (verifyMethod === 'totp') {
-        if (!changeTotpCode.trim()) {
-          setErrorMsg('请输入动态验证码');
-          toast.error('请输入动态验证码');
-          return;
+    const totpCodeTrimmed = changeTotpCode.trim();
+    const emailCodeTrimmed = changeEmailCode.trim();
+    const canUseTotpForPwd = enabled && totpAllowedByPolicy;
+    const canUseEmailForPwd = emailOtpAllowedByPolicy;
+
+    if (policyLoaded) {
+      if (totpRequiredByPolicy && !enabled) {
+        setErrorMsg('管理员已强制启用 TOTP，请先启用后再修改密码');
+        toast.error('管理员已强制启用 TOTP，请先启用后再修改密码');
+        return;
+      }
+      if (totpRequiredByPolicy && !totpCodeTrimmed) {
+        setErrorMsg('请输入动态验证码');
+        toast.error('请输入动态验证码');
+        return;
+      }
+      if (emailOtpRequiredByPolicy && !emailCodeTrimmed) {
+        setErrorMsg('请输入邮箱验证码');
+        toast.error('请输入邮箱验证码');
+        return;
+      }
+
+      if (!totpRequiredByPolicy && !emailOtpRequiredByPolicy) {
+        if (canUseTotpForPwd && canUseEmailForPwd) {
+          if (verifyMethod === 'totp') {
+            if (!totpCodeTrimmed) {
+              setErrorMsg('请输入动态验证码');
+              toast.error('请输入动态验证码');
+              return;
+            }
+          } else {
+            if (!emailCodeTrimmed) {
+              setErrorMsg('请输入邮箱验证码');
+              toast.error('请输入邮箱验证码');
+              return;
+            }
+          }
+        } else if (canUseTotpForPwd) {
+          if (!totpCodeTrimmed) {
+            setErrorMsg('请输入动态验证码');
+            toast.error('请输入动态验证码');
+            return;
+          }
+        } else if (canUseEmailForPwd) {
+          if (!emailCodeTrimmed) {
+            setErrorMsg('请输入邮箱验证码');
+            toast.error('请输入邮箱验证码');
+            return;
+          }
+        }
+      }
+    } else {
+      if (enabled) {
+        if (verifyMethod === 'totp') {
+          if (!totpCodeTrimmed) {
+            setErrorMsg('请输入动态验证码');
+            toast.error('请输入动态验证码');
+            return;
+          }
+        } else {
+          if (!emailCodeTrimmed) {
+            setErrorMsg('请输入邮箱验证码');
+            toast.error('请输入邮箱验证码');
+            return;
+          }
         }
       } else {
-        if (!changeEmailCode.trim()) {
+        if (!emailCodeTrimmed) {
           setErrorMsg('请输入邮箱验证码');
           toast.error('请输入邮箱验证码');
           return;
         }
-      }
-    } else {
-      // TOTP not enabled, must use email
-      if (!changeEmailCode.trim()) {
-        setErrorMsg('请输入邮箱验证码');
-        toast.error('请输入邮箱验证码');
-        return;
       }
     }
 
@@ -195,8 +268,12 @@ export default function AccountSecurityPage() {
       await changePassword({
         currentPassword: oldPwd,
         newPassword: newPwd,
-        totpCode: (enabled && verifyMethod === 'totp') ? changeTotpCode.trim() : undefined,
-        emailCode: (!enabled || verifyMethod === 'email') ? changeEmailCode.trim() : undefined,
+        totpCode: policyLoaded
+          ? (totpRequiredByPolicy ? totpCodeTrimmed : (enabled && totpAllowedByPolicy && (!emailOtpAllowedByPolicy || verifyMethod === 'totp') ? totpCodeTrimmed : undefined))
+          : ((enabled && verifyMethod === 'totp') ? totpCodeTrimmed : undefined),
+        emailCode: policyLoaded
+          ? (emailOtpRequiredByPolicy ? emailCodeTrimmed : (emailOtpAllowedByPolicy && (!enabled || !totpAllowedByPolicy || verifyMethod === 'email') ? emailCodeTrimmed : undefined))
+          : ((!enabled || verifyMethod === 'email') ? emailCodeTrimmed : undefined),
       });
       toast.success('密码修改成功，请重新登录');
       setOldPwd('');
@@ -264,6 +341,12 @@ export default function AccountSecurityPage() {
           当前状态：{enabled ? '已启用' : '未启用'}
           {enabled && totpStatus?.verifiedAt ? <span className="text-gray-500">（verifiedAt={totpStatus.verifiedAt}）</span> : null}
         </div>
+        {policyLoaded && enabled && totpRequiredByPolicy ? (
+          <div className="text-xs text-green-700">管理员已强制启用 TOTP（当前账号已满足）。</div>
+        ) : null}
+        {policyLoaded && enabled && !totpCanDisableByPolicy ? (
+          <div className="text-xs text-amber-700">管理员已强制启用 TOTP，无法自行停用。</div>
+        ) : null}
 
         {totpStatus?.masterKeyConfigured === false ? (
           <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -283,6 +366,16 @@ export default function AccountSecurityPage() {
 
         {!enabled ? (
           <div className="space-y-3">
+            {policyLoaded && totpRequiredByPolicy ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                管理员已强制启用 TOTP：请完成绑定与验证后再进行敏感操作。
+              </div>
+            ) : null}
+            {policyLoaded && !totpAllowedByPolicy ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                管理员已禁止启用 TOTP。
+              </div>
+            ) : null}
             {(String(enrollAlg).toUpperCase() !== 'SHA1' || Number(enrollDigits) !== 6 || Number(enrollPeriod) !== 30) ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 提示：当使用 SHA256/SHA512/8 位时，请优先用“扫码”绑定。注：Microsoft Authenticator只支持SHA1；如需60秒步长请使用支持自定义算法的认证器（例如Aegis / 2FAS）。
@@ -353,7 +446,7 @@ export default function AccountSecurityPage() {
 
             <button
               type="button"
-              disabled={totpEnrollSaving || totpLoading || !masterKeyConfigured}
+              disabled={totpEnrollSaving || totpLoading || !masterKeyConfigured || (policyLoaded && !totpAllowedByPolicy)}
               onClick={async () => {
                 try {
                   setTotpEnrollSaving(true);
@@ -432,41 +525,43 @@ export default function AccountSecurityPage() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_auto] md:items-end">
-                  <div className="md:col-span-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
-                      <input
-                        value={totpEmailCode}
-                        onChange={(e) => {
-                          setTotpEmailCode(e.target.value);
-                          if (totpErrorMsg) setTotpErrorMsg(null);
+                  {emailOtpRequiredByPolicy ? (
+                    <div className="md:col-span-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+                        <input
+                          value={totpEmailCode}
+                          onChange={(e) => {
+                            setTotpEmailCode(e.target.value);
+                            if (totpErrorMsg) setTotpErrorMsg(null);
+                          }}
+                          className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
+                          placeholder="管理员已强制要求时必填"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!emailOtpAllowedByPolicy || sendingTotpEmailCode || totpVerifySaving || totpEmailCountdown > 0}
+                        onClick={async () => {
+                          try {
+                            setSendingTotpEmailCode(true);
+                            await sendAccountEmailVerificationCode('TOTP_ENABLE');
+                            setTotpEmailCountdown(180);
+                            toast.success('验证码已发送');
+                          } catch (e) {
+                            const msg = e instanceof Error ? e.message : '发送失败';
+                            setTotpErrorMsg(msg);
+                            toast.error(msg);
+                          } finally {
+                            setSendingTotpEmailCode(false);
+                          }
                         }}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
-                        placeholder="开启邮箱验证时必填"
-                      />
+                        className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
+                      >
+                        {sendingTotpEmailCode ? '发送中...' : totpEmailCountdown > 0 ? `${totpEmailCountdown}s` : '发送验证码'}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      disabled={sendingTotpEmailCode || totpVerifySaving || totpEmailCountdown > 0}
-                      onClick={async () => {
-                        try {
-                          setSendingTotpEmailCode(true);
-                          await sendAccountEmailVerificationCode('TOTP_ENABLE');
-                          setTotpEmailCountdown(180);
-                          toast.success('验证码已发送');
-                        } catch (e) {
-                          const msg = e instanceof Error ? e.message : '发送失败';
-                          setTotpErrorMsg(msg);
-                          toast.error(msg);
-                        } finally {
-                          setSendingTotpEmailCode(false);
-                        }
-                      }}
-                      className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                    >
-                      {sendingTotpEmailCode ? '发送中...' : totpEmailCountdown > 0 ? `${totpEmailCountdown}s` : '发送验证码'}
-                    </button>
-                  </div>
+                  ) : null}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">输入验证码以启用</label>
@@ -507,7 +602,11 @@ export default function AccountSecurityPage() {
                         }
                         setTotpVerifySaving(true);
                         setTotpErrorMsg(null);
-                        const next = await verifyTotp(verifyCode, verifyPassword, totpEmailCode.trim() ? totpEmailCode.trim() : undefined);
+                        const next = await verifyTotp(
+                          verifyCode,
+                          verifyPassword,
+                          emailOtpRequiredByPolicy && totpEmailCode.trim() ? totpEmailCode.trim() : undefined
+                        );
                         setTotpStatus(next);
                         setEnrollResult(null);
                         setVerifyCode('');
@@ -539,8 +638,12 @@ export default function AccountSecurityPage() {
               <div>
                 <button
                   type="button"
-                  onClick={() => setShowDisableInput(true)}
-                  className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700"
+                  disabled={!totpCanDisableByPolicy}
+                  onClick={() => {
+                    if (!totpCanDisableByPolicy) return;
+                    setShowDisableInput(true);
+                  }}
+                  className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   停用
                 </button>
@@ -562,7 +665,7 @@ export default function AccountSecurityPage() {
                 </div>
                 <button
                   type="button"
-                  disabled={totpDisableSaving}
+                  disabled={!totpCanDisableByPolicy || totpDisableSaving}
                   onClick={async () => {
                     try {
                       setTotpDisableSaving(true);
@@ -671,32 +774,15 @@ export default function AccountSecurityPage() {
 
           {pwdStep === 1 && (
             <>
-              {enabled ? (
+              {policyLoaded ? (
                 <div className="space-y-3">
-                  <div className="flex gap-6 mb-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="verifyMethod"
-                        checked={verifyMethod === 'totp'}
-                        onChange={() => setVerifyMethod('totp')}
-                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">动态验证码</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="verifyMethod"
-                        checked={verifyMethod === 'email'}
-                        onChange={() => setVerifyMethod('email')}
-                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">邮箱验证码</span>
-                    </label>
-                  </div>
+                  {totpRequiredByPolicy && !enabled ? (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                      管理员已强制启用 TOTP；当前账号尚未启用，请先完成 TOTP 绑定后再修改密码。
+                    </div>
+                  ) : null}
 
-                  {verifyMethod === 'totp' && (
+                  {totpRequiredByPolicy ? (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">动态验证码</label>
                       <input
@@ -708,9 +794,9 @@ export default function AccountSecurityPage() {
                         placeholder="请输入 6 或 8 位数字"
                       />
                     </div>
-                  )}
+                  ) : null}
 
-                  {verifyMethod === 'email' && (
+                  {emailOtpRequiredByPolicy ? (
                     <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
@@ -724,7 +810,7 @@ export default function AccountSecurityPage() {
                       </div>
                       <button
                         type="button"
-                        disabled={sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
+                        disabled={!canUseEmailForPwd || sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
                         onClick={async () => {
                           try {
                             setSendingChangeEmailCode(true);
@@ -744,42 +830,244 @@ export default function AccountSecurityPage() {
                         {sendingChangeEmailCode ? '发送中...' : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : '发送验证码'}
                       </button>
                     </div>
-                  )}
+                  ) : null}
+
+                  {!totpRequiredByPolicy && !emailOtpRequiredByPolicy ? (
+                    canUseTotpForPwd && canUseEmailForPwd ? (
+                      <div className="space-y-3">
+                        <div className="flex gap-6 mb-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="verifyMethod"
+                              checked={verifyMethod === 'totp'}
+                              onChange={() => setVerifyMethod('totp')}
+                              className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                            />
+                            <span className="text-sm font-medium text-gray-700">动态验证码</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="verifyMethod"
+                              checked={verifyMethod === 'email'}
+                              onChange={() => setVerifyMethod('email')}
+                              className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                            />
+                            <span className="text-sm font-medium text-gray-700">邮箱验证码</span>
+                          </label>
+                        </div>
+
+                        {verifyMethod === 'totp' ? (
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">动态验证码</label>
+                            <input
+                              type="text"
+                              value={changeTotpCode}
+                              onChange={(e) => setChangeTotpCode(e.target.value)}
+                              inputMode="numeric"
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              placeholder="请输入 6 或 8 位数字"
+                            />
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+                              <input
+                                type="text"
+                                value={changeEmailCode}
+                                onChange={(e) => setChangeEmailCode(e.target.value)}
+                                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="请输入验证码"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              disabled={!canUseEmailForPwd || sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
+                              onClick={async () => {
+                                try {
+                                  setSendingChangeEmailCode(true);
+                                  await sendAccountEmailVerificationCode('CHANGE_PASSWORD');
+                                  setPwdEmailCountdown(180);
+                                  toast.success('验证码已发送');
+                                } catch (e) {
+                                  const msg = e instanceof Error ? e.message : '发送失败';
+                                  setErrorMsg(msg);
+                                  toast.error(msg);
+                                } finally {
+                                  setSendingChangeEmailCode(false);
+                                }
+                              }}
+                              className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
+                            >
+                              {sendingChangeEmailCode ? '发送中...' : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : '发送验证码'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ) : canUseTotpForPwd ? (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">动态验证码</label>
+                        <input
+                          type="text"
+                          value={changeTotpCode}
+                          onChange={(e) => setChangeTotpCode(e.target.value)}
+                          inputMode="numeric"
+                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="请输入 6 或 8 位数字"
+                        />
+                      </div>
+                    ) : canUseEmailForPwd ? (
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+                          <input
+                            type="text"
+                            value={changeEmailCode}
+                            onChange={(e) => setChangeEmailCode(e.target.value)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="请输入验证码"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!canUseEmailForPwd || sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
+                          onClick={async () => {
+                            try {
+                              setSendingChangeEmailCode(true);
+                              await sendAccountEmailVerificationCode('CHANGE_PASSWORD');
+                              setPwdEmailCountdown(180);
+                              toast.success('验证码已发送');
+                            } catch (e) {
+                              const msg = e instanceof Error ? e.message : '发送失败';
+                              setErrorMsg(msg);
+                              toast.error(msg);
+                            } finally {
+                              setSendingChangeEmailCode(false);
+                            }
+                          }}
+                          className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
+                        >
+                          {sendingChangeEmailCode ? '发送中...' : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : '发送验证码'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">当前无需验证码。</div>
+                    )
+                  ) : null}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
-                    <input
-                      type="text"
-                      value={changeEmailCode}
-                      onChange={(e) => setChangeEmailCode(e.target.value)}
-                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="开启邮箱验证时必填"
-                    />
+                enabled ? (
+                  <div className="space-y-3">
+                    <div className="flex gap-6 mb-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="verifyMethod"
+                          checked={verifyMethod === 'totp'}
+                          onChange={() => setVerifyMethod('totp')}
+                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">动态验证码</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="verifyMethod"
+                          checked={verifyMethod === 'email'}
+                          onChange={() => setVerifyMethod('email')}
+                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700">邮箱验证码</span>
+                      </label>
+                    </div>
+
+                    {verifyMethod === 'totp' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">动态验证码</label>
+                        <input
+                          type="text"
+                          value={changeTotpCode}
+                          onChange={(e) => setChangeTotpCode(e.target.value)}
+                          inputMode="numeric"
+                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="请输入 6 或 8 位数字"
+                        />
+                      </div>
+                    )}
+
+                    {verifyMethod === 'email' && (
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+                          <input
+                            type="text"
+                            value={changeEmailCode}
+                            onChange={(e) => setChangeEmailCode(e.target.value)}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="请输入验证码"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
+                          onClick={async () => {
+                            try {
+                              setSendingChangeEmailCode(true);
+                              await sendAccountEmailVerificationCode('CHANGE_PASSWORD');
+                              setPwdEmailCountdown(180);
+                              toast.success('验证码已发送');
+                            } catch (e) {
+                              const msg = e instanceof Error ? e.message : '发送失败';
+                              setErrorMsg(msg);
+                              toast.error(msg);
+                            } finally {
+                              setSendingChangeEmailCode(false);
+                            }
+                          }}
+                          className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
+                        >
+                          {sendingChangeEmailCode ? '发送中...' : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : '发送验证码'}
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    disabled={sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
-                    onClick={async () => {
-                      try {
-                        setSendingChangeEmailCode(true);
-                        await sendAccountEmailVerificationCode('CHANGE_PASSWORD');
-                        setPwdEmailCountdown(180);
-                        toast.success('验证码已发送');
-                      } catch (e) {
-                        const msg = e instanceof Error ? e.message : '发送失败';
-                        setErrorMsg(msg);
-                        toast.error(msg);
-                      } finally {
-                        setSendingChangeEmailCode(false);
-                      }
-                    }}
-                    className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                  >
-                    {sendingChangeEmailCode ? '发送中...' : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : '发送验证码'}
-                  </button>
-                </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+                      <input
+                        type="text"
+                        value={changeEmailCode}
+                        onChange={(e) => setChangeEmailCode(e.target.value)}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="开启邮箱验证时必填"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
+                      onClick={async () => {
+                        try {
+                          setSendingChangeEmailCode(true);
+                          await sendAccountEmailVerificationCode('CHANGE_PASSWORD');
+                          setPwdEmailCountdown(180);
+                          toast.success('验证码已发送');
+                        } catch (e) {
+                          const msg = e instanceof Error ? e.message : '发送失败';
+                          setErrorMsg(msg);
+                          toast.error(msg);
+                        } finally {
+                          setSendingChangeEmailCode(false);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
+                    >
+                      {sendingChangeEmailCode ? '发送中...' : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : '发送验证码'}
+                    </button>
+                  </div>
+                )
               )}
 
               <div className="flex gap-2 pt-2">

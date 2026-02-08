@@ -17,9 +17,8 @@ public class UserSettingsUpdateDTO {
     @ApiModelProperty(value = "用户ID")
     private Optional<Long> userId = Optional.empty();
 
-    @Size(max = 64)
     @ApiModelProperty(value = "设置键")
-    private Optional<String> k = Optional.empty();
+    private Optional<@Size(max = 64) String> k = Optional.empty();
 
     @ApiModelProperty(value = "设置值(JSON)")
     private Optional<Map<String, Object>> v = Optional.empty();

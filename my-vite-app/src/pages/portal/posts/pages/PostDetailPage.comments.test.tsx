@@ -181,4 +181,61 @@ describe('PostDetailPage (comments)', () => {
     fireEvent.click(await screen.findByRole('button', { name: '关闭' }));
     expect(screen.queryByText('全部对话')).toBeNull();
   });
+
+  it('supports commentId deep-link by expanding thread and scrolling to comment anchor', async () => {
+    const scrollSpy = vi.fn();
+    (Element.prototype as any).scrollIntoView = scrollSpy;
+
+    const comments = [
+      { id: 100, postId: 1, parentId: null, content: 'root', authorName: 'Alice', createdAt: '2026-01-01T00:00:00Z', metadata: { languages: ['en'] } },
+      { id: 101, postId: 1, parentId: 100, content: 'c1', authorName: 'Bob', createdAt: '2026-01-04T00:00:00Z', metadata: { languages: ['en'] } },
+      { id: 102, postId: 1, parentId: 100, content: 'c2', authorName: 'Cat', createdAt: '2026-01-03T00:00:00Z', metadata: { languages: ['en'] } },
+      { id: 103, postId: 1, parentId: 100, content: 'c3', authorName: 'Dog', createdAt: '2026-01-02T00:00:00Z', metadata: { languages: ['zh'] } },
+      { id: 104, postId: 1, parentId: 100, content: 'c4', authorName: 'Eve', createdAt: '2026-01-01T00:00:00Z', metadata: { languages: ['en'] } },
+    ];
+
+    (listTags as any).mockResolvedValue([]);
+    (getTranslateConfig as any).mockResolvedValue({ enabled: true, allowedTargetLanguages: [] });
+    (getMyTranslatePreferences as any).mockResolvedValue({
+      targetLanguage: '简体中文（Simplified Chinese）',
+      autoTranslatePosts: false,
+      autoTranslateComments: false,
+    });
+    (getPost as any).mockResolvedValue({
+      id: 1,
+      boardId: 1,
+      title: 't',
+      content: 'c',
+      contentFormat: 'MARKDOWN',
+      metadata: { languages: ['zh'] },
+      tags: [],
+      hotScore: 0,
+      likedByMe: false,
+      favoritedByMe: false,
+      reactionCount: 0,
+      favoriteCount: 0,
+      commentCount: comments.length,
+    });
+    (listPostComments as any).mockResolvedValue({
+      content: comments,
+      totalPages: 1,
+      totalElements: comments.length,
+      number: 0,
+      size: 20,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/posts/1?commentId=104#comment-104']}>
+        <Routes>
+          <Route path="/posts/:postId" element={<PostDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('root');
+    await screen.findByText('c4');
+    expect(document.getElementById('comment-104')).not.toBeNull();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(scrollSpy).toHaveBeenCalled();
+  });
 });

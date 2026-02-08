@@ -148,3 +148,60 @@ export async function adminExportAuditLogsCsv(query: Omit<AuditLogPageQuery, 'pa
 
   return res.blob();
 }
+
+export async function portalListMyAuditLogs(query: Omit<AuditLogPageQuery, 'actorId' | 'actorName'> = {}): Promise<SpringPage<AuditLogDTO>> {
+  const qs = buildQuery({
+    page: query.page ?? 1,
+    pageSize: query.pageSize ?? 20,
+    keyword: query.keyword,
+    action: query.action,
+    entityType: query.entityType,
+    entityId: query.entityId,
+    result: query.result,
+    createdFrom: query.createdFrom,
+    createdTo: query.createdTo,
+    traceId: query.traceId,
+    sort: query.sort ?? 'createdAt,desc',
+  });
+
+  const res = await fetch(apiUrl(`/api/portal/audit-logs/me${qs}`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取治理记录失败');
+  return data as SpringPage<AuditLogDTO>;
+}
+
+export async function portalExportMyAuditLogsCsv(
+  query: Omit<AuditLogPageQuery, 'page' | 'pageSize' | 'actorId' | 'actorName'> = {}
+): Promise<Blob> {
+  const csrfToken = await getCsrfToken();
+  const qs = buildQuery({
+    keyword: query.keyword,
+    action: query.action,
+    entityType: query.entityType,
+    entityId: query.entityId,
+    result: query.result,
+    createdFrom: query.createdFrom,
+    createdTo: query.createdTo,
+    traceId: query.traceId,
+    sort: query.sort ?? 'createdAt,desc',
+  });
+
+  const res = await fetch(apiUrl(`/api/portal/audit-logs/me/export.csv${qs}`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'X-XSRF-TOKEN': csrfToken,
+    },
+  });
+
+  if (!res.ok) {
+    const data: unknown = await res.json().catch(() => ({}));
+    throw new Error(getBackendMessage(data) || '导出失败');
+  }
+
+  return res.blob();
+}

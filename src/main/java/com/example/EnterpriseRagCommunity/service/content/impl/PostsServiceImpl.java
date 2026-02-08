@@ -2,9 +2,12 @@ package com.example.EnterpriseRagCommunity.service.content.impl;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -19,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.dto.content.PostsPublishDTO;
 import com.example.EnterpriseRagCommunity.dto.content.PostsUpdateDTO;
+import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.content.PostAttachmentsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.TagsEntity;
@@ -38,14 +42,17 @@ import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepositor
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.AiPostRiskTagService;
 import com.example.EnterpriseRagCommunity.service.ai.AiPostSummaryTriggerService;
+import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
+import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexVisibilitySyncService;
 
 import jakarta.transaction.Transactional;
+import org.springframework.security.access.AccessDeniedException;
 
 @Service
 public class PostsServiceImpl implements PostsService {
@@ -89,6 +96,12 @@ public class PostsServiceImpl implements PostsService {
     @Autowired
     private RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
 
+    @Autowired
+    private HybridRagRetrievalService hybridRagRetrievalService;
+
+    @Autowired
+    private BoardAccessControlService boardAccessControlService;
+
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
@@ -106,6 +119,13 @@ public class PostsServiceImpl implements PostsService {
         if (dto == null) throw new IllegalArgumentException("参数不能为空");
 
         Long me = currentUserIdOrThrow();
+
+        if (dto.getBoardId() == null) {
+            throw new IllegalArgumentException("boardId 不能为空");
+        }
+        if (!boardAccessControlService.canPostBoard(dto.getBoardId(), boardAccessControlService.currentUserRoleIds())) {
+            throw new AccessDeniedException("无权在该版块发帖");
+        }
 
         PostsEntity post = new PostsEntity();
         post.setTenantId(null);
@@ -190,11 +210,21 @@ public class PostsServiceImpl implements PostsService {
 
                 String fileName = fa.getUrl();
                 if (fileName != null) {
-                    int slash = fileName.lastIndexOf('/');
+                    int q = fileName.indexOf('?');
+                    if (q >= 0) fileName = fileName.substring(0, q);
+                    int h = fileName.indexOf('#');
+                    if (h >= 0) fileName = fileName.substring(0, h);
+                    int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
                     fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
                 }
-                if (fileName == null || fileName.isBlank()) {
+                fileName = (fileName == null ? "" : fileName);
+                fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
+                fileName = fileName.replaceAll("[\\\\/]+", "_");
+                if (fileName.isBlank()) {
                     fileName = "file";
+                }
+                if (fileName.length() > 512) {
+                    fileName = fileName.substring(fileName.length() - 512);
                 }
 
                 PostAttachmentsEntity pa = new PostAttachmentsEntity();
@@ -237,51 +267,6 @@ public class PostsServiceImpl implements PostsService {
         if (s.length() > 96) s = s.substring(0, 96);
         s = s.replaceAll("^-+|-+$", "");
         return s.isBlank() ? null : s;
-    }
-
-    private static boolean isLikelyFullTextUnfriendlyKeyword(String keyword) {
-        if (keyword == null) return true;
-        String s = keyword.trim();
-        if (s.isEmpty()) return true;
-
-        // MySQL/InnoDB FULLTEXT often ignores short tokens (default min token size is commonly 3 or 4).
-        // To guarantee admin search works for short substrings like "wre", we fallback to LIKE.
-        // Note: This is a correctness-first choice; FULLTEXT remains the default for longer pure-word queries.
-        if (s.length() < 4) return true;
-
-        boolean hasDigit = false;
-        boolean hasLetter = false;
-        boolean hasNonAlnum = false;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (Character.isDigit(c)) hasDigit = true;
-            else if (Character.isLetter(c)) hasLetter = true;
-            else if (!Character.isWhitespace(c)) hasNonAlnum = true;
-        }
-
-        boolean allDigits = hasDigit && !hasLetter && !hasNonAlnum;
-
-        // Numeric-only: FULLTEXT tokenization/prefix behavior is often surprising.
-        if (allDigits) return true;
-
-        // Symbols/punctuation: fall back to LIKE for predictable substring behavior.
-        if (hasNonAlnum) return true;
-
-        // Mixed letter+digit (e.g. ids like "tyujyswreb2025"): users often expect substring match.
-        if (hasDigit && hasLetter) return true;
-
-        // For pure-letter single tokens, don't blindly fallback.
-        // FULLTEXT can handle prefix search via "wre*" and is usually faster.
-        // Keep AUTO on FULLTEXT unless the keyword is very long.
-        return s.length() >= 12;
-    }
-
-    private static String escapeForLike(String raw) {
-        if (raw == null) return null;
-        // ESCAPE '\\' in SQL; here we escape backslash first, then % and _.
-        return raw.replace("\\\\", "\\\\\\\\")
-                .replace("%", "\\\\%")
-                .replace("_", "\\\\_");
     }
 
     @Override
@@ -345,27 +330,13 @@ public class PostsServiceImpl implements PostsService {
             return new PageImpl<>(content, PageRequest.of(safePage - 1, safePageSize), content.size());
         }
 
-        String mode = (searchMode == null || searchMode.isBlank()) ? "AUTO" : searchMode.trim().toUpperCase(Locale.ROOT);
-
-        // 2) Keyword search path (FULLTEXT / LIKE / AUTO)
+        // 2) Keyword search path (vector retrieval)
         if (keyword != null && !keyword.isBlank()) {
             String kw = keyword.trim();
-            Pageable unsortedPageable = PageRequest.of(safePage - 1, safePageSize);
-
-            if ("LIKE".equals(mode) || ("AUTO".equals(mode) && isLikelyFullTextUnfriendlyKeyword(kw))) {
-                String escaped = escapeForLike(kw);
-                // keyword search should also respect status filter (null => ALL)
-                String statusStr = status == null ? null : status.name();
-                return postsRepository.searchLikeOrderByCreatedAtDescWithStatus(escaped, statusStr, unsortedPageable);
+            if (status != null && status != PostStatus.PUBLISHED) {
+                return new PageImpl<>(List.of(), PageRequest.of(safePage - 1, safePageSize), 0);
             }
-
-            // default FULLTEXT
-            String q = kw;
-            if (!q.endsWith("*")) {
-                q = q + "*";
-            }
-            String statusStr = status == null ? null : status.name();
-            return postsRepository.searchFullTextOrderByCreatedAtDescWithStatus(q, statusStr, unsortedPageable);
+            return vectorSearchPublished(kw, boardId, authorId, createdFrom, createdTo, safePage, safePageSize);
         }
 
         // 3) Non-keyword filtering (spec)
@@ -387,6 +358,59 @@ public class PostsServiceImpl implements PostsService {
         }
 
         return postsRepository.findAll(spec, pageable);
+    }
+
+    private Page<PostsEntity> vectorSearchPublished(String keyword, Long boardId, Long authorId, LocalDate createdFrom, LocalDate createdTo, int page, int pageSize) {
+        int safePage = Math.max(page, 1);
+        int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
+        int fetchLimit = Math.min(500, Math.max(50, (safePage + 1) * safePageSize * 5));
+
+        HybridRetrievalConfigDTO cfg = new HybridRetrievalConfigDTO();
+        cfg.setBm25K(0);
+        cfg.setVecK(fetchLimit);
+        cfg.setHybridK(fetchLimit);
+        cfg.setMaxDocs(fetchLimit);
+        cfg.setRerankEnabled(false);
+
+        HybridRagRetrievalService.RetrieveResult rr = hybridRagRetrievalService.retrieve(keyword, boardId, cfg, false);
+        List<HybridRagRetrievalService.DocHit> hits = rr == null ? List.of() : (rr.getFinalHits() == null ? List.of() : rr.getFinalHits());
+
+        LinkedHashSet<Long> uniq = new LinkedHashSet<>();
+        for (HybridRagRetrievalService.DocHit h : hits) {
+            if (h == null || h.getPostId() == null) continue;
+            uniq.add(h.getPostId());
+        }
+        List<Long> ids = new ArrayList<>(uniq);
+
+        int offset = (safePage - 1) * safePageSize;
+        if (offset >= ids.size()) {
+            return new PageImpl<>(List.of(), PageRequest.of(safePage - 1, safePageSize), ids.size());
+        }
+        int end = Math.min(ids.size(), offset + safePageSize);
+        List<Long> slice = ids.subList(offset, end);
+
+        Map<Long, PostsEntity> byId = new HashMap<>();
+        for (PostsEntity p : postsRepository.findByIdInAndIsDeletedFalseAndStatus(slice, PostStatus.PUBLISHED)) {
+            if (p == null || p.getId() == null) continue;
+            byId.put(p.getId(), p);
+        }
+
+        LocalDateTime start = createdFrom == null ? null : createdFrom.atStartOfDay();
+        LocalDateTime endExclusive = createdTo == null ? null : createdTo.plusDays(1).atStartOfDay();
+
+        List<PostsEntity> content = new ArrayList<>();
+        for (Long id : slice) {
+            PostsEntity p = byId.get(id);
+            if (p == null) continue;
+            if (authorId != null && p.getAuthorId() != null && !authorId.equals(p.getAuthorId())) continue;
+            if (start != null && p.getCreatedAt() != null && p.getCreatedAt().isBefore(start)) continue;
+            if (endExclusive != null && p.getCreatedAt() != null && !p.getCreatedAt().isBefore(endExclusive)) continue;
+            content.add(p);
+        }
+
+        boolean hasMore = ids.size() > end;
+        long totalElements = hasMore ? (long) offset + content.size() + 1 : (long) offset + content.size();
+        return new PageImpl<>(content, PageRequest.of(safePage - 1, safePageSize), totalElements);
     }
 
     @Override
@@ -440,6 +464,13 @@ public class PostsServiceImpl implements PostsService {
             throw new IllegalArgumentException("无权编辑该帖子");
         }
 
+        if (dto.getBoardId() == null) {
+            throw new IllegalArgumentException("boardId 不能为空");
+        }
+        if (!boardAccessControlService.canPostBoard(dto.getBoardId(), boardAccessControlService.currentUserRoleIds())) {
+            throw new AccessDeniedException("无权在该版块发帖");
+        }
+
         post.setBoardId(dto.getBoardId());
         post.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
         post.setContent(dto.getContent());
@@ -467,11 +498,21 @@ public class PostsServiceImpl implements PostsService {
 
                 String fileName = fa.getUrl();
                 if (fileName != null) {
-                    int slash = fileName.lastIndexOf('/');
+                    int q = fileName.indexOf('?');
+                    if (q >= 0) fileName = fileName.substring(0, q);
+                    int h = fileName.indexOf('#');
+                    if (h >= 0) fileName = fileName.substring(0, h);
+                    int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
                     fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
                 }
-                if (fileName == null || fileName.isBlank()) {
+                fileName = (fileName == null ? "" : fileName);
+                fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
+                fileName = fileName.replaceAll("[\\\\/]+", "_");
+                if (fileName.isBlank()) {
                     fileName = "file";
+                }
+                if (fileName.length() > 512) {
+                    fileName = fileName.substring(fileName.length() - 512);
                 }
 
                 PostAttachmentsEntity pa = new PostAttachmentsEntity();

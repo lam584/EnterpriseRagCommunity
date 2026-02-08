@@ -33,6 +33,7 @@ export interface PostDTO extends PostCreateDTO {
   authorId?: number;
   status?: PostStatus;
   authorName?: string;
+  authorAvatarUrl?: string;
   boardName?: string;
   attachments?: Array<UploadResult & { fileAssetId?: number }>;
   commentCount?: number;

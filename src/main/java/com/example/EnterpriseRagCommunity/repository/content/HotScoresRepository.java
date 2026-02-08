@@ -35,12 +35,13 @@ public interface HotScoresRepository extends JpaRepository<HotScoresEntity, Long
             "GROUP BY r.target_id", nativeQuery = true)
     List<Object[]> aggregateLikesBetween(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @Query(value = "SELECT f.post_id AS post_id, COUNT(*) AS cnt " +
-            "FROM favorites f " +
-            "JOIN posts p ON p.id = f.post_id " +
+    @Query(value = "SELECT r.target_id AS post_id, COUNT(*) AS cnt " +
+            "FROM reactions r " +
+            "JOIN posts p ON p.id = r.target_id " +
             "WHERE p.is_deleted = 0 AND p.status = 'PUBLISHED' " +
-            "  AND f.created_at >= :from AND f.created_at < :to " +
-            "GROUP BY f.post_id", nativeQuery = true)
+            "  AND r.target_type = 'POST' AND r.type = 'FAVORITE' " +
+            "  AND r.created_at >= :from AND r.created_at < :to " +
+            "GROUP BY r.target_id", nativeQuery = true)
     List<Object[]> aggregateFavoritesBetween(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
     @Query(value = "SELECT c.post_id AS post_id, COUNT(*) AS cnt " +
@@ -62,11 +63,12 @@ public interface HotScoresRepository extends JpaRepository<HotScoresEntity, Long
             "GROUP BY r.target_id", nativeQuery = true)
     List<Object[]> aggregateLikesAll();
 
-    @Query(value = "SELECT f.post_id AS post_id, COUNT(*) AS cnt " +
-            "FROM favorites f " +
-            "JOIN posts p ON p.id = f.post_id " +
+    @Query(value = "SELECT r.target_id AS post_id, COUNT(*) AS cnt " +
+            "FROM reactions r " +
+            "JOIN posts p ON p.id = r.target_id " +
             "WHERE p.is_deleted = 0 AND p.status = 'PUBLISHED' " +
-            "GROUP BY f.post_id", nativeQuery = true)
+            "  AND r.target_type = 'POST' AND r.type = 'FAVORITE' " +
+            "GROUP BY r.target_id", nativeQuery = true)
     List<Object[]> aggregateFavoritesAll();
 
     @Query(value = "SELECT c.post_id AS post_id, COUNT(*) AS cnt " +

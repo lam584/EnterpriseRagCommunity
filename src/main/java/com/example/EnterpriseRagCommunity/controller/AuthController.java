@@ -40,10 +40,14 @@ import com.example.EnterpriseRagCommunity.entity.access.UserRoleLinksEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
 import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
+import com.example.EnterpriseRagCommunity.entity.content.BoardModeratorsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
 import com.example.EnterpriseRagCommunity.repository.access.PermissionsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.RolePermissionsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.TenantsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UserRoleLinksRepository;
+import com.example.EnterpriseRagCommunity.repository.content.BoardModeratorsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.security.AccessChangedFilter;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
@@ -62,6 +66,7 @@ import jakarta.validation.Valid;
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
 public class AuthController {
     private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
+    private static final String DEFAULT_BOARD_NAME = "默认版块";
 
     @Autowired
     private AdministratorService administratorService;
@@ -90,6 +95,12 @@ public class AuthController {
 
     @Autowired
     private AppSettingsService appSettingsService;
+
+    @Autowired
+    private BoardsRepository boardsRepository;
+
+    @Autowired
+    private BoardModeratorsRepository boardModeratorsRepository;
 
     @Autowired
     private InitialAdminIndexBootstrapService initialAdminIndexBootstrapService;
@@ -226,8 +237,7 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest, HttpServletRequest request, HttpServletResponse servletResponse) {
         try {
-            System.out.println("=========== login方法开始执行 ===========");
-            System.out.println("尝试登录用户: " + loginRequest.getEmail());
+            logger.debug("login start email={}", loginRequest.getEmail());
 
             Optional<UsersEntity> preUser = administratorService.findByUsername(loginRequest.getEmail());
             if (preUser.isPresent() && preUser.get().getStatus() == AccountStatus.EMAIL_UNVERIFIED) {
@@ -262,8 +272,7 @@ public class AuthController {
 
             // 获取会话ID
             String sessionId = request.getSession().getId();
-            System.out.println("认证成功，已设置SecurityContext，当前用户: " + authentication.getName());
-            System.out.println("当前会话ID: " + sessionId);
+            logger.debug("login authenticated user={}", authentication.getName());
 
             // 明确设置JSESSIONID Cookie，确保前端能收到
             Cookie sessionCookie = new Cookie("JSESSIONID", sessionId);
@@ -271,9 +280,6 @@ public class AuthController {
             sessionCookie.setHttpOnly(false);  // 允许JavaScript访问以便前端检测
             sessionCookie.setMaxAge(86400);    // 设置Cookie有效期为1天
             servletResponse.addCookie(sessionCookie);
-
-            // 记录所有设置的Cookie
-            System.out.println("设置的Cookie: JSESSIONID=" + sessionId);
 
             Optional<UsersEntity> user = administratorService.findByUsername(loginRequest.getEmail());
 
@@ -301,20 +307,16 @@ public class AuthController {
                     userDTO
                 );
 
-                System.out.println("成功获取用户信息: 用户名=" + userDTO.getUsername() + ", 邮箱=" + userDTO.getEmail());
-                System.out.println("=========== login方法结束: 成功 ===========");
+                logger.debug("login success username={} email={}", userDTO.getUsername(), userDTO.getEmail());
                 return ResponseEntity.ok(authResponse);
             } else {
                 Map<String, String> responseMap = new HashMap<>();
                 responseMap.put("message", "登录成功但无法获取用户信息");
-                System.out.println("登录成功但无法获取用户信息");
-                System.out.println("=========== login方法结束: 成功但未找到用户 ===========");
+                logger.warn("login success but user record not found email={}", loginRequest.getEmail());
                 return ResponseEntity.status(HttpStatus.OK).body(responseMap);
             }
         } catch (Exception e) {
-            System.out.println("登录失败: " + e.getMessage());
-            e.printStackTrace();
-            System.out.println("=========== login方法结束: 失败 ===========");
+            logger.warn("login failed email={} msg={}", loginRequest.getEmail(), e.getMessage(), e);
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("message", "邮箱或密码错误");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
@@ -496,8 +498,15 @@ public class AuthController {
                     .body(new ApiResponse<>(false, "邮箱已存在", null));
             }
 
-            System.out.println("开始创建初始管理员账户...");
+            logger.info("开始创建初始管理员账户...");
             TenantsEntity defaultTenant = resolveOrCreateDefaultTenantOrThrow();
+            BoardsEntity defaultBoard = boardsRepository
+                    .findFirstByTenantIdIsNullAndParentIdIsNullAndName(DEFAULT_BOARD_NAME)
+                    .orElseThrow(() -> new IllegalStateException("默认版块不存在，无法绑定默认版主"));
+            if (defaultBoard.getId() == null) {
+                throw new IllegalStateException("默认版块ID为空，无法绑定默认版主");
+            }
+
             Long adminRoleId = 2L;
 
             // 创建用户账户
@@ -508,13 +517,20 @@ public class AuthController {
             user.setUsername(request.getUsername() != null ? request.getUsername() : "管理员"); // 修复: RegisterRequest 使用 getUsername() 而非 getDisplayName()
             user.setStatus(AccountStatus.ACTIVE);
 
-            System.out.println("保存用户账户...");
+            logger.debug("保存用户账户...");
             UsersEntity savedUser = administratorService.save(user); // 对齐: 保存新实体
-            System.out.println("用户账户保存成功。");
+            logger.info("用户账户保存成功。");
             UserRoleLinksEntity link = new UserRoleLinksEntity();
             link.setUserId(savedUser.getId());
             link.setRoleId(adminRoleId);
             userRoleLinksRepository.save(link);
+
+            if (!boardModeratorsRepository.existsByBoardIdAndUserId(defaultBoard.getId(), savedUser.getId())) {
+                BoardModeratorsEntity moderator = new BoardModeratorsEntity();
+                moderator.setBoardId(defaultBoard.getId());
+                moderator.setUserId(savedUser.getId());
+                boardModeratorsRepository.save(moderator);
+            }
 
             ensureCoreRbacPermissionsSeededIfEmpty();
             ensurePermissionExists("admin_ui", "access", "进入管理员后台 (/admin) 的总开关");
@@ -539,18 +555,17 @@ public class AuthController {
                 rolePermissionsRepository.save(rp);
             }
 
-            System.out.println("ADMIN 角色已授予权限数量: " + allPermissions.size());
+            logger.info("ADMIN 角色已授予权限数量: {}", allPermissions.size());
 
             try {
                 initialAdminIndexBootstrapService.bootstrap(savedUser.getId());
             } catch (Exception ex) {
-                System.out.println("初始化检索/RAG 与审核嵌入索引失败: " + ex.getMessage());
-                ex.printStackTrace();
+                logger.warn("初始化检索/RAG 与审核嵌入索引失败: {}", ex.getMessage(), ex);
             }
 
-            System.out.println("更新系统状态为已完成初始设置...");
+            logger.info("更新系统状态为已完成初始设置...");
             initialAdminSetupState.setSetupRequired(false);
-            System.out.println("系统状态更新完成。");
+            logger.info("系统状态更新完成。");
             UsersDTO responseDTO = convertToUserSafeDTO(savedUser);
 
             TotpMasterKeyBootstrapService.Result totpResult = totpMasterKeyBootstrapService.generateAndPersistToOsEnv();
@@ -569,12 +584,11 @@ public class AuthController {
             setup.setRestartRequired(true);
             resp.setTotpMasterKeySetup(setup);
 
-            System.out.println("返回成功响应。");
+            logger.debug("registerInitialAdmin success response ready");
             return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new ApiResponse<>(true, "初始管理员注册成功", resp));
         } catch (Exception e) {
-            System.out.println("发生异常: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("registerInitialAdmin failed: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiResponse<>(false, "注册失败：" + e.getMessage(), null));
         }
@@ -654,7 +668,7 @@ public class AuthController {
         long cnt = permissionsRepository.count();
         if (cnt > 0) return;
 
-        System.out.println("permissions 表为空，开始补种核心 RBAC 权限...");
+        logger.info("permissions 表为空，开始补种核心 RBAC 权限...");
 
         // 1) Admin UI access + sidebar sections
         ensurePermissionExists("admin_ui", "access", "进入管理员后台 (/admin) 的总开关");
@@ -781,7 +795,7 @@ public class AuthController {
         ensurePermissionExists("portal_favorites", "unbookmark", "前台取消收藏");
         ensurePermissionExists("portal_reports", "create", "前台举报内容");
 
-        System.out.println("核心 RBAC 权限补种完成。");
+        logger.info("核心 RBAC 权限补种完成。");
     }
 
     /**

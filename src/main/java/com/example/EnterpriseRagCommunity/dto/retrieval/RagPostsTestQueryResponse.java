@@ -11,6 +11,7 @@ public class RagPostsTestQueryResponse {
     private Long boardId;
     private Integer embeddingDims;
     private String embeddingModel;
+    private String embeddingProviderId;
     private Integer numCandidates;
     private Long tookMs;
     private List<Hit> hits;

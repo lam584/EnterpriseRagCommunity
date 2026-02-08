@@ -14,6 +14,7 @@ public class PostTitleGenConfigDTO {
     private String promptTemplate;
 
     private String model;
+    private String providerId;
     private Double temperature;
 
     private Integer defaultCount;
@@ -27,4 +28,3 @@ public class PostTitleGenConfigDTO {
     private LocalDateTime updatedAt;
     private String updatedBy;
 }
-

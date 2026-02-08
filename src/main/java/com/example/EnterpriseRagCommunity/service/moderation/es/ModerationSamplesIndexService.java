@@ -10,9 +10,11 @@ import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
 import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.data.elasticsearch.core.document.Document;
 import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
+import org.springframework.data.elasticsearch.core.query.Query;
 import org.springframework.stereotype.Service;
 
-import com.example.EnterpriseRagCommunity.config.ModerationSimilarityProperties;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.service.es.ElasticsearchIkAnalyzerProbe;
 
 import lombok.RequiredArgsConstructor;
@@ -24,17 +26,37 @@ public class ModerationSamplesIndexService {
     private static final Logger log = LoggerFactory.getLogger(ModerationSamplesIndexService.class);
 
     private final ElasticsearchTemplate template;
-    private final ModerationSimilarityProperties props;
+    private final ModerationSamplesIndexConfigService indexConfigService;
+    private final ModerationSimilarityConfigRepository similarityConfigRepository;
     private final ElasticsearchIkAnalyzerProbe ikProbe;
     private final AtomicBoolean ikDisabledWarned = new AtomicBoolean(false);
 
     public boolean indexExists() {
-        IndexOperations ops = template.indexOps(IndexCoordinates.of(props.getEs().getIndex()));
+        IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
         return ops.exists();
     }
 
+    public String getIndexName() {
+        return indexConfigService.getIndexNameOrDefault();
+    }
+
+    public Integer getEmbeddingDimsInMapping() {
+        IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
+        if (!ops.exists()) return null;
+        return readEmbeddingDims(ops);
+    }
+
+    public Long countDocs() {
+        try {
+            IndexCoordinates idx = IndexCoordinates.of(indexConfigService.getIndexNameOrDefault());
+            return template.count(Query.findAll(), idx);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public void recreateIndex(int embeddingDims) {
-        IndexOperations ops = template.indexOps(IndexCoordinates.of(props.getEs().getIndex()));
+        IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
         if (ops.exists()) {
             ops.delete();
         }
@@ -47,17 +69,17 @@ public class ModerationSamplesIndexService {
      * Note: if embeddingDims is 0, we'll create the index without the vector field.
      */
     public void ensureIndex() {
-        ensureIndex(props.getEs().getEmbeddingDims());
+        ensureIndex(resolveDefaultEmbeddingDims());
     }
 
     /**
      * Create index if missing, using provided dims for mapping creation.
      *
-     * This is useful when app.moderation.similarity.es.embedding-dims isn't configured yet;
+     * This is useful when embedding dims isn't configured yet;
      * we can infer dims from the embedding result and still bootstrap ES mapping correctly.
      */
     public void ensureIndex(int embeddingDims) {
-        IndexOperations ops = template.indexOps(IndexCoordinates.of(props.getEs().getIndex()));
+        IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
         if (ops.exists()) {
             if (embeddingDims > 0) {
                 Integer existingDims = readEmbeddingDims(ops);
@@ -73,13 +95,25 @@ public class ModerationSamplesIndexService {
     }
 
     private boolean resolveIkEnabled() {
-        boolean configured = props.getEs().isIkEnabled();
+        boolean configured = indexConfigService.isIkEnabledOrDefault();
         if (!configured) return false;
         boolean supported = ikProbe.isIkSupported();
         if (!supported && ikDisabledWarned.compareAndSet(false, true)) {
-            log.warn("IK analyzer is enabled in config but not available on this Elasticsearch cluster. Falling back to standard analyzer. index={}", props.getEs().getIndex());
+            log.warn("IK analyzer is enabled in config but not available on this Elasticsearch cluster. Falling back to standard analyzer. index={}", indexConfigService.getIndexNameOrDefault());
         }
         return supported;
+    }
+
+    private int resolveDefaultEmbeddingDims() {
+        try {
+            ModerationSimilarityConfigEntity cfg = similarityConfigRepository.findAll().stream().findFirst().orElse(null);
+            if (cfg != null && cfg.getEmbeddingDims() != null && cfg.getEmbeddingDims() > 0) {
+                return cfg.getEmbeddingDims();
+            }
+        } catch (Exception ignore) {
+        }
+        int dims = indexConfigService.getEmbeddingDimsOrDefault();
+        return Math.max(0, dims);
     }
 
     private Integer readEmbeddingDims(IndexOperations ops) {
@@ -130,7 +164,7 @@ public class ModerationSamplesIndexService {
     }
 
     private void tryCreate(IndexOperations ops, boolean ikEnabled) {
-        tryCreate(ops, ikEnabled, props.getEs().getEmbeddingDims());
+        tryCreate(ops, ikEnabled, resolveDefaultEmbeddingDims());
     }
 
     private void tryCreate(IndexOperations ops, boolean ikEnabled, int embeddingDims) {
@@ -192,7 +226,7 @@ public class ModerationSamplesIndexService {
     }
 
     private Map<String, Object> buildMapping(boolean ikEnabled) {
-        return buildMapping(ikEnabled, props.getEs().getEmbeddingDims());
+        return buildMapping(ikEnabled, resolveDefaultEmbeddingDims());
     }
 
     private Map<String, Object> buildMapping(boolean ikEnabled, int embeddingDims) {

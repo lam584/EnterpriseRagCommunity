@@ -114,7 +114,7 @@ public class AuditLogsController {
         for (AuditLogsViewDTO it : pageRes.getContent()) {
             sb.append(csv(it.id())).append(',')
                     .append(csv(it.createdAt())).append(',')
-                    .append(csv(it.actorUserId())).append(',')
+                    .append(csv(it.actorId())).append(',')
                     .append(csv(it.actorName())).append(',')
                     .append(csv(it.action())).append(',')
                     .append(csv(it.entityType())).append(',')
