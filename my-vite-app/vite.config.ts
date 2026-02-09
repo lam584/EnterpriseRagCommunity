@@ -70,6 +70,10 @@ export default defineConfig({
                 target: 'http://localhost:8099',
                 changeOrigin: true,
             },
+            '/admin': {
+                target: 'http://localhost:8099',
+                changeOrigin: true,
+            },
         },
     },
     plugins: [
