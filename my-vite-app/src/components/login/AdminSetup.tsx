@@ -1,7 +1,9 @@
 // src/components/login/AdminSetup.tsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { registerInitialAdmin, InitialAdminRegisterRequest, type TotpMasterKeySetupResult } from '../../services/authService';
+import { registerInitialAdmin, InitialAdminRegisterRequest, type TotpMasterKeySetupResult, login } from '../../services/authService';
+import { getCsrfToken } from '../../utils/csrfUtils';
+import { triggerReindexSamples } from '../../services/moderationService';
 
 type AdminSetupProps = {
   onGoLogin?: (email: string) => void;
@@ -18,6 +20,7 @@ const AdminSetup: React.FC<AdminSetupProps> = ({ onGoLogin }) => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [totpSetup, setTotpSetup] = useState<TotpMasterKeySetupResult | null>(null);
+  const [indexSetupMsg, setIndexSetupMsg] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -28,6 +31,7 @@ const AdminSetup: React.FC<AdminSetupProps> = ({ onGoLogin }) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setIndexSetupMsg(null);
 
     // 简单前端校验
     if (!form.email || !form.password || !form.username) {
@@ -43,6 +47,18 @@ const AdminSetup: React.FC<AdminSetupProps> = ({ onGoLogin }) => {
         username: form.username.trim()
       });
       setTotpSetup(res?.totpMasterKeySetup ?? null);
+
+      // 尝试自动登录并初始化索引
+      try {
+        const token = await getCsrfToken();
+        await login(form.email.trim(), form.password, token);
+        await triggerReindexSamples({ onlyEnabled: true });
+        setIndexSetupMsg('样本库索引已自动检测并创建完成。');
+      } catch (idxErr) {
+        console.warn('Auto index setup failed', idxErr);
+        setIndexSetupMsg('样本库索引自动初始化失败（请登录后在控制台手动刷新/创建）：' + (idxErr instanceof Error ? idxErr.message : '未知错误'));
+      }
+
       setSuccess('初始化管理员注册成功，请前往登录（如已自动写入 TOTP 主密钥，请重启后端后再启用二次验证）');
     } catch (err) {
       setError(err instanceof Error ? err.message : '初始化失败');
@@ -69,6 +85,7 @@ const AdminSetup: React.FC<AdminSetupProps> = ({ onGoLogin }) => {
           <div className="bg-green-100 text-green-800 p-3 rounded mb-4 flex items-start justify-between gap-3">
             <div className="flex-1 space-y-2">
               <div>{success}</div>
+              {indexSetupMsg && <div className="text-sm text-blue-800 font-medium">{indexSetupMsg}</div>}
               {totpSetup ? (
                 <div className="rounded border border-green-200 bg-white/60 p-2 text-xs text-green-900 space-y-1">
                   <div>APP_TOTP_MASTER_KEY：{totpSetup.succeeded ? '已写入' : '未写入'}</div>
