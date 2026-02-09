@@ -12,6 +12,11 @@ import {
   type ModerationSampleCreateRequest,
   type ModerationSamplesSyncResult,
 } from '../../../../services/moderationEmbedSamplesService';
+import {
+  triggerReindexSamples,
+  getSamplesIndexStatus,
+  type ModerationSamplesIndexStatusResponse
+} from '../../../../services/moderationService';
 import { ModerationPipelineHistoryPanel } from '../../../../components/admin/ModerationPipelineHistoryPanel';
 import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
@@ -52,17 +57,6 @@ interface SimilarityCheckResponse {
   embeddingModel?: string | null;
   maxInputChars?: number | null;
   hits?: SimilarityHit[];
-}
-
-interface ModerationSamplesIndexStatusResponse {
-  indexName?: string | null;
-  exists?: boolean | null;
-  available?: boolean | null;
-  availabilityMessage?: string | null;
-  docCount?: number | null;
-  embeddingDimsConfigured?: number | null;
-  embeddingDimsInMapping?: number | null;
-  lastIncrementalSyncAt?: string | null;
 }
 
 // NOTE: “相似命中记录（moderation_similar_hits）” 功能已移除；保留审核历史记录即可。
@@ -239,17 +233,8 @@ const EmbedForm: React.FC = () => {
     setSamplesIndexLoading(true);
     setSamplesIndexError(null);
     try {
-      const res = await fetch(apiUrl('/api/admin/moderation/embed/index-status'), {
-        method: 'GET',
-        credentials: 'include',
-      });
-      const data: unknown = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setSamplesIndexError(getBackendMessage(data) || '获取索引状态失败');
-        setSamplesIndexStatus(null);
-        return;
-      }
-      setSamplesIndexStatus(data as ModerationSamplesIndexStatusResponse);
+      const data = await getSamplesIndexStatus();
+      setSamplesIndexStatus(data);
     } catch (e) {
       setSamplesIndexError(e instanceof Error ? e.message : String(e));
       setSamplesIndexStatus(null);
@@ -564,19 +549,7 @@ const EmbedForm: React.FC = () => {
     setReindexing(true);
     setError(null);
     try {
-      const csrf = await getCsrfToken();
-      const res = await fetch(apiUrl('/api/admin/moderation/embed/reindex?onlyEnabled=true&batchSize=200'), {
-        method: 'POST',
-        headers: {
-          'X-XSRF-TOKEN': csrf,
-        },
-        credentials: 'include',
-      });
-      const data: unknown = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(getBackendMessage(data) || '重建索引失败');
-        return;
-      }
+      await triggerReindexSamples({ onlyEnabled: true, batchSize: 200 });
 
       // Optional UX: refresh sample list after reindex
       void loadSamples();
@@ -702,6 +675,16 @@ const EmbedForm: React.FC = () => {
             <div>
               <div className="text-lg font-semibold">样本库索引状态</div>
             </div>
+            {samplesIndexStatus?.exists === false && (
+              <button
+                type="button"
+                className="rounded bg-green-600 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-60"
+                disabled={reindexing}
+                onClick={() => void reindexSamples()}
+              >
+                {reindexing ? '创建中...' : '创建索引'}
+              </button>
+            )}
           </div>
 
           {samplesIndexError ? (

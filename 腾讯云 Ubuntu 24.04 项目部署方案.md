@@ -55,7 +55,7 @@ cd EnterpriseRagCommunity
 
 ### 第四步：安装与配置 Java 环境 (后端)
 
-项目配置使用了较新的 Java 版本，我们安装目前最稳定的 JDK 21。
+项目配置使用了较新的 Java 版本，我们安装目前最稳定的 JDK 25。
 
 1.  **安装 JDK 25**：
     ```bash
@@ -89,22 +89,76 @@ cd EnterpriseRagCommunity
 
 ### 第六步：安装 Docker 与 Elasticsearch (搜索引擎)
 
-项目依赖 Elasticsearch。使用 Docker 安装是最简单的。
+项目依赖 Elasticsearch。我们将使用 Docker 安装，并配置 4.5GB 内存与 API Key 认证。
 
-1.  **安装 Docker**：
+1.  **安装 Docker**
     ```bash
+    # 安装 Docker
     sudo apt install docker.io -y
+
+    # 将当前用户添加到 docker 用户组 (无需 sudo 即可运行 docker)
+    sudo usermod -aG docker $USER
+    newgrp docker
     ```
 
-2.  **启动 Elasticsearch 容器**：
-    此命令会下载并启动一个单节点的 Elasticsearch。
+2.  **创建网络并启动 Elasticsearch**
     ```bash
-    sudo docker run -d --name elasticsearch \
+    # 创建 docker 网络
+    docker network create elastic
+
+    # 启动 Elasticsearch 容器
+    # 注意：我们开启了安全认证(xpack.security.enabled=true)，但为了简化 Java 连接，关闭了 HTTP SSL
+    docker run -d --name elasticsearch \
+      --net elastic \
       -p 9200:9200 \
       -e "discovery.type=single-node" \
-      -e "xpack.security.enabled=false" \
-      elasticsearch:9.2.4
+      -e "xpack.security.enabled=true" \
+      -e "xpack.security.http.ssl.enabled=false" \
+      -e "ES_JAVA_OPTS=-Xms4g -Xmx4g" \
+      -m 4.5GB \
+      docker.elastic.co/elasticsearch/elasticsearch:9.2.4
     ```
+    ### 确认 Elasticsearch 是否真正就绪
+
+    ```bash
+    # 查看容器日志，观察是否启动成功
+    ddocker logs -f elasticsearch
+    ```
+
+    等待看到类似以下日志（表示已 ready）：
+
+    ```
+    [INFO ][o.e.c.c.Coordinator] [node-name] cluster UUID: xxxxx
+    [INFO ][o.e.h.AbstractHttpServerTransport] [node-name] publish_address {172.x.x.x:9200}, bound_addresses {[::]:9200}
+    [INFO ][o.e.n.Node] [node-name] started
+    ```
+
+    > ⚠️ 如果日志中有 `OutOfMemoryError` 或 `bootstrap checks failed`，说明配置有问题。
+
+3.  **生成 API Key**
+    容器启动需要约 30 秒。等待片刻后，执行以下命令生成连接所需的 API Key。
+
+    ```bash
+    # 1. 重置 elastic 超级用户密码 (请保存输出的密码)
+    docker exec -it elasticsearch /usr/share/elasticsearch/bin/elasticsearch-reset-password -u elastic -b
+
+    # 2. 生成 API Key (需要使用上一步得到的密码)
+    # 将下面的 <PASSWORD> 替换为刚才得到的密码
+    # 下面的命令会返回一个 "encoded" 字段，这就是我们需要填入项目的 API Key
+    curl -X POST "http://localhost:9200/_security/api_key?pretty" \
+         -u elastic:<PASSWORD> \
+         -H 'Content-Type: application/json' \
+         -d'{"name": "rag_app_key"}'
+    ```
+    
+    **注意**：请复制返回结果中 `encoded` 字段的值（一串长字符），这将在配置后端服务时使用。
+
+4.  **验证连接**
+    ```bash
+    # 替换 <YOUR_API_KEY> 进行测试
+    curl -H "Authorization: ApiKey <YOUR_API_KEY>" http://localhost:9200
+    ```
+
 
 ### 第七步：安装 Node.js 并构建前端
 
@@ -224,6 +278,8 @@ cd EnterpriseRagCommunity
     User=root
     # 强制覆盖 ES 地址为本地 Docker 地址
     Environment="SPRING_ELASTICSEARCH_URIS=http://localhost:9200"
+    # 填入第六步生成的 API Key
+    Environment="APP_ES_API_KEY=请在此处粘贴第六步生成的APIKey"
     # 这里指向刚才构建生成的 war 包
     ExecStart=/usr/bin/java -jar /home/ubuntu/EnterpriseRagCommunity/build/libs/EnterpriseRagCommunity.war
     SuccessExitStatus=143
@@ -253,3 +309,216 @@ cd EnterpriseRagCommunity
 
 现在，您应该可以通过浏览器访问服务器的公网 IP 地址来看到您的应用了。
 如果无法访问，请检查腾讯云控制台的**安全组**设置，确保 **TCP 80 端口**是开放的。
+
+### 第十一步：日常维护与更新指南
+
+部署完成后，您可能需要经常查看服务状态或更新代码。以下是常用操作命令：
+
+#### 1. 查看后端服务状态与日志
+
+*   **查看运行状态**（查看是否正在运行、启动时间等）：
+    ```bash
+    sudo systemctl status enterprise-rag
+    ```
+    *(按 `q` 退出查看)*
+
+*   **查看实时应用日志**（非常重要，用于排查报错）：
+    ```bash
+    # -f 表示 follow (实时刷新)，-u 指定服务名
+    sudo journalctl -u enterprise-rag -f
+    ```
+    *(按 `Ctrl + C` 停止查看)*
+
+#### 2. 重启后端服务
+
+如果您修改了配置文件或只是想重启应用：
+```bash
+sudo systemctl restart enterprise-rag
+```
+
+#### 3. 拉取最新代码并更新部署
+
+当您在本地开发并 Push 了新代码到 GitHub 后，服务器端需要执行以下步骤来应用更新：
+
+```bash
+# 1. 进入项目目录
+cd ~/EnterpriseRagCommunity
+
+# 2. 拉取最新代码
+git pull
+
+# 3. 重新构建后端 (如果修改了 Java 代码)
+./gradlew bootWar
+# 重启服务以应用更改
+sudo systemctl restart enterprise-rag
+
+# 4. 重新构建前端 (如果修改了 React 代码)
+cd my-vite-app
+npm install  # 以防有新的依赖
+npm run build
+cd ..        # 回到根目录
+# 前端构建完成后立即生效（无需重启 Nginx，除非修改了 Nginx 配置）
+```
+
+# 修改端口
+          
+由于 80 端口在国内服务器上必须完成 ICP 备案才能对外开放，未备案时会被云厂商自动拦截。
+
+您可以通过将 Nginx 的监听端口修改为其他非标准端口（如 **8080**）来绕过此限制，以便于进行测试。以下是具体操作步骤，请直接在您的腾讯云 Ubuntu 服务器终端中执行：
+
+### 第一步：修改 Nginx 监听端口
+我们可以使用 `sed` 命令直接将配置文件中的 `80` 端口替换为 `8080`。请复制并执行以下命令：
+
+```bash
+# 备份原配置文件（养成好习惯）
+sudo cp /etc/nginx/sites-available/enterprise-rag /etc/nginx/sites-available/enterprise-rag.bak
+
+# 将 listen 80; 修改为 listen 8080;
+sudo sed -i 's/listen 80;/listen 8080;/g' /etc/nginx/sites-available/enterprise-rag
+```
+
+### 第二步：检查并重启 Nginx
+修改完成后，需要验证配置文件的语法是否正确，并重启 Nginx 使更改生效。
+
+```bash
+# 检查 Nginx 配置语法
+sudo nginx -t
+
+# 如果显示 "syntax is ok" 和 "test is successful"，则重启 Nginx
+sudo systemctl restart nginx
+```
+
+### 第三步：在腾讯云控制台开放 8080 端口
+仅仅在服务器上修改是不够的，您还需要在腾讯云的防火墙（安全组）中放行 8080 端口：
+
+1. 登录 [腾讯云控制台](https://console.cloud.tencent.com/cvm/index)。
+2. 找到您的实例，点击**“安全组”**选项卡。
+3. 点击**“编辑规则”** -> **“入站规则”**。
+4. 点击**“添加规则”**：
+   - **类型**：自定义
+   - **来源**：`0.0.0.0/0` (允许所有 IP 访问)
+   - **协议端口**：`TCP:8080`
+   - **策略**：允许
+5. 保存规则。
+
+### 第四步：验证访问
+现在，您应该可以通过 IP 加端口的方式访问您的网站了：
+
+**访问地址**：`http://<您的服务器公网IP>:8080`
+
+### 补充说明
+- **关于备案**：如果您后续购买了域名并完成了备案，可以随时按照上述步骤将端口改回 80（只需将 `sed` 命令中的 `8080` 和 `80` 对调即可）。
+- **常用端口**：如果 8080 也被占用，您还可以尝试 8081、8088 等端口。
+
+
+
+# docker 容器维护
+
+Elasticsearch 的内存配置（特别是 JVM 堆内存 `ES_JAVA_OPTS`）是启动时参数，**无法在容器运行时直接动态修改**。
+
+您必须**删除旧容器并使用新参数重新启动**。
+
+由于之前的启动命令中**没有挂载数据卷**（`-v`），直接删除容器会导致**索引数据丢失**。
+
+请根据您的需求选择以下两种方案之一：
+
+### 方案一：数据不重要（直接重建）
+如果您还在测试阶段，不在乎数据丢失，可以直接删除重建。
+
+1.  **停止并删除容器**
+    ```powershell
+    docker stop elasticsearch
+    docker rm elasticsearch
+    ```
+
+2.  **使用新内存配置启动**（例如改为 2GB 堆内存，容器限额 2.5GB）
+    ```powershell
+    docker run -d --name elasticsearch `
+      --net elastic `
+      -p 9200:9200 `
+      -e "discovery.type=single-node" `
+      -e "xpack.security.enabled=true" `
+      -e "xpack.security.http.ssl.enabled=false" `
+      -e "ES_JAVA_OPTS=-Xms2g -Xmx2g" `
+      -m 2.5GB `
+      docker.elastic.co/elasticsearch/elasticsearch:9.2.4
+    ```
+    *(注：PowerShell 中换行符为反引号 ` ` ，如果您使用 CMD 请改用 `^`，Bash 使用 `\`)*
+
+---
+
+### 方案二：保留数据修改（推荐）
+如果您已经有了重要数据，请先将数据从容器中拷贝出来，再挂载回去。
+
+1.  **创建本地数据目录**
+    ```powershell
+    # 在当前目录下创建 es_data 文件夹
+    mkdir es_data
+    ```
+
+2.  **将容器内的数据复制出来**
+    ```powershell
+    docker cp elasticsearch:/usr/share/elasticsearch/data ./es_data
+    ```
+
+3.  **停止并删除旧容器**
+    ```powershell
+    docker stop elasticsearch
+    docker rm elasticsearch
+    ```
+
+4.  **启动新容器（挂载刚才复制的数据卷）**
+    注意新增了 `-v` 参数挂载本地目录。
+    ```powershell
+    docker run -d --name elasticsearch \
+    --net elastic \
+    -p 9200:9200 \
+    -v "${PWD}/es_data/data:/usr/share/elasticsearch/data" \
+    -e "discovery.type=single-node" \
+    -e "xpack.security.enabled=true" \
+    -e "xpack.security.http.ssl.enabled=false" \
+    -e "ES_JAVA_OPTS=-Xms2g -Xmx3g" \
+    -m 3GB \
+    docker.elastic.co/elasticsearch/elasticsearch:9.2.4
+    ```
+
+### 验证修改
+启动后，您可以进入容器检查 JVM 参数是否生效：
+```powershell
+docker exec elasticsearch env | grep "ES_JAVA_OPTS"
+```
+或者查看容器内存限制：
+```powershell
+docker stats elasticsearch --no-stream
+```
+
+
+
+# 暴露mysql端口到公网 (仅测试用)
+
+##### ✅ 允许任意 IP 连接（仅测试用，生产环境慎用）
+```sql
+CREATE USER 'root'@'%' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON EnterpriseRagCommunity.* TO 'root'@'%';
+FLUSH PRIVILEGES;
+```
+
+> ⚠️ 注意：如果你已有 `'root'@'%'`，就不要再重复创建。
+
+#### 第三步：确认用户已正确创建
+```sql
+SELECT User, Host FROM mysql.user WHERE User = 'root';
+```
+你应该看到类似：
+```
++------+------------------+
+| User | Host             |
++------+------------------+
+| root | localhost        |
+| root | 113.16.23.89     |   -- 或 '%'
++------+------------------+
+```
+
+---
+
+- 重启 MySQL：`sudo systemctl restart mysql`
