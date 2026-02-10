@@ -75,11 +75,44 @@ public class SetupController {
     }
 
     private File findEnvFile() {
+        // 1. Try user.dir
         String userDir = System.getProperty("user.dir");
-        File currentDir = new File(userDir);
-        logger.info("Searching for .env file starting from: {}", userDir);
+        File found = searchUpwards(new File(userDir));
+        if (found != null) return found;
+
+        // 2. Try Jar location
+        try {
+            String path = SetupController.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+            // Handle file: protocol if present
+            if (path.startsWith("file:")) {
+                path = path.substring(5);
+            }
+            // Remove !/BOOT-INF/classes!/ if running from fat jar
+            if (path.contains("!")) {
+                path = path.substring(0, path.indexOf("!"));
+            }
+            
+            File jarFile = new File(java.net.URLDecoder.decode(path, java.nio.charset.StandardCharsets.UTF_8.name()));
+            // If it points to a file (jar), get parent. If dir (classes), use it.
+            File startDir = jarFile.isDirectory() ? jarFile : jarFile.getParentFile();
+            
+            if (startDir != null && !startDir.getAbsolutePath().equals(userDir)) { 
+                 logger.info("Searching for .env file starting from Jar location: {}", startDir.getAbsolutePath());
+                 found = searchUpwards(startDir);
+                 if (found != null) return found;
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to resolve Jar location: {}", e.getMessage());
+        }
         
-        // Try current directory and up to 3 parent directories
+        logger.info(".env file not found.");
+        return null;
+    }
+
+    private File searchUpwards(File startDir) {
+        if (startDir == null || !startDir.exists()) return null;
+        File currentDir = startDir;
+        // Try up to 4 levels
         for (int i = 0; i < 4; i++) {
             if (currentDir == null || !currentDir.exists()) {
                 break;
@@ -93,8 +126,6 @@ public class SetupController {
             
             currentDir = currentDir.getParentFile();
         }
-        
-        logger.info(".env file not found within 3 levels of parent directories.");
         return null;
     }
 
