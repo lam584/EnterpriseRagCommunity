@@ -8,11 +8,11 @@ import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepos
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.ai.LlmRoutingService;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -34,12 +34,7 @@ public class RagPostTestQueryService {
     private final AiEmbeddingService embeddingService;
     private final LlmRoutingService llmRoutingService;
     private final ObjectMapper objectMapper;
-
-    @Value("${spring.elasticsearch.uris:http://127.0.0.1:9200}")
-    private String elasticsearchUris;
-
-    @Value("${app.es.api-key:}")
-    private String elasticsearchApiKey;
+    private final SystemConfigurationService systemConfigurationService;
 
     public RagPostsTestQueryResponse testQuery(Long vectorIndexId, RagPostsTestQueryRequest req) {
         if (vectorIndexId == null) throw new IllegalArgumentException("vectorIndexId is required");
@@ -158,6 +153,7 @@ public class RagPostTestQueryService {
     }
 
     private JsonNode postSearch(String indexName, String body) {
+        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
         String endpoint = elasticsearchUris;
         if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
         if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
@@ -172,6 +168,7 @@ public class RagPostTestQueryService {
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
 
+            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
             if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
                 conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
             }

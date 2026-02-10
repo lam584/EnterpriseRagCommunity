@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.service.notify;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 
@@ -10,12 +11,14 @@ import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationP
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.env.Environment;
 
 @Service
 @RequiredArgsConstructor
 public class EmailVerificationMailer {
     private final AppSettingsService appSettingsService;
     private final EmailSenderService emailSenderService;
+    private final Environment environment;
 
     public boolean isEnabled() {
         return appSettingsService.getLongOrDefault("email_enabled", 1L) == 1L;
@@ -30,17 +33,23 @@ public class EmailVerificationMailer {
     }
 
     public EmailTransportConfig loadTransportConfig() {
-        String host = appSettingsService.getString("email_host").orElse("smtp.qiye.aliyun.com").trim();
+        String host = appSettingsService.getString("email_host")
+                .or(() -> Optional.ofNullable(environment.getProperty("app.mail.host")))
+                .orElse("smtp.qiye.aliyun.com").trim();
         if (host.isEmpty()) throw new IllegalStateException("邮箱服务器 host 未配置");
 
-        String encryptionRaw = appSettingsService.getString("email_encryption").orElse("SSL").trim().toUpperCase(Locale.ROOT);
+        String encryptionRaw = appSettingsService.getString("email_encryption")
+                .or(() -> Optional.ofNullable(environment.getProperty("app.mail.encryption")))
+                .orElse("SSL").trim().toUpperCase(Locale.ROOT);
         EmailEncryption enc;
         if (encryptionRaw.equals("NONE")) enc = EmailEncryption.NONE;
         else if (encryptionRaw.equals("STARTTLS")) enc = EmailEncryption.STARTTLS;
         else enc = EmailEncryption.SSL;
 
-        int portPlain = (int) appSettingsService.getLongOrDefault("email_port_plain", 25L);
-        int portEncrypted = (int) appSettingsService.getLongOrDefault("email_port_encrypted", 465L);
+        int portPlain = (int) appSettingsService.getLongOrDefault("email_port_plain", 
+                Long.parseLong(environment.getProperty("app.mail.port.plain", "25")));
+        int portEncrypted = (int) appSettingsService.getLongOrDefault("email_port_encrypted", 
+                Long.parseLong(environment.getProperty("app.mail.port", "465")));
         int port = (enc == EmailEncryption.SSL) ? portEncrypted : portPlain;
         if (port <= 0 || port > 65535) throw new IllegalStateException("邮箱端口不合法");
 

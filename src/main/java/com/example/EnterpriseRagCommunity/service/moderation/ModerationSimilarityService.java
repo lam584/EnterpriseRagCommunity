@@ -10,10 +10,10 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimila
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -34,12 +34,7 @@ public class ModerationSimilarityService {
     private final ModerationSamplesIndexConfigService indexConfigService;
     private final ModerationSimilarHitsRepository similarHitsRepository;
     private final ModerationSimilarityConfigRepository configRepository;
-
-    @Value("${spring.elasticsearch.uris:http://127.0.0.1:9200}")
-    private String elasticsearchUris;
-
-    @Value("${app.es.api-key:}")
-    private String elasticsearchApiKey;
+    private final SystemConfigurationService systemConfigurationService;
 
     public SimilarityCheckResponse check(SimilarityCheckRequest req) {
         if (req == null) throw new IllegalArgumentException("req is null");
@@ -187,6 +182,12 @@ public class ModerationSimilarityService {
     private List<SimilarityCheckResponse.Hit> queryKnn(int topK, int numCandidates, float[] queryVector) {
         try {
             String body = buildKnnSearchBody(topK, numCandidates, queryVector);
+
+            String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
+            if (elasticsearchUris == null || elasticsearchUris.isBlank()) {
+                elasticsearchUris = "http://127.0.0.1:9200";
+            }
+            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
 
             String endpoint = elasticsearchUris;
             if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";

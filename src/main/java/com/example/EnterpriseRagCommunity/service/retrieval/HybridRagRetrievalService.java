@@ -26,6 +26,7 @@ import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.ai.AiRerankService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,12 +45,7 @@ public class HybridRagRetrievalService {
     private final AiRerankService aiRerankService;
     private final LlmGateway llmGateway;
     private final PostsRepository postsRepository;
-
-    @Value("${spring.elasticsearch.uris:http://127.0.0.1:9200}")
-    private String elasticsearchUris;
-
-    @Value("${app.es.api-key:}")
-    private String elasticsearchApiKey;
+    private final SystemConfigurationService systemConfigurationService;
 
     public RetrieveResult retrieve(String queryText, Long boardId, HybridRetrievalConfigDTO cfg, boolean debug) {
         RetrieveResult out = new RetrieveResult();
@@ -416,6 +412,7 @@ public class HybridRagRetrievalService {
     }
 
     private JsonNode postSearch(String indexName, String body) {
+        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
         String endpoint = elasticsearchUris;
         if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
         if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
@@ -429,6 +426,7 @@ public class HybridRagRetrievalService {
             conn.setReadTimeout(20_000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
+            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
             if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
                 conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
             }

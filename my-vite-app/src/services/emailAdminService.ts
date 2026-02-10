@@ -13,6 +13,10 @@ export type EmailAdminSettingsDTO = {
   debug?: boolean;
   sslTrust?: string;
   subjectPrefix?: string;
+  username?: string;
+  password?: string;
+  from?: string;
+  fromName?: string;
 };
 
 const SETTINGS_API = '/api/admin/settings/email';

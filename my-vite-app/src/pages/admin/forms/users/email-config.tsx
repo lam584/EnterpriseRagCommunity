@@ -43,6 +43,28 @@ function formatMailboxDate(v?: number | null): { short: string; full: string } {
   return { short: `${mm}-${dd} ${HH}:${MM}:${SS}`, full: `${yyyy}-${mm}-${dd} ${HH}:${MM}:${SS}` };
 }
 
+function SimpleModal({ title, isOpen, onClose, children }: { title: string; isOpen: boolean; onClose: () => void; children: React.ReactNode }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-in fade-in duration-200">
+      <div className="w-full max-w-lg rounded-lg bg-white shadow-xl max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h3 className="font-semibold text-lg">{title}</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl leading-none">
+            &times;
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto space-y-4">
+            {children}
+        </div>
+        <div className="border-t px-4 py-3 flex justify-end">
+             <Button onClick={onClose}>确定</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const EmailConfigForm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -73,6 +95,8 @@ const EmailConfigForm: React.FC = () => {
   const [activeBox, setActiveBox] = useState<'inbox' | 'sent' | null>(null);
   const [inboxError, setInboxError] = useState<string | null>(null);
   const [inboxExpanded, setInboxExpanded] = useState(false);
+  const [showSenderAdvanced, setShowSenderAdvanced] = useState(false);
+  const [showReceiverAdvanced, setShowReceiverAdvanced] = useState(false);
 
   const effectivePorts = useMemo(() => {
     const p = String(settings?.protocol ?? DEFAULT_SEND_PROTOCOL).toUpperCase();
@@ -104,6 +128,10 @@ const EmailConfigForm: React.FC = () => {
         debug: Boolean(s.debug),
         sslTrust: s.sslTrust ?? '',
         subjectPrefix: s.subjectPrefix ?? '',
+        username: s.username ?? '',
+        password: s.password ?? '',
+        from: s.from ?? '',
+        fromName: s.fromName ?? '',
       });
       setEditing(false);
       setSettingsSnapshot(null);
@@ -341,11 +369,7 @@ const EmailConfigForm: React.FC = () => {
       ) : (
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-12">
-            <div className="space-y-0.5 md:col-span-1">
-              <Label className="text-xs">协议</Label>
-              <Input className="h-9 text-sm" value="SMTP" disabled />
-            </div>
-
+            {/* Row 1: Server Connection */}
             <div className="col-span-2 space-y-0.5 md:col-span-5">
               <Label className="text-xs">服务器地址</Label>
               <Input
@@ -357,10 +381,21 @@ const EmailConfigForm: React.FC = () => {
               />
             </div>
 
-            <div className="space-y-0.5 md:col-span-1">
-              <Label className="text-xs">加密方式</Label>
+            <div className="space-y-0.5 md:col-span-2">
+              <Label className="text-xs">端口</Label>
+              <Input
+                className="h-9 text-xs px-1"
+                inputMode="numeric"
+                value={String(settings.portEncrypted ?? effectivePorts.enc)}
+                disabled={!editing}
+                onChange={(e) => setSettings(s => (s ? { ...s, portEncrypted: toInt(e.target.value, effectivePorts.enc) } : s))}
+              />
+            </div>
+
+            <div className="space-y-0.5 md:col-span-2">
+              <Label className="text-xs">加密</Label>
               <select
-                className="border border-black rounded px-2 py-0 bg-white w-full text-sm h-9"
+                className="border border-black rounded px-1 py-0 bg-white w-full text-xs h-9"
                 value={String(settings.encryption ?? 'SSL').toUpperCase()}
                 disabled={!editing}
                 onChange={(e) => setSettings(s => (s ? { ...s, encryption: e.target.value.toUpperCase() } : s))}
@@ -373,92 +408,145 @@ const EmailConfigForm: React.FC = () => {
               </select>
             </div>
 
-            <div className="space-y-0.5 md:col-span-1">
-              <Label className="text-xs">端口(常规)</Label>
-              <Input
-                className="h-9 text-sm"
-                inputMode="numeric"
-                value={String(settings.portPlain ?? effectivePorts.plain)}
-                disabled={!editing}
-                onChange={(e) => setSettings(s => (s ? { ...s, portPlain: toInt(e.target.value, effectivePorts.plain) } : s))}
-              />
+            <div className="space-y-0.5 md:col-span-3">
+              <Label className="text-xs">&nbsp;</Label>
+              <Button
+                variant="outline"
+                className="w-full h-9 text-xs px-1"
+                onClick={() => setShowSenderAdvanced(true)}
+                disabled={loading || saving}
+              >
+                高级设置
+              </Button>
+              <SimpleModal title="发件高级设置" isOpen={showSenderAdvanced} onClose={() => setShowSenderAdvanced(false)}>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-0.5">
+                      <Label className="text-xs">协议</Label>
+                      <Input className="h-9 text-sm" value="SMTP" disabled />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-xs">端口(常规)</Label>
+                      <Input
+                        className="h-9 text-sm"
+                        inputMode="numeric"
+                        value={String(settings.portPlain ?? effectivePorts.plain)}
+                        disabled={!editing}
+                        onChange={(e) => setSettings(s => (s ? { ...s, portPlain: toInt(e.target.value, effectivePorts.plain) } : s))}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <Label className="text-xs">SSL Trust</Label>
+                    <Input
+                      className="h-9 text-sm"
+                      value={settings.sslTrust ?? ''}
+                      disabled={!editing}
+                      onChange={(e) => setSettings(s => (s ? { ...s, sslTrust: e.target.value } : s))}
+                      placeholder="例如：smtp.qiye.aliyun.com 或 *"
+                    />
+                  </div>
+                  <div className="space-y-0.5">
+                    <Label className="text-xs">主题前缀</Label>
+                    <Input
+                      className="h-9 text-sm"
+                      value={settings.subjectPrefix ?? ''}
+                      disabled={!editing}
+                      onChange={(e) => setSettings(s => (s ? { ...s, subjectPrefix: e.target.value } : s))}
+                      placeholder="例如：[EnterpriseRagCommunity]"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-0.5">
+                      <Label className="text-xs" title="连接超时(ms)">连接超时</Label>
+                      <Input
+                        className="h-9 text-sm"
+                        inputMode="numeric"
+                        value={String(settings.connectTimeoutMs ?? 10000)}
+                        disabled={!editing}
+                        onChange={(e) => setSettings(s => (s ? { ...s, connectTimeoutMs: toInt(e.target.value, 10000) } : s))}
+                      />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-xs" title="读取超时(ms)">读取超时</Label>
+                      <Input
+                        className="h-9 text-sm"
+                        inputMode="numeric"
+                        value={String(settings.timeoutMs ?? 10000)}
+                        disabled={!editing}
+                        onChange={(e) => setSettings(s => (s ? { ...s, timeoutMs: toInt(e.target.value, 10000) } : s))}
+                      />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label className="text-xs" title="写入超时(ms)">写入超时</Label>
+                      <Input
+                        className="h-9 text-sm"
+                        inputMode="numeric"
+                        value={String(settings.writeTimeoutMs ?? 10000)}
+                        disabled={!editing}
+                        onChange={(e) => setSettings(s => (s ? { ...s, writeTimeoutMs: toInt(e.target.value, 10000) } : s))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </SimpleModal>
             </div>
-            <div className="space-y-0.5 md:col-span-1">
-              <Label className="text-xs">端口(加密)</Label>
+
+            {/* 第二行：认证与身份信息 */}
+            <div className="col-span-2 space-y-0.5 md:col-span-3">
+              <Label className="text-xs">SMTP 用户名</Label>
               <Input
                 className="h-9 text-sm"
-                inputMode="numeric"
-                value={String(settings.portEncrypted ?? effectivePorts.enc)}
+                value={settings.username ?? ''}
                 disabled={!editing}
-                onChange={(e) => setSettings(s => (s ? { ...s, portEncrypted: toInt(e.target.value, effectivePorts.enc) } : s))}
+                onChange={(e) => setSettings(s => (s ? { ...s, username: e.target.value } : s))}
+                placeholder="通常是邮箱地址"
               />
             </div>
             <div className="col-span-2 space-y-0.5 md:col-span-3">
-              <Label className="text-xs">SSL Trust</Label>
+              <Label className="text-xs">邮箱密码</Label>
               <Input
                 className="h-9 text-sm"
-                value={settings.sslTrust ?? ''}
+                type="password"
+                value={settings.password ?? ''}
                 disabled={!editing}
-                onChange={(e) => setSettings(s => (s ? { ...s, sslTrust: e.target.value } : s))}
-                placeholder="例如：smtp.qiye.aliyun.com 或 *"
+                onChange={(e) => setSettings(s => (s ? { ...s, password: e.target.value } : s))}
+                placeholder="SMTP 密码或应用专用密码"
+              />
+            </div>
+            <div className="col-span-2 space-y-0.5 md:col-span-3">
+              <Label className="text-xs">发件人邮箱</Label>
+              <Input
+                className="h-9 text-sm"
+                value={settings.from ?? ''}
+                disabled={!editing}
+                onChange={(e) => setSettings(s => (s ? { ...s, from: e.target.value } : s))}
+                placeholder="系统发送邮件显示的邮箱"
+              />
+            </div>
+            <div className="col-span-2 space-y-0.5 md:col-span-3">
+              <Label className="text-xs">发件人名称</Label>
+              <Input
+                className="h-9 text-sm"
+                value={settings.fromName ?? ''}
+                disabled={!editing}
+                onChange={(e) => setSettings(s => (s ? { ...s, fromName: e.target.value } : s))}
+                placeholder="系统发送邮件显示的名称"
               />
             </div>
 
-            <div className="col-span-2 space-y-0.5 md:col-span-4">
-              <Label className="text-xs">主题前缀</Label>
-              <Input
-                className="h-9 text-sm"
-                value={settings.subjectPrefix ?? ''}
-                disabled={!editing}
-                onChange={(e) => setSettings(s => (s ? { ...s, subjectPrefix: e.target.value } : s))}
-                placeholder="例如：[EnterpriseRagCommunity]"
-              />
-            </div>
-
-            <div className="col-span-2 md:col-span-4 grid grid-cols-3 gap-2">
-              <div className="space-y-0.5">
-                <Label className="text-xs" title="连接超时(ms)">连接超时</Label>
-                <Input
-                  className="h-9 text-sm"
-                  inputMode="numeric"
-                  value={String(settings.connectTimeoutMs ?? 10000)}
-                  disabled={!editing}
-                  onChange={(e) => setSettings(s => (s ? { ...s, connectTimeoutMs: toInt(e.target.value, 10000) } : s))}
-                />
-              </div>
-              <div className="space-y-0.5">
-                <Label className="text-xs" title="读取超时(ms)">读取超时</Label>
-                <Input
-                  className="h-9 text-sm"
-                  inputMode="numeric"
-                  value={String(settings.timeoutMs ?? 10000)}
-                  disabled={!editing}
-                  onChange={(e) => setSettings(s => (s ? { ...s, timeoutMs: toInt(e.target.value, 10000) } : s))}
-                />
-              </div>
-              <div className="space-y-0.5">
-                <Label className="text-xs" title="写入超时(ms)">写入超时</Label>
-                <Input
-                  className="h-9 text-sm"
-                  inputMode="numeric"
-                  value={String(settings.writeTimeoutMs ?? 10000)}
-                  disabled={!editing}
-                  onChange={(e) => setSettings(s => (s ? { ...s, writeTimeoutMs: toInt(e.target.value, 10000) } : s))}
-                />
-              </div>
-            </div>
-
-            <div className="col-span-2 md:col-span-4 space-y-0.5">
+            {/* 第三行：测试功能 */}
+            <div className="col-span-2 md:col-span-12 space-y-0.5 pt-2 border-t mt-1">
               <Label className="text-xs">测试收件人</Label>
-              <div className="flex gap-2">
+              <div className="flex gap-1">
                 <Input
                   className="h-9 text-sm flex-1 min-w-0"
                   value={testTo}
                   onChange={(e) => setTestTo(e.target.value)}
                   placeholder="name@example.com"
                 />
-                <Button size="sm" onClick={runTest} disabled={testing || loading || saving} className="px-3 shrink-0">
-                  {testing ? '...' : '发送'}
+                <Button size="sm" onClick={runTest} disabled={testing || loading || saving} className="px-2 shrink-0 h-9">
+                  {testing ? '...' : '发送测试邮件'}
                 </Button>
               </div>
             </div>
@@ -543,10 +631,6 @@ const EmailConfigForm: React.FC = () => {
                 {inboxExpanded ? (
                   <div className="space-y-2 border-b pb-2">
                     <div className="grid grid-cols-2 gap-2 md:grid-cols-12">
-                      <div className="space-y-0.5 md:col-span-1">
-                        <Label className="text-xs">协议</Label>
-                        <Input className="h-8 text-sm" value="IMAP" disabled />
-                      </div>
                       <div className="col-span-2 space-y-0.5 md:col-span-5">
                         <Label className="text-xs">服务器地址</Label>
                         <Input
@@ -557,7 +641,7 @@ const EmailConfigForm: React.FC = () => {
                           placeholder="例如：imap.qiye.aliyun.com"
                         />
                       </div>
-                      <div className="space-y-0.5 md:col-span-1">
+                      <div className="space-y-0.5 md:col-span-2">
                         <Label className="text-xs">加密方式</Label>
                         <select
                           className="border border-black rounded px-2 py-0 bg-white w-full text-sm h-8 disabled:opacity-50"
@@ -573,17 +657,7 @@ const EmailConfigForm: React.FC = () => {
                         </select>
                       </div>
 
-                      <div className="space-y-0.5 md:col-span-1">
-                        <Label className="text-xs">端口(常规)</Label>
-                        <Input
-                          className="h-8 text-sm"
-                          inputMode="numeric"
-                          value={String(inboxConfig.portPlain ?? 143)}
-                          disabled={!inboxEditing}
-                          onChange={(e) => setInboxConfig(s => (s ? { ...s, portPlain: toInt(e.target.value, 143) } : s))}
-                        />
-                      </div>
-                      <div className="space-y-0.5 md:col-span-1">
+                      <div className="space-y-0.5 md:col-span-2">
                         <Label className="text-xs">端口(加密)</Label>
                         <Input
                           className="h-8 text-sm"
@@ -593,68 +667,101 @@ const EmailConfigForm: React.FC = () => {
                           onChange={(e) => setInboxConfig(s => (s ? { ...s, portEncrypted: toInt(e.target.value, 993) } : s))}
                         />
                       </div>
-                      <div className="col-span-2 space-y-0.5 md:col-span-3">
-                        <Label className="text-xs">SSL Trust</Label>
-                        <Input
-                          className="h-8 text-sm"
-                          value={inboxConfig.sslTrust ?? ''}
-                          disabled={!inboxEditing}
-                          onChange={(e) => setInboxConfig(s => (s ? { ...s, sslTrust: e.target.value } : s))}
-                          placeholder="例如：imap.qiye.aliyun.com 或 *"
-                        />
-                      </div>
 
-                      <div className="col-span-2 space-y-0.5 md:col-span-3">
-                        <Label className="text-xs">收件箱文件夹</Label>
-                        <Input
-                          className="h-8 text-sm"
-                          value={inboxConfig.folder ?? 'INBOX'}
-                          disabled={!inboxEditing}
-                          onChange={(e) => setInboxConfig(s => (s ? { ...s, folder: e.target.value } : s))}
-                          placeholder="例如：INBOX"
-                        />
-                      </div>
-
-                      <div className="col-span-2 space-y-0.5 md:col-span-3">
-                        <Label className="text-xs">发件箱文件夹</Label>
-                        <Input
-                          className="h-8 text-sm"
-                          value={inboxConfig.sentFolder ?? 'Sent'}
-                          disabled={!inboxEditing}
-                          onChange={(e) => setInboxConfig(s => (s ? { ...s, sentFolder: e.target.value } : s))}
-                          placeholder="例如：Sent"
-                        />
-                      </div>
-
-                      <div className="space-y-0.5 md:col-span-2">
-                        <Label className="text-xs" title="连接超时(ms)">连接超时</Label>
-                        <Input
-                          className="h-8 text-sm"
-                          inputMode="numeric"
-                          value={String(inboxConfig.connectTimeoutMs ?? 10000)}
-                          disabled={!inboxEditing}
-                          onChange={(e) => setInboxConfig(s => (s ? { ...s, connectTimeoutMs: toInt(e.target.value, 10000) } : s))}
-                        />
-                      </div>
-                      <div className="space-y-0.5 md:col-span-2">
-                        <Label className="text-xs" title="读取超时(ms)">读取超时</Label>
-                        <Input
-                          className="h-8 text-sm"
-                          inputMode="numeric"
-                          value={String(inboxConfig.timeoutMs ?? 10000)}
-                          disabled={!inboxEditing}
-                          onChange={(e) => setInboxConfig(s => (s ? { ...s, timeoutMs: toInt(e.target.value, 10000) } : s))}
-                        />
-                      </div>
-                      <div className="space-y-0.5 md:col-span-2">
-                        <Label className="text-xs" title="写入超时(ms)">写入超时</Label>
-                        <Input
-                          className="h-8 text-sm"
-                          inputMode="numeric"
-                          value={String(inboxConfig.writeTimeoutMs ?? 10000)}
-                          disabled={!inboxEditing}
-                          onChange={(e) => setInboxConfig(s => (s ? { ...s, writeTimeoutMs: toInt(e.target.value, 10000) } : s))}
-                        />
+                      <div className="space-y-0.5 md:col-span-3">
+                        <Label className="text-xs">&nbsp;</Label>
+                        <Button
+                          variant="outline"
+                          className="w-full h-8 text-xs"
+                          onClick={() => setShowReceiverAdvanced(true)}
+                          disabled={inboxLoading || inboxSaving}
+                        >
+                          高级设置
+                        </Button>
+                        <SimpleModal title="收件高级设置" isOpen={showReceiverAdvanced} onClose={() => setShowReceiverAdvanced(false)}>
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-0.5">
+                                <Label className="text-xs">协议</Label>
+                                <Input className="h-8 text-sm" value="IMAP" disabled />
+                              </div>
+                              <div className="space-y-0.5">
+                                <Label className="text-xs">端口(常规)</Label>
+                                <Input
+                                  className="h-8 text-sm"
+                                  inputMode="numeric"
+                                  value={String(inboxConfig.portPlain ?? 143)}
+                                  disabled={!inboxEditing}
+                                  onChange={(e) => setInboxConfig(s => (s ? { ...s, portPlain: toInt(e.target.value, 143) } : s))}
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-0.5">
+                              <Label className="text-xs">SSL Trust</Label>
+                              <Input
+                                className="h-8 text-sm"
+                                value={inboxConfig.sslTrust ?? ''}
+                                disabled={!inboxEditing}
+                                onChange={(e) => setInboxConfig(s => (s ? { ...s, sslTrust: e.target.value } : s))}
+                                placeholder="例如：imap.qiye.aliyun.com 或 *"
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-0.5">
+                                <Label className="text-xs">收件箱文件夹</Label>
+                                <Input
+                                  className="h-8 text-sm"
+                                  value={inboxConfig.folder ?? 'INBOX'}
+                                  disabled={!inboxEditing}
+                                  onChange={(e) => setInboxConfig(s => (s ? { ...s, folder: e.target.value } : s))}
+                                  placeholder="例如：INBOX"
+                                />
+                              </div>
+                              <div className="space-y-0.5">
+                                <Label className="text-xs">发件箱文件夹</Label>
+                                <Input
+                                  className="h-8 text-sm"
+                                  value={inboxConfig.sentFolder ?? 'Sent'}
+                                  disabled={!inboxEditing}
+                                  onChange={(e) => setInboxConfig(s => (s ? { ...s, sentFolder: e.target.value } : s))}
+                                  placeholder="例如：Sent"
+                                />
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="space-y-0.5">
+                                <Label className="text-xs" title="连接超时(ms)">连接超时</Label>
+                                <Input
+                                  className="h-8 text-sm"
+                                  inputMode="numeric"
+                                  value={String(inboxConfig.connectTimeoutMs ?? 10000)}
+                                  disabled={!inboxEditing}
+                                  onChange={(e) => setInboxConfig(s => (s ? { ...s, connectTimeoutMs: toInt(e.target.value, 10000) } : s))}
+                                />
+                              </div>
+                              <div className="space-y-0.5">
+                                <Label className="text-xs" title="读取超时(ms)">读取超时</Label>
+                                <Input
+                                  className="h-8 text-sm"
+                                  inputMode="numeric"
+                                  value={String(inboxConfig.timeoutMs ?? 10000)}
+                                  disabled={!inboxEditing}
+                                  onChange={(e) => setInboxConfig(s => (s ? { ...s, timeoutMs: toInt(e.target.value, 10000) } : s))}
+                                />
+                              </div>
+                              <div className="space-y-0.5">
+                                <Label className="text-xs" title="写入超时(ms)">写入超时</Label>
+                                <Input
+                                  className="h-8 text-sm"
+                                  inputMode="numeric"
+                                  value={String(inboxConfig.writeTimeoutMs ?? 10000)}
+                                  disabled={!inboxEditing}
+                                  onChange={(e) => setInboxConfig(s => (s ? { ...s, writeTimeoutMs: toInt(e.target.value, 10000) } : s))}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </SimpleModal>
                       </div>
                     </div>
                   </div>

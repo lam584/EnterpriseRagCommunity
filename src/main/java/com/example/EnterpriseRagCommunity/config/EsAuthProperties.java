@@ -17,7 +17,8 @@ public class EsAuthProperties {
     /**
      * Elasticsearch ApiKey (the raw key string used after "Authorization: ApiKey ").
      *
-     * Suggest injecting via environment variable APP_ES_API_KEY.
+     * Previously injected via environment variable APP_ES_API_KEY.
+     * Now primarily loaded from database table 'system_configurations' with key 'APP_ES_API_KEY'.
      */
     private String apiKey;
 }

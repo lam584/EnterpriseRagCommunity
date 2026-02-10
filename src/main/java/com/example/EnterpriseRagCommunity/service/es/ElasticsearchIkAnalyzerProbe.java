@@ -1,8 +1,9 @@
 package com.example.EnterpriseRagCommunity.service.es;
 
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
@@ -13,15 +14,12 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Service
+@RequiredArgsConstructor
 public class ElasticsearchIkAnalyzerProbe {
 
     private static final Logger log = LoggerFactory.getLogger(ElasticsearchIkAnalyzerProbe.class);
 
-    @Value("${spring.elasticsearch.uris:http://127.0.0.1:9200}")
-    private String elasticsearchUris;
-
-    @Value("${app.es.api-key:}")
-    private String elasticsearchApiKey;
+    private final SystemConfigurationService systemConfigurationService;
 
     private final AtomicReference<Boolean> cached = new AtomicReference<>();
 
@@ -34,6 +32,7 @@ public class ElasticsearchIkAnalyzerProbe {
     }
 
     private boolean probeOnce() {
+        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
         String endpoint = elasticsearchUris;
         if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
         if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
@@ -48,6 +47,7 @@ public class ElasticsearchIkAnalyzerProbe {
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
 
+            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
             if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
                 conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
             }

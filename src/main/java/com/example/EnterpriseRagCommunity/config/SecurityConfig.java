@@ -101,6 +101,7 @@ public class SecurityConfig {
                     authz
                         .requestMatchers(
                                 // 仅放行 API 认证相关端点
+                                "/api/setup/**",
                                 "/api/auth/login",
                                 "/api/auth/logout",
                                 "/api/auth/csrf-token",

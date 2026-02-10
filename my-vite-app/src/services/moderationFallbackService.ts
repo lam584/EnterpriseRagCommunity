@@ -1,3 +1,5 @@
+import { getCsrfToken } from '../utils/csrfUtils';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 function apiUrl(path: string): string {
   if (!path.startsWith('/')) path = `/${path}`;
@@ -54,9 +56,13 @@ export async function getFallbackConfig(): Promise<ModerationConfidenceFallbackC
 }
 
 export async function updateFallbackConfig(payload: Partial<ModerationConfidenceFallbackConfig>): Promise<ModerationConfidenceFallbackConfig> {
+  const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl('/api/admin/moderation/fallback/config'), {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken
+    },
     credentials: 'include',
     body: JSON.stringify(payload),
   });

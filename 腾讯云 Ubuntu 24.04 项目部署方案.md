@@ -87,7 +87,39 @@ cd EnterpriseRagCommunity
     sudo mysql -u root -ppassword -e "CREATE DATABASE IF NOT EXISTS EnterpriseRagCommunity CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
     ```
 
-### 第六步：安装 Docker 与 Elasticsearch (搜索引擎)
+### 第六步：配置后端环境变量
+
+在进行后续步骤之前，我们先配置后端服务所需的关键环境变量。
+
+1.  **生成 APP_MASTER_KEY**：
+    这是用于加密数据库敏感配置的主密钥。请运行以下命令生成一个随机密钥：
+    ```bash
+    openssl rand -base64 32
+    ```
+    *请复制输出的字符串，稍后会用到。*
+
+2.  **创建配置文件**：
+    我们将把环境变量写入 `/etc/default/enterprise-rag` 文件中，这样 Systemd 可以直接读取。
+
+    ```bash
+    sudo nano /etc/default/enterprise-rag
+    ```
+
+3.  **粘贴以下内容**：
+    *请将 `<您的APP_MASTER_KEY>` 替换为第1步生成的字符串。*
+    *请确保 `DB_PASSWORD` 与第五步中设置的 MySQL 密码一致。*
+
+    ```ini
+    # === 安全配置 ===
+    APP_MASTER_KEY=<您的APP_MASTER_KEY>
+
+    # === 数据库配置 ===
+    DB_USERNAME=root
+    DB_PASSWORD=password
+    ```
+    **保存退出**：`Ctrl + O`, `Enter`, `Ctrl + X`。
+
+### 第七步：安装 Docker 与 Elasticsearch (搜索引擎)
 
 项目依赖 Elasticsearch。我们将使用 Docker 安装，并配置 4.5GB 内存与 API Key 认证。
 
@@ -151,7 +183,7 @@ cd EnterpriseRagCommunity
          -d'{"name": "rag_app_key"}'
     ```
     
-    **注意**：请复制返回结果中 `encoded` 字段的值（一串长字符），这将在配置后端服务时使用。
+    **注意**：请复制返回结果中 `encoded` 字段的值（一串长字符），这将在 **第十一步：系统初始化向导** 中填入。
 
 4.  **验证连接**
     ```bash
@@ -160,7 +192,7 @@ cd EnterpriseRagCommunity
     ```
 
 
-### 第七步：安装 Node.js 并构建前端
+### 第八步：安装 Node.js 并构建前端
 
 1.  **安装 Node.js 20 (LTS)**：
     ```bash
@@ -183,7 +215,7 @@ cd EnterpriseRagCommunity
     cd ..
     ```
 
-### 第八步：构建后端代码
+### 第九步：构建后端代码
 
 现在我们编译 Java 后端。
 
@@ -193,7 +225,7 @@ cd EnterpriseRagCommunity
 ```
 *如果显示 `BUILD SUCCESSFUL`，说明构建成功。生成的文件在 `build/libs/` 目录下。*
 
-### 第九步：配置 Nginx (Web 服务器)
+### 第十步：配置 Nginx (Web 服务器)
 
 我们需要 Nginx 来对外提供服务：它负责把用户的请求分发给前端页面或后端 API。
 
@@ -257,7 +289,7 @@ cd EnterpriseRagCommunity
     sudo systemctl restart nginx
     ```
 
-### 第十步：启动后端服务 (设置开机自启)
+### 第十一步：启动后端服务 (设置开机自启)
 
 为了让后端程序在后台运行且开机自动启动，我们创建一个系统服务。
 
@@ -268,6 +300,8 @@ cd EnterpriseRagCommunity
 
 2.  **粘贴以下内容**：
     *(同样注意修改 `/home/ubuntu/...` 路径)*
+    
+    我们通过 `EnvironmentFile` 指令引入了第六步创建的配置文件。
 
     ```ini
     [Unit]
@@ -276,10 +310,17 @@ cd EnterpriseRagCommunity
 
     [Service]
     User=root
-    # 强制覆盖 ES 地址为本地 Docker 地址
-    Environment="SPRING_ELASTICSEARCH_URIS=http://localhost:9200"
-    # 填入第六步生成的 API Key
-    Environment="APP_ES_API_KEY=请在此处粘贴第六步生成的APIKey"
+    
+    # === 引入环境变量 ===
+    # 从第六步创建的文件中读取 APP_MASTER_KEY 和 数据库配置
+    EnvironmentFile=/etc/default/enterprise-rag
+    
+    # === 其他配置 ===
+    # 注意：项目已启用动态密钥管理器。
+    # Elasticsearch API Key、邮件配置、AI Key 等敏感信息
+    # 请在服务启动后，访问 Web 界面进入「系统初始化向导」进行配置，无需在此处通过环境变量设置。
+    
+    # === 启动命令 ===
     # 这里指向刚才构建生成的 war 包
     ExecStart=/usr/bin/java -jar /home/ubuntu/EnterpriseRagCommunity/build/libs/EnterpriseRagCommunity.war
     SuccessExitStatus=143
@@ -305,12 +346,27 @@ cd EnterpriseRagCommunity
     sudo systemctl status enterprise-rag
     ```
 
-### 验证
-
+### 验证与系统初始化
 现在，您应该可以通过浏览器访问服务器的公网 IP 地址来看到您的应用了。
 如果无法访问，请检查腾讯云控制台的**安全组**设置，确保 **TCP 80 端口**是开放的。
 
-### 第十一步：日常维护与更新指南
+### 第十二步：系统初始化向导 (System Initialization)
+
+首次访问系统时，应用会自动检测初始化状态，并跳转至 **系统初始化向导** (`/admin-setup`)。
+请在向导中完成以下配置：
+
+1.  **管理员账号创建**：设置系统的初始超级管理员。
+2.  **Elasticsearch 配置**：
+    *   **主机**: `localhost`
+    *   **端口**: `9200`
+    *   **协议**: `http` (因为我们在 Step 7 中关闭了 SSL)
+    *   **API Key**: 填入 **第七步** 中生成的 `encoded` 字符串。
+3.  **其他服务**：
+    *   根据向导提示配置邮件服务 (SMTP) 和 AI 模型密钥。
+    
+配置完成后，点击“完成设置”，系统将自动加载配置并进入登录页。
+
+### 第十三步：日常维护与更新指南
 
 部署完成后，您可能需要经常查看服务状态或更新代码。以下是常用操作命令：
 
@@ -491,34 +547,3 @@ docker exec elasticsearch env | grep "ES_JAVA_OPTS"
 ```powershell
 docker stats elasticsearch --no-stream
 ```
-
-
-
-# 暴露mysql端口到公网 (仅测试用)
-
-##### ✅ 允许任意 IP 连接（仅测试用，生产环境慎用）
-```sql
-CREATE USER 'root'@'%' IDENTIFIED BY 'password';
-GRANT ALL PRIVILEGES ON EnterpriseRagCommunity.* TO 'root'@'%';
-FLUSH PRIVILEGES;
-```
-
-> ⚠️ 注意：如果你已有 `'root'@'%'`，就不要再重复创建。
-
-#### 第三步：确认用户已正确创建
-```sql
-SELECT User, Host FROM mysql.user WHERE User = 'root';
-```
-你应该看到类似：
-```
-+------+------------------+
-| User | Host             |
-+------+------------------+
-| root | localhost        |
-| root | 113.16.23.89     |   -- 或 '%'
-+------+------------------+
-```
-
----
-
-- 重启 MySQL：`sudo systemctl restart mysql`

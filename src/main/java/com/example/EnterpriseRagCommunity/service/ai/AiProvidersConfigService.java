@@ -8,6 +8,7 @@ import com.example.EnterpriseRagCommunity.entity.ai.LlmProviderSettingsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmProviderRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmProviderSettingsRepository;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class AiProvidersConfigService {
     private final LlmProviderSettingsRepository llmProviderSettingsRepository;
     private final LlmModelRepository llmModelRepository;
     private final LlmSecretsCryptoService llmSecretsCryptoService;
+    private final SystemConfigurationService systemConfigurationService;
 
     @Transactional(readOnly = true)
     public AiProvidersConfigDTO getAdminConfig() {
@@ -251,7 +253,7 @@ public class AiProvidersConfigService {
         type = type.trim().toUpperCase(Locale.ROOT);
 
         String baseUrl = toNonBlank(selected.getBaseUrl());
-        if (baseUrl == null) baseUrl = aiProperties.getBaseUrl();
+        if (baseUrl == null) baseUrl = getDefaultBaseUrl();
 
         String apiKey = null;
         if (selected.getApiKeyEncrypted() != null && llmSecretsCryptoService.isConfigured()) {
@@ -264,10 +266,10 @@ public class AiProvidersConfigService {
                 );
             }
         }
-        if (apiKey == null) apiKey = aiProperties.getApiKey();
+        if (apiKey == null) apiKey = getDefaultApiKey();
 
         String chatModel = toNonBlank(selected.getDefaultChatModel());
-        if (chatModel == null) chatModel = aiProperties.getModel();
+        if (chatModel == null) chatModel = getDefaultModel();
         String embModel = toNonBlank(selected.getDefaultEmbeddingModel());
         if (embModel == null) embModel = "text-embedding-v4";
 
@@ -334,14 +336,14 @@ public class AiProvidersConfigService {
         type = type.trim().toUpperCase(Locale.ROOT);
 
         String baseUrl = toNonBlank(selected.getBaseUrl());
-        if (baseUrl == null) baseUrl = aiProperties.getBaseUrl();
+        if (baseUrl == null) baseUrl = getDefaultBaseUrl();
 
         String apiKey = toNonBlank(selected.getApiKey());
         if (MASK.equals(apiKey)) apiKey = null;
-        if (apiKey == null) apiKey = aiProperties.getApiKey();
+        if (apiKey == null) apiKey = getDefaultApiKey();
 
         String chatModel = toNonBlank(selected.getDefaultChatModel());
-        if (chatModel == null) chatModel = aiProperties.getModel();
+        if (chatModel == null) chatModel = getDefaultModel();
         String embModel = toNonBlank(selected.getDefaultEmbeddingModel());
         if (embModel == null) embModel = "text-embedding-v4";
 
@@ -370,9 +372,9 @@ public class AiProvidersConfigService {
         return new ResolvedProvider(
                 "default",
                 "OPENAI_COMPAT",
-                aiProperties.getBaseUrl(),
-                aiProperties.getApiKey(),
-                aiProperties.getModel(),
+                getDefaultBaseUrl(),
+                getDefaultApiKey(),
+                getDefaultModel(),
                 "text-embedding-v4",
                 Map.of(),
                 Map.of(),
@@ -380,6 +382,27 @@ public class AiProvidersConfigService {
                 aiProperties.getReadTimeoutMs(),
                 null
         );
+    }
+    
+    private String getDefaultBaseUrl() {
+        String val = systemConfigurationService.getConfig("APP_AI_BASE_URL");
+        if (val == null || val.isBlank()) val = systemConfigurationService.getConfig("app.ai.base-url");
+        if (val != null && !val.isBlank()) return val;
+        return aiProperties.getBaseUrl();
+    }
+
+    private String getDefaultApiKey() {
+        String val = systemConfigurationService.getConfig("APP_AI_API_KEY");
+        if (val == null || val.isBlank()) val = systemConfigurationService.getConfig("app.ai.api-key");
+        if (val != null && !val.isBlank()) return val;
+        return aiProperties.getApiKey();
+    }
+    
+    private String getDefaultModel() {
+        String val = systemConfigurationService.getConfig("APP_AI_MODEL");
+        if (val == null || val.isBlank()) val = systemConfigurationService.getConfig("app.ai.model");
+        if (val != null && !val.isBlank()) return val;
+        return aiProperties.getModel();
     }
 
     private String firstEnabledProviderId(String env) {
