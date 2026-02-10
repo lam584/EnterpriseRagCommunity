@@ -1,15 +1,16 @@
 package com.example.EnterpriseRagCommunity.controller;
 
-import com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest;
-import com.example.EnterpriseRagCommunity.dto.access.response.ApiResponse;
-import com.example.EnterpriseRagCommunity.service.AdministratorService;
-import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
-import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
-import jakarta.validation.Valid;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.apache.http.HttpHost;
-import org.apache.http.auth.AuthScope;
-import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
@@ -19,13 +20,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.security.SecureRandom;
-import java.util.*;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
+import com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest;
+import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
+import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/setup")
@@ -77,22 +84,34 @@ public class SetupController {
     private File findEnvFile() {
         // 1. Try user.dir
         String userDir = System.getProperty("user.dir");
+        logger.info("Current working directory (user.dir): {}", userDir);
         File found = searchUpwards(new File(userDir));
         if (found != null) return found;
 
         // 2. Try Jar location
         try {
             String path = SetupController.class.getProtectionDomain().getCodeSource().getLocation().getPath();
+            logger.info("Jar code source path: {}", path);
+            
+            // Handle nested: protocol (Tomcat/Jetty executable wars sometimes use this)
+            if (path.startsWith("nested:")) {
+                path = path.substring(7);
+            }
             // Handle file: protocol if present
-            if (path.startsWith("file:")) {
+            else if (path.startsWith("file:")) {
                 path = path.substring(5);
             }
-            // Remove !/BOOT-INF/classes!/ if running from fat jar
-            if (path.contains("!")) {
-                path = path.substring(0, path.indexOf("!"));
+
+            // Remove !/WEB-INF/classes!/ or !/BOOT-INF/classes!/ if running from fat jar
+            // We want the path to the JAR file itself
+            int bangIndex = path.indexOf("!");
+            if (bangIndex > 0) {
+                path = path.substring(0, bangIndex);
             }
             
             File jarFile = new File(java.net.URLDecoder.decode(path, java.nio.charset.StandardCharsets.UTF_8.name()));
+            logger.info("Resolved Jar/Class file path: {}", jarFile.getAbsolutePath());
+            
             // If it points to a file (jar), get parent. If dir (classes), use it.
             File startDir = jarFile.isDirectory() ? jarFile : jarFile.getParentFile();
             
@@ -105,12 +124,15 @@ public class SetupController {
             logger.warn("Failed to resolve Jar location: {}", e.getMessage());
         }
         
-        logger.info(".env file not found.");
+        logger.info("FATAL: .env file not found after exhaustive search.");
         return null;
     }
 
     private File searchUpwards(File startDir) {
-        if (startDir == null || !startDir.exists()) return null;
+        if (startDir == null || !startDir.exists()) {
+            logger.warn("Directory does not exist: {}", startDir);
+            return null;
+        }
         File currentDir = startDir;
         // Try up to 4 levels
         for (int i = 0; i < 4; i++) {
@@ -118,9 +140,27 @@ public class SetupController {
                 break;
             }
             
+            logger.info("Checking for .env in directory: {}", currentDir.getAbsolutePath());
+            
+            // Debug: List files to see if .env is visible (handling hidden files concern)
+            File[] files = currentDir.listFiles();
+            if (files != null) {
+                StringBuilder fileList = new StringBuilder();
+                int count = 0;
+                for (File f : files) {
+                    if (count++ < 20) { // Limit log size
+                        fileList.append(f.getName()).append(", ");
+                    }
+                }
+                if (files.length > 20) fileList.append("... (total ").append(files.length).append(")");
+                logger.info("Files in {}: [{}]", currentDir.getName(), fileList.toString());
+            } else {
+                logger.warn("Failed to list files in {}", currentDir.getAbsolutePath());
+            }
+
             File envFile = new File(currentDir, ".env");
             if (envFile.exists() && envFile.isFile()) {
-                logger.info("Found .env file at: {}", envFile.getAbsolutePath());
+                logger.info("SUCCESS: Found .env file at: {}", envFile.getAbsolutePath());
                 return envFile;
             }
             

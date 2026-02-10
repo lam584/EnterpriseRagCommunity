@@ -232,6 +232,10 @@ const ImportConfigurationForm: React.FC = () => {
     }, [step]);
 
     const handleFinalSubmit = async () => {
+        if (!adminForm.email || !adminForm.username || !adminForm.password || !adminForm.confirmPassword) {
+            setError("请填写所有必填项");
+            return;
+        }
         if (adminForm.password !== adminForm.confirmPassword) {
             setError("密码不匹配");
             return;
@@ -538,7 +542,8 @@ const ImportConfigurationForm: React.FC = () => {
                                             type="email" 
                                             value={adminForm.email} 
                                             onChange={e => setAdminForm({...adminForm, email: e.target.value})}
-                                            placeholder="admin@example.com"
+                                            placeholder="请输入管理员邮箱"
+                                            className="placeholder:text-gray-300"
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -547,7 +552,8 @@ const ImportConfigurationForm: React.FC = () => {
                                             type="text" 
                                             value={adminForm.username} 
                                             onChange={e => setAdminForm({...adminForm, username: e.target.value})}
-                                            placeholder="admin"
+                                            placeholder="请输入用户名"
+                                            className="placeholder:text-gray-300"
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -556,7 +562,8 @@ const ImportConfigurationForm: React.FC = () => {
                                             type="password" 
                                             value={adminForm.password} 
                                             onChange={e => setAdminForm({...adminForm, password: e.target.value})}
-                                            placeholder="••••••••"
+                                            placeholder="请输入密码"
+                                            className="placeholder:text-gray-300"
                                         />
                                     </div>
                                     <div className="space-y-2">
@@ -565,7 +572,8 @@ const ImportConfigurationForm: React.FC = () => {
                                             type="password" 
                                             value={adminForm.confirmPassword} 
                                             onChange={e => setAdminForm({...adminForm, confirmPassword: e.target.value})}
-                                            placeholder="••••••••"
+                                            placeholder="请再次输入密码"
+                                            className="placeholder:text-gray-300"
                                         />
                                     </div>
                                 </div>
