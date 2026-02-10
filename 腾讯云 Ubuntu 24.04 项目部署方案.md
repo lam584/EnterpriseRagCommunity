@@ -154,7 +154,7 @@ cd EnterpriseRagCommunity
 
     ```bash
     # 查看容器日志，观察是否启动成功
-    ddocker logs -f elasticsearch
+    docker logs -f elasticsearch
     ```
 
     等待看到类似以下日志（表示已 ready）：
@@ -365,7 +365,6 @@ cd EnterpriseRagCommunity
     *   根据向导提示配置邮件服务 (SMTP) 和 AI 模型密钥。
     
 配置完成后，点击“完成设置”，系统将自动加载配置并进入登录页。
-
 ### 第十三步：日常维护与更新指南
 
 部署完成后，您可能需要经常查看服务状态或更新代码。以下是常用操作命令：
@@ -385,49 +384,41 @@ cd EnterpriseRagCommunity
     ```
     *(按 `Ctrl + C` 停止查看)*
 
-#### 2. 重启后端服务
+#### 2. 管理后端服务
 
-如果您修改了配置文件或只是想重启应用：
-```bash
-sudo systemctl restart enterprise-rag
-```
+*   **停止服务**：
+    ```bash
+    sudo systemctl stop enterprise-rag
+    ```
+*   **启动服务**：
+    ```bash
+    sudo systemctl start enterprise-rag
+    ```
+*   **重启服务**（修改配置后常用）：
+    ```bash
+    sudo systemctl restart enterprise-rag
+    ```
 
-#### 3. 拉取最新代码并更新部署
+#### 3. 管理 Docker 容器 (Elasticsearch)
+
+如果您需要手动控制 Elasticsearch 容器：
+
+*   **停止容器**：
+    ```bash
+    docker stop elasticsearch
+    ```
+*   **启动容器**：
+    ```bash
+    docker start elasticsearch
+    ```
+*   **查看容器日志**：
+    ```bash
+    docker logs -f elasticsearch
+    ```
+
+#### 4. 拉取最新代码并更新部署
 
 当您在本地开发并 Push 了新代码到 GitHub 后，服务器端需要执行以下步骤来应用更新：
-
-```bash
-# 1. 进入项目目录
-cd ~/EnterpriseRagCommunity
-
-# 2. 拉取最新代码
-git pull
-
-# 3. 重新构建后端 (如果修改了 Java 代码)
-./gradlew bootWar
-# 重启服务以应用更改
-sudo systemctl restart enterprise-rag
-
-# 4. 重新构建前端 (如果修改了 React 代码)
-cd my-vite-app
-npm install  # 以防有新的依赖
-npm run build
-cd ..        # 回到根目录
-# 前端构建完成后立即生效（无需重启 Nginx，除非修改了 Nginx 配置）
-```
-
-#### 4. 重置数据库 (测试环境专用)
-
-如果您在测试过程中需要清空数据库重新开始，可以使用以下命令删除并重新创建数据库：
-
-```bash
-# 1. 删除旧数据库
-sudo mysql -u root -ppassword -e "DROP DATABASE IF EXISTS EnterpriseRagCommunity;"
-
-# 2. 重启后端服务（确保连接池重置）
-sudo systemctl restart enterprise-rag
-```
-**警告**：此操作会永久删除所有业务数据，请谨慎操作！
 
 # 修改端口
           

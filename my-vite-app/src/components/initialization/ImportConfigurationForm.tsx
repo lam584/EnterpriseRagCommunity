@@ -55,6 +55,19 @@ const configLabels: Record<string, string> = {
     APP_MAIL_INBOX_PORT: '收件端口'
 };
 
+const getFriendlyErrorMessage = (errorMessage: string): string => {
+    if (!errorMessage) return '未知错误';
+    if (errorMessage.includes('401 Unauthorized') || 
+        errorMessage.includes('security_exception') || 
+        errorMessage.includes('unable to authenticate')) {
+        return '认证失败：请检查 ES API Key 或密码是否正确';
+    }
+    if (errorMessage.includes('Connection refused')) {
+        return '连接失败：无法连接到 ES 服务器，请检查地址配置';
+    }
+    return errorMessage;
+};
+
 const ImportConfigurationForm: React.FC = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
@@ -167,7 +180,7 @@ const ImportConfigurationForm: React.FC = () => {
                     if (res.success) {
                         setEsConnected(true);
                     } else {
-                        setError('无法继续：ES 连接失败。' + res.message);
+                        setError(getFriendlyErrorMessage(res.message));
                         setLoading(false);
                         return;
                     }
@@ -178,7 +191,7 @@ const ImportConfigurationForm: React.FC = () => {
                 toast.success('索引初始化成功');
                 setStep(3);
             } catch (e: any) {
-                setError('操作失败：' + e.message);
+                setError('操作失败：' + getFriendlyErrorMessage(e.message));
             } finally {
                 setLoading(false);
             }
@@ -200,12 +213,12 @@ const ImportConfigurationForm: React.FC = () => {
                 }
             } else {
                 setEsConnected(false);
-                setError(res.message);
+                setError(getFriendlyErrorMessage(res.message));
             }
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (e: any) {
             setEsConnected(false);
-            setError(e.message);
+            setError(getFriendlyErrorMessage(e.message));
         } finally {
             setLoading(false);
         }
@@ -244,8 +257,9 @@ const ImportConfigurationForm: React.FC = () => {
             navigate('/login', { state: { setupJustCompleted: true } });
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (e: any) {
-            setError(e.message);
-            toast.error(e.message);
+            const msg = getFriendlyErrorMessage(e.message);
+            setError(msg);
+            toast.error(msg);
         } finally {
             setLoading(false);
         }

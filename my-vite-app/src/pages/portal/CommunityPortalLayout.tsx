@@ -182,18 +182,21 @@ export default function CommunityPortalLayout() {
   const showDiscoverHotSidebar = location.pathname.startsWith('/portal/discover');
   const showAssistantRecentSessionsSidebar = location.pathname.startsWith('/portal/assistant/chat');
   const isAssistantChatWide = showAssistantRecentSessionsSidebar;
-  const containerClassName = isComposeWide || isAssistantChatWide ? 'w-full max-w-none' : 'max-w-7xl';
-  const rightSidebarSpacerClassName = showDiscoverHotSidebar
-    ? 'lg:pr-80 min-[1920px]:pr-0'
-    : showAssistantRecentSessionsSidebar
-      ? 'xl:pr-80'
-      : '';
+  // 用户反馈希望保持导航栏位置不变，因此不再对 AssistantChat 强制 full-width
+  // 但为了解决宽屏下聊天框不伸展且侧边栏分离的问题，这里放宽最大宽度限制
+  // 使用 1760px (110rem) 代替原来的 7xl (80rem/1280px)，既增加了宽度，又保持了居中和两侧留白，避免视觉重心偏移
+  const containerClassName = isComposeWide ? 'w-full max-w-none' : isAssistantChatWide ? 'w-full max-w-[1760px]' : 'max-w-7xl';
+
 
   return (
     <div className="min-h-screen bg-white">
       <div className={`${containerClassName} mx-auto flex border-gray-200 min-h-screen`}>
         {/* Left Sidebar */}
-        <aside className="w-64 bg-white border-gray-200 h-screen sticky top-0 flex flex-col shrink-0 z-10">
+        <aside
+          className={`w-64 bg-white border-gray-200 h-screen sticky top-0 flex flex-col shrink-0 z-10 ${
+            isAssistantChatWide ? 'xl:ml-[calc(50vw-40rem)] min-[1760px]:ml-60' : ''
+          }`}
+        >
           <div className="p-6 border-b border-gray-200">
             <div className="text-xl font-bold text-blue-600 flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
@@ -335,24 +338,26 @@ export default function CommunityPortalLayout() {
         </aside>
 
         {/* Main Content */}
-        <main className={`flex-1 min-w-0 bg-white ${rightSidebarSpacerClassName}`}>
+        <main className="flex-1 min-w-0 bg-white">
           <div className="w-full min-w-0">
             <Outlet context={{ composePreviewOpen, setComposePreviewOpen } satisfies PortalOutletContext} />
           </div>
         </main>
+
+        {showDiscoverHotSidebar ? (
+          <aside className="hidden lg:block w-80 bg-white border-l border-gray-200 h-screen sticky top-0 shrink-0 p-4 overflow-y-auto z-20">
+            <HotSidebar />
+          </aside>
+        ) : null}
+
+        {showAssistantRecentSessionsSidebar ? (
+          <aside className="hidden xl:block w-80 bg-white border-l border-gray-200 h-screen sticky top-0 shrink-0 p-4 overflow-y-auto z-20">
+            <AssistantRecentSessionsSidebar />
+          </aside>
+        ) : null}
       </div>
 
-      {showDiscoverHotSidebar ? (
-        <aside className="hidden lg:block fixed top-0 right-0 min-[1920px]:right-[calc((100vw-80rem)/2-20rem)] w-80 bg-white border-l border-gray-200 h-screen shrink-0 p-4 overflow-y-auto z-20">
-          <HotSidebar />
-        </aside>
-      ) : null}
 
-      {showAssistantRecentSessionsSidebar ? (
-        <aside className="hidden xl:block fixed top-0 right-0 w-80 bg-white border-l border-gray-200 h-screen shrink-0 p-4 overflow-y-auto z-20">
-          <AssistantRecentSessionsSidebar />
-        </aside>
-      ) : null}
     </div>
   );
 }

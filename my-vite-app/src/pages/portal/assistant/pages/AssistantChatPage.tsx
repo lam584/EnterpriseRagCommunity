@@ -1237,7 +1237,7 @@ export default function AssistantChatPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] gap-4">
+    <div className="space-y-3 flex flex-col h-[calc(100vh-140px)] gap-4">
       <div className="flex-none">
         <div className="flex items-start justify-between gap-3">
           <div>
