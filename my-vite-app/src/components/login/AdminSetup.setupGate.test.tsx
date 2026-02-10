@@ -24,10 +24,8 @@ vi.mock('../../services/setupService', async () => {
 
 import AdminSetup from './AdminSetup';
 import { registerInitialAdmin } from '../../services/authService';
-import { checkEnvFile } from '../../services/setupService';
 
 const mockRegisterInitialAdmin = vi.mocked(registerInitialAdmin);
-const mockCheckEnvFile = vi.mocked(checkEnvFile);
 
 function LoginPage() {
   const location = useLocation();
