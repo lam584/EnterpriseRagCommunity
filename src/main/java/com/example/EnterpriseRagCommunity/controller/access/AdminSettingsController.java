@@ -25,6 +25,7 @@ import com.example.EnterpriseRagCommunity.dto.access.RegistrationSettingsDTO;
 import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicySettingsDTO;
 import com.example.EnterpriseRagCommunity.dto.access.TotpAdminSettingsDTO;
 import com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 import com.example.EnterpriseRagCommunity.service.notify.EmailEncryption;
 import com.example.EnterpriseRagCommunity.service.notify.EmailInboxService;
@@ -39,6 +40,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AdminSettingsController {
     private final AppSettingsService appSettingsService;
+    private final SystemConfigurationService systemConfigurationService;
     private final EmailSenderService emailSenderService;
     private final ObjectProvider<EmailInboxService> emailInboxServiceProvider;
     private final Security2faPolicyService security2faPolicyService;
@@ -83,6 +85,10 @@ public class AdminSettingsController {
     private static final String KEY_EMAIL_DEBUG = "email_debug";
     private static final String KEY_EMAIL_SSL_TRUST = "email_ssl_trust";
     private static final String KEY_EMAIL_SUBJECT_PREFIX = "email_subject_prefix";
+    private static final String KEY_EMAIL_USERNAME = "APP_MAIL_USERNAME";
+    private static final String KEY_EMAIL_PASSWORD = "APP_MAIL_PASSWORD";
+    private static final String KEY_EMAIL_FROM = "APP_MAIL_FROM_ADDRESS";
+    private static final String KEY_EMAIL_FROM_NAME = "APP_MAIL_FROM_NAME";
 
     private static final String KEY_EMAIL_INBOX_PROTOCOL = "email_inbox_protocol";
     private static final String KEY_EMAIL_INBOX_HOST = "email_inbox_host";
@@ -161,6 +167,10 @@ public class AdminSettingsController {
         dto.setDebug(appSettingsService.getLongOrDefault(KEY_EMAIL_DEBUG, 0L) == 1L);
         dto.setSslTrust(appSettingsService.getString(KEY_EMAIL_SSL_TRUST).orElse(""));
         dto.setSubjectPrefix(appSettingsService.getString(KEY_EMAIL_SUBJECT_PREFIX).orElse(""));
+        dto.setUsername(systemConfigurationService.getConfig(KEY_EMAIL_USERNAME));
+        dto.setPassword(systemConfigurationService.getConfig(KEY_EMAIL_PASSWORD));
+        dto.setFrom(systemConfigurationService.getConfig(KEY_EMAIL_FROM));
+        dto.setFromName(systemConfigurationService.getConfig(KEY_EMAIL_FROM_NAME));
         return ResponseEntity.ok(normalizeEmailSettings(dto));
     }
 
@@ -181,6 +191,11 @@ public class AdminSettingsController {
         appSettingsService.upsertString(KEY_EMAIL_DEBUG, normalized.getDebug() != null && normalized.getDebug() ? "1" : "0");
         appSettingsService.upsertString(KEY_EMAIL_SSL_TRUST, normalized.getSslTrust() == null ? "" : normalized.getSslTrust());
         appSettingsService.upsertString(KEY_EMAIL_SUBJECT_PREFIX, normalized.getSubjectPrefix() == null ? "" : normalized.getSubjectPrefix());
+
+        systemConfigurationService.saveConfig(KEY_EMAIL_USERNAME, normalized.getUsername(), false, "Updated via Admin Settings");
+        systemConfigurationService.saveConfig(KEY_EMAIL_PASSWORD, normalized.getPassword(), true, "Updated via Admin Settings");
+        systemConfigurationService.saveConfig(KEY_EMAIL_FROM, normalized.getFrom(), false, "Updated via Admin Settings");
+        systemConfigurationService.saveConfig(KEY_EMAIL_FROM_NAME, normalized.getFromName(), false, "Updated via Admin Settings");
 
         return ResponseEntity.ok(normalized);
     }
@@ -366,6 +381,11 @@ public class AdminSettingsController {
         String subjectPrefix = dto.getSubjectPrefix() == null ? "" : dto.getSubjectPrefix().trim();
         if (subjectPrefix.length() > 64) throw new IllegalArgumentException("subjectPrefix 过长");
 
+        String username = dto.getUsername() == null ? "" : dto.getUsername().trim();
+        String password = dto.getPassword() == null ? "" : dto.getPassword();
+        String from = dto.getFrom() == null ? "" : dto.getFrom().trim();
+        String fromName = dto.getFromName() == null ? "" : dto.getFromName().trim();
+
         EmailAdminSettingsDTO out = new EmailAdminSettingsDTO();
         out.setEnabled(enabled);
         out.setProtocol(protocol);
@@ -379,6 +399,10 @@ public class AdminSettingsController {
         out.setDebug(debug);
         out.setSslTrust(sslTrust);
         out.setSubjectPrefix(subjectPrefix);
+        out.setUsername(username);
+        out.setPassword(password);
+        out.setFrom(from);
+        out.setFromName(fromName);
         return out;
     }
 

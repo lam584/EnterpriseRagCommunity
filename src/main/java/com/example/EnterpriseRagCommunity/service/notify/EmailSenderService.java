@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.service.notify;
 import com.example.EnterpriseRagCommunity.config.AppMailProperties;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,7 @@ public class EmailSenderService {
     private static final Logger log = LoggerFactory.getLogger(EmailSenderService.class);
 
     private final AppMailProperties appMailProperties;
+    private final SystemConfigurationService systemConfigurationService;
     private final AuditLogWriter auditLogWriter;
 
     public void sendPlainText(EmailTransportConfig cfg, String to, String subject, String text, String purpose) {
@@ -29,13 +31,19 @@ public class EmailSenderService {
         if (subject == null) subject = "";
         if (text == null) text = "";
 
-        String username = appMailProperties.getUsername();
-        String password = appMailProperties.getPassword();
+        String username = getConfig("APP_MAIL_USERNAME", appMailProperties.getUsername());
+        String password = getConfig("APP_MAIL_PASSWORD", appMailProperties.getPassword());
+        String fromAddress = getConfig("APP_MAIL_FROM_ADDRESS", appMailProperties.getFromAddress());
+        String fromName = getConfig("APP_MAIL_FROM_NAME", appMailProperties.getFromName());
+
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
             throw new IllegalStateException("app.mail.username 和 app.mail.password 必须配置");
         }
+        if (fromAddress == null || fromAddress.isBlank()) {
+            throw new IllegalStateException("app.mail.from-address is required");
+        }
 
-        JavaMailSenderImpl sender = buildSender(cfg);
+        JavaMailSenderImpl sender = buildSender(cfg, username, password, fromAddress);
 
         String safeUser = mask(username);
         long startNs = System.nanoTime();
@@ -53,11 +61,6 @@ public class EmailSenderService {
             var msg = sender.createMimeMessage();
             var helper = new MimeMessageHelper(msg, false, StandardCharsets.UTF_8.name());
 
-            String fromAddress = appMailProperties.getFromAddress();
-            if (fromAddress == null || fromAddress.isBlank()) {
-                throw new IllegalStateException("app.mail.from-address is required");
-            }
-            String fromName = appMailProperties.getFromName();
             if (fromName != null && !fromName.isBlank()) {
                 helper.setFrom(fromAddress.trim(), fromName.trim());
             } else {
@@ -84,7 +87,7 @@ public class EmailSenderService {
         }
     }
 
-    private JavaMailSenderImpl buildSender(EmailTransportConfig cfg) {
+    private JavaMailSenderImpl buildSender(EmailTransportConfig cfg, String username, String password, String fromAddress) {
         if (cfg.host() == null || cfg.host().isBlank()) throw new IllegalArgumentException("host is required");
         if (cfg.port() <= 0) throw new IllegalArgumentException("port is invalid");
 
@@ -92,8 +95,6 @@ public class EmailSenderService {
         sender.setHost(cfg.host().trim());
         sender.setPort(cfg.port());
 
-        String username = appMailProperties.getUsername();
-        String password = appMailProperties.getPassword();
         if (username != null && !username.isBlank()) {
             sender.setUsername(username.trim());
         }
@@ -104,7 +105,7 @@ public class EmailSenderService {
         Properties props = new Properties();
         String protocol = (cfg.protocol() == null || cfg.protocol().isBlank()) ? "smtp" : cfg.protocol().trim();
         props.put("mail.transport.protocol", protocol);
-        props.put("mail.smtp.localhost", resolveSmtpLocalhost());
+        props.put("mail.smtp.localhost", resolveSmtpLocalhost(fromAddress));
 
         EmailEncryption enc = cfg.encryption() == null ? EmailEncryption.NONE : cfg.encryption();
         if (enc == EmailEncryption.SSL) {
@@ -130,8 +131,7 @@ public class EmailSenderService {
         return sender;
     }
 
-    private String resolveSmtpLocalhost() {
-        String fromAddress = appMailProperties.getFromAddress();
+    private String resolveSmtpLocalhost(String fromAddress) {
         if (fromAddress == null) return "localhost";
         String t = fromAddress.trim();
         int at = t.lastIndexOf('@');
@@ -140,6 +140,12 @@ public class EmailSenderService {
         if (domain.isEmpty()) return "localhost";
         if (!domain.matches("[A-Za-z0-9.-]+")) return "localhost";
         return domain;
+    }
+
+    private String getConfig(String key, String defaultValue) {
+        String val = systemConfigurationService.getConfig(key);
+        if (val != null && !val.isBlank()) return val;
+        return defaultValue;
     }
 
     private static String safe(String v) {

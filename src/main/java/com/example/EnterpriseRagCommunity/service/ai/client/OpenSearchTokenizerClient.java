@@ -24,12 +24,11 @@ public class OpenSearchTokenizerClient {
     public OpenSearchTokenizeResponse tokenize(String host, String apiKey, String workspaceName, String serviceId, Object body)
             throws Exception {
         if (host == null || host.isBlank()) host = props.getHost();
-        if (apiKey == null || apiKey.isBlank()) apiKey = props.getApiKey();
         if (workspaceName == null || workspaceName.isBlank()) workspaceName = props.getWorkspaceName();
         if (serviceId == null || serviceId.isBlank()) serviceId = props.getServiceId();
 
         if (host == null || host.isBlank()) throw new IllegalStateException("缺少 app.opensearch.platform.host");
-        if (apiKey == null || apiKey.isBlank()) throw new IllegalStateException("缺少 app.ai.tokenizer.api-key（或 app.opensearch.platform.api-key）");
+        if (apiKey == null || apiKey.isBlank()) throw new IllegalStateException("缺少 app.ai.tokenizer.api-key");
         if (workspaceName == null || workspaceName.isBlank()) throw new IllegalStateException("缺少 app.opensearch.platform.workspace-name");
         if (serviceId == null || serviceId.isBlank()) throw new IllegalStateException("缺少 app.opensearch.platform.service-id");
 

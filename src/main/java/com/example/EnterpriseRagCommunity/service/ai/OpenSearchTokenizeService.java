@@ -32,7 +32,6 @@ public class OpenSearchTokenizeService {
 
         try {
             String apiKey = blankToNull(tokenizerProps.getApiKey());
-            if (apiKey == null) apiKey = blankToNull(props.getApiKey());
             return new OpenSearchTokenizerClient(props).tokenize(null, apiKey, workspaceName, serviceId, body);
         } catch (IllegalStateException e) {
             throw e;

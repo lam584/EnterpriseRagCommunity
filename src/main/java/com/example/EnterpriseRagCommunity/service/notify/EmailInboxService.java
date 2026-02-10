@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.service.notify;
 import com.example.EnterpriseRagCommunity.config.AppMailProperties;
 import com.example.EnterpriseRagCommunity.dto.access.EmailInboxMessageDTO;
 import com.example.EnterpriseRagCommunity.dto.access.EmailInboxSettingsDTO;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import jakarta.mail.Address;
 import jakarta.mail.BodyPart;
 import jakarta.mail.Folder;
@@ -28,14 +29,16 @@ import java.util.Properties;
 @ConditionalOnClass(name = "jakarta.mail.Part")
 public class EmailInboxService {
     private final AppMailProperties appMailProperties;
+    private final SystemConfigurationService systemConfigurationService;
 
     public List<EmailInboxMessageDTO> listInbox(EmailInboxSettingsDTO cfg, int limit) {
         if (cfg == null) throw new IllegalArgumentException("inbox config is required");
         if (limit <= 0) limit = 20;
         if (limit > 50) limit = 50;
 
-        String username = appMailProperties.getUsername();
-        String password = appMailProperties.getPassword();
+        String username = getConfig("APP_MAIL_USERNAME", appMailProperties.getUsername());
+        String password = getConfig("APP_MAIL_PASSWORD", appMailProperties.getPassword());
+        
         if (username == null || username.isBlank()) throw new IllegalStateException("app.mail.username is required");
         if (password == null || password.isBlank()) throw new IllegalStateException("app.mail.password is required");
 
@@ -136,6 +139,12 @@ public class EmailInboxService {
             } catch (Exception ignored) {
             }
         }
+    }
+
+    private String getConfig(String key, String defaultValue) {
+        String val = systemConfigurationService.getConfig(key);
+        if (val != null && !val.isBlank()) return val;
+        return defaultValue;
     }
 
     private static String getMessageId(Folder folder, Message m) {

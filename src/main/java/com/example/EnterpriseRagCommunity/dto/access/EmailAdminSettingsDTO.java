@@ -40,4 +40,16 @@ public class EmailAdminSettingsDTO {
 
     @ApiModelProperty("邮件主题前缀（可选）")
     private String subjectPrefix;
+
+    @ApiModelProperty("SMTP 用户名")
+    private String username;
+
+    @ApiModelProperty("SMTP 密码")
+    private String password;
+
+    @ApiModelProperty("发件人邮箱")
+    private String from;
+
+    @ApiModelProperty("发件人名称")
+    private String fromName;
 }
