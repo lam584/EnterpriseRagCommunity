@@ -420,6 +420,40 @@ cd EnterpriseRagCommunity
 
 当您在本地开发并 Push 了新代码到 GitHub 后，服务器端需要执行以下步骤来应用更新：
 
+```bash
+# 1. 进入项目目录
+cd ~/EnterpriseRagCommunity
+
+# 2. 拉取最新代码
+git pull
+
+# 3. 重新构建后端 (如果修改了 Java 代码)
+./gradlew bootWar
+# 重启服务以应用更改
+sudo systemctl restart enterprise-rag
+
+# 4. 重新构建前端 (如果修改了 React 代码)
+cd my-vite-app
+npm install  # 以防有新的依赖
+npm run build
+cd ..        # 回到根目录
+# 前端构建完成后立即生效（无需重启 Nginx，除非修改了 Nginx 配置）
+```
+
+#### 4. 重置数据库 (测试环境专用)
+
+如果您在测试过程中需要清空数据库重新开始，可以使用以下命令删除并重新创建数据库：
+
+```bash
+# 1. 删除旧数据库
+sudo mysql -u root -p -e "DROP DATABASE IF EXISTS EnterpriseRagCommunity;"
+
+# 2. 重启后端服务（确保连接池重置）
+sudo systemctl restart enterprise-rag
+```
+**警告**：此操作会永久删除所有业务数据，请谨慎操作！
+
+
 # 修改端口
           
 由于 80 端口在国内服务器上必须完成 ICP 备案才能对外开放，未备案时会被云厂商自动拦截。

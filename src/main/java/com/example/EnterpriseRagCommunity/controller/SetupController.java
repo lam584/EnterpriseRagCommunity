@@ -61,8 +61,8 @@ public class SetupController {
 
     @GetMapping("/check-env")
     public ResponseEntity<?> checkEnvFile() {
-        File envFile = new File(System.getProperty("user.dir"), ".env");
-        if (envFile.exists() && envFile.isFile()) {
+        File envFile = findEnvFile();
+        if (envFile != null && envFile.exists() && envFile.isFile()) {
             try {
                 String content = Files.readString(envFile.toPath());
                 return ResponseEntity.ok(Map.of("exists", true, "content", content));
@@ -72,6 +72,30 @@ public class SetupController {
             }
         }
         return ResponseEntity.ok(Map.of("exists", false));
+    }
+
+    private File findEnvFile() {
+        String userDir = System.getProperty("user.dir");
+        File currentDir = new File(userDir);
+        logger.info("Searching for .env file starting from: {}", userDir);
+        
+        // Try current directory and up to 3 parent directories
+        for (int i = 0; i < 4; i++) {
+            if (currentDir == null || !currentDir.exists()) {
+                break;
+            }
+            
+            File envFile = new File(currentDir, ".env");
+            if (envFile.exists() && envFile.isFile()) {
+                logger.info("Found .env file at: {}", envFile.getAbsolutePath());
+                return envFile;
+            }
+            
+            currentDir = currentDir.getParentFile();
+        }
+        
+        logger.info(".env file not found within 3 levels of parent directories.");
+        return null;
     }
 
     @PostMapping("/generate-totp")
