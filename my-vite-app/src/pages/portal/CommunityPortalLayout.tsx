@@ -182,11 +182,19 @@ export default function CommunityPortalLayout() {
   const showDiscoverHotSidebar = location.pathname.startsWith('/portal/discover');
   const showAssistantRecentSessionsSidebar = location.pathname.startsWith('/portal/assistant/chat');
   const isAssistantChatWide = showAssistantRecentSessionsSidebar;
+  const isDiscoverWide = showDiscoverHotSidebar;
   // 用户反馈希望保持导航栏位置不变，因此不再对 AssistantChat 强制 full-width
   // 但为了解决宽屏下聊天框不伸展且侧边栏分离的问题，这里放宽最大宽度限制
   // 使用 1760px (110rem) 代替原来的 7xl (80rem/1280px)，既增加了宽度，又保持了居中和两侧留白，避免视觉重心偏移
-  const containerClassName = isComposeWide ? 'w-full max-w-none' : isAssistantChatWide ? 'w-full max-w-[1760px]' : 'max-w-7xl';
+  const containerClassName = isComposeWide
+    ? 'w-full max-w-none'
+    : isAssistantChatWide || isDiscoverWide
+    ? 'w-full max-w-[1760px]'
+    : 'max-w-7xl';
 
+  // 恢复 HotSidebar 的右侧留白逻辑（仅针对 HotSidebar，因为 AssistantSidebar 现在是 Flex 布局）
+  // 既然 HotSidebar 也要改为 Flex 布局，这里就不再需要 padding-right 了
+  const rightSidebarSpacerClassName = '';
 
   return (
     <div className="min-h-screen bg-white">
@@ -194,7 +202,7 @@ export default function CommunityPortalLayout() {
         {/* Left Sidebar */}
         <aside
           className={`w-64 bg-white border-gray-200 h-screen sticky top-0 flex flex-col shrink-0 z-10 ${
-            isAssistantChatWide ? 'xl:ml-[calc(50vw-40rem)] min-[1760px]:ml-60' : ''
+            isAssistantChatWide || isDiscoverWide ? 'xl:ml-[calc(50vw-40rem)] min-[1760px]:ml-60' : ''
           }`}
         >
           <div className="p-6 border-b border-gray-200">
@@ -338,21 +346,21 @@ export default function CommunityPortalLayout() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 min-w-0 bg-white">
+        <main className={`flex-1 min-w-0 bg-white ${rightSidebarSpacerClassName}`}>
           <div className="w-full min-w-0">
             <Outlet context={{ composePreviewOpen, setComposePreviewOpen } satisfies PortalOutletContext} />
           </div>
         </main>
 
-        {showDiscoverHotSidebar ? (
-          <aside className="hidden lg:block w-80 bg-white border-l border-gray-200 h-screen sticky top-0 shrink-0 p-4 overflow-y-auto z-20">
-            <HotSidebar />
-          </aside>
-        ) : null}
-
         {showAssistantRecentSessionsSidebar ? (
           <aside className="hidden xl:block w-80 bg-white border-l border-gray-200 h-screen sticky top-0 shrink-0 p-4 overflow-y-auto z-20">
             <AssistantRecentSessionsSidebar />
+          </aside>
+        ) : null}
+
+        {showDiscoverHotSidebar ? (
+          <aside className="hidden lg:block w-80 bg-white border-l border-gray-200 h-screen sticky top-0 shrink-0 p-4 overflow-y-auto z-20">
+            <HotSidebar />
           </aside>
         ) : null}
       </div>
