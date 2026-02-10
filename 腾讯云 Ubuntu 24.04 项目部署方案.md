@@ -416,6 +416,19 @@ cd ..        # 回到根目录
 # 前端构建完成后立即生效（无需重启 Nginx，除非修改了 Nginx 配置）
 ```
 
+#### 4. 重置数据库 (测试环境专用)
+
+如果您在测试过程中需要清空数据库重新开始，可以使用以下命令删除并重新创建数据库：
+
+```bash
+# 1. 删除旧数据库
+sudo mysql -u root -ppassword -e "DROP DATABASE IF EXISTS EnterpriseRagCommunity;"
+
+# 2. 重启后端服务（确保连接池重置）
+sudo systemctl restart enterprise-rag
+```
+**警告**：此操作会永久删除所有业务数据，请谨慎操作！
+
 # 修改端口
           
 由于 80 端口在国内服务器上必须完成 ICP 备案才能对外开放，未备案时会被云厂商自动拦截。
