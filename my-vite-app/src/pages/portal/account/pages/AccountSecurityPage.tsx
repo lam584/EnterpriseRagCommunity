@@ -12,6 +12,7 @@ import {
   getMySecurity2faPolicy,
   type Security2faPolicyStatusDTO,
   updateMyLogin2faPreference,
+  verifyMyLogin2faPreferencePassword,
 } from '../../../../services/security2faPolicyAccountService';
 import {
   disableTotp,
@@ -23,8 +24,8 @@ import {
   verifyTotp,
   verifyTotpPassword,
 } from '../../../../services/totpAccountService';
-import type { TotpAdminSettingsDTO } from '../../../../services/totpAdminService';
 import { ChangeEmailSection } from './AccountConnectionsPage';
+import Modal from '../../../../components/common/Modal';
 
 
 export default function AccountSecurityPage() {
@@ -49,10 +50,21 @@ export default function AccountSecurityPage() {
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [totpPolicy, setTotpPolicy] = useState<TotpAdminSettingsDTO | null>(null);
   const [totpStatus, setTotpStatus] = useState<TotpStatusResponse | null>(null);
   const [securityPolicy, setSecurityPolicy] = useState<Security2faPolicyStatusDTO | null>(null);
   const [login2faPrefSaving, setLogin2faPrefSaving] = useState(false);
+  const [login2faPrefDialogOpen, setLogin2faPrefDialogOpen] = useState(false);
+  const [login2faPrefTargetEnabled, setLogin2faPrefTargetEnabled] = useState(false);
+  const [login2faPrefStep, setLogin2faPrefStep] = useState<1 | 2>(1);
+  const [login2faPrefPassword, setLogin2faPrefPassword] = useState('');
+  const [login2faPrefPasswordVerifying, setLogin2faPrefPasswordVerifying] = useState(false);
+  const [login2faPrefPasswordVerified, setLogin2faPrefPasswordVerified] = useState(false);
+  const [login2faPrefMethod, setLogin2faPrefMethod] = useState<'totp' | 'email'>('totp');
+  const [login2faPrefTotpCode, setLogin2faPrefTotpCode] = useState('');
+  const [login2faPrefEmailCode, setLogin2faPrefEmailCode] = useState('');
+  const [sendingLogin2faPrefEmailCode, setSendingLogin2faPrefEmailCode] = useState(false);
+  const [login2faPrefEmailCountdown, setLogin2faPrefEmailCountdown] = useState(0);
+  const [login2faPrefErrorMsg, setLogin2faPrefErrorMsg] = useState<string | null>(null);
   const [totpLoading, setTotpLoading] = useState(false);
   const [totpErrorMsg, setTotpErrorMsg] = useState<string | null>(null);
   const [totpEnrollSaving, setTotpEnrollSaving] = useState(false);
@@ -121,6 +133,16 @@ export default function AccountSecurityPage() {
   }, [disableEmailCountdown]);
 
   useEffect(() => {
+    let timer: number | undefined;
+    if (login2faPrefEmailCountdown > 0) {
+      timer = window.setInterval(() => {
+        setLogin2faPrefEmailCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [login2faPrefEmailCountdown]);
+
+  useEffect(() => {
     // If TOTP is enabled, default to TOTP, otherwise Email
     if (totpStatus?.enabled) {
       setVerifyMethod('totp');
@@ -142,12 +164,6 @@ export default function AccountSecurityPage() {
   const login2faCanEnableByPolicy = securityPolicy?.login2faCanEnable ?? false;
   const login2faEnabledByPolicy = securityPolicy?.login2faEnabled ?? false;
 
-  const maxSkew = useMemo(() => {
-    const v = typeof totpPolicy?.maxSkew === 'number' ? totpPolicy.maxSkew : 2;
-    if (!Number.isFinite(v)) return 2;
-    return Math.max(0, Math.min(10, Math.trunc(v)));
-  }, [totpPolicy?.maxSkew]);
-
   useEffect(() => {
     void (async () => {
       setTotpLoading(true);
@@ -157,7 +173,6 @@ export default function AccountSecurityPage() {
           getTotpStatus(),
           getMySecurity2faPolicy().catch(() => null),
         ]);
-        setTotpPolicy(policy);
         setTotpStatus(status);
         setSecurityPolicy(secPolicy);
         setEnrollAlg(String(policy.defaultAlgorithm ?? 'SHA1'));
@@ -358,6 +373,19 @@ export default function AccountSecurityPage() {
     }
   };
 
+  const closeLogin2faPrefDialog = () => {
+    setLogin2faPrefDialogOpen(false);
+    setLogin2faPrefStep(1);
+    setLogin2faPrefPassword('');
+    setLogin2faPrefPasswordVerified(false);
+    setLogin2faPrefPasswordVerifying(false);
+    setLogin2faPrefTotpCode('');
+    setLogin2faPrefEmailCode('');
+    setSendingLogin2faPrefEmailCode(false);
+    setLogin2faPrefEmailCountdown(0);
+    setLogin2faPrefErrorMsg(null);
+  };
+
   return (
     <div className="space-y-4">
       <div>
@@ -387,20 +415,23 @@ export default function AccountSecurityPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     if (login2faPrefSaving) return;
-                    try {
-                      setLogin2faPrefSaving(true);
-                      const nextEnabled = !login2faEnabledByPolicy;
-                      const updated = await updateMyLogin2faPreference(nextEnabled);
-                      setSecurityPolicy(updated);
-                      toast.success(nextEnabled ? '已开启登录二次验证' : '已关闭登录二次验证');
-                    } catch (e) {
-                      const msg = e instanceof Error ? e.message : '保存失败';
-                      toast.error(msg);
-                    } finally {
-                      setLogin2faPrefSaving(false);
-                    }
+                    const nextEnabled = !login2faEnabledByPolicy;
+                    const totpOk = enabled && totpAllowedByPolicy;
+                    const emailOk = emailOtpAllowedByPolicy;
+                    setLogin2faPrefTargetEnabled(nextEnabled);
+                    setLogin2faPrefStep(1);
+                    setLogin2faPrefPassword('');
+                    setLogin2faPrefPasswordVerified(false);
+                    setLogin2faPrefPasswordVerifying(false);
+                    setLogin2faPrefMethod(totpOk ? 'totp' : (emailOk ? 'email' : 'totp'));
+                    setLogin2faPrefTotpCode('');
+                    setLogin2faPrefEmailCode('');
+                    setSendingLogin2faPrefEmailCode(false);
+                    setLogin2faPrefEmailCountdown(0);
+                    setLogin2faPrefErrorMsg(null);
+                    setLogin2faPrefDialogOpen(true);
                   }}
                   className="px-3 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
                   disabled={login2faPrefSaving || totpLoading}
@@ -416,7 +447,7 @@ export default function AccountSecurityPage() {
           <div className="rounded-lg border bg-white p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-lg font-semibold">二次验证（TOTP）</div>
+            <div className="text-lg font-semibold">TOTP（基于时间的一次性口令）</div>
             <div className="text-sm text-gray-600">
               使用认证器应用（Google Authenticator / Microsoft Authenticator 等）生成动态验证码
             </div>
@@ -572,69 +603,6 @@ export default function AccountSecurityPage() {
                       <div className="text-sm font-medium text-gray-900">验证邮箱</div>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-4 md:items-end">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">算法</label>
-                        <select
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
-                          value={enrollAlg}
-                          onChange={(e) => setEnrollAlg(e.target.value)}
-                          disabled={totpEnrollSaving || totpLoading || Boolean(enrollResult)}
-                        >
-                          {(totpPolicy?.allowedAlgorithms?.length ? totpPolicy.allowedAlgorithms : ['SHA1', 'SHA256', 'SHA512']).map(a => (
-                            <option key={a} value={String(a)}>
-                              {String(a)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">位数</label>
-                        <select
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
-                          value={String(enrollDigits)}
-                          onChange={(e) => setEnrollDigits(Number(e.target.value))}
-                          disabled={totpEnrollSaving || totpLoading || Boolean(enrollResult)}
-                        >
-                          {(totpPolicy?.allowedDigits?.length ? totpPolicy.allowedDigits : [6, 8]).map(d => (
-                            <option key={d} value={String(d)}>
-                              {d}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">步长（秒）</label>
-                        <select
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
-                          value={String(enrollPeriod)}
-                          onChange={(e) => setEnrollPeriod(Number(e.target.value))}
-                          disabled={totpEnrollSaving || totpLoading || Boolean(enrollResult)}
-                        >
-                          {(totpPolicy?.allowedPeriodSeconds?.length ? totpPolicy.allowedPeriodSeconds : [30, 60]).map(p => (
-                            <option key={p} value={String(p)}>
-                              {p}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">skew（0..{maxSkew}）</label>
-                        <select
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
-                          value={String(enrollSkew)}
-                          onChange={(e) => setEnrollSkew(Number(e.target.value))}
-                          disabled={totpEnrollSaving || totpLoading || Boolean(enrollResult)}
-                        >
-                          {Array.from({ length: maxSkew + 1 }).map((_, i) => (
-                            <option key={i} value={String(i)}>
-                              {i}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
                     {policyLoaded && !emailOtpAllowedByPolicy ? (
                       <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                         管理员已禁止使用邮箱验证码，无法启用 TOTP。
@@ -726,6 +694,9 @@ export default function AccountSecurityPage() {
                     </div>
                     <div className="rounded-md border bg-gray-50 p-3 space-y-2">
                       <div className="text-sm font-medium">绑定信息</div>
+                      <div className="text-sm text-gray-700">
+                        本次配置：{enrollResult.algorithm} / {String(enrollResult.digits)} / {String(enrollResult.periodSeconds)} / skew={String(enrollResult.skew)}
+                      </div>
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-[220px_1fr] md:items-start">
                         <div className="rounded-md border bg-white p-3">
                           <div className="text-xs text-gray-500 mb-2">扫码绑定</div>
@@ -1526,6 +1497,226 @@ export default function AccountSecurityPage() {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={login2faPrefDialogOpen}
+        onClose={closeLogin2faPrefDialog}
+        title={login2faPrefTargetEnabled ? '开启登录二次验证' : '关闭登录二次验证'}
+      >
+        <div className="space-y-3">
+          {login2faPrefErrorMsg ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+              {login2faPrefErrorMsg}
+            </div>
+          ) : null}
+
+          {login2faPrefStep === 1 ? (
+            <div className="space-y-3">
+              <div className="text-sm text-gray-700">为保护账号安全，请先验证当前密码。</div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">当前密码</label>
+                <input
+                  value={login2faPrefPassword}
+                  onChange={(e) => {
+                    setLogin2faPrefPassword(e.target.value);
+                    if (login2faPrefErrorMsg) setLogin2faPrefErrorMsg(null);
+                  }}
+                  disabled={login2faPrefPasswordVerified || login2faPrefPasswordVerifying || login2faPrefSaving}
+                  type="password"
+                  autoComplete="current-password"
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+                  placeholder={login2faPrefPasswordVerified ? '已验证' : '请输入当前密码'}
+                />
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={login2faPrefPasswordVerified || login2faPrefPasswordVerifying || login2faPrefSaving}
+                  onClick={async () => {
+                    if (login2faPrefPasswordVerified || login2faPrefPasswordVerifying) return;
+                    const pwd = login2faPrefPassword.trim();
+                    if (!pwd) {
+                      setLogin2faPrefErrorMsg('请输入当前密码');
+                      toast.error('请输入当前密码');
+                      return;
+                    }
+                    try {
+                      setLogin2faPrefPasswordVerifying(true);
+                      setLogin2faPrefErrorMsg(null);
+                      await verifyMyLogin2faPreferencePassword(pwd);
+                      setLogin2faPrefPasswordVerified(true);
+                      setLogin2faPrefStep(2);
+                      toast.success('密码验证通过');
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : '验证失败';
+                      setLogin2faPrefErrorMsg(msg);
+                      toast.error(msg);
+                    } finally {
+                      setLogin2faPrefPasswordVerifying(false);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {login2faPrefPasswordVerifying ? '验证中...' : '验证密码'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-sm text-gray-700">请选择一种方式完成二次验证。</div>
+
+              {!(emailOtpAllowedByPolicy || (enabled && totpAllowedByPolicy)) ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  当前账号无法使用 TOTP 或邮箱验证码完成验证，请联系管理员。
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-4">
+                <label className={`flex items-center gap-2 cursor-pointer ${enabled && totpAllowedByPolicy ? '' : 'opacity-60'}`}>
+                  <input
+                    type="radio"
+                    name="login2faPrefMethod"
+                    checked={login2faPrefMethod === 'totp'}
+                    onChange={() => {
+                      setLogin2faPrefMethod('totp');
+                      setLogin2faPrefTotpCode('');
+                      setLogin2faPrefEmailCode('');
+                      setLogin2faPrefErrorMsg(null);
+                    }}
+                    disabled={!(enabled && totpAllowedByPolicy) || login2faPrefSaving}
+                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">动态验证码（TOTP）</span>
+                </label>
+                <label className={`flex items-center gap-2 cursor-pointer ${emailOtpAllowedByPolicy ? '' : 'opacity-60'}`}>
+                  <input
+                    type="radio"
+                    name="login2faPrefMethod"
+                    checked={login2faPrefMethod === 'email'}
+                    onChange={() => {
+                      setLogin2faPrefMethod('email');
+                      setLogin2faPrefTotpCode('');
+                      setLogin2faPrefEmailCode('');
+                      setLogin2faPrefErrorMsg(null);
+                    }}
+                    disabled={!emailOtpAllowedByPolicy || login2faPrefSaving}
+                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">邮箱验证码</span>
+                </label>
+              </div>
+
+              {login2faPrefMethod === 'totp' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">动态验证码</label>
+                  <OtpCodeInput
+                    digits={activeTotpDigits}
+                    value={login2faPrefTotpCode}
+                    onChange={setLogin2faPrefTotpCode}
+                    disabled={login2faPrefSaving}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+                      <OtpCodeInput
+                        digits={6}
+                        value={login2faPrefEmailCode}
+                        onChange={setLogin2faPrefEmailCode}
+                        disabled={login2faPrefSaving}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={sendingLogin2faPrefEmailCode || login2faPrefSaving || login2faPrefEmailCountdown > 0 || !emailOtpAllowedByPolicy}
+                      onClick={async () => {
+                        try {
+                          setSendingLogin2faPrefEmailCode(true);
+                          const resp = await sendAccountEmailVerificationCode('LOGIN_2FA_PREFERENCE');
+                          const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 180;
+                          setLogin2faPrefEmailCountdown(wait);
+                          toast.success('验证码已发送');
+                        } catch (e) {
+                          const msg = e instanceof Error ? e.message : '发送失败';
+                          setLogin2faPrefErrorMsg(msg);
+                          toast.error(msg);
+                        } finally {
+                          setSendingLogin2faPrefEmailCode(false);
+                        }
+                      }}
+                      className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
+                    >
+                      {sendingLogin2faPrefEmailCode ? '发送中...' : login2faPrefEmailCountdown > 0 ? `${login2faPrefEmailCountdown}s` : '发送'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={login2faPrefSaving}
+                  onClick={closeLogin2faPrefDialog}
+                  className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={login2faPrefSaving}
+                  onClick={async () => {
+                    if (login2faPrefSaving) return;
+                    try {
+                      setLogin2faPrefSaving(true);
+                      setLogin2faPrefErrorMsg(null);
+                      if (login2faPrefMethod === 'totp') {
+                        const code = login2faPrefTotpCode.trim();
+                        if (!code) {
+                          setLogin2faPrefErrorMsg('请输入动态验证码');
+                          toast.error('请输入动态验证码');
+                          return;
+                        }
+                        const updated = await updateMyLogin2faPreference({
+                          enabled: login2faPrefTargetEnabled,
+                          method: 'totp',
+                          totpCode: code,
+                        });
+                        setSecurityPolicy(updated);
+                      } else {
+                        const code = login2faPrefEmailCode.trim();
+                        if (!code) {
+                          setLogin2faPrefErrorMsg('请输入邮箱验证码');
+                          toast.error('请输入邮箱验证码');
+                          return;
+                        }
+                        const updated = await updateMyLogin2faPreference({
+                          enabled: login2faPrefTargetEnabled,
+                          method: 'email',
+                          emailCode: code,
+                        });
+                        setSecurityPolicy(updated);
+                      }
+                      toast.success(login2faPrefTargetEnabled ? '已开启登录二次验证' : '已关闭登录二次验证');
+                      closeLogin2faPrefDialog();
+                    } catch (e) {
+                      const msg = e instanceof Error ? e.message : '保存失败';
+                      setLogin2faPrefErrorMsg(msg);
+                      toast.error(msg);
+                    } finally {
+                      setLogin2faPrefSaving(false);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {login2faPrefSaving ? '保存中...' : (login2faPrefTargetEnabled ? '确认开启' : '确认关闭')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

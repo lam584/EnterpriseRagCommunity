@@ -95,11 +95,11 @@ public class Security2faPolicyService {
         );
         Login2faMode login2faMode = Login2faMode.parseOrDefault(
                 appSettingsService.getString(KEY_LOGIN2FA_MODE).orElse(null),
-                Login2faMode.DISABLED
+                Login2faMode.EMAIL_OR_TOTP
         );
         EnablePolicy login2faScopePolicy = EnablePolicy.parseOrDefault(
                 appSettingsService.getString(KEY_LOGIN2FA_SCOPE_POLICY).orElse(null),
-                EnablePolicy.FORBID_ALL
+                EnablePolicy.ALLOW_ALL
         );
 
         dto.setTotpPolicy(totpPolicy.name());
@@ -154,7 +154,7 @@ public class Security2faPolicyService {
         boolean emailRequired = emailSvcEnabled && requiredOf(emailPolicy, emailMatched);
 
         Login2faMode login2faMode = Login2faMode.parseOrDefault(settings.getLogin2faMode(), Login2faMode.DISABLED);
-        EnablePolicy login2faScopePolicy = EnablePolicy.parseOrDefault(settings.getLogin2faScopePolicy(), EnablePolicy.FORBID_ALL);
+        EnablePolicy login2faScopePolicy = EnablePolicy.parseOrDefault(settings.getLogin2faScopePolicy(), EnablePolicy.ALLOW_ALL);
         boolean login2faMatched = matches(login2faScopePolicy, userId, userRoleIds, settings.getLogin2faRoleIds(), settings.getLogin2faUserIds());
         boolean login2faAllowed = login2faMode != Login2faMode.DISABLED && allowedOf(login2faScopePolicy, login2faMatched);
         boolean login2faRequired = login2faMode != Login2faMode.DISABLED && requiredOf(login2faScopePolicy, login2faMatched);
@@ -185,7 +185,7 @@ public class Security2faPolicyService {
         Login2faMode mode = Login2faMode.parseOrDefault(settings.getLogin2faMode(), Login2faMode.DISABLED);
         if (mode == Login2faMode.DISABLED) return Login2faMode.DISABLED;
 
-        EnablePolicy scopePolicy = EnablePolicy.parseOrDefault(settings.getLogin2faScopePolicy(), EnablePolicy.FORBID_ALL);
+        EnablePolicy scopePolicy = EnablePolicy.parseOrDefault(settings.getLogin2faScopePolicy(), EnablePolicy.ALLOW_ALL);
         Set<Long> userRoleIds = loadUserRoleIds(userId);
         boolean matched = matches(scopePolicy, userId, userRoleIds, settings.getLogin2faRoleIds(), settings.getLogin2faUserIds());
         boolean required = requiredOf(scopePolicy, matched);
@@ -225,7 +225,7 @@ public class Security2faPolicyService {
         if (emailPolicy != EnablePolicy.ALLOW_USERS && emailPolicy != EnablePolicy.REQUIRE_USERS) emailUserIds = List.of();
 
         Login2faMode login2faMode = Login2faMode.parseOrDefault(dto.getLogin2faMode(), Login2faMode.DISABLED);
-        EnablePolicy login2faScopePolicy = EnablePolicy.parseOrDefault(dto.getLogin2faScopePolicy(), EnablePolicy.FORBID_ALL);
+        EnablePolicy login2faScopePolicy = EnablePolicy.parseOrDefault(dto.getLogin2faScopePolicy(), EnablePolicy.ALLOW_ALL);
         List<Long> login2faRoleIds = normalizeIdList(dto.getLogin2faRoleIds());
         List<Long> login2faUserIds = normalizeIdList(dto.getLogin2faUserIds());
         if ((login2faScopePolicy == EnablePolicy.ALLOW_ROLES || login2faScopePolicy == EnablePolicy.REQUIRE_ROLES) && login2faRoleIds.isEmpty()) {
@@ -238,11 +238,6 @@ public class Security2faPolicyService {
             login2faRoleIds = List.of();
         }
         if (login2faScopePolicy != EnablePolicy.ALLOW_USERS && login2faScopePolicy != EnablePolicy.REQUIRE_USERS) {
-            login2faUserIds = List.of();
-        }
-        if (login2faMode == Login2faMode.DISABLED) {
-            login2faScopePolicy = EnablePolicy.FORBID_ALL;
-            login2faRoleIds = List.of();
             login2faUserIds = List.of();
         }
 

@@ -21,6 +21,7 @@ import com.example.EnterpriseRagCommunity.dto.access.UpdateMyProfileRequest;
 import com.example.EnterpriseRagCommunity.dto.access.UsersDTO;
 import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicyStatusDTO;
 import com.example.EnterpriseRagCommunity.dto.access.UpdateLogin2faPreferenceRequest;
+import com.example.EnterpriseRagCommunity.dto.access.request.VerifyPasswordRequest;
 import com.example.EnterpriseRagCommunity.dto.access.request.ChangePasswordRequest;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
@@ -43,6 +44,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
 public class AccountProfileController {
+    private static final String SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT = "login2faPref.passwordVerifiedAt";
+    private static final long LOGIN2FA_PREF_PWD_VERIFY_TTL_MS = 10 * 60 * 1000L;
 
     private final UsersRepository usersRepository;
     private final AccountSecurityService accountSecurityService;
@@ -71,7 +74,7 @@ public class AccountProfileController {
     }
 
     @PutMapping("/login-2fa-preference")
-    public ResponseEntity<?> updateMyLogin2faPreference(@RequestBody @Valid UpdateLogin2faPreferenceRequest req) {
+    public ResponseEntity<?> updateMyLogin2faPreference(@RequestBody @Valid UpdateLogin2faPreferenceRequest req, HttpServletRequest servletRequest) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
             Map<String, String> response = new HashMap<>();
@@ -86,6 +89,37 @@ public class AccountProfileController {
         Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(user.getId());
         if (!policy.isLogin2faCanEnable()) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "当前策略不允许你配置登录二次验证"));
+        }
+        if (!isPasswordVerified(servletRequest, SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请先验证密码"));
+        }
+
+        String method = req.getMethod() == null ? "" : req.getMethod().trim().toLowerCase();
+        if (!method.equals("totp") && !method.equals("email")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "验证方式不合法"));
+        }
+        if (method.equals("totp")) {
+            if (!policy.isTotpAllowed()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "管理员已禁止使用动态验证码"));
+            }
+            boolean totpEnabled = accountTotpService.isEnabledByEmail(email);
+            if (!totpEnabled) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "当前账号未启用 TOTP"));
+            }
+            String totpCode = req.getTotpCode() == null ? "" : req.getTotpCode().trim();
+            if (totpCode.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入动态验证码"));
+            }
+            accountTotpService.requireValidEnabledCodeByEmail(email, totpCode);
+        } else {
+            if (!policy.isEmailOtpAllowed()) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "管理员已禁止使用邮箱验证码"));
+            }
+            String emailCode = req.getEmailCode() == null ? "" : req.getEmailCode().trim();
+            if (emailCode.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入邮箱验证码"));
+            }
+            emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.LOGIN_2FA_PREFERENCE, emailCode);
         }
 
         Map<String, Object> metadata0 = user.getMetadata();
@@ -117,9 +151,31 @@ public class AccountProfileController {
         metadata.put("preferences", prefs);
         user.setMetadata(metadata);
         usersRepository.save(user);
+        clearPasswordVerified(servletRequest, SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT);
 
         Security2faPolicyStatusDTO refreshed = security2faPolicyService.evaluateForUser(user.getId());
         return ResponseEntity.ok(refreshed);
+    }
+
+    @PostMapping("/login-2fa-preference/verify-password")
+    public ResponseEntity<?> verifyLogin2faPreferencePassword(@RequestBody @Valid VerifyPasswordRequest req, HttpServletRequest servletRequest) {
+        String email = currentEmailOrNull();
+        if (email == null) return unauthorized();
+
+        String password = req.getPassword() == null ? "" : req.getPassword();
+        try {
+            accountSecurityService.verifyPasswordByEmail(email, password);
+            markPasswordVerified(servletRequest, SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT);
+            try {
+                UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
+                        .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在修改登录二次验证设置。");
+            } catch (Exception ignore) {
+            }
+            return ResponseEntity.ok(Map.of("message", "密码验证通过"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
     }
 
     @PutMapping("/profile")
@@ -282,5 +338,48 @@ public class AccountProfileController {
         dto.setIsDeleted(user.getIsDeleted());
         dto.setMetadata(user.getMetadata());
         return dto;
+    }
+
+    private static boolean isPasswordVerified(HttpServletRequest req, String key) {
+        try {
+            HttpSession session = req.getSession(false);
+            if (session == null) return false;
+            Object v = session.getAttribute(key);
+            if (!(v instanceof Long t)) return false;
+            long now = System.currentTimeMillis();
+            return t > 0 && now - t <= LOGIN2FA_PREF_PWD_VERIFY_TTL_MS;
+        } catch (Exception ignore) {
+            return false;
+        }
+    }
+
+    private static void markPasswordVerified(HttpServletRequest req, String key) {
+        try {
+            req.getSession(true).setAttribute(key, System.currentTimeMillis());
+        } catch (Exception ignore) {
+        }
+    }
+
+    private static void clearPasswordVerified(HttpServletRequest req, String key) {
+        try {
+            HttpSession session = req.getSession(false);
+            if (session == null) return;
+            session.removeAttribute(key);
+        } catch (Exception ignore) {
+        }
+    }
+
+    private static String currentEmailOrNull() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+        return auth.getName();
+    }
+
+    private static ResponseEntity<Map<String, String>> unauthorized() {
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "未登录或会话已过期");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
     }
 }

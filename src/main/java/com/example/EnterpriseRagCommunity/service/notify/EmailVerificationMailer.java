@@ -80,6 +80,7 @@ public class EmailVerificationMailer {
         if (purpose == EmailVerificationPurpose.VERIFY_EMAIL) base = "验证邮箱验证码";
         else if (purpose == EmailVerificationPurpose.REGISTER) base = "注册验证码";
         else if (purpose == EmailVerificationPurpose.LOGIN_2FA) base = "登录验证码";
+        else if (purpose == EmailVerificationPurpose.LOGIN_2FA_PREFERENCE) base = "登录二次验证设置验证码";
         else if (purpose == EmailVerificationPurpose.PASSWORD_RESET) base = "重置密码验证码";
         else if (purpose == EmailVerificationPurpose.CHANGE_PASSWORD) base = "修改密码验证码";
         else if (purpose == EmailVerificationPurpose.CHANGE_EMAIL) base = "更换邮箱验证码";

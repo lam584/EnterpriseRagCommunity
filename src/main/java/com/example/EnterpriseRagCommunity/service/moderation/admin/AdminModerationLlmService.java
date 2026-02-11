@@ -108,7 +108,7 @@ public class AdminModerationLlmService {
         cfg.setEnableThinking(Boolean.TRUE.equals(payload.getEnableThinking()));
         cfg.setVisionEnableThinking(Boolean.TRUE.equals(payload.getVisionEnableThinking()));
         cfg.setThreshold(payload.getThreshold());
-        cfg.setAutoRun(payload.getAutoRun() != null ? payload.getAutoRun() : Boolean.FALSE);
+        cfg.setAutoRun(payload.getAutoRun() != null ? payload.getAutoRun() : Boolean.TRUE);
         cfg.setMaxConcurrent(payload.getMaxConcurrent());
         cfg.setMinDelayMs(payload.getMinDelayMs());
         cfg.setQps(payload.getQps());
@@ -916,7 +916,7 @@ public class AdminModerationLlmService {
         e.setEnableThinking(Boolean.FALSE);
         e.setVisionEnableThinking(Boolean.FALSE);
         e.setThreshold(0.75);
-        e.setAutoRun(Boolean.FALSE);
+        e.setAutoRun(Boolean.TRUE);
         e.setVersion(0);
         e.setUpdatedAt(LocalDateTime.now());
         e.setUpdatedBy(null);

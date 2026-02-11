@@ -5,6 +5,7 @@ public enum EmailVerificationPurpose {
     PASSWORD_RESET,
     REGISTER,
     LOGIN_2FA,
+    LOGIN_2FA_PREFERENCE,
     CHANGE_PASSWORD,
     CHANGE_EMAIL,
     CHANGE_EMAIL_OLD,
@@ -17,6 +18,7 @@ public enum EmailVerificationPurpose {
             case PASSWORD_RESET -> "重置密码";
             case REGISTER -> "注册";
             case LOGIN_2FA -> "登录二次验证";
+            case LOGIN_2FA_PREFERENCE -> "修改登录二次验证设置";
             case CHANGE_PASSWORD -> "修改密码";
             case CHANGE_EMAIL -> "更换邮箱";
             case CHANGE_EMAIL_OLD -> "验证旧邮箱";
