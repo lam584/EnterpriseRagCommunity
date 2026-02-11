@@ -74,6 +74,9 @@ public class AdminSettingsController {
     private static final String KEY_TOTP_DEFAULT_SKEW = "totp_default_skew";
 
     private static final String KEY_EMAIL_ENABLED = "email_enabled";
+    private static final String KEY_EMAIL_OTP_TTL_SECONDS = "email_otp_ttl_seconds";
+    private static final String KEY_EMAIL_OTP_RESEND_WAIT_SECONDS = "email_otp_resend_wait_seconds";
+    private static final String KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS = "email_otp_resend_wait_reduction_after_verified_seconds";
     private static final String KEY_EMAIL_PROTOCOL = "email_protocol";
     private static final String KEY_EMAIL_HOST = "email_host";
     private static final String KEY_EMAIL_PORT_PLAIN = "email_port_plain";
@@ -156,6 +159,9 @@ public class AdminSettingsController {
     public ResponseEntity<EmailAdminSettingsDTO> getEmail() {
         EmailAdminSettingsDTO dto = new EmailAdminSettingsDTO();
         dto.setEnabled(appSettingsService.getLongOrDefault(KEY_EMAIL_ENABLED, 1L) == 1L);
+        dto.setOtpTtlSeconds((int) appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_TTL_SECONDS, 600L));
+        dto.setOtpResendWaitSeconds((int) appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_RESEND_WAIT_SECONDS, 120L));
+        dto.setOtpResendWaitReductionSecondsAfterVerified((int) appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS, 0L));
         dto.setProtocol(appSettingsService.getString(KEY_EMAIL_PROTOCOL).orElse("SMTP"));
         dto.setHost(appSettingsService.getString(KEY_EMAIL_HOST).orElse("smtp.qiye.aliyun.com"));
         dto.setPortPlain((int) appSettingsService.getLongOrDefault(KEY_EMAIL_PORT_PLAIN, 25L));
@@ -180,6 +186,9 @@ public class AdminSettingsController {
         EmailAdminSettingsDTO normalized = normalizeEmailSettings(dto);
 
         appSettingsService.upsertString(KEY_EMAIL_ENABLED, normalized.getEnabled() != null && normalized.getEnabled() ? "1" : "0");
+        appSettingsService.upsertString(KEY_EMAIL_OTP_TTL_SECONDS, String.valueOf(normalized.getOtpTtlSeconds()));
+        appSettingsService.upsertString(KEY_EMAIL_OTP_RESEND_WAIT_SECONDS, String.valueOf(normalized.getOtpResendWaitSeconds()));
+        appSettingsService.upsertString(KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS, String.valueOf(normalized.getOtpResendWaitReductionSecondsAfterVerified()));
         appSettingsService.upsertString(KEY_EMAIL_PROTOCOL, normalized.getProtocol());
         appSettingsService.upsertString(KEY_EMAIL_HOST, normalized.getHost());
         appSettingsService.upsertString(KEY_EMAIL_PORT_PLAIN, String.valueOf(normalized.getPortPlain()));
@@ -344,6 +353,14 @@ public class AdminSettingsController {
         EmailAdminSettingsDTO dto = input == null ? new EmailAdminSettingsDTO() : input;
 
         boolean enabled = dto.getEnabled() != null && dto.getEnabled();
+        int otpTtlSeconds = dto.getOtpTtlSeconds() == null ? 600 : dto.getOtpTtlSeconds();
+        int otpResendWaitSeconds = dto.getOtpResendWaitSeconds() == null ? 120 : dto.getOtpResendWaitSeconds();
+        int otpResendWaitReductionSecondsAfterVerified = dto.getOtpResendWaitReductionSecondsAfterVerified() == null ? 0 : dto.getOtpResendWaitReductionSecondsAfterVerified();
+        if (otpTtlSeconds < 60 || otpTtlSeconds > 3600) throw new IllegalArgumentException("otpTtlSeconds 不合法（建议 60~3600 秒）");
+        if (otpResendWaitSeconds < 10 || otpResendWaitSeconds > 3600) throw new IllegalArgumentException("otpResendWaitSeconds 不合法（建议 10~3600 秒）");
+        if (otpResendWaitReductionSecondsAfterVerified < 0) otpResendWaitReductionSecondsAfterVerified = 0;
+        if (otpResendWaitReductionSecondsAfterVerified > 3600) otpResendWaitReductionSecondsAfterVerified = 3600;
+        if (otpResendWaitReductionSecondsAfterVerified > otpResendWaitSeconds) otpResendWaitReductionSecondsAfterVerified = otpResendWaitSeconds;
         String protocol = dto.getProtocol() == null || dto.getProtocol().isBlank() ? "SMTP" : dto.getProtocol().trim().toUpperCase(Locale.ROOT);
         if (!protocol.equals("SMTP")) protocol = "SMTP";
 
@@ -388,6 +405,9 @@ public class AdminSettingsController {
 
         EmailAdminSettingsDTO out = new EmailAdminSettingsDTO();
         out.setEnabled(enabled);
+        out.setOtpTtlSeconds(otpTtlSeconds);
+        out.setOtpResendWaitSeconds(otpResendWaitSeconds);
+        out.setOtpResendWaitReductionSecondsAfterVerified(otpResendWaitReductionSecondsAfterVerified);
         out.setProtocol(protocol);
         out.setHost(host);
         out.setPortPlain(portPlain);

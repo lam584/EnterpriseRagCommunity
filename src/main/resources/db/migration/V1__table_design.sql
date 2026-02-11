@@ -77,7 +77,7 @@ CREATE TABLE email_verifications (
                                      user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
                                      target_email VARCHAR(191) NULL COMMENT '目标邮箱',
                                      code VARCHAR(64) NOT NULL COMMENT '验证码',
-                                     purpose ENUM('VERIFY_EMAIL','PASSWORD_RESET','REGISTER','CHANGE_PASSWORD','CHANGE_EMAIL','CHANGE_EMAIL_OLD','TOTP_ENABLE') NOT NULL COMMENT '用途',
+                                     purpose ENUM('VERIFY_EMAIL','PASSWORD_RESET','REGISTER','LOGIN_2FA','CHANGE_PASSWORD','CHANGE_EMAIL','CHANGE_EMAIL_OLD','TOTP_ENABLE','TOTP_DISABLE') NOT NULL COMMENT '用途',
                                      expires_at DATETIME(3) NOT NULL COMMENT '过期时间',
                                      consumed_at DATETIME(3) NULL COMMENT '使用时间',
                                      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
@@ -752,7 +752,9 @@ CREATE TABLE moderation_llm_config (
   temperature DECIMAL(4,3) NULL COMMENT '文本审核温度',
   vision_temperature DECIMAL(4,3) NULL COMMENT '视觉审核温度',
   max_tokens INT NULL COMMENT '文本审核最大输出Token',
+  enable_thinking TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用深度思考(文本审核)',
   vision_max_tokens INT NULL COMMENT '视觉审核最大输出Token',
+  vision_enable_thinking TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用深度思考(图片审核)',
   threshold DECIMAL(6,4) NULL COMMENT '风险阈值',
   auto_run TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否自动运行',
   max_concurrent INT NULL COMMENT '自动审核最大并发请求数',
@@ -943,6 +945,14 @@ CREATE TABLE app_settings (
   PRIMARY KEY (k)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='应用级设置（全局）';
 
+CREATE TABLE system_configurations (
+  config_key VARCHAR(255) NOT NULL COMMENT '配置键',
+  config_value VARCHAR(2048) NULL COMMENT '配置值',
+  is_encrypted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否加密存储',
+  description VARCHAR(255) NULL COMMENT '描述',
+  PRIMARY KEY (config_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统配置（可加密存储）';
+
 CREATE TABLE ai_gen_task_config (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   group_code VARCHAR(64) NOT NULL COMMENT '配置分组/任务族',
@@ -954,6 +964,7 @@ CREATE TABLE ai_gen_task_config (
   model VARCHAR(128) NULL COMMENT '模型名称',
   provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
   temperature DECIMAL(4,3) NULL COMMENT '温度',
+  enable_thinking TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用深度思考',
 
   default_count INT NOT NULL DEFAULT 5 COMMENT '默认生成数量(可选)',
   max_count INT NOT NULL DEFAULT 10 COMMENT '最大生成数量(可选)',
@@ -1031,6 +1042,7 @@ CREATE TABLE semantic_translate_history (
   model VARCHAR(128) NULL COMMENT '模型名称',
   provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
   temperature DECIMAL(4,3) NULL COMMENT '温度',
+  top_p DECIMAL(4,3) NULL COMMENT 'TOP-P（0~1）',
   latency_ms BIGINT NULL COMMENT '延迟(ms)',
   prompt_version INT NULL COMMENT '提示词版本'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='翻译历史记录（带缓存键）';
@@ -1066,6 +1078,7 @@ CREATE TABLE post_summary_gen_history (
   model VARCHAR(128) NULL COMMENT '模型名称',
   provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
   temperature DECIMAL(4,3) NULL COMMENT '温度',
+  top_p DECIMAL(4,3) NULL COMMENT 'TOP-P（0~1）',
   applied_max_content_chars INT NOT NULL COMMENT '实际使用的最大字符数',
   latency_ms BIGINT NULL COMMENT '延迟(ms)',
   prompt_version INT NULL COMMENT '提示词版本',
@@ -1084,6 +1097,7 @@ CREATE TABLE post_ai_summary (
   model VARCHAR(128) NULL COMMENT '模型名称',
   provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
   temperature DECIMAL(4,3) NULL COMMENT '温度',
+  top_p DECIMAL(4,3) NULL COMMENT 'TOP-P（0~1）',
   applied_max_content_chars INT NULL COMMENT '实际使用的最大字符数',
   latency_ms BIGINT NULL COMMENT '延迟(ms)',
   generated_at DATETIME(3) NULL COMMENT '生成时间',

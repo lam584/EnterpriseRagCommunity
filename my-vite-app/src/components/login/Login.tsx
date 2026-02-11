@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/login_1.png';
 import backgroundImage2 from '../../assets/images/2.png';
-import { login, resendRegisterCode, verifyRegister } from '../../services/authService';
+import { login, resendLogin2faEmail, resendRegisterCode, verifyLogin2fa, verifyRegister } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
+import OtpCodeInput from '../common/OtpCodeInput';
 
 interface LoginFormData {
     email: string; 
@@ -29,6 +30,17 @@ const Login: React.FC = () => {
     const [verifyCode, setVerifyCode] = useState('');
     const [verifyLoading, setVerifyLoading] = useState(false);
     const [resendCooldownSeconds, setResendCooldownSeconds] = useState(0);
+
+    const [login2faRequired, setLogin2faRequired] = useState(false);
+    const [login2faMethods, setLogin2faMethods] = useState<Array<'email' | 'totp'>>([]);
+    const [login2faMethod, setLogin2faMethod] = useState<'email' | 'totp' | null>(null);
+    const [login2faEmailCode, setLogin2faEmailCode] = useState('');
+    const [login2faTotpCode, setLogin2faTotpCode] = useState('');
+    const [login2faTotpDigits, setLogin2faTotpDigits] = useState(6);
+    const [login2faSubmitting, setLogin2faSubmitting] = useState(false);
+    const [login2faResendLoading, setLogin2faResendLoading] = useState(false);
+    const [login2faResendCountdown, setLogin2faResendCountdown] = useState(0);
+    const [login2faEmailHasSent, setLogin2faEmailHasSent] = useState(false);
 
     // 轮播图相关状态
     const [currentImage, setCurrentImage] = useState(backgroundImage1);
@@ -109,6 +121,18 @@ const Login: React.FC = () => {
         return () => window.clearInterval(intervalId);
     }, [verifyMode, verifyEmail, formData.email]);
 
+    useEffect(() => {
+        if (!login2faRequired) {
+            setLogin2faResendCountdown(0);
+            return;
+        }
+        if (login2faResendCountdown <= 0) return;
+        const t = window.setInterval(() => {
+            setLogin2faResendCountdown((s) => Math.max(0, s - 1));
+        }, 1000);
+        return () => window.clearInterval(t);
+    }, [login2faRequired, login2faResendCountdown]);
+
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, type, checked } = e.target;
         
@@ -138,6 +162,13 @@ const Login: React.FC = () => {
             setCurrentUser(userData);
             setIsAuthenticated(true);
             setVerifyMode(false);
+            setLogin2faRequired(false);
+            setLogin2faMethods([]);
+            setLogin2faMethod(null);
+            setLogin2faEmailCode('');
+            setLogin2faTotpCode('');
+            setLogin2faResendCountdown(0);
+            setLogin2faEmailHasSent(false);
 
             // 保存到 localStorage 以实现记住我功能
             if (formData.rememberMe) {
@@ -150,14 +181,31 @@ const Login: React.FC = () => {
             }
 
             // 导航到主页面
-            navigate('/helpCenter');
+            navigate('/portal/discover/home');
         } catch (err) {
-            const anyErr = err as Error & { code?: string; email?: string };
+            const anyErr = err as Error & { code?: string; email?: string; methods?: string[]; resendWaitSeconds?: number; totpDigits?: number };
             if (anyErr.code === 'EMAIL_NOT_VERIFIED') {
                 setVerifyMode(true);
+                setLogin2faRequired(false);
                 const email = (anyErr.email || formData.email || '').trim();
                 setVerifyEmail(email);
                 setError(anyErr.message || '账号未完成邮箱验证');
+                return;
+            }
+            if (anyErr.code === 'LOGIN_2FA_REQUIRED') {
+                const methods = (anyErr.methods || []).filter((m) => m === 'email' || m === 'totp') as Array<'email' | 'totp'>;
+                setLogin2faRequired(true);
+                setLogin2faMethods(methods);
+                setLogin2faMethod(methods.length === 1 ? methods[0] : null);
+                setLogin2faEmailCode('');
+                setLogin2faTotpCode('');
+                const digits = Number.isFinite(Number(anyErr.totpDigits)) ? Number(anyErr.totpDigits) : 6;
+                setLogin2faTotpDigits(digits === 8 ? 8 : 6);
+                setLogin2faResendCountdown(0);
+                setLogin2faEmailHasSent(false);
+                setVerifyMode(false);
+                setError(null);
+                setInfo(anyErr.message || '登录需要二次验证');
                 return;
             }
             setError(anyErr.message || '登录失败');
@@ -207,16 +255,77 @@ const Login: React.FC = () => {
             setVerifyLoading(true);
             setError(null);
             setInfo(null);
-            await resendRegisterCode(email);
-            const availableAtMs = Date.now() + 2 * 60 * 1000;
+            const resp = await resendRegisterCode(email);
+            const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 120;
+            const availableAtMs = Date.now() + wait * 1000;
             localStorage.setItem(`login:resend-register-code:availableAt:${email}`, String(availableAtMs));
-            setResendCooldownSeconds(120);
+            setResendCooldownSeconds(wait);
             setInfo('验证码已发送，请查收邮箱');
         } catch (e) {
             setError((e as Error).message || '发送失败');
         } finally {
             setVerifyLoading(false);
         }
+    };
+
+    const handleLogin2faResend = async () => {
+        if (login2faResendCountdown > 0) {
+            setError(`请稍后再试（${login2faResendCountdown}秒后可重新发送）`);
+            return;
+        }
+        try {
+            setLogin2faResendLoading(true);
+            setError(null);
+            setInfo(null);
+            const resp = await resendLogin2faEmail();
+            const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 60;
+            setLogin2faResendCountdown(wait);
+            setLogin2faEmailHasSent(true);
+            setInfo(resp.message || '验证码已发送，请查收邮箱');
+        } catch (e) {
+            setError((e as Error).message || '发送失败');
+        } finally {
+            setLogin2faResendLoading(false);
+        }
+    };
+
+    const verifyLogin2faCode = async (method: 'email' | 'totp', code: string) => {
+        if (!login2faRequired) return;
+        const trimmed = (code || '').trim();
+        if (!trimmed) {
+            setError('请输入验证码');
+            return;
+        }
+        if (login2faSubmitting) return;
+        try {
+            setLogin2faSubmitting(true);
+            setError(null);
+            setInfo(null);
+            const userData = await verifyLogin2fa(method, trimmed);
+            setCurrentUser(userData);
+            setIsAuthenticated(true);
+            setLogin2faRequired(false);
+            setLogin2faMethods([]);
+            setLogin2faMethod(null);
+            setLogin2faEmailCode('');
+            setLogin2faTotpCode('');
+            setLogin2faResendCountdown(0);
+            navigate('/portal/discover/home');
+        } catch (e) {
+            setError((e as Error).message || '验证失败');
+        } finally {
+            setLogin2faSubmitting(false);
+        }
+    };
+
+    const handleLogin2faVerify = async () => {
+        if (!login2faRequired) return;
+        if (!login2faMethod) {
+            setError('请选择验证方式');
+            return;
+        }
+        const code = (login2faMethod === 'email' ? login2faEmailCode : login2faTotpCode).trim();
+        await verifyLogin2faCode(login2faMethod, code);
     };
 
     return (
@@ -267,6 +376,87 @@ const Login: React.FC = () => {
                                 required
                             />
                         </div>
+                        {login2faRequired && (
+                            <div className="mb-4">
+                                <div className="text-sm text-gray-600 mb-2">该账号登录需要二次验证</div>
+
+                                {login2faMethods.length > 1 && (
+                                    <div className="flex gap-2 mb-3">
+                                        <button
+                                            type="button"
+                                            className={`flex-1 font-bold py-2 px-3 rounded focus:outline-none focus:shadow-outline ${
+                                                login2faMethod === 'totp' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                                            }`}
+                                            onClick={() => setLogin2faMethod('totp')}
+                                        >
+                                            使用 TOTP
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`flex-1 font-bold py-2 px-3 rounded focus:outline-none focus:shadow-outline ${
+                                                login2faMethod === 'email' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                                            }`}
+                                            onClick={() => setLogin2faMethod('email')}
+                                        >
+                                            使用邮箱验证码
+                                        </button>
+                                    </div>
+                                )}
+
+                                {login2faMethod === 'totp' && (
+                                    <div className="mb-3">
+                                        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="login2faTotpCode">动态验证码</label>
+                                        <div id="login2faTotpCode">
+                                            <OtpCodeInput
+                                                digits={login2faTotpDigits}
+                                                value={login2faTotpCode}
+                                                onChange={setLogin2faTotpCode}
+                                                onComplete={(code) => void verifyLogin2faCode('totp', code)}
+                                                disabled={login2faSubmitting}
+                                                autoFocus
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {login2faMethod === 'email' && (
+                                    <div className="mb-3">
+                                        <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="login2faEmailCode">邮箱验证码</label>
+                                        <input
+                                            className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                                            id="login2faEmailCode"
+                                            name="login2faEmailCode"
+                                            type="text"
+                                            value={login2faEmailCode}
+                                            onChange={e => setLogin2faEmailCode(e.target.value)}
+                                        />
+                                        <div className="mt-3 flex justify-end">
+                                            <button
+                                                type="button"
+                                                className={`bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-3 rounded focus:outline-none focus:shadow-outline ${
+                                                    (login2faResendLoading || login2faResendCountdown > 0) ? 'opacity-50 cursor-not-allowed' : ''
+                                                }`}
+                                                onClick={handleLogin2faResend}
+                                                disabled={login2faResendLoading || login2faResendCountdown > 0}
+                                            >
+                                                {login2faResendLoading ? '发送中...' : login2faResendCountdown > 0 ? `${login2faResendCountdown}s` : (login2faEmailHasSent ? '重发验证码' : '发送验证码')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <button
+                                    type="button"
+                                    className={`w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ${
+                                        login2faSubmitting ? 'opacity-50 cursor-not-allowed' : ''
+                                    }`}
+                                    onClick={handleLogin2faVerify}
+                                    disabled={login2faSubmitting}
+                                >
+                                    {login2faSubmitting ? '验证中...' : '完成验证'}
+                                </button>
+                            </div>
+                        )}
                         {verifyMode && (
                             <div className="mb-4">
                                 <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="verifyCode">邮箱验证码</label>
@@ -317,7 +507,7 @@ const Login: React.FC = () => {
                             <button
                                 className={`bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 type="submit"
-                                disabled={loading}>
+                                disabled={loading || verifyMode || login2faRequired}>
                                 {loading ? '登录中...' : '登录'}
                             </button>
                             <div className="flex gap-4">

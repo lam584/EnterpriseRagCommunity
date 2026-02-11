@@ -44,7 +44,6 @@ import AssistantSettingsPage from './pages/portal/assistant/pages/AssistantSetti
 
 import AccountSecurityPage from './pages/portal/account/pages/AccountSecurityPage';
 import AccountPreferencesPage from './pages/portal/account/pages/AccountPreferencesPage';
-import AccountConnectionsPage from './pages/portal/account/pages/AccountConnectionsPage';
 import UserProfilePage from './pages/portal/users/pages/UserProfilePage';
 import SearchLayout from './pages/portal/search/SearchLayout';
 import SearchIndexRedirect from './pages/portal/search/SearchIndexRedirect';
@@ -266,7 +265,7 @@ function AppRoutes() {
                         <Route path="preferences" element={<AccountPreferencesPage />} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_account_connections" action="view" /> }>
-                        <Route path="connections" element={<AccountConnectionsPage />} />
+                        <Route path="connections" element={<Navigate to="/portal/account/security#email" replace />} />
                     </Route>
 
                     {/* 账号中心里的“我的/收藏”复用 posts 权限 */}

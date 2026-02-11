@@ -5,6 +5,12 @@ import lombok.Data;
 
 @Data
 public class TotpEnrollRequest {
+    @ApiModelProperty("当前密码（未提前验证密码时必填）")
+    private String password;
+
+    @ApiModelProperty("邮箱验证码（启用前校验，必填）")
+    private String emailCode;
+
     @ApiModelProperty("HMAC 算法（SHA1/SHA256/SHA512），默认 SHA1")
     private String algorithm;
 
@@ -17,4 +23,3 @@ public class TotpEnrollRequest {
     @ApiModelProperty("允许时间偏移窗口（步数），默认 1")
     private Integer skew;
 }
-

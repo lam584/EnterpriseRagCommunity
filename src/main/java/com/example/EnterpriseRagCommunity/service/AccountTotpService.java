@@ -61,6 +61,15 @@ public class AccountTotpService {
     }
 
     @Transactional(readOnly = true)
+    public Integer getEnabledDigitsByEmail(String email) {
+        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return totpSecretsRepository.findTopByUserIdAndEnabledTrueOrderByCreatedAtDesc(user.getId())
+                .map(TotpSecretsEntity::getDigits)
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
     public void requireValidEnabledCodeByEmail(String email, String code) {
         UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
@@ -139,6 +148,17 @@ public class AccountTotpService {
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new IllegalArgumentException("密码不正确");
         }
+        return verifyByUserWithoutPassword(user, code);
+    }
+
+    @Transactional
+    public TotpStatusResponse verifyByEmailWithoutPassword(String email, String code) {
+        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        return verifyByUserWithoutPassword(user, code);
+    }
+
+    private TotpStatusResponse verifyByUserWithoutPassword(UsersEntity user, String code) {
         if (!totpCryptoService.isConfigured()) {
             throw new IllegalStateException("TOTP 主密钥未配置，请联系管理员设置 APP_TOTP_MASTER_KEY（Base64）或 app.security.totp.master-key");
         }
@@ -275,6 +295,24 @@ public class AccountTotpService {
         byte[] secret = totpCryptoService.decrypt(current.getSecretEncrypted());
         boolean ok = totpService.verifyCode(secret, code, current.getAlgorithm(), current.getDigits(), current.getPeriodSeconds(), current.getSkew());
         if (!ok) throw new IllegalArgumentException("验证码不正确");
+
+        current.setEnabled(false);
+        totpSecretsRepository.save(current);
+        return toStatus(current);
+    }
+
+    @Transactional
+    public TotpStatusResponse disableByEmailWithoutTotp(String email) {
+        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (!totpCryptoService.isConfigured()) {
+            throw new IllegalStateException("TOTP 主密钥未配置，请联系管理员设置 APP_TOTP_MASTER_KEY（Base64）或 app.security.totp.master-key");
+        }
+
+        List<TotpSecretsEntity> enabled = totpSecretsRepository.findByUserIdAndEnabledTrue(user.getId());
+        TotpSecretsEntity current = enabled.stream()
+                .max(Comparator.comparing(TotpSecretsEntity::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .orElseThrow(() -> new IllegalStateException("当前未启用 TOTP"));
 
         current.setEnabled(false);
         totpSecretsRepository.save(current);

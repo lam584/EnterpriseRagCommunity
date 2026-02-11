@@ -29,8 +29,27 @@ const ENABLE_POLICY_OPTIONS = [
   { value: 'FORBID_ALL', label: '禁止所有人启用' },
   { value: 'ALLOW_ALL', label: '全部用户可选启用' },
   { value: 'ALLOW_ROLES', label: '指定角色可选启用' },
+  { value: 'ALLOW_USERS', label: '指定用户可选启用' },
   { value: 'REQUIRE_ALL', label: '全部用户强制启用' },
   { value: 'REQUIRE_ROLES', label: '指定角色强制启用' },
+  { value: 'REQUIRE_USERS', label: '指定用户强制启用' },
+] as const;
+
+const LOGIN_2FA_MODE_OPTIONS = [
+  { value: 'DISABLED', label: '禁用' },
+  { value: 'EMAIL_ONLY', label: '仅验证邮箱' },
+  { value: 'TOTP_ONLY', label: '仅验证 TOTP' },
+  { value: 'EMAIL_OR_TOTP', label: '邮箱和 TOTP 二选一' },
+] as const;
+
+const LOGIN_2FA_SCOPE_OPTIONS = [
+  { value: 'FORBID_ALL', label: '禁用（不要求二次验证）' },
+  { value: 'REQUIRE_ALL', label: '全部用户强制二次验证' },
+  { value: 'REQUIRE_ROLES', label: '指定角色强制二次验证' },
+  { value: 'REQUIRE_USERS', label: '指定用户强制二次验证' },
+  { value: 'ALLOW_ALL', label: '全部用户可选二次验证' },
+  { value: 'ALLOW_ROLES', label: '指定角色可选二次验证' },
+  { value: 'ALLOW_USERS', label: '指定用户可选二次验证' },
 ] as const;
 
 function uniq<T>(arr: T[]): T[] {
@@ -46,6 +65,19 @@ function toggleValue<T>(list: T[], value: T, nextChecked: boolean): T[] {
 
 function normalizeChecked(v: boolean | 'indeterminate'): boolean {
   return v === true;
+}
+
+function parseIdCsv(v: string): number[] {
+  const parts = String(v ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const ids: number[] = [];
+  for (const p of parts) {
+    const n = Number(p);
+    if (Number.isFinite(n) && n > 0) ids.push(Math.trunc(n));
+  }
+  return uniq(ids).sort((a, b) => a - b);
 }
 
 const TwoFAForm: React.FC = () => {
@@ -121,8 +153,14 @@ const TwoFAForm: React.FC = () => {
       setPolicy({
         totpPolicy: String(p.totpPolicy ?? 'ALLOW_ALL').trim().toUpperCase(),
         totpRoleIds: uniq((p.totpRoleIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
+        totpUserIds: uniq((p.totpUserIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
         emailOtpPolicy: String(p.emailOtpPolicy ?? 'ALLOW_ALL').trim().toUpperCase(),
         emailOtpRoleIds: uniq((p.emailOtpRoleIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
+        emailOtpUserIds: uniq((p.emailOtpUserIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
+        login2faMode: String(p.login2faMode ?? 'DISABLED').trim().toUpperCase(),
+        login2faScopePolicy: String(p.login2faScopePolicy ?? 'FORBID_ALL').trim().toUpperCase(),
+        login2faRoleIds: uniq((p.login2faRoleIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
+        login2faUserIds: uniq((p.login2faUserIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
       });
 
       try {
@@ -206,6 +244,7 @@ const TwoFAForm: React.FC = () => {
   const canEditPolicy = policyEditing && !policyLoading && !policySaving;
 
   const policyNeedsRoles = (v?: string | null) => String(v ?? '').toUpperCase().includes('_ROLES');
+  const policyNeedsUsers = (v?: string | null) => String(v ?? '').toUpperCase().includes('_USERS');
   const toggleRoleId = (list: number[] | undefined, roleId: number, nextChecked: boolean): number[] => {
     const src = Array.isArray(list) ? list : [];
     const next = toggleValue(src, roleId, nextChecked);
@@ -277,6 +316,80 @@ const TwoFAForm: React.FC = () => {
               </div>
             ) : null}
 
+            <div className="rounded border p-3 space-y-2">
+              <div className="font-medium text-sm">登录二次验证</div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-600">登录是否要求二次验证</Label>
+                  <select
+                    className="border border-gray-300 rounded px-2 py-0 bg-white text-sm w-full h-9"
+                    value={String(policy.login2faMode ?? 'DISABLED').toUpperCase()}
+                    disabled={!canEditPolicy}
+                    onChange={(e) => setPolicy(p => (p ? { ...p, login2faMode: e.target.value } : p))}
+                  >
+                    {LOGIN_2FA_MODE_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-600">作用范围</Label>
+                  <select
+                    className="border border-gray-300 rounded px-2 py-0 bg-white text-sm w-full h-9"
+                    value={String(policy.login2faScopePolicy ?? 'FORBID_ALL').toUpperCase()}
+                    disabled={!canEditPolicy}
+                    onChange={(e) => setPolicy(p => (p ? { ...p, login2faScopePolicy: e.target.value } : p))}
+                  >
+                    {LOGIN_2FA_SCOPE_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {policyNeedsUsers(policy.login2faScopePolicy) ? (
+                <div className="space-y-1">
+                  <div className="text-xs text-gray-600">指定用户 userId（逗号分隔）</div>
+                  <Input
+                    className="h-9 text-sm"
+                    value={(policy.login2faUserIds ?? []).join(',')}
+                    disabled={!canEditPolicy}
+                    onChange={(e) => setPolicy(p => (p ? { ...p, login2faUserIds: parseIdCsv(e.target.value) } : p))}
+                    placeholder="例如：1,2,3"
+                  />
+                </div>
+              ) : null}
+
+              {policyNeedsRoles(policy.login2faScopePolicy) ? (
+                <div className="space-y-1">
+                  <div className="text-xs text-gray-600">指定角色（命中任意一个 roleId 即生效）</div>
+                  {roleSummaries.length === 0 ? (
+                    <div className="text-xs text-gray-500">暂无角色数据</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {roleSummaries.map(r => (
+                        <div key={r.roleId} className="flex items-center gap-1.5">
+                          <Checkbox
+                            id={`login2fa-role-${r.roleId}`}
+                            className="h-3.5 w-3.5"
+                            checked={(policy.login2faRoleIds ?? []).includes(r.roleId)}
+                            disabled={!canEditPolicy}
+                            onCheckedChange={(v) => {
+                              const next = toggleRoleId(policy.login2faRoleIds ?? [], r.roleId, normalizeChecked(v));
+                              setPolicy(p => (p ? { ...p, login2faRoleIds: next } : p));
+                            }}
+                          />
+                          <label htmlFor={`login2fa-role-${r.roleId}`} className="text-xs cursor-pointer select-none">
+                            {(r.roleName ? r.roleName : `roleId=${r.roleId}`) + ` (#${r.roleId})`}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="rounded border p-3 space-y-2">
                 <div className="font-medium text-sm">TOTP 启用策略</div>
@@ -317,6 +430,19 @@ const TwoFAForm: React.FC = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+                ) : null}
+
+                {policyNeedsUsers(policy.totpPolicy) ? (
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-600">指定用户 userId（逗号分隔）</div>
+                    <Input
+                      className="h-9 text-sm"
+                      value={(policy.totpUserIds ?? []).join(',')}
+                      disabled={!canEditPolicy}
+                      onChange={(e) => setPolicy(p => (p ? { ...p, totpUserIds: parseIdCsv(e.target.value) } : p))}
+                      placeholder="例如：1,2,3"
+                    />
                   </div>
                 ) : null}
               </div>
@@ -363,6 +489,19 @@ const TwoFAForm: React.FC = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+                ) : null}
+
+                {policyNeedsUsers(policy.emailOtpPolicy) ? (
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-600">指定用户 userId（逗号分隔）</div>
+                    <Input
+                      className="h-9 text-sm"
+                      value={(policy.emailOtpUserIds ?? []).join(',')}
+                      disabled={!canEditPolicy}
+                      onChange={(e) => setPolicy(p => (p ? { ...p, emailOtpUserIds: parseIdCsv(e.target.value) } : p))}
+                      placeholder="例如：1,2,3"
+                    />
                   </div>
                 ) : null}
               </div>

@@ -117,6 +117,9 @@ const EmailConfigForm: React.FC = () => {
         { plain: 25, enc: 465, host: DEFAULT_SMTP_HOST };
       setSettings({
         enabled: s.enabled ?? true,
+        otpTtlSeconds: Number.isFinite(Number(s.otpTtlSeconds)) ? Number(s.otpTtlSeconds) : 600,
+        otpResendWaitSeconds: Number.isFinite(Number(s.otpResendWaitSeconds)) ? Number(s.otpResendWaitSeconds) : 120,
+        otpResendWaitReductionSecondsAfterVerified: Number.isFinite(Number(s.otpResendWaitReductionSecondsAfterVerified)) ? Number(s.otpResendWaitReductionSecondsAfterVerified) : 0,
         protocol: p,
         host: (s.host ?? '').trim() || defaults.host,
         portPlain: Number.isFinite(Number(s.portPlain)) ? Number(s.portPlain) : defaults.plain,
@@ -368,6 +371,38 @@ const EmailConfigForm: React.FC = () => {
         <div className="text-sm text-gray-500">{loading ? '加载中...' : '暂无配置'}</div>
       ) : (
         <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-12">
+            <div className="col-span-2 space-y-0.5 md:col-span-3">
+              <Label className="text-xs">验证码有效期(秒)</Label>
+              <Input
+                className="h-9 text-sm"
+                inputMode="numeric"
+                value={String(settings.otpTtlSeconds ?? 600)}
+                disabled={!editing}
+                onChange={(e) => setSettings(s => (s ? { ...s, otpTtlSeconds: toInt(e.target.value, 600) } : s))}
+              />
+            </div>
+            <div className="col-span-2 space-y-0.5 md:col-span-3">
+              <Label className="text-xs">重发等待(秒)</Label>
+              <Input
+                className="h-9 text-sm"
+                inputMode="numeric"
+                value={String(settings.otpResendWaitSeconds ?? 120)}
+                disabled={!editing}
+                onChange={(e) => setSettings(s => (s ? { ...s, otpResendWaitSeconds: toInt(e.target.value, 120) } : s))}
+              />
+            </div>
+            <div className="col-span-2 space-y-0.5 md:col-span-3">
+              <Label className="text-xs">验证成功后减少冷却(秒)</Label>
+              <Input
+                className="h-9 text-sm"
+                inputMode="numeric"
+                value={String(settings.otpResendWaitReductionSecondsAfterVerified ?? 0)}
+                disabled={!editing}
+                onChange={(e) => setSettings(s => (s ? { ...s, otpResendWaitReductionSecondsAfterVerified: toInt(e.target.value, 0) } : s))}
+              />
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-12">
             {/* Row 1: Server Connection */}
             <div className="col-span-2 space-y-0.5 md:col-span-5">

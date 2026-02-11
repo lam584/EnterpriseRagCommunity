@@ -1,6 +1,7 @@
 // my-vite-app/src/contexts/AccessContext.tsx
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from './AuthContext';
 import { fetchAccessContext, AccessContextDTO } from '../services/accessContextService';
 
 export type AccessContextType = {
@@ -45,12 +46,22 @@ function normalizeAuthorityKey(authority: string) {
 }
 
 export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const [data, setData] = useState<AccessContextDTO>(empty);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   const inFlightRef = useRef<Promise<AccessContextDTO> | null>(null);
 
   const refresh = useCallback(async () => {
+    if (authLoading || !isAuthenticated) {
+      const next = empty;
+      setData(next);
+      setLoading(false);
+      setInitialized(false);
+      inFlightRef.current = null;
+      return next;
+    }
     if (inFlightRef.current) return inFlightRef.current;
 
     setLoading(true);
@@ -61,17 +72,27 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return res;
       } finally {
         setLoading(false);
+        setInitialized(true);
         inFlightRef.current = null;
       }
     })();
 
     inFlightRef.current = p;
     return p;
-  }, []);
+  }, [authLoading, isAuthenticated]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      setData(empty);
+      setLoading(false);
+      setInitialized(false);
+      inFlightRef.current = null;
+      return;
+    }
+
+    void refresh().catch(() => {});
+  }, [authLoading, isAuthenticated, refresh]);
 
   const rolesSet = useMemo(() => {
     // Backend returns roles normalized as `ADMIN` (no ROLE_ prefix), but keep compatibility.
@@ -98,7 +119,7 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     email: data.email,
     roles: data.roles,
     permissions: data.permissions,
-    loading,
+    loading: loading || (isAuthenticated && !initialized),
     refresh,
 
     hasRole: (role: string) => rolesSet.has(String(role).trim().replace(/^ROLE_/i, '')),

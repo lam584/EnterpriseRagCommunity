@@ -91,7 +91,11 @@ public class AccountEmailChangeController {
 
             String code = emailVerificationService.issueCode(user.getId(), EmailVerificationPurpose.CHANGE_EMAIL_OLD, currentEmail);
             emailVerificationMailer.sendVerificationCode(currentEmail, code, EmailVerificationPurpose.CHANGE_EMAIL_OLD);
-            return ResponseEntity.ok(Map.of("message", "验证码已发送"));
+            return ResponseEntity.ok(Map.of(
+                    "message", "验证码已发送",
+                    "resendWaitSeconds", emailVerificationService.getDefaultResendWaitSeconds(),
+                    "codeTtlSeconds", emailVerificationService.getDefaultTtlSeconds()
+            ));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }
@@ -167,7 +171,11 @@ public class AccountEmailChangeController {
 
             String code = emailVerificationService.issueCode(user.getId(), EmailVerificationPurpose.CHANGE_EMAIL, newEmail);
             emailVerificationMailer.sendVerificationCode(newEmail, code, EmailVerificationPurpose.CHANGE_EMAIL);
-            return ResponseEntity.ok(Map.of("message", "验证码已发送"));
+            return ResponseEntity.ok(Map.of(
+                    "message", "验证码已发送",
+                    "resendWaitSeconds", emailVerificationService.getDefaultResendWaitSeconds(),
+                    "codeTtlSeconds", emailVerificationService.getDefaultTtlSeconds()
+            ));
         } catch (IllegalArgumentException | IllegalStateException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }

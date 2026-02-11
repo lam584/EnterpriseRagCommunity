@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.service.access;
 import com.example.EnterpriseRagCommunity.entity.access.EmailVerificationsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
 import com.example.EnterpriseRagCommunity.repository.access.EmailVerificationsRepository;
+import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -19,10 +20,11 @@ class EmailVerificationServiceTest {
     @Test
     void issueCode_savesEntity_andReturns6Digits() {
         EmailVerificationsRepository repo = mock(EmailVerificationsRepository.class);
+        AppSettingsService settings = mock(AppSettingsService.class);
         when(repo.findFirstByUserIdAndPurposeOrderByCreatedAtDesc(anyLong(), any())).thenReturn(Optional.empty());
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        EmailVerificationService svc = new EmailVerificationService(repo);
+        EmailVerificationService svc = new EmailVerificationService(repo, settings);
         String code = svc.issueCode(1L, EmailVerificationPurpose.REGISTER, Duration.ofMinutes(10), Duration.ofSeconds(0));
 
         assertNotNull(code);
@@ -43,10 +45,11 @@ class EmailVerificationServiceTest {
     @Test
     void issueCode_withTargetEmail_savesTargetEmail() {
         EmailVerificationsRepository repo = mock(EmailVerificationsRepository.class);
+        AppSettingsService settings = mock(AppSettingsService.class);
         when(repo.findFirstByUserIdAndPurposeOrderByCreatedAtDesc(anyLong(), any())).thenReturn(Optional.empty());
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        EmailVerificationService svc = new EmailVerificationService(repo);
+        EmailVerificationService svc = new EmailVerificationService(repo, settings);
         String code = svc.issueCode(1L, EmailVerificationPurpose.CHANGE_EMAIL, "a@example.invalid", Duration.ofMinutes(10), Duration.ofSeconds(0));
 
         assertNotNull(code);
@@ -59,12 +62,13 @@ class EmailVerificationServiceTest {
     @Test
     void issueCode_rateLimited_throws() {
         EmailVerificationsRepository repo = mock(EmailVerificationsRepository.class);
+        AppSettingsService settings = mock(AppSettingsService.class);
         EmailVerificationsEntity last = new EmailVerificationsEntity();
         last.setCreatedAt(LocalDateTime.now());
         when(repo.findFirstByUserIdAndPurposeOrderByCreatedAtDesc(eq(1L), eq(EmailVerificationPurpose.CHANGE_PASSWORD)))
                 .thenReturn(Optional.of(last));
 
-        EmailVerificationService svc = new EmailVerificationService(repo);
+        EmailVerificationService svc = new EmailVerificationService(repo, settings);
         assertThrows(IllegalArgumentException.class, () ->
                 svc.issueCode(1L, EmailVerificationPurpose.CHANGE_PASSWORD, Duration.ofMinutes(10), Duration.ofSeconds(30))
         );
@@ -72,8 +76,28 @@ class EmailVerificationServiceTest {
     }
 
     @Test
+    void issueCode_rateLimited_butLastConsumedAndReductionAllows_respectsReduction() {
+        EmailVerificationsRepository repo = mock(EmailVerificationsRepository.class);
+        AppSettingsService settings = mock(AppSettingsService.class);
+        EmailVerificationsEntity last = new EmailVerificationsEntity();
+        last.setCreatedAt(LocalDateTime.now());
+        last.setConsumedAt(LocalDateTime.now());
+        when(repo.findFirstByUserIdAndPurposeOrderByCreatedAtDesc(eq(1L), eq(EmailVerificationPurpose.LOGIN_2FA)))
+                .thenReturn(Optional.of(last));
+        when(settings.getLongOrDefault(eq("email_otp_resend_wait_reduction_after_verified_seconds"), eq(0L))).thenReturn(30L);
+        when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        EmailVerificationService svc = new EmailVerificationService(repo, settings);
+        assertDoesNotThrow(() ->
+                svc.issueCode(1L, EmailVerificationPurpose.LOGIN_2FA, Duration.ofMinutes(10), Duration.ofSeconds(30))
+        );
+        verify(repo).save(any());
+    }
+
+    @Test
     void verifyAndConsume_wrongCode_throws() {
         EmailVerificationsRepository repo = mock(EmailVerificationsRepository.class);
+        AppSettingsService settings = mock(AppSettingsService.class);
         EmailVerificationsEntity e = new EmailVerificationsEntity();
         e.setId(10L);
         e.setUserId(1L);
@@ -85,7 +109,7 @@ class EmailVerificationServiceTest {
         when(repo.findFirstByUserIdAndPurposeAndConsumedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(eq(1L), eq(EmailVerificationPurpose.TOTP_ENABLE), any()))
                 .thenReturn(Optional.of(e));
 
-        EmailVerificationService svc = new EmailVerificationService(repo);
+        EmailVerificationService svc = new EmailVerificationService(repo, settings);
         assertThrows(IllegalArgumentException.class, () -> svc.verifyAndConsume(1L, EmailVerificationPurpose.TOTP_ENABLE, "000000"));
         verify(repo, never()).save(any());
     }
@@ -93,6 +117,7 @@ class EmailVerificationServiceTest {
     @Test
     void verifyAndConsume_ok_consumes() {
         EmailVerificationsRepository repo = mock(EmailVerificationsRepository.class);
+        AppSettingsService settings = mock(AppSettingsService.class);
         EmailVerificationsEntity e = new EmailVerificationsEntity();
         e.setId(10L);
         e.setUserId(1L);
@@ -105,7 +130,7 @@ class EmailVerificationServiceTest {
                 .thenReturn(Optional.of(e));
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        EmailVerificationService svc = new EmailVerificationService(repo);
+        EmailVerificationService svc = new EmailVerificationService(repo, settings);
         svc.verifyAndConsume(1L, EmailVerificationPurpose.PASSWORD_RESET, "123456");
 
         ArgumentCaptor<EmailVerificationsEntity> captor = ArgumentCaptor.forClass(EmailVerificationsEntity.class);
@@ -116,6 +141,7 @@ class EmailVerificationServiceTest {
     @Test
     void verifyAndConsume_withTargetEmail_usesTargetQuery() {
         EmailVerificationsRepository repo = mock(EmailVerificationsRepository.class);
+        AppSettingsService settings = mock(AppSettingsService.class);
         EmailVerificationsEntity e = new EmailVerificationsEntity();
         e.setId(10L);
         e.setUserId(1L);
@@ -129,7 +155,7 @@ class EmailVerificationServiceTest {
                 .thenReturn(Optional.of(e));
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        EmailVerificationService svc = new EmailVerificationService(repo);
+        EmailVerificationService svc = new EmailVerificationService(repo, settings);
         svc.verifyAndConsume(1L, EmailVerificationPurpose.CHANGE_EMAIL, "a@example.invalid", "123456");
 
         verify(repo, never()).findFirstByUserIdAndPurposeAndConsumedAtIsNullAndExpiresAtAfterOrderByCreatedAtDesc(anyLong(), any(), any());

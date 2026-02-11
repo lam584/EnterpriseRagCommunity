@@ -22,5 +22,16 @@ public class Security2faPolicyStatusDTO {
 
     @ApiModelProperty("邮箱服务是否开启（SMTP 可用开关）")
     private boolean emailServiceEnabled;
-}
 
+    @ApiModelProperty("是否允许用户启用登录二次验证（受作用范围与模式影响）")
+    private boolean login2faAllowed;
+
+    @ApiModelProperty("是否强制要求登录二次验证（受作用范围与模式影响）")
+    private boolean login2faRequired;
+
+    @ApiModelProperty("当前用户是否可在前台自行开关“登录二次验证”")
+    private boolean login2faCanEnable;
+
+    @ApiModelProperty("当前用户是否启用了“登录二次验证”（强制时恒为 true）")
+    private boolean login2faEnabled;
+}

@@ -45,16 +45,24 @@ vi.mock('../../../../services/totpAccountService', async (importOriginal) => {
     enrollTotp: vi.fn(),
     verifyTotp: vi.fn(),
     disableTotp: vi.fn(),
+    verifyTotpPassword: vi.fn(),
+  };
+});
+
+vi.mock('./AccountConnectionsPage', () => {
+  return {
+    ChangeEmailSection: () => null,
   };
 });
 
 import AccountSecurityPage from './AccountSecurityPage';
-import { getTotpPolicy, getTotpStatus, enrollTotp, verifyTotp } from '../../../../services/totpAccountService';
+import { getTotpPolicy, getTotpStatus, enrollTotp, verifyTotp, verifyTotpPassword } from '../../../../services/totpAccountService';
 
 const mockGetTotpPolicy = vi.mocked(getTotpPolicy);
 const mockGetTotpStatus = vi.mocked(getTotpStatus);
 const mockEnrollTotp = vi.mocked(enrollTotp);
 const mockVerifyTotp = vi.mocked(verifyTotp);
+const mockVerifyTotpPassword = vi.mocked(verifyTotpPassword);
 
 describe('AccountSecurityPage (TOTP)', () => {
   beforeEach(() => {
@@ -72,6 +80,7 @@ describe('AccountSecurityPage (TOTP)', () => {
       defaultSkew: 1,
     });
     mockGetTotpStatus.mockResolvedValue({ enabled: false });
+    mockVerifyTotpPassword.mockResolvedValue(undefined);
     mockEnrollTotp.mockResolvedValue({
       otpauthUri: 'EnterpriseRagCommunity:test-1',
       secretBase32: 'ABC',
@@ -99,7 +108,12 @@ describe('AccountSecurityPage (TOTP)', () => {
 
     expect(await screen.findByText(/当前状态：未启用/)).not.toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '启用TOTP' }));
+    fireEvent.click(screen.getByRole('button', { name: '开始启用' }));
+    fireEvent.change(screen.getByPlaceholderText('先验证密码才能继续'), { target: { value: 'p' } });
+    fireEvent.click(screen.getByRole('button', { name: '验证密码' }));
+
+    fireEvent.change(await screen.findByPlaceholderText('启用前必填'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: '验证验证码' }));
 
     expect(await screen.findByText('绑定信息')).not.toBeNull();
     expect(screen.getByDisplayValue('ABC')).not.toBeNull();
@@ -128,7 +142,11 @@ describe('AccountSecurityPage (TOTP)', () => {
 
     expect((await screen.findAllByText('二次验证（TOTP）')).length).toBeGreaterThan(0);
 
-    const selects = screen.getAllByRole('combobox');
+    fireEvent.click(screen.getByRole('button', { name: '开始启用' }));
+    fireEvent.change(await screen.findByPlaceholderText('先验证密码才能继续'), { target: { value: 'p' } });
+    fireEvent.click(screen.getByRole('button', { name: '验证密码' }));
+
+    const selects = await screen.findAllByRole('combobox');
     expect(selects.length).toBeGreaterThanOrEqual(4);
     const skewSelect = selects[3];
     expect(within(skewSelect).getByRole('option', { name: '6' })).not.toBeNull();
@@ -143,11 +161,17 @@ describe('AccountSecurityPage (TOTP)', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '启用TOTP' }));
+    fireEvent.click(await screen.findByRole('button', { name: '开始启用' }));
+    fireEvent.change(await screen.findByPlaceholderText('先验证密码才能继续'), { target: { value: 'p' } });
+    fireEvent.click(screen.getByRole('button', { name: '验证密码' }));
+
+    fireEvent.change(await screen.findByPlaceholderText('启用前必填'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: '验证验证码' }));
     expect(await screen.findByText('绑定信息')).not.toBeNull();
 
-    fireEvent.change(screen.getByPlaceholderText('6 或 8 位数字'), { target: { value: '000000' } });
-    fireEvent.change(screen.getByPlaceholderText('用于启用前校验'), { target: { value: 'p' } });
+    const enableCodeBox = screen.getByTestId('totp-enable-code');
+    const firstInput = within(enableCodeBox).getAllByRole('textbox')[0];
+    fireEvent.change(firstInput, { target: { value: '000000' } });
     fireEvent.click(screen.getByRole('button', { name: '启用' }));
 
     expect(await screen.findByTestId('totp-error')).not.toBeNull();

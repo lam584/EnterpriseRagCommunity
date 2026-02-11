@@ -13,7 +13,7 @@ class Security2faPolicyServiceTest {
 
     @Test
     void normalizeAdminSettings_should_default_policies_and_clear_role_ids_when_not_roles_mode() {
-        Security2faPolicyService svc = new Security2faPolicyService(null, null, null);
+        Security2faPolicyService svc = new Security2faPolicyService(null, null, null, null);
 
         Security2faPolicySettingsDTO in = new Security2faPolicySettingsDTO();
         in.setTotpPolicy(null);
@@ -30,7 +30,7 @@ class Security2faPolicyServiceTest {
 
     @Test
     void normalizeAdminSettings_should_require_role_ids_when_roles_mode() {
-        Security2faPolicyService svc = new Security2faPolicyService(null, null, null);
+        Security2faPolicyService svc = new Security2faPolicyService(null, null, null, null);
 
         Security2faPolicySettingsDTO in = new Security2faPolicySettingsDTO();
         in.setTotpPolicy("ALLOW_ROLES");
@@ -44,7 +44,7 @@ class Security2faPolicyServiceTest {
 
     @Test
     void normalizeAdminSettings_should_sort_and_dedup_role_ids() {
-        Security2faPolicyService svc = new Security2faPolicyService(null, null, null);
+        Security2faPolicyService svc = new Security2faPolicyService(null, null, null, null);
 
         Security2faPolicySettingsDTO in = new Security2faPolicySettingsDTO();
         in.setTotpPolicy("REQUIRE_ROLES");
@@ -55,5 +55,38 @@ class Security2faPolicyServiceTest {
         Security2faPolicySettingsDTO out = svc.normalizeAdminSettings(in);
         assertThat(out.getTotpRoleIds()).containsExactly(1L, 2L);
         assertThat(out.getEmailOtpRoleIds()).isEmpty();
+    }
+
+    @Test
+    void normalizeAdminSettings_should_require_user_ids_when_users_mode() {
+        Security2faPolicyService svc = new Security2faPolicyService(null, null, null, null);
+
+        Security2faPolicySettingsDTO in = new Security2faPolicySettingsDTO();
+        in.setTotpPolicy("ALLOW_USERS");
+        in.setTotpUserIds(List.of());
+        in.setEmailOtpPolicy("ALLOW_ALL");
+
+        assertThatThrownBy(() -> svc.normalizeAdminSettings(in))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("TOTP 策略为 *_USERS 时必须选择 userId");
+    }
+
+    @Test
+    void normalizeAdminSettings_should_clear_login2fa_user_ids_when_not_users_mode() {
+        Security2faPolicyService svc = new Security2faPolicyService(null, null, null, null);
+
+        Security2faPolicySettingsDTO in = new Security2faPolicySettingsDTO();
+        in.setTotpPolicy("ALLOW_ALL");
+        in.setEmailOtpPolicy("ALLOW_ALL");
+        in.setLogin2faMode("EMAIL_ONLY");
+        in.setLogin2faScopePolicy("REQUIRE_ALL");
+        in.setLogin2faRoleIds(List.of(9L));
+        in.setLogin2faUserIds(List.of(1L, 2L));
+
+        Security2faPolicySettingsDTO out = svc.normalizeAdminSettings(in);
+        assertThat(out.getLogin2faMode()).isEqualTo("EMAIL_ONLY");
+        assertThat(out.getLogin2faScopePolicy()).isEqualTo("REQUIRE_ALL");
+        assertThat(out.getLogin2faRoleIds()).isEmpty();
+        assertThat(out.getLogin2faUserIds()).isEmpty();
     }
 }

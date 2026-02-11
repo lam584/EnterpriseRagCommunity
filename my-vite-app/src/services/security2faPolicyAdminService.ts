@@ -3,8 +3,14 @@ import { getCsrfToken } from '../utils/csrfUtils';
 export type Security2faPolicySettingsDTO = {
   totpPolicy?: string;
   totpRoleIds?: number[];
+  totpUserIds?: number[];
   emailOtpPolicy?: string;
   emailOtpRoleIds?: number[];
+  emailOtpUserIds?: number[];
+  login2faMode?: string;
+  login2faScopePolicy?: string;
+  login2faRoleIds?: number[];
+  login2faUserIds?: number[];
 };
 
 const API = '/api/admin/settings/security-2fa-policy';
@@ -37,4 +43,3 @@ export async function updateSecurity2faPolicySettings(dto: Security2faPolicySett
   }
   return res.json();
 }
-

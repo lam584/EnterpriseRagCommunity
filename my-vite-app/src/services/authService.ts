@@ -66,12 +66,27 @@ export async function login(email: string, password: string, csrfToken: string):
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     const message = (errorData && (errorData as any).message) || '登录失败';
-    const err = new Error(message) as Error & { code?: string; email?: string };
+    const err = new Error(message) as Error & {
+      code?: string;
+      email?: string;
+      methods?: string[];
+      resendWaitSeconds?: number;
+      codeTtlSeconds?: number;
+      totpDigits?: number;
+    };
     if (errorData && typeof errorData === 'object') {
       const code = (errorData as any).code;
       const respEmail = (errorData as any).email;
+      const methods = (errorData as any).methods;
+      const resendWaitSeconds = (errorData as any).resendWaitSeconds;
+      const codeTtlSeconds = (errorData as any).codeTtlSeconds;
+      const totpDigits = (errorData as any).totpDigits;
       if (typeof code === 'string') err.code = code;
       if (typeof respEmail === 'string') err.email = respEmail;
+      if (Array.isArray(methods)) err.methods = methods.filter((x: unknown) => typeof x === 'string');
+      if (typeof resendWaitSeconds === 'number') err.resendWaitSeconds = resendWaitSeconds;
+      if (typeof codeTtlSeconds === 'number') err.codeTtlSeconds = codeTtlSeconds;
+      if (typeof totpDigits === 'number') err.totpDigits = totpDigits;
     }
     throw err;
   }
@@ -81,6 +96,56 @@ export async function login(email: string, password: string, csrfToken: string):
   clearCsrfToken();
 
   return res.json();
+}
+
+export async function resendLogin2faEmail(): Promise<{
+  message?: string;
+  resendWaitSeconds?: number;
+  codeTtlSeconds?: number;
+}> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch('/api/auth/login/2fa/resend-email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+  });
+
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const msg = typeof data?.message === 'string' ? data.message : undefined;
+    throw new Error(msg || '发送失败');
+  }
+
+  return {
+    message: typeof data?.message === 'string' ? data.message : undefined,
+    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
+    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
+  };
+}
+
+export async function verifyLogin2fa(method: 'email' | 'totp', code: string): Promise<AdminDTO> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch('/api/auth/login/2fa/verify', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({ method, code }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data && typeof data === 'object' && 'message' in data ? (data as any).message : undefined;
+    throw new Error(typeof msg === 'string' ? msg : '验证失败');
+  }
+
+  clearCsrfToken();
+  return data as AdminDTO;
 }
 
 export async function logout(): Promise<void> {
@@ -266,7 +331,11 @@ export async function verifyRegister(email: string, code: string): Promise<void>
   }
 }
 
-export async function resendRegisterCode(email: string): Promise<void> {
+export async function resendRegisterCode(email: string): Promise<{
+  message?: string;
+  resendWaitSeconds?: number;
+  codeTtlSeconds?: number;
+}> {
   const csrfToken = await getCsrfToken();
   const res = await fetch('/api/auth/register/resend-code', {
     method: 'POST',
@@ -278,9 +347,15 @@ export async function resendRegisterCode(email: string): Promise<void> {
     body: JSON.stringify({ email }),
   });
 
-  const data = await res.json().catch(() => ({}));
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    const msg = typeof (data as any)?.message === 'string' ? (data as any).message : undefined;
+    const msg = typeof data?.message === 'string' ? data.message : undefined;
     throw new Error(msg || '发送失败');
   }
+
+  return {
+    message: typeof data?.message === 'string' ? data.message : undefined,
+    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
+    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
+  };
 }

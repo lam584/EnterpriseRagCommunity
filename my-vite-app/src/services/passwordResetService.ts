@@ -49,7 +49,11 @@ export async function resetPasswordByTotp(email: string, totpCode: string, newPa
   }
 }
 
-export async function sendPasswordResetEmailCode(email: string): Promise<void> {
+export async function sendPasswordResetEmailCode(email: string): Promise<{
+  message?: string;
+  resendWaitSeconds?: number;
+  codeTtlSeconds?: number;
+}> {
   const csrfToken = await getCsrfToken();
   const res = await fetch('/api/auth/password-reset/send-code', {
     method: 'POST',
@@ -61,10 +65,17 @@ export async function sendPasswordResetEmailCode(email: string): Promise<void> {
     body: JSON.stringify({ email }),
   });
 
-  const data = await res.json().catch(() => ({}));
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    throw new Error((data && data.message) || '发送验证码失败');
+    const msg = typeof data?.message === 'string' ? data.message : undefined;
+    throw new Error(msg || '发送验证码失败');
   }
+
+  return {
+    message: typeof data?.message === 'string' ? data.message : undefined,
+    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
+    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
+  };
 }
 
 export async function resetPasswordByEmailCode(email: string, emailCode: string, newPassword: string): Promise<void> {
