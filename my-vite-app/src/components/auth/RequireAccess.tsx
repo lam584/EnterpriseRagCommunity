@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAccess } from '../../contexts/AccessContext';
@@ -37,15 +37,10 @@ export const RequireAccess: React.FC<RequireAccessProps> = ({
   loginPath = '/login',
   forbiddenPath = '/forbidden'
 }) => {
-  const { isAuthenticated, loading: authLoading } = useAuth();
-  const { hasPerm, hasRole, loading: accessLoading, refresh } = useAccess();
+  const { isAuthenticated, loading: authLoading, totpSetupRequired } = useAuth();
+  const { hasPerm, hasRole, loading: accessLoading } = useAccess();
   const location = useLocation();
   const parentOutletContext = useOutletContext<unknown>();
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    void refresh();
-  }, [isAuthenticated, refresh]);
 
   if (authLoading || accessLoading) {
     return <div className="flex justify-center items-center h-screen">加载中...</div>;
@@ -53,6 +48,10 @@ export const RequireAccess: React.FC<RequireAccessProps> = ({
 
   if (requiresAuth && !isAuthenticated) {
     return <Navigate to={loginPath} replace state={{ from: location }} />;
+  }
+
+  if (requiresAuth && isAuthenticated && totpSetupRequired && location.pathname !== '/portal/account/security') {
+    return <Navigate to="/portal/account/security?force=totp" replace state={{ from: location }} />;
   }
 
   const hasPermRequirement = Boolean(resource && action);

@@ -45,6 +45,8 @@ function extractApiErrorMessage(data: unknown): string | undefined {
 }
 
 export type TotpEnrollRequest = {
+  password?: string;
+  emailCode?: string;
   algorithm?: string;
   digits?: number;
   periodSeconds?: number;
@@ -98,7 +100,18 @@ export async function enrollTotp(req?: TotpEnrollRequest): Promise<TotpEnrollRes
   return res.json();
 }
 
-export async function verifyTotp(code: string, password: string, emailCode?: string): Promise<TotpStatusResponse> {
+export type TotpVerifyRequest = {
+  code: string;
+  password?: string;
+  emailCode?: string;
+};
+
+export async function verifyTotp(code: string, password: string, emailCode?: string): Promise<TotpStatusResponse>;
+export async function verifyTotp(req: TotpVerifyRequest): Promise<TotpStatusResponse>;
+export async function verifyTotp(codeOrReq: string | TotpVerifyRequest, password?: string, emailCode?: string): Promise<TotpStatusResponse> {
+  const payload: TotpVerifyRequest = typeof codeOrReq === 'string'
+    ? { code: codeOrReq, password, emailCode }
+    : codeOrReq;
   const csrfToken = await getCsrfToken();
   const res = await fetch(`${API_BASE}/verify`, {
     method: 'POST',
@@ -107,7 +120,7 @@ export async function verifyTotp(code: string, password: string, emailCode?: str
       'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
-    body: JSON.stringify({ code, password, emailCode }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -116,7 +129,15 @@ export async function verifyTotp(code: string, password: string, emailCode?: str
   return res.json();
 }
 
-export async function disableTotp(code: string): Promise<TotpStatusResponse> {
+export type TotpDisableRequest = {
+  method?: 'totp' | 'email';
+  password?: string;
+  code?: string;
+  emailCode?: string;
+};
+
+export async function disableTotp(req: string | TotpDisableRequest): Promise<TotpStatusResponse> {
+  const payload = typeof req === 'string' ? { code: req } : req;
   const csrfToken = await getCsrfToken();
   const res = await fetch(`${API_BASE}/disable`, {
     method: 'POST',
@@ -125,11 +146,28 @@ export async function disableTotp(code: string): Promise<TotpStatusResponse> {
       'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
-    body: JSON.stringify({ code }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     throw new Error(extractApiErrorMessage(data) || '停用失败');
   }
   return res.json();
+}
+
+export async function verifyTotpPassword(action: 'ENABLE' | 'DISABLE', password: string): Promise<void> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(`${API_BASE}/verify-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({ action, password }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new Error(extractApiErrorMessage(data) || '密码验证失败');
+  }
 }

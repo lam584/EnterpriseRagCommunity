@@ -36,10 +36,19 @@ export default function ForgotPassword() {
   const [confirmNewPwd, setConfirmNewPwd] = useState('');
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
+  const [emailSendCountdown, setEmailSendCountdown] = useState(0);
   const [message, setMessage] = useState<{ type: 'error' | 'success' | ''; text: string }>({ type: '', text: '' });
 
   // 用户选择的验证方式：null 表示未选择，'totp' 或 'email'
   const [verifyMethod, setVerifyMethod] = useState<'totp' | 'email' | null>(null);
+
+  useEffect(() => {
+    if (emailSendCountdown <= 0) return;
+    const t = window.setInterval(() => {
+      setEmailSendCountdown((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [emailSendCountdown]);
 
   const validateReset = () => {
     // 如果用户选择了 TOTP，则只校验 TOTP
@@ -120,7 +129,9 @@ export default function ForgotPassword() {
     setSendingCode(true);
     setMessage({ type: '', text: '' });
     try {
-      await sendPasswordResetEmailCode(em);
+      const resp = await sendPasswordResetEmailCode(em);
+      const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 60;
+      setEmailSendCountdown(wait);
       setMessage({ type: 'success', text: '验证码已发送，请检查邮箱' });
     } catch (err) {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : '发送失败' });
@@ -272,9 +283,9 @@ export default function ForgotPassword() {
                     type="button"
                     className={`w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline ${sendingCode ? 'opacity-50 cursor-not-allowed' : ''}`}
                     onClick={sendCode}
-                    disabled={sendingCode || loading}
+                    disabled={sendingCode || loading || emailSendCountdown > 0}
                   >
-                    {sendingCode ? '发送中...' : '发送邮箱验证码'}
+                    {sendingCode ? '发送中...' : emailSendCountdown > 0 ? `${emailSendCountdown}s` : '发送邮箱验证码'}
                   </button>
                   <div>
                     <label className="block text-gray-700 text-sm font-bold mb-2" htmlFor="emailCode">
@@ -309,6 +320,7 @@ export default function ForgotPassword() {
                     setStatus(null);
                     setTotpCode('');
                     setEmailCode('');
+                    setEmailSendCountdown(0);
                     setNewPwd('');
                     setConfirmNewPwd('');
                     setMessage({ type: '', text: '' });

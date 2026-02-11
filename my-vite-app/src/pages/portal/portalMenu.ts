@@ -70,9 +70,8 @@ export const portalSections: PortalSection[] = [
     basePath: '/portal/account',
     children: [
       { id: 'profile', label: '个人资料', path: 'profile', description: '昵称、头像、简介等' },
-      { id: 'security', label: '安全', path: 'security', description: '密码、登录设备与风控' },
+      { id: 'security', label: '安全', path: 'security', description: '密码、二次验证与邮箱安全' },
       { id: 'preferences', label: '偏好', path: 'preferences', description: '语言、展示与通知偏好' },
-      { id: 'connections', label: '绑定', path: 'connections', description: '邮箱/手机/第三方账号' },
       { id: 'mine', label: '我的帖子', path: 'mine', description: '我发布过的帖子' },
       { id: 'bookmarks', label: '收藏', path: 'bookmarks', description: '我收藏的帖子' },
     ],

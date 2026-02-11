@@ -15,6 +15,7 @@ import com.example.EnterpriseRagCommunity.dto.access.request.PasswordResetSendCo
 import com.example.EnterpriseRagCommunity.dto.access.request.PasswordResetStatusRequest;
 import com.example.EnterpriseRagCommunity.dto.access.response.PasswordResetStatusResponse;
 import com.example.EnterpriseRagCommunity.service.AuthPasswordResetService;
+import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ import lombok.RequiredArgsConstructor;
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
 public class AuthPasswordResetController {
     private final AuthPasswordResetService authPasswordResetService;
+    private final EmailVerificationService emailVerificationService;
 
     @PostMapping("/status")
     public ResponseEntity<?> status(@RequestBody @Valid PasswordResetStatusRequest req) {
@@ -52,7 +54,11 @@ public class AuthPasswordResetController {
     public ResponseEntity<?> sendCode(@RequestBody @Valid PasswordResetSendCodeRequest req) {
         try {
             authPasswordResetService.sendPasswordResetEmailCode(req.getEmail());
-            return ResponseEntity.ok(Map.of("message", "验证码已发送"));
+            return ResponseEntity.ok(Map.of(
+                    "message", "验证码已发送",
+                    "resendWaitSeconds", emailVerificationService.getDefaultResendWaitSeconds(),
+                    "codeTtlSeconds", emailVerificationService.getDefaultTtlSeconds()
+            ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }

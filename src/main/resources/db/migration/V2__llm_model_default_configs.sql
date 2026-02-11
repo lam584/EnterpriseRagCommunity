@@ -14,6 +14,87 @@
   - 审核（moderation_llm_config）默认使用“自动（均衡负载）”：model/provider_id 置为 NULL，走 TEXT_MODERATION 路由策略选择模型
 */
 
+-- 0) V7 合并：为“模型配置表单/历史表”补齐 TOP-P 字段（幂等）
+-- 说明：
+-- - 本项目历史上 top_p 通过后续版本 ALTER TABLE 增加；现在将其并入 V2，以便全新初始化时一步到位
+-- - 为了允许脚本重复执行，这里通过 information_schema 判断列是否存在后再执行 ALTER TABLE
+
+SET @has_ai_gen_top_p_col := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE table_schema = DATABASE()
+    AND table_name = 'ai_gen_task_config'
+    AND column_name = 'top_p'
+);
+
+SET @sql_add_ai_gen_top_p := IF(
+  @has_ai_gen_top_p_col > 0,
+  'SELECT 1;',
+  'ALTER TABLE ai_gen_task_config\n'
+  '  ADD COLUMN top_p DECIMAL(4,3) NULL COMMENT ''TOP-P（0~1）'' AFTER temperature;'
+);
+
+PREPARE stmt_add_ai_gen_top_p FROM @sql_add_ai_gen_top_p;
+EXECUTE stmt_add_ai_gen_top_p;
+DEALLOCATE PREPARE stmt_add_ai_gen_top_p;
+
+SET @has_mod_top_p_col := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE table_schema = DATABASE()
+    AND table_name = 'moderation_llm_config'
+    AND column_name = 'top_p'
+);
+
+SET @sql_add_mod_top_p := IF(
+  @has_mod_top_p_col > 0,
+  'SELECT 1;',
+  'ALTER TABLE moderation_llm_config\n'
+  '  ADD COLUMN top_p DECIMAL(4,3) NULL COMMENT ''文本审核 TOP-P（0~1）'' AFTER temperature;'
+);
+
+PREPARE stmt_add_mod_top_p FROM @sql_add_mod_top_p;
+EXECUTE stmt_add_mod_top_p;
+DEALLOCATE PREPARE stmt_add_mod_top_p;
+
+SET @has_mod_vision_top_p_col := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE table_schema = DATABASE()
+    AND table_name = 'moderation_llm_config'
+    AND column_name = 'vision_top_p'
+);
+
+SET @sql_add_mod_vision_top_p := IF(
+  @has_mod_vision_top_p_col > 0,
+  'SELECT 1;',
+  'ALTER TABLE moderation_llm_config\n'
+  '  ADD COLUMN vision_top_p DECIMAL(4,3) NULL COMMENT ''视觉审核 TOP-P（0~1）'' AFTER vision_temperature;'
+);
+
+PREPARE stmt_add_mod_vision_top_p FROM @sql_add_mod_vision_top_p;
+EXECUTE stmt_add_mod_vision_top_p;
+DEALLOCATE PREPARE stmt_add_mod_vision_top_p;
+
+SET @has_suggest_history_top_p_col := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE table_schema = DATABASE()
+    AND table_name = 'post_suggestion_gen_history'
+    AND column_name = 'top_p'
+);
+
+SET @sql_add_suggest_history_top_p := IF(
+  @has_suggest_history_top_p_col > 0,
+  'SELECT 1;',
+  'ALTER TABLE post_suggestion_gen_history\n'
+  '  ADD COLUMN top_p DECIMAL(4,3) NULL COMMENT ''TOP-P（0~1）'' AFTER temperature;'
+);
+
+PREPARE stmt_add_suggest_history_top_p FROM @sql_add_suggest_history_top_p;
+EXECUTE stmt_add_suggest_history_top_p;
+DEALLOCATE PREPARE stmt_add_suggest_history_top_p;
+
 -- 1) 初始化：默认 LLM 审核提示词（表为空/指定主键不存在时才写入）
 -- 表：moderation_llm_config（单行配置表）
 -- 字段说明：

@@ -3,6 +3,8 @@ package com.example.EnterpriseRagCommunity.controller;
 import java.util.HashMap;
 import java.util.Map; // 替代旧UserDTO
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.List;
 import java.time.ZoneId;
 
 import org.slf4j.Logger;
@@ -15,6 +17,8 @@ import org.springframework.security.authentication.AuthenticationManager; // 添
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken; // 添加缺失的 ApiResponse 类导入
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.csrf.CsrfToken; // 添加 TenantsRepository 导入
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -27,6 +31,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.EnterpriseRagCommunity.config.AdminSetupManager;
 import com.example.EnterpriseRagCommunity.dto.access.UsersCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.access.UsersDTO;
+import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicyStatusDTO;
+import com.example.EnterpriseRagCommunity.dto.access.request.Login2faVerifyRequest;
 import com.example.EnterpriseRagCommunity.dto.access.request.LoginRequest;
 import com.example.EnterpriseRagCommunity.dto.access.request.RegisterResendRequest;
 import com.example.EnterpriseRagCommunity.dto.access.request.RegisterVerifyRequest;
@@ -50,7 +56,9 @@ import com.example.EnterpriseRagCommunity.repository.content.BoardModeratorsRepo
 import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.security.AccessChangedFilter;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.AccountTotpService;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
+import com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService;
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
 import com.example.EnterpriseRagCommunity.service.init.TotpMasterKeyBootstrapService;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
@@ -59,6 +67,7 @@ import com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 
 @RestController
@@ -67,6 +76,10 @@ import jakarta.validation.Valid;
 public class AuthController {
     private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
     private static final String DEFAULT_BOARD_NAME = "默认版块";
+    private static final String SESSION_LOGIN2FA_PENDING_USER_ID = "login2fa.pendingUserId";
+    private static final String SESSION_LOGIN2FA_PENDING_EMAIL = "login2fa.pendingEmail";
+    private static final String SESSION_LOGIN2FA_PENDING_MODE = "login2fa.mode";
+    private static final String SESSION_LOGIN2FA_PENDING_CREATED_AT = "login2fa.createdAtMs";
 
     @Autowired
     private AdministratorService administratorService;
@@ -113,6 +126,15 @@ public class AuthController {
 
     @Autowired
     private EmailVerificationMailer emailVerificationMailer;
+
+    @Autowired
+    private Security2faPolicyService security2faPolicyService;
+
+    @Autowired
+    private AccountTotpService accountTotpService;
+
+    @Autowired
+    private UserDetailsService userDetailsService;
 
     @Value("${app.tenant.default-code:DEFAULT}")
     private String defaultTenantCode;
@@ -234,6 +256,41 @@ public class AuthController {
         return value.substring(0, 3) + "***" + value.substring(value.length() - 3);
     }
 
+    private ResponseEntity<?> completeLogin(HttpServletRequest request, HttpServletResponse servletResponse, UsersEntity currentUser, Authentication authentication) {
+        if (authentication == null) throw new IllegalArgumentException("authentication is required");
+        if (currentUser == null) throw new IllegalArgumentException("user is required");
+
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        HttpSession session = request.getSession(true);
+        session.setAttribute("SPRING_SECURITY_CONTEXT", SecurityContextHolder.getContext());
+
+        String sessionId = session.getId();
+
+        Cookie sessionCookie = new Cookie("JSESSIONID", sessionId);
+        sessionCookie.setPath("/");
+        sessionCookie.setHttpOnly(false);
+        sessionCookie.setMaxAge(86400);
+        servletResponse.addCookie(sessionCookie);
+
+        currentUser.setLastLoginAt(java.time.LocalDateTime.now());
+        administratorService.save(currentUser);
+
+        long accessTs = currentUser.getUpdatedAt() == null
+                ? 0L
+                : currentUser.getUpdatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        long invalidatedTs = currentUser.getSessionInvalidatedAt() == null
+                ? 0L
+                : currentUser.getSessionInvalidatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+        session.setAttribute(AccessChangedFilter.SESSION_ACCESS_TS_KEY, accessTs);
+        if (invalidatedTs > 0L) {
+            session.setAttribute(AccessChangedFilter.SESSION_INVALIDATED_TS_KEY, invalidatedTs);
+        }
+
+        UsersDTO userDTO = convertToUserSafeDTO(currentUser);
+        AuthResponse authResponse = new AuthResponse(sessionId, 86400L, userDTO);
+        return ResponseEntity.ok(authResponse);
+    }
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest, HttpServletRequest request, HttpServletResponse servletResponse) {
         try {
@@ -261,65 +318,166 @@ public class AuthController {
                 )
             );
 
-            // 设置SecurityContext
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-
-            // 确保会话创建并持久化
-            request.getSession(true).setAttribute(
-                "SPRING_SECURITY_CONTEXT",
-                SecurityContextHolder.getContext()
-            );
-
-            // 获取会话ID
-            String sessionId = request.getSession().getId();
-            logger.debug("login authenticated user={}", authentication.getName());
-
-            // 明确设置JSESSIONID Cookie，确保前端能收到
-            Cookie sessionCookie = new Cookie("JSESSIONID", sessionId);
-            sessionCookie.setPath("/");
-            sessionCookie.setHttpOnly(false);  // 允许JavaScript访问以便前端检测
-            sessionCookie.setMaxAge(86400);    // 设置Cookie有效期为1天
-            servletResponse.addCookie(sessionCookie);
-
             Optional<UsersEntity> user = administratorService.findByUsername(loginRequest.getEmail());
-
             if (user.isPresent()) {
                 UsersEntity currentUser = user.get();
-                currentUser.setLastLoginAt(java.time.LocalDateTime.now());
-                administratorService.save(currentUser);
+                Security2faPolicyService.Login2faMode login2faMode = security2faPolicyService.evaluateLogin2faModeForUser(currentUser.getId());
+                if (login2faMode != Security2faPolicyService.Login2faMode.DISABLED) {
+                    Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(currentUser.getId());
+                    boolean allowEmail = policy.isEmailOtpAllowed() && emailVerificationMailer.isEnabled();
+                    boolean allowTotp = policy.isTotpAllowed() && accountTotpService.isEnabledByEmail(currentUser.getEmail());
+                    List<String> methods = new ArrayList<>();
+                    if ((login2faMode == Security2faPolicyService.Login2faMode.EMAIL_ONLY || login2faMode == Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP) && allowEmail) {
+                        methods.add("email");
+                    }
+                    if ((login2faMode == Security2faPolicyService.Login2faMode.TOTP_ONLY || login2faMode == Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP) && allowTotp) {
+                        methods.add("totp");
+                    }
 
-                long accessTs = currentUser.getUpdatedAt() == null
-                        ? 0L
-                        : currentUser.getUpdatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                long invalidatedTs = currentUser.getSessionInvalidatedAt() == null
-                        ? 0L
-                        : currentUser.getSessionInvalidatedAt().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
-                request.getSession().setAttribute(AccessChangedFilter.SESSION_ACCESS_TS_KEY, accessTs);
-                if (invalidatedTs > 0L) {
-                    request.getSession().setAttribute(AccessChangedFilter.SESSION_INVALIDATED_TS_KEY, invalidatedTs);
+                    HttpSession session = request.getSession(true);
+                    session.setAttribute(SESSION_LOGIN2FA_PENDING_USER_ID, currentUser.getId());
+                    session.setAttribute(SESSION_LOGIN2FA_PENDING_EMAIL, currentUser.getEmail());
+                    session.setAttribute(SESSION_LOGIN2FA_PENDING_MODE, login2faMode.name());
+                    session.setAttribute(SESSION_LOGIN2FA_PENDING_CREATED_AT, System.currentTimeMillis());
+
+                    if (methods.isEmpty()) {
+                        Map<String, Object> response = new HashMap<>();
+                        response.put("code", "LOGIN_2FA_UNAVAILABLE");
+                        response.put("message", "当前账号无法完成登录二次验证（请联系管理员或先启用 TOTP）");
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+                    }
+
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("code", "LOGIN_2FA_REQUIRED");
+                    response.put("message", "登录需要二次验证");
+                    response.put("methods", methods);
+                    response.put("resendWaitSeconds", 0);
+                    response.put("codeTtlSeconds", emailVerificationService.getDefaultTtlSeconds());
+                    if (methods.contains("totp")) {
+                        Integer digits = accountTotpService.getEnabledDigitsByEmail(currentUser.getEmail());
+                        if (digits != null && (digits == 6 || digits == 8)) {
+                            response.put("totpDigits", digits);
+                        }
+                    }
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
                 }
 
                 UsersDTO userDTO = convertToUserSafeDTO(currentUser);
-
-                AuthResponse authResponse = new AuthResponse(
-                    sessionId,
-                    86400L,
-                    userDTO
-                );
-
+                logger.debug("login authenticated user={}", authentication.getName());
                 logger.debug("login success username={} email={}", userDTO.getUsername(), userDTO.getEmail());
-                return ResponseEntity.ok(authResponse);
-            } else {
-                Map<String, String> responseMap = new HashMap<>();
-                responseMap.put("message", "登录成功但无法获取用户信息");
-                logger.warn("login success but user record not found email={}", loginRequest.getEmail());
-                return ResponseEntity.status(HttpStatus.OK).body(responseMap);
+                return completeLogin(request, servletResponse, currentUser, authentication);
             }
+
+            Map<String, String> responseMap = new HashMap<>();
+            responseMap.put("message", "登录成功但无法获取用户信息");
+            logger.warn("login success but user record not found email={}", loginRequest.getEmail());
+            return ResponseEntity.status(HttpStatus.OK).body(responseMap);
         } catch (Exception e) {
             logger.warn("login failed email={} msg={}", loginRequest.getEmail(), e.getMessage(), e);
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("message", "邮箱或密码错误");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
+        }
+    }
+
+    @PostMapping("/login/2fa/resend-email")
+    public ResponseEntity<?> resendLogin2faEmail(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "会话已过期，请重新登录"));
+        }
+        Object uidObj = session.getAttribute(SESSION_LOGIN2FA_PENDING_USER_ID);
+        Long userId = uidObj instanceof Number ? ((Number) uidObj).longValue() : null;
+        String email = (String) session.getAttribute(SESSION_LOGIN2FA_PENDING_EMAIL);
+        if (userId == null || userId <= 0 || email == null || email.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "当前会话不处于登录二次验证状态"));
+        }
+
+        Security2faPolicyService.Login2faMode login2faMode = security2faPolicyService.evaluateLogin2faModeForUser(userId);
+        if (login2faMode == Security2faPolicyService.Login2faMode.DISABLED) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "当前无需二次验证"));
+        }
+        Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(userId);
+        boolean allowEmail = policy.isEmailOtpAllowed() && emailVerificationMailer.isEnabled();
+        boolean emailMode = login2faMode == Security2faPolicyService.Login2faMode.EMAIL_ONLY || login2faMode == Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP;
+        if (!emailMode || !allowEmail) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "当前不支持邮箱验证码二次验证"));
+        }
+
+        try {
+            String code = emailVerificationService.issueCode(userId, EmailVerificationPurpose.LOGIN_2FA);
+            emailVerificationMailer.sendVerificationCode(email, code, EmailVerificationPurpose.LOGIN_2FA);
+            return ResponseEntity.ok(Map.of(
+                    "message", "验证码已发送",
+                    "resendWaitSeconds", emailVerificationService.getDefaultResendWaitSeconds(),
+                    "codeTtlSeconds", emailVerificationService.getDefaultTtlSeconds()
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "发送失败：" + e.getMessage()));
+        }
+    }
+
+    @PostMapping("/login/2fa/verify")
+    public ResponseEntity<?> verifyLogin2fa(@RequestBody @Valid Login2faVerifyRequest req, HttpServletRequest request, HttpServletResponse servletResponse) {
+        HttpSession session = request.getSession(false);
+        if (session == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "会话已过期，请重新登录"));
+        }
+        Object uidObj = session.getAttribute(SESSION_LOGIN2FA_PENDING_USER_ID);
+        Long userId = uidObj instanceof Number ? ((Number) uidObj).longValue() : null;
+        String email = (String) session.getAttribute(SESSION_LOGIN2FA_PENDING_EMAIL);
+        if (userId == null || userId <= 0 || email == null || email.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "当前会话不处于登录二次验证状态"));
+        }
+
+        Security2faPolicyService.Login2faMode login2faMode = security2faPolicyService.evaluateLogin2faModeForUser(userId);
+        if (login2faMode == Security2faPolicyService.Login2faMode.DISABLED) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "当前无需二次验证"));
+        }
+        Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(userId);
+
+        String method = req.getMethod() == null ? "" : req.getMethod().trim().toLowerCase();
+        String code = req.getCode() == null ? "" : req.getCode().trim();
+        if (code.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入验证码"));
+        }
+
+        boolean allowEmail = policy.isEmailOtpAllowed() && emailVerificationMailer.isEnabled();
+        boolean allowTotp = policy.isTotpAllowed() && accountTotpService.isEnabledByEmail(email);
+        boolean emailMode = login2faMode == Security2faPolicyService.Login2faMode.EMAIL_ONLY || login2faMode == Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP;
+        boolean totpMode = login2faMode == Security2faPolicyService.Login2faMode.TOTP_ONLY || login2faMode == Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP;
+
+        try {
+            if ("email".equals(method)) {
+                if (!emailMode || !allowEmail) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "当前不支持邮箱验证码二次验证"));
+                }
+                emailVerificationService.verifyAndConsume(userId, EmailVerificationPurpose.LOGIN_2FA, code);
+            } else if ("totp".equals(method)) {
+                if (!totpMode || !allowTotp) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "当前不支持动态验证码二次验证"));
+                }
+                accountTotpService.requireValidEnabledCodeByEmail(email, code);
+            } else {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "验证方式不合法"));
+            }
+
+            session.removeAttribute(SESSION_LOGIN2FA_PENDING_USER_ID);
+            session.removeAttribute(SESSION_LOGIN2FA_PENDING_EMAIL);
+            session.removeAttribute(SESSION_LOGIN2FA_PENDING_MODE);
+            session.removeAttribute(SESSION_LOGIN2FA_PENDING_CREATED_AT);
+
+            UsersEntity currentUser = administratorService.findByUsername(email)
+                    .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+            UserDetails details = userDetailsService.loadUserByUsername(email);
+            Authentication authentication = new UsernamePasswordAuthenticationToken(details, null, details.getAuthorities());
+            return completeLogin(request, servletResponse, currentUser, authentication);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "验证失败：" + e.getMessage()));
         }
     }
 
@@ -471,7 +629,11 @@ public class AuthController {
             UsersEntity user = found.get();
             String code = emailVerificationService.issueCode(user.getId(), EmailVerificationPurpose.REGISTER);
             emailVerificationMailer.sendVerificationCode(user.getEmail(), code, EmailVerificationPurpose.REGISTER);
-            return ResponseEntity.ok(Map.of("message", "如果账号需要激活，验证码已发送"));
+            return ResponseEntity.ok(Map.of(
+                    "message", "如果账号需要激活，验证码已发送",
+                    "resendWaitSeconds", emailVerificationService.getDefaultResendWaitSeconds(),
+                    "codeTtlSeconds", emailVerificationService.getDefaultTtlSeconds()
+            ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         } catch (Exception e) {

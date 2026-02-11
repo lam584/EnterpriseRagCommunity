@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.EnterpriseRagCommunity.dto.access.UpdateMyProfileRequest;
 import com.example.EnterpriseRagCommunity.dto.access.UsersDTO;
 import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicyStatusDTO;
+import com.example.EnterpriseRagCommunity.dto.access.UpdateLogin2faPreferenceRequest;
 import com.example.EnterpriseRagCommunity.dto.access.request.ChangePasswordRequest;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
@@ -67,6 +68,58 @@ public class AccountProfileController {
 
         Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(user.getId());
         return ResponseEntity.ok(policy);
+    }
+
+    @PutMapping("/login-2fa-preference")
+    public ResponseEntity<?> updateMyLogin2faPreference(@RequestBody @Valid UpdateLogin2faPreferenceRequest req) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "未登录或会话已过期");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+        }
+
+        String email = auth.getName();
+        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(user.getId());
+        if (!policy.isLogin2faCanEnable()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "当前策略不允许你配置登录二次验证"));
+        }
+
+        Map<String, Object> metadata0 = user.getMetadata();
+        Map<String, Object> metadata = (metadata0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata0);
+
+        Object prefsObj = metadata.get("preferences");
+        Map<String, Object> prefs0;
+        if (prefsObj instanceof Map) {
+            //noinspection unchecked
+            prefs0 = (Map<String, Object>) prefsObj;
+        } else {
+            prefs0 = null;
+        }
+        Map<String, Object> prefs = (prefs0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(prefs0);
+
+        Object secObj = prefs.get("security");
+        Map<String, Object> sec0;
+        if (secObj instanceof Map) {
+            //noinspection unchecked
+            sec0 = (Map<String, Object>) secObj;
+        } else {
+            sec0 = null;
+        }
+        Map<String, Object> security = (sec0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(sec0);
+
+        boolean enabled = req.getEnabled() != null && req.getEnabled();
+        security.put("login2faEnabled", enabled);
+        prefs.put("security", security);
+        metadata.put("preferences", prefs);
+        user.setMetadata(metadata);
+        usersRepository.save(user);
+
+        Security2faPolicyStatusDTO refreshed = security2faPolicyService.evaluateForUser(user.getId());
+        return ResponseEntity.ok(refreshed);
     }
 
     @PutMapping("/profile")

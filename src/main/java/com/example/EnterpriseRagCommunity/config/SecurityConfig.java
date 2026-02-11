@@ -84,6 +84,8 @@ public class SecurityConfig {
                                 "/api/auth/register/verify",
                                 "/api/auth/register/resend-code",
                                 "/api/auth/login",
+                                "/api/auth/login/2fa/resend-email",
+                                "/api/auth/login/2fa/verify",
                                 "/api/auth/logout",
                                 "/api/auth/csrf-token",
                                 "/api/auth/password-reset/status",
@@ -113,6 +115,8 @@ public class SecurityConfig {
                                 "/api/auth/register", // 普通注册：允许匿名调用
                                 "/api/auth/register/verify",
                                 "/api/auth/register/resend-code",
+                                "/api/auth/login/2fa/resend-email",
+                                "/api/auth/login/2fa/verify",
                                 // 放行热榜（今日热门/热榜页）
                                 "/api/hot"
                         ).permitAll()

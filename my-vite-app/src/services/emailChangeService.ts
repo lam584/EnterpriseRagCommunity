@@ -18,7 +18,11 @@ export async function verifyEmailChangePassword(password: string): Promise<void>
   }
 }
 
-export async function sendOldEmailVerificationCode(): Promise<void> {
+export async function sendOldEmailVerificationCode(): Promise<{
+  message?: string;
+  resendWaitSeconds?: number;
+  codeTtlSeconds?: number;
+}> {
   const csrfToken = await getCsrfToken();
   const res = await fetch('/api/account/email-change/old/send-code', {
     method: 'POST',
@@ -28,11 +32,17 @@ export async function sendOldEmailVerificationCode(): Promise<void> {
     },
     credentials: 'include',
   });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const msg = typeof data.message === 'string' ? data.message : undefined;
+    const msg = typeof data?.message === 'string' ? data.message : undefined;
     throw new Error(msg || '发送验证码失败');
   }
+
+  return {
+    message: typeof data?.message === 'string' ? data.message : undefined,
+    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
+    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
+  };
 }
 
 export type VerifyOldMethod = 'email' | 'totp';
@@ -59,7 +69,11 @@ export async function verifyOldEmailOrTotp(body: {
   }
 }
 
-export async function sendChangeEmailVerificationCode(newEmail: string): Promise<void> {
+export async function sendChangeEmailVerificationCode(newEmail: string): Promise<{
+  message?: string;
+  resendWaitSeconds?: number;
+  codeTtlSeconds?: number;
+}> {
   const csrfToken = await getCsrfToken();
   const res = await fetch('/api/account/email-change/send-code', {
     method: 'POST',
@@ -70,11 +84,17 @@ export async function sendChangeEmailVerificationCode(newEmail: string): Promise
     credentials: 'include',
     body: JSON.stringify({ newEmail }),
   });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const msg = typeof data.message === 'string' ? data.message : undefined;
+    const msg = typeof data?.message === 'string' ? data.message : undefined;
     throw new Error(msg || '发送验证码失败');
   }
+
+  return {
+    message: typeof data?.message === 'string' ? data.message : undefined,
+    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
+    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
+  };
 }
 
 export type ChangeEmailRequest = {

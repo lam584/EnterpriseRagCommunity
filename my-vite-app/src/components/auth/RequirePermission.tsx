@@ -1,6 +1,6 @@
 // my-vite-app/src/components/auth/RequirePermission.tsx
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAccess } from '../../contexts/AccessContext';
@@ -18,13 +18,8 @@ type RequirePermissionProps = {
 
 export const RequirePermission: React.FC<RequirePermissionProps> = ({ resource, action, allowRoles, redirectTo }) => {
   const { isAuthenticated, loading: authLoading } = useAuth();
-  const { hasPerm, hasRole, loading: accessLoading, refresh } = useAccess();
+  const { hasPerm, hasRole, loading: accessLoading } = useAccess();
   const location = useLocation();
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    void refresh();
-  }, [isAuthenticated, refresh]);
 
   if (authLoading || accessLoading) {
     return <div className="flex justify-center items-center h-screen">加载中...</div>;

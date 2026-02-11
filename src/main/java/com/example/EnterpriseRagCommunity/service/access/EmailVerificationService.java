@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.example.EnterpriseRagCommunity.entity.access.EmailVerificationsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
 import com.example.EnterpriseRagCommunity.repository.access.EmailVerificationsRepository;
+import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -18,12 +19,45 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class EmailVerificationService {
     private static final SecureRandom random = new SecureRandom();
+    private static final String KEY_EMAIL_OTP_TTL_SECONDS = "email_otp_ttl_seconds";
+    private static final String KEY_EMAIL_OTP_RESEND_WAIT_SECONDS = "email_otp_resend_wait_seconds";
+    private static final String KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS = "email_otp_resend_wait_reduction_after_verified_seconds";
 
     private final EmailVerificationsRepository emailVerificationsRepository;
+    private final AppSettingsService appSettingsService;
+
+    private Duration getDefaultTtl() {
+        long seconds = appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_TTL_SECONDS, 600L);
+        if (seconds < 60L) seconds = 60L;
+        if (seconds > 3600L) seconds = 3600L;
+        return Duration.ofSeconds(seconds);
+    }
+
+    private Duration getDefaultMinInterval() {
+        long seconds = appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_RESEND_WAIT_SECONDS, 120L);
+        if (seconds < 0L) seconds = 0L;
+        if (seconds > 3600L) seconds = 3600L;
+        return Duration.ofSeconds(seconds);
+    }
+
+    private Duration getDefaultMinIntervalReductionAfterVerified() {
+        long seconds = appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS, 0L);
+        if (seconds < 0L) seconds = 0L;
+        if (seconds > 3600L) seconds = 3600L;
+        return Duration.ofSeconds(seconds);
+    }
+
+    public int getDefaultTtlSeconds() {
+        return (int) getDefaultTtl().getSeconds();
+    }
+
+    public int getDefaultResendWaitSeconds() {
+        return (int) getDefaultMinInterval().getSeconds();
+    }
 
     @Transactional
     public String issueCode(Long userId, EmailVerificationPurpose purpose) {
-        return issueCode(userId, purpose, Duration.ofMinutes(10), Duration.ofSeconds(30));
+        return issueCode(userId, purpose, getDefaultTtl(), getDefaultMinInterval());
     }
 
     @Transactional
@@ -33,21 +67,31 @@ public class EmailVerificationService {
 
     @Transactional
     public String issueCode(Long userId, EmailVerificationPurpose purpose, String targetEmail) {
-        return issueCode(userId, purpose, targetEmail, Duration.ofMinutes(10), Duration.ofSeconds(30));
+        return issueCode(userId, purpose, targetEmail, getDefaultTtl(), getDefaultMinInterval());
     }
 
     @Transactional
     public String issueCode(Long userId, EmailVerificationPurpose purpose, String targetEmail, Duration ttl, Duration minInterval) {
-        if (userId == null || userId <= 0) throw new IllegalArgumentException("userId is required");
-        if (purpose == null) throw new IllegalArgumentException("purpose is required");
-        if (ttl == null || ttl.isNegative() || ttl.isZero()) throw new IllegalArgumentException("ttl is invalid");
-        if (minInterval == null || minInterval.isNegative()) throw new IllegalArgumentException("minInterval is invalid");
+        if (userId == null || userId <= 0) throw new IllegalArgumentException("用户ID不能为空");
+        if (purpose == null) throw new IllegalArgumentException("用途不能为空");
+        if (ttl == null || ttl.isNegative() || ttl.isZero()) throw new IllegalArgumentException("验证码有效期不合法");
+        if (minInterval == null || minInterval.isNegative()) throw new IllegalArgumentException("发送间隔不合法");
 
         LocalDateTime now = LocalDateTime.now();
         if (!minInterval.isZero()) {
             emailVerificationsRepository.findFirstByUserIdAndPurposeOrderByCreatedAtDesc(userId, purpose).ifPresent(last -> {
                 LocalDateTime createdAt = last.getCreatedAt();
-                if (createdAt != null && createdAt.isAfter(now.minus(minInterval))) {
+                if (createdAt == null) return;
+
+                Duration effectiveMinInterval = minInterval;
+                if (last.getConsumedAt() != null) {
+                    Duration reduction = getDefaultMinIntervalReductionAfterVerified();
+                    if (!reduction.isZero()) {
+                        effectiveMinInterval = reduction.compareTo(effectiveMinInterval) >= 0 ? Duration.ZERO : effectiveMinInterval.minus(reduction);
+                    }
+                }
+
+                if (!effectiveMinInterval.isZero() && createdAt.isAfter(now.minus(effectiveMinInterval))) {
                     throw new IllegalArgumentException("发送过于频繁，请稍后重试");
                 }
             });
@@ -75,9 +119,9 @@ public class EmailVerificationService {
 
     @Transactional
     public void verifyAndConsume(Long userId, EmailVerificationPurpose purpose, String targetEmail, String code) {
-        if (userId == null || userId <= 0) throw new IllegalArgumentException("userId is required");
-        if (purpose == null) throw new IllegalArgumentException("purpose is required");
-        if (code == null || code.isBlank()) throw new IllegalArgumentException("code is required");
+        if (userId == null || userId <= 0) throw new IllegalArgumentException("用户ID不能为空");
+        if (purpose == null) throw new IllegalArgumentException("用途不能为空");
+        if (code == null || code.isBlank()) throw new IllegalArgumentException("验证码不能为空");
 
         LocalDateTime now = LocalDateTime.now();
         Optional<EmailVerificationsEntity> found;

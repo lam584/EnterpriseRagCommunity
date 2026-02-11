@@ -77,18 +77,26 @@ public class EmailVerificationMailer {
     private String buildSubject(EmailVerificationPurpose purpose) {
         String prefix = appSettingsService.getString("email_subject_prefix").orElse("").trim();
         String base = "验证码";
-        if (purpose == EmailVerificationPurpose.REGISTER) base = "注册验证码";
+        if (purpose == EmailVerificationPurpose.VERIFY_EMAIL) base = "验证邮箱验证码";
+        else if (purpose == EmailVerificationPurpose.REGISTER) base = "注册验证码";
+        else if (purpose == EmailVerificationPurpose.LOGIN_2FA) base = "登录验证码";
         else if (purpose == EmailVerificationPurpose.PASSWORD_RESET) base = "重置密码验证码";
         else if (purpose == EmailVerificationPurpose.CHANGE_PASSWORD) base = "修改密码验证码";
         else if (purpose == EmailVerificationPurpose.CHANGE_EMAIL) base = "更换邮箱验证码";
         else if (purpose == EmailVerificationPurpose.CHANGE_EMAIL_OLD) base = "验证旧邮箱验证码";
         else if (purpose == EmailVerificationPurpose.TOTP_ENABLE) base = "启用二次验证验证码";
+        else if (purpose == EmailVerificationPurpose.TOTP_DISABLE) base = "停用二次验证验证码";
         if (prefix.isEmpty()) return base;
         return prefix + " " + base;
     }
 
     private String buildBody(String code, EmailVerificationPurpose purpose) {
         String now = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-        return "您的验证码是：" + (code == null ? "" : code) + "\n\n用途：" + (purpose == null ? "" : purpose.name()) + "\n时间：" + now + "\n\n该验证码 10 分钟内有效，请勿泄露给他人。";
+        String purposeText = purpose == null ? "" : purpose.getDisplayNameZh();
+        long ttlSeconds = appSettingsService.getLongOrDefault("email_otp_ttl_seconds", 600L);
+        if (ttlSeconds < 60L) ttlSeconds = 60L;
+        if (ttlSeconds > 3600L) ttlSeconds = 3600L;
+        String ttlText = (ttlSeconds % 60L == 0L) ? (ttlSeconds / 60L) + " 分钟" : ttlSeconds + " 秒";
+        return "您的验证码是：" + (code == null ? "" : code) + "\n\n用途：" + purposeText + "\n时间：" + now + "\n\n该验证码 " + ttlText + "内有效，请勿泄露给他人。";
     }
 }

@@ -2,6 +2,9 @@ import { getCsrfToken } from '../utils/csrfUtils';
 
 export type EmailAdminSettingsDTO = {
   enabled?: boolean;
+  otpTtlSeconds?: number;
+  otpResendWaitSeconds?: number;
+  otpResendWaitReductionSecondsAfterVerified?: number;
   protocol?: string;
   host?: string;
   portPlain?: number;

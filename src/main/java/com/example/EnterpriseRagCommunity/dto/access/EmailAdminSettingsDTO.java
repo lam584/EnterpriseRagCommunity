@@ -8,6 +8,15 @@ public class EmailAdminSettingsDTO {
     @ApiModelProperty("是否启用邮箱验证码发送")
     private Boolean enabled;
 
+    @ApiModelProperty("邮箱验证码有效期（秒）")
+    private Integer otpTtlSeconds;
+
+    @ApiModelProperty("邮箱验证码重发等待时间（秒）")
+    private Integer otpResendWaitSeconds;
+
+    @ApiModelProperty("邮箱验证码验证成功后减少的重发等待时间（秒）")
+    private Integer otpResendWaitReductionSecondsAfterVerified;
+
     @ApiModelProperty("协议（用于展示：SMTP/IMAP/POP3）")
     private String protocol;
 
