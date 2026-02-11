@@ -37,9 +37,20 @@ public class AiPostTitleService {
         if (count <= 0) count = defaultCount;
         if (count > maxCount) count = maxCount;
 
-        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
-        Double temperature = cfg.getTemperature();
+        String modelOverride = null;
+        if (req.getModel() != null && !req.getModel().isBlank()) {
+            modelOverride = req.getModel().trim();
+        } else if (cfg.getModel() != null && !cfg.getModel().isBlank()) {
+            modelOverride = cfg.getModel().trim();
+        }
+
+        Double temperature = req.getTemperature() != null ? req.getTemperature() : cfg.getTemperature();
         if (temperature == null) temperature = 0.4;
+        if (temperature < 0 || temperature > 2) throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
+
+        Double topP = req.getTopP() != null ? req.getTopP() : cfg.getTopP();
+        if (topP == null) topP = 0.9;
+        if (topP < 0 || topP > 1) throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
 
         String content = req.getContent() == null ? "" : req.getContent();
         content = content.trim();
@@ -61,7 +72,17 @@ public class AiPostTitleService {
         String usedProviderId;
         String usedModel;
         try {
-            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.TITLE_GEN, cfg.getProviderId(), modelOverride, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
+                    LlmQueueTaskType.TITLE_GEN,
+                    cfg.getProviderId(),
+                    modelOverride,
+                    messages,
+                    temperature,
+                    topP,
+                    null,
+                    null,
+                    cfg.getEnableThinking()
+            );
             rawJson = routed == null ? null : routed.text();
             usedProviderId = routed == null ? null : routed.providerId();
             usedModel = routed == null ? null : routed.model();
@@ -89,6 +110,7 @@ public class AiPostTitleService {
             h.setModel(usedModel);
             h.setProviderId(usedProviderId);
             h.setTemperature(temperature);
+            h.setTopP(topP);
             h.setLatencyMs(latency);
             h.setPromptVersion(cfg.getVersion());
             postTitleGenConfigService.recordHistory(h);

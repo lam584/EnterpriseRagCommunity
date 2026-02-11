@@ -59,6 +59,12 @@ public class SetupController {
     @Autowired(required = false)
     private InitialAdminIndexBootstrapService initialAdminIndexBootstrapService;
 
+    @Autowired
+    private com.example.EnterpriseRagCommunity.utils.AesGcmUtils aesGcmUtils;
+
+    @org.springframework.beans.factory.annotation.Value("${APP_MASTER_KEY}")
+    private String masterKey;
+
     @GetMapping("/status")
     public ResponseEntity<?> getStatus() {
         long count = administratorService.countAdministrators();
@@ -175,6 +181,20 @@ public class SetupController {
         new SecureRandom().nextBytes(raw);
         String key = Base64.getEncoder().encodeToString(raw);
         return ResponseEntity.ok(Map.of("key", key));
+    }
+
+    @PostMapping("/encrypt")
+    public ResponseEntity<?> encrypt(@RequestBody Map<String, String> payload) {
+        String value = payload.get("value");
+        if (value == null || value.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Value is required"));
+        }
+        try {
+            String encrypted = aesGcmUtils.encrypt(value, masterKey);
+            return ResponseEntity.ok(Map.of("encrypted", encrypted));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Encryption failed"));
+        }
     }
 
     @PostMapping("/test-es")

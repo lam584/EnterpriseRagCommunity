@@ -31,6 +31,8 @@ type FormState = {
   model: string;
   providerId: string;
   temperature: string;
+  topP: string;
+  enableThinking: boolean;
   defaultCount: string;
   maxCount: string;
   maxContentChars: string;
@@ -46,6 +48,8 @@ type LangFormState = {
   model: string;
   providerId: string;
   temperature: string;
+  topP: string;
+  enableThinking: boolean;
   maxContentChars: string;
 };
 
@@ -56,6 +60,8 @@ type RiskFormState = {
   model: string;
   providerId: string;
   temperature: string;
+  topP: string;
+  enableThinking: boolean;
   maxCount: string;
   maxContentChars: string;
 };
@@ -81,6 +87,8 @@ function defaultConfig(): PostTagGenConfigDTO {
     systemPrompt: '你是专业的中文社区运营编辑，擅长为帖子提炼主题标签。',
     promptTemplate: `请根据下面这段帖子内容生成 {{count}} 个中文主题标签。\n要求：\n- 标签应概括内容主题，优先使用常见领域词汇\n- 每个标签不超过 8 个汉字\n- 标签之间不要重复\n- 不要输出编号、不要输出解释文字\n- 只输出严格 JSON\n- JSON 格式：{\"tags\":[\"...\", \"...\"]}\n\n{{boardLine}}{{titleLine}}{{tagsLine}}帖子内容：\n{{content}}\n`,
     temperature: 0.4,
+    topP: 0.8,
+    enableThinking: false,
     defaultCount: 5,
     maxCount: 10,
     maxContentChars: 4000,
@@ -98,6 +106,8 @@ function toFormState(cfg?: PostTagGenConfigDTO | null): FormState {
     model: cfg?.model ?? '',
     providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
+    topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
+    enableThinking: Boolean(cfg?.enableThinking),
     defaultCount: cfg?.defaultCount === null || cfg?.defaultCount === undefined ? '' : String(cfg.defaultCount),
     maxCount: cfg?.maxCount === null || cfg?.maxCount === undefined ? '' : String(cfg.maxCount),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
@@ -115,6 +125,8 @@ function defaultLangConfig(): PostLangLabelGenConfigDTO {
     promptTemplate:
       '请根据以下标题与正文判断文本包含的自然语言。\\n要求：\\n- 仅输出一个 JSON 对象，字段名为 languages，值为语言代码数组。\\n- 不要输出解释、不要输出 Markdown 代码块。\\n- 请忽略正文中的链接、代码块、表情符号，只以自然语言内容为准。\\n\\n标题：\\n{{title}}\\n\\n正文：\\n{{content}}\\n',
     temperature: 0.0,
+    topP: 0.2,
+    enableThinking: false,
     maxContentChars: 8000,
   };
 }
@@ -127,6 +139,8 @@ function toLangFormState(cfg?: PostLangLabelGenConfigDTO | null): LangFormState 
     model: cfg?.model ?? '',
     providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
+    topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
+    enableThinking: Boolean(cfg?.enableThinking),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
   };
 }
@@ -140,6 +154,8 @@ function defaultRiskConfig(): PostRiskTagGenConfigDTO {
       '请根据以下标题与正文生成风险标签。\\n要求：\\n- 优先使用 systemPrompt 中的“优先标签池”，只有在标签池无法覆盖时才补充自定义标签。\\n- 仅输出一个 JSON 对象，字段名为 riskTags，值为中文短语数组。\\n- 不要输出解释、不要输出 Markdown 代码块。\\n\\n标题：\\n{{title}}\\n\\n正文：\\n{{content}}\\n',
     model: '',
     temperature: 0.2,
+    topP: 0.6,
+    enableThinking: false,
     maxCount: 10,
     maxContentChars: 8000,
   };
@@ -153,6 +169,8 @@ function toRiskFormState(cfg?: PostRiskTagGenConfigDTO | null): RiskFormState {
     model: cfg?.model ?? '',
     providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
+    topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
+    enableThinking: Boolean(cfg?.enableThinking),
     maxCount: cfg?.maxCount === null || cfg?.maxCount === undefined ? '' : String(cfg.maxCount),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
   };
@@ -168,6 +186,9 @@ function validateForm(s: FormState): string[] {
 
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
+
+  const topP = parseOptionalNumber(s.topP);
+  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('topP 需在 [0, 1] 范围内');
 
   const dc = parseOptionalNumber(s.defaultCount);
   const mc = parseOptionalNumber(s.maxCount);
@@ -195,6 +216,9 @@ function validateLangForm(s: LangFormState): string[] {
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
 
+  const topP = parseOptionalNumber(s.topP);
+  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('topP 需在 [0, 1] 范围内');
+
   const mcc = parseOptionalNumber(s.maxContentChars);
   if (mcc !== undefined && (!Number.isInteger(mcc) || mcc < 200 || mcc > 100000)) errors.push('maxContentChars 需为 200~100000 的整数');
 
@@ -210,6 +234,9 @@ function validateRiskForm(s: RiskFormState): string[] {
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
 
+  const topP = parseOptionalNumber(s.topP);
+  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('topP 需在 [0, 1] 范围内');
+
   const mc = parseOptionalNumber(s.maxCount);
   if (mc !== undefined && (!Number.isInteger(mc) || mc < 1 || mc > 50)) errors.push('maxCount 需为 1~50 的整数');
 
@@ -221,6 +248,7 @@ function validateRiskForm(s: RiskFormState): string[] {
 
 function buildPayload(s: FormState) {
   const temperature = parseOptionalNumber(s.temperature);
+  const topP = parseOptionalNumber(s.topP);
   const defaultCount = parseOptionalNumber(s.defaultCount);
   const maxCount = parseOptionalNumber(s.maxCount);
   const maxContentChars = parseOptionalNumber(s.maxContentChars);
@@ -234,6 +262,8 @@ function buildPayload(s: FormState) {
     model: s.model.trim() ? s.model.trim() : null,
     providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
+    topP: topP === undefined ? null : topP,
+    enableThinking: s.enableThinking,
     defaultCount: defaultCount === undefined ? 5 : Math.trunc(defaultCount),
     maxCount: maxCount === undefined ? 10 : Math.trunc(maxCount),
     maxContentChars: maxContentChars === undefined ? 4000 : Math.trunc(maxContentChars),
@@ -245,6 +275,7 @@ function buildPayload(s: FormState) {
 
 function buildLangPayload(s: LangFormState) {
   const temperature = parseOptionalNumber(s.temperature);
+  const topP = parseOptionalNumber(s.topP);
   const maxContentChars = parseOptionalNumber(s.maxContentChars);
 
   return {
@@ -254,12 +285,15 @@ function buildLangPayload(s: LangFormState) {
     model: s.model.trim() ? s.model.trim() : null,
     providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
+    topP: topP === undefined ? null : topP,
+    enableThinking: s.enableThinking,
     maxContentChars: maxContentChars === undefined ? 8000 : Math.trunc(maxContentChars),
   };
 }
 
 function buildRiskPayload(s: RiskFormState) {
   const temperature = parseOptionalNumber(s.temperature);
+  const topP = parseOptionalNumber(s.topP);
   const maxContentChars = parseOptionalNumber(s.maxContentChars);
   const maxCount = parseOptionalNumber(s.maxCount);
 
@@ -270,6 +304,8 @@ function buildRiskPayload(s: RiskFormState) {
     model: s.model.trim() ? s.model.trim() : null,
     providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
+    topP: topP === undefined ? null : topP,
+    enableThinking: s.enableThinking,
     maxCount: maxCount === undefined ? 10 : Math.trunc(maxCount),
     maxContentChars: maxContentChars === undefined ? 8000 : Math.trunc(maxContentChars),
   };
@@ -317,6 +353,8 @@ const MultiLabelForm: React.FC = () => {
       form.model !== committedForm.model ||
       form.providerId !== committedForm.providerId ||
       form.temperature !== committedForm.temperature ||
+      form.topP !== committedForm.topP ||
+      form.enableThinking !== committedForm.enableThinking ||
       form.defaultCount !== committedForm.defaultCount ||
       form.maxCount !== committedForm.maxCount ||
       form.maxContentChars !== committedForm.maxContentChars ||
@@ -342,6 +380,8 @@ const MultiLabelForm: React.FC = () => {
       langForm.model !== langCommittedForm.model ||
       langForm.providerId !== langCommittedForm.providerId ||
       langForm.temperature !== langCommittedForm.temperature ||
+      langForm.topP !== langCommittedForm.topP ||
+      langForm.enableThinking !== langCommittedForm.enableThinking ||
       langForm.maxContentChars !== langCommittedForm.maxContentChars
     );
   }, [langForm, langCommittedForm]);
@@ -362,6 +402,8 @@ const MultiLabelForm: React.FC = () => {
       riskForm.model !== riskCommittedForm.model ||
       riskForm.providerId !== riskCommittedForm.providerId ||
       riskForm.temperature !== riskCommittedForm.temperature ||
+      riskForm.topP !== riskCommittedForm.topP ||
+      riskForm.enableThinking !== riskCommittedForm.enableThinking ||
       riskForm.maxCount !== riskCommittedForm.maxCount ||
       riskForm.maxContentChars !== riskCommittedForm.maxContentChars
     );
@@ -664,6 +706,25 @@ const MultiLabelForm: React.FC = () => {
                 </option>
               </select>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">启用深度思考：</span>
+              <select
+                value={form.enableThinking ? 'true' : 'false'}
+                disabled={!editing || loading || saving}
+                onChange={(e) => setForm((p) => ({ ...p, enableThinking: e.target.value === 'true' }))}
+                className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                  form.enableThinking ? 'text-purple-700 border-purple-200 bg-white' : 'text-gray-700 border-gray-200 bg-white'
+                } disabled:opacity-60 disabled:bg-gray-100`}
+                title={!editing ? '只读（点击右侧「编辑」后可修改）' : '修改开关（需保存生效）'}
+              >
+                <option value="false" className="text-gray-700">
+                  关闭
+                </option>
+                <option value="true" className="text-purple-700">
+                  开启
+                </option>
+              </select>
+            </div>
             <button
               type="button"
               className="rounded border px-3 py-1.5 text-sm disabled:opacity-60"
@@ -742,6 +803,17 @@ const MultiLabelForm: React.FC = () => {
               disabled={!editing}
               onChange={(e) => setForm((p) => ({ ...p, temperature: e.target.value }))}
               placeholder="例如 0.4"
+            />
+          </div>
+
+          <div>
+            <div className="text-sm font-medium text-gray-700 mb-1">TOP-P（0~1，可选）</div>
+            <input
+              className="w-full rounded border px-3 py-2 border-gray-300"
+              value={form.topP}
+              disabled={!editing}
+              onChange={(e) => setForm((p) => ({ ...p, topP: e.target.value }))}
+              placeholder="例如 0.8"
             />
           </div>
 
@@ -902,6 +974,15 @@ const MultiLabelForm: React.FC = () => {
             />
             启用语言标签生成
           </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={langForm.enableThinking}
+              disabled={!langEditing}
+              onChange={(e) => setLangForm((p) => ({ ...p, enableThinking: e.target.checked }))}
+            />
+            启用深度思考
+          </label>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -927,6 +1008,17 @@ const MultiLabelForm: React.FC = () => {
               disabled={!langEditing}
               onChange={(e) => setLangForm((p) => ({ ...p, temperature: e.target.value }))}
               placeholder="例如 0"
+            />
+          </div>
+
+          <div>
+            <div className="text-sm font-medium text-gray-700 mb-1">TOP-P（0~1，可选）</div>
+            <input
+              className="w-full rounded border px-3 py-2 border-gray-300"
+              value={langForm.topP}
+              disabled={!langEditing}
+              onChange={(e) => setLangForm((p) => ({ ...p, topP: e.target.value }))}
+              placeholder="例如 0.2"
             />
           </div>
 
@@ -1042,6 +1134,15 @@ const MultiLabelForm: React.FC = () => {
             />
             启用风险标签生成
           </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={riskForm.enableThinking}
+              disabled={!riskEditing}
+              onChange={(e) => setRiskForm((p) => ({ ...p, enableThinking: e.target.checked }))}
+            />
+            启用深度思考
+          </label>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -1067,6 +1168,17 @@ const MultiLabelForm: React.FC = () => {
               disabled={!riskEditing}
               onChange={(e) => setRiskForm((p) => ({ ...p, temperature: e.target.value }))}
               placeholder="例如 0.2"
+            />
+          </div>
+
+          <div>
+            <div className="text-sm font-medium text-gray-700 mb-1">TOP-P（0~1，可选）</div>
+            <input
+              className="w-full rounded border px-3 py-2 border-gray-300"
+              value={riskForm.topP}
+              disabled={!riskEditing}
+              onChange={(e) => setRiskForm((p) => ({ ...p, topP: e.target.value }))}
+              placeholder="例如 0.6"
             />
           </div>
 

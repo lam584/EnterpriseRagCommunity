@@ -20,6 +20,8 @@ export type PostRiskTagGenConfig = {
   model?: string | null;
   providerId?: string | null;
   temperature?: number | null;
+  topP?: number | null;
+  enableThinking?: boolean | null;
   maxCount: number;
   maxContentChars: number;
 };

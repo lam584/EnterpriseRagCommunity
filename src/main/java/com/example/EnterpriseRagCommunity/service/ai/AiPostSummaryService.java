@@ -51,6 +51,8 @@ public class AiPostSummaryService {
 
         String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
+        Double topP = cfg.getTopP();
+        if (topP == null) topP = 0.7;
 
         String rawTitle = post.getTitle() == null ? "" : post.getTitle();
         String rawContent = post.getContent() == null ? "" : post.getContent();
@@ -71,12 +73,22 @@ public class AiPostSummaryService {
         String usedProviderId = null;
         String usedModel = null;
         try {
-            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.SUMMARY_GEN, cfg.getProviderId(), modelOverride, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
+                    LlmQueueTaskType.SUMMARY_GEN,
+                    cfg.getProviderId(),
+                    modelOverride,
+                    messages,
+                    temperature,
+                    topP,
+                    null,
+                    null,
+                    cfg.getEnableThinking()
+            );
             rawJson = routed == null ? null : routed.text();
             usedProviderId = routed == null ? null : routed.providerId();
             usedModel = routed == null ? null : routed.model();
         } catch (Exception e) {
-            recordFailure(postId, actorUserId, cfg.getProviderId(), modelOverride, temperature, maxChars, cfg.getVersion(), System.currentTimeMillis() - started, e);
+            recordFailure(postId, actorUserId, cfg.getProviderId(), modelOverride, temperature, topP, maxChars, cfg.getVersion(), System.currentTimeMillis() - started, e);
             return;
         }
 
@@ -84,9 +96,9 @@ public class AiPostSummaryService {
         try {
             String assistantText = extractAssistantContent(rawJson);
             ParsedSummary parsed = parseSummaryFromAssistantText(assistantText);
-            saveSuccess(postId, actorUserId, usedProviderId, usedModel, temperature, maxChars, cfg.getVersion(), latency, parsed);
+            saveSuccess(postId, actorUserId, usedProviderId, usedModel, temperature, topP, maxChars, cfg.getVersion(), latency, parsed);
         } catch (Exception e) {
-            recordFailure(postId, actorUserId, usedProviderId, usedModel, temperature, maxChars, cfg.getVersion(), latency, e);
+            recordFailure(postId, actorUserId, usedProviderId, usedModel, temperature, topP, maxChars, cfg.getVersion(), latency, e);
         }
     }
 
@@ -96,6 +108,7 @@ public class AiPostSummaryService {
             String providerId,
             String model,
             Double temperature,
+            Double topP,
             int maxChars,
             Integer promptVersion,
             long latency,
@@ -111,6 +124,7 @@ public class AiPostSummaryService {
         s.setModel(model);
         s.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         s.setTemperature(temperature);
+        s.setTopP(topP);
         s.setAppliedMaxContentChars(maxChars);
         s.setLatencyMs(latency);
         s.setGeneratedAt(now);
@@ -126,6 +140,7 @@ public class AiPostSummaryService {
         h.setModel(model);
         h.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         h.setTemperature(temperature);
+        h.setTopP(topP);
         h.setAppliedMaxContentChars(maxChars);
         h.setLatencyMs(latency);
         h.setPromptVersion(promptVersion);
@@ -139,6 +154,7 @@ public class AiPostSummaryService {
             String providerId,
             String model,
             Double temperature,
+            Double topP,
             int maxChars,
             Integer promptVersion,
             long latency,
@@ -157,6 +173,7 @@ public class AiPostSummaryService {
         s.setModel(model);
         s.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         s.setTemperature(temperature);
+        s.setTopP(topP);
         s.setAppliedMaxContentChars(maxChars);
         s.setLatencyMs(latency);
         s.setGeneratedAt(now);
@@ -172,6 +189,7 @@ public class AiPostSummaryService {
         h.setModel(model);
         h.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         h.setTemperature(temperature);
+        h.setTopP(topP);
         h.setAppliedMaxContentChars(maxChars);
         h.setLatencyMs(latency);
         h.setPromptVersion(promptVersion);

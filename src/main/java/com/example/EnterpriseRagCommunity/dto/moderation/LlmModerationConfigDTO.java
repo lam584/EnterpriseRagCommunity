@@ -16,9 +16,13 @@ public class LlmModerationConfigDTO {
     private String visionModel;
     private String visionProviderId;
     private Double temperature;
+    private Double topP;
     private Double visionTemperature;
+    private Double visionTopP;
     private Integer maxTokens;
     private Integer visionMaxTokens;
+    private Boolean enableThinking;
+    private Boolean visionEnableThinking;
     private Double threshold;
     private Boolean autoRun;
 

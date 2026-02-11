@@ -20,6 +20,8 @@ export type PostTagGenConfig = {
   model?: string | null;
   providerId?: string | null;
   temperature?: number | null;
+  topP?: number | null;
+  enableThinking?: boolean | null;
   defaultCount: number;
   maxCount: number;
   maxContentChars: number;
@@ -48,6 +50,7 @@ export type PostTagGenHistoryDTO = {
   tags: string[];
   model?: string | null;
   temperature?: number | null;
+  topP?: number | null;
   latencyMs?: number | null;
   promptVersion?: number | null;
 };

@@ -16,6 +16,8 @@ public class PostTagGenConfigDTO {
     private String model;
     private String providerId;
     private Double temperature;
+    private Double topP;
+    private Boolean enableThinking;
 
     private Integer defaultCount;
     private Integer maxCount;

@@ -39,6 +39,7 @@ public class HybridRagRetrievalServiceRerankMappingTest {
                 new ObjectMapper(),
                 mock(AiRerankService.class),
                 llmGateway,
+                null,
                 null
         );
 

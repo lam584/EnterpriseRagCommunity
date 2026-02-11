@@ -22,7 +22,7 @@ public class PostTagGenHistoryDTO {
     private List<String> tags;
     private String model;
     private Double temperature;
+    private Double topP;
     private Long latencyMs;
     private Integer promptVersion;
 }
-

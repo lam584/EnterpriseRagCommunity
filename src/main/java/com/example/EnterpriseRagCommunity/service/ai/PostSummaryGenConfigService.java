@@ -105,6 +105,8 @@ public class PostSummaryGenConfigService {
         e.setModel(null);
         e.setProviderId(null);
         e.setTemperature(0.3);
+        e.setTopP(0.7);
+        e.setEnableThinking(Boolean.FALSE);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
         e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
         e.setVersion(0);
@@ -129,6 +131,11 @@ public class PostSummaryGenConfigService {
             throw new IllegalArgumentException("temperature 需在 [0,1] 范围内");
         }
 
+        Double topP = payload.getTopP();
+        if (topP != null && (topP < 0 || topP > 1)) {
+            throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
+        }
+
         String model = payload.getModel();
         base.setModel(model == null || model.isBlank() ? null : model.trim());
         String providerId = payload.getProviderId();
@@ -136,6 +143,8 @@ public class PostSummaryGenConfigService {
 
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
         base.setTemperature(temperature);
+        base.setTopP(topP);
+        base.setEnableThinking(Boolean.TRUE.equals(payload.getEnableThinking()));
         base.setMaxContentChars(maxContentChars);
         base.setPromptTemplate(promptTemplate);
         return base;
@@ -149,6 +158,8 @@ public class PostSummaryGenConfigService {
         dto.setModel(e.getModel());
         dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
+        dto.setTopP(e.getTopP());
+        dto.setEnableThinking(e.getEnableThinking());
         dto.setMaxContentChars(e.getMaxContentChars());
         dto.setPromptTemplate(e.getPromptTemplate());
         dto.setUpdatedAt(e.getUpdatedAt());

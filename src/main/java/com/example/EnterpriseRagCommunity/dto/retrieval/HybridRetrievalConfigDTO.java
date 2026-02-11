@@ -21,6 +21,7 @@ public class HybridRetrievalConfigDTO {
     private Boolean rerankEnabled;
     private String rerankModel;
     private Double rerankTemperature;
+    private Double rerankTopP;
     private Integer rerankK;
 
     private Integer maxDocs;

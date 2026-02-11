@@ -94,9 +94,19 @@ public class AdminModerationLlmService {
         cfg.setVisionModel(blankToNull(payload.getVisionModel()));
         cfg.setVisionProviderId(blankToNull(payload.getVisionProviderId()));
         cfg.setTemperature(payload.getTemperature());
+        if (payload.getTopP() != null && (payload.getTopP() < 0 || payload.getTopP() > 1)) {
+            throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
+        }
+        cfg.setTopP(payload.getTopP());
         cfg.setVisionTemperature(payload.getVisionTemperature());
+        if (payload.getVisionTopP() != null && (payload.getVisionTopP() < 0 || payload.getVisionTopP() > 1)) {
+            throw new IllegalArgumentException("visionTopP 需在 [0,1] 范围内");
+        }
+        cfg.setVisionTopP(payload.getVisionTopP());
         cfg.setMaxTokens(payload.getMaxTokens());
         cfg.setVisionMaxTokens(payload.getVisionMaxTokens());
+        cfg.setEnableThinking(Boolean.TRUE.equals(payload.getEnableThinking()));
+        cfg.setVisionEnableThinking(Boolean.TRUE.equals(payload.getVisionEnableThinking()));
         cfg.setThreshold(payload.getThreshold());
         cfg.setAutoRun(payload.getAutoRun() != null ? payload.getAutoRun() : Boolean.FALSE);
         cfg.setMaxConcurrent(payload.getMaxConcurrent());
@@ -138,11 +148,15 @@ public class AdminModerationLlmService {
         String modelOverride = blankToNull(merged.getModel());
         Double temperature = merged.getTemperature();
         if (temperature == null) temperature = 0.2;
+        Double topP = merged.getTopP();
+        if (topP == null) topP = 0.2;
         Integer maxTokens = merged.getMaxTokens();
 
         String visionPromptTemplate = merged.getVisionPromptTemplate();
         Double visionTemperature = merged.getVisionTemperature();
         if (visionTemperature == null) visionTemperature = temperature;
+        Double visionTopP = merged.getVisionTopP();
+        if (visionTopP == null) visionTopP = topP;
         Integer visionMaxTokens = merged.getVisionMaxTokens();
         if (visionMaxTokens == null) visionMaxTokens = maxTokens;
 
@@ -161,7 +175,7 @@ public class AdminModerationLlmService {
         String textPrompt = renderTextPrompt(promptTemplate, vars);
 
         if (images == null || images.isEmpty()) {
-            StageCallResult one = callTextOnce(systemPrompt, textPrompt, temperature, maxTokens, merged.getProviderId(), modelOverride);
+            StageCallResult one = callTextOnce(systemPrompt, textPrompt, temperature, topP, maxTokens, merged.getProviderId(), modelOverride, merged.getEnableThinking());
             LlmModerationTestResponse resp = new LlmModerationTestResponse();
             resp.setDecision(one.decision);
             resp.setScore(one.score);
@@ -193,7 +207,7 @@ public class AdminModerationLlmService {
 
         LlmModerationTestResponse.Stages stages = new LlmModerationTestResponse.Stages();
 
-        StageCallResult textStage = callTextOnce(systemPrompt, textPrompt, temperature, maxTokens, merged.getProviderId(), modelOverride);
+        StageCallResult textStage = callTextOnce(systemPrompt, textPrompt, temperature, topP, maxTokens, merged.getProviderId(), modelOverride, merged.getEnableThinking());
         stages.setText(toStage(textStage, null));
         if ("HUMAN".equalsIgnoreCase(textStage.decision)) {
             return finalizeMultiStage("HUMAN", null, List.of("文本审核失败，已转人工"), List.of("UPSTREAM_ERROR"), stages, urls);
@@ -210,7 +224,7 @@ public class AdminModerationLlmService {
             return finalizeMultiStage("REJECT", ts, reasons, textStage.riskTags, stages, urls);
         }
 
-        StageCallResult imageStage = callImageDescribeOnce(systemPrompt, vars, images, visionPromptTemplate, visionTemperature, visionMaxTokens, visionProviderId, visionModelOverride);
+        StageCallResult imageStage = callImageDescribeOnce(systemPrompt, vars, images, visionPromptTemplate, visionTemperature, visionTopP, visionMaxTokens, visionProviderId, visionModelOverride, merged.getVisionEnableThinking());
         stages.setImage(toStage(imageStage, imageStage.description));
         if ("HUMAN".equalsIgnoreCase(imageStage.decision)) {
             return finalizeMultiStage("HUMAN", null, List.of("图片审核失败，已转人工"), List.of("UPSTREAM_ERROR"), stages, urls);
@@ -235,7 +249,7 @@ public class AdminModerationLlmService {
         }
 
         String crossPrompt = buildCrossModalPrompt(text, imageStage.description, ts, is, textStage.reasons, imageStage.reasons);
-        StageCallResult crossStage = callTextOnce(systemPrompt, crossPrompt, temperature, maxTokens, merged.getProviderId(), modelOverride);
+        StageCallResult crossStage = callTextOnce(systemPrompt, crossPrompt, temperature, topP, maxTokens, merged.getProviderId(), modelOverride, merged.getEnableThinking());
         stages.setCross(toStage(crossStage, null));
 
         if ("HUMAN".equalsIgnoreCase(crossStage.decision)) {
@@ -369,14 +383,16 @@ public class AdminModerationLlmService {
             String systemPrompt,
             String userPrompt,
             Double temperature,
+            Double topP,
             Integer maxTokens,
             String providerId,
-            String modelOverride
+            String modelOverride,
+            Boolean enableThinking
     ) {
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPrompt));
         messages.add(ChatMessage.user(userPrompt));
-        return callOnce(LlmQueueTaskType.TEXT_MODERATION, providerId, modelOverride, messages, temperature, maxTokens, "text");
+        return callOnce(LlmQueueTaskType.TEXT_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, "text");
     }
 
     private StageCallResult callImageDescribeOnce(
@@ -385,9 +401,11 @@ public class AdminModerationLlmService {
             List<ImageRef> images,
             String promptTemplate,
             Double temperature,
+            Double topP,
             Integer maxTokens,
             String providerId,
-            String modelOverride
+            String modelOverride,
+            Boolean enableThinking
     ) {
         String instruction = renderVisionPrompt(promptTemplate, vars);
         List<Map<String, Object>> parts = new ArrayList<>();
@@ -401,7 +419,7 @@ public class AdminModerationLlmService {
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPrompt));
         messages.add(ChatMessage.userParts(parts));
-        return callOnce(LlmQueueTaskType.IMAGE_MODERATION, providerId, modelOverride, messages, temperature, maxTokens, "multimodal");
+        return callOnce(LlmQueueTaskType.IMAGE_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, "multimodal");
     }
 
     private StageCallResult callOnce(
@@ -410,12 +428,14 @@ public class AdminModerationLlmService {
             String modelOverride,
             List<ChatMessage> messages,
             Double temperature,
+            Double topP,
             Integer maxTokens,
+            Boolean enableThinking,
             String inputMode
     ) {
         long started = System.currentTimeMillis();
         try {
-            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(taskType, providerId, modelOverride, messages, temperature, maxTokens, null);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(taskType, providerId, modelOverride, messages, temperature, topP, maxTokens, null, enableThinking);
             long latency = System.currentTimeMillis() - started;
             String rawJson = routed == null ? null : routed.text();
             String assistantText = extractAssistantContent(rawJson);
@@ -840,9 +860,13 @@ public class AdminModerationLlmService {
         m.setVisionModel(base.getVisionModel());
         m.setVisionProviderId(base.getVisionProviderId());
         m.setTemperature(base.getTemperature());
+        m.setTopP(base.getTopP());
         m.setVisionTemperature(base.getVisionTemperature());
+        m.setVisionTopP(base.getVisionTopP());
         m.setMaxTokens(base.getMaxTokens());
         m.setVisionMaxTokens(base.getVisionMaxTokens());
+        m.setEnableThinking(base.getEnableThinking());
+        m.setVisionEnableThinking(base.getVisionEnableThinking());
         m.setThreshold(base.getThreshold());
         m.setAutoRun(base.getAutoRun());
         m.setVersion(base.getVersion());
@@ -860,9 +884,13 @@ public class AdminModerationLlmService {
         if (o.getVisionModel() != null) m.setVisionModel(o.getVisionModel());
         if (o.getVisionProviderId() != null) m.setVisionProviderId(o.getVisionProviderId());
         if (o.getTemperature() != null) m.setTemperature(o.getTemperature());
+        if (o.getTopP() != null) m.setTopP(o.getTopP());
         if (o.getVisionTemperature() != null) m.setVisionTemperature(o.getVisionTemperature());
+        if (o.getVisionTopP() != null) m.setVisionTopP(o.getVisionTopP());
         if (o.getMaxTokens() != null) m.setMaxTokens(o.getMaxTokens());
         if (o.getVisionMaxTokens() != null) m.setVisionMaxTokens(o.getVisionMaxTokens());
+        if (o.getEnableThinking() != null) m.setEnableThinking(o.getEnableThinking());
+        if (o.getVisionEnableThinking() != null) m.setVisionEnableThinking(o.getVisionEnableThinking());
         if (o.getThreshold() != null) m.setThreshold(o.getThreshold());
         if (o.getAutoRun() != null) m.setAutoRun(o.getAutoRun());
         if (o.getMaxConcurrent() != null) m.setMaxConcurrent(o.getMaxConcurrent());
@@ -880,9 +908,13 @@ public class AdminModerationLlmService {
         e.setVisionModel(null);
         e.setVisionProviderId(null);
         e.setTemperature(0.2);
+        e.setTopP(0.2);
         e.setVisionTemperature(0.2);
+        e.setVisionTopP(0.2);
         e.setMaxTokens(null);
         e.setVisionMaxTokens(null);
+        e.setEnableThinking(Boolean.FALSE);
+        e.setVisionEnableThinking(Boolean.FALSE);
         e.setThreshold(0.75);
         e.setAutoRun(Boolean.FALSE);
         e.setVersion(0);
@@ -905,9 +937,13 @@ public class AdminModerationLlmService {
         dto.setVisionModel(e.getVisionModel());
         dto.setVisionProviderId(e.getVisionProviderId());
         dto.setTemperature(e.getTemperature());
+        dto.setTopP(e.getTopP());
         dto.setVisionTemperature(e.getVisionTemperature());
+        dto.setVisionTopP(e.getVisionTopP());
         dto.setMaxTokens(e.getMaxTokens());
         dto.setVisionMaxTokens(e.getVisionMaxTokens());
+        dto.setEnableThinking(e.getEnableThinking());
+        dto.setVisionEnableThinking(e.getVisionEnableThinking());
         dto.setThreshold(e.getThreshold());
         dto.setAutoRun(e.getAutoRun());
         dto.setMaxConcurrent(e.getMaxConcurrent());

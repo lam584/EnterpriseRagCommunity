@@ -60,7 +60,7 @@ public class AdminModerationLlmServiceMultimodalShortCircuitTest {
         when(fbRepo.findAll(any(Sort.class))).thenReturn(List.of(fb));
 
         String raw = "{\"choices\":[{\"message\":{\"content\":\"{\\\"decision\\\":\\\"REJECT\\\",\\\"score\\\":0.96,\\\"reasons\\\":[\\\"x\\\"],\\\"riskTags\\\":[\\\"AD\\\"]}\"}}]}";
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), any(), any(), anyList(), any(), any(), any()))
+        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), any(), any(), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(raw, "p1", "text-model", null));
 
         AdminModerationLlmService svc = new AdminModerationLlmService(
@@ -90,8 +90,7 @@ public class AdminModerationLlmServiceMultimodalShortCircuitTest {
         assertNotNull(resp.getStages().getText());
         assertEquals("REJECT", resp.getStages().getText().getDecision());
 
-        verify(llmGateway, times(1)).chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), any(), any(), anyList(), any(), any(), any());
-        verify(llmGateway, times(0)).chatOnceRouted(eq(LlmQueueTaskType.IMAGE_MODERATION), any(), any(), anyList(), any(), any(), any());
+        verify(llmGateway, times(1)).chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), any(), any(), anyList(), any(), any(), any(), any(), any());
+        verify(llmGateway, times(0)).chatOnceRouted(eq(LlmQueueTaskType.IMAGE_MODERATION), any(), any(), anyList(), any(), any(), any(), any(), any());
     }
 }
-

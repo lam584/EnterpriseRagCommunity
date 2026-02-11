@@ -20,6 +20,9 @@ public class AiPostTitleSuggestRequest {
     /** Optional. Lower value makes titles more stable. */
     private Double temperature;
 
+    /** Optional. Nucleus sampling threshold [0,1]. */
+    private Double topP;
+
     /** Optional board name hint for better titles. */
     private String boardName;
 

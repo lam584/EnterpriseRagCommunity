@@ -1,6 +1,8 @@
 package com.example.EnterpriseRagCommunity.service.access;
 
 import com.example.EnterpriseRagCommunity.config.TotpSecurityProperties;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.Cipher;
@@ -14,16 +16,23 @@ public class TotpCryptoService {
     private static final byte VERSION_1 = 1;
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_BITS = 128;
+    private static final String TOTP_MASTER_KEY_CONFIG_KEY = "app.security.totp.master-key";
+    private static final String TOTP_MASTER_KEY_ENV_STYLE_CONFIG_KEY = "APP_TOTP_MASTER_KEY";
 
     private final SecureRandom secureRandom = new SecureRandom();
     private final TotpSecurityProperties props;
+    private final SystemConfigurationService systemConfigurationService;
 
-    public TotpCryptoService(TotpSecurityProperties props) {
+    public TotpCryptoService(
+            TotpSecurityProperties props,
+            @Nullable SystemConfigurationService systemConfigurationService
+    ) {
         this.props = props;
+        this.systemConfigurationService = systemConfigurationService;
     }
 
     public boolean isConfigured() {
-        String k = props.getMasterKey();
+        String k = resolveMasterKey();
         return k != null && !k.isBlank();
     }
 
@@ -77,7 +86,7 @@ public class TotpCryptoService {
     }
 
     private SecretKeySpec loadKeyOrThrow() {
-        String raw = props.getMasterKey();
+        String raw = resolveMasterKey();
         if (raw == null || raw.isBlank()) {
             throw new IllegalStateException("TOTP master key not configured (app.security.totp.master-key)");
         }
@@ -92,5 +101,17 @@ public class TotpCryptoService {
         }
         return new SecretKeySpec(decoded, "AES");
     }
-}
 
+    private String resolveMasterKey() {
+        String fromProps = props.getMasterKey();
+        if (fromProps != null && !fromProps.isBlank()) return fromProps;
+
+        SystemConfigurationService svc = systemConfigurationService;
+        if (svc == null) return fromProps;
+
+        String fromDb = svc.getConfig(TOTP_MASTER_KEY_CONFIG_KEY);
+        if (fromDb != null && !fromDb.isBlank()) return fromDb;
+
+        return svc.getConfig(TOTP_MASTER_KEY_ENV_STYLE_CONFIG_KEY);
+    }
+}

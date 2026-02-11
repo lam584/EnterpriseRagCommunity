@@ -508,3 +508,83 @@ max_content_chars = VALUES(max_content_chars);
 DELETE FROM llm_routing_policies WHERE task_type = 'EMBEDDING';
 DELETE FROM llm_models WHERE purpose = 'EMBEDDING';
 DELETE FROM llm_routing_scenarios WHERE task_type = 'EMBEDDING';
+
+-- 18) 补齐：TOP-P 默认值（仅当数据库已升级支持 top_p 字段时执行）
+-- 说明：
+-- - 历史原因：top_p 字段可能在后续版本才通过 ALTER TABLE 增加；本段通过 information_schema 判断后再执行，避免旧库报错
+-- - 写入策略：仅当 top_p/vision_top_p 为空时写入默认值，不覆盖用户手动配置
+
+SET @has_ai_gen_top_p := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE table_schema = DATABASE()
+    AND table_name = 'ai_gen_task_config'
+    AND column_name = 'top_p'
+);
+
+SET @sql_ai_gen_top_p := IF(
+  @has_ai_gen_top_p > 0,
+  'UPDATE ai_gen_task_config\n'
+  'SET top_p = CASE\n'
+  '  WHEN group_code = ''POST_SUGGESTION'' AND sub_type = ''TITLE'' THEN 0.900\n'
+  '  WHEN group_code = ''POST_SUGGESTION'' AND sub_type = ''TOPIC_TAG'' THEN 0.800\n'
+  '  WHEN group_code = ''POST_SUMMARY'' AND sub_type = ''DEFAULT'' THEN 0.700\n'
+  '  WHEN group_code = ''SEMANTIC_TRANSLATE'' AND sub_type = ''DEFAULT'' THEN 0.400\n'
+  '  WHEN group_code = ''POST_LANG_LABEL'' AND sub_type = ''DEFAULT'' THEN 0.200\n'
+  '  WHEN group_code = ''POST_RISK_TAG'' AND sub_type = ''DEFAULT'' THEN 0.600\n'
+  '  ELSE top_p\n'
+  'END\n'
+  'WHERE (top_p IS NULL)\n'
+  '  AND (\n'
+  '    (group_code = ''POST_SUGGESTION'' AND sub_type IN (''TITLE'',''TOPIC_TAG''))\n'
+  '    OR (group_code = ''POST_SUMMARY'' AND sub_type = ''DEFAULT'')\n'
+  '    OR (group_code = ''SEMANTIC_TRANSLATE'' AND sub_type = ''DEFAULT'')\n'
+  '    OR (group_code = ''POST_LANG_LABEL'' AND sub_type = ''DEFAULT'')\n'
+  '    OR (group_code = ''POST_RISK_TAG'' AND sub_type = ''DEFAULT'')\n'
+  '  );',
+  'SELECT 1;'
+);
+
+PREPARE stmt_ai_gen_top_p FROM @sql_ai_gen_top_p;
+EXECUTE stmt_ai_gen_top_p;
+DEALLOCATE PREPARE stmt_ai_gen_top_p;
+
+SET @has_mod_top_p := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE table_schema = DATABASE()
+    AND table_name = 'moderation_llm_config'
+    AND column_name = 'top_p'
+);
+
+SET @has_mod_vision_top_p := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE table_schema = DATABASE()
+    AND table_name = 'moderation_llm_config'
+    AND column_name = 'vision_top_p'
+);
+
+SET @sql_mod_top_p := IF(
+  @has_mod_top_p > 0,
+  'UPDATE moderation_llm_config\n'
+  'SET top_p = COALESCE(top_p, 0.200)\n'
+  'WHERE id = 1;',
+  'SELECT 1;'
+);
+
+PREPARE stmt_mod_top_p FROM @sql_mod_top_p;
+EXECUTE stmt_mod_top_p;
+DEALLOCATE PREPARE stmt_mod_top_p;
+
+SET @sql_mod_vision_top_p := IF(
+  @has_mod_vision_top_p > 0,
+  'UPDATE moderation_llm_config\n'
+  'SET vision_top_p = COALESCE(vision_top_p, COALESCE(top_p, 0.200))\n'
+  'WHERE id = 1;',
+  'SELECT 1;'
+);
+
+PREPARE stmt_mod_vision_top_p FROM @sql_mod_vision_top_p;
+EXECUTE stmt_mod_vision_top_p;
+DEALLOCATE PREPARE stmt_mod_vision_top_p;

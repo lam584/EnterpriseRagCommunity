@@ -5,6 +5,7 @@ import com.example.EnterpriseRagCommunity.entity.ai.LlmProviderSettingsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmProviderRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmProviderSettingsRepository;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ public class AiProvidersConfigServiceSettingsUpsertTest {
         LlmProviderSettingsRepository llmProviderSettingsRepository = mock(LlmProviderSettingsRepository.class);
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
         LlmSecretsCryptoService llmSecretsCryptoService = mock(LlmSecretsCryptoService.class);
+        SystemConfigurationService systemConfigurationService = mock(SystemConfigurationService.class);
 
         AiProvidersConfigService svc = new AiProvidersConfigService(
                 appSettingsService,
@@ -40,7 +42,8 @@ public class AiProvidersConfigServiceSettingsUpsertTest {
                 llmProviderRepository,
                 llmProviderSettingsRepository,
                 llmModelRepository,
-                llmSecretsCryptoService
+                llmSecretsCryptoService,
+                systemConfigurationService
         );
 
         when(llmProviderSettingsRepository.findById("default")).thenReturn(Optional.empty());
@@ -63,4 +66,3 @@ public class AiProvidersConfigServiceSettingsUpsertTest {
         assertNull(saved.getVersion());
     }
 }
-

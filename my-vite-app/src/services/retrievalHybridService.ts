@@ -33,6 +33,7 @@ export type HybridRetrievalConfigDTO = {
   rerankEnabled?: boolean | null;
   rerankModel?: string | null;
   rerankTemperature?: number | null;
+  rerankTopP?: number | null;
   rerankK?: number | null;
 
   maxDocs?: number | null;

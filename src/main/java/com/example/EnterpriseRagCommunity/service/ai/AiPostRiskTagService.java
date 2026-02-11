@@ -45,6 +45,8 @@ public class AiPostRiskTagService {
         String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
         if (temperature == null) temperature = 0.2;
+        Double topP = cfg.getTopP();
+        if (topP == null) topP = 0.6;
 
         String title = req == null ? null : req.getTitle();
         String content = req == null ? null : req.getContent();
@@ -70,7 +72,17 @@ public class AiPostRiskTagService {
         String rawJson;
         String usedModel;
         try {
-            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.RISK_TAG_GEN, cfg.getProviderId(), modelOverride, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
+                    LlmQueueTaskType.RISK_TAG_GEN,
+                    cfg.getProviderId(),
+                    modelOverride,
+                    messages,
+                    temperature,
+                    topP,
+                    null,
+                    null,
+                    cfg.getEnableThinking()
+            );
             rawJson = routed == null ? null : routed.text();
             usedModel = routed == null ? null : routed.model();
         } catch (Exception e) {

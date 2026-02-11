@@ -12,6 +12,7 @@ export type AiPostTagSuggestRequest = {
   count?: number;
   model?: string;
   temperature?: number;
+  topP?: number;
   boardName?: string;
   tags?: string[];
 };
@@ -49,4 +50,3 @@ export async function suggestPostTags(payload: AiPostTagSuggestRequest): Promise
 
   return data as AiPostTagSuggestResponse;
 }
-

@@ -54,9 +54,13 @@ export type LlmModerationConfig = {
   visionModel?: string | null;
   visionProviderId?: string | null;
   temperature?: number | null;
+  topP?: number | null;
   visionTemperature?: number | null;
+  visionTopP?: number | null;
   maxTokens?: number | null;
   visionMaxTokens?: number | null;
+  enableThinking?: boolean | null;
+  visionEnableThinking?: boolean | null;
   threshold?: number | null;
   autoRun?: boolean | null;
   // auto runner throttling

@@ -34,9 +34,13 @@ type FormState = {
   visionModel: string;
   visionProviderId: string;
   temperature: string;
+  topP: string;
   visionTemperature: string;
+  visionTopP: string;
   maxTokens: string;
   visionMaxTokens: string;
+  enableThinking: boolean;
+  visionEnableThinking: boolean;
   threshold: string;
   autoRun: boolean;
 };
@@ -45,8 +49,12 @@ function defaultConfig(): LlmModerationConfig {
   return {
     promptTemplate: '',
     temperature: 0.2,
+    topP: 0.2,
+    enableThinking: false,
+    visionTopP: 0.2,
+    visionEnableThinking: false,
     threshold: 0.75,
-    autoRun: false,
+    autoRun: true,
   };
 }
 
@@ -59,9 +67,13 @@ function toFormState(cfg?: LlmModerationConfig | null): FormState {
     visionModel: cfg?.visionModel ?? '',
     visionProviderId: cfg?.visionProviderId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
+    topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
     visionTemperature: cfg?.visionTemperature === null || cfg?.visionTemperature === undefined ? '' : String(cfg.visionTemperature),
+    visionTopP: cfg?.visionTopP === null || cfg?.visionTopP === undefined ? '' : String(cfg.visionTopP),
     maxTokens: cfg?.maxTokens === null || cfg?.maxTokens === undefined ? '' : String(cfg.maxTokens),
     visionMaxTokens: cfg?.visionMaxTokens === null || cfg?.visionMaxTokens === undefined ? '' : String(cfg.visionMaxTokens),
+    enableThinking: Boolean(cfg?.enableThinking),
+    visionEnableThinking: Boolean(cfg?.visionEnableThinking),
     threshold: cfg?.threshold === null || cfg?.threshold === undefined ? '' : String(cfg.threshold),
     autoRun: Boolean(cfg?.autoRun),
   };
@@ -82,8 +94,14 @@ function validateForm(s: FormState): string[] {
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
 
+  const topP = parseOptionalNumber(s.topP);
+  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('topP 需在 [0, 1] 范围内');
+
   const vtemp = parseOptionalNumber(s.visionTemperature);
   if (vtemp !== undefined && (vtemp < 0 || vtemp > 2)) errors.push('visionTemperature 需在 [0, 2] 范围内');
+
+  const vtopP = parseOptionalNumber(s.visionTopP);
+  if (vtopP !== undefined && (vtopP < 0 || vtopP > 1)) errors.push('visionTopP 需在 [0, 1] 范围内');
 
   const mt = parseOptionalNumber(s.maxTokens);
   if (mt !== undefined && (!Number.isInteger(mt) || mt < 1 || mt > 32768)) errors.push('maxTokens 需为 1~32768 的整数');
@@ -100,7 +118,9 @@ function validateForm(s: FormState): string[] {
 
 function buildConfigPayload(s: FormState): LlmModerationConfig {
   const temperature = parseOptionalNumber(s.temperature);
+  const topP = parseOptionalNumber(s.topP);
   const visionTemperature = parseOptionalNumber(s.visionTemperature);
+  const visionTopP = parseOptionalNumber(s.visionTopP);
   const maxTokens = parseOptionalNumber(s.maxTokens);
   const visionMaxTokens = parseOptionalNumber(s.visionMaxTokens);
   const threshold = parseOptionalNumber(s.threshold);
@@ -113,9 +133,13 @@ function buildConfigPayload(s: FormState): LlmModerationConfig {
     visionModel: s.visionModel.trim() ? s.visionModel.trim() : undefined,
     visionProviderId: s.visionProviderId.trim() ? s.visionProviderId.trim() : undefined,
     temperature: temperature === undefined ? undefined : clampNumber(temperature, 0, 2),
+    topP: topP === undefined ? undefined : clampNumber(topP, 0, 1),
     visionTemperature: visionTemperature === undefined ? undefined : clampNumber(visionTemperature, 0, 2),
+    visionTopP: visionTopP === undefined ? undefined : clampNumber(visionTopP, 0, 1),
     maxTokens: maxTokens === undefined ? undefined : Math.trunc(maxTokens),
     visionMaxTokens: visionMaxTokens === undefined ? undefined : Math.trunc(visionMaxTokens),
+    enableThinking: s.enableThinking,
+    visionEnableThinking: s.visionEnableThinking,
     threshold: threshold === undefined ? undefined : clampNumber(threshold, 0, 1),
     autoRun: s.autoRun,
   };
@@ -173,9 +197,13 @@ const LlmForm: React.FC = () => {
       form.visionModel !== committedForm.visionModel ||
       form.visionProviderId !== committedForm.visionProviderId ||
       form.temperature !== committedForm.temperature ||
+      form.topP !== committedForm.topP ||
       form.visionTemperature !== committedForm.visionTemperature ||
+      form.visionTopP !== committedForm.visionTopP ||
       form.maxTokens !== committedForm.maxTokens ||
       form.visionMaxTokens !== committedForm.visionMaxTokens ||
+      form.enableThinking !== committedForm.enableThinking ||
+      form.visionEnableThinking !== committedForm.visionEnableThinking ||
       form.threshold !== committedForm.threshold ||
       form.autoRun !== committedForm.autoRun
     );
@@ -465,6 +493,21 @@ const LlmForm: React.FC = () => {
               </div>
 
               <div>
+                <div className="text-sm font-medium mb-1">TOP-P</div>
+                <input
+                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
+                  placeholder="例如：0.2"
+                  value={form.topP}
+                  readOnly={!isEditing}
+                  onChange={(e) => {
+                    if (!isEditing) return;
+                    setForm((p) => ({ ...p, topP: e.target.value }));
+                    setSavedHint(null);
+                  }}
+                />
+              </div>
+
+              <div>
                 <div className="text-sm font-medium mb-1">上下文长度</div>
                 <input
                   className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
@@ -477,6 +520,29 @@ const LlmForm: React.FC = () => {
                     setSavedHint(null);
                   }}
                 />
+              </div>
+
+              <div>
+                <div className="text-sm font-medium mb-1">启用深度思考</div>
+                <select
+                  value={form.enableThinking ? 'true' : 'false'}
+                  disabled={!isEditing}
+                  onChange={(e) => {
+                    if (!isEditing) return;
+                    setForm((p) => ({ ...p, enableThinking: e.target.value === 'true' }));
+                    setSavedHint(null);
+                  }}
+                  className={`w-full rounded border px-3 py-1.5 text-sm font-semibold focus:outline-none ${
+                    form.enableThinking ? 'text-purple-700 border-purple-200 bg-white' : 'text-gray-700 border-gray-200 bg-white'
+                  } disabled:opacity-60 disabled:bg-gray-100`}
+                >
+                  <option value="false" className="text-gray-700">
+                    关闭
+                  </option>
+                  <option value="true" className="text-purple-700">
+                    开启
+                  </option>
+                </select>
               </div>
             </div>
 
@@ -539,6 +605,21 @@ const LlmForm: React.FC = () => {
               </div>
 
               <div>
+                <div className="text-sm font-medium mb-1">TOP-P</div>
+                <input
+                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
+                  placeholder="例如：0.2"
+                  value={form.visionTopP}
+                  readOnly={!isEditing}
+                  onChange={(e) => {
+                    if (!isEditing) return;
+                    setForm((p) => ({ ...p, visionTopP: e.target.value }));
+                    setSavedHint(null);
+                  }}
+                />
+              </div>
+
+              <div>
                 <div className="text-sm font-medium mb-1">上下文长度</div>
                 <input
                   className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
@@ -551,6 +632,29 @@ const LlmForm: React.FC = () => {
                     setSavedHint(null);
                   }}
                 />
+              </div>
+
+              <div>
+                <div className="text-sm font-medium mb-1">启用深度思考</div>
+                <select
+                  value={form.visionEnableThinking ? 'true' : 'false'}
+                  disabled={!isEditing}
+                  onChange={(e) => {
+                    if (!isEditing) return;
+                    setForm((p) => ({ ...p, visionEnableThinking: e.target.value === 'true' }));
+                    setSavedHint(null);
+                  }}
+                  className={`w-full rounded border px-3 py-1.5 text-sm font-semibold focus:outline-none ${
+                    form.visionEnableThinking ? 'text-purple-700 border-purple-200 bg-white' : 'text-gray-700 border-gray-200 bg-white'
+                  } disabled:opacity-60 disabled:bg-gray-100`}
+                >
+                  <option value="false" className="text-gray-700">
+                    关闭
+                  </option>
+                  <option value="true" className="text-purple-700">
+                    开启
+                  </option>
+                </select>
               </div>
             </div>
 

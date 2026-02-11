@@ -102,6 +102,35 @@ public class LlmGateway {
             Integer maxTokens,
             List<String> stop
     ) {
+        return chatOnceRouted(taskType, providerId, modelOverride, messages, temperature, topP, maxTokens, stop, null, null);
+    }
+
+    public RoutedChatOnceResult chatOnceRouted(
+            LlmQueueTaskType taskType,
+            String providerId,
+            String modelOverride,
+            List<ChatMessage> messages,
+            Double temperature,
+            Double topP,
+            Integer maxTokens,
+            List<String> stop,
+            Boolean enableThinking
+    ) {
+        return chatOnceRouted(taskType, providerId, modelOverride, messages, temperature, topP, maxTokens, stop, enableThinking, null);
+    }
+
+    public RoutedChatOnceResult chatOnceRouted(
+            LlmQueueTaskType taskType,
+            String providerId,
+            String modelOverride,
+            List<ChatMessage> messages,
+            Double temperature,
+            Double topP,
+            Integer maxTokens,
+            List<String> stop,
+            Boolean enableThinking,
+            Integer thinkingBudget
+    ) {
         LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.TEXT_CHAT : taskType;
         String pid = providerId == null ? null : providerId.trim();
         String mo = modelOverride == null ? null : modelOverride.trim();
@@ -110,7 +139,7 @@ public class LlmGateway {
             AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
             String model = mo;
             try {
-                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, null, null, 3, null);
+                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, 3, null);
                 return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
             } catch (RuntimeException e) {
                 throw e;
@@ -123,7 +152,7 @@ public class LlmGateway {
             AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
             String model = provider.defaultChatModel();
             try {
-                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, null, null, 3, null);
+                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, 3, null);
                 return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
             } catch (RuntimeException e) {
                 throw e;
@@ -176,7 +205,7 @@ public class LlmGateway {
                         null,
                         "chatOnce"
                 ));
-                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, null, null, 2, taskIdRef);
+                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, 2, taskIdRef);
                 llmRoutingService.recordSuccess(tt, target);
                 llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                         System.currentTimeMillis(),
@@ -242,7 +271,7 @@ public class LlmGateway {
                     null,
                     "chatOnce"
             ));
-            ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, null, null, 2, taskIdRef);
+            ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, 2, taskIdRef);
             llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                     System.currentTimeMillis(),
                     "FALLBACK_OK",

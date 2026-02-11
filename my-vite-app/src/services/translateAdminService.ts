@@ -20,6 +20,8 @@ export type SemanticTranslateConfig = {
   model?: string | null;
   providerId?: string | null;
   temperature?: number | null;
+  topP?: number | null;
+  enableThinking?: boolean | null;
   maxContentChars: number;
   historyEnabled: boolean;
   historyKeepDays?: number | null;
@@ -47,6 +49,7 @@ export type SemanticTranslateHistoryDTO = {
   translatedMarkdown: string;
   model?: string | null;
   temperature?: number | null;
+  topP?: number | null;
   latencyMs?: number | null;
   promptVersion?: number | null;
 };

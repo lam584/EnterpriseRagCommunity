@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateTotpKey, saveSetupConfig, testEsConnection, initIndices, completeSetup, checkEnvFile, checkIndicesStatus } from '../../services/setupService';
+import { generateTotpKey, saveSetupConfig, testEsConnection, initIndices, completeSetup, checkEnvFile, checkIndicesStatus, encryptValue } from '../../services/setupService';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Modal from '../common/Modal';
@@ -21,7 +21,9 @@ import {
     Loader2,
     ArrowRight,
     ArrowLeft,
-    Wand2
+    Wand2,
+    Eye,
+    EyeOff
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -75,6 +77,28 @@ const ImportConfigurationForm: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [helpKey, setHelpKey] = useState<string | null>(null);
     const [envFileContent, setEnvFileContent] = useState<string | null>(null);
+    const [visibleFields, setVisibleFields] = useState<Record<string, boolean>>({});
+    const [encryptedValues, setEncryptedValues] = useState<Record<string, string>>({});
+
+    const toggleVisibility = async (key: string) => {
+        const willBeVisible = !visibleFields[key];
+        
+        if (willBeVisible) {
+             const isSensitive = key.includes('KEY') || key.includes('PASSWORD');
+             if (isSensitive) {
+                 if (!encryptedValues[key] && configs[key]) {
+                     try {
+                         const encrypted = await encryptValue(configs[key]);
+                         setEncryptedValues(prev => ({ ...prev, [key]: encrypted }));
+                     } catch (e) {
+                         toast.error('加密失败');
+                         return;
+                     }
+                 }
+             }
+        }
+        setVisibleFields(prev => ({ ...prev, [key]: willBeVisible }));
+    };
 
     useEffect(() => {
         checkEnvFile().then(res => {
@@ -112,6 +136,11 @@ const ImportConfigurationForm: React.FC = () => {
 
     const handleConfigChange = (key: string, value: string) => {
         setConfigs(prev => ({ ...prev, [key]: value }));
+        setEncryptedValues(prev => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+        });
     };
 
     const generateKey = async () => {
@@ -317,6 +346,8 @@ const ImportConfigurationForm: React.FC = () => {
     };
 
     const renderConfigField = (fieldKey: string, nextFieldKey?: string, action?: 'generate') => {
+        const isSensitive = (key: string) => key.includes('KEY') || key.includes('PASSWORD');
+
         return (
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -333,12 +364,26 @@ const ImportConfigurationForm: React.FC = () => {
                     </button>
                 </div>
                 <div className="flex space-x-2">
-                    <Input
-                        type="text"
-                        value={configs[fieldKey]}
-                        onChange={e => handleConfigChange(fieldKey, e.target.value)}
-                        className="flex-1"
-                    />
+                    <div className="relative flex-1">
+                        <Input
+                            type={isSensitive(fieldKey) && !visibleFields[fieldKey] ? "password" : "text"}
+                            value={visibleFields[fieldKey] ? (encryptedValues[fieldKey] || configs[fieldKey]) : configs[fieldKey]}
+                            readOnly={visibleFields[fieldKey]}
+                            onChange={e => !visibleFields[fieldKey] && handleConfigChange(fieldKey, e.target.value)}
+                            className={cn("pr-10", visibleFields[fieldKey] && "bg-gray-50 text-gray-500")}
+                        />
+                        {isSensitive(fieldKey) && (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => toggleVisibility(fieldKey)}
+                                className="absolute right-0 top-0 h-full px-3 text-gray-400 hover:text-blue-500 hover:bg-transparent"
+                            >
+                                {visibleFields[fieldKey] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </Button>
+                        )}
+                    </div>
                     {action === 'generate' && (
                         <Button
                             type="button"
@@ -366,11 +411,28 @@ const ImportConfigurationForm: React.FC = () => {
                                 <HelpCircle className="w-4 h-4" />
                             </button>
                         </div>
-                        <Input
-                            type="text"
-                            value={configs[nextFieldKey]}
-                            onChange={e => handleConfigChange(nextFieldKey, e.target.value)}
-                        />
+                        <div className="flex space-x-2">
+                            <div className="relative flex-1">
+                                <Input
+                                    type={isSensitive(nextFieldKey) && !visibleFields[nextFieldKey] ? "password" : "text"}
+                                    value={visibleFields[nextFieldKey] ? (encryptedValues[nextFieldKey] || configs[nextFieldKey]) : configs[nextFieldKey]}
+                                    readOnly={visibleFields[nextFieldKey]}
+                                    onChange={e => !visibleFields[nextFieldKey] && handleConfigChange(nextFieldKey, e.target.value)}
+                                    className={cn("pr-10", visibleFields[nextFieldKey] && "bg-gray-50 text-gray-500")}
+                                />
+                                {isSensitive(nextFieldKey) && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => toggleVisibility(nextFieldKey)}
+                                        className="absolute right-0 top-0 h-full px-3 text-gray-400 hover:text-blue-500 hover:bg-transparent"
+                                    >
+                                        {visibleFields[nextFieldKey] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

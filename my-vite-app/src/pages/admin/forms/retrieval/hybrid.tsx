@@ -54,6 +54,7 @@ const DEFAULT_CFG: HybridRetrievalConfigDTO = {
   rerankEnabled: true,
   rerankModel: 'qwen3-rerank',
   rerankTemperature: 0,
+  rerankTopP: 0.2,
   rerankK: 30,
   maxDocs: 500,
   perDocMaxTokens: 4000,
@@ -661,6 +662,16 @@ const HybridSearchForm: React.FC = () => {
                 onChange={e => setConfig(v => ({ ...v, rerankTemperature: safeNumber(e.target.value) }))}
                 disabled={!canWrite || !editing}
                 placeholder="0.0"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">TOP-P</div>
+              <input
+                className={inputClass}
+                value={config.rerankTopP ?? ''}
+                onChange={e => setConfig(v => ({ ...v, rerankTopP: safeNumber(e.target.value) }))}
+                disabled={!canWrite || !editing}
+                placeholder="0.2"
               />
             </div>
           </div>

@@ -18,6 +18,8 @@ export type PostSummaryGenConfig = {
   model?: string | null;
   providerId?: string | null;
   temperature?: number | null;
+  topP?: number | null;
+  enableThinking?: boolean | null;
   maxContentChars: number;
   promptTemplate: string;
 };
