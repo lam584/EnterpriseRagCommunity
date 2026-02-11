@@ -17,6 +17,8 @@ type FormState = {
   model: string;
   providerId: string;
   temperature: string;
+  topP: string;
+  enableThinking: boolean;
   maxContentChars: string;
   promptTemplate: string;
 };
@@ -33,6 +35,8 @@ function defaultConfig(): PostSummaryGenConfigDTO {
     enabled: true,
     model: null,
     temperature: 0.3,
+    topP: 0.7,
+    enableThinking: false,
     maxContentChars: 8000,
     promptTemplate: `请为以下社区帖子生成“帖子摘要”。\n要求：\n- 只输出严格 JSON，不要输出任何解释文字，不要包裹 \`\`\`；\n- JSON 字段：{\"title\":\"...\",\"summary\":\"...\"}；\n- title：可选，若原文标题已足够清晰可直接复用或略微改写；\n- summary：中文摘要，建议 80~200 字，尽量覆盖关键信息、结论与可执行要点；\n\n帖子标题：\n{{title}}\n\n帖子正文：\n{{content}}\n`,
   };
@@ -44,6 +48,8 @@ function toFormState(cfg?: PostSummaryGenConfigDTO | null): FormState {
     model: cfg?.model ?? '',
     providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
+    topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
+    enableThinking: Boolean(cfg?.enableThinking),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
     promptTemplate: cfg?.promptTemplate ?? '',
   };
@@ -58,6 +64,9 @@ function validateForm(s: FormState): string[] {
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 1)) errors.push('温度参数需在 [0, 1] 范围内');
 
+  const topP = parseOptionalNumber(s.topP);
+  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('TOP-P 需在 [0, 1] 范围内');
+
   const mcc = parseOptionalNumber(s.maxContentChars);
   if (mcc !== undefined && (!Number.isInteger(mcc) || mcc < 200 || mcc > 50000)) errors.push('上下文长度需为 200~50000 的整数');
 
@@ -66,12 +75,15 @@ function validateForm(s: FormState): string[] {
 
 function buildPayload(s: FormState) {
   const temperature = parseOptionalNumber(s.temperature);
+  const topP = parseOptionalNumber(s.topP);
   const maxContentChars = parseOptionalNumber(s.maxContentChars);
   return {
     enabled: s.enabled,
     model: s.model.trim() ? s.model.trim() : null,
     providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
+    topP: topP === undefined ? null : topP,
+    enableThinking: s.enableThinking,
     maxContentChars: maxContentChars === undefined ? 4000 : Math.trunc(maxContentChars),
     promptTemplate: s.promptTemplate,
   };
@@ -264,6 +276,25 @@ const SummaryForm: React.FC = () => {
                 </option>
               </select>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">启用深度思考：</span>
+              <select
+                value={form.enableThinking ? 'true' : 'false'}
+                onChange={(e) => setForm((p) => ({ ...p, enableThinking: e.target.value === 'true' }))}
+                disabled={!editing || loading || saving}
+                className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                  form.enableThinking ? 'text-purple-700 border-purple-200 bg-white' : 'text-gray-700 border-gray-200 bg-white'
+                } disabled:opacity-60 disabled:bg-gray-100`}
+                title={!editing ? '只读（点击右侧「编辑」后可修改）' : '修改开关（需保存生效）'}
+              >
+                <option value="false" className="text-gray-700">
+                  关闭
+                </option>
+                <option value="true" className="text-purple-700">
+                  开启
+                </option>
+              </select>
+            </div>
             <button
               type="button"
               onClick={() => void loadConfig()}
@@ -337,6 +368,16 @@ const SummaryForm: React.FC = () => {
               disabled={!editing || loading || saving}
               className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
               placeholder="例如 0.3"
+            />
+          </div>
+          <div>
+            <div className="text-xs text-gray-600 mb-1">TOP-P（0~1）</div>
+            <input
+              value={form.topP}
+              onChange={(e) => setForm((p) => ({ ...p, topP: e.target.value }))}
+              disabled={!editing || loading || saving}
+              className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+              placeholder="例如 0.7"
             />
           </div>
           <div>

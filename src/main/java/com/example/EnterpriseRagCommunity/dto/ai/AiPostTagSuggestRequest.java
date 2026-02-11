@@ -19,8 +19,9 @@ public class AiPostTagSuggestRequest {
 
     private Double temperature;
 
+    private Double topP;
+
     private String boardName;
 
     private List<String> tags;
 }
-

@@ -9,18 +9,22 @@ import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.SemanticTranslateHistoryRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -53,6 +57,195 @@ public class AiSemanticTranslateService {
 
         String content = c.getContent() == null ? "" : c.getContent().trim();
         return translateOnce("COMMENT", commentId, null, content, targetLang, actorUserId);
+    }
+
+    public SseEmitter translatePostStream(Long postId, String targetLang, Long actorUserId) {
+        if (postId == null) throw new IllegalArgumentException("postId 不能为空");
+        PostsEntity post = postsRepository.findByIdAndIsDeletedFalse(postId)
+                .orElseThrow(() -> new IllegalArgumentException("帖子不存在"));
+
+        String title = post.getTitle() == null ? "" : post.getTitle().trim();
+        String content = post.getContent() == null ? "" : post.getContent().trim();
+        return translateStreamOnce("POST", postId, title, content, targetLang, actorUserId);
+    }
+
+    public SseEmitter translateCommentStream(Long commentId, String targetLang, Long actorUserId) {
+        if (commentId == null) throw new IllegalArgumentException("commentId 不能为空");
+        CommentsEntity c = commentsRepository.findById(commentId)
+                .filter(x -> !Boolean.TRUE.equals(x.getIsDeleted()))
+                .orElseThrow(() -> new IllegalArgumentException("评论不存在"));
+
+        String content = c.getContent() == null ? "" : c.getContent().trim();
+        return translateStreamOnce("COMMENT", commentId, null, content, targetLang, actorUserId);
+    }
+
+    private SseEmitter translateStreamOnce(
+            String sourceType,
+            Long sourceId,
+            String title,
+            String content,
+            String targetLang,
+            Long actorUserId
+    ) {
+        SseEmitter emitter = new SseEmitter(300_000L); // 5 minutes
+        if (targetLang == null || targetLang.trim().isEmpty()) {
+            emitter.completeWithError(new IllegalArgumentException("targetLang 不能为空"));
+            return emitter;
+        }
+        String safeTargetLang = targetLang.trim();
+
+        SemanticTranslateConfigEntity cfg = semanticTranslateConfigService.getConfigEntityOrDefault();
+        if (!Boolean.TRUE.equals(cfg.getEnabled())) {
+            emitter.completeWithError(new IllegalStateException("翻译功能已关闭"));
+            return emitter;
+        }
+
+        String normalizedTitle = title == null ? "" : title.trim();
+        String normalizedContent = content == null ? "" : content.trim();
+
+        int maxChars = cfg.getMaxContentChars() == null ? SemanticTranslateConfigService.DEFAULT_MAX_CONTENT_CHARS : cfg.getMaxContentChars();
+        if (maxChars > 0 && normalizedContent.length() > maxChars) {
+            normalizedContent = normalizedContent.substring(0, maxChars);
+        }
+
+        final String finalNormalizedTitle = normalizedTitle;
+        final String finalNormalizedContent = normalizedContent;
+
+        String sourceHash = sha256Hex(sourceType + "|" + finalNormalizedTitle + "\n\n" + finalNormalizedContent);
+        String configHash = sha256Hex(buildConfigSignature(cfg));
+
+        var cached = semanticTranslateHistoryRepository
+                .findTopBySourceTypeAndSourceIdAndTargetLangAndSourceHashAndConfigHashOrderByCreatedAtDesc(
+                        sourceType, sourceId, safeTargetLang, sourceHash, configHash
+                )
+                .orElse(null);
+
+        if (cached != null) {
+            try {
+                SemanticTranslateResultDTO out = new SemanticTranslateResultDTO();
+                out.setTargetLang(safeTargetLang);
+                out.setTranslatedTitle(cached.getTranslatedTitle());
+                out.setTranslatedMarkdown(cached.getTranslatedMarkdown());
+                out.setModel(cached.getModel());
+                out.setLatencyMs(cached.getLatencyMs());
+                out.setCached(Boolean.TRUE);
+                emitter.send(out);
+                emitter.complete();
+            } catch (IOException e) {
+                emitter.completeWithError(e);
+            }
+            return emitter;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
+                Double temperature = cfg.getTemperature();
+                if (temperature == null) temperature = 0.2;
+                Double topP = cfg.getTopP();
+                if (topP == null) topP = 0.4;
+
+                String streamInstruction = "\n\n[System Note: Stream Mode Active. Please output the translated content directly in Markdown. Do NOT wrap in JSON. If there is a title, put it on the first line.]";
+                String userPrompt = renderPrompt(cfg.getPromptTemplate() + streamInstruction, safeTargetLang, finalNormalizedTitle, finalNormalizedContent);
+                List<ChatMessage> messages = new ArrayList<>();
+                messages.add(ChatMessage.system(cfg.getSystemPrompt()));
+                messages.add(ChatMessage.user(userPrompt));
+
+                StringBuilder accumulated = new StringBuilder();
+                long started = System.currentTimeMillis();
+
+                var streamRes = llmGateway.chatStreamRouted(
+                        LlmQueueTaskType.UNKNOWN,
+                        cfg.getProviderId(),
+                        modelOverride,
+                        messages,
+                        temperature,
+                        topP,
+                        cfg.getEnableThinking(),
+                        null,
+                        (line) -> {
+                            String textDelta = extractStreamChunkText(line);
+                            if (textDelta != null && !textDelta.isEmpty()) {
+                                accumulated.append(textDelta);
+                                try {
+                                    emitter.send(java.util.Collections.singletonMap("delta", textDelta));
+                                } catch (IOException e) {
+                                    throw new RuntimeException("Client send failed", e);
+                                }
+                            }
+                        }
+                );
+
+                long latency = System.currentTimeMillis() - started;
+                String fullText = accumulated.toString();
+
+                String translatedTitle = null;
+                String translatedMarkdown = fullText;
+
+                if (finalNormalizedTitle != null && !finalNormalizedTitle.isEmpty()) {
+                    int firstNl = fullText.indexOf('\n');
+                    if (firstNl > 0) {
+                        translatedTitle = fullText.substring(0, firstNl).trim();
+                        if (translatedTitle.startsWith("#")) translatedTitle = translatedTitle.replaceFirst("^#+\\s*", "");
+                        translatedMarkdown = fullText.substring(firstNl).trim();
+                    }
+                }
+
+                if (Boolean.TRUE.equals(cfg.getHistoryEnabled())) {
+                    SemanticTranslateHistoryEntity h = new SemanticTranslateHistoryEntity();
+                    h.setUserId(actorUserId == null ? 0L : actorUserId);
+                    h.setCreatedAt(LocalDateTime.now());
+                    h.setSourceType(sourceType);
+                    h.setSourceId(sourceId);
+                    h.setTargetLang(safeTargetLang);
+                    h.setSourceHash(sourceHash);
+                    h.setConfigHash(configHash);
+                    h.setSourceTitleExcerpt(buildTitleExcerpt(finalNormalizedTitle));
+                    h.setSourceContentExcerpt(buildExcerpt(finalNormalizedContent));
+                    h.setTranslatedTitle(blankToNull(translatedTitle));
+                    h.setTranslatedMarkdown(translatedMarkdown);
+                    h.setModel(streamRes.model());
+                    h.setProviderId(streamRes.providerId());
+                    h.setTemperature(temperature);
+                    h.setTopP(topP);
+                    h.setLatencyMs(latency);
+                    h.setPromptVersion(cfg.getVersion());
+                    semanticTranslateConfigService.recordHistory(h);
+                }
+
+                SemanticTranslateResultDTO finalRes = new SemanticTranslateResultDTO();
+                finalRes.setTargetLang(safeTargetLang);
+                finalRes.setTranslatedTitle(blankToNull(translatedTitle));
+                finalRes.setTranslatedMarkdown(translatedMarkdown);
+                finalRes.setModel(streamRes.model());
+                finalRes.setLatencyMs(latency);
+                finalRes.setCached(Boolean.FALSE);
+
+                emitter.send(finalRes);
+                emitter.complete();
+
+            } catch (Exception e) {
+                emitter.completeWithError(e);
+            }
+        });
+
+        return emitter;
+    }
+
+    private String extractStreamChunkText(String line) {
+        if (line == null || !line.startsWith("data:")) return null;
+        String payload = line.substring(5).trim();
+        if (payload.equals("[DONE]")) return null;
+        try {
+            JsonNode root = objectMapper.readTree(payload);
+            JsonNode choices = root.path("choices");
+            if (choices.isArray() && !choices.isEmpty()) {
+                JsonNode delta = choices.get(0).path("delta");
+                if (delta.has("content")) return delta.get("content").asText();
+            }
+        } catch (Exception ignore) {
+        }
+        return null;
     }
 
     private SemanticTranslateResultDTO translateOnce(
@@ -103,6 +296,8 @@ public class AiSemanticTranslateService {
         String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
         Double temperature = cfg.getTemperature();
         if (temperature == null) temperature = 0.2;
+        Double topP = cfg.getTopP();
+        if (topP == null) topP = 0.4;
 
         String userPrompt = renderPrompt(cfg.getPromptTemplate(), safeTargetLang, normalizedTitle, normalizedContent);
         List<ChatMessage> messages = new ArrayList<>();
@@ -114,7 +309,17 @@ public class AiSemanticTranslateService {
         String usedProviderId = null;
         String usedModel = null;
         try {
-            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.UNKNOWN, cfg.getProviderId(), modelOverride, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
+                    LlmQueueTaskType.UNKNOWN,
+                    cfg.getProviderId(),
+                    modelOverride,
+                    messages,
+                    temperature,
+                    topP,
+                    null,
+                    null,
+                    cfg.getEnableThinking()
+            );
             rawJson = routed == null ? null : routed.text();
             usedProviderId = routed == null ? null : routed.providerId();
             usedModel = routed == null ? null : routed.model();
@@ -147,6 +352,7 @@ public class AiSemanticTranslateService {
             h.setModel(usedModel);
             h.setProviderId(usedProviderId);
             h.setTemperature(temperature);
+            h.setTopP(topP);
             h.setLatencyMs(latency);
             h.setPromptVersion(cfg.getVersion());
             semanticTranslateConfigService.recordHistory(h);
@@ -222,10 +428,12 @@ public class AiSemanticTranslateService {
         String model = cfg.getModel() == null ? "" : cfg.getModel().trim();
         String providerId = cfg.getProviderId() == null ? "" : cfg.getProviderId().trim();
         String temp = cfg.getTemperature() == null ? "" : String.valueOf(cfg.getTemperature());
+        String topP = cfg.getTopP() == null ? "" : String.valueOf(cfg.getTopP());
+        String thinking = Boolean.TRUE.equals(cfg.getEnableThinking()) ? "1" : "0";
         String max = cfg.getMaxContentChars() == null ? "" : String.valueOf(cfg.getMaxContentChars());
         String sp = cfg.getSystemPrompt() == null ? "" : cfg.getSystemPrompt().trim();
         String pt = cfg.getPromptTemplate() == null ? "" : cfg.getPromptTemplate().trim();
-        return "providerId=" + providerId + "|model=" + model + "|temp=" + temp + "|max=" + max + "|sp=" + sp + "|pt=" + pt;
+        return "providerId=" + providerId + "|model=" + model + "|temp=" + temp + "|topP=" + topP + "|thinking=" + thinking + "|max=" + max + "|sp=" + sp + "|pt=" + pt;
     }
 
     private static String sha256Hex(String s) {

@@ -419,7 +419,7 @@ const EmbedForm: React.FC = () => {
         ? clampInt(Number(autoSyncForm.intervalSeconds.trim()), 5, 3600)
         : 60;
       const payload2 = {
-        enabled: cfgForm.enabled,
+        enabled: autoSyncForm.enabled,
         intervalSeconds,
       };
 
@@ -784,7 +784,6 @@ const EmbedForm: React.FC = () => {
                     onChange={(e) => {
                       const nextEnabled = e.target.value === 'true';
                       setCfgForm((p) => ({ ...p, enabled: nextEnabled }));
-                      setAutoSyncForm((p) => ({ ...p, enabled: nextEnabled }));
                     }}
                     className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
                       cfgForm.enabled ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
@@ -928,9 +927,30 @@ const EmbedForm: React.FC = () => {
             </div>
 
             <div className="rounded border bg-white p-3 space-y-3">
-
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-sm font-medium mb-1">自动增量同步</div>
+                  <select
+                    value={autoSyncForm.enabled ? 'true' : 'false'}
+                    disabled={!cfgEditing || autoSyncLoading || cfgSaving}
+                    onChange={(e) => {
+                      if (!cfgEditing) return;
+                      const nextEnabled = e.target.value === 'true';
+                      setAutoSyncForm((p) => ({ ...p, enabled: nextEnabled }));
+                    }}
+                    className={`w-full rounded border px-3 py-2 text-sm font-semibold focus:outline-none ${
+                      autoSyncForm.enabled ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
+                    } disabled:opacity-60 disabled:bg-gray-100`}
+                    title={!cfgEditing ? '只读（点击右侧「编辑配置」后可修改）' : '修改开关（需保存生效）'}
+                  >
+                    <option value="true" className="text-green-600">
+                      开启
+                    </option>
+                    <option value="false" className="text-red-600">
+                      关闭
+                    </option>
+                  </select>
+                </div>
                 <div>
                   <div className="text-sm font-medium mb-1">自动增量同步时间间隔</div>
                   <select

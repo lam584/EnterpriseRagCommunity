@@ -90,6 +90,8 @@ public class PostLangLabelGenConfigService {
         e.setModel(null);
         e.setProviderId(null);
         e.setTemperature(0.0);
+        e.setTopP(0.2);
+        e.setEnableThinking(Boolean.FALSE);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
         e.setVersion(0);
         e.setUpdatedAt(LocalDateTime.now());
@@ -115,6 +117,11 @@ public class PostLangLabelGenConfigService {
             throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
         }
 
+        Double topP = payload.getTopP();
+        if (topP != null && (topP < 0 || topP > 1)) {
+            throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
+        }
+
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
         base.setSystemPrompt(systemPrompt);
         base.setPromptTemplate(promptTemplate);
@@ -124,6 +131,8 @@ public class PostLangLabelGenConfigService {
         String providerId = payload.getProviderId();
         base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         base.setTemperature(temperature);
+        base.setTopP(topP);
+        base.setEnableThinking(Boolean.TRUE.equals(payload.getEnableThinking()));
         base.setMaxContentChars(maxContentChars);
         return base;
     }
@@ -138,6 +147,8 @@ public class PostLangLabelGenConfigService {
         dto.setModel(e.getModel());
         dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
+        dto.setTopP(e.getTopP());
+        dto.setEnableThinking(e.getEnableThinking());
         dto.setMaxContentChars(e.getMaxContentChars());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setUpdatedBy(updatedByName);

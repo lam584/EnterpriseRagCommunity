@@ -95,6 +95,8 @@ public class PostRiskTagGenConfigService {
         e.setModel(null);
         e.setProviderId(null);
         e.setTemperature(0.2);
+        e.setTopP(0.6);
+        e.setEnableThinking(Boolean.FALSE);
         e.setMaxCount(DEFAULT_MAX_COUNT);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
         e.setVersion(0);
@@ -125,6 +127,11 @@ public class PostRiskTagGenConfigService {
             throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
         }
 
+        Double topP = payload.getTopP();
+        if (topP != null && (topP < 0 || topP > 1)) {
+            throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
+        }
+
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
         base.setSystemPrompt(systemPrompt);
         base.setPromptTemplate(promptTemplate);
@@ -134,6 +141,8 @@ public class PostRiskTagGenConfigService {
         String providerId = payload.getProviderId();
         base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         base.setTemperature(temperature);
+        base.setTopP(topP);
+        base.setEnableThinking(Boolean.TRUE.equals(payload.getEnableThinking()));
         base.setMaxCount(maxCount);
         base.setMaxContentChars(maxContentChars);
         return base;
@@ -149,6 +158,8 @@ public class PostRiskTagGenConfigService {
         dto.setModel(e.getModel());
         dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
+        dto.setTopP(e.getTopP());
+        dto.setEnableThinking(e.getEnableThinking());
         dto.setMaxCount(e.getMaxCount());
         dto.setMaxContentChars(e.getMaxContentChars());
         dto.setUpdatedAt(e.getUpdatedAt());

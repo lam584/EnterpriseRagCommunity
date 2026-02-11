@@ -25,6 +25,8 @@ type FormState = {
   model: string;
   providerId: string;
   temperature: string;
+  topP: string;
+  enableThinking: boolean;
   maxContentChars: string;
   historyEnabled: boolean;
   historyKeepDays: string;
@@ -46,6 +48,8 @@ function defaultConfig(): SemanticTranslateConfigDTO {
       '你是一个专业的翻译助手。\n要求：\n1. 把用户提供的标题与正文翻译成目标语言；\n2. 正文输出必须为 Markdown，尽量保留原文的结构（标题层级/列表/引用/代码块/表格等）；\n3. 不要添加与原文无关的内容，不要进行总结，不要输出额外解释；\n4. 输出严格为 JSON（不要包裹 ```），字段如下：\n   - title: 翻译后的标题（纯文本）\n   - markdown: 翻译后的正文 Markdown\n',
     promptTemplate: '目标语言：{{targetLang}}\n\n标题：\n{{title}}\n\n正文（Markdown）：\n{{content}}\n',
     temperature: 0.2,
+    topP: 0.4,
+    enableThinking: false,
     maxContentChars: 8000,
     historyEnabled: true,
     historyKeepDays: 30,
@@ -63,6 +67,8 @@ function toFormState(cfg?: SemanticTranslateConfigDTO | null): FormState {
     model: cfg?.model ?? '',
     providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
+    topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
+    enableThinking: Boolean(cfg?.enableThinking),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
     historyEnabled: Boolean(cfg?.historyEnabled),
     historyKeepDays: cfg?.historyKeepDays === null || cfg?.historyKeepDays === undefined ? '' : String(cfg.historyKeepDays),
@@ -81,6 +87,9 @@ function validateForm(s: FormState): string[] {
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
 
+  const topP = parseOptionalNumber(s.topP);
+  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('topP 需在 [0, 1] 范围内');
+
   const mcc = parseOptionalNumber(s.maxContentChars);
   if (mcc !== undefined && (!Number.isInteger(mcc) || mcc < 200 || mcc > 100000)) errors.push('maxContentChars 需为 200~100000 的整数');
 
@@ -93,6 +102,7 @@ function validateForm(s: FormState): string[] {
 
 function buildPayload(s: FormState) {
   const temperature = parseOptionalNumber(s.temperature);
+  const topP = parseOptionalNumber(s.topP);
   const maxContentChars = parseOptionalNumber(s.maxContentChars);
   const historyKeepDays = parseOptionalNumber(s.historyKeepDays);
   const historyKeepRows = parseOptionalNumber(s.historyKeepRows);
@@ -106,6 +116,8 @@ function buildPayload(s: FormState) {
     model: s.model.trim() ? s.model.trim() : null,
     providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
+    topP: topP === undefined ? null : topP,
+    enableThinking: s.enableThinking,
     maxContentChars: maxContentChars === undefined ? 8000 : Math.trunc(maxContentChars),
     historyEnabled: s.historyEnabled,
     historyKeepDays: historyKeepDays === undefined ? null : Math.trunc(historyKeepDays),
@@ -391,6 +403,26 @@ const TranslateForm: React.FC = () => {
                   关闭
                 </option>
               </select>
+            <span className="text-sm font-medium text-gray-700 ml-2">启用深度思考：</span>
+            <select
+              value={form.enableThinking ? 'true' : 'false'}
+              disabled={!editing}
+              onChange={(e) => {
+                if (!editing) return;
+                setForm((p) => ({ ...p, enableThinking: e.target.value === 'true' }));
+                setSavedHint(null);
+              }}
+              className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                form.enableThinking ? 'text-purple-700 border-purple-200 bg-white' : 'text-gray-700 border-gray-200 bg-white'
+              } disabled:opacity-60 disabled:bg-gray-100`}
+            >
+              <option value="false" className="text-gray-700">
+                关闭
+              </option>
+              <option value="true" className="text-purple-700">
+                开启
+              </option>
+            </select>
             <button
               type="button"
               className="rounded border px-3 py-1.5 text-sm disabled:opacity-60"
@@ -472,6 +504,17 @@ const TranslateForm: React.FC = () => {
                     disabled={!editing}
                     onChange={(e) => setForm((p) => ({ ...p, temperature: e.target.value }))}
                     placeholder="例如 0.2"
+                  />
+                </div>
+
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-1">TOP-P</div>
+                  <input
+                    className="w-full rounded border px-3 py-2 border-gray-300"
+                    value={form.topP}
+                    disabled={!editing}
+                    onChange={(e) => setForm((p) => ({ ...p, topP: e.target.value }))}
+                    placeholder="例如 0.4"
                   />
                 </div>
 

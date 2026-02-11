@@ -55,7 +55,7 @@ public class TotpServiceTest {
         byte[] key = new byte[32];
         for (int i = 0; i < key.length; i++) key[i] = (byte) i;
         props.setMasterKey(Base64.getEncoder().encodeToString(key));
-        TotpCryptoService crypto = new TotpCryptoService(props);
+        TotpCryptoService crypto = new TotpCryptoService(props, null);
 
         byte[] raw = "secret-bytes".getBytes(StandardCharsets.UTF_8);
         byte[] enc = crypto.encrypt(raw);

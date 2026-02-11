@@ -42,6 +42,12 @@ public class PostRiskTagGenConfigEntity {
     @Column(name = "temperature")
     private Double temperature;
 
+    @Column(name = "top_p")
+    private Double topP;
+
+    @Column(name = "enable_thinking", nullable = false)
+    private Boolean enableThinking;
+
     @Column(name = "max_count", nullable = false)
     private Integer maxCount;
 

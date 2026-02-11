@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/ai")
@@ -29,21 +30,21 @@ public class AiContentTranslateController {
     }
 
     @PostMapping("/posts/{postId}/translate")
-    public SemanticTranslateResultDTO translatePost(
+    public SseEmitter translatePost(
             @PathVariable("postId") Long postId,
             @RequestParam("targetLang") String targetLang
     ) {
         Long me = currentUserIdOrThrow();
-        return aiSemanticTranslateService.translatePost(postId, targetLang, me);
+        return aiSemanticTranslateService.translatePostStream(postId, targetLang, me);
     }
 
     @PostMapping("/comments/{commentId}/translate")
-    public SemanticTranslateResultDTO translateComment(
+    public SseEmitter translateComment(
             @PathVariable("commentId") Long commentId,
             @RequestParam("targetLang") String targetLang
     ) {
         Long me = currentUserIdOrThrow();
-        return aiSemanticTranslateService.translateComment(commentId, targetLang, me);
+        return aiSemanticTranslateService.translateCommentStream(commentId, targetLang, me);
     }
 }
 

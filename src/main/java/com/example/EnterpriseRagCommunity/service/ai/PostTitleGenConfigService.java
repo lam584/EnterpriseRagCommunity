@@ -121,6 +121,8 @@ public class PostTitleGenConfigService {
         e.setModel(null);
         e.setProviderId(null);
         e.setTemperature(0.4);
+        e.setTopP(0.9);
+        e.setEnableThinking(Boolean.FALSE);
         e.setDefaultCount(DEFAULT_DEFAULT_COUNT);
         e.setMaxCount(DEFAULT_MAX_COUNT);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
@@ -159,6 +161,11 @@ public class PostTitleGenConfigService {
             throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
         }
 
+        Double topP = payload.getTopP();
+        if (topP != null && (topP < 0 || topP > 1)) {
+            throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
+        }
+
         Integer historyKeepDays = payload.getHistoryKeepDays();
         if (historyKeepDays != null && historyKeepDays < 1) throw new IllegalArgumentException("historyKeepDays 必须为正数");
         Integer historyKeepRows = payload.getHistoryKeepRows();
@@ -173,6 +180,8 @@ public class PostTitleGenConfigService {
         String providerId = payload.getProviderId();
         base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
         base.setTemperature(temperature);
+        base.setTopP(topP);
+        base.setEnableThinking(Boolean.TRUE.equals(payload.getEnableThinking()));
 
         base.setDefaultCount(defaultCount);
         base.setMaxCount(maxCount);
@@ -194,6 +203,8 @@ public class PostTitleGenConfigService {
         dto.setModel(e.getModel());
         dto.setProviderId(e.getProviderId());
         dto.setTemperature(e.getTemperature());
+        dto.setTopP(e.getTopP());
+        dto.setEnableThinking(e.getEnableThinking());
         dto.setDefaultCount(e.getDefaultCount());
         dto.setMaxCount(e.getMaxCount());
         dto.setMaxContentChars(e.getMaxContentChars());
@@ -220,6 +231,7 @@ public class PostTitleGenConfigService {
 
         dto.setModel(e.getModel());
         dto.setTemperature(e.getTemperature());
+        dto.setTopP(e.getTopP());
         dto.setLatencyMs(e.getLatencyMs());
         dto.setPromptVersion(e.getPromptVersion());
 

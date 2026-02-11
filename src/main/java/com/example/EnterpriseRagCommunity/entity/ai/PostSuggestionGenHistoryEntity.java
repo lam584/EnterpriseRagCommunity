@@ -63,6 +63,9 @@ public class PostSuggestionGenHistoryEntity {
     @Column(name = "temperature")
     private Double temperature;
 
+    @Column(name = "top_p")
+    private Double topP;
+
     @Column(name = "latency_ms")
     private Long latencyMs;
 

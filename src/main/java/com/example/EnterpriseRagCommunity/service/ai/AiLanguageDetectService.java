@@ -57,7 +57,17 @@ public class AiLanguageDetectService {
 
         String rawJson;
         try {
-            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(LlmQueueTaskType.UNKNOWN, cfg.getProviderId(), modelOverride, messages, temperature);
+            LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
+                    LlmQueueTaskType.UNKNOWN,
+                    cfg.getProviderId(),
+                    modelOverride,
+                    messages,
+                    temperature,
+                    null,
+                    null,
+                    null,
+                    cfg.getEnableThinking()
+            );
             rawJson = routed == null ? null : routed.text();
         } catch (Exception e) {
             throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);

@@ -19,6 +19,8 @@ type FormState = {
   model: string;
   providerId: string;
   temperature: string;
+  topP: string;
+  enableThinking: boolean;
   defaultCount: string;
   maxCount: string;
   maxContentChars: string;
@@ -40,6 +42,8 @@ function defaultConfig(): PostTitleGenConfigDTO {
     systemPrompt: '你是专业的中文社区运营编辑，擅长给帖子拟标题。',
     promptTemplate: `请为下面这段社区帖子内容生成 {{count}} 个中文标题候选。\n要求：\n- 每个标题不超过 30 个汉字\n- 风格适度多样（提问式/总结式/爆点式），但不要低俗\n- 标题之间不要重复\n- 只输出严格 JSON，不要输出任何解释文字\n- JSON 格式：{\"titles\":[\"...\", \"...\"]}\n\n{{boardLine}}{{tagsLine}}帖子内容：\n{{content}}\n`,
     temperature: 0.4,
+    topP: 0.9,
+    enableThinking: false,
     defaultCount: 5,
     maxCount: 10,
     maxContentChars: 4000,
@@ -57,6 +61,8 @@ function toFormState(cfg?: PostTitleGenConfigDTO | null): FormState {
     model: cfg?.model ?? '',
     providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
+    topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
+    enableThinking: Boolean(cfg?.enableThinking),
     defaultCount: cfg?.defaultCount === null || cfg?.defaultCount === undefined ? '' : String(cfg.defaultCount),
     maxCount: cfg?.maxCount === null || cfg?.maxCount === undefined ? '' : String(cfg.maxCount),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
@@ -77,6 +83,9 @@ function validateForm(s: FormState): string[] {
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
 
+  const topP = parseOptionalNumber(s.topP);
+  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('topP 需在 [0, 1] 范围内');
+
   const dc = parseOptionalNumber(s.defaultCount);
   const mc = parseOptionalNumber(s.maxCount);
   if (dc !== undefined && (!Number.isInteger(dc) || dc < 1 || dc > 50)) errors.push('defaultCount 需为 1~50 的整数');
@@ -96,6 +105,7 @@ function validateForm(s: FormState): string[] {
 
 function buildPayload(s: FormState) {
   const temperature = parseOptionalNumber(s.temperature);
+  const topP = parseOptionalNumber(s.topP);
   const defaultCount = parseOptionalNumber(s.defaultCount);
   const maxCount = parseOptionalNumber(s.maxCount);
   const maxContentChars = parseOptionalNumber(s.maxContentChars);
@@ -109,6 +119,8 @@ function buildPayload(s: FormState) {
     model: s.model.trim() ? s.model.trim() : null,
     providerId: s.providerId.trim() ? s.providerId.trim() : null,
     temperature: temperature === undefined ? null : temperature,
+    topP: topP === undefined ? null : topP,
+    enableThinking: s.enableThinking,
     defaultCount: defaultCount === undefined ? 5 : Math.trunc(defaultCount),
     maxCount: maxCount === undefined ? 10 : Math.trunc(maxCount),
     maxContentChars: maxContentChars === undefined ? 4000 : Math.trunc(maxContentChars),
@@ -144,6 +156,8 @@ const TitleGenForm: React.FC = () => {
       form.model !== committedForm.model ||
       form.providerId !== committedForm.providerId ||
       form.temperature !== committedForm.temperature ||
+      form.topP !== committedForm.topP ||
+      form.enableThinking !== committedForm.enableThinking ||
       form.defaultCount !== committedForm.defaultCount ||
       form.maxCount !== committedForm.maxCount ||
       form.maxContentChars !== committedForm.maxContentChars ||
@@ -322,6 +336,25 @@ const TitleGenForm: React.FC = () => {
                 </option>
               </select>
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">启用深度思考：</span>
+              <select
+                value={form.enableThinking ? 'true' : 'false'}
+                onChange={(e) => setForm((p) => ({ ...p, enableThinking: e.target.value === 'true' }))}
+                disabled={!editing || loading || saving}
+                className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
+                  form.enableThinking ? 'text-purple-700 border-purple-200 bg-white' : 'text-gray-700 border-gray-200 bg-white'
+                } disabled:opacity-60 disabled:bg-gray-100`}
+                title={!editing ? '只读（点击右侧「编辑」后可修改）' : '修改开关（需保存生效）'}
+              >
+                <option value="false" className="text-gray-700">
+                  关闭
+                </option>
+                <option value="true" className="text-purple-700">
+                  开启
+                </option>
+              </select>
+            </div>
             <button
               type="button"
               onClick={() => void loadConfig()}
@@ -428,6 +461,16 @@ const TitleGenForm: React.FC = () => {
               disabled={!editing || loading || saving}
               className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
               placeholder="例如 0.4"
+            />
+          </div>
+          <div>
+            <div className="text-xs text-gray-600 mb-1">TOP-P topP（可选）</div>
+            <input
+              value={form.topP}
+              onChange={(e) => setForm((p) => ({ ...p, topP: e.target.value }))}
+              disabled={!editing || loading || saving}
+              className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+              placeholder="例如 0.9"
             />
           </div>
           <div>

@@ -63,7 +63,7 @@ public class AdminModerationLlmServiceSafeSchemaParseTest {
 
         String assistant = "```json\\n{\\n  \\\"safe\\\": false,\\n  \\\"reason\\\": \\\"包含色情内容\\\",\\n  \\\"labels\\\": [\\\"porn\\\"]\\n}\\n```";
         String raw = "{\"choices\":[{\"message\":{\"content\":\"" + assistant + "\"}}]}";
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), any(), any(), anyList(), any(), any(), any()))
+        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), any(), any(), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(raw, "p1", "text-model", null));
 
         AdminModerationLlmService svc = new AdminModerationLlmService(
@@ -90,4 +90,3 @@ public class AdminModerationLlmServiceSafeSchemaParseTest {
         assertTrue(resp.getRiskTags() != null && resp.getRiskTags().contains("porn"));
     }
 }
-

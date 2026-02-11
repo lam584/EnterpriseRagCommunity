@@ -17,6 +17,8 @@ public class SemanticTranslateConfigDTO {
     private String model;
     private String providerId;
     private Double temperature;
+    private Double topP;
+    private Boolean enableThinking;
     private Integer maxContentChars;
 
     private Boolean historyEnabled;

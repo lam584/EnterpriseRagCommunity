@@ -72,6 +72,7 @@ public class HybridRetrievalConfigService {
         dto.setRerankEnabled(true);
         dto.setRerankModel(null);
         dto.setRerankTemperature(0.0);
+        dto.setRerankTopP(0.2);
         dto.setRerankK(30);
 
         dto.setMaxDocs(500);
@@ -108,6 +109,7 @@ public class HybridRetrievalConfigService {
         String rm = dto.getRerankModel();
         dto.setRerankModel(rm == null || rm.isBlank() ? null : rm.trim());
         dto.setRerankTemperature(clampDouble(dto.getRerankTemperature(), 0.0, 2.0, 0.0));
+        dto.setRerankTopP(clampDouble(dto.getRerankTopP(), 0.0, 1.0, 0.2));
         dto.setRerankK(clampInt(dto.getRerankK(), 0, 500, 30));
 
         dto.setMaxDocs(clampInt(dto.getMaxDocs(), 1, 5000, 500));

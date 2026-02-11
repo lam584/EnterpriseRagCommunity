@@ -15,6 +15,7 @@ import { getMyTranslatePreferences, type TranslatePreferencesDTO } from '../../.
 import { listSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
 import { reportComment, reportPost } from '../../../../services/reportService';
 import { extractLanguagesFromMetadata, normalizeLangBase, normalizeTargetLanguageBase } from '../../../../utils/langUtils';
+import { parseTranslateMarkdown } from '../../../../utils/translateOutputUtils';
 import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';
 
 function clamp0(n: number) {
@@ -137,6 +138,7 @@ export default function PostDetailPage() {
   const [commentTranslatePending, setCommentTranslatePending] = useState<Record<number, boolean>>({});
   const [commentTranslateErrors, setCommentTranslateErrors] = useState<Record<number, string>>({});
   const [commentTranslations, setCommentTranslations] = useState<Record<number, TranslateResultDTO>>({});
+  const [commentTranslationExpanded, setCommentTranslationExpanded] = useState<Record<number, boolean>>({});
 
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReasonCode, setReportReasonCode] = useState('SPAM');
@@ -234,11 +236,13 @@ export default function PostDetailPage() {
 
   const translatedPostMarkdown = useMemo(() => {
     if (!postTranslation) return '';
-    const t = (postTranslation.translatedTitle ?? '').trim();
-    const md = (postTranslation.translatedMarkdown ?? '').trim();
-    if (t && md) return `# ${t}\n\n${md}`;
-    if (t) return `# ${t}`;
-    return md;
+    const parsed = parseTranslateMarkdown(postTranslation.translatedMarkdown ?? '');
+    const md = (parsed.markdown ?? '').trim();
+    const t = ((postTranslation.translatedTitle ?? '').trim() || (parsed.title ?? '').trim()).trim();
+    const mdHasTopHeading = /^#{1,6}\s+\S/u.test(md);
+    if (t && md && !mdHasTopHeading) return `# ${t}\n\n${md}`;
+    if (t && !md) return `# ${t}`;
+    return md || (t ? `# ${t}` : '');
   }, [postTranslation]);
 
   const handleTranslatePost = async (silent?: boolean) => {
@@ -250,7 +254,9 @@ export default function PostDetailPage() {
     setPostTranslatePending(true);
     if (!silent) setPostTranslateError(null);
     try {
-      const resp = await translatePost(id, targetLang);
+      const resp = await translatePost(id, targetLang, (partial) => {
+        setPostTranslation((prev) => ({ ...prev, ...partial }));
+      });
       setPostTranslation(resp);
     } catch (e) {
       if (!silent) setPostTranslateError(e instanceof Error ? e.message : String(e));
@@ -274,13 +280,27 @@ export default function PostDetailPage() {
       return next;
     });
     try {
-      const resp = await translateComment(commentId, targetLang);
+      const resp = await translateComment(commentId, targetLang, (partial) => {
+        setCommentTranslations((p) => ({ ...p, [commentId]: { ...p[commentId], ...partial } }));
+      });
       setCommentTranslations((p) => ({ ...p, [commentId]: resp }));
     } catch (e) {
       setCommentTranslateErrors((p) => ({ ...p, [commentId]: e instanceof Error ? e.message : String(e) }));
     } finally {
       setCommentTranslatePending((p) => ({ ...p, [commentId]: false }));
     }
+  };
+
+  const handleToggleCommentTranslation = async (commentId: number) => {
+    if (!commentId) return;
+    if (commentTranslatePending[commentId]) return;
+    if (commentTranslations[commentId]) {
+      const expanded = commentTranslationExpanded[commentId] ?? true;
+      setCommentTranslationExpanded((p) => ({ ...p, [commentId]: !expanded }));
+      return;
+    }
+    setCommentTranslationExpanded((p) => ({ ...p, [commentId]: true }));
+    await handleTranslateComment(commentId);
   };
 
   const loadAllComments = async () => {
@@ -784,15 +804,27 @@ export default function PostDetailPage() {
                       {threadActive ? '收起对话' : '查看全部对话'}
                     </button>
                   ) : null}
-              {shouldShowCommentTranslateButton(c) ? (
+                  {(shouldShowCommentTranslateButton(c) || !!commentTranslations[node.id]) ? (
                     <button
                       type="button"
                       className="px-2 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50 text-xs"
-                      onClick={() => void handleTranslateComment(node.id)}
-                      disabled={!prefsLoaded || commentTranslatePending[node.id]}
-                      title="翻译评论"
+                      onClick={() => void handleToggleCommentTranslation(node.id)}
+                      disabled={commentTranslatePending[node.id] || (!commentTranslations[node.id] && !prefsLoaded)}
+                      title={
+                        commentTranslations[node.id]
+                          ? (commentTranslationExpanded[node.id] ?? true)
+                            ? '收起翻译'
+                            : '展开翻译'
+                          : '翻译评论'
+                      }
                     >
-                      {commentTranslatePending[node.id] ? '翻译中...' : '翻译'}
+                      {commentTranslatePending[node.id]
+                        ? '翻译中...'
+                        : commentTranslations[node.id]
+                          ? (commentTranslationExpanded[node.id] ?? true)
+                            ? '收起翻译'
+                            : '展开翻译'
+                          : '翻译'}
                     </button>
                   ) : null}
                   <button
@@ -847,7 +879,7 @@ export default function PostDetailPage() {
 
               {commentTranslateErrors[node.id] ? <div className="mt-2 text-sm text-red-700">翻译失败：{commentTranslateErrors[node.id]}</div> : null}
 
-              {commentTranslations[node.id] ? (
+              {commentTranslations[node.id] && (commentTranslationExpanded[node.id] ?? true) ? (
                 <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 p-3">
                   <div className="text-xs text-gray-500 mb-2">
                     翻译内容（模型：{commentTranslations[node.id].model || '（未知）'}
@@ -858,7 +890,7 @@ export default function PostDetailPage() {
                       : null}
                     ）
                   </div>
-                  <MarkdownPreview markdown={commentTranslations[node.id].translatedMarkdown || ''} />
+                  <MarkdownPreview markdown={parseTranslateMarkdown(commentTranslations[node.id].translatedMarkdown || '').markdown || ''} />
                 </div>
               ) : null}
             </div>
@@ -1372,3 +1404,4 @@ export default function PostDetailPage() {
   );
 }
 
+ 

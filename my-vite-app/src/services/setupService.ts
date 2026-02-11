@@ -80,6 +80,18 @@ export async function generateTotpKey(): Promise<string> {
   return data.key;
 }
 
+export async function encryptValue(value: string): Promise<string> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch('/api/setup/encrypt', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': csrfToken },
+    body: JSON.stringify({ value }),
+  });
+  if (!res.ok) throw new Error('Failed to encrypt value');
+  const data = await res.json();
+  return data.encrypted;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function completeSetup(data: any): Promise<void> {
   const csrfToken = await getCsrfToken();

@@ -39,6 +39,9 @@ public class PostAiSummaryEntity {
     @Column(name = "temperature")
     private Double temperature;
 
+    @Column(name = "top_p")
+    private Double topP;
+
     @Column(name = "applied_max_content_chars")
     private Integer appliedMaxContentChars;
 

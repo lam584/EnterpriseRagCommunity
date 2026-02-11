@@ -42,6 +42,12 @@ public class PostLangLabelGenConfigEntity {
     @Column(name = "temperature")
     private Double temperature;
 
+    @Column(name = "top_p")
+    private Double topP;
+
+    @Column(name = "enable_thinking", nullable = false)
+    private Boolean enableThinking;
+
     @Column(name = "max_content_chars", nullable = false)
     private Integer maxContentChars;
 

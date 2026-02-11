@@ -259,7 +259,7 @@ class AccountTotpServiceTest {
         TotpService totpService = new TotpService();
         TotpSecurityProperties props = new TotpSecurityProperties();
         props.setMasterKey(Base64.getEncoder().encodeToString(new byte[32]));
-        TotpCryptoService totpCryptoService = new TotpCryptoService(props);
+        TotpCryptoService totpCryptoService = new TotpCryptoService(props, null);
 
         UsersEntity user = new UsersEntity();
         user.setId(1L);
@@ -313,7 +313,7 @@ class AccountTotpServiceTest {
         TotpService totpService = new TotpService();
         TotpSecurityProperties props = new TotpSecurityProperties();
         props.setMasterKey(Base64.getEncoder().encodeToString(new byte[32]));
-        TotpCryptoService totpCryptoService = new TotpCryptoService(props);
+        TotpCryptoService totpCryptoService = new TotpCryptoService(props, null);
 
         UsersEntity user = new UsersEntity();
         user.setId(1L);

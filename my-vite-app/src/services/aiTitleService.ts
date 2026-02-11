@@ -11,6 +11,7 @@ export type AiPostTitleSuggestRequest = {
   count?: number;
   model?: string;
   temperature?: number;
+  topP?: number;
   boardName?: string;
   tags?: string[];
 };

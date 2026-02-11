@@ -40,14 +40,26 @@ public class ModerationLlmConfigEntity {
     @Column(name = "temperature")
     private Double temperature;
 
+    @Column(name = "top_p")
+    private Double topP;
+
     @Column(name = "vision_temperature")
     private Double visionTemperature;
+
+    @Column(name = "vision_top_p")
+    private Double visionTopP;
 
     @Column(name = "max_tokens")
     private Integer maxTokens;
 
+    @Column(name = "enable_thinking", nullable = false)
+    private Boolean enableThinking;
+
     @Column(name = "vision_max_tokens")
     private Integer visionMaxTokens;
+
+    @Column(name = "vision_enable_thinking", nullable = false)
+    private Boolean visionEnableThinking;
 
     @Column(name = "threshold")
     private Double threshold;

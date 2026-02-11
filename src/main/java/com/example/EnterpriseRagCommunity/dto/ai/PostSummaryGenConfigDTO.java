@@ -13,6 +13,8 @@ public class PostSummaryGenConfigDTO {
     private String model;
     private String providerId;
     private Double temperature;
+    private Double topP;
+    private Boolean enableThinking;
     private Integer maxContentChars;
     private String promptTemplate;
 
