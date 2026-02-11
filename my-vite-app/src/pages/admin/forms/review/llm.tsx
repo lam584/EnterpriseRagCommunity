@@ -167,8 +167,8 @@ const LlmForm: React.FC = () => {
     return list.length > 0 ? list : providers;
   }, [providers]);
 
-  const [form, setForm] = useState<FormState>(() => toFormState(null));
-  const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(null));
+  const [form, setForm] = useState<FormState>(() => toFormState(defaultConfig()));
+  const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(defaultConfig()));
   const [isEditing, setIsEditing] = useState(false);
 
   // 试运行

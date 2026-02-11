@@ -157,8 +157,8 @@ const TwoFAForm: React.FC = () => {
         emailOtpPolicy: String(p.emailOtpPolicy ?? 'ALLOW_ALL').trim().toUpperCase(),
         emailOtpRoleIds: uniq((p.emailOtpRoleIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
         emailOtpUserIds: uniq((p.emailOtpUserIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
-        login2faMode: String(p.login2faMode ?? 'DISABLED').trim().toUpperCase(),
-        login2faScopePolicy: String(p.login2faScopePolicy ?? 'FORBID_ALL').trim().toUpperCase(),
+        login2faMode: String(p.login2faMode ?? 'EMAIL_OR_TOTP').trim().toUpperCase(),
+        login2faScopePolicy: String(p.login2faScopePolicy ?? 'ALLOW_ALL').trim().toUpperCase(),
         login2faRoleIds: uniq((p.login2faRoleIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
         login2faUserIds: uniq((p.login2faUserIds ?? []).map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)),
       });
@@ -323,7 +323,7 @@ const TwoFAForm: React.FC = () => {
                   <Label className="text-xs text-gray-600">登录是否要求二次验证</Label>
                   <select
                     className="border border-gray-300 rounded px-2 py-0 bg-white text-sm w-full h-9"
-                    value={String(policy.login2faMode ?? 'DISABLED').toUpperCase()}
+                    value={String(policy.login2faMode ?? 'EMAIL_OR_TOTP').toUpperCase()}
                     disabled={!canEditPolicy}
                     onChange={(e) => setPolicy(p => (p ? { ...p, login2faMode: e.target.value } : p))}
                   >
@@ -336,7 +336,7 @@ const TwoFAForm: React.FC = () => {
                   <Label className="text-xs text-gray-600">作用范围</Label>
                   <select
                     className="border border-gray-300 rounded px-2 py-0 bg-white text-sm w-full h-9"
-                    value={String(policy.login2faScopePolicy ?? 'FORBID_ALL').toUpperCase()}
+                    value={String(policy.login2faScopePolicy ?? 'ALLOW_ALL').toUpperCase()}
                     disabled={!canEditPolicy}
                     onChange={(e) => setPolicy(p => (p ? { ...p, login2faScopePolicy: e.target.value } : p))}
                   >
