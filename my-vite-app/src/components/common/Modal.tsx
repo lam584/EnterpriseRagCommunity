@@ -5,9 +5,10 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  showFooterClose?: boolean;
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
+const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, showFooterClose = true }) => {
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -36,15 +37,17 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }) => {
         <div className="relative p-6 flex-auto max-h-[70vh] overflow-y-auto text-gray-700 leading-relaxed">
             {children}
         </div>
-        <div className="flex items-center justify-end p-6 border-t border-solid border-gray-300 rounded-b">
-          <button
-            className="text-white bg-blue-500 hover:bg-blue-600 font-bold uppercase px-6 py-2 text-sm outline-none focus:outline-none mr-1 mb-1 ease-linear transition-all duration-150 rounded"
-            type="button"
-            onClick={onClose}
-          >
-            关闭
-          </button>
-        </div>
+        {showFooterClose ? (
+          <div className="flex items-center justify-end p-6 border-t border-solid border-gray-300 rounded-b">
+            <button
+              className="text-white bg-blue-500 hover:bg-blue-600 font-bold uppercase px-6 py-2 text-sm outline-none focus:outline-none mr-1 mb-1 ease-linear transition-all duration-150 rounded"
+              type="button"
+              onClick={onClose}
+            >
+              关闭
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );
