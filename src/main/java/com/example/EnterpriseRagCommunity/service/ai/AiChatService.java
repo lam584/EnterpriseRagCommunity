@@ -486,7 +486,7 @@ public class AiChatService {
 
             // finalize persistence
             if (!req.getDryRun()) {
-                Integer userTokensIn = tokenCountService.countTextTokens(req.getMessage());
+                Integer userTokensIn = tokenCountService.countTextTokens(messageForHistory);
                 if (userMsg != null && userTokensIn != null) {
                     userMsg.setTokensIn(userTokensIn);
                     qaMessagesRepository.save(userMsg);
@@ -508,9 +508,16 @@ public class AiChatService {
                     qaTurnsRepository.save(turn);
                 }
 
-                Integer tokensIn = tokenCountService.countChatMessagesTokens(messages);
-                TokenCountService.NormalizedOutput norm = tokenCountService.normalizeOutputText(assistantAccum.toString(), deepThink);
-                Integer tokensOut = tokenCountService.countTextTokens(norm == null ? null : norm.tokenText());
+                TokenCountService.TokenDecision decision = tokenCountService.decideChatTokens(
+                        routed == null ? req.getProviderId() : routed.providerId(),
+                        model,
+                        deepThink,
+                        routed == null ? null : routed.usage(),
+                        messages,
+                        assistantAccum.toString()
+                );
+                Integer tokensIn = decision == null ? null : decision.tokensIn();
+                Integer tokensOut = decision == null ? null : decision.tokensOut();
                 if (tokensIn != null || tokensOut != null) {
                     assistantMsg.setTokensIn(tokensIn);
                     assistantMsg.setTokensOut(tokensOut);
@@ -844,7 +851,7 @@ public class AiChatService {
             }
 
             if (!req.getDryRun()) {
-                Integer userTokensIn = tokenCountService.countTextTokens(req.getMessage());
+                Integer userTokensIn = tokenCountService.countTextTokens(messageForHistory);
                 if (userMsg != null && userTokensIn != null) {
                     userMsg.setTokensIn(userTokensIn);
                     qaMessagesRepository.save(userMsg);
@@ -866,9 +873,16 @@ public class AiChatService {
                     qaTurnsRepository.save(turn);
                 }
 
-                Integer tokensIn = tokenCountService.countChatMessagesTokens(messages);
-                TokenCountService.NormalizedOutput norm = tokenCountService.normalizeOutputText(assistantAccum.toString(), deepThink);
-                Integer tokensOut = tokenCountService.countTextTokens(norm == null ? null : norm.tokenText());
+                TokenCountService.TokenDecision decision = tokenCountService.decideChatTokens(
+                        routed == null ? req.getProviderId() : routed.providerId(),
+                        model,
+                        deepThink,
+                        routed == null ? null : routed.usage(),
+                        messages,
+                        assistantAccum.toString()
+                );
+                Integer tokensIn = decision == null ? null : decision.tokensIn();
+                Integer tokensOut = decision == null ? null : decision.tokensOut();
                 if (tokensIn != null || tokensOut != null) {
                     assistantMsg.setTokensIn(tokensIn);
                     assistantMsg.setTokensOut(tokensOut);
@@ -1198,9 +1212,16 @@ public class AiChatService {
                     qaTurnsRepository.save(turn);
                 }
 
-                Integer tokensIn = tokenCountService.countChatMessagesTokens(messages);
-                TokenCountService.NormalizedOutput norm = tokenCountService.normalizeOutputText(assistantAccum.toString(), deepThink);
-                Integer tokensOut = tokenCountService.countTextTokens(norm == null ? null : norm.tokenText());
+                TokenCountService.TokenDecision decision = tokenCountService.decideChatTokens(
+                        routed == null ? req.getProviderId() : routed.providerId(),
+                        model,
+                        deepThink,
+                        routed == null ? null : routed.usage(),
+                        messages,
+                        assistantAccum.toString()
+                );
+                Integer tokensIn = decision == null ? null : decision.tokensIn();
+                Integer tokensOut = decision == null ? null : decision.tokensOut();
                 if (tokensIn != null || tokensOut != null) {
                     assistantMsg.setTokensIn(tokensIn);
                     assistantMsg.setTokensOut(tokensOut);
@@ -1609,9 +1630,16 @@ public class AiChatService {
                     qaTurnsRepository.save(turn);
                 }
 
-                Integer tokensIn = tokenCountService.countChatMessagesTokens(messages);
-                TokenCountService.NormalizedOutput norm = tokenCountService.normalizeOutputText(assistantAccum.toString(), deepThink);
-                Integer tokensOut = tokenCountService.countTextTokens(norm == null ? null : norm.tokenText());
+                TokenCountService.TokenDecision decision = tokenCountService.decideChatTokens(
+                        routed == null ? req.getProviderId() : routed.providerId(),
+                        model,
+                        deepThink,
+                        routed == null ? null : routed.usage(),
+                        messages,
+                        assistantAccum.toString()
+                );
+                Integer tokensIn = decision == null ? null : decision.tokensIn();
+                Integer tokensOut = decision == null ? null : decision.tokensOut();
                 if (tokensIn != null || tokensOut != null) {
                     assistantMsg.setTokensIn(tokensIn);
                     assistantMsg.setTokensOut(tokensOut);

@@ -99,6 +99,17 @@ function formatMsgTokensInfo(msg: Pick<ChatMsg, 'role' | 'tokensIn' | 'tokensOut
   return `tokens out ${outStr}`;
 }
 
+function toNullableNumber(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (!s) return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
 function colorClassForCitationIndex(index: number): string {
   const palette = [
     'text-blue-600',
@@ -659,11 +670,11 @@ export default function AssistantChatPage() {
             content: m.content,
             createdAt: m.createdAt,
             model: m.model ?? null,
-            tokensIn: m.tokensIn ?? null,
-            tokensOut: m.tokensOut ?? null,
-            latencyMs: m.latencyMs ?? null,
+            tokensIn: toNullableNumber(m.tokensIn),
+            tokensOut: toNullableNumber(m.tokensOut),
+            latencyMs: toNullableNumber(m.latencyMs),
             isFavorite: m.isFavorite,
-            firstTokenLatencyMs: m.firstTokenLatencyMs ?? null
+            firstTokenLatencyMs: toNullableNumber(m.firstTokenLatencyMs)
           }));
         const nextSources: Record<string, AiCitationSource[]> = {};
         for (const m of list) {
@@ -700,11 +711,11 @@ export default function AssistantChatPage() {
         content: m.content,
         createdAt: m.createdAt,
         model: m.model ?? null,
-        tokensIn: m.tokensIn ?? null,
-        tokensOut: m.tokensOut ?? null,
-        latencyMs: m.latencyMs ?? null,
+        tokensIn: toNullableNumber(m.tokensIn),
+        tokensOut: toNullableNumber(m.tokensOut),
+        latencyMs: toNullableNumber(m.latencyMs),
         isFavorite: m.isFavorite,
-        firstTokenLatencyMs: m.firstTokenLatencyMs ?? null
+        firstTokenLatencyMs: toNullableNumber(m.firstTokenLatencyMs)
       }));
     const nextSources: Record<string, AiCitationSource[]> = {};
     for (const m of list) {

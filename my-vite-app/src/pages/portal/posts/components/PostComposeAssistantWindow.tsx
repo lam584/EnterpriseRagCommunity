@@ -98,6 +98,7 @@ export default function PostComposeAssistantWindow(props: Props) {
   const [hasPostOutput, setHasPostOutput] = useState(false);
   const [contextTokens, setContextTokens] = useState<number | null>(null);
   const [contextTokensLoading, setContextTokensLoading] = useState(false);
+  const [contextTokensError, setContextTokensError] = useState<string | null>(null);
   const [pendingSnapshot, setPendingSnapshot] = useState<{
     snapshotId: number;
     beforeDraft: PostDraftDTO;
@@ -325,16 +326,21 @@ export default function PostComposeAssistantWindow(props: Props) {
     const text = `${title}\n\n${content}`.trim();
     if (!text) {
       setContextTokens(null);
+      setContextTokensError(null);
       return;
     }
 
     setContextTokensLoading(true);
+    setContextTokensError(null);
     try {
       const res = await tokenizeText(text.length > 50000 ? text.slice(0, 50000) : text);
-      const n = Number(res.usage?.input_tokens);
+      const raw = (res.usage as any)?.input_tokens ?? (res.usage as any)?.inputTokens;
+      const n = Number(raw);
       setContextTokens(Number.isFinite(n) ? n : null);
-    } catch {
+    } catch (e) {
       setContextTokens(null);
+      const msg = e instanceof Error ? e.message : String(e);
+      setContextTokensError(msg || '不可用');
     } finally {
       setContextTokensLoading(false);
     }
@@ -592,6 +598,7 @@ export default function PostComposeAssistantWindow(props: Props) {
     setInput('');
     setLog([]);
     setContextTokens(null);
+    setContextTokensError(null);
     setPendingImages([]);
     setIgnoredEditorImageUrls([]);
     void refreshContextTokens();
@@ -670,8 +677,9 @@ export default function PostComposeAssistantWindow(props: Props) {
               </select>
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-600">
-              <span className="whitespace-nowrap">
-                上下文用量：{contextTokensLoading ? '计算中…' : contextTokens != null ? `${contextTokens} tok` : '-'}
+              <span className="whitespace-nowrap" title={contextTokensError ?? undefined}>
+                上下文用量：
+                {contextTokensLoading ? '计算中…' : contextTokens != null ? `${contextTokens} tok` : contextTokensError ? '不可用' : '-'}
               </span>
             </div>
           </div>
