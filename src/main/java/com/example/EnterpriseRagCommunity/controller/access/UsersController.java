@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,18 +24,21 @@ public class UsersController {
     private final UsersService usersService;
 
     @PostMapping
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public ResponseEntity<UsersUpdateDTO> create(@RequestBody @Valid UsersCreateDTO dto) {
         UsersEntity entity = usersService.create(dto);
         return ResponseEntity.ok(convertToDTO(entity));
     }
 
     @PutMapping
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public ResponseEntity<UsersUpdateDTO> update(@RequestBody @Valid UsersUpdateDTO dto) {
         UsersEntity entity = usersService.update(dto);
         return ResponseEntity.ok(convertToDTO(entity));
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         usersService.delete(id);
         return ResponseEntity.ok().build();
@@ -46,30 +50,36 @@ public class UsersController {
      * 约束：默认要求用户已先软删除（is_deleted=true），否则返回 500（RuntimeException）。
      */
     @DeleteMapping("/{id}/hard")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public ResponseEntity<Void> hardDelete(@PathVariable("id") Long id) {
         usersService.hardDelete(id);
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/query")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','read'))")
     public ResponseEntity<Page<UsersUpdateDTO>> query(@RequestBody UsersQueryDTO queryDTO) {
         Page<UsersEntity> page = usersService.query(queryDTO);
         return ResponseEntity.ok(page.map(this::convertToDTO));
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','read'))")
     public ResponseEntity<UsersUpdateDTO> getById(@PathVariable("id") Long id) {
         UsersEntity entity = usersService.getById(id);
         return ResponseEntity.ok(convertToDTO(entity));
     }
 
     @PostMapping("/{id}/roles")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_user_roles','write'))")
+    @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
     public ResponseEntity<Void> assignRoles(@PathVariable("id") Long id, @RequestBody List<Long> roleIds) {
         usersService.assignRoles(id, roleIds);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{id}/roles")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_user_roles','read'))")
     public ResponseEntity<List<RoleLinkDTO>> getUserRoles(@PathVariable("id") Long id) {
         List<UserRoleLinksEntity> roles = usersService.getUserRoles(id);
         return ResponseEntity.ok(roles.stream().map(this::convertToRoleLinkDTO).collect(Collectors.toList()));
@@ -100,6 +110,9 @@ public class UsersController {
         RoleLinkDTO dto = new RoleLinkDTO();
         dto.setUserId(entity.getUserId());
         dto.setRoleId(entity.getRoleId());
+        dto.setScopeType(entity.getScopeType());
+        dto.setScopeId(entity.getScopeId());
+        dto.setExpiresAt(entity.getExpiresAt());
         return dto;
     }
 
@@ -109,10 +122,19 @@ public class UsersController {
     public static class RoleLinkDTO {
         private Long userId;
         private Long roleId;
+        private String scopeType;
+        private Long scopeId;
+        private java.time.LocalDateTime expiresAt;
 
         public Long getUserId() { return userId; }
         public void setUserId(Long userId) { this.userId = userId; }
         public Long getRoleId() { return roleId; }
         public void setRoleId(Long roleId) { this.roleId = roleId; }
+        public String getScopeType() { return scopeType; }
+        public void setScopeType(String scopeType) { this.scopeType = scopeType; }
+        public Long getScopeId() { return scopeId; }
+        public void setScopeId(Long scopeId) { this.scopeId = scopeId; }
+        public java.time.LocalDateTime getExpiresAt() { return expiresAt; }
+        public void setExpiresAt(java.time.LocalDateTime expiresAt) { this.expiresAt = expiresAt; }
     }
 }

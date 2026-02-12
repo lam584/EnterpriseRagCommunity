@@ -127,12 +127,20 @@ SELECT
   0.2,
   NULL,
   0.75,
-  0,
+  1,
   0,
   NULL,
   NULL,
   NULL
 WHERE NOT EXISTS (SELECT 1 FROM moderation_llm_config WHERE id = 1);
+
+UPDATE moderation_llm_config
+SET auto_run = 1,
+    updated_at = NOW(3)
+WHERE id = 1
+  AND (auto_run IS NULL OR auto_run = 0)
+  AND (version IS NULL OR version = 0)
+  AND updated_by IS NULL;
 
 -- 2) LLM 路由策略（按 task_type/场景控制：策略、重试、熔断冷却等）
 -- 表：llm_routing_policies
@@ -669,3 +677,55 @@ SET @sql_mod_vision_top_p := IF(
 PREPARE stmt_mod_vision_top_p FROM @sql_mod_vision_top_p;
 EXECUTE stmt_mod_vision_top_p;
 DEALLOCATE PREPARE stmt_mod_vision_top_p;
+
+-- 19) 初始化：前台对话默认配置（智能助手 / AI 发帖助手）
+-- 表：app_settings（全局 KV）
+-- 说明：
+-- - key：portal_chat_config_v1
+-- - value：JSON 字符串（由运行时读取，后台可修改）
+-- - 幂等：仅当 key 不存在时写入，避免覆盖用户已配置内容
+
+INSERT INTO app_settings (k, v)
+SELECT
+  'portal_chat_config_v1',
+  JSON_OBJECT(
+    'assistantChat', JSON_OBJECT(
+      'providerId', NULL,
+      'model', NULL,
+      'temperature', NULL,
+      'topP', NULL,
+      'historyLimit', 20,
+      'defaultDeepThink', CAST(0 AS UNSIGNED),
+      'defaultUseRag', CAST(1 AS UNSIGNED),
+      'ragTopK', 6,
+      'defaultStream', CAST(1 AS UNSIGNED),
+      'systemPrompt', '你是一个严谨、专业的中文助手。',
+      'deepThinkSystemPrompt', '你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。'
+    ),
+    'postComposeAssistant', JSON_OBJECT(
+      'providerId', NULL,
+      'model', NULL,
+      'temperature', NULL,
+      'topP', NULL,
+      'chatHistoryLimit', 20,
+      'defaultDeepThink', CAST(0 AS UNSIGNED),
+      'systemPrompt', '你是一个严谨、专业的中文助手。',
+      'deepThinkSystemPrompt', '你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。',
+      'composeSystemPrompt', CONCAT(
+        '你是一名发帖编辑助手。你要帮助用户完成“可发布的 Markdown 正文”，并在必要时与用户沟通确认细节。\n',
+        '你必须严格遵守以下输出协议（非常重要）：\n',
+        '1) 你只允许输出两类内容块，并且所有输出必须被包裹在其中之一：\n',
+        '   - <chat>...</chat>：与用户沟通（提问、确认、解释、澄清）。这部分只会显示在聊天窗口，不会写入正文。\n',
+        '   - <post>...</post>：帖子最终 Markdown 正文。这部分只会写入正文编辑框，不会显示在聊天窗口。\n',
+        '2) 当信息不足、需要用户确认/补充时：只输出 <chat>，不要输出 <post>。\n',
+        '3) 当你输出 <post> 时：内容必须是完整、可发布的最终 Markdown 正文；不要解释你的思考过程；不要使用```包裹正文。\n',
+        '4) 不要杜撰事实；缺少信息时在 <chat> 提问，或在 <post> 中用占位符明确标记缺失信息。\n',
+        '5) 若用户明确要求“直接写入正文/直接改写/不要提问/给出最终稿”，你必须直接输出 <post>，不要继续在 <chat> 中拉扯确认。\n',
+        '6) 标签必须使用半角尖括号：<post>/<chat>，不要转义为 &lt;post&gt;，也不要使用全角括号。\n',
+        '7) 除 <chat> 或 <post> 之外不要输出任何其他文本。\n'
+      )
+    )
+  )
+WHERE NOT EXISTS (
+  SELECT 1 FROM app_settings WHERE k = 'portal_chat_config_v1'
+);

@@ -24,6 +24,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,6 +33,7 @@ public class UsersService {
 
     private final UsersRepository usersRepository;
     private final UserRoleLinksRepository userRoleLinksRepository;
+    private final RbacAuditService rbacAuditService;
     private final PasswordEncoder passwordEncoder;
     private final CommentsRepository commentsRepository;
     private final PostsRepository postsRepository;
@@ -196,10 +198,12 @@ public class UsersService {
 
         // Remove existing roles first (empty list means clear all roles)
         List<UserRoleLinksEntity> existingLinks = userRoleLinksRepository.findByUserId(userId);
+        List<Long> beforeRoleIds = existingLinks.stream().map(UserRoleLinksEntity::getRoleId).filter(Objects::nonNull).distinct().toList();
         userRoleLinksRepository.deleteAll(existingLinks);
 
         if (normalizedRoleIds.isEmpty()) {
             touchUserAccess(userId);
+            rbacAuditService.record("USER_ROLES_ASSIGN", "user_role_links", "userId=" + userId, beforeRoleIds, List.of());
             return;
         }
 
@@ -208,11 +212,14 @@ public class UsersService {
             UserRoleLinksEntity link = new UserRoleLinksEntity();
             link.setUserId(userId);
             link.setRoleId(roleId);
+            link.setScopeType("GLOBAL");
+            link.setScopeId(0L);
             return link;
         }).collect(Collectors.toList());
 
         userRoleLinksRepository.saveAll(newLinks);
         touchUserAccess(userId);
+        rbacAuditService.record("USER_ROLES_ASSIGN", "user_role_links", "userId=" + userId, beforeRoleIds, normalizedRoleIds);
     }
 
     private void touchUserAccess(Long userId) {
@@ -220,6 +227,8 @@ public class UsersService {
         try {
             UsersEntity u = usersRepository.findById(userId).orElse(null);
             if (u == null) return;
+            long v = u.getAccessVersion() == null ? 0L : u.getAccessVersion();
+            u.setAccessVersion(v + 1L);
             u.setUpdatedAt(LocalDateTime.now());
             usersRepository.save(u);
         } catch (Exception ignored) {

@@ -1,5 +1,6 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 import { UserDTO, UserCreateDTO, UserUpdateDTO, UserQueryDTO, UserRoleDTO } from '../types/userAccess';
+import { toApiError } from './apiError';
 
 const API_BASE_URL = '/api/users';
 
@@ -103,7 +104,7 @@ export const userAccessService = {
         return res.json();
     },
 
-    async assignRoles(userId: number, roleIds: number[]): Promise<void> {
+    async assignRoles(userId: number, roleIds: number[], opts?: { adminReason?: string }): Promise<void> {
         // Normalize/validate payload to avoid sending nested arrays or nulls.
         const normalizedRoleIds = Array.from(
             new Set(
@@ -126,12 +127,13 @@ export const userAccessService = {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-XSRF-TOKEN': csrfToken
+                'X-XSRF-TOKEN': csrfToken,
+                ...(opts?.adminReason ? { 'X-Admin-Reason': opts.adminReason } : {}),
             },
             credentials: 'include',
             body: JSON.stringify(normalizedRoleIds)
         });
-        if (!res.ok) throw new Error('Failed to assign roles');
+        if (!res.ok) throw await toApiError(res, '分配角色失败');
     }
 };
 

@@ -1,4 +1,5 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { toApiError } from './apiError';
 
 export interface PermissionsCreateDTO {
   resource: string;
@@ -48,7 +49,7 @@ export async function queryPermissions(query: PermissionsQueryDTO): Promise<Page
   });
 
   if (!res.ok) {
-    throw new Error('Failed to fetch permissions');
+    throw await toApiError(res, '获取权限列表失败');
   }
   return res.json();
 }
@@ -60,60 +61,67 @@ export async function getPermissionById(id: number): Promise<PermissionsUpdateDT
   });
 
   if (!res.ok) {
-    throw new Error('Failed to fetch permission details');
+    throw await toApiError(res, '获取权限详情失败');
   }
   return res.json();
 }
 
-export async function createPermission(data: PermissionsCreateDTO): Promise<PermissionsUpdateDTO> {
+export async function createPermission(
+  data: PermissionsCreateDTO,
+  opts?: { adminReason?: string },
+): Promise<PermissionsUpdateDTO> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(API_BASE_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-XSRF-TOKEN': csrfToken
+      'X-XSRF-TOKEN': csrfToken,
+      ...(opts?.adminReason ? { 'X-Admin-Reason': opts.adminReason } : {}),
     },
     credentials: 'include',
     body: JSON.stringify(data)
   });
 
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to create permission');
+    throw await toApiError(res, '创建权限失败');
   }
   return res.json();
 }
 
-export async function updatePermission(data: PermissionsUpdateDTO): Promise<PermissionsUpdateDTO> {
+export async function updatePermission(
+  data: PermissionsUpdateDTO,
+  opts?: { adminReason?: string },
+): Promise<PermissionsUpdateDTO> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(API_BASE_URL, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'X-XSRF-TOKEN': csrfToken
+      'X-XSRF-TOKEN': csrfToken,
+      ...(opts?.adminReason ? { 'X-Admin-Reason': opts.adminReason } : {}),
     },
     credentials: 'include',
     body: JSON.stringify(data)
   });
 
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || 'Failed to update permission');
+    throw await toApiError(res, '更新权限失败');
   }
   return res.json();
 }
 
-export async function deletePermission(id: number): Promise<void> {
+export async function deletePermission(id: number, opts?: { adminReason?: string }): Promise<void> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(`${API_BASE_URL}/${id}`, {
     method: 'DELETE',
     headers: {
-      'X-XSRF-TOKEN': csrfToken
+      'X-XSRF-TOKEN': csrfToken,
+      ...(opts?.adminReason ? { 'X-Admin-Reason': opts.adminReason } : {}),
     },
     credentials: 'include'
   });
 
   if (!res.ok) {
-    throw new Error('Failed to delete permission');
+    throw await toApiError(res, '删除权限失败');
   }
 }

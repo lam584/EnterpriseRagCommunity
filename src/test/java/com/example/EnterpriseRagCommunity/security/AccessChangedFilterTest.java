@@ -1,7 +1,6 @@
 package com.example.EnterpriseRagCommunity.security;
 
-import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
-import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockFilterChain;
@@ -12,8 +11,8 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
@@ -21,26 +20,42 @@ import static org.mockito.Mockito.*;
 class AccessChangedFilterTest {
 
     @Test
-    void should_refresh_authorities_when_users_updatedAt_changes() throws Exception {
+    void should_refresh_authorities_when_access_version_changes() throws Exception {
         AccessControlService accessControlService = mock(AccessControlService.class);
-        AccessChangedFilter filter = new AccessChangedFilter(accessControlService);
+        UsersRepository usersRepository = mock(UsersRepository.class);
+        AccessChangedFilter filter = new AccessChangedFilter(accessControlService, usersRepository);
 
         // enable filter
         var enabledField = AccessChangedFilter.class.getDeclaredField("enabled");
         enabledField.setAccessible(true);
         enabledField.set(filter, true);
 
-        UsersEntity user = new UsersEntity();
-        user.setId(1L);
-        user.setEmail("u@example.com");
-        user.setUsername("u");
-        user.setPasswordHash("x");
-        user.setStatus(AccountStatus.ACTIVE);
-        user.setIsDeleted(false);
-        user.setCreatedAt(LocalDateTime.now().minusDays(1));
-        user.setUpdatedAt(LocalDateTime.now());
+        var intervalField = AccessChangedFilter.class.getDeclaredField("checkIntervalMs");
+        intervalField.setAccessible(true);
+        intervalField.set(filter, 0L);
 
-        when(accessControlService.loadActiveUserByEmail("u@example.com")).thenReturn(user);
+        UsersRepository.UserAccessMetaView meta = new UsersRepository.UserAccessMetaView() {
+            @Override
+            public Long getId() {
+                return 1L;
+            }
+
+            @Override
+            public Long getAccessVersion() {
+                return 2L;
+            }
+
+            @Override
+            public java.time.LocalDateTime getUpdatedAt() {
+                return null;
+            }
+
+            @Override
+            public java.time.LocalDateTime getSessionInvalidatedAt() {
+                return null;
+            }
+        };
+        when(usersRepository.findAccessMetaByEmail("u@example.com")).thenReturn(Optional.of(meta));
         when(accessControlService.buildAuthorities(1L)).thenReturn(List.of(new SimpleGrantedAuthority("PERM_admin_ui:access")));
 
         // Existing auth without the perm
@@ -50,8 +65,7 @@ class AccessChangedFilterTest {
 
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/auth/access-context");
         MockHttpSession session = new MockHttpSession();
-        // session has old access timestamp
-        session.setAttribute(AccessChangedFilter.SESSION_ACCESS_TS_KEY, 1L);
+        session.setAttribute(AccessChangedFilter.SESSION_ACCESS_VER_KEY, 1L);
         req.setSession(session);
 
         filter.doFilter(req, new MockHttpServletResponse(), new MockFilterChain());

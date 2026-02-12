@@ -7,10 +7,8 @@ import com.example.EnterpriseRagCommunity.dto.ai.AdminLlmRoutingTargetDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmModelEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmRoutingPolicyEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmRoutingPolicyId;
-import com.example.EnterpriseRagCommunity.entity.ai.LlmRoutingScenarioEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmRoutingPolicyRepository;
-import com.example.EnterpriseRagCommunity.repository.ai.LlmRoutingScenarioRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,27 +32,29 @@ public class LlmRoutingAdminConfigService {
     private final LlmRoutingService llmRoutingService;
     private final LlmRoutingPolicyRepository llmRoutingPolicyRepository;
     private final LlmModelRepository llmModelRepository;
-    private final LlmRoutingScenarioRepository llmRoutingScenarioRepository;
 
     @Transactional(readOnly = true)
     public AdminLlmRoutingConfigDTO getAdminConfig() {
         AdminLlmRoutingConfigDTO out = new AdminLlmRoutingConfigDTO();
 
-        List<LlmRoutingScenarioEntity> scenarioEntities = llmRoutingScenarioRepository.findAllByOrderBySortIndexAsc();
+        List<LlmRoutingPolicyEntity> policyEntities = llmRoutingPolicyRepository.findByIdEnvOrderBySortIndexAscIdTaskTypeAsc(ENV_DEFAULT);
         List<AdminLlmRoutingScenarioDTO> scenarios = new ArrayList<>();
         List<AdminLlmRoutingPolicyDTO> policies = new ArrayList<>();
 
-        for (LlmRoutingScenarioEntity se : scenarioEntities) {
+        for (LlmRoutingPolicyEntity pe : policyEntities) {
+            if (pe == null || pe.getId() == null || pe.getId().getTaskType() == null) continue;
+            String taskType = pe.getId().getTaskType();
+
             AdminLlmRoutingScenarioDTO sd = new AdminLlmRoutingScenarioDTO();
-            sd.setTaskType(se.getTaskType());
-            sd.setLabel(se.getLabel());
-            sd.setCategory(se.getCategory());
-            sd.setSortIndex(se.getSortIndex());
+            sd.setTaskType(taskType);
+            sd.setLabel(pe.getLabel() == null || pe.getLabel().isBlank() ? taskType : pe.getLabel());
+            sd.setCategory(pe.getCategory() == null || pe.getCategory().isBlank() ? "TEXT_GEN" : pe.getCategory());
+            sd.setSortIndex(pe.getSortIndex() == null ? 0 : pe.getSortIndex());
             scenarios.add(sd);
 
             AdminLlmRoutingPolicyDTO p = new AdminLlmRoutingPolicyDTO();
-            p.setTaskType(se.getTaskType());
-            LlmRoutingService.Policy pol = llmRoutingService.getPolicy(se.getTaskType());
+            p.setTaskType(taskType);
+            LlmRoutingService.Policy pol = llmRoutingService.getPolicy(taskType);
             p.setStrategy(pol.strategy().name());
             p.setMaxAttempts(pol.maxAttempts());
             p.setFailureThreshold(pol.failureThreshold());
@@ -113,6 +113,9 @@ public class LlmRoutingAdminConfigService {
                 e.setProbeEnabled(Boolean.FALSE);
                 e.setProbeIntervalMs(null);
                 e.setProbePath(null);
+                e.setSortIndex(0);
+                e.setLabel(null);
+                e.setCategory(null);
             }
 
             String nextStrategy = e.getStrategy();

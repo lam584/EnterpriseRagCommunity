@@ -44,6 +44,7 @@ public class AccountEmailVerificationController {
         EmailVerificationPurpose purpose = parsePurpose(req.getPurpose());
         if (purpose != EmailVerificationPurpose.CHANGE_PASSWORD
                 && purpose != EmailVerificationPurpose.LOGIN_2FA_PREFERENCE
+                && purpose != EmailVerificationPurpose.ADMIN_STEP_UP
                 && purpose != EmailVerificationPurpose.TOTP_ENABLE
                 && purpose != EmailVerificationPurpose.TOTP_DISABLE) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "不支持的用途"));
@@ -64,6 +65,8 @@ public class AccountEmailVerificationController {
                 notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在进入修改密码流程，验证码已发送。");
             } else if (purpose == EmailVerificationPurpose.LOGIN_2FA_PREFERENCE) {
                 notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在修改登录二次验证设置，验证码已发送。");
+            } else if (purpose == EmailVerificationPurpose.ADMIN_STEP_UP) {
+                notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在确认一次高权限操作，验证码已发送。");
             } else if (purpose == EmailVerificationPurpose.TOTP_ENABLE) {
                 notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在进入修改 TOTP 流程，验证码已发送。");
             } else if (purpose == EmailVerificationPurpose.TOTP_DISABLE) {

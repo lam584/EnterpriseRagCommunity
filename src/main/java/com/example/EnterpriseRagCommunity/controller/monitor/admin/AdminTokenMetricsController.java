@@ -3,8 +3,8 @@ package com.example.EnterpriseRagCommunity.controller.monitor.admin;
 import com.example.EnterpriseRagCommunity.dto.monitor.AdminTokenMetricsResponseDTO;
 import com.example.EnterpriseRagCommunity.dto.monitor.AdminTokenSourceDTO;
 import com.example.EnterpriseRagCommunity.dto.monitor.AdminTokenTimelineResponseDTO;
-import com.example.EnterpriseRagCommunity.entity.ai.LlmRoutingScenarioEntity;
-import com.example.EnterpriseRagCommunity.repository.ai.LlmRoutingScenarioRepository;
+import com.example.EnterpriseRagCommunity.entity.ai.LlmRoutingPolicyEntity;
+import com.example.EnterpriseRagCommunity.repository.ai.LlmRoutingPolicyRepository;
 import com.example.EnterpriseRagCommunity.security.Permissions;
 import com.example.EnterpriseRagCommunity.service.monitor.TokenCostMetricsService;
 import lombok.RequiredArgsConstructor;
@@ -27,20 +27,21 @@ import java.util.List;
 public class AdminTokenMetricsController {
 
     private final TokenCostMetricsService tokenCostMetricsService;
-    private final LlmRoutingScenarioRepository llmRoutingScenarioRepository;
+    private final LlmRoutingPolicyRepository llmRoutingPolicyRepository;
 
     @GetMapping("/sources")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_token','read'))")
     public List<AdminTokenSourceDTO> sources() {
-        List<LlmRoutingScenarioEntity> entities = llmRoutingScenarioRepository.findAllByOrderBySortIndexAsc();
+        List<LlmRoutingPolicyEntity> entities = llmRoutingPolicyRepository.findByIdEnvOrderBySortIndexAscIdTaskTypeAsc("default");
         List<AdminTokenSourceDTO> out = new ArrayList<>();
-        for (LlmRoutingScenarioEntity e : entities) {
-            if (e == null) continue;
+        for (LlmRoutingPolicyEntity e : entities) {
+            if (e == null || e.getId() == null || e.getId().getTaskType() == null) continue;
             AdminTokenSourceDTO d = new AdminTokenSourceDTO();
-            d.setTaskType(e.getTaskType());
-            d.setLabel(e.getLabel());
-            d.setCategory(e.getCategory());
-            d.setSortIndex(e.getSortIndex());
+            String taskType = e.getId().getTaskType();
+            d.setTaskType(taskType);
+            d.setLabel(e.getLabel() == null || e.getLabel().isBlank() ? taskType : e.getLabel());
+            d.setCategory(e.getCategory() == null || e.getCategory().isBlank() ? "TEXT_GEN" : e.getCategory());
+            d.setSortIndex(e.getSortIndex() == null ? 0 : e.getSortIndex());
             out.add(d);
         }
         return out;

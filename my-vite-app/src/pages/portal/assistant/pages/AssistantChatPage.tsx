@@ -217,6 +217,8 @@ export default function AssistantChatPage() {
   const [ragTopK, setRagTopK] = useState(6);
   const [autoLoadLastSession, setAutoLoadLastSession] = useState(false);
   const [streamOutput, setStreamOutput] = useState(true);
+  const [temperature, setTemperature] = useState<number | null>(null);
+  const [topP, setTopP] = useState<number | null>(null);
   const [sourcesByMsgId, setSourcesByMsgId] = useState<Record<string, AiCitationSource[]>>({});
   const [editing, setEditing] = useState<{ id: string; draft: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -572,6 +574,8 @@ export default function AssistantChatPage() {
           setRagTopK(Number.isFinite(prefs.ragTopK) ? Math.max(1, Math.min(50, Number(prefs.ragTopK))) : 6);
           setAutoLoadLastSession(!!prefs.autoLoadLastSession);
           setStreamOutput(typeof prefs.stream === 'boolean' ? prefs.stream : true);
+          setTemperature(typeof prefs.temperature === 'number' && Number.isFinite(prefs.temperature) ? prefs.temperature : null);
+          setTopP(typeof prefs.topP === 'number' && Number.isFinite(prefs.topP) ? prefs.topP : null);
         }
 
         if (prefs && !storedProvider && !storedModel) {
@@ -876,6 +880,8 @@ export default function AssistantChatPage() {
             deepThink: requestDeepThink,
             useRag,
             ragTopK,
+            temperature: temperature ?? undefined,
+            topP: topP ?? undefined,
             providerId: providerIdToSend,
             model: modelToSend,
             images: images.length ? images.map((x) => ({ url: x.fileUrl, mimeType: x.mimeType, fileAssetId: x.id })) : undefined,
@@ -974,6 +980,8 @@ export default function AssistantChatPage() {
             deepThink: requestDeepThink,
             useRag,
             ragTopK,
+            temperature: temperature ?? undefined,
+            topP: topP ?? undefined,
             providerId: providerIdToSend,
             model: modelToSend,
             images: images.length ? images.map((x) => ({ url: x.fileUrl, mimeType: x.mimeType, fileAssetId: x.id })) : undefined,
@@ -1129,7 +1137,7 @@ export default function AssistantChatPage() {
       if (streamOutput) {
         await regenerateStream(
           questionMessageId,
-          { deepThink: requestDeepThink, useRag, ragTopK, providerId: providerIdToSend, model: modelToSend },
+          { deepThink: requestDeepThink, useRag, ragTopK, temperature: temperature ?? undefined, topP: topP ?? undefined, providerId: providerIdToSend, model: modelToSend },
           (ev: AiStreamEvent) => {
             if (ev.type === 'delta') {
               if (!ev.content) return;
@@ -1187,7 +1195,7 @@ export default function AssistantChatPage() {
       } else {
         const res = await regenerateOnce(
           questionMessageId,
-          { deepThink: requestDeepThink, useRag, ragTopK, providerId: providerIdToSend, model: modelToSend },
+          { deepThink: requestDeepThink, useRag, ragTopK, temperature: temperature ?? undefined, topP: topP ?? undefined, providerId: providerIdToSend, model: modelToSend },
           ac.signal
         );
         if (!ac.signal.aborted) {

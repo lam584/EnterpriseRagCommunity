@@ -95,6 +95,24 @@ class AiChatServiceStreamChatHistoryTest {
         TokenCountService tokenCountService = new TokenCountService(openSearchTokenizeService);
         UsersRepository usersRepository = mock(UsersRepository.class);
         FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+        PortalChatConfigService portalChatConfigService = mock(PortalChatConfigService.class);
+        com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO portalCfg = new com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO();
+        com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO.AssistantChatConfigDTO assistantCfg = new com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO.AssistantChatConfigDTO();
+        assistantCfg.setSystemPrompt("s");
+        assistantCfg.setDeepThinkSystemPrompt("s2");
+        assistantCfg.setHistoryLimit(20);
+        assistantCfg.setRagTopK(6);
+        assistantCfg.setDefaultUseRag(true);
+        assistantCfg.setDefaultDeepThink(false);
+        assistantCfg.setDefaultStream(true);
+        portalCfg.setAssistantChat(assistantCfg);
+        com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO.PostComposeAssistantConfigDTO postComposeCfg = new com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO.PostComposeAssistantConfigDTO();
+        postComposeCfg.setSystemPrompt("s");
+        postComposeCfg.setDeepThinkSystemPrompt("s2");
+        postComposeCfg.setComposeSystemPrompt("c");
+        postComposeCfg.setChatHistoryLimit(20);
+        portalCfg.setPostComposeAssistant(postComposeCfg);
+        when(portalChatConfigService.getConfigOrDefault()).thenReturn(portalCfg);
 
         AiChatService service = new AiChatService(
                 props,
@@ -119,7 +137,8 @@ class AiChatServiceStreamChatHistoryTest {
                 qaMessageSourcesRepository,
                 tokenCountService,
                 usersRepository,
-                fileAssetsRepository
+                fileAssetsRepository,
+                portalChatConfigService
         );
 
         QaSessionsEntity session = new QaSessionsEntity();

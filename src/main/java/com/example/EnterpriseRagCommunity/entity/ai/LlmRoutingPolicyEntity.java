@@ -40,6 +40,15 @@ public class LlmRoutingPolicyEntity {
     @Column(name = "probe_path", length = 128)
     private String probePath;
 
+    @Column(name = "label", length = 128)
+    private String label;
+
+    @Column(name = "category", length = 32)
+    private String category;
+
+    @Column(name = "sort_index", nullable = false)
+    private Integer sortIndex;
+
     @Version
     @Column(name = "version", nullable = false)
     private Integer version;

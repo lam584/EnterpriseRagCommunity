@@ -9,11 +9,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 
 @Repository
 public interface RolePermissionsRepository extends JpaRepository<RolePermissionsEntity, RolePermissionId>, JpaSpecificationExecutor<RolePermissionsEntity> {
     List<RolePermissionsEntity> findByRoleId(Long roleId);
+    List<RolePermissionsEntity> findByRoleIdIn(Collection<Long> roleIds);
     List<RolePermissionsEntity> findByPermissionId(Long permissionId);
     void deleteByRoleIdAndPermissionId(Long roleId, Long permissionId);
 

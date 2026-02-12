@@ -10,7 +10,8 @@ public enum EmailVerificationPurpose {
     CHANGE_EMAIL,
     CHANGE_EMAIL_OLD,
     TOTP_ENABLE,
-    TOTP_DISABLE;
+    TOTP_DISABLE,
+    ADMIN_STEP_UP;
 
     public String getDisplayNameZh() {
         return switch (this) {
@@ -24,6 +25,7 @@ public enum EmailVerificationPurpose {
             case CHANGE_EMAIL_OLD -> "验证旧邮箱";
             case TOTP_ENABLE -> "启用二次验证";
             case TOTP_DISABLE -> "停用二次验证";
+            case ADMIN_STEP_UP -> "管理员高权限操作确认";
         };
     }
 }

@@ -1,6 +1,6 @@
 package com.example.EnterpriseRagCommunity.security;
 
-import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -37,11 +37,17 @@ public class AccessChangedFilter extends OncePerRequestFilter {
 
     public static final String SESSION_ACCESS_TS_KEY = "ACCESS_TS";
     public static final String SESSION_INVALIDATED_TS_KEY = "AUTH_INVALIDATED_AT";
+    public static final String SESSION_ACCESS_VER_KEY = "ACCESS_VER";
+    public static final String SESSION_LAST_CHECK_AT_KEY = "ACCESS_LAST_CHECK_AT";
 
     private final AccessControlService accessControlService;
+    private final UsersRepository usersRepository;
 
     @Value("${security.access-refresh.enabled:true}")
     private boolean enabled;
+
+    @Value("${security.access-refresh.check-interval-ms:5000}")
+    private long checkIntervalMs;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response, FilterChain filterChain)
@@ -73,17 +79,20 @@ public class AccessChangedFilter extends OncePerRequestFilter {
         }
 
         try {
-            UsersEntity user = accessControlService.loadActiveUserByEmail(auth.getName());
-            long dbTs = user.getUpdatedAt() == null
-                    ? 0L
-                    : user.getUpdatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+            long now = System.currentTimeMillis();
+            Object lastCheckRaw = session.getAttribute(SESSION_LAST_CHECK_AT_KEY);
+            long lastCheckAt = (lastCheckRaw instanceof Number) ? ((Number) lastCheckRaw).longValue() : 0L;
+            if (checkIntervalMs > 0 && lastCheckAt > 0 && now - lastCheckAt < checkIntervalMs) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+            session.setAttribute(SESSION_LAST_CHECK_AT_KEY, now);
 
-            Object v = session.getAttribute(SESSION_ACCESS_TS_KEY);
-            long sessionTs = (v instanceof Number) ? ((Number) v).longValue() : 0L;
+            var meta = usersRepository.findAccessMetaByEmail(auth.getName()).orElseThrow(java.util.NoSuchElementException::new);
 
-            long dbInvalidatedTs = user.getSessionInvalidatedAt() == null
+            long dbInvalidatedTs = meta.getSessionInvalidatedAt() == null
                     ? 0L
-                    : user.getSessionInvalidatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+                    : meta.getSessionInvalidatedAt().atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
             Object inv = session.getAttribute(SESSION_INVALIDATED_TS_KEY);
             long sessionInvalidatedTs = (inv instanceof Number) ? ((Number) inv).longValue() : 0L;
 
@@ -103,18 +112,26 @@ public class AccessChangedFilter extends OncePerRequestFilter {
                 session.setAttribute(SESSION_INVALIDATED_TS_KEY, dbInvalidatedTs);
             }
 
-            if (dbTs > 0L && (sessionTs == 0L || dbTs != sessionTs)) {
-                List<GrantedAuthority> newAuthorities = accessControlService.buildAuthorities(user.getId());
+            Object verRaw = session.getAttribute(SESSION_ACCESS_VER_KEY);
+            long sessionVer = (verRaw instanceof Number) ? ((Number) verRaw).longValue() : -1L;
+            long dbVer = meta.getAccessVersion() == null ? 0L : meta.getAccessVersion();
+
+            if (sessionVer < 0) {
+                session.setAttribute(SESSION_ACCESS_VER_KEY, dbVer);
+            }
+
+            if (dbVer != sessionVer) {
+                List<GrantedAuthority> newAuthorities = accessControlService.buildAuthorities(meta.getId());
                 Authentication newAuth = new UsernamePasswordAuthenticationToken(auth.getPrincipal(), auth.getCredentials(), newAuthorities);
 
                 // Replace authentication in current security context (and therefore in session).
                 SecurityContext ctx = SecurityContextHolder.getContext();
                 ctx.setAuthentication(newAuth);
-                session.setAttribute(SESSION_ACCESS_TS_KEY, dbTs);
+                session.setAttribute(SESSION_ACCESS_VER_KEY, dbVer);
             }
         } catch (java.util.NoSuchElementException e) {
             boolean hasSessionMarker =
-                    session.getAttribute(SESSION_ACCESS_TS_KEY) != null || session.getAttribute(SESSION_INVALIDATED_TS_KEY) != null;
+                    session.getAttribute(SESSION_ACCESS_VER_KEY) != null || session.getAttribute(SESSION_INVALIDATED_TS_KEY) != null;
             if (hasSessionMarker) {
                 try {
                     session.invalidate();

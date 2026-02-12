@@ -14,4 +14,6 @@ public interface UserRoleLinksRepository extends JpaRepository<UserRoleLinksEnti
     void deleteByUserIdAndRoleId(Long userId, Long roleId);
 
     void deleteByUserId(Long userId);
+
+    boolean existsByUserIdAndRoleIdAndScopeTypeAndScopeId(Long userId, Long roleId, String scopeType, Long scopeId);
 }

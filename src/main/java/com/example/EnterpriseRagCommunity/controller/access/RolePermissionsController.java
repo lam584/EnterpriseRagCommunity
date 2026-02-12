@@ -23,21 +23,22 @@ public class RolePermissionsController {
 
     @GetMapping("/roles")
     @ApiOperation("查询所有角色ID")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_role_permissions','read'))")
     public ResponseEntity<List<Long>> listRoleIds() {
         return ResponseEntity.ok(rolePermissionsService.listRoleIds());
     }
 
     @GetMapping("/role/{roleId}")
     @ApiOperation("查询某个角色的权限列表")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_role_permissions','read'))")
     public ResponseEntity<List<RolePermissionViewDTO>> listByRole(@PathVariable("roleId") Long roleId) {
         return ResponseEntity.ok(rolePermissionsService.listByRoleId(roleId));
     }
 
     @PostMapping("/role")
     @ApiOperation("创建新角色并写入权限矩阵（roleId 自动分配）")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_role_permissions','write'))")
+    @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
     public ResponseEntity<List<RolePermissionViewDTO>> createRole(
             @RequestBody List<@Valid RolePermissionUpsertDTO> dtoList) {
         return ResponseEntity.ok(rolePermissionsService.createRoleWithMatrix(dtoList));
@@ -45,14 +46,16 @@ public class RolePermissionsController {
 
     @PutMapping
     @ApiOperation("新增/更新 角色-权限(allow/deny)")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_role_permissions','write'))")
+    @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
     public ResponseEntity<RolePermissionViewDTO> upsert(@RequestBody @Valid RolePermissionUpsertDTO dto) {
         return ResponseEntity.ok(rolePermissionsService.upsert(dto));
     }
 
     @PutMapping("/role/{roleId}")
     @ApiOperation("覆盖更新某角色的权限矩阵")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_role_permissions','write'))")
+    @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
     public ResponseEntity<List<RolePermissionViewDTO>> replaceAllForRole(
             @PathVariable("roleId") Long roleId,
             @RequestBody List<@Valid RolePermissionUpsertDTO> dtoList) {
@@ -61,7 +64,8 @@ public class RolePermissionsController {
 
     @DeleteMapping
     @ApiOperation("删除 角色-权限")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_role_permissions','write'))")
+    @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
     public ResponseEntity<Void> delete(@RequestParam("roleId") Long roleId, @RequestParam("permissionId") Long permissionId) {
         rolePermissionsService.delete(roleId, permissionId);
         return ResponseEntity.ok().build();
@@ -69,7 +73,8 @@ public class RolePermissionsController {
 
     @DeleteMapping("/role/{roleId}")
     @ApiOperation("清空某角色的权限矩阵")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_role_permissions','write'))")
+    @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
     public ResponseEntity<Void> clearRole(@PathVariable("roleId") Long roleId) {
         rolePermissionsService.clearRole(roleId);
         return ResponseEntity.ok().build();
@@ -77,7 +82,7 @@ public class RolePermissionsController {
 
     @GetMapping("/role-summaries")
     @ApiOperation("查询所有角色（roleId + roleName）")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_role_permissions','read'))")
     public ResponseEntity<List<RolePermissionsService.RoleInfoDTO>> listRoles() {
         return ResponseEntity.ok(rolePermissionsService.listRoles());
     }

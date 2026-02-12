@@ -45,6 +45,7 @@ export const formsLoaders: Partial<Record<string, FormLoader>> = {
   '2fa': () => import('./users/2fa'),
 
   'ai-providers': () => import('./ai/providers'),
+  'portal-chat': () => import('./ai/portal-chat'),
   'llm-routing-config': () => import('./metrics/llm-routing-config'),
 };
 

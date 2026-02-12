@@ -164,7 +164,8 @@ const FallbackForm: React.FC = () => {
         <div>
           <div className="text-lg font-semibold">置信回退机制</div>
           <div className="text-sm text-gray-600 mt-1">
-            统一控制 RULE / VEC / LLM 三层在达到阈值或命中条件后：直接拒绝 / 进入 LLM / 转人工。
+            用来配置“系统不确定时怎么处理”。审核通常按顺序经过：规则过滤（RULE）→ 向量相似检测（VEC）→ LLM 复核（LLM）→ 人工。
+            当某一层命中条件/达到阈值时，就按这里设定的动作执行：直接拒绝 / 继续进入 LLM / 转人工。
           </div>
           <div className="text-xs text-gray-500 mt-2">
             更新时间：{cfg.updatedAt ?? '—'}{cfg.updatedBy ? ` · 更新人：${cfg.updatedBy}` : ''}
@@ -225,7 +226,7 @@ const FallbackForm: React.FC = () => {
 
       <Section
         title="规则过滤层 (RULE)配置"
-        desc="当规则命中时，根据命中规则的严重级别选择动作。"
+        desc="规则过滤=明确的“黑名单/敏感词/URL/广告模式”等规则。只要命中规则，就会立刻触发；并按该规则的严重级别（高/中/低）决定下一步怎么走。"
       >
         <div className="flex items-center justify-between">
           <Switch
@@ -243,6 +244,7 @@ const FallbackForm: React.FC = () => {
               disabled={!editing}
               onChange={(v) => setCfg((p) => (p ? { ...p, ruleHighAction: v } : p))}
             />
+            <div className="text-xs text-gray-500 mt-1">当命中 HIGH 级规则时执行的处理方式（通常用于明确违规：如黑名单命中）。</div>
           </div>
           <div>
             <Label>中风险命中动作</Label>
@@ -251,6 +253,7 @@ const FallbackForm: React.FC = () => {
               disabled={!editing}
               onChange={(v) => setCfg((p) => (p ? { ...p, ruleMediumAction: v } : p))}
             />
+            <div className="text-xs text-gray-500 mt-1">当命中 MEDIUM 级规则时执行的处理方式（可用来“先交给 LLM 再判断”）。</div>
           </div>
           <div>
             <Label>低风险命中动作</Label>
@@ -259,13 +262,14 @@ const FallbackForm: React.FC = () => {
               disabled={!editing}
               onChange={(v) => setCfg((p) => (p ? { ...p, ruleLowAction: v } : p))}
             />
+            <div className="text-xs text-gray-500 mt-1">当命中 LOW 级规则时执行的处理方式（常用于疑似/弱信号命中）。</div>
           </div>
         </div>
       </Section>
 
       <Section
         title="嵌入相似检测 (VEC)配置"
-        desc="距离越小越相似。距离 ≤ 阈值视为命中。"
+        desc="向量相似检测=把内容“转换成向量”，与已知样本做相似度比较。距离越小越像；当 距离 ≤ 阈值 时视为命中。阈值越大越容易命中（更严格），阈值越小越不容易命中（更宽松）。"
       >
         <div className="flex items-center justify-between">
           <Switch
@@ -286,7 +290,9 @@ const FallbackForm: React.FC = () => {
               disabled={!editing}
               onChange={(e) => setCfg((p) => (p ? { ...p, vecThreshold: Number(e.target.value) } : p))}
             />
-            <div className="text-xs text-gray-500 mt-1">建议范围 0.05 ~ 0.4（根据向量模型与样本密度调整）</div>
+            <div className="text-xs text-gray-500 mt-1">
+              只要距离 ≤ 该值就算“相似命中”。建议范围 0.05 ~ 0.4（根据向量模型与样本密度调整）。
+            </div>
           </div>
           <div className="grid grid-cols-1 gap-3">
             <div>
@@ -296,6 +302,7 @@ const FallbackForm: React.FC = () => {
                 disabled={!editing}
                 onChange={(v) => setCfg((p) => (p ? { ...p, vecHitAction: v } : p))}
               />
+              <div className="text-xs text-gray-500 mt-1">当内容与样本“足够相似”时的处理方式。</div>
             </div>
             <div>
               <Label>未命中动作</Label>
@@ -304,6 +311,7 @@ const FallbackForm: React.FC = () => {
                 disabled={!editing}
                 onChange={(v) => setCfg((p) => (p ? { ...p, vecMissAction: v } : p))}
               />
+              <div className="text-xs text-gray-500 mt-1">当内容与样本“不够相似”时的处理方式（通常是继续进入 LLM）。</div>
             </div>
           </div>
         </div>
@@ -311,7 +319,7 @@ const FallbackForm: React.FC = () => {
 
       <Section
         title="LLM 审核层配置"
-        desc="LLM 输出风险分(0~1)。风险分 ≥ 拒绝阈值 -> 直接拒绝；介于转人工阈值与拒绝阈值 -> 转人工；低于转人工阈值 -> 通过。"
+        desc="LLM 会给出一个 0~1 的风险分：越接近 1 越像违规。系统根据阈值把结果分成三段：≥ 拒绝阈值 直接拒绝；介于转人工阈值与拒绝阈值 进入人工；低于转人工阈值 通过。阈值越低越严格（更容易拒绝/转人工）。"
       >
         <div className="flex items-center justify-between">
           <Switch
@@ -334,6 +342,7 @@ const FallbackForm: React.FC = () => {
               disabled={!editing}
               onChange={(e) => setCfg((p) => (p ? { ...p, llmRejectThreshold: Number(e.target.value) } : p))}
             />
+            <div className="text-xs text-gray-500 mt-1">风险分 ≥ 该值：直接拒绝。值越低，拒绝越多；值越高，拒绝越少。</div>
           </div>
           <div>
             <Label>转人工阈值 (llmHumanThreshold)</Label>
@@ -347,7 +356,9 @@ const FallbackForm: React.FC = () => {
               disabled={!editing}
               onChange={(e) => setCfg((p) => (p ? { ...p, llmHumanThreshold: Number(e.target.value) } : p))}
             />
-            <div className="text-xs text-gray-500 mt-1">会自动保证转人工阈值 ≤ 拒绝阈值</div>
+            <div className="text-xs text-gray-500 mt-1">
+              风险分 &lt; 该值：直接通过；介于该值与拒绝阈值之间：转人工。会自动保证转人工阈值 ≤ 拒绝阈值。
+            </div>
           </div>
         </div>
 
@@ -369,7 +380,9 @@ const FallbackForm: React.FC = () => {
                 disabled={!editing}
                 onChange={(e) => setCfg((p) => (p ? { ...p, llmTextRiskThreshold: Number(e.target.value) } : p))}
               />
-              <div className="text-xs text-gray-500 mt-1">阈值1：文本初审风险 ≥ 该值视为“可疑/偏高风险”</div>
+              <div className="text-xs text-gray-500 mt-1">
+                阈值1：文本初审风险 ≥ 该值视为“可疑/偏高风险”，会进入后续的短路判断/跨模态复核逻辑。
+              </div>
             </div>
             <div>
               <Label>图片风险阈值 (llmImageRiskThreshold)</Label>
@@ -383,7 +396,7 @@ const FallbackForm: React.FC = () => {
                 disabled={!editing}
                 onChange={(e) => setCfg((p) => (p ? { ...p, llmImageRiskThreshold: Number(e.target.value) } : p))}
               />
-              <div className="text-xs text-gray-500 mt-1">阈值2：图片初审风险 ≥ 该值视为“可疑/偏高风险”</div>
+              <div className="text-xs text-gray-500 mt-1">阈值2：图片初审风险 ≥ 该值视为“可疑/偏高风险”。</div>
             </div>
             <div>
               <Label>强拒绝阈值 (llmStrongRejectThreshold)</Label>
@@ -397,7 +410,7 @@ const FallbackForm: React.FC = () => {
                 disabled={!editing}
                 onChange={(e) => setCfg((p) => (p ? { ...p, llmStrongRejectThreshold: Number(e.target.value) } : p))}
               />
-              <div className="text-xs text-gray-500 mt-1">阈值3：任一模态风险 ≥ 该值，直接拒绝（短路）</div>
+              <div className="text-xs text-gray-500 mt-1">阈值3：只要文本或图片任一风险 ≥ 该值，直接拒绝（无需再复核）。</div>
             </div>
             <div>
               <Label>强通过阈值 (llmStrongPassThreshold)</Label>
@@ -411,7 +424,7 @@ const FallbackForm: React.FC = () => {
                 disabled={!editing}
                 onChange={(e) => setCfg((p) => (p ? { ...p, llmStrongPassThreshold: Number(e.target.value) } : p))}
               />
-              <div className="text-xs text-gray-500 mt-1">阈值4：文本与图片风险都低于该值，直接通过（短路）</div>
+              <div className="text-xs text-gray-500 mt-1">阈值4：当文本与图片风险都 &lt; 该值时，直接通过（无需再复核）。</div>
             </div>
             <div className="md:col-span-2">
               <Label>跨模态综合阈值 (llmCrossModalThreshold)</Label>
@@ -425,7 +438,9 @@ const FallbackForm: React.FC = () => {
                 disabled={!editing}
                 onChange={(e) => setCfg((p) => (p ? { ...p, llmCrossModalThreshold: Number(e.target.value) } : p))}
               />
-              <div className="text-xs text-gray-500 mt-1">阈值5：跨模态复核的综合风险 ≥ 该值，判定拒绝；否则通过</div>
+              <div className="text-xs text-gray-500 mt-1">
+                阈值5：跨模态复核的综合风险 ≥ 该值则拒绝；否则通过（用于“文本与图片组合起来才有问题”的场景）。
+              </div>
             </div>
           </div>
           <div className="text-xs text-gray-500 mt-2">会自动保证强通过阈值 ≤ 强拒绝阈值</div>
@@ -434,7 +449,7 @@ const FallbackForm: React.FC = () => {
 
       <Section
         title="举报转人工"
-        desc="当同一目标累计举报次数达到阈值后，直接进入人工审核（不再进入自动审核队列）。"
+        desc="当同一目标（同一帖子/评论/用户等）累计被举报次数达到阈值后，直接进入人工审核；避免被反复刷进自动队列。"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
@@ -448,7 +463,7 @@ const FallbackForm: React.FC = () => {
               disabled={!editing}
               onChange={(e) => setCfg((p) => (p ? { ...p, reportHumanThreshold: Number(e.target.value) } : p))}
             />
-            <div className="text-xs text-gray-500 mt-1">默认 5，可根据社区规模与滥用情况调整</div>
+            <div className="text-xs text-gray-500 mt-1">例如填 5 表示：同一目标累计 5 次举报就直接转人工。默认 5，可按社区规模调整。</div>
           </div>
         </div>
       </Section>

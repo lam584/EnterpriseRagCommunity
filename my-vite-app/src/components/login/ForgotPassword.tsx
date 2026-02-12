@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/login_1.png';
+import AuthFooter from './AuthFooter';
 import {
   getPasswordResetStatus,
   resetPasswordByEmailCode,
@@ -355,11 +356,7 @@ export default function ForgotPassword() {
           ) : null}
         </div>
       </div>
-      <div className="text-center text-white p-4">
-        <h2 className="text-3xl font-bold">解锁知识的世界</h2>
-        <p className="text-lg">加入我们的社区，探索成千上万的新闻</p>
-        <p className="text-sm mt-4">©2026. 版权所有。</p>
-      </div>
+      <AuthFooter />
     </div>
   );
 }

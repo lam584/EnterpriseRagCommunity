@@ -32,6 +32,7 @@ const helpContent: Record<string, string> = {
     APP_TOTP_MASTER_KEY: '用于生成两步验证码的主密钥。点击“生成”按钮可以自动生成一个安全的随机密钥。如果你有保存之前的主密钥，这里可以输入。可以避免已绑定TOTP的用户需要重新绑定的问题。',
     APP_ES_API_KEY: 'Elasticsearch 的 API Key。您可以在 Kibana 或使用 Elasticsearch API 生成。获取方式详情见：https://www.elastic.co/docs/deploy-manage/api-keys/elasticsearch-api-keys',
     APP_AI_TOKENIZER_API_KEY: '用于计算 Token 数量的 阿里云 API Key,获取方式详情见：https://help.aliyun.com/zh/open-search/search-platform/user-guide/api-keys-management',
+    APP_SITE_BEIAN: '站点备案号（ICP 备案号），例如：桂ICP备2026*******号。不填写则登录页底部不展示备案信息。',
     'spring.elasticsearch.uris': 'Elasticsearch 的连接地址，例如 http://localhost:9200。默认端口号为9200',
     APP_MAIL_USERNAME: '认证用户名，通常是您的完整邮箱地址。用于登录，建议和 APP_MAIL_FROM_ADDRESS 保持一致。',
     APP_MAIL_PASSWORD: '邮件服务器的密码或应用专用密码。',
@@ -47,6 +48,7 @@ const configLabels: Record<string, string> = {
     APP_TOTP_MASTER_KEY: 'TOTP 主密钥',
     APP_ES_API_KEY: 'Elasticsearch API 密钥',
     APP_AI_TOKENIZER_API_KEY: 'Tokenizer API 密钥',
+    APP_SITE_BEIAN: '备案号（ICP）',
     'spring.elasticsearch.uris': 'Elasticsearch 连接地址',
     APP_MAIL_USERNAME: '邮箱用户名（建议与邮箱账号一致）',
     APP_MAIL_PASSWORD: '邮箱密码',
@@ -115,6 +117,7 @@ const ImportConfigurationForm: React.FC = () => {
         'spring.elasticsearch.uris': 'http://127.0.0.1:9200',
         APP_ES_API_KEY: '',
         APP_AI_TOKENIZER_API_KEY: '',
+        APP_SITE_BEIAN: '',
         APP_MAIL_HOST: '',
         APP_MAIL_PORT: '465',
         APP_MAIL_INBOX_HOST: '',
@@ -510,6 +513,14 @@ const ImportConfigurationForm: React.FC = () => {
                                     {renderConfigField('APP_AI_API_KEY')}
                                     {renderConfigField('APP_TOTP_MASTER_KEY', undefined, 'generate')}
                                     {renderConfigField('APP_AI_TOKENIZER_API_KEY')}
+
+                                    <div className="pt-2 space-y-6">
+                                        <div className="flex items-center gap-2 text-lg font-semibold text-gray-800 border-b pb-2">
+                                            <Server className="w-5 h-5 text-blue-600" />
+                                            站点信息
+                                        </div>
+                                        {renderConfigField('APP_SITE_BEIAN')}
+                                    </div>
                                 </div>
 
                                 <div className="space-y-6">

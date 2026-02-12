@@ -28,6 +28,7 @@ import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatResponseDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatRegenerateStreamRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatStreamRequest;
+import com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ChatRagAugmentConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipConfigDTO;
@@ -100,6 +101,7 @@ public class AiChatService {
     private final TokenCountService tokenCountService;
     private final UsersRepository usersRepository;
     private final FileAssetsRepository fileAssetsRepository;
+    private final PortalChatConfigService portalChatConfigService;
 
     @Value("${app.upload.root:uploads}")
     private String uploadRoot;
@@ -172,18 +174,19 @@ public class AiChatService {
         out.flush();
 
         // 4) load history for context
+        PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
-        boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
-        String systemPrompt = deepThink
-                ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
-                : "你是一个严谨、专业的中文助手。";
+        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+        String systemPrompt = deepThink ? portalCfg.getDeepThinkSystemPrompt() : portalCfg.getSystemPrompt();
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
             messages.add(ChatMessage.system(userSystemPrompt));
         }
 
-        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
+        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0)
+                ? req.getHistoryLimit()
+                : (portalCfg.getHistoryLimit() != null && portalCfg.getHistoryLimit() > 0 ? portalCfg.getHistoryLimit() : 20);
         if (!req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
             // fetch last N messages (excluding current user message which is not yet in context)
             var page = qaMessagesRepository.findAll(
@@ -203,8 +206,8 @@ public class AiChatService {
             }
         }
 
-        boolean useRag = Boolean.TRUE.equals(req.getUseRag());
-        Integer ragTopKOverride = req.getRagTopK();
+        boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
+        Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
         int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
@@ -336,10 +339,13 @@ public class AiChatService {
             logger.warn("ai_chat_rag_retrieval_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
         }
 
+        String providerIdOverride = StringUtils.hasText(req.getProviderId()) ? req.getProviderId().trim() : portalCfg.getProviderId();
+        String modelOverride = StringUtils.hasText(req.getModel()) ? req.getModel().trim() : portalCfg.getModel();
+
         String userMessageForModel = applyThinkingDirective(
                 req.getMessage(),
                 deepThink,
-                resolveModelNameForThinkDirective(req.getProviderId(), req.getModel())
+                resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
         boolean hasImages = images != null && !images.isEmpty();
         List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
@@ -364,9 +370,9 @@ public class AiChatService {
         boolean[] thinkOpen = new boolean[] {false};
         boolean[] thinkClosed = new boolean[] {false};
         String model = null;
-        Double temperature = req.getTemperature();
+        Double temperature = req.getTemperature() != null ? req.getTemperature() : portalCfg.getTemperature();
         if (temperature == null && deepThink) temperature = 0.2;
-        Double topP = req.getTopP();
+        Double topP = req.getTopP() != null ? req.getTopP() : portalCfg.getTopP();
 
         QaMessagesEntity assistantMsg = null;
 
@@ -417,12 +423,12 @@ public class AiChatService {
 
             LlmGateway.RoutedChatStreamResult routed;
             LlmQueueTaskType chatTaskType = hasImages ? LlmQueueTaskType.IMAGE_CHAT : LlmQueueTaskType.TEXT_CHAT;
-            ensureVisionModelForRequest(chatTaskType, req.getProviderId(), req.getModel(), hasImages);
+            ensureVisionModelForRequest(chatTaskType, providerIdOverride, modelOverride, hasImages);
             try {
                 routed = llmGateway.chatStreamRouted(
                         chatTaskType,
-                        req.getProviderId(),
-                        req.getModel(),
+                        providerIdOverride,
+                        modelOverride,
                         messages,
                         temperature,
                         topP,
@@ -594,18 +600,19 @@ public class AiChatService {
             turn = qaTurnsRepository.save(turn);
         }
 
+        PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
-        boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
-        String systemPrompt = deepThink
-                ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
-                : "你是一个严谨、专业的中文助手。";
+        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+        String systemPrompt = deepThink ? portalCfg.getDeepThinkSystemPrompt() : portalCfg.getSystemPrompt();
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
             messages.add(ChatMessage.system(userSystemPrompt));
         }
 
-        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
+        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0)
+                ? req.getHistoryLimit()
+                : (portalCfg.getHistoryLimit() != null && portalCfg.getHistoryLimit() > 0 ? portalCfg.getHistoryLimit() : 20);
         if (!req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
             var page = qaMessagesRepository.findAll(
                     (root, _query, cb) -> cb.equal(root.get("sessionId"), session.getId()),
@@ -624,8 +631,8 @@ public class AiChatService {
             }
         }
 
-        boolean useRag = Boolean.TRUE.equals(req.getUseRag());
-        Integer ragTopKOverride = req.getRagTopK();
+        boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
+        Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
         int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
@@ -741,10 +748,13 @@ public class AiChatService {
             logger.warn("ai_chat_once_rag_retrieval_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
         }
 
+        String providerIdOverride = StringUtils.hasText(req.getProviderId()) ? req.getProviderId().trim() : portalCfg.getProviderId();
+        String modelOverride = StringUtils.hasText(req.getModel()) ? req.getModel().trim() : portalCfg.getModel();
+
         String userMessageForModel = applyThinkingDirective(
                 req.getMessage(),
                 deepThink,
-                resolveModelNameForThinkDirective(req.getProviderId(), req.getModel())
+                resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
         boolean hasImages = images != null && !images.isEmpty();
         List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
@@ -769,8 +779,9 @@ public class AiChatService {
         boolean[] thinkOpen = new boolean[]{false};
         boolean[] thinkClosed = new boolean[]{false};
         String model = null;
-        Double temperature = req.getTemperature();
+        Double temperature = req.getTemperature() != null ? req.getTemperature() : portalCfg.getTemperature();
         if (temperature == null && deepThink) temperature = 0.2;
+        Double topP = req.getTopP() != null ? req.getTopP() : portalCfg.getTopP();
 
         QaMessagesEntity assistantMsg = null;
         List<RagContextPromptService.CitationSource> citedSourcesForDto = List.of();
@@ -818,14 +829,15 @@ public class AiChatService {
 
             LlmGateway.RoutedChatStreamResult routed;
             LlmQueueTaskType chatTaskType = hasImages ? LlmQueueTaskType.IMAGE_CHAT : LlmQueueTaskType.TEXT_CHAT;
-            ensureVisionModelForRequest(chatTaskType, req.getProviderId(), req.getModel(), hasImages);
+            ensureVisionModelForRequest(chatTaskType, providerIdOverride, modelOverride, hasImages);
             try {
                 routed = llmGateway.chatStreamRouted(
                         chatTaskType,
-                        req.getProviderId(),
-                        req.getModel(),
+                        providerIdOverride,
+                        modelOverride,
                         messages,
                         temperature,
+                        topP,
                         deepThink,
                         null,
                         handler
@@ -874,7 +886,7 @@ public class AiChatService {
                 }
 
                 TokenCountService.TokenDecision decision = tokenCountService.decideChatTokens(
-                        routed == null ? req.getProviderId() : routed.providerId(),
+                        routed == null ? providerIdOverride : routed.providerId(),
                         model,
                         deepThink,
                         routed == null ? null : routed.usage(),
@@ -954,18 +966,19 @@ public class AiChatService {
             }
         }
 
+        PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
-        boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
-        String systemPrompt = deepThink
-                ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
-                : "你是一个严谨、专业的中文助手。";
+        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+        String systemPrompt = deepThink ? portalCfg.getDeepThinkSystemPrompt() : portalCfg.getSystemPrompt();
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
             messages.add(ChatMessage.system(userSystemPrompt));
         }
 
-        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
+        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0)
+                ? req.getHistoryLimit()
+                : (portalCfg.getHistoryLimit() != null && portalCfg.getHistoryLimit() > 0 ? portalCfg.getHistoryLimit() : 20);
         if (session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
             List<QaMessagesEntity> all = qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
             List<QaMessagesEntity> before = new ArrayList<>();
@@ -988,15 +1001,17 @@ public class AiChatService {
         }
 
         String questionText = questionMsg.getContent() == null ? "" : questionMsg.getContent();
+        String providerIdOverride = StringUtils.hasText(req.getProviderId()) ? req.getProviderId().trim() : portalCfg.getProviderId();
+        String modelOverride = StringUtils.hasText(req.getModel()) ? req.getModel().trim() : portalCfg.getModel();
         String userMessageForModel = applyThinkingDirective(
                 questionText,
                 deepThink,
-                resolveModelNameForThinkDirective(req.getProviderId(), req.getModel())
+                resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
         messages.add(ChatMessage.user(userMessageForModel));
 
-        boolean useRag = Boolean.TRUE.equals(req.getUseRag());
-        Integer ragTopKOverride = req.getRagTopK();
+        boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
+        Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
         int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
@@ -1119,8 +1134,9 @@ public class AiChatService {
         boolean[] thinkOpen = new boolean[]{false};
         boolean[] thinkClosed = new boolean[]{false};
         String model = null;
-        Double temperature = req.getTemperature();
+        Double temperature = req.getTemperature() != null ? req.getTemperature() : portalCfg.getTemperature();
         if (temperature == null && deepThink) temperature = 0.2;
+        Double topP = req.getTopP() != null ? req.getTopP() : portalCfg.getTopP();
 
         QaMessagesEntity assistantMsg = null;
         List<RagContextPromptService.CitationSource> citedSourcesForDto = List.of();
@@ -1128,10 +1144,11 @@ public class AiChatService {
         try {
             LlmGateway.RoutedChatStreamResult routed = llmGateway.chatStreamRouted(
                     LlmQueueTaskType.TEXT_CHAT,
-                    req.getProviderId(),
-                    req.getModel(),
+                    providerIdOverride,
+                    modelOverride,
                     messages,
                     temperature,
+                    topP,
                     deepThink,
                     null,
                     line -> {
@@ -1213,7 +1230,7 @@ public class AiChatService {
                 }
 
                 TokenCountService.TokenDecision decision = tokenCountService.decideChatTokens(
-                        routed == null ? req.getProviderId() : routed.providerId(),
+                        routed == null ? providerIdOverride : routed.providerId(),
                         model,
                         deepThink,
                         routed == null ? null : routed.usage(),
@@ -1317,18 +1334,19 @@ public class AiChatService {
         out.write("data: {\"sessionId\":" + session.getId() + ",\"questionMessageId\":" + questionMsg.getId() + "}\n\n");
         out.flush();
 
+        PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
-        boolean deepThink = Boolean.TRUE.equals(req.getDeepThink());
-        String systemPrompt = deepThink
-                ? "你是一个严谨、专业的中文助手。请在回答前进行更充分的推理与自检，输出更可靠、结构化的结论；不确定时说明不确定并给出验证建议。"
-                : "你是一个严谨、专业的中文助手。";
+        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+        String systemPrompt = deepThink ? portalCfg.getDeepThinkSystemPrompt() : portalCfg.getSystemPrompt();
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
             messages.add(ChatMessage.system(userSystemPrompt));
         }
 
-        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0) ? req.getHistoryLimit() : 20;
+        int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0)
+                ? req.getHistoryLimit()
+                : (portalCfg.getHistoryLimit() != null && portalCfg.getHistoryLimit() > 0 ? portalCfg.getHistoryLimit() : 20);
         if (session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
             List<QaMessagesEntity> all = qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(session.getId());
             List<QaMessagesEntity> before = new ArrayList<>();
@@ -1351,15 +1369,17 @@ public class AiChatService {
         }
 
         String questionText = questionMsg.getContent();
+        String providerIdOverride = StringUtils.hasText(req.getProviderId()) ? req.getProviderId().trim() : portalCfg.getProviderId();
+        String modelOverride = StringUtils.hasText(req.getModel()) ? req.getModel().trim() : portalCfg.getModel();
         String questionTextForModel = applyThinkingDirective(
                 questionText,
                 deepThink,
-                resolveModelNameForThinkDirective(req.getProviderId(), req.getModel())
+                resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
         messages.add(ChatMessage.user(questionTextForModel));
 
-        boolean useRag = Boolean.TRUE.equals(req.getUseRag());
-        Integer ragTopKOverride = req.getRagTopK();
+        boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
+        Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
         int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
@@ -1498,17 +1518,17 @@ public class AiChatService {
         boolean[] thinkOpen = new boolean[] {false};
         boolean[] thinkClosed = new boolean[] {false};
         String model = null;
-        Double temperature = req.getTemperature();
+        Double temperature = req.getTemperature() != null ? req.getTemperature() : portalCfg.getTemperature();
         if (temperature == null && deepThink) temperature = 0.2;
-        Double topP = req.getTopP();
+        Double topP = req.getTopP() != null ? req.getTopP() : portalCfg.getTopP();
 
         QaMessagesEntity assistantMsg = null;
 
         try {
             LlmGateway.RoutedChatStreamResult routed = llmGateway.chatStreamRouted(
                     LlmQueueTaskType.TEXT_CHAT,
-                    req.getProviderId(),
-                    req.getModel(),
+                    providerIdOverride,
+                    modelOverride,
                     messages,
                     temperature,
                     topP,
@@ -1631,7 +1651,7 @@ public class AiChatService {
                 }
 
                 TokenCountService.TokenDecision decision = tokenCountService.decideChatTokens(
-                        routed == null ? req.getProviderId() : routed.providerId(),
+                        routed == null ? providerIdOverride : routed.providerId(),
                         model,
                         deepThink,
                         routed == null ? null : routed.usage(),

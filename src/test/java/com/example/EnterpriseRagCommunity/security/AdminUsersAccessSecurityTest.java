@@ -28,8 +28,8 @@ class AdminUsersAccessSecurityTest {
     private MockMvc mockMvc;
 
     @Test
-    @WithMockUser(username = "u", authorities = {"PERM_admin_users:access"})
-    void rolePermissionsEndpoints_shouldAllow_withAdminUsersAccessPerm() throws Exception {
+    @WithMockUser(username = "u", authorities = {"PERM_admin_role_permissions:read"})
+    void rolePermissionsEndpoints_shouldAllow_withRolePermissionsReadPerm() throws Exception {
         mockMvc.perform(get("/api/admin/role-permissions/roles"))
                 .andExpect(status().isOk());
     }
@@ -42,8 +42,8 @@ class AdminUsersAccessSecurityTest {
     }
 
     @Test
-    @WithMockUser(username = "u", authorities = {"PERM_admin_users:access"})
-    void permissionsEndpoints_shouldAllow_withAdminUsersAccessPerm() throws Exception {
+    @WithMockUser(username = "u", authorities = {"PERM_admin_permissions:read"})
+    void permissionsEndpoints_shouldAllow_withPermissionsReadPerm() throws Exception {
         mockMvc.perform(get("/api/admin/permissions"))
                 .andExpect(status().isOk());
     }

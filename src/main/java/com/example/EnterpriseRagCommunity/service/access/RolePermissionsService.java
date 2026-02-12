@@ -4,9 +4,11 @@ import com.example.EnterpriseRagCommunity.dto.access.RolePermissionUpsertDTO;
 import com.example.EnterpriseRagCommunity.dto.access.RolePermissionViewDTO;
 import com.example.EnterpriseRagCommunity.entity.access.RolePermissionId;
 import com.example.EnterpriseRagCommunity.entity.access.RolePermissionsEntity;
+import com.example.EnterpriseRagCommunity.entity.access.RolesEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.PermissionsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.RolePermissionsRepository;
+import com.example.EnterpriseRagCommunity.repository.access.RolesRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UserRoleLinksRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -24,6 +26,8 @@ public class RolePermissionsService {
     private final PermissionsRepository permissionsRepository;
     private final UserRoleLinksRepository userRoleLinksRepository;
     private final UsersRepository usersRepository;
+    private final RbacAuditService rbacAuditService;
+    private final RolesRepository rolesRepository;
 
     private static RolePermissionViewDTO toView(RolePermissionsEntity e) {
         if (e == null) return null;
@@ -53,6 +57,7 @@ public class RolePermissionsService {
         if (roleId == null) {
             throw new IllegalArgumentException("roleId is required");
         }
+        List<RolePermissionViewDTO> before = listByRoleId(roleId);
 
         // 1) 清空旧配置
         rolePermissionsRepository.deleteAllByRoleId(roleId);
@@ -60,6 +65,7 @@ public class RolePermissionsService {
         if (dtoList == null || dtoList.isEmpty()) {
             // RBAC changed -> touch users with this role
             touchUsersByRoleId(roleId);
+            rbacAuditService.record("ROLE_MATRIX_REPLACE", "role_permissions", "roleId=" + roleId, before, List.of());
             return List.of();
         }
 
@@ -85,6 +91,10 @@ public class RolePermissionsService {
             latestByPermId.put(dto.getPermissionId(), dto);
         }
 
+        if (roleName != null && !roleName.isBlank()) {
+            upsertRoleMeta(roleId, roleName.trim());
+        }
+
         // 3) 校验 permissionId 都存在
         Set<Long> permIds = latestByPermId.keySet();
         long existingCount = permissionsRepository.countByIdIn(permIds);
@@ -106,7 +116,9 @@ public class RolePermissionsService {
         List<RolePermissionsEntity> saved = rolePermissionsRepository.saveAll(entities);
         // RBAC changed -> touch users with this role
         touchUsersByRoleId(roleId);
-        return saved.stream().map(RolePermissionsService::toView).toList();
+        List<RolePermissionViewDTO> after = saved.stream().map(RolePermissionsService::toView).toList();
+        rbacAuditService.record("ROLE_MATRIX_REPLACE", "role_permissions", "roleId=" + roleId, before, after);
+        return after;
     }
 
     /**
@@ -139,6 +151,9 @@ public class RolePermissionsService {
         if (latestByPermId.isEmpty()) {
             throw new IllegalArgumentException("Permission matrix is required");
         }
+        if (roleName == null || roleName.isBlank()) {
+            throw new IllegalArgumentException("roleName is required");
+        }
 
         // 校验 permissionId 都存在
         Set<Long> permIds = latestByPermId.keySet();
@@ -150,6 +165,7 @@ public class RolePermissionsService {
         // 分配新的 roleId：max(role_id)+1（无记录时从 1 开始）
         Long maxRoleId = rolePermissionsRepository.findMaxRoleId();
         long nextRoleId = (maxRoleId == null ? 1L : (maxRoleId + 1L));
+        upsertRoleMeta(nextRoleId, roleName.trim());
 
         List<RolePermissionsEntity> entities = new ArrayList<>();
         for (RolePermissionUpsertDTO dto : latestByPermId.values()) {
@@ -164,7 +180,9 @@ public class RolePermissionsService {
         List<RolePermissionsEntity> saved = rolePermissionsRepository.saveAll(entities);
         // New role created; no users yet, but harmless to touch if somebody links later.
         touchUsersByRoleId(nextRoleId);
-        return saved.stream().map(RolePermissionsService::toView).toList();
+        List<RolePermissionViewDTO> after = saved.stream().map(RolePermissionsService::toView).toList();
+        rbacAuditService.record("ROLE_CREATE_WITH_MATRIX", "role_permissions", "roleId=" + nextRoleId, null, after);
+        return after;
     }
 
     @Transactional
@@ -181,21 +199,28 @@ public class RolePermissionsService {
         id.setRoleId(dto.getRoleId());
         id.setPermissionId(dto.getPermissionId());
 
-        RolePermissionsEntity entity = rolePermissionsRepository.findById(id).orElseGet(() -> {
+        RolePermissionsEntity existing = rolePermissionsRepository.findById(id).orElse(null);
+        RolePermissionViewDTO before = toView(existing);
+        RolePermissionsEntity entity = existing != null ? existing : new RolePermissionsEntity();
+        if (existing == null) {
             RolePermissionsEntity e = new RolePermissionsEntity();
             e.setRoleId(dto.getRoleId());
             e.setPermissionId(dto.getPermissionId());
-            return e;
-        });
+            entity = e;
+        }
 
         if (dto.getRoleName() != null && !dto.getRoleName().trim().isEmpty()) {
-            entity.setRoleName(dto.getRoleName().trim());
+            String trimmed = dto.getRoleName().trim();
+            entity.setRoleName(trimmed);
+            upsertRoleMeta(dto.getRoleId(), trimmed);
         }
         entity.setAllow(dto.getAllow());
         RolePermissionsEntity saved = rolePermissionsRepository.save(entity);
         // RBAC changed -> touch users with this role
         touchUsersByRoleId(dto.getRoleId());
-        return toView(saved);
+        RolePermissionViewDTO after = toView(saved);
+        rbacAuditService.record("ROLE_PERMISSION_UPSERT", "role_permissions", "roleId=" + dto.getRoleId() + ",permissionId=" + dto.getPermissionId(), before, after);
+        return after;
     }
 
     @Transactional
@@ -204,13 +229,13 @@ public class RolePermissionsService {
         id.setRoleId(roleId);
         id.setPermissionId(permissionId);
 
-        if (!rolePermissionsRepository.existsById(id)) {
-            throw new EntityNotFoundException("RolePermission not found: roleId=" + roleId + ", permissionId=" + permissionId);
-        }
-
+        RolePermissionsEntity existing = rolePermissionsRepository.findById(id).orElseThrow(() ->
+                new EntityNotFoundException("RolePermission not found: roleId=" + roleId + ", permissionId=" + permissionId));
+        RolePermissionViewDTO before = toView(existing);
         rolePermissionsRepository.deleteById(id);
         // RBAC changed -> touch users with this role
         touchUsersByRoleId(roleId);
+        rbacAuditService.record("ROLE_PERMISSION_DELETE", "role_permissions", "roleId=" + roleId + ",permissionId=" + permissionId, before, null);
     }
 
     @Transactional
@@ -218,9 +243,11 @@ public class RolePermissionsService {
         if (roleId == null) {
             throw new IllegalArgumentException("roleId is required");
         }
+        List<RolePermissionViewDTO> before = listByRoleId(roleId);
         int n = rolePermissionsRepository.deleteAllByRoleId(roleId);
         // RBAC changed -> touch users with this role
         touchUsersByRoleId(roleId);
+        rbacAuditService.record("ROLE_CLEAR", "role_permissions", "roleId=" + roleId, before, List.of());
         return n;
     }
 
@@ -235,6 +262,8 @@ public class RolePermissionsService {
             if (users.isEmpty()) return;
             // Trigger JPA @PreUpdate -> updates updated_at
             for (UsersEntity u : users) {
+                long v = u.getAccessVersion() == null ? 0L : u.getAccessVersion();
+                u.setAccessVersion(v + 1L);
                 u.setUpdatedAt(java.time.LocalDateTime.now());
             }
             usersRepository.saveAll(users);
@@ -244,10 +273,47 @@ public class RolePermissionsService {
 
     @Transactional(readOnly = true)
     public List<RoleInfoDTO> listRoles() {
-        return rolePermissionsRepository.findRoleSummaries().stream()
-                .map(v -> new RoleInfoDTO(v.getRoleId(), v.getRoleName()))
+        Map<Long, String> map = new HashMap<>();
+        for (RolesEntity r : rolesRepository.listAll()) {
+            if (r == null || r.getRoleId() == null) continue;
+            String name = r.getRoleName();
+            if (name != null && !name.isBlank()) {
+                map.put(r.getRoleId(), name.trim());
+            }
+        }
+        for (var v : rolePermissionsRepository.findRoleSummaries()) {
+            if (v.getRoleId() == null) continue;
+            if (map.containsKey(v.getRoleId())) continue;
+            String name = v.getRoleName();
+            if (name != null && !name.isBlank()) map.put(v.getRoleId(), name.trim());
+        }
+        return map.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(e -> new RoleInfoDTO(e.getKey(), e.getValue()))
                 .toList();
     }
 
     public record RoleInfoDTO(Long roleId, String roleName) {}
+
+    private void upsertRoleMeta(Long roleId, String roleName) {
+        if (roleId == null) return;
+        if (roleName == null || roleName.isBlank()) return;
+        RolesEntity entity = rolesRepository.findById(roleId).orElseGet(() -> {
+            RolesEntity r = new RolesEntity();
+            r.setRoleId(roleId);
+            r.setRiskLevel("LOW");
+            r.setBuiltin(Boolean.FALSE);
+            r.setImmutable(Boolean.FALSE);
+            r.setCreatedAt(java.time.LocalDateTime.now());
+            r.setUpdatedAt(java.time.LocalDateTime.now());
+            return r;
+        });
+        entity.setRoleName(roleName.trim());
+        if (entity.getRiskLevel() == null || entity.getRiskLevel().isBlank()) entity.setRiskLevel("LOW");
+        if (entity.getBuiltin() == null) entity.setBuiltin(Boolean.FALSE);
+        if (entity.getImmutable() == null) entity.setImmutable(Boolean.FALSE);
+        if (entity.getCreatedAt() == null) entity.setCreatedAt(java.time.LocalDateTime.now());
+        entity.setUpdatedAt(java.time.LocalDateTime.now());
+        rolesRepository.save(entity);
+    }
 }

@@ -228,6 +228,9 @@ INSERT IGNORE INTO app_settings(k, v) VALUES ('default_register_role_id', '1');
 INSERT IGNORE INTO app_settings(k, v) VALUES ('retrieval.rag.autoSync.enabled', 'true');
 INSERT IGNORE INTO app_settings(k, v) VALUES ('retrieval.rag.autoSync.intervalSeconds', '30');
 
+INSERT IGNORE INTO app_settings(k, v) VALUES ('security_login2fa_scope_policy', 'ALLOW_ALL');
+INSERT IGNORE INTO app_settings(k, v) VALUES ('security_login2fa_mode', 'EMAIL_OR_TOTP');
+
 INSERT INTO supported_languages (language_code, display_name, native_name, is_active, sort_order) VALUES
 -- 表：supported_languages
 -- 字段说明：

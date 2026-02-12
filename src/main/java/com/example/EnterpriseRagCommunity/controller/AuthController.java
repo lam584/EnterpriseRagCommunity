@@ -21,6 +21,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.csrf.CsrfToken; // 添加 TenantsRepository 导入
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -646,6 +647,7 @@ public class AuthController {
      * 此端点允许匿名访问，但只有在系统需要初始设置时才会执行注册
      */
     @PostMapping("/register-initial-admin")
+    @Transactional
     public ResponseEntity<?> registerInitialAdmin(@Valid @RequestBody com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest request) {
         // 检查是否需要初始设置
         if (!initialAdminSetupState.isSetupRequired()) {
@@ -654,12 +656,6 @@ public class AuthController {
         }
 
         try {
-            // 检查邮箱是否已存在
-            if (administratorService.findByUsername(request.getEmail()).isPresent()) { // 对齐: 使用 findByUsername 方法，参数为 email
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(new ApiResponse<>(false, "邮箱已存在", null));
-            }
-
             logger.info("开始创建初始管理员账户...");
             TenantsEntity defaultTenant = resolveOrCreateDefaultTenantOrThrow();
             BoardsEntity defaultBoard = boardsRepository
@@ -671,21 +667,43 @@ public class AuthController {
 
             Long adminRoleId = 2L;
 
-            // 创建用户账户
-            UsersEntity user = new UsersEntity(); // 对齐: User → UsersEntity
-            user.setTenantId(defaultTenant); // 设置TenantsEntity对象
-            user.setEmail(request.getEmail());
-            user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-            user.setUsername(request.getUsername() != null ? request.getUsername() : "管理员"); // 修复: RegisterRequest 使用 getUsername() 而非 getDisplayName()
-            user.setStatus(AccountStatus.ACTIVE);
+            UsersEntity savedUser;
+            Optional<UsersEntity> existingOpt = administratorService.findByUsername(request.getEmail());
+            if (existingOpt.isPresent()) {
+                UsersEntity existing = existingOpt.get();
+                if (existing.getPasswordHash() == null || !passwordEncoder.matches(request.getPassword(), existing.getPasswordHash())) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                            .body(new ApiResponse<>(false, "邮箱已存在，请更换邮箱或使用相同密码重试", null));
+                }
+                if (existing.getTenantId() == null) {
+                    existing.setTenantId(defaultTenant);
+                    existing = administratorService.save(existing);
+                }
+                savedUser = existing;
+                logger.info("检测到已存在的初始管理员账户，继续补齐初始化步骤。");
+            } else {
+                UsersEntity user = new UsersEntity();
+                user.setTenantId(defaultTenant);
+                user.setEmail(request.getEmail());
+                user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+                user.setUsername(request.getUsername() != null ? request.getUsername() : "管理员");
+                user.setStatus(AccountStatus.ACTIVE);
 
-            logger.debug("保存用户账户...");
-            UsersEntity savedUser = administratorService.save(user); // 对齐: 保存新实体
-            logger.info("用户账户保存成功。");
-            UserRoleLinksEntity link = new UserRoleLinksEntity();
-            link.setUserId(savedUser.getId());
-            link.setRoleId(adminRoleId);
-            userRoleLinksRepository.save(link);
+                logger.debug("保存用户账户...");
+                savedUser = administratorService.save(user);
+                logger.info("用户账户保存成功。");
+            }
+
+            String scopeType = "GLOBAL";
+            Long scopeId = 0L;
+            if (!userRoleLinksRepository.existsByUserIdAndRoleIdAndScopeTypeAndScopeId(savedUser.getId(), adminRoleId, scopeType, scopeId)) {
+                UserRoleLinksEntity link = new UserRoleLinksEntity();
+                link.setUserId(savedUser.getId());
+                link.setRoleId(adminRoleId);
+                link.setScopeType(scopeType);
+                link.setScopeId(scopeId);
+                userRoleLinksRepository.save(link);
+            }
 
             if (!boardModeratorsRepository.existsByBoardIdAndUserId(defaultBoard.getId(), savedUser.getId())) {
                 BoardModeratorsEntity moderator = new BoardModeratorsEntity();

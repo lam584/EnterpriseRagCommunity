@@ -264,7 +264,7 @@ cd EnterpriseRagCommunity
 
    ```nginx
    server {
-       listen 80;
+       listen 80 default_server;
        server_name _;  # 这里可以填域名，没有域名就填 _
 
        # 前端静态文件
@@ -292,23 +292,135 @@ cd EnterpriseRagCommunity
    }
    ```
 
-   **保存退出方法**：按 `Ctrl + O`，然后按 `Enter` 确认保存，最后按 `Ctrl + X` 退出。
-
-4. **启用配置并重启 Nginx**：
+4. **启用站点并重启 Nginx**
    ```bash
-   # 建立软链接
-   sudo ln -s /etc/nginx/sites-available/enterprise-rag /etc/nginx/sites-enabled/
+   sudo ln -s /etc/nginx/sites-available/enterprise-rag /etc/nginx/sites-enabled/enterprise-rag
 
-   # 删除默认配置（避免冲突）
-   sudo rm /etc/nginx/sites-enabled/default
+   sudo rm -f /etc/nginx/sites-enabled/default
 
-   # 检查配置是否正确
    sudo nginx -t
-
-   # 重启 Nginx
    sudo systemctl restart nginx
+
+   curl -I http://localhost
+   ```
+   > 如果 `ln -s` 提示 `File exists`，说明软链接已存在：先执行 `sudo rm -f /etc/nginx/sites-enabled/enterprise-rag` 再重新执行 `ln -s`。
+
+5. **配置 SSL 证书（HTTPS，Nginx）**
+
+   > 前提：您已经在腾讯云/CA 平台下载了 Nginx 证书（通常包含 `*.crt` / `*.pem` 与 `*.key`）。  
+   > 注意：公有 CA 证书一般要求域名；如果您只有公网 IP，没有域名，浏览器访问会出现证书不受信任属于正常现象。
+
+   **5.1 上传并放置证书文件**
+
+   建议将证书放到系统目录，权限更安全（示例以 `example.com` 为目录名）：
+   ```bash
+   sudo mkdir -p /etc/nginx/ssl/example.com
+
+   sudo cp /path/to/your_cert.crt /etc/nginx/ssl/example.com/server.crt
+   sudo cp /path/to/your_private.key /etc/nginx/ssl/example.com/server.key
+
+   sudo chown -R root:root /etc/nginx/ssl/example.com
+   sudo chmod 700 /etc/nginx/ssl/example.com
+   sudo chmod 600 /etc/nginx/ssl/example.com/server.key
+   sudo chmod 644 /etc/nginx/ssl/example.com/server.crt
    ```
 
+   > 如果您下载的是压缩包（例如 `cert.zip`），可以先上传到服务器后解压，再按上面方式 `cp` 到 `/etc/nginx/ssl/...`：
+   ```bash
+   unzip cert.zip -d cert_unzip
+   ls -al cert_unzip
+   ```
+
+   **5.2 修改 Nginx 配置为 HTTPS**
+
+   打开配置文件：
+   ```bash
+   sudo nano /etc/nginx/sites-available/enterprise-rag
+   ```
+
+   将内容替换为以下示例（把 `server_name` 与证书路径改成您的实际值）：
+   ```nginx
+   server {
+       listen 80 default_server;
+       server_name example.com;
+       return 301 https://$host$request_uri;
+   }
+
+   server {
+       listen 443 ssl http2;
+       server_name example.com;
+
+       ssl_certificate /etc/nginx/ssl/example.com/server.crt;
+       ssl_certificate_key /etc/nginx/ssl/example.com/server.key;
+
+       ssl_protocols TLSv1.2 TLSv1.3;
+       ssl_ciphers HIGH:!aNULL:!MD5;
+       ssl_prefer_server_ciphers off;
+
+       location / {
+           root /home/ubuntu/EnterpriseRagCommunity/my-vite-app/dist;
+           index index.html;
+           try_files $uri $uri/ /index.html;
+       }
+
+       location /api {
+           proxy_pass http://localhost:8099;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+       }
+
+       location /uploads {
+           proxy_pass http://localhost:8099;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
+       }
+   }
+   ```
+
+   > 如果您的 80 端口因备案原因无法对外访问，但 443 可用：可以保留 443 的 `server`，同时删除/忽略 80 的跳转块；用户直接访问 `https://example.com` 即可。
+
+   **5.3 验证 HTTPS 与重启**
+   ```bash
+   sudo nginx -t
+   sudo systemctl restart nginx
+
+   curl -Ik https://localhost
+
+   curl -Ik https://example.com
+   ```
+
+   ### 常见错误： 如果 80 端口出现 500，但 8099 正常
+      500 的根因一定会写进错误日志（例如重定向循环、open() 失败、配置命中异常等）,可以运行命令行查看日志：
+      ```bash
+      sudo tail -n 200 /var/log/nginx/error.log
+      ```
+
+   
+      如果Nginx 错误日志显示权限被拒绝（Permission denied）的问题，导致网站无法正常访问。以下是详细分析和解决方案：
+      方法一：修改目录权限（推荐）
+      给 Nginx 用户（通常是 www-data）赋予读取和执行权限：
+      ```bash
+      # 1. 确保父目录有执行权限（必须！）
+      sudo chmod +x /home/ubuntu
+      sudo chmod +x /home/ubuntu/EnterpriseRagCommunity
+      sudo chmod +x /home/ubuntu/EnterpriseRagCommunity/my-vite-app
+      sudo chmod +x /home/ubuntu/EnterpriseRagCommunity/my-vite-app/dist
+
+      # 2. 给 dist 目录及内容添加读权限
+      sudo chmod -R 755 /home/ubuntu/EnterpriseRagCommunity/my-vite-app/dist
+
+      # 或者更安全的方式：只给需要的用户组授权
+      sudo chgrp -R www-data /home/ubuntu/EnterpriseRagCommunity/my-vite-app/dist
+      sudo chmod -R 750 /home/ubuntu/EnterpriseRagCommunity/my-vite-app/dist
+
+
+      # 3. 重启 nginx
+      sudo systemctl restart nginx
+
+      # 4. 测试访问
+      curl -I http://localhost
+      ```
 ---
 
 ## 第十一步：启动后端服务 (设置开机自启)
@@ -368,7 +480,9 @@ cd EnterpriseRagCommunity
 ## 验证与系统初始化
 
 现在，您应该可以通过浏览器访问服务器的公网 IP 地址来看到您的应用了。  
-如果无法访问，请检查腾讯云控制台的**安全组**设置，确保 **TCP 80 端口**是开放的。
+如果无法访问，请检查腾讯云控制台的**安全组**设置：
+- 未配置 SSL：确保 **TCP 80 端口**开放
+- 已配置 SSL：确保 **TCP 443 端口**开放（若启用了 80→443 跳转，也需开放 80）
 
 ---
 
@@ -496,11 +610,20 @@ sudo systemctl restart enterprise-rag
 我们可以使用 `sed` 命令直接将配置文件中的 `80` 端口替换为 `8080`。请复制并执行以下命令：
 
 ```bash
-# 备份原配置文件（养成好习惯）
 sudo cp /etc/nginx/sites-available/enterprise-rag /etc/nginx/sites-available/enterprise-rag.bak
 
-# 将 listen 80; 修改为 listen 8080;
-sudo sed -i 's/listen 80;/listen 8080;/g' /etc/nginx/sites-available/enterprise-rag
+sudo sed -i \
+  -e 's/listen 80 default_server;/listen 8080 default_server;/g' \
+  -e 's/listen 80;/listen 8080;/g' \
+  /etc/nginx/sites-available/enterprise-rag
+```
+
+> 如果您已经按上面的步骤启用了 HTTPS：通常还需要把 `listen 443 ssl http2;` 改成 `listen 8443 ssl http2;`（示例端口），并在安全组放行 8443：
+```bash
+sudo sed -i \
+  -e 's/listen 443 ssl http2;/listen 8443 ssl http2;/g' \
+  -e 's/listen 443 ssl;/listen 8443 ssl;/g' \
+  /etc/nginx/sites-available/enterprise-rag
 ```
 
 ## 第二步：检查并重启 Nginx
@@ -508,16 +631,15 @@ sudo sed -i 's/listen 80;/listen 8080;/g' /etc/nginx/sites-available/enterprise-
 修改完成后，需要验证配置文件的语法是否正确，并重启 Nginx 使更改生效。
 
 ```bash
-# 检查 Nginx 配置语法
 sudo nginx -t
 
-# 如果显示 "syntax is ok" 和 "test is successful"，则重启 Nginx
 sudo systemctl restart nginx
 ```
 
 ## 第三步：在腾讯云控制台开放 8080 端口
 
 仅仅在服务器上修改是不够的，您还需要在腾讯云的防火墙（安全组）中放行 8080 端口：
+如果您同时把 HTTPS 端口改成了 8443，也需要放行 `TCP:8443`。
 
 1. 登录 [腾讯云控制台](https://console.cloud.tencent.com/cvm/index)。
 2. 找到您的实例，点击**“安全组”**选项卡。
@@ -533,7 +655,11 @@ sudo systemctl restart nginx
 
 现在，您应该可以通过 IP 加端口的方式访问您的网站了：
 
-**访问地址**：`http://<您的服务器公网IP>:8080`
+**访问地址（HTTP）**：`http://<您的服务器公网IP>:8080`
+
+如果您同时把 HTTPS 端口改成了 8443：
+
+**访问地址（HTTPS）**：`https://<您的域名或公网IP>:8443`
 
 ## 补充说明
 

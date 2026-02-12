@@ -55,6 +55,9 @@ public class UsersEntity {
     @Column(name = "session_invalidated_at")
     private LocalDateTime sessionInvalidatedAt;
 
+    @Column(name = "access_version", nullable = false)
+    private Long accessVersion;
+
     @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
@@ -67,6 +70,9 @@ public class UsersEntity {
         if (isDeleted == null) {
             isDeleted = false;
         }
+        if (accessVersion == null) {
+            accessVersion = 0L;
+        }
     }
 
     @PreUpdate
@@ -74,6 +80,9 @@ public class UsersEntity {
         updatedAt = LocalDateTime.now();
         if (isDeleted == null) {
             isDeleted = false;
+        }
+        if (accessVersion == null) {
+            accessVersion = 0L;
         }
     }
 }

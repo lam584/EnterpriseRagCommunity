@@ -660,6 +660,10 @@ const EmbedForm: React.FC = () => {
             刷新
           </button>
         </div>
+        <div className="text-sm text-gray-600">
+          VEC 的核心思路是：把文本转成向量（Embedding），然后去“样本库索引”里找最相似的已知样本。距离越小越相似；当距离 ≤ 阈值就认为命中。
+          命中后如何处理（拒绝/进 LLM/转人工）由「置信回退机制」中的 VEC 配置决定；本页主要用于管理 VEC 的底层参数、索引状态和样本库。
+        </div>
 
         {error ? (
           <div className="rounded border border-red-200 bg-red-50 text-red-800 px-3 py-2 text-sm flex items-center justify-between gap-3">
@@ -674,6 +678,9 @@ const EmbedForm: React.FC = () => {
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-lg font-semibold">样本库索引状态</div>
+              <div className="text-sm text-gray-600 mt-1">
+                样本会被写入 ES 索引用于相似检索：索引需要“存在且可用”，并且维度要与当前 Embedding 模型一致，否则 VEC 无法正常命中。
+              </div>
             </div>
             {samplesIndexStatus?.exists === false && (
               <button
@@ -858,6 +865,7 @@ const EmbedForm: React.FC = () => {
                     setCfgForm((p) => ({ ...p, embeddingModel: next.model }));
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">用于“把文本变成向量”的模型。更换模型后，通常需要重建索引以避免维度/分布不一致。</div>
               </div>
               <div>
                 <div className="text-sm font-medium mb-1">维度（0=自动）</div>
@@ -871,6 +879,7 @@ const EmbedForm: React.FC = () => {
                     setCfgForm((p) => ({ ...p, embeddingDims: e.target.value }));
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">大多数模型维度是固定的；填 0 表示按模型默认值自动推导。</div>
               </div>
               <div>
                 <div className="text-sm font-medium mb-1">最大输入长度（0=不截断）</div>
@@ -884,6 +893,7 @@ const EmbedForm: React.FC = () => {
                     setCfgForm((p) => ({ ...p, maxInputChars: e.target.value }));
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">超过该长度的文本会被截断后再做向量化，避免超长内容导致耗时/失败。</div>
               </div>
               <div>
                 <div className="text-sm font-medium mb-1">TopK（1~50）</div>
@@ -897,6 +907,7 @@ const EmbedForm: React.FC = () => {
                     setCfgForm((p) => ({ ...p, defaultTopK: e.target.value }));
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">返回最相似的前 K 条样本作为参考（K 越大越慢，但信息更全）。</div>
               </div>
               <div>
                 <div className="text-sm font-medium mb-1">阈值（0~1）</div>
@@ -910,6 +921,7 @@ const EmbedForm: React.FC = () => {
                     setCfgForm((p) => ({ ...p, defaultThreshold: e.target.value }));
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">判定命中的距离阈值：距离 ≤ 阈值 视为命中。阈值越大越容易命中，阈值越小越不容易命中。</div>
               </div>
               <div>
                 <div className="text-sm font-medium mb-1">候选数（0=自动）</div>
@@ -923,6 +935,7 @@ const EmbedForm: React.FC = () => {
                     setCfgForm((p) => ({ ...p, defaultNumCandidates: e.target.value }));
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">近邻检索的候选数量（越大通常越准但更慢）；填 0 让后端自动选择。</div>
               </div>
             </div>
 
@@ -950,6 +963,7 @@ const EmbedForm: React.FC = () => {
                       关闭
                     </option>
                   </select>
+                  <div className="text-xs text-gray-500 mt-1">开启后：样本新增/修改会按间隔自动同步到 ES，避免“样本在库里但索引里没有”。</div>
                 </div>
                 <div>
                   <div className="text-sm font-medium mb-1">自动增量同步时间间隔</div>
@@ -972,6 +986,7 @@ const EmbedForm: React.FC = () => {
                     <option value="1800">30 分钟</option>
                     <option value="3600">60 分钟</option>
                   </select>
+                  <div className="text-xs text-gray-500 mt-1">间隔越短同步越及时，但会更频繁调用 embedding/ES。</div>
                 </div>
               </div>
             </div>
@@ -979,13 +994,14 @@ const EmbedForm: React.FC = () => {
           </div>
 
           <div className="rounded border bg-gray-50 p-3 space-y-3">
-            <div className="font-semibold">手动检测（用于验证 ES/Embedding 是否通）</div>
+            <div className="font-semibold">手动检测（快速验证“向量化 + 索引检索”是否正常）</div>
             <textarea
               className="w-full rounded border px-3 py-2 min-h-[90px]"
-              placeholder="输入要检测的文本（贴标题+正文或评论内容）"
+              placeholder="输入要检测的文本（例如：帖子标题+正文，或评论内容）"
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
+            <div className="text-xs text-gray-500">点击「检测」后会返回与样本库最相似的 TopK 条样本，并给出最佳距离（bestDistance）。</div>
             <div className="flex items-center gap-3">
               <button
                 type="button"
@@ -1002,10 +1018,11 @@ const EmbedForm: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="font-semibold">检测结果</div>
                   <span className={`text-sm font-semibold ${checkResult.hit ? 'text-red-700' : 'text-green-700'}`}>
-                    {checkResult.hit ? '命中（HIT，建议转人工）' : '未命中（MISS）'}
+                    {checkResult.hit ? '命中（HIT，距离达到阈值）' : '未命中（MISS）'}
                   </span>
                 </div>
                 <div className="text-sm text-gray-700">
+                  距离越小越相似；当 bestDistance ≤ threshold 时判定命中。
                   最佳距离（bestDistance） <b>{checkResult.bestDistance ?? '—'}</b>；阈值（threshold） <b>{checkResult.threshold ?? '—'}</b>；取前K个（topK）{' '}
                   <b>{checkResult.topK ?? '—'}</b>；候选数（numCandidates） <b>{checkResult.numCandidates ?? '—'}</b>；向量维度（dims）{' '}
                   <b>{checkResult.embeddingDims ?? '—'}</b>；向量模型（model） <b>{checkResult.embeddingModel ?? '—'}</b>；最大输入字符数（maxInputChars）{' '}
@@ -1046,7 +1063,9 @@ const EmbedForm: React.FC = () => {
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="text-lg font-semibold">样本库数据（moderation_samples）</div>
-            <div className="text-sm text-gray-600">支持新增/编辑/删除；textHash/normalizedText 由后端自动生成</div>
+            <div className="text-sm text-gray-600">
+              这里存放“已知违规/广告”的参考样本，用于相似度命中。支持新增/编辑/删除；textHash/normalizedText 等派生字段由后端自动生成。
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1161,7 +1180,7 @@ const EmbedForm: React.FC = () => {
               {samples.length === 0 ? (
                 <tr>
                   <td className="py-4 px-2 text-gray-500" colSpan={8}>
-                    暂无数据
+                    暂无数据。建议先添加少量高质量样本，再通过「手动检测」验证阈值是否合适。
                   </td>
                 </tr>
               ) : null}
@@ -1217,6 +1236,7 @@ const EmbedForm: React.FC = () => {
                     <option value="AD_SAMPLE">{labelWithEnum(CATEGORY_LABEL.AD_SAMPLE, 'AD_SAMPLE')}</option>
                     <option value="HISTORY_VIOLATION">{labelWithEnum(CATEGORY_LABEL.HISTORY_VIOLATION, 'HISTORY_VIOLATION')}</option>
                   </select>
+                  <div className="text-xs text-gray-500">用于区分样本类型，便于统计与后续策略扩展。</div>
                 </label>
 
                 <label className="text-sm space-y-1">
@@ -1229,6 +1249,7 @@ const EmbedForm: React.FC = () => {
                     <option value="true">启用（true）</option>
                     <option value="false">禁用（false）</option>
                   </select>
+                  <div className="text-xs text-gray-500">禁用后：该样本不会参与相似度检索，但记录仍保留。</div>
                 </label>
 
                 <label className="text-sm space-y-1">
@@ -1246,6 +1267,7 @@ const EmbedForm: React.FC = () => {
                     <option value="LLM">{labelWithEnum(SOURCE_LABEL.LLM, 'LLM')}</option>
                     <option value="IMPORT">{labelWithEnum(SOURCE_LABEL.IMPORT, 'IMPORT')}</option>
                   </select>
+                  <div className="text-xs text-gray-500">用于追溯样本从哪里来（人工标注/规则命中/LLM 产出/批量导入）。</div>
                 </label>
 
                 <label className="text-sm space-y-1">
@@ -1256,6 +1278,7 @@ const EmbedForm: React.FC = () => {
                     value={String(sampleForm.riskLevel ?? 0)}
                     onChange={(e) => setSampleForm((p) => ({ ...p, riskLevel: Number(e.target.value) }))}
                   />
+                  <div className="text-xs text-gray-500">数值越大代表风险越高（具体范围以服务端约定为准）。</div>
                 </label>
 
                 <label className="text-sm space-y-1">
@@ -1272,6 +1295,7 @@ const EmbedForm: React.FC = () => {
                     <option value="POST">{labelWithEnum(CONTENT_TYPE_LABEL.POST, 'POST')}</option>
                     <option value="COMMENT">{labelWithEnum(CONTENT_TYPE_LABEL.COMMENT, 'COMMENT')}</option>
                   </select>
+                  <div className="text-xs text-gray-500">可用于把样本与某条帖子/评论关联，方便回溯来源内容。</div>
                 </label>
 
                 <label className="text-sm space-y-1">
@@ -1285,6 +1309,7 @@ const EmbedForm: React.FC = () => {
                       setSampleForm((p) => ({ ...p, refContentId: t === '' ? null : Number(t) }));
                     }}
                   />
+                  <div className="text-xs text-gray-500">填写对应内容的数据库 ID；不清楚可留空。</div>
                 </label>
               </div>
 
@@ -1296,6 +1321,7 @@ const EmbedForm: React.FC = () => {
                   value={sampleForm.labels ?? ''}
                   onChange={(e) => setSampleForm((p) => ({ ...p, labels: e.target.value || null }))}
                 />
+                <div className="text-xs text-gray-500">用于补充信息或后续筛选（必须是合法 JSON 数组字符串）。</div>
               </label>
 
               <label className="text-sm space-y-1 block">
@@ -1305,6 +1331,7 @@ const EmbedForm: React.FC = () => {
                   value={sampleForm.rawText}
                   onChange={(e) => setSampleForm((p) => ({ ...p, rawText: e.target.value }))}
                 />
+                <div className="text-xs text-gray-500">建议填“最能代表违规特征”的文本片段（太短不稳定，太长会被截断）。</div>
               </label>
 
               <div className="flex items-center justify-end gap-2">

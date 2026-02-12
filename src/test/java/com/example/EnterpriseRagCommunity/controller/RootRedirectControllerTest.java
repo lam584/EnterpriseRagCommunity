@@ -7,6 +7,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -22,6 +23,9 @@ class RootRedirectControllerTest {
 
     @MockBean
     private AccessControlService accessControlService;
+
+    @MockBean
+    private UsersRepository usersRepository;
 
     @Test
     void getRoot_should_redirect_to_portal_home() throws Exception {
