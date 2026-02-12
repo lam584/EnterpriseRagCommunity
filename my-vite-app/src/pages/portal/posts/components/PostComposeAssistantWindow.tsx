@@ -111,6 +111,7 @@ export default function PostComposeAssistantWindow(props: Props) {
   const [chatOptionsLoading, setChatOptionsLoading] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
+  const [deepThink, setDeepThink] = useState(false);
 
   const [pendingImages, setPendingImages] = useState<UploadResult[]>([]);
   const [ignoredEditorImageUrls, setIgnoredEditorImageUrls] = useState<string[]>([]);
@@ -131,12 +132,23 @@ export default function PostComposeAssistantWindow(props: Props) {
   }, []);
 
   useEffect(() => {
+    const raw = String(localStorage.getItem('portal.posts.compose.aiDeepThink') ?? '').trim().toLowerCase();
+    if (!raw) return;
+    const next = raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+    setDeepThink(next);
+  }, []);
+
+  useEffect(() => {
     if (!selectedProviderId || !selectedModel) {
       localStorage.setItem('portal.posts.compose.aiModelPick', '');
       return;
     }
     localStorage.setItem('portal.posts.compose.aiModelPick', buildProviderModelValue(selectedProviderId, selectedModel));
   }, [selectedModel, selectedProviderId]);
+
+  useEffect(() => {
+    localStorage.setItem('portal.posts.compose.aiDeepThink', deepThink ? '1' : '0');
+  }, [deepThink]);
 
   useEffect(() => {
     void (async () => {
@@ -501,6 +513,7 @@ export default function PostComposeAssistantWindow(props: Props) {
             .filter((m) => Boolean(String(m.content ?? '').trim()))
             .slice(-20)
             .map((m) => ({ role: m.role, content: String(m.content ?? '') })),
+          deepThink,
           providerId: providerIdToSend ?? undefined,
           model: modelToSend ?? undefined,
           images: visionUrls.length ? visionUrls : undefined,
@@ -852,14 +865,26 @@ export default function PostComposeAssistantWindow(props: Props) {
           </div>
           <div className="mt-2 text-xs text-gray-500 flex items-center justify-between gap-2">
             <span className="min-w-0">快捷键：Ctrl/⌘ + Enter 发送 · Ctrl/⌘ + V 粘贴图片</span>
-            <button
-              type="button"
-              className="shrink-0 px-2 py-1 rounded-md border border-gray-300 bg-white text-xs hover:bg-gray-50 disabled:opacity-60"
-              onClick={handlePickImages}
-              disabled={streaming || imageUploading}
-            >
-              {imageUploading ? '上传中…' : '添加图片'}
-            </button>
+            <div className="shrink-0 flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-xs text-gray-600 select-none">
+                <input
+                  type="checkbox"
+                  checked={deepThink}
+                  disabled={streaming}
+                  onChange={(e) => setDeepThink(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                启用思考
+              </label>
+              <button
+                type="button"
+                className="px-2 py-1 rounded-md border border-gray-300 bg-white text-xs hover:bg-gray-50 disabled:opacity-60"
+                onClick={handlePickImages}
+                disabled={streaming || imageUploading}
+              >
+                {imageUploading ? '上传中…' : '添加图片'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

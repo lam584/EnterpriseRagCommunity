@@ -4,7 +4,11 @@ import com.example.EnterpriseRagCommunity.dto.access.PermissionsCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.access.PermissionsQueryDTO;
 import com.example.EnterpriseRagCommunity.dto.access.PermissionsUpdateDTO;
 import com.example.EnterpriseRagCommunity.entity.access.PermissionsEntity;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.PermissionsRepository;
+import com.example.EnterpriseRagCommunity.repository.access.RolePermissionsRepository;
+import com.example.EnterpriseRagCommunity.repository.access.UserRoleLinksRepository;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -24,6 +28,10 @@ import java.util.List;
 public class PermissionsService {
 
     private final PermissionsRepository permissionsRepository;
+    private final RbacAuditService rbacAuditService;
+    private final RolePermissionsRepository rolePermissionsRepository;
+    private final UserRoleLinksRepository userRoleLinksRepository;
+    private final UsersRepository usersRepository;
 
     @Transactional(readOnly = true)
     public Page<PermissionsUpdateDTO> query(PermissionsQueryDTO queryDTO) {
@@ -69,6 +77,7 @@ public class PermissionsService {
         entity.setDescription(createDTO.getDescription());
         
         PermissionsEntity savedEntity = permissionsRepository.save(entity);
+        rbacAuditService.record("PERMISSION_CREATE", "permissions", String.valueOf(savedEntity.getId()), null, convertToDTO(savedEntity));
         return convertToDTO(savedEntity);
     }
 
@@ -76,6 +85,7 @@ public class PermissionsService {
     public PermissionsUpdateDTO update(PermissionsUpdateDTO updateDTO) {
         PermissionsEntity entity = permissionsRepository.findById(updateDTO.getId())
                 .orElseThrow(() -> new EntityNotFoundException("Permission not found with id: " + updateDTO.getId()));
+        PermissionsUpdateDTO before = convertToDTO(entity);
         
         if (updateDTO.getResource() != null) {
             entity.setResource(updateDTO.getResource());
@@ -88,15 +98,21 @@ public class PermissionsService {
         }
         
         PermissionsEntity savedEntity = permissionsRepository.save(entity);
+        rbacAuditService.record("PERMISSION_UPDATE", "permissions", String.valueOf(savedEntity.getId()), before, convertToDTO(savedEntity));
+        if (!safeEq(before.getResource(), savedEntity.getResource()) || !safeEq(before.getAction(), savedEntity.getAction())) {
+            touchUsersByPermissionId(savedEntity.getId());
+        }
         return convertToDTO(savedEntity);
     }
 
     @Transactional
     public void delete(Long id) {
-        if (!permissionsRepository.existsById(id)) {
-            throw new EntityNotFoundException("Permission not found with id: " + id);
-        }
+        PermissionsEntity entity = permissionsRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Permission not found with id: " + id));
+        PermissionsUpdateDTO before = convertToDTO(entity);
+        touchUsersByPermissionId(id);
         permissionsRepository.deleteById(id);
+        rbacAuditService.record("PERMISSION_DELETE", "permissions", String.valueOf(id), before, null);
     }
 
     @Transactional(readOnly = true)
@@ -113,5 +129,35 @@ public class PermissionsService {
         dto.setAction(entity.getAction());
         dto.setDescription(entity.getDescription());
         return dto;
+    }
+
+    private void touchUsersByPermissionId(Long permissionId) {
+        if (permissionId == null) return;
+        try {
+            var rps = rolePermissionsRepository.findByPermissionId(permissionId);
+            if (rps == null || rps.isEmpty()) return;
+            var roleIds = rps.stream().map(rp -> rp.getRoleId()).filter(java.util.Objects::nonNull).distinct().toList();
+            if (roleIds.isEmpty()) return;
+            var links = roleIds.stream()
+                    .flatMap(roleId -> userRoleLinksRepository.findByRoleId(roleId).stream())
+                    .toList();
+            if (links.isEmpty()) return;
+            var userIds = links.stream().map(l -> l.getUserId()).filter(java.util.Objects::nonNull).distinct().toList();
+            if (userIds.isEmpty()) return;
+            var users = usersRepository.findAllById(userIds);
+            for (UsersEntity u : users) {
+                long v = u.getAccessVersion() == null ? 0L : u.getAccessVersion();
+                u.setAccessVersion(v + 1L);
+                u.setUpdatedAt(java.time.LocalDateTime.now());
+            }
+            usersRepository.saveAll(users);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static boolean safeEq(String a, String b) {
+        if (a == null && b == null) return true;
+        if (a == null) return false;
+        return a.equals(b);
     }
 }

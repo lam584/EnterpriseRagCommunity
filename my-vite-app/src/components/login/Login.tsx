@@ -5,6 +5,7 @@ import backgroundImage2 from '../../assets/images/2.png';
 import { login, resendLogin2faEmail, resendRegisterCode, verifyLogin2fa, verifyRegister } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
 import OtpCodeInput from '../common/OtpCodeInput';
+import AuthFooter from './AuthFooter';
 
 interface LoginFormData {
     email: string; 
@@ -335,7 +336,7 @@ const Login: React.FC = () => {
                 <div className="bg-white p-8 rounded-lg shadow-lg w-96">
                     <div className="flex items-center mb-6">
                         <i className="fas fa-book fa-2x mr-2"></i>
-                        <h1 className="text-2xl font-bold">企业知识检索增强社区系统</h1>
+                        <h1 className="text-2xl font-bold">RAG技术学习探索笔记</h1>
                     </div>
 
                     {error && (
@@ -522,11 +523,7 @@ const Login: React.FC = () => {
                     </form>
                 </div>
             </div>
-            <div className="text-center text-white p-4">
-                <h2 className="text-3xl font-bold">解锁知识的世界</h2>
-                <p className="text-lg">加入我们的社区，探索成千上万的新闻</p>
-                <p className="text-sm mt-4">©2026. 版权所有。</p>
-            </div>
+            <AuthFooter />
         </div>
     );
 };

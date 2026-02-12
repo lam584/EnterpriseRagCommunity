@@ -299,7 +299,12 @@ public class SetupController {
                 
                 // 部分配置项不需要加密
                 boolean shouldEncrypt = true;
-                if (key.startsWith("spring.elasticsearch") || key.startsWith("APP_MAIL_HOST") || key.startsWith("APP_MAIL_PORT") || key.startsWith("APP_MAIL_FROM_ADDRESS")) {
+                if (key.startsWith("spring.elasticsearch")
+                        || key.startsWith("APP_MAIL_HOST")
+                        || key.startsWith("APP_MAIL_PORT")
+                        || key.startsWith("APP_MAIL_FROM_ADDRESS")
+                        || key.equals("APP_SITE_BEIAN")
+                        || key.equals("APP_SITE_BEIAN_HREF")) {
                     shouldEncrypt = false;
                 }
 

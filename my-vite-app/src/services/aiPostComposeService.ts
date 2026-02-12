@@ -73,6 +73,8 @@ export async function postComposeEditStream(
   signal?: AbortSignal
 ): Promise<void> {
   const csrfToken = await getCsrfToken();
+  const body: Record<string, unknown> = { ...payload };
+  if (payload.deepThink === undefined) delete body.deepThink;
   const res = await fetch(apiUrl('/api/ai/post-compose/stream'), {
     method: 'POST',
     headers: {
@@ -81,10 +83,7 @@ export async function postComposeEditStream(
       Accept: 'text/event-stream',
     },
     credentials: 'include',
-    body: JSON.stringify({
-      ...payload,
-      deepThink: payload.deepThink ?? false,
-    }),
+    body: JSON.stringify(body),
     signal,
   });
 

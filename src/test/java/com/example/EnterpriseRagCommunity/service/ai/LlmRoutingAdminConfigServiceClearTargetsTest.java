@@ -5,7 +5,6 @@ import com.example.EnterpriseRagCommunity.dto.ai.AdminLlmRoutingPolicyDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmModelEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmRoutingPolicyRepository;
-import com.example.EnterpriseRagCommunity.repository.ai.LlmRoutingScenarioRepository;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -27,7 +26,6 @@ public class LlmRoutingAdminConfigServiceClearTargetsTest {
         LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
         LlmRoutingPolicyRepository llmRoutingPolicyRepository = mock(LlmRoutingPolicyRepository.class);
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        LlmRoutingScenarioRepository llmRoutingScenarioRepository = mock(LlmRoutingScenarioRepository.class);
 
         when(llmRoutingService.getPolicy(anyString())).thenReturn(new LlmRoutingService.Policy(
                 LlmRoutingService.Strategy.WEIGHTED_RR,
@@ -58,8 +56,7 @@ public class LlmRoutingAdminConfigServiceClearTargetsTest {
         LlmRoutingAdminConfigService svc = new LlmRoutingAdminConfigService(
                 llmRoutingService,
                 llmRoutingPolicyRepository,
-                llmModelRepository,
-                llmRoutingScenarioRepository
+                llmModelRepository
         );
 
         AdminLlmRoutingPolicyDTO chatPolicy = new AdminLlmRoutingPolicyDTO();

@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useState} from 'react';
 import { useNavigate } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/login_1.png';
 import { registerAndGetStatus, verifyRegister } from '../../services/authService';
+import AuthFooter from './AuthFooter';
 interface RegisterFormData {
     username: string;
     password: string;
@@ -359,11 +360,7 @@ const Register: React.FC = () => {
                     </div>
                 </div>
             </div>
-            <div className="text-center text-white p-4">
-                <h2 className="text-3xl font-bold">解锁知识的世界</h2>
-                <p className="text-lg">加入我们的社区，探索成千上万的新闻</p>
-                <p className="text-sm mt-4">©2026. 版权所有。</p>
-            </div>
+            <AuthFooter />
         </div>
 
     );

@@ -5,6 +5,7 @@ import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -29,5 +30,16 @@ public interface UsersRepository extends JpaRepository<UsersEntity, Long>, JpaSp
 
     // Add missing method for findByEmail
     Optional<UsersEntity> findByEmail(String email);
+
+    @Query("select u.id as id, u.accessVersion as accessVersion, u.updatedAt as updatedAt, u.sessionInvalidatedAt as sessionInvalidatedAt " +
+            "from UsersEntity u where u.email = :email and u.isDeleted = false")
+    Optional<UserAccessMetaView> findAccessMetaByEmail(@Param("email") String email);
+
+    interface UserAccessMetaView {
+        Long getId();
+        Long getAccessVersion();
+        LocalDateTime getUpdatedAt();
+        LocalDateTime getSessionInvalidatedAt();
+    }
 }
 

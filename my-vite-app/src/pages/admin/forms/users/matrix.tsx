@@ -11,6 +11,8 @@ import {
 import {Button} from '../../../../components/ui/button';
 import {Input} from '../../../../components/ui/input';
 import {FaSearch} from "react-icons/fa";
+import { useAdminStepUp } from '../../../../components/admin/useAdminStepUp';
+import { isAdminStepUpRequired } from '../../../../services/apiError';
 
 // Simple Modal Component
 const Modal = ({isOpen, onClose, title, children}: {
@@ -38,6 +40,7 @@ const PermissionsManagement: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [total, setTotal] = useState(0);
     const [query, setQuery] = useState<PermissionsQueryDTO>({pageNum: 1, pageSize: 20});
+    const { ensureAdminStepUp, adminStepUpModal } = useAdminStepUp();
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -73,6 +76,14 @@ const PermissionsManagement: React.FC = () => {
             await deletePermission(id);
             fetchPermissions();
         } catch (error) {
+            if (isAdminStepUpRequired(error)) {
+                const r = await ensureAdminStepUp();
+                if (r.ensured) {
+                    await deletePermission(id);
+                    fetchPermissions();
+                    return;
+                }
+            }
             console.error(error);
             alert('删除失败');
         }
@@ -105,6 +116,19 @@ const PermissionsManagement: React.FC = () => {
             setIsModalOpen(false);
             fetchPermissions();
         } catch (error) {
+            if (isAdminStepUpRequired(error)) {
+                const r = await ensureAdminStepUp();
+                if (r.ensured) {
+                    if (currentPermission) {
+                        await updatePermission({...formData, id: currentPermission.id});
+                    } else {
+                        await createPermission(formData);
+                    }
+                    setIsModalOpen(false);
+                    fetchPermissions();
+                    return;
+                }
+            }
             console.error(error);
             alert('保存失败');
         }
@@ -285,6 +309,7 @@ const PermissionsManagement: React.FC = () => {
                     </form>
                 </Modal>
             </div>
+            {adminStepUpModal}
         </div>
     );
 };

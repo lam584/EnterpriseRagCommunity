@@ -18,6 +18,8 @@ import Modal from './roles/Modal';
 import RolePermissionEditor from './roles/RolePermissionEditor';
 import ActionDescriptions from './roles/ActionDescriptions';
 import {type PermissionVM, safeStr, type StandardAction, stdActionLabel, stdActionOf} from './roles/permissionUtils';
+import { useAdminStepUp } from '../../../../components/admin/useAdminStepUp';
+import { isAdminStepUpRequired } from '../../../../services/apiError';
 import {
     getRegistrationSettings,
     updateRegistrationSettings,
@@ -184,6 +186,7 @@ const RolesManagement: React.FC = () => {
     const [matrixLoading, setMatrixLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const access = useAccess();
+    const { ensureAdminStepUp, adminStepUpModal } = useAdminStepUp();
     const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
     const [nameKeyword, setNameKeyword] = useState('');
     const [roles, setRoles] = useState<RoleRow[]>([]);
@@ -548,6 +551,23 @@ const RolesManagement: React.FC = () => {
 
             setFeedback({type: 'success', message: `创建成功，roleId=${newRoleId}`});
         } catch (e) {
+            if (isAdminStepUpRequired(e)) {
+                const r = await ensureAdminStepUp();
+                if (r.ensured) {
+                    const retry = await createRoleWithMatrix(payload);
+                    const newRoleId = retry?.[0]?.roleId;
+                    if (typeof newRoleId !== 'number') {
+                        setFeedback({type: 'error', message: '创建失败：后端未返回 roleId'});
+                        return;
+                    }
+                    await refreshRoleIds();
+                    setEditingRoleId(newRoleId);
+                    setRolePermissions(retry ?? []);
+                    setDraft(initDraftFromRolePerms(permissions, retry ?? []));
+                    setFeedback({type: 'success', message: `创建成功，roleId=${newRoleId}`});
+                    return;
+                }
+            }
             console.error(e);
             setFeedback({type: 'error', message: '创建角色失败'});
         } finally {
@@ -580,6 +600,17 @@ const RolesManagement: React.FC = () => {
 
             setFeedback({type: 'success', message: '保存成功'});
         } catch (e) {
+            if (isAdminStepUpRequired(e)) {
+                const r = await ensureAdminStepUp();
+                if (r.ensured) {
+                    await replaceRolePermissions(editingRoleId, payload);
+                    const latest = await listRolePermissionsByRole(editingRoleId);
+                    setRolePermissions(latest ?? []);
+                    await refreshRoleIds();
+                    setFeedback({type: 'success', message: '保存成功'});
+                    return;
+                }
+            }
             console.error(e);
             setFeedback({type: 'error', message: '保存失败'});
         } finally {
@@ -907,6 +938,7 @@ const RolesManagement: React.FC = () => {
                 }
             />
       </Modal>
+        {adminStepUpModal}
     </div>
   );
 

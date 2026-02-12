@@ -10,4 +10,6 @@ import java.util.List;
 @Repository
 public interface LlmRoutingPolicyRepository extends JpaRepository<LlmRoutingPolicyEntity, LlmRoutingPolicyId> {
     List<LlmRoutingPolicyEntity> findByIdEnvOrderByIdTaskTypeAsc(String env);
+
+    List<LlmRoutingPolicyEntity> findByIdEnvOrderBySortIndexAscIdTaskTypeAsc(String env);
 }

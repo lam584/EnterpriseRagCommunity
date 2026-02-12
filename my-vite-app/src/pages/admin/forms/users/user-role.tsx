@@ -9,6 +9,8 @@ import { Badge } from '../../../../components/ui/badge';
 import { FaEdit, FaTrash, FaUserTag, FaPlus, FaSearch } from 'react-icons/fa';
 import { listRoleSummaries, RoleSummaryDTO } from '../../../../services/rolePermissionsService';
 import { getRegistrationSettings } from '../../../../services/adminSettingsService';
+import { useAdminStepUp } from '../../../../components/admin/useAdminStepUp';
+import { isAdminStepUpRequired } from '../../../../services/apiError';
 
 export default function UserManagementPage() {
     const [users, setUsers] = useState<UserDTO[]>([]);
@@ -56,6 +58,7 @@ export default function UserManagementPage() {
     const [rolesLoading, setRolesLoading] = useState(false);
     const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
     const [targetUserId, setTargetUserId] = useState<number | null>(null);
+    const { ensureAdminStepUp, adminStepUpModal } = useAdminStepUp();
 
     useEffect(() => {
         fetchUsers();
@@ -266,11 +269,21 @@ export default function UserManagementPage() {
 
     const handleAssignRoles = async () => {
         if (!targetUserId) return;
+        const reason = window.prompt('请输入变更原因（用于审计，可留空）') ?? '';
         try {
-            await userAccessService.assignRoles(targetUserId, selectedRoleIds);
+            await userAccessService.assignRoles(targetUserId, selectedRoleIds, { adminReason: reason.trim() || undefined });
             setIsRolesOpen(false);
             alert('角色分配成功');
         } catch (error) {
+            if (isAdminStepUpRequired(error)) {
+                const r = await ensureAdminStepUp();
+                if (r.ensured) {
+                    await userAccessService.assignRoles(targetUserId, selectedRoleIds, { adminReason: reason.trim() || undefined });
+                    setIsRolesOpen(false);
+                    alert('角色分配成功');
+                    return;
+                }
+            }
             console.error(error);
             alert('角色分配失败');
         }
@@ -657,6 +670,7 @@ export default function UserManagementPage() {
                     </div>
                 </div>
             )}
+            {adminStepUpModal}
         </div>
     );
 }

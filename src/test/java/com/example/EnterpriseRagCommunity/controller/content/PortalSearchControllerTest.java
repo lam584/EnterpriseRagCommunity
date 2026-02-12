@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.controller.content;
 
 import com.example.EnterpriseRagCommunity.service.content.PortalSearchService;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -30,6 +31,9 @@ class PortalSearchControllerTest {
 
     @MockBean
     private AccessControlService accessControlService;
+
+    @MockBean
+    private UsersRepository usersRepository;
 
     @Test
     void search_should_return_200() throws Exception {

@@ -23,35 +23,38 @@ public class PermissionsController {
 
     @GetMapping
     @ApiOperation("分页查询权限")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_permissions','read'))")
     public ResponseEntity<Page<PermissionsUpdateDTO>> query(PermissionsQueryDTO queryDTO) {
         return ResponseEntity.ok(permissionsService.query(queryDTO));
     }
 
     @GetMapping("/{id}")
     @ApiOperation("获取权限详情")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_permissions','read'))")
     public ResponseEntity<PermissionsUpdateDTO> getById(@PathVariable("id") Long id) {
         return ResponseEntity.ok(permissionsService.getById(id));
     }
 
     @PostMapping
     @ApiOperation("创建权限")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_permissions','write'))")
+    @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
     public ResponseEntity<PermissionsUpdateDTO> create(@RequestBody @Valid PermissionsCreateDTO createDTO) {
         return ResponseEntity.ok(permissionsService.create(createDTO));
     }
 
     @PutMapping
     @ApiOperation("更新权限")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_permissions','write'))")
+    @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
     public ResponseEntity<PermissionsUpdateDTO> update(@RequestBody @Valid PermissionsUpdateDTO updateDTO) {
         return ResponseEntity.ok(permissionsService.update(updateDTO));
     }
 
     @DeleteMapping("/{id}")
     @ApiOperation("删除权限")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_permissions','write'))")
+    @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
     public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         permissionsService.delete(id);
         return ResponseEntity.ok().build();

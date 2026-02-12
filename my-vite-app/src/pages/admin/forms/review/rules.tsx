@@ -273,6 +273,9 @@ const RulesForm: React.FC = () => {
             </button>
           </div>
         </div>
+        <div className="text-sm text-gray-600">
+          这里配置“明确命中就拦截”的规则（例如敏感词、黑名单域名、可疑链接、广告套路）。只要命中规则就会触发；后续怎么处理（拒绝/进入 LLM/转人工）由该规则的严重级别决定，具体动作在「置信回退机制」里配置。
+        </div>
 
         {error ? (
           <div className="rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm">{error}</div>
@@ -285,7 +288,7 @@ const RulesForm: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <input
             className="rounded border px-3 py-2"
-            placeholder="搜索：名称 / pattern / 类型"
+            placeholder="搜索：规则名称 / 规则内容(pattern) / 匹配方式(type)"
             value={query.q ?? ''}
             onChange={(e) => setQuery((p) => ({ ...p, q: e.target.value }))}
           />
@@ -310,7 +313,7 @@ const RulesForm: React.FC = () => {
             value={effectiveType}
             onChange={(e) => setQuery((p) => ({ ...p, type: (e.target.value as ModerationRuleType) || '' }))}
             disabled={!!query.category}
-            title={query.category ? '已由类别自动推导 type' : '按后端 RuleType 筛选（可选）'}
+            title={query.category ? '已由类别自动推导匹配方式(type)' : '按匹配方式(type)筛选（可选）'}
           >
             <option value="">全部 type</option>
             <option value="KEYWORD">KEYWORD</option>
@@ -355,9 +358,9 @@ const RulesForm: React.FC = () => {
                 <th className="text-left p-2">ID</th>
                 <th className="text-left p-2">名称</th>
                 <th className="text-left p-2">类别</th>
-                <th className="text-left p-2">type</th>
-                <th className="text-left p-2">pattern</th>
-                <th className="text-left p-2">严重</th>
+                <th className="text-left p-2">匹配方式(type)</th>
+                <th className="text-left p-2">规则内容(pattern)</th>
+                <th className="text-left p-2">严重级别</th>
                 <th className="text-left p-2">启用</th>
                 <th className="text-left p-2">更新时间</th>
                 <th className="text-left p-2">操作</th>
@@ -367,7 +370,7 @@ const RulesForm: React.FC = () => {
               {items.length === 0 ? (
                 <tr>
                   <td className="p-3 text-gray-500" colSpan={9}>
-                    {loading ? '加载中…' : '暂无规则。你可以点击「新建规则」添加敏感词/黑名单/URL/广告模式规则。'}
+                    {loading ? '加载中…' : '暂无规则。你可以点击「新建规则」添加敏感词、黑名单、URL/链接、广告模式等规则。'}
                   </td>
                 </tr>
               ) : (
@@ -453,6 +456,7 @@ const RulesForm: React.FC = () => {
                         <option value="URL">URL/链接</option>
                         <option value="AD">广告模式</option>
                       </select>
+                      <div className="text-xs text-gray-500">选择“你要拦截的对象类型”。例如黑名单用于直接拦截指定关键词/域名。</div>
                       <div className="text-xs text-gray-500">
                         将映射到后端 type：<b>{categoryToType(form.category)}</b>
                       </div>
@@ -469,6 +473,9 @@ const RulesForm: React.FC = () => {
                         <option value="MEDIUM">MEDIUM</option>
                         <option value="HIGH">HIGH</option>
                       </select>
+                      <div className="text-xs text-gray-500">
+                        HIGH=明确违规（更建议直接拒绝）；MEDIUM/LOW=疑似违规（更建议交给 LLM 或人工再确认）。
+                      </div>
                     </div>
 
                     <div className="space-y-1 md:col-span-2">
@@ -477,8 +484,9 @@ const RulesForm: React.FC = () => {
                         className="rounded border px-3 py-2 w-full"
                         value={form.name}
                         onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                        placeholder="例如：涉政敏感词 / 拉黑域名 / 广告关键词组合"
+                        placeholder="例如：涉政敏感词（高）/ 拉黑域名（高）/ 广告关键词组合（中）"
                       />
+                      <div className="text-xs text-gray-500">只用于后台展示与检索，建议写清楚“拦截什么 + 严重级别”。</div>
                     </div>
 
                     <div className="space-y-1 md:col-span-2">
@@ -496,7 +504,7 @@ const RulesForm: React.FC = () => {
                         }
                       />
                       <div className="text-xs text-gray-500">
-                        建议用换行写多条；实际匹配逻辑可由后端处理，这里先作为规则内容存储。
+                        建议一行写一条；URL 类可以写域名/URL 前缀/正则；广告模式可用 | 表示“或”。实际匹配细节以服务端实现为准，这里主要用于维护规则内容。
                       </div>
                     </div>
 

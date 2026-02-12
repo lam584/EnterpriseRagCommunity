@@ -364,7 +364,10 @@ const LlmForm: React.FC = () => {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold">LLM 审核层</h3>
-            <div className="text-sm text-gray-500">配置大模型审核提示词与参数，并支持对指定内容试运行。</div>
+            <div className="text-sm text-gray-500">
+              这里配置“让大模型怎么审、怎么输出结果”的提示词与推理参数，并支持对指定内容试运行。
+              分数如何映射为通过/拒绝/转人工，通常在「置信回退机制」里配置（本页更偏模型与提示词本身）。
+            </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-2">
@@ -388,6 +391,9 @@ const LlmForm: React.FC = () => {
                   关闭
                 </option>
               </select>
+            </div>
+            <div className="text-xs text-gray-500 w-full">
+              开启后，后台会定时从待审队列中取任务交给 LLM 自动审核并落库结果；关闭则只在需要时手动试运行/人工触发。
             </div>
 
             <button
@@ -476,6 +482,7 @@ const LlmForm: React.FC = () => {
                   setSavedHint(null);
                 }}
               />
+              <div className="text-xs text-gray-500">选择用于“审核文本内容”的模型与提供方；不确定时用“自动（均衡负载）”。</div>
 
               <div>
                 <div className="text-sm font-medium mb-1">温度</div>
@@ -490,6 +497,7 @@ const LlmForm: React.FC = () => {
                     setSavedHint(null);
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">影响输出随机性：越低越稳定、越可复现；越高越发散。一般建议 0~0.5。</div>
               </div>
 
               <div>
@@ -505,10 +513,11 @@ const LlmForm: React.FC = () => {
                     setSavedHint(null);
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">影响采样范围：越低越保守、越稳定。一般建议 0.1~0.5。</div>
               </div>
 
               <div>
-                <div className="text-sm font-medium mb-1">上下文长度</div>
+                <div className="text-sm font-medium mb-1">最大输出 tokens（maxTokens）</div>
                 <input
                   className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
                   placeholder="例如：1024"
@@ -520,6 +529,25 @@ const LlmForm: React.FC = () => {
                     setSavedHint(null);
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">限制模型本次回答的最长长度，避免输出过长导致耗时/费用增加。</div>
+              </div>
+
+              <div>
+                <div className="text-sm font-medium mb-1">兜底阈值（threshold，0~1）</div>
+                <input
+                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
+                  placeholder="例如：0.75"
+                  value={form.threshold}
+                  readOnly={!isEditing}
+                  onChange={(e) => {
+                    if (!isEditing) return;
+                    setForm((p) => ({ ...p, threshold: e.target.value }));
+                    setSavedHint(null);
+                  }}
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  当模型只返回 score、没有返回明确 decision 时的兜底：score ≥ threshold 判定 REJECT，否则 APPROVE。阈值越低越容易拒绝。
+                </div>
               </div>
 
               <div>
@@ -543,6 +571,7 @@ const LlmForm: React.FC = () => {
                     开启
                   </option>
                 </select>
+                <div className="text-xs text-gray-500 mt-1">部分模型的“思考模式”会更慢/更贵；只有在确实需要更强推理时再开启。</div>
               </div>
             </div>
 
@@ -554,7 +583,7 @@ const LlmForm: React.FC = () => {
               <textarea
                 className="w-full rounded border px-3 py-1.5 font-mono text-sm disabled:bg-gray-50"
                 rows={8}
-                placeholder="请输入审核提示词。建议要求模型输出严格 JSON：{decision, score, reasons, riskTags}..."
+                placeholder="请输入审核提示词。建议要求模型输出严格 JSON，例如：{decision, score, reasons, riskTags}（decision=APPROVE/REJECT/HUMAN，score=0~1）"
                 value={form.promptTemplate}
                 readOnly={!isEditing}
                 onChange={(e) => {
@@ -588,6 +617,7 @@ const LlmForm: React.FC = () => {
                   setSavedHint(null);
                 }}
               />
+              <div className="text-xs text-gray-500">选择用于“看图并判断风险”的视觉模型；不确定时用“自动（均衡负载）”。</div>
 
               <div>
                 <div className="text-sm font-medium mb-1">温度</div>
@@ -602,6 +632,7 @@ const LlmForm: React.FC = () => {
                     setSavedHint(null);
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">越低越稳定；建议与文本审核保持一致或更低。</div>
               </div>
 
               <div>
@@ -617,10 +648,11 @@ const LlmForm: React.FC = () => {
                     setSavedHint(null);
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">越低越保守、越稳定；不确定时保持默认即可。</div>
               </div>
 
               <div>
-                <div className="text-sm font-medium mb-1">上下文长度</div>
+                <div className="text-sm font-medium mb-1">最大输出 tokens（visionMaxTokens）</div>
                 <input
                   className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
                   placeholder="例如：1024"
@@ -632,6 +664,7 @@ const LlmForm: React.FC = () => {
                     setSavedHint(null);
                   }}
                 />
+                <div className="text-xs text-gray-500 mt-1">限制视觉模型输出长度，避免生成过长描述/理由。</div>
               </div>
 
               <div>
@@ -655,6 +688,7 @@ const LlmForm: React.FC = () => {
                     开启
                   </option>
                 </select>
+                <div className="text-xs text-gray-500 mt-1">开启可能提升复杂图片判断能力，但会增加耗时与费用。</div>
               </div>
             </div>
 
@@ -666,7 +700,7 @@ const LlmForm: React.FC = () => {
               <textarea
                 className="w-full rounded border px-3 py-1.5 font-mono text-sm disabled:bg-gray-50"
                 rows={8}
-                placeholder="请输入视觉审核提示词。建议要求模型输出严格 JSON：{decision, score, reasons, riskTags, description}..."
+                placeholder="请输入视觉审核提示词。建议要求模型输出严格 JSON，例如：{decision, score, reasons, riskTags, description}（description=图片内容文字描述）"
                 value={form.visionPromptTemplate}
                 readOnly={!isEditing}
                 onChange={(e) => {
@@ -696,7 +730,10 @@ const LlmForm: React.FC = () => {
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="text-lg font-semibold">LLM 试运行</div>
-            <div className="text-sm text-gray-500">可用 queueId 拉取待审内容，也可粘贴文本或填写图片 URL 试运行。</div>
+            <div className="text-sm text-gray-500">
+              用于快速验证“提示词 + 参数”的效果：可以用 queueId 拉取真实待审内容，也可以手动粘贴文本/图片 URL。
+              试运行默认使用当前表单配置（即使还没保存），方便边调边看结果。
+            </div>
           </div>
           <button
             type="button"
@@ -718,6 +755,7 @@ const LlmForm: React.FC = () => {
               onChange={(e) => setQueueId(e.target.value)}
             />
             {initialQueueId ? <div className="text-xs text-gray-500 mt-1">已从 URL 读取 queueId={initialQueueId}</div> : null}
+            <div className="text-xs text-gray-500 mt-1">填写后会从待审队列加载对应内容；如果同时填写了测试文本/图片，将优先使用你手动输入的内容。</div>
           </div>
 
           <div className="md:col-span-2">
@@ -725,10 +763,11 @@ const LlmForm: React.FC = () => {
             <textarea
               className="w-full rounded border px-3 py-1.5 text-sm"
               rows={4}
-              placeholder="粘贴要审核的文本..."
+              placeholder="粘贴要审核的文本（建议包含标题/正文/关键信息）…"
               value={testText}
               onChange={(e) => setTestText(e.target.value)}
             />
+            <div className="text-xs text-gray-500 mt-1">不涉及图片时，主要看 decision/score/reasons 是否符合预期。</div>
           </div>
 
           <div className="md:col-span-2">

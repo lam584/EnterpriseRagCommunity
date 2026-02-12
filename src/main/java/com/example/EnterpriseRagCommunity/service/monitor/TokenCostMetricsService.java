@@ -237,7 +237,7 @@ public class TokenCostMetricsService {
             raw = entityManager.createNativeQuery("""
                             SELECT h.model, h.tokens_in, h.tokens_out
                             FROM llm_queue_task_history h
-                            JOIN llm_routing_scenarios s ON s.task_type = h.type
+                            JOIN llm_routing_policies p ON p.env = 'default' AND p.task_type = h.type
                             WHERE h.finished_at BETWEEN :start AND :end
                               AND h.status = 'DONE'
                               AND h.model IS NOT NULL
@@ -251,7 +251,7 @@ public class TokenCostMetricsService {
             raw = entityManager.createNativeQuery("""
                             SELECT h.model, h.tokens_in, h.tokens_out
                             FROM llm_queue_task_history h
-                            JOIN llm_routing_scenarios s ON s.task_type = h.type
+                            JOIN llm_routing_policies p ON p.env = 'default' AND p.task_type = h.type
                             WHERE h.finished_at BETWEEN :start AND :end
                               AND h.status = 'DONE'
                               AND h.model IS NOT NULL
@@ -280,7 +280,7 @@ public class TokenCostMetricsService {
             raw = entityManager.createNativeQuery("""
                             SELECT %s AS t, SUM(IFNULL(h.tokens_in, 0)) AS tokens_in, SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                             FROM llm_queue_task_history h
-                            JOIN llm_routing_scenarios s ON s.task_type = h.type
+                            JOIN llm_routing_policies p ON p.env = 'default' AND p.task_type = h.type
                             WHERE h.finished_at BETWEEN :start AND :end
                               AND h.status = 'DONE'
                               AND h.model IS NOT NULL
@@ -296,7 +296,7 @@ public class TokenCostMetricsService {
             raw = entityManager.createNativeQuery("""
                             SELECT %s AS t, SUM(IFNULL(h.tokens_in, 0)) AS tokens_in, SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                             FROM llm_queue_task_history h
-                            JOIN llm_routing_scenarios s ON s.task_type = h.type
+                            JOIN llm_routing_policies p ON p.env = 'default' AND p.task_type = h.type
                             WHERE h.finished_at BETWEEN :start AND :end
                               AND h.status = 'DONE'
                               AND h.model IS NOT NULL

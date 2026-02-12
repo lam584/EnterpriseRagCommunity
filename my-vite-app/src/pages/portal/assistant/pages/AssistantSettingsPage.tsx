@@ -365,7 +365,7 @@ export default function AssistantSettingsPage() {
               className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
               disabled={readOnly}
             >
-              <option value="">自动（文本聊天/均衡负载）</option>
+              <option value="">自动（均衡负载）</option>
               {settingsModelOptions.map((it) => (
                 <option key={it.value} value={it.value}>
                   {it.providerLabel}：{it.model}

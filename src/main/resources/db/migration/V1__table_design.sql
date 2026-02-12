@@ -77,7 +77,7 @@ CREATE TABLE email_verifications (
                                      user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
                                      target_email VARCHAR(191) NULL COMMENT '目标邮箱',
                                      code VARCHAR(64) NOT NULL COMMENT '验证码',
-                                     purpose ENUM('VERIFY_EMAIL','PASSWORD_RESET','REGISTER','LOGIN_2FA','CHANGE_PASSWORD','CHANGE_EMAIL','CHANGE_EMAIL_OLD','TOTP_ENABLE','TOTP_DISABLE') NOT NULL COMMENT '用途',
+                                     purpose ENUM('VERIFY_EMAIL','PASSWORD_RESET','REGISTER','LOGIN_2FA','LOGIN_2FA_PREFERENCE','CHANGE_PASSWORD','CHANGE_EMAIL','CHANGE_EMAIL_OLD','TOTP_ENABLE','TOTP_DISABLE') NOT NULL COMMENT '用途',
                                      expires_at DATETIME(3) NOT NULL COMMENT '过期时间',
                                      consumed_at DATETIME(3) NULL COMMENT '使用时间',
                                      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',

@@ -435,6 +435,7 @@ export const LlmConfigPage: React.FC = () => (
     title="LLM 配置"
     items={[
       { id: 'ai-providers', label: '模型来源' },
+      { id: 'portal-chat', label: '前台对话配置' },
       { id: 'llm-routing-config', label: '负载均衡配置' },
     ]}
   />
