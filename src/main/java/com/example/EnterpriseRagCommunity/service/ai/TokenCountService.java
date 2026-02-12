@@ -149,6 +149,7 @@ public class TokenCountService {
 
         Integer completion = usage == null ? null : usage.completionTokens();
         Integer estCompletion = usage == null ? null : usage.estimatedCompletionTokens();
+        Integer usageTotal = usage == null ? null : usage.totalTokens();
 
         boolean forceTokenizerOut = !enableThinking && (norm.strippedThink() || norm.strippedWhitespace()
                 || isNvidiaProvider(providerId)
@@ -157,21 +158,21 @@ public class TokenCountService {
 
         String outSource = null;
 
-        if (!forceTokenizerOut && completion != null && completion > 0) {
-            tokensOut = completion;
-            total = usage == null ? null : usage.totalTokens();
-            outSource = "USAGE";
+        Integer out = countTextTokens(norm.tokenText());
+        if (out != null) {
+            tokensOut = out;
+            outSource = "TOKENIZER";
         } else {
-            Integer out = countTextTokens(norm.tokenText());
-            if (out != null) {
-                tokensOut = out;
-                outSource = "TOKENIZER";
-            } else if (!enableThinking && forceTokenizerOut && estCompletion != null && estCompletion > 0) {
+            if (!enableThinking && forceTokenizerOut && estCompletion != null && estCompletion > 0) {
                 tokensOut = estCompletion;
                 outSource = "ESTIMATED";
             } else if (!enableThinking && forceTokenizerOut && "ok".equals(norm.tokenText())) {
                 tokensOut = 1;
                 outSource = "HEURISTIC_OK";
+            } else if (!forceTokenizerOut && completion != null && completion > 0) {
+                tokensOut = completion;
+                total = usageTotal;
+                outSource = "USAGE";
             } else if (completion != null && completion > 0) {
                 tokensOut = completion;
                 outSource = "USAGE";
@@ -185,13 +186,14 @@ public class TokenCountService {
             Integer in = countChatMessagesTokens(messages);
             if (in != null) tokensIn = in;
         }
-        Integer usageTotal = usage == null ? null : usage.totalTokens();
+
         if (tokensIn != null && usageTotal != null && usageTotal > 0 && usageTotal < tokensIn) {
             if (tokensOut == null || usageTotal > tokensOut) {
                 tokensOut = usageTotal;
                 if (!"TOKENIZER".equals(outSource)) outSource = "USAGE_TOTAL_AS_OUT";
             }
         }
+
         if (tokensIn != null && tokensOut != null) {
             total = tokensIn + tokensOut;
         } else if (total == null) {
