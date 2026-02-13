@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import backgroundImage1 from '../../assets/images/login_1.png';
+import backgroundImage1 from '../../assets/images/1.png';
 import AuthFooter from './AuthFooter';
 import {
   getPasswordResetStatus,

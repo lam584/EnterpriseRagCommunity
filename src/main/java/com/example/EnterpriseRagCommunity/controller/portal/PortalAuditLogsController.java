@@ -62,6 +62,7 @@ public class PortalAuditLogsController {
                 me,
                 null,
                 effectiveAction,
+                null,
                 entityType,
                 entityId,
                 result,
@@ -106,6 +107,7 @@ public class PortalAuditLogsController {
                 me,
                 null,
                 effectiveAction,
+                null,
                 entityType,
                 entityId,
                 result,
@@ -116,7 +118,7 @@ public class PortalAuditLogsController {
         );
 
         StringBuilder sb = new StringBuilder();
-        sb.append("id,createdAt,actorId,actorName,action,entityType,entityId,result,traceId,message\n");
+        sb.append("id,createdAt,actorId,actorName,action,entityType,entityId,result,traceId,method,path,autoCrud,message\n");
         for (AuditLogsViewDTO it : pageRes.getContent()) {
             sb.append(csv(it.id())).append(',')
                     .append(csv(it.createdAt())).append(',')
@@ -127,6 +129,9 @@ public class PortalAuditLogsController {
                     .append(csv(it.entityId())).append(',')
                     .append(csv(it.result())).append(',')
                     .append(csv(it.traceId())).append(',')
+                    .append(csv(it.method())).append(',')
+                    .append(csv(it.path())).append(',')
+                    .append(csv(it.autoCrud())).append(',')
                     .append(csv(it.message()))
                     .append('\n');
         }
@@ -156,4 +161,3 @@ public class PortalAuditLogsController {
         return "\"" + s + "\"";
     }
 }
-

@@ -24,10 +24,10 @@ public class PublicSiteConfigController {
         if (beianHref == null) {
             beianHref = "https://beian.miit.gov.cn/";
         }
-        return Map.of(
-                "beianText", beianText,
-                "beianHref", beianText == null ? null : beianHref
-        );
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        out.put("beianText", beianText);
+        out.put("beianHref", beianText == null ? null : beianHref);
+        return out;
     }
 
     private static String trimToNull(String value) {

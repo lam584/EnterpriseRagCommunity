@@ -60,8 +60,25 @@ public class AuditLogWriter {
         if (actorName != null) d.putIfAbsent("actorName", actorName);
         if (traceId != null) d.putIfAbsent("traceId", traceId);
         if (message != null) d.putIfAbsent("message", message);
+        RequestAuditContextHolder.RequestAuditContext ctx = RequestAuditContextHolder.get();
+        if (ctx != null) {
+            if (ctx.clientIp() != null) d.putIfAbsent("ip", ctx.clientIp());
+            if (ctx.requestId() != null) d.putIfAbsent("requestId", ctx.requestId());
+            if (traceId == null && ctx.traceId() != null) d.putIfAbsent("traceId", ctx.traceId());
+            if (ctx.method() != null) d.putIfAbsent("method", ctx.method());
+            if (ctx.path() != null) d.putIfAbsent("path", ctx.path());
+            if (ctx.scheme() != null) d.putIfAbsent("scheme", ctx.scheme());
+            if (ctx.host() != null) d.putIfAbsent("host", ctx.host());
+            if (ctx.clientPort() != null) d.putIfAbsent("clientPort", ctx.clientPort());
+            if (ctx.serverIp() != null) d.putIfAbsent("serverIp", ctx.serverIp());
+            if (ctx.serverPort() != null) d.putIfAbsent("serverPort", ctx.serverPort());
+            if (ctx.userAgent() != null) d.putIfAbsent("userAgent", ctx.userAgent());
+            if (ctx.referer() != null) d.putIfAbsent("referer", ctx.referer());
+            if (ctx.details() != null && !ctx.details().isEmpty()) d.putIfAbsent("req", ctx.details());
+        }
         e.setDetails(d);
 
         auditLogsRepository.save(e);
+        AuditLogContextHolder.markWritten();
     }
 }

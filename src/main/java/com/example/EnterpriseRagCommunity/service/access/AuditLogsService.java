@@ -18,6 +18,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -35,6 +36,7 @@ public class AuditLogsService {
             Long actorId,
             String actorName,
             String action,
+            String op,
             String entityType,
             Long entityId,
             AuditResult result,
@@ -52,6 +54,7 @@ public class AuditLogsService {
         final String actorNameKw = StringUtils.hasText(actorName) ? actorName.trim() : null;
         final String traceKw = StringUtils.hasText(traceId) ? traceId.trim() : null;
         final String actionKw = StringUtils.hasText(action) ? action.trim() : null;
+        final String opKw = StringUtils.hasText(op) ? op.trim() : null;
         final String entityTypeKw = StringUtils.hasText(entityType) ? entityType.trim() : null;
 
         Specification<AuditLogsEntity> spec = (root, query, cb) -> {
@@ -67,6 +70,9 @@ public class AuditLogsService {
             }
             if (actionKw != null) {
                 ps.add(cb.like(root.get("action"), "%" + actionKw + "%"));
+            }
+            if (opKw != null) {
+                ps.add(buildOpPredicate(opKw, root, cb));
             }
             if (entityTypeKw != null) {
                 ps.add(cb.like(root.get("entityType"), "%" + entityTypeKw + "%"));
@@ -89,7 +95,8 @@ public class AuditLogsService {
                 String like = "%" + kw + "%";
                 ps.add(cb.or(
                         cb.like(root.get("action"), like),
-                        cb.like(root.get("entityType"), like)
+                        cb.like(root.get("entityType"), like),
+                        cb.like(root.get("details").as(String.class), like)
                 ));
             }
 
@@ -106,6 +113,35 @@ public class AuditLogsService {
         };
 
         return auditLogsRepository.findAll(spec, pageable).map(this::toViewDto);
+    }
+
+    private static Predicate buildOpPredicate(String opRaw, jakarta.persistence.criteria.Root<AuditLogsEntity> root, jakarta.persistence.criteria.CriteriaBuilder cb) {
+        String op = opRaw == null ? "" : opRaw.trim().toUpperCase(Locale.ROOT);
+        if (op.isEmpty()) {
+            return cb.conjunction();
+        }
+
+        String field = "action";
+        return switch (op) {
+            case "CREATE" -> cb.or(
+                    cb.equal(root.get(field), "CRUD_CREATE"),
+                    cb.like(root.get(field), "%_CREATE"),
+                    cb.like(root.get(field), "%_CREATE_%")
+            );
+            case "UPDATE" -> cb.or(
+                    cb.equal(root.get(field), "CRUD_UPDATE"),
+                    cb.like(root.get(field), "%_UPDATE"),
+                    cb.like(root.get(field), "%_UPDATE_%"),
+                    cb.like(root.get(field), "%_EDIT"),
+                    cb.like(root.get(field), "%_EDIT_%")
+            );
+            case "DELETE" -> cb.or(
+                    cb.equal(root.get(field), "CRUD_DELETE"),
+                    cb.like(root.get(field), "%_DELETE"),
+                    cb.like(root.get(field), "%_DELETE_%")
+            );
+            default -> cb.conjunction();
+        };
     }
 
     @Transactional(readOnly = true)
@@ -130,6 +166,9 @@ public class AuditLogsService {
                 getString(details, "message"),
                 getString(details, "ip"),
                 getString(details, "traceId"),
+                getString(details, "method"),
+                getString(details, "path"),
+                getBoolean(details, "autoCrud"),
                 details
         );
     }
@@ -138,6 +177,18 @@ public class AuditLogsService {
         if (map == null || key == null) return null;
         Object v = map.get(key);
         return v == null ? null : String.valueOf(v);
+    }
+
+    private static Boolean getBoolean(Map<String, Object> map, String key) {
+        if (map == null || key == null) return null;
+        Object v = map.get(key);
+        if (v == null) return null;
+        if (v instanceof Boolean b) return b;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        if ("true".equalsIgnoreCase(s)) return true;
+        if ("false".equalsIgnoreCase(s)) return false;
+        return null;
     }
 
     private static Sort parseSort(String sort) {

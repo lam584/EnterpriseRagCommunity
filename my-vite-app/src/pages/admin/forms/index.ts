@@ -37,6 +37,7 @@ export const formsLoaders: Partial<Record<string, FormLoader>> = {
   'llm-queue': () => import('./metrics/llm-queue'),
   'llm-routing-monitor': () => import('./metrics/llm-routing-monitor'),
   'label-quality': () => import('./metrics/label-quality'),
+  'global-logs': () => import('./metrics/global-logs'),
   'cost': () => import('./metrics/cost'),
 
   'user-role': () => import('./users/user-role'),

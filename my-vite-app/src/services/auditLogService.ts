@@ -32,6 +32,9 @@ export type AuditLogDTO = {
   message?: string | null;
   ip?: string | null;
   traceId?: string | null;
+  method?: string | null;
+  path?: string | null;
+  autoCrud?: boolean | null;
 
   details?: Record<string, unknown> | null;
 };
@@ -45,6 +48,7 @@ export type AuditLogPageQuery = {
   actorName?: string;
 
   action?: string;
+  op?: string;
   entityType?: string;
   entityId?: number;
   result?: string;
@@ -87,6 +91,7 @@ export async function adminListAuditLogs(query: AuditLogPageQuery = {}): Promise
     actorId: query.actorId,
     actorName: query.actorName,
     action: query.action,
+    op: query.op,
     entityType: query.entityType,
     entityId: query.entityId,
     result: query.result,
@@ -124,6 +129,7 @@ export async function adminExportAuditLogsCsv(query: Omit<AuditLogPageQuery, 'pa
     actorId: query.actorId,
     actorName: query.actorName,
     action: query.action,
+    op: query.op,
     entityType: query.entityType,
     entityId: query.entityId,
     result: query.result,
@@ -155,6 +161,7 @@ export async function portalListMyAuditLogs(query: Omit<AuditLogPageQuery, 'acto
     pageSize: query.pageSize ?? 20,
     keyword: query.keyword,
     action: query.action,
+    op: query.op,
     entityType: query.entityType,
     entityId: query.entityId,
     result: query.result,
@@ -181,6 +188,7 @@ export async function portalExportMyAuditLogsCsv(
   const qs = buildQuery({
     keyword: query.keyword,
     action: query.action,
+    op: query.op,
     entityType: query.entityType,
     entityId: query.entityId,
     result: query.result,

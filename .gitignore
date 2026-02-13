@@ -57,3 +57,5 @@ git操作指南.md
 /*.txt
 评估报告.md
 .env
+test-reports/
+my-vite-app/test-reports/

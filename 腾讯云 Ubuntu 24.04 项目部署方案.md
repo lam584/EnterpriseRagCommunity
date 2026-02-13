@@ -127,6 +127,18 @@ cd EnterpriseRagCommunity
    # === 数据库配置 ===
    DB_USERNAME=root
    DB_PASSWORD=password
+
+   # === 反向代理 / CORS（重要：使用 Nginx 域名访问时需要）===
+   # 说明：
+   # - 初始化向导会调用 /api/setup/encrypt、/api/setup/test-es 等 POST 接口
+   # - 浏览器对 POST 通常会携带 Origin 头，后端如果未允许该 Origin 会返回 403（Invalid CORS request）
+   # - 这里填写你对外访问的站点 Origin（协议+域名/端口），多个用逗号分隔
+   # 示例：APP_CORS_ALLOWED_ORIGINS=https://example.com,http://example.com
+   APP_CORS_ALLOWED_ORIGINS=https://example.com,http://example.com
+
+   # === 反向代理头处理（推荐）===
+   # 让 Spring 正确识别 Nginx 转发后的 https/http、host、port
+   SERVER_FORWARD_HEADERS_STRATEGY=framework
    ```
 
    **保存退出**：`Ctrl + O`, `Enter`, `Ctrl + X`。
@@ -281,6 +293,9 @@ cd EnterpriseRagCommunity
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_set_header X-Forwarded-Host $host;
+           proxy_set_header X-Forwarded-Port $server_port;
        }
 
        # 上传文件路径代理
@@ -288,6 +303,9 @@ cd EnterpriseRagCommunity
            proxy_pass http://localhost:8099;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_set_header X-Forwarded-Host $host;
+           proxy_set_header X-Forwarded-Port $server_port;
        }
    }
    ```
@@ -368,12 +386,18 @@ cd EnterpriseRagCommunity
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_set_header X-Forwarded-Host $host;
+           proxy_set_header X-Forwarded-Port $server_port;
        }
 
        location /uploads {
            proxy_pass http://localhost:8099;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_set_header X-Forwarded-Host $host;
+           proxy_set_header X-Forwarded-Port $server_port;
        }
    }
    ```

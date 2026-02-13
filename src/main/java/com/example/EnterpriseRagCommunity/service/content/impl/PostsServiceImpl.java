@@ -40,6 +40,8 @@ import com.example.EnterpriseRagCommunity.repository.content.TagsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.RiskLabelingRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.ai.AiPostRiskTagService;
 import com.example.EnterpriseRagCommunity.service.ai.AiPostSummaryTriggerService;
 import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
@@ -102,6 +104,9 @@ public class PostsServiceImpl implements PostsService {
     @Autowired
     private BoardAccessControlService boardAccessControlService;
 
+    @Autowired
+    private AuditLogWriter auditLogWriter;
+
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
@@ -118,133 +123,162 @@ public class PostsServiceImpl implements PostsService {
     public PostsEntity publish(PostsPublishDTO dto) {
         if (dto == null) throw new IllegalArgumentException("参数不能为空");
 
-        Long me = currentUserIdOrThrow();
-
-        if (dto.getBoardId() == null) {
-            throw new IllegalArgumentException("boardId 不能为空");
-        }
-        if (!boardAccessControlService.canPostBoard(dto.getBoardId(), boardAccessControlService.currentUserRoleIds())) {
-            throw new AccessDeniedException("无权在该版块发帖");
-        }
-
-        PostsEntity post = new PostsEntity();
-        post.setTenantId(null);
-        post.setBoardId(dto.getBoardId());
-        post.setAuthorId(me);
-        post.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
-        post.setContent(dto.getContent());
-        post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
-
-        // 业务规则：用户发帖默认进入待审核状态；审核通过（切到 PUBLISHED）时再补齐 publishedAt
-        post.setStatus(PostStatus.PENDING);
-        post.setPublishedAt(null);
-
-        post.setIsDeleted(false);
-        post.setMetadata(dto.getMetadata());
-
-        post = postsRepository.save(post);
-
+        Long me = null;
+        String actorName = currentUsernameOrNull();
+        Long boardId = dto.getBoardId();
         try {
-            List<String> suggested = aiPostRiskTagService.suggestRiskTags(post.getTitle(), post.getContent());
-            if (suggested != null && !suggested.isEmpty()) {
-                for (String raw : suggested) {
-                    String slug = normalizeRiskTagSlug(raw);
-                    if (slug == null || slug.isBlank()) continue;
+            me = currentUserIdOrThrow();
 
-                    TagsEntity tag = tagsRepository.findByTenantIdAndTypeAndSlug(1L, TagType.RISK, slug).orElse(null);
-                    if (tag == null) {
-                        TagsEntity created = new TagsEntity();
-                        created.setTenantId(1L);
-                        created.setType(TagType.RISK);
-                        created.setName(normalizeRiskTagName(raw, slug));
-                        created.setSlug(slug);
-                        created.setDescription(null);
-                        created.setIsSystem(false);
-                        created.setIsActive(true);
-                        created.setCreatedAt(LocalDateTime.now());
-                        tag = tagsRepository.save(created);
+            if (boardId == null) {
+                throw new IllegalArgumentException("boardId 不能为空");
+            }
+            if (!boardAccessControlService.canPostBoard(boardId, boardAccessControlService.currentUserRoleIds())) {
+                throw new AccessDeniedException("无权在该版块发帖");
+            }
+
+            PostsEntity post = new PostsEntity();
+            post.setTenantId(null);
+            post.setBoardId(boardId);
+            post.setAuthorId(me);
+            post.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
+            post.setContent(dto.getContent());
+            post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
+
+            post.setStatus(PostStatus.PENDING);
+            post.setPublishedAt(null);
+
+            post.setIsDeleted(false);
+            post.setMetadata(dto.getMetadata());
+
+            post = postsRepository.save(post);
+
+            try {
+                List<String> suggested = aiPostRiskTagService.suggestRiskTags(post.getTitle(), post.getContent());
+                if (suggested != null && !suggested.isEmpty()) {
+                    for (String raw : suggested) {
+                        String slug = normalizeRiskTagSlug(raw);
+                        if (slug == null || slug.isBlank()) continue;
+
+                        TagsEntity tag = tagsRepository.findByTenantIdAndTypeAndSlug(1L, TagType.RISK, slug).orElse(null);
+                        if (tag == null) {
+                            TagsEntity created = new TagsEntity();
+                            created.setTenantId(1L);
+                            created.setType(TagType.RISK);
+                            created.setName(normalizeRiskTagName(raw, slug));
+                            created.setSlug(slug);
+                            created.setDescription(null);
+                            created.setIsSystem(false);
+                            created.setIsActive(true);
+                            created.setCreatedAt(LocalDateTime.now());
+                            tag = tagsRepository.save(created);
+                        }
+
+                        if (riskLabelingRepository.findByTargetTypeAndTargetIdAndTagIdAndSource(ContentType.POST, post.getId(), tag.getId(), Source.LLM).isEmpty()) {
+                            RiskLabelingEntity rl = new RiskLabelingEntity();
+                            rl.setTargetType(ContentType.POST);
+                            rl.setTargetId(post.getId());
+                            rl.setTagId(tag.getId());
+                            rl.setSource(Source.LLM);
+                            rl.setConfidence(null);
+                            rl.setCreatedAt(LocalDateTime.now());
+                            riskLabelingRepository.save(rl);
+                        }
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+
+            adminModerationQueueService.ensureEnqueuedPost(post.getId());
+
+            try {
+                moderationRuleAutoRunner.runOnce();
+                moderationVecAutoRunner.runOnce();
+                moderationLlmAutoRunner.runOnce();
+            } catch (Exception ignore) {
+            }
+
+            List<Long> attachmentIds = dto.getAttachmentIds();
+            if (attachmentIds != null && !attachmentIds.isEmpty()) {
+                LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
+                for (Long id : uniq) {
+                    if (id == null) continue;
+                    FileAssetsEntity fa = fileAssetsRepository.findById(id)
+                            .orElseThrow(() -> new IllegalArgumentException("附件不存在: " + id));
+
+                    Long ownerId = fa.getOwner() == null ? null : fa.getOwner().getId();
+                    if (ownerId == null || !ownerId.equals(me)) {
+                        throw new IllegalArgumentException("无权使用该附件: " + id);
+                    }
+                    if (fa.getStatus() != FileAssetStatus.READY) {
+                        throw new IllegalArgumentException("附件状态不可用: " + id);
                     }
 
-                    if (riskLabelingRepository.findByTargetTypeAndTargetIdAndTagIdAndSource(ContentType.POST, post.getId(), tag.getId(), Source.LLM).isEmpty()) {
-                        RiskLabelingEntity rl = new RiskLabelingEntity();
-                        rl.setTargetType(ContentType.POST);
-                        rl.setTargetId(post.getId());
-                        rl.setTagId(tag.getId());
-                        rl.setSource(Source.LLM);
-                        rl.setConfidence(null);
-                        rl.setCreatedAt(LocalDateTime.now());
-                        riskLabelingRepository.save(rl);
+                    String fileName = fa.getUrl();
+                    if (fileName != null) {
+                        int q = fileName.indexOf('?');
+                        if (q >= 0) fileName = fileName.substring(0, q);
+                        int h = fileName.indexOf('#');
+                        if (h >= 0) fileName = fileName.substring(0, h);
+                        int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
+                        fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
                     }
+                    fileName = (fileName == null ? "" : fileName);
+                    fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
+                    fileName = fileName.replaceAll("[\\\\/]+", "_");
+                    if (fileName.isBlank()) {
+                        fileName = "file";
+                    }
+                    if (fileName.length() > 512) {
+                        fileName = fileName.substring(fileName.length() - 512);
+                    }
+
+                    PostAttachmentsEntity pa = new PostAttachmentsEntity();
+                    pa.setPostId(post.getId());
+                    pa.setFileAssetId(fa.getId());
+                    pa.setUrl(fa.getUrl());
+                    pa.setFileName(fileName);
+                    pa.setMimeType(fa.getMimeType());
+                    pa.setSizeBytes(fa.getSizeBytes());
+                    pa.setCreatedAt(LocalDateTime.now());
+                    postAttachmentsRepository.save(pa);
                 }
             }
-        } catch (Exception ignore) {
-        }
 
-        // 新增：写入审核队列（防重复）
-        adminModerationQueueService.ensureEnqueuedPost(post.getId());
-
-        try {
-            moderationRuleAutoRunner.runOnce();
-            moderationVecAutoRunner.runOnce();
-            moderationLlmAutoRunner.runOnce();
-        } catch (Exception ignore) {
-        }
-
-        List<Long> attachmentIds = dto.getAttachmentIds();
-        if (attachmentIds != null && !attachmentIds.isEmpty()) {
-            // de-dup while preserving order
-            LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
-            for (Long id : uniq) {
-                if (id == null) continue;
-                FileAssetsEntity fa = fileAssetsRepository.findById(id)
-                        .orElseThrow(() -> new IllegalArgumentException("附件不存在: " + id));
-
-                // ownership check
-                Long ownerId = fa.getOwner() == null ? null : fa.getOwner().getId();
-                if (ownerId == null || !ownerId.equals(me)) {
-                    throw new IllegalArgumentException("无权使用该附件: " + id);
-                }
-                if (fa.getStatus() != FileAssetStatus.READY) {
-                    throw new IllegalArgumentException("附件状态不可用: " + id);
-                }
-
-                String fileName = fa.getUrl();
-                if (fileName != null) {
-                    int q = fileName.indexOf('?');
-                    if (q >= 0) fileName = fileName.substring(0, q);
-                    int h = fileName.indexOf('#');
-                    if (h >= 0) fileName = fileName.substring(0, h);
-                    int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
-                    fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
-                }
-                fileName = (fileName == null ? "" : fileName);
-                fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
-                fileName = fileName.replaceAll("[\\\\/]+", "_");
-                if (fileName.isBlank()) {
-                    fileName = "file";
-                }
-                if (fileName.length() > 512) {
-                    fileName = fileName.substring(fileName.length() - 512);
-                }
-
-                PostAttachmentsEntity pa = new PostAttachmentsEntity();
-                pa.setPostId(post.getId());
-                pa.setFileAssetId(fa.getId());
-                pa.setUrl(fa.getUrl());
-                pa.setFileName(fileName);
-                pa.setMimeType(fa.getMimeType());
-                pa.setSizeBytes(fa.getSizeBytes());
-                pa.setCreatedAt(LocalDateTime.now());
-                postAttachmentsRepository.save(pa);
+            try {
+                aiPostSummaryTriggerService.scheduleGenerateAfterCommit(post.getId(), me);
+            } catch (Exception ignore) {
             }
-        }
 
-        try {
-            aiPostSummaryTriggerService.scheduleGenerateAfterCommit(post.getId(), me);
-        } catch (Exception ignore) {
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "POST_PUBLISH",
+                    "POST",
+                    post.getId(),
+                    AuditResult.SUCCESS,
+                    "发帖",
+                    null,
+                    Map.of(
+                            "boardId", boardId,
+                            "title", safeText(post.getTitle(), 128),
+                            "status", post.getStatus() == null ? null : post.getStatus().name()
+                    )
+            );
+            return post;
+        } catch (RuntimeException e) {
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "POST_PUBLISH",
+                    "POST",
+                    null,
+                    AuditResult.FAIL,
+                    safeText(e.getMessage(), 512),
+                    null,
+                    boardId == null ? Map.of() : Map.of("boardId", boardId)
+            );
+            throw e;
         }
-
-        return post;
     }
 
     private static String normalizeRiskTagName(String raw, String slug) {
@@ -419,22 +453,51 @@ public class PostsServiceImpl implements PostsService {
         if (id == null) throw new IllegalArgumentException("id 不能为空");
         if (status == null) throw new IllegalArgumentException("status 不能为空");
 
-        PostsEntity post = postsRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + id));
+        Long me = null;
+        String actorName = currentUsernameOrNull();
+        try {
+            me = currentUserIdOrThrow();
+            PostsEntity post = postsRepository.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + id));
 
-        if (Boolean.TRUE.equals(post.getIsDeleted())) {
-            throw new IllegalArgumentException("帖子已删除: " + id);
+            if (Boolean.TRUE.equals(post.getIsDeleted())) {
+                throw new IllegalArgumentException("帖子已删除: " + id);
+            }
+
+            if (status == PostStatus.PUBLISHED && post.getPublishedAt() == null) {
+                post.setPublishedAt(LocalDateTime.now());
+            }
+            post.setStatus(status);
+
+            PostsEntity saved = postsRepository.save(post);
+            ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "POST_UPDATE_STATUS",
+                    "POST",
+                    saved.getId(),
+                    AuditResult.SUCCESS,
+                    "更新帖子状态",
+                    null,
+                    Map.of("status", status.name())
+            );
+            return saved;
+        } catch (RuntimeException e) {
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "POST_UPDATE_STATUS",
+                    "POST",
+                    id,
+                    AuditResult.FAIL,
+                    safeText(e.getMessage(), 512),
+                    null,
+                    Map.of("status", status.name())
+            );
+            throw e;
         }
-
-        // 业务规则：从非发布状态切到 PUBLISHED 时，补齐 publishedAt
-        if (status == PostStatus.PUBLISHED && post.getPublishedAt() == null) {
-            post.setPublishedAt(LocalDateTime.now());
-        }
-        post.setStatus(status);
-
-        PostsEntity saved = postsRepository.save(post);
-        ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
-        return saved;
     }
 
     @Override
@@ -450,87 +513,140 @@ public class PostsServiceImpl implements PostsService {
         if (id == null) throw new IllegalArgumentException("id 不能为空");
         if (dto == null) throw new IllegalArgumentException("参数不能为空");
 
-        Long me = currentUserIdOrThrow();
+        Long me = null;
+        String actorName = currentUsernameOrNull();
+        Long boardId = dto.getBoardId();
+        try {
+            me = currentUserIdOrThrow();
 
-        PostsEntity post = postsRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + id));
+            PostsEntity post = postsRepository.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + id));
 
-        if (Boolean.TRUE.equals(post.getIsDeleted())) {
-            throw new IllegalArgumentException("帖子已删除: " + id);
-        }
-
-        boolean isAuthor = post.getAuthorId() != null && post.getAuthorId().equals(me);
-        if (!isAuthor) {
-            throw new IllegalArgumentException("无权编辑该帖子");
-        }
-
-        if (dto.getBoardId() == null) {
-            throw new IllegalArgumentException("boardId 不能为空");
-        }
-        if (!boardAccessControlService.canPostBoard(dto.getBoardId(), boardAccessControlService.currentUserRoleIds())) {
-            throw new AccessDeniedException("无权在该版块发帖");
-        }
-
-        post.setBoardId(dto.getBoardId());
-        post.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
-        post.setContent(dto.getContent());
-        post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
-        post.setMetadata(dto.getMetadata());
-
-        // sync attachments: keep it simple - replace all
-        postAttachmentsRepository.deleteByPostId(post.getId());
-
-        List<Long> attachmentIds = dto.getAttachmentIds();
-        if (attachmentIds != null && !attachmentIds.isEmpty()) {
-            LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
-            for (Long faId : uniq) {
-                if (faId == null) continue;
-                FileAssetsEntity fa = fileAssetsRepository.findById(faId)
-                        .orElseThrow(() -> new IllegalArgumentException("附件不存在: " + faId));
-
-                Long ownerId = fa.getOwner() == null ? null : fa.getOwner().getId();
-                if (ownerId == null || !ownerId.equals(me)) {
-                    throw new IllegalArgumentException("无权使用该附件: " + faId);
-                }
-                if (fa.getStatus() != FileAssetStatus.READY) {
-                    throw new IllegalArgumentException("附件状态不可用: " + faId);
-                }
-
-                String fileName = fa.getUrl();
-                if (fileName != null) {
-                    int q = fileName.indexOf('?');
-                    if (q >= 0) fileName = fileName.substring(0, q);
-                    int h = fileName.indexOf('#');
-                    if (h >= 0) fileName = fileName.substring(0, h);
-                    int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
-                    fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
-                }
-                fileName = (fileName == null ? "" : fileName);
-                fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
-                fileName = fileName.replaceAll("[\\\\/]+", "_");
-                if (fileName.isBlank()) {
-                    fileName = "file";
-                }
-                if (fileName.length() > 512) {
-                    fileName = fileName.substring(fileName.length() - 512);
-                }
-
-                PostAttachmentsEntity pa = new PostAttachmentsEntity();
-                pa.setPostId(post.getId());
-                pa.setFileAssetId(fa.getId());
-                pa.setUrl(fa.getUrl());
-                pa.setFileName(fileName);
-                pa.setMimeType(fa.getMimeType());
-                pa.setSizeBytes(fa.getSizeBytes());
-                pa.setCreatedAt(LocalDateTime.now());
-                postAttachmentsRepository.save(pa);
+            if (Boolean.TRUE.equals(post.getIsDeleted())) {
+                throw new IllegalArgumentException("帖子已删除: " + id);
             }
-        }
 
-        PostsEntity saved = postsRepository.save(post);
-        if (saved.getStatus() == PostStatus.PUBLISHED && !Boolean.TRUE.equals(saved.getIsDeleted())) {
-            ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+            boolean isAuthor = post.getAuthorId() != null && post.getAuthorId().equals(me);
+            if (!isAuthor) {
+                throw new IllegalArgumentException("无权编辑该帖子");
+            }
+
+            if (boardId == null) {
+                throw new IllegalArgumentException("boardId 不能为空");
+            }
+            if (!boardAccessControlService.canPostBoard(boardId, boardAccessControlService.currentUserRoleIds())) {
+                throw new AccessDeniedException("无权在该版块发帖");
+            }
+
+            post.setBoardId(boardId);
+            post.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
+            post.setContent(dto.getContent());
+            post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
+            post.setMetadata(dto.getMetadata());
+
+            postAttachmentsRepository.deleteByPostId(post.getId());
+
+            List<Long> attachmentIds = dto.getAttachmentIds();
+            if (attachmentIds != null && !attachmentIds.isEmpty()) {
+                LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
+                for (Long faId : uniq) {
+                    if (faId == null) continue;
+                    FileAssetsEntity fa = fileAssetsRepository.findById(faId)
+                            .orElseThrow(() -> new IllegalArgumentException("附件不存在: " + faId));
+
+                    Long ownerId = fa.getOwner() == null ? null : fa.getOwner().getId();
+                    if (ownerId == null || !ownerId.equals(me)) {
+                        throw new IllegalArgumentException("无权使用该附件: " + faId);
+                    }
+                    if (fa.getStatus() != FileAssetStatus.READY) {
+                        throw new IllegalArgumentException("附件状态不可用: " + faId);
+                    }
+
+                    String fileName = fa.getUrl();
+                    if (fileName != null) {
+                        int q = fileName.indexOf('?');
+                        if (q >= 0) fileName = fileName.substring(0, q);
+                        int h = fileName.indexOf('#');
+                        if (h >= 0) fileName = fileName.substring(0, h);
+                        int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
+                        fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
+                    }
+                    fileName = (fileName == null ? "" : fileName);
+                    fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
+                    fileName = fileName.replaceAll("[\\\\/]+", "_");
+                    if (fileName.isBlank()) {
+                        fileName = "file";
+                    }
+                    if (fileName.length() > 512) {
+                        fileName = fileName.substring(fileName.length() - 512);
+                    }
+
+                    PostAttachmentsEntity pa = new PostAttachmentsEntity();
+                    pa.setPostId(post.getId());
+                    pa.setFileAssetId(fa.getId());
+                    pa.setUrl(fa.getUrl());
+                    pa.setFileName(fileName);
+                    pa.setMimeType(fa.getMimeType());
+                    pa.setSizeBytes(fa.getSizeBytes());
+                    pa.setCreatedAt(LocalDateTime.now());
+                    postAttachmentsRepository.save(pa);
+                }
+            }
+
+            PostsEntity saved = postsRepository.save(post);
+            if (saved.getStatus() == PostStatus.PUBLISHED && !Boolean.TRUE.equals(saved.getIsDeleted())) {
+                ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+            }
+
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "POST_UPDATE",
+                    "POST",
+                    saved.getId(),
+                    AuditResult.SUCCESS,
+                    "编辑帖子",
+                    null,
+                    Map.of(
+                            "boardId", boardId,
+                            "title", safeText(saved.getTitle(), 128)
+                    )
+            );
+            return saved;
+        } catch (RuntimeException e) {
+            Map<String, Object> d = new HashMap<>();
+            if (boardId != null) d.put("boardId", boardId);
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "POST_UPDATE",
+                    "POST",
+                    id,
+                    AuditResult.FAIL,
+                    safeText(e.getMessage(), 512),
+                    null,
+                    d
+            );
+            throw e;
         }
-        return saved;
+    }
+
+    private static String currentUsernameOrNull() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+            String name = auth.getName();
+            return name == null || name.isBlank() ? null : name.trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String safeText(String s, int maxLen) {
+        if (s == null) return null;
+        String t = s.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (t.isBlank()) return null;
+        if (maxLen <= 0) return "";
+        return t.length() <= maxLen ? t : t.substring(0, maxLen);
     }
 }

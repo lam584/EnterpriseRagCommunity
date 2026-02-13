@@ -9,14 +9,12 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.InternalResourceViewResolver;
 import org.springframework.scheduling.annotation.EnableAsync;
-import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
 @SpringBootApplication
 @Controller
 @EnableAsync
-@EnableScheduling
 public class EnterpriseRagCommunityApplication extends SpringBootServletInitializer {
 
     private final AtomicInteger visitCounter = new AtomicInteger(0);

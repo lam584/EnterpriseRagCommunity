@@ -31,6 +31,8 @@ import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.ai.AiLanguageDetectService;
 import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
@@ -98,6 +100,9 @@ public class CommentsServiceImpl implements CommentsService {
 
     @Autowired
     private AiLanguageDetectService aiLanguageDetectService;
+
+    @Autowired
+    private AuditLogWriter auditLogWriter;
 
     private static String extractProfileString(UsersEntity u, String key) {
         if (u == null || u.getMetadata() == null) return null;
@@ -184,65 +189,116 @@ public class CommentsServiceImpl implements CommentsService {
     public CommentDTO createForPost(Long postId, CommentCreateRequest req) {
         if (postId == null) throw new IllegalArgumentException("postId 不能为空");
         if (req == null) throw new IllegalArgumentException("参数不能为空");
-
-        Long me = currentUserIdOrThrow();
-
-        CommentsEntity e = new CommentsEntity();
-        e.setPostId(postId);
-        e.setParentId(req.getParentId());
-        e.setAuthorId(me);
-        e.setContent(req.getContent());
-
+        Long me = null;
+        String actorName = currentUsernameOrNull();
+        Long parentId = req.getParentId();
         try {
-            List<String> langs = aiLanguageDetectService.detectLanguages(req.getContent());
-            if (langs != null && !langs.isEmpty()) {
-                Map<String, Object> meta = e.getMetadata() == null ? new HashMap<>() : new HashMap<>(e.getMetadata());
-                meta.put("languages", langs);
-                e.setMetadata(meta);
-            }
-        } catch (Exception ignore) {
-        }
+            me = currentUserIdOrThrow();
 
-        // 业务规则：用户评论默认进入待审核状态；审核通过后再改为 VISIBLE
-        e.setStatus(CommentStatus.PENDING);
+            CommentsEntity e = new CommentsEntity();
+            e.setPostId(postId);
+            e.setParentId(parentId);
+            e.setAuthorId(me);
+            e.setContent(req.getContent());
 
-        e.setIsDeleted(false);
-        e.setCreatedAt(LocalDateTime.now());
-        e.setUpdatedAt(LocalDateTime.now());
-
-        CommentsEntity saved = commentsRepository.save(e);
-
-        // 新增：写入审核队列（防重复）
-        adminModerationQueueService.ensureEnqueuedComment(saved.getId());
-
-        try {
-            moderationRuleAutoRunner.runOnce();
-            moderationVecAutoRunner.runOnce();
-            moderationLlmAutoRunner.runOnce();
-        } catch (Exception ignore) {
-        }
-
-        // 回复通知：仅“有人评论了我发布的帖子（顶层评论）”才通知；多级回复暂不通知。
-        if (req.getParentId() == null) {
-            PostsEntity post = postsRepository.findById(postId).orElse(null);
-            if (post != null && post.getAuthorId() != null && !me.equals(post.getAuthorId())) {
-                String postTitle = post.getTitle() == null ? "" : post.getTitle();
-                String title = "有人评论了你的帖子";
-                String content = (postTitle.isBlank() ? "" : ("帖子《" + postTitle + "》")) + "收到了新的评论：" + req.getContent();
-                // 避免 content 太长（表字段是 TEXT，但前端展示也需要可读性）
-                if (content.length() > 500) {
-                    content = content.substring(0, 500) + "...";
+            try {
+                List<String> langs = aiLanguageDetectService.detectLanguages(req.getContent());
+                if (langs != null && !langs.isEmpty()) {
+                    Map<String, Object> meta = e.getMetadata() == null ? new HashMap<>() : new HashMap<>(e.getMetadata());
+                    meta.put("languages", langs);
+                    e.setMetadata(meta);
                 }
-                notificationsService.createNotification(post.getAuthorId(), "REPLY_POST", title, content);
+            } catch (Exception ignore) {
             }
-        }
 
-        return toDTO(saved);
+            e.setStatus(CommentStatus.PENDING);
+
+            e.setIsDeleted(false);
+            e.setCreatedAt(LocalDateTime.now());
+            e.setUpdatedAt(LocalDateTime.now());
+
+            CommentsEntity saved = commentsRepository.save(e);
+
+            adminModerationQueueService.ensureEnqueuedComment(saved.getId());
+
+            try {
+                moderationRuleAutoRunner.runOnce();
+                moderationVecAutoRunner.runOnce();
+                moderationLlmAutoRunner.runOnce();
+            } catch (Exception ignore) {
+            }
+
+            if (parentId == null) {
+                PostsEntity post = postsRepository.findById(postId).orElse(null);
+                if (post != null && post.getAuthorId() != null && !me.equals(post.getAuthorId())) {
+                    String postTitle = post.getTitle() == null ? "" : post.getTitle();
+                    String title = "有人评论了你的帖子";
+                    String content = (postTitle.isBlank() ? "" : ("帖子《" + postTitle + "》")) + "收到了新的评论：" + req.getContent();
+                    if (content.length() > 500) {
+                        content = content.substring(0, 500) + "...";
+                    }
+                    notificationsService.createNotification(post.getAuthorId(), "REPLY_POST", title, content);
+                }
+            }
+
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "COMMENT_CREATE",
+                    "COMMENT",
+                    saved.getId(),
+                    AuditResult.SUCCESS,
+                    "发表评论",
+                    null,
+                    Map.of(
+                            "postId", postId,
+                            "parentId", parentId,
+                            "status", saved.getStatus() == null ? null : saved.getStatus().name()
+                    )
+            );
+
+            return toDTO(saved);
+        } catch (RuntimeException ex) {
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "COMMENT_CREATE",
+                    "COMMENT",
+                    null,
+                    AuditResult.FAIL,
+                    safeText(ex.getMessage(), 512),
+                    null,
+                    Map.of(
+                            "postId", postId,
+                            "parentId", parentId
+                    )
+            );
+            throw ex;
+        }
     }
 
     @Override
     public long countByPostId(Long postId) {
         if (postId == null) return 0;
         return commentsRepository.countByPostIdAndStatusAndIsDeletedFalse(postId, CommentStatus.VISIBLE);
+    }
+
+    private static String currentUsernameOrNull() {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+            String name = auth.getName();
+            return name == null || name.isBlank() ? null : name.trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String safeText(String s, int maxLen) {
+        if (s == null) return null;
+        String t = s.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (t.isBlank()) return null;
+        if (maxLen <= 0) return "";
+        return t.length() <= maxLen ? t : t.substring(0, maxLen);
     }
 }

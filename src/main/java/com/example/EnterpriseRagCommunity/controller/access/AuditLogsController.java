@@ -38,6 +38,7 @@ public class AuditLogsController {
             @RequestParam(value = "actorId", required = false) Long actorId,
             @RequestParam(value = "actorName", required = false) String actorName,
             @RequestParam(value = "action", required = false) String action,
+            @RequestParam(value = "op", required = false) String op,
             @RequestParam(value = "entityType", required = false) String entityType,
             @RequestParam(value = "entityId", required = false) Long entityId,
             @RequestParam(value = "result", required = false) AuditResult result,
@@ -54,6 +55,7 @@ public class AuditLogsController {
                 actorId,
                 actorName,
                 action,
+                op,
                 entityType,
                 entityId,
                 result,
@@ -83,6 +85,7 @@ public class AuditLogsController {
             @RequestParam(value = "actorId", required = false) Long actorId,
             @RequestParam(value = "actorName", required = false) String actorName,
             @RequestParam(value = "action", required = false) String action,
+            @RequestParam(value = "op", required = false) String op,
             @RequestParam(value = "entityType", required = false) String entityType,
             @RequestParam(value = "entityId", required = false) Long entityId,
             @RequestParam(value = "result", required = false) AuditResult result,
@@ -100,6 +103,7 @@ public class AuditLogsController {
                 actorId,
                 actorName,
                 action,
+                op,
                 entityType,
                 entityId,
                 result,
@@ -110,7 +114,7 @@ public class AuditLogsController {
         );
 
         StringBuilder sb = new StringBuilder();
-        sb.append("id,createdAt,actorId,actorName,action,entityType,entityId,result,traceId,message\n");
+        sb.append("id,createdAt,actorId,actorName,action,entityType,entityId,result,traceId,method,path,autoCrud,message\n");
         for (AuditLogsViewDTO it : pageRes.getContent()) {
             sb.append(csv(it.id())).append(',')
                     .append(csv(it.createdAt())).append(',')
@@ -121,6 +125,9 @@ public class AuditLogsController {
                     .append(csv(it.entityId())).append(',')
                     .append(csv(it.result())).append(',')
                     .append(csv(it.traceId())).append(',')
+                    .append(csv(it.method())).append(',')
+                    .append(csv(it.path())).append(',')
+                    .append(csv(it.autoCrud())).append(',')
                     .append(csv(it.message()))
                     .append('\n');
         }

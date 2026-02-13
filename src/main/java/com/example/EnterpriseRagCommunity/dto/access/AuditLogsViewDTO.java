@@ -29,6 +29,10 @@ public record AuditLogsViewDTO(
         String ip,
         String traceId,
 
+        String method,
+        String path,
+        Boolean autoCrud,
+
         Map<String, Object> details
 ) {
 }

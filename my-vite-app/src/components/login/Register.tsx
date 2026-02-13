@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import { useNavigate } from 'react-router-dom';
-import backgroundImage1 from '../../assets/images/login_1.png';
+import backgroundImage1 from '../../assets/images/1.png';
 import { registerAndGetStatus, verifyRegister } from '../../services/authService';
 import AuthFooter from './AuthFooter';
 interface RegisterFormData {

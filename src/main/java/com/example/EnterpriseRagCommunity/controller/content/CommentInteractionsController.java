@@ -6,12 +6,15 @@ import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionTargetTyp
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionType;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/comments")
@@ -23,6 +26,9 @@ public class CommentInteractionsController {
 
     @Autowired
     private AdministratorService administratorService;
+
+    @Autowired
+    private AuditLogWriter auditLogWriter;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -38,29 +44,63 @@ public class CommentInteractionsController {
     @PostMapping("/{commentId}/like")
     public CommentToggleResponseDTO toggleLike(@PathVariable("commentId") Long commentId) {
         if (commentId == null) throw new IllegalArgumentException("commentId 不能为空");
-        Long me = currentUserIdOrThrow();
+        Long me = null;
+        String actorName = null;
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            actorName = auth == null ? null : auth.getName();
+            me = currentUserIdOrThrow();
 
-        boolean existed = reactionsRepository.existsByUserIdAndTargetTypeAndTargetIdAndType(
-                me, ReactionTargetType.COMMENT, commentId, ReactionType.LIKE
-        );
-        if (existed) {
-            reactionsRepository.deleteByUserIdAndTargetTypeAndTargetIdAndType(
+            boolean existed = reactionsRepository.existsByUserIdAndTargetTypeAndTargetIdAndType(
                     me, ReactionTargetType.COMMENT, commentId, ReactionType.LIKE
             );
-        } else {
-            ReactionsEntity e = new ReactionsEntity();
-            e.setUserId(me);
-            e.setTargetType(ReactionTargetType.COMMENT);
-            e.setTargetId(commentId);
-            e.setType(ReactionType.LIKE);
-            e.setCreatedAt(LocalDateTime.now());
-            reactionsRepository.save(e);
-        }
+            if (existed) {
+                reactionsRepository.deleteByUserIdAndTargetTypeAndTargetIdAndType(
+                        me, ReactionTargetType.COMMENT, commentId, ReactionType.LIKE
+                );
+            } else {
+                ReactionsEntity e = new ReactionsEntity();
+                e.setUserId(me);
+                e.setTargetType(ReactionTargetType.COMMENT);
+                e.setTargetId(commentId);
+                e.setType(ReactionType.LIKE);
+                e.setCreatedAt(LocalDateTime.now());
+                reactionsRepository.save(e);
+            }
 
-        long likeCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
-                ReactionTargetType.COMMENT, commentId, ReactionType.LIKE
-        );
-        return new CommentToggleResponseDTO(!existed, likeCount);
+            long likeCount = reactionsRepository.countByTargetTypeAndTargetIdAndType(
+                    ReactionTargetType.COMMENT, commentId, ReactionType.LIKE
+            );
+            boolean liked = !existed;
+
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "COMMENT_LIKE_TOGGLE",
+                    "COMMENT",
+                    commentId,
+                    AuditResult.SUCCESS,
+                    liked ? "点赞评论" : "取消点赞评论",
+                    null,
+                    Map.of(
+                            "liked", liked,
+                            "likeCount", likeCount
+                    )
+            );
+            return new CommentToggleResponseDTO(liked, likeCount);
+        } catch (RuntimeException e) {
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "COMMENT_LIKE_TOGGLE",
+                    "COMMENT",
+                    commentId,
+                    AuditResult.FAIL,
+                    e.getMessage(),
+                    null,
+                    Map.of()
+            );
+            throw e;
+        }
     }
 }
-
