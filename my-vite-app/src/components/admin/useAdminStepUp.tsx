@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '../common/Modal';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -13,11 +13,19 @@ export function useAdminStepUp() {
   const [method, setMethod] = useState<'email' | 'totp'>('totp');
   const [code, setCode] = useState('');
   const [sending, setSending] = useState(false);
+  const [emailCountdown, setEmailCountdown] = useState(0);
+  const [emailCodeTtlSeconds, setEmailCodeTtlSeconds] = useState<number | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resolveRef = useRef<((r: EnsureResult) => void) | null>(null);
 
   const available = useMemo(() => new Set(methods.map((m) => String(m).toLowerCase())), [methods]);
+
+  useEffect(() => {
+    if (emailCountdown <= 0) return;
+    const t = window.setInterval(() => setEmailCountdown((v) => Math.max(0, v - 1)), 1000);
+    return () => window.clearInterval(t);
+  }, [emailCountdown]);
 
   const close = useCallback((result: EnsureResult) => {
     setOpen(false);
@@ -47,17 +55,23 @@ export function useAdminStepUp() {
   }, []);
 
   const sendEmail = useCallback(async () => {
+    if (emailCountdown > 0) return;
     setSending(true);
     setError(null);
+    setEmailCodeTtlSeconds(null);
     try {
-      await sendAccountEmailVerificationCode('ADMIN_STEP_UP');
+      const resp = await sendAccountEmailVerificationCode('ADMIN_STEP_UP');
+      const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 180;
+      setEmailCountdown(wait);
+      const ttl = Number.isFinite(Number(resp?.codeTtlSeconds)) ? Number(resp.codeTtlSeconds) : null;
+      setEmailCodeTtlSeconds(ttl && ttl > 0 ? ttl : null);
     } catch (e) {
       const msg = e instanceof Error ? e.message : '发送验证码失败';
       setError(msg);
     } finally {
       setSending(false);
     }
-  }, []);
+  }, [emailCountdown]);
 
   const verify = useCallback(async () => {
     setVerifying(true);
@@ -115,11 +129,25 @@ export function useAdminStepUp() {
         </div>
 
         {method === 'email' ? (
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="secondary" disabled={sending || verifying} onClick={sendEmail}>
-              发送验证码
-            </Button>
-            <div className="text-xs text-gray-500">验证码将发送到当前登录邮箱</div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="min-w-28"
+                disabled={sending || verifying || emailCountdown > 0}
+                onClick={sendEmail}
+              >
+                {sending ? '发送中...' : emailCountdown > 0 ? `重发（${emailCountdown}s）` : '发送验证码'}
+              </Button>
+              <div className="text-xs text-gray-500">
+                {emailCountdown > 0 ? `请在 ${emailCountdown}s 后重发` : '验证码将发送到当前登录邮箱'}
+              </div>
+            </div>
+            {emailCodeTtlSeconds ? (
+              <div className="text-xs text-gray-500">验证码有效期约 {Math.max(1, Math.ceil(emailCodeTtlSeconds / 60))} 分钟</div>
+            ) : null}
           </div>
         ) : null}
 
