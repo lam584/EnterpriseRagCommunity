@@ -1,5 +1,14 @@
 plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0' apply false
+}
+
+def disableFoojayResolver = providers.gradleProperty('disableFoojayResolver')
+        .map { Boolean.parseBoolean(it) }
+        .orElse(false)
+        .get()
+
+if (!disableFoojayResolver) {
+    apply plugin: 'org.gradle.toolchains.foojay-resolver-convention'
 }
 
 rootProject.name = 'EnterpriseRagCommunity'

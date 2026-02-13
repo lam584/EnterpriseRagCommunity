@@ -21,20 +21,20 @@ ext['log4j2.version'] = '2.25.3'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
-def java21Launcher = javaToolchains.launcherFor {
-    languageVersion = JavaLanguageVersion.of(21)
+def java25Launcher = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(25)
 }
 
 tasks.withType(Test).configureEach {
-    javaLauncher = java21Launcher
+    javaLauncher = java25Launcher
 }
 
 tasks.withType(JavaExec).configureEach {
-    javaLauncher = java21Launcher
+    javaLauncher = java25Launcher
 }
 
 tasks.withType(JavaCompile).configureEach {
