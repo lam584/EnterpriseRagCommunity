@@ -406,6 +406,7 @@ export const RetrievalRagPage: React.FC = () => (
 export const MetricsMonitorPage: React.FC = () => (
   <AdminSection
     title="评估与监控"
+    resetQueryOnTabChange
     items={[
       { id: 'token', label: 'Token 成本统计' },
       { id: 'llm-queue', label: 'LLM 调用队列' },
