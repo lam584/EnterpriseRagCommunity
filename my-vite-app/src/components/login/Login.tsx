@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import backgroundImage1 from '../../assets/images/login_1.png';
+import backgroundImage1 from '../../assets/images/1.png';
 import backgroundImage2 from '../../assets/images/2.png';
 import { login, resendLogin2faEmail, resendRegisterCode, verifyLogin2fa, verifyRegister } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';

@@ -24,6 +24,8 @@ import com.example.EnterpriseRagCommunity.dto.access.EmailTestSendDTO;
 import com.example.EnterpriseRagCommunity.dto.access.RegistrationSettingsDTO;
 import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicySettingsDTO;
 import com.example.EnterpriseRagCommunity.dto.access.TotpAdminSettingsDTO;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
@@ -44,6 +46,7 @@ public class AdminSettingsController {
     private final EmailSenderService emailSenderService;
     private final ObjectProvider<EmailInboxService> emailInboxServiceProvider;
     private final Security2faPolicyService security2faPolicyService;
+    private final AuditLogWriter auditLogWriter;
 
     @GetMapping("/registration")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
@@ -60,6 +63,17 @@ public class AdminSettingsController {
         long roleId = dto.getDefaultRegisterRoleId() != null ? dto.getDefaultRegisterRoleId() : 1L;
         if (roleId <= 0) throw new IllegalArgumentException("defaultRegisterRoleId must be positive");
         appSettingsService.upsertString(AppSettingsService.KEY_DEFAULT_REGISTER_ROLE_ID, String.valueOf(roleId));
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "ADMIN_SETTINGS_UPDATE",
+                "REGISTRATION_SETTINGS",
+                null,
+                AuditResult.SUCCESS,
+                "更新注册默认角色",
+                null,
+                Map.of("defaultRegisterRoleId", roleId)
+        );
         return ResponseEntity.ok(dto);
     }
 
@@ -139,6 +153,23 @@ public class AdminSettingsController {
         appSettingsService.upsertString(KEY_TOTP_DEFAULT_PERIOD, String.valueOf(normalized.getDefaultPeriodSeconds()));
         appSettingsService.upsertString(KEY_TOTP_DEFAULT_SKEW, String.valueOf(normalized.getDefaultSkew()));
 
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "ADMIN_SETTINGS_UPDATE",
+                "TOTP_SETTINGS",
+                null,
+                AuditResult.SUCCESS,
+                "更新 TOTP 管理配置",
+                null,
+                Map.of(
+                        "issuer", normalized.getIssuer(),
+                        "allowedAlgorithms", normalized.getAllowedAlgorithms(),
+                        "allowedDigits", normalized.getAllowedDigits(),
+                        "allowedPeriodSeconds", normalized.getAllowedPeriodSeconds(),
+                        "maxSkew", normalized.getMaxSkew()
+                )
+        );
         return ResponseEntity.ok(normalized);
     }
 
@@ -151,7 +182,19 @@ public class AdminSettingsController {
     @PutMapping("/security-2fa-policy")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
     public ResponseEntity<Security2faPolicySettingsDTO> putSecurity2faPolicy(@RequestBody Security2faPolicySettingsDTO dto) {
-        return ResponseEntity.ok(security2faPolicyService.saveAdminSettings(dto));
+        Security2faPolicySettingsDTO saved = security2faPolicyService.saveAdminSettings(dto);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "ADMIN_SETTINGS_UPDATE",
+                "SECURITY_2FA_POLICY",
+                null,
+                AuditResult.SUCCESS,
+                "更新登录二次验证策略",
+                null,
+                Map.of()
+        );
+        return ResponseEntity.ok(saved);
     }
 
     @GetMapping("/email")
@@ -206,6 +249,28 @@ public class AdminSettingsController {
         systemConfigurationService.saveConfig(KEY_EMAIL_FROM, normalized.getFrom(), false, "Updated via Admin Settings");
         systemConfigurationService.saveConfig(KEY_EMAIL_FROM_NAME, normalized.getFromName(), false, "Updated via Admin Settings");
 
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "ADMIN_SETTINGS_UPDATE",
+                "EMAIL_SETTINGS",
+                null,
+                AuditResult.SUCCESS,
+                "更新邮件服务配置",
+                null,
+                Map.of(
+                        "enabled", normalized.getEnabled(),
+                        "protocol", normalized.getProtocol(),
+                        "host", normalized.getHost(),
+                        "portPlain", normalized.getPortPlain(),
+                        "portEncrypted", normalized.getPortEncrypted(),
+                        "encryption", normalized.getEncryption(),
+                        "connectTimeoutMs", normalized.getConnectTimeoutMs(),
+                        "timeoutMs", normalized.getTimeoutMs(),
+                        "writeTimeoutMs", normalized.getWriteTimeoutMs(),
+                        "debug", normalized.getDebug()
+                )
+        );
         return ResponseEntity.ok(normalized);
     }
 
@@ -223,6 +288,17 @@ public class AdminSettingsController {
         String subject = (prefix.isEmpty() ? "" : prefix + " ") + "邮件配置测试";
         String text = "这是一封测试邮件，用于验证邮件服务器配置是否可用。";
         emailSenderService.sendPlainText(cfg, dto.getTo(), subject, text, "ADMIN_TEST");
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "ADMIN_EMAIL_TEST",
+                "EMAIL_SETTINGS",
+                null,
+                AuditResult.SUCCESS,
+                "发送邮件测试",
+                null,
+                Map.of("to", safeText(dto.getTo(), 256))
+        );
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
@@ -263,6 +339,25 @@ public class AdminSettingsController {
         appSettingsService.upsertString(KEY_EMAIL_INBOX_FOLDER, normalized.getFolder() == null ? "INBOX" : normalized.getFolder());
         appSettingsService.upsertString(KEY_EMAIL_SENT_FOLDER, normalized.getSentFolder() == null ? "Sent" : normalized.getSentFolder());
 
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "ADMIN_SETTINGS_UPDATE",
+                "EMAIL_INBOX_SETTINGS",
+                null,
+                AuditResult.SUCCESS,
+                "更新邮箱收件箱配置",
+                null,
+                Map.of(
+                        "protocol", normalized.getProtocol(),
+                        "host", normalized.getHost(),
+                        "portPlain", normalized.getPortPlain(),
+                        "portEncrypted", normalized.getPortEncrypted(),
+                        "encryption", normalized.getEncryption(),
+                        "folder", normalized.getFolder(),
+                        "sentFolder", normalized.getSentFolder()
+                )
+        );
         return ResponseEntity.ok(normalized);
     }
 
@@ -307,6 +402,25 @@ public class AdminSettingsController {
 
         List<EmailInboxMessageDTO> list = emailInboxService.listInbox(sentCfg, limit == null ? 20 : limit);
         return ResponseEntity.ok(list);
+    }
+
+    private static String currentUsernameOrNull() {
+        try {
+            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+            String name = auth.getName();
+            return name == null || name.isBlank() ? null : name.trim();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String safeText(String s, int maxLen) {
+        if (s == null) return null;
+        String t = s.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (t.isBlank()) return null;
+        if (maxLen <= 0) return "";
+        return t.length() <= maxLen ? t : t.substring(0, maxLen);
     }
 
     private static TotpAdminSettingsDTO normalizeTotpSettings(TotpAdminSettingsDTO input) {

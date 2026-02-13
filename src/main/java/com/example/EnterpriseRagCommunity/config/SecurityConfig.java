@@ -8,6 +8,7 @@ import java.util.Optional; // 新增导入
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -33,6 +34,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
 import com.example.EnterpriseRagCommunity.security.AccessChangedFilter;
+import com.example.EnterpriseRagCommunity.security.AccessLogsFilter;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
 
@@ -40,6 +42,12 @@ import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
 @EnableWebSecurity
 public class SecurityConfig {
     private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
+
+    @Value("${app.cors.allowed-origins:}")
+    private String corsAllowedOrigins;
+
+    @Value("${app.cors.allowed-origin-patterns:}")
+    private String corsAllowedOriginPatterns;
 
     // 改为注入Service
     @Autowired
@@ -51,6 +59,9 @@ public class SecurityConfig {
     @Autowired
     private AccessChangedFilter accessChangedFilter;
 
+    @Autowired(required = false)
+    private AccessLogsFilter accessLogsFilter;
+
     @Bean
     @Order(1) // API 链优先级更高，只拦截 /api/**
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -60,7 +71,13 @@ public class SecurityConfig {
                 .securityMatcher("/api/**") // 仅匹配 API 请求，避免与 Web 链重叠
                 // Make RBAC changes effective immediately for session-based auth.
                 // Must run after SecurityContext is loaded from session.
-                .addFilterAfter(accessChangedFilter, SecurityContextHolderFilter.class)
+                .addFilterAfter(accessChangedFilter, SecurityContextHolderFilter.class);
+
+        if (accessLogsFilter != null) {
+            http.addFilterAfter(accessLogsFilter, AccessChangedFilter.class);
+        }
+
+        http
                 .cors(cors -> {
                     logger.debug("配置 CORS...");
                     cors.configurationSource(corsConfigurationSource());
@@ -195,17 +212,44 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // 允许前端开发服务器域名（同时支持 localhost 与 127.0.0.1）
-        configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://127.0.0.1:5173"));
+        var allowedOrigins = parseCorsList(corsAllowedOrigins);
+        var allowedOriginPatterns = parseCorsList(corsAllowedOriginPatterns);
+
+        if (!allowedOriginPatterns.isEmpty()) {
+            configuration.setAllowedOriginPatterns(allowedOriginPatterns);
+        } else if (!allowedOrigins.isEmpty()) {
+            configuration.setAllowedOrigins(allowedOrigins);
+        } else {
+            configuration.setAllowedOrigins(Arrays.asList("http://localhost:5173", "http://127.0.0.1:5173"));
+        }
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-CSRF-TOKEN", "X-XSRF-TOKEN"));
-        configuration.setExposedHeaders(Arrays.asList("X-CSRF-TOKEN", "X-XSRF-TOKEN"));
+        configuration.setAllowedHeaders(Arrays.asList(
+                "Authorization",
+                "Content-Type",
+                "X-CSRF-TOKEN",
+                "X-XSRF-TOKEN",
+                "X-Request-Id",
+                "X-Correlation-Id",
+                "X-Trace-Id",
+                "X-Client-Fingerprint"
+        ));
+        configuration.setExposedHeaders(Arrays.asList("X-CSRF-TOKEN", "X-XSRF-TOKEN", "X-Request-Id"));
         configuration.setAllowCredentials(true); // 允许凭证（cookie）传递
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    private static java.util.List<String> parseCorsList(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return java.util.Collections.emptyList();
+        }
+        return java.util.Arrays.stream(raw.split("[,\\s]+"))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .toList();
     }
 
     @Bean

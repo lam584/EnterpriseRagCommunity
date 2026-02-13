@@ -6,6 +6,7 @@ import { logout } from '../../services/authService';
 import { getMyProfile } from '../../services/accountService';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import BeianFooter from '../../components/common/BeianFooter';
 
 /**
  * 后台管理布局（统一风格）：采用与 NewsSystemLayout 相同的左侧紫色渐变侧边栏
@@ -196,7 +197,7 @@ export default function AdminDashboardLayout() {
             </a>
           )}
 
-          <div className="mt-4 text-xs text-center text-purple-200/80">© {new Date().getFullYear()} 后台管理</div>
+          <BeianFooter className="mt-4 text-xs text-center text-purple-200/80" />
         </div>
       </aside>
 

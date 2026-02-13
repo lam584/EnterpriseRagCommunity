@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import { useEffect, useMemo, useRef, useState } from 'react';
 import HotSidebar from './discover/components/HotSidebar';
 import AssistantRecentSessionsSidebar from './assistant/components/AssistantRecentSessionsSidebar';
+import BeianFooter from '../../components/common/BeianFooter';
 
 export type PortalOutletContext = {
   composePreviewOpen: boolean;
@@ -210,7 +211,7 @@ export default function CommunityPortalLayout() {
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
                 R
               </div>
-              RAG Community
+              RAG技术学习探索笔记
             </div>
           </div>
 
@@ -341,7 +342,7 @@ export default function CommunityPortalLayout() {
               </a>
             )}
 
-            <div className="mt-4 text-xs text-center text-gray-400">© {new Date().getFullYear()} RAG Community</div>
+            <BeianFooter className="mt-4 text-xs text-center text-gray-400" />
           </div>
         </aside>
 

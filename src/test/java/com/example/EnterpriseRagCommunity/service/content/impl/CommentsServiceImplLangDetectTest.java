@@ -10,6 +10,7 @@ import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.AiLanguageDetectService;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
@@ -50,6 +51,7 @@ class CommentsServiceImplLangDetectTest {
         UsersRepository usersRepository = mock(UsersRepository.class);
         ReactionsRepository reactionsRepository = mock(ReactionsRepository.class);
         AiLanguageDetectService aiLanguageDetectService = mock(AiLanguageDetectService.class);
+        AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
 
         UsersEntity me = new UsersEntity();
         me.setId(7L);
@@ -75,6 +77,7 @@ class CommentsServiceImplLangDetectTest {
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
         ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
         ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
+        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
 
         CommentCreateRequest req = new CommentCreateRequest();
         req.setContent("hello");
@@ -106,6 +109,7 @@ class CommentsServiceImplLangDetectTest {
         UsersRepository usersRepository = mock(UsersRepository.class);
         ReactionsRepository reactionsRepository = mock(ReactionsRepository.class);
         AiLanguageDetectService aiLanguageDetectService = mock(AiLanguageDetectService.class);
+        AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
 
         UsersEntity me = new UsersEntity();
         me.setId(7L);
@@ -131,6 +135,7 @@ class CommentsServiceImplLangDetectTest {
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
         ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
         ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
+        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
 
         CommentCreateRequest req = new CommentCreateRequest();
         req.setContent("hello");

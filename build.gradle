@@ -1,6 +1,9 @@
 plugins {
     id 'java'
     id 'war'
+    id 'jacoco'
+    id 'org.owasp.dependencycheck' version '12.2.0'
+    id 'org.sonarqube' version '7.2.2.6593'
     id 'org.springframework.boot' version '3.5.7'
     id 'io.spring.dependency-management' version '1.1.7'
     id 'org.flywaydb.flyway' version '11.15.0'
@@ -13,10 +16,25 @@ bootWar {
 group = 'com.example'
 version = '0.0.1-SNAPSHOT'
 
+ext['elasticsearch-client.version'] = '8.19.9'
+ext['log4j2.version'] = '2.25.3'
+
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(21)
     }
+}
+
+def java21Launcher = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(21)
+}
+
+tasks.withType(Test).configureEach {
+    javaLauncher = java21Launcher
+}
+
+tasks.withType(JavaExec).configureEach {
+    javaLauncher = java21Launcher
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -53,6 +71,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security:3.5.7'
     implementation 'org.springframework.security:spring-security-taglibs:6.5.6'
     implementation 'org.springframework.boot:spring-boot-starter-actuator:3.5.7'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
     runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-jasper:10.1.48'              // JSP 引擎
     runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-el:10.1.48'                 // EL 引擎
     runtimeOnly 'jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api:3.0.2'
@@ -65,12 +84,104 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok:1.18.42'
     testImplementation 'org.springframework.boot:spring-boot-starter-test:3.5.7'
     testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'ch.vorburger.mariaDB4j:mariaDB4j:3.1.0'
+    testImplementation platform('org.testcontainers:testcontainers-bom:1.20.4')
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:mysql'
+    testImplementation 'org.testcontainers:jdbc'
     compileOnly 'io.swagger:swagger-annotations:1.6.14'
     implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch:3.5.7'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+sourceSets {
+    integrationTest {
+        java.srcDir file('src/integrationTest/java')
+        resources.srcDir file('src/integrationTest/resources')
+        resources.srcDir file('src/test/resources')
+        compileClasspath += sourceSets.main.output + sourceSets.test.output + configurations.testRuntimeClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+tasks.register('integrationTest', Test) {
+    group = 'verification'
+    description = 'Runs integration tests.'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('integrationTest')
+}
+
+jacoco {
+    toolVersion = '0.8.13'
+}
+
+tasks.named('test') {
+    finalizedBy tasks.named('jacocoTestReport')
+}
+
+tasks.withType(Test).configureEach {
+    jacoco {
+        excludes = [
+                'java/**',
+                'javax/**',
+                'jdk/**',
+                'sun/**',
+                'com/sun/**'
+        ]
+        includeNoLocationClasses = false
+    }
+}
+
+tasks.named('jacocoTestReport') {
+    dependsOn tasks.named('test')
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+}
+
+tasks.register('jacocoIntegrationTestReport', JacocoReport) {
+    dependsOn tasks.named('integrationTest')
+    executionData(tasks.named('integrationTest').get())
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(sourceSets.main.output)
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+}
+
+dependencyCheck {
+    formats = ['HTML', 'JSON']
+    outputDirectory = layout.buildDirectory.dir('reports/dependency-check').get().asFile.absolutePath
+    failBuildOnCVSS = 9.0
+    analyzers {
+        assemblyEnabled = false
+    }
+}
+
+sonar {
+    properties {
+        property 'sonar.projectKey', 'EnterpriseRagCommunity'
+        property 'sonar.projectName', 'EnterpriseRagCommunity'
+        property 'sonar.sourceEncoding', 'UTF-8'
+    }
 }
 
 // Spring Boot 打包配置：关闭 bootJar，启用 bootWar
@@ -159,7 +270,9 @@ tasks.register('buildVite', Exec) {
 
 // 2. 处理资源，把 my-vite-app/dist 下的文件复制到 Spring Boot 的 static 目录
 processResources {
-    dependsOn buildVite
+    if (!gradle.startParameter.taskNames.any { it.toLowerCase().contains('test') }) {
+        dependsOn buildVite
+    }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
     // 清空旧资源（避免使用已弃用的 buildDir，改用 layout.buildDirectory）

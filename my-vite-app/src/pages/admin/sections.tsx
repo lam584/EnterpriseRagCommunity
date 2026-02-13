@@ -407,13 +407,14 @@ export const MetricsMonitorPage: React.FC = () => (
   <AdminSection
     title="评估与监控"
     items={[
-      { id: 'metrics', label: '指标采集层' },
-      { id: 'abtest', label: '实验对比脚本' },
       { id: 'token', label: 'Token 成本统计' },
       { id: 'llm-queue', label: 'LLM 调用队列' },
       { id: 'llm-routing-monitor', label: '负载均衡与路由状态' },
-      { id: 'label-quality', label: '标签质量评估工具' },
+      { id: 'global-logs', label: '全局日志中心' },
       { id: 'cost', label: '审核成本分析' },
+      { id: 'metrics', label: '指标采集层' },
+      { id: 'abtest', label: '实验对比脚本' },
+      { id: 'label-quality', label: '标签质量评估工具' },
     ]}
   />
 );

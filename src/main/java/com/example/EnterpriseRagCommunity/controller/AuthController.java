@@ -40,6 +40,7 @@ import com.example.EnterpriseRagCommunity.dto.access.request.RegisterVerifyReque
 import com.example.EnterpriseRagCommunity.dto.access.response.ApiResponse;
 import com.example.EnterpriseRagCommunity.dto.access.response.AuthResponse;
 import com.example.EnterpriseRagCommunity.dto.access.response.InitialAdminRegisterResponse;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.access.PermissionsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.RolePermissionsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.TenantsEntity;
@@ -58,6 +59,7 @@ import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.security.AccessChangedFilter;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.AccountTotpService;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
 import com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService;
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
@@ -136,6 +138,9 @@ public class AuthController {
 
     @Autowired
     private UserDetailsService userDetailsService;
+
+    @Autowired
+    private AuditLogWriter auditLogWriter;
 
     @Value("${app.tenant.default-code:DEFAULT}")
     private String defaultTenantCode;
@@ -289,6 +294,20 @@ public class AuthController {
 
         UsersDTO userDTO = convertToUserSafeDTO(currentUser);
         AuthResponse authResponse = new AuthResponse(sessionId, 86400L, userDTO);
+        auditLogWriter.write(
+                currentUser.getId(),
+                currentUser.getEmail(),
+                "AUTH_LOGIN",
+                "SESSION",
+                null,
+                AuditResult.SUCCESS,
+                "登录成功",
+                null,
+                Map.of(
+                        "userId", currentUser.getId(),
+                        "email", currentUser.getEmail()
+                )
+        );
         return ResponseEntity.ok(authResponse);
     }
 
@@ -301,10 +320,32 @@ public class AuthController {
             if (preUser.isPresent() && preUser.get().getStatus() == AccountStatus.EMAIL_UNVERIFIED) {
                 UsersEntity user = preUser.get();
                 if (!passwordEncoder.matches(loginRequest.getPassword(), user.getPasswordHash())) {
+                    auditLogWriter.write(
+                            user.getId(),
+                            loginRequest.getEmail(),
+                            "AUTH_LOGIN",
+                            "SESSION",
+                            null,
+                            AuditResult.FAIL,
+                            "邮箱或密码错误",
+                            null,
+                            Map.of("email", loginRequest.getEmail())
+                    );
                     Map<String, String> errorResponse = new HashMap<>();
                     errorResponse.put("message", "邮箱或密码错误");
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
                 }
+                auditLogWriter.write(
+                        user.getId(),
+                        loginRequest.getEmail(),
+                        "AUTH_LOGIN",
+                        "SESSION",
+                        null,
+                        AuditResult.FAIL,
+                        "账号未完成邮箱验证",
+                        null,
+                        Map.of("email", loginRequest.getEmail(), "code", "EMAIL_NOT_VERIFIED")
+                );
                 Map<String, String> errorResponse = new HashMap<>();
                 errorResponse.put("code", "EMAIL_NOT_VERIFIED");
                 errorResponse.put("message", "账号未完成邮箱验证，请输入邮箱验证码完成激活");
@@ -375,6 +416,17 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.OK).body(responseMap);
         } catch (Exception e) {
             logger.warn("login failed email={} msg={}", loginRequest.getEmail(), e.getMessage(), e);
+            auditLogWriter.write(
+                    null,
+                    loginRequest == null ? null : loginRequest.getEmail(),
+                    "AUTH_LOGIN",
+                    "SESSION",
+                    null,
+                    AuditResult.FAIL,
+                    safeText(e.getMessage(), 512),
+                    null,
+                    Map.of("email", loginRequest == null ? null : loginRequest.getEmail())
+            );
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("message", "邮箱或密码错误");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
@@ -490,6 +542,13 @@ public class AuthController {
 
             // 检查用户是否已登录
             if (auth != null) {
+                String email = auth.getName();
+                Long uid = null;
+                try {
+                    uid = administratorService.findByUsername(email).map(UsersEntity::getId).orElse(null);
+                } catch (Exception ignore) {
+                }
+
                 // 清除认证信息
                 SecurityContextHolder.clearContext();
 
@@ -498,16 +557,47 @@ public class AuthController {
                     request.getSession().invalidate();
 
                 }
+
+                auditLogWriter.write(
+                        uid,
+                        email,
+                        "AUTH_LOGOUT",
+                        "SESSION",
+                        null,
+                        AuditResult.SUCCESS,
+                        "退出登录成功",
+                        null,
+                        Map.of("email", email)
+                );
             }
 
             Map<String, String> response = new HashMap<>();
             response.put("message", "退出登录成功");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            auditLogWriter.write(
+                    null,
+                    null,
+                    "AUTH_LOGOUT",
+                    "SESSION",
+                    null,
+                    AuditResult.FAIL,
+                    safeText(e.getMessage(), 512),
+                    null,
+                    Map.of()
+            );
             Map<String, String> response = new HashMap<>();
             response.put("message", "退出登录失败: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
+    }
+
+    private static String safeText(String s, int maxLen) {
+        if (s == null) return null;
+        String t = s.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (t.isBlank()) return null;
+        if (maxLen <= 0) return "";
+        return t.length() <= maxLen ? t : t.substring(0, maxLen);
     }
 
     @GetMapping("/csrf-token")
