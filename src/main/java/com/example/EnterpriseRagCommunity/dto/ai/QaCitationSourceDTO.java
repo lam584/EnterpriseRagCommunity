@@ -10,4 +10,5 @@ public class QaCitationSourceDTO {
     private Double score;
     private String title;
     private String url;
+    private String snippet;
 }

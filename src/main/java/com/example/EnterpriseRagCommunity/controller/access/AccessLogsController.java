@@ -134,6 +134,7 @@ public class AccessLogsController {
                     .append('\n');
         }
 
+        sb.insert(0, '\uFEFF');
         String filename = "access-logs.csv";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
@@ -148,4 +149,3 @@ public class AccessLogsController {
         return "\"" + s + "\"";
     }
 }
-

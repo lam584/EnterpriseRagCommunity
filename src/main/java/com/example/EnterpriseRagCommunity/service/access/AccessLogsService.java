@@ -25,6 +25,8 @@ public class AccessLogsService {
 
     private final AccessLogsRepository accessLogsRepository;
 
+    private static final int MAX_LOG_PAGE_SIZE = 20_000;
+
     @Transactional(readOnly = true)
     public Page<AccessLogsViewDTO> query(
             Integer page,
@@ -43,7 +45,7 @@ public class AccessLogsService {
             String sort
     ) {
         int safePage = page == null ? 1 : Math.max(page, 1);
-        int safePageSize = pageSize == null ? 20 : Math.min(Math.max(pageSize, 1), 200);
+        int safePageSize = pageSize == null ? 20 : Math.min(Math.max(pageSize, 1), MAX_LOG_PAGE_SIZE);
         Pageable pageable = PageRequest.of(safePage - 1, safePageSize, parseSort(sort));
 
         final String kw = StringUtils.hasText(keyword) ? keyword.trim() : null;
@@ -58,6 +60,9 @@ public class AccessLogsService {
             if (q != null) q.distinct(true);
 
             var ps = new ArrayList<Predicate>();
+
+            // Only show non-archived logs by default
+            ps.add(cb.isNull(root.get("archivedAt")));
 
             if (userId != null) ps.add(cb.equal(root.get("userId"), userId));
             if (statusCode != null) ps.add(cb.equal(root.get("statusCode"), statusCode));
@@ -148,4 +153,3 @@ public class AccessLogsService {
         return Sort.by(new Sort.Order(d, field), new Sort.Order(Sort.Direction.DESC, "id"));
     }
 }
-

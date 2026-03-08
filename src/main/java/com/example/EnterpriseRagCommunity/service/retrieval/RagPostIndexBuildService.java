@@ -70,6 +70,12 @@ public class RagPostIndexBuildService {
                                            String embeddingModelOverride,
                                            String embeddingProviderId,
                                            Integer expectedEmbeddingDims) {
+        String apiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("RagPostIndexBuildService.buildPosts skipped: APP_ES_API_KEY is missing.");
+            return new RagPostsBuildResponse();
+        }
+
         long started = System.currentTimeMillis();
         VectorIndicesEntity vi = vectorIndicesRepository.findById(vectorIndexId)
                 .orElseThrow(() -> new IllegalArgumentException("vector index not found: " + vectorIndexId));
@@ -90,20 +96,59 @@ public class RagPostIndexBuildService {
         int overlap = chunkOverlapChars == null || chunkOverlapChars < 0 ? 80 : Math.min(maxChars - 1, chunkOverlapChars);
 
         Map<String, Object> meta0ForDefaults = vi.getMetadata();
-        String metaModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingModel"));
-        if (metaModel == null) metaModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingModel"));
-        String modelToUse = toNonBlankString(embeddingModelOverride);
-        if (modelToUse == null) modelToUse = metaModel;
-        if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
 
-        String metaProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
-        if (metaProviderId == null) metaProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingProviderId"));
-        String providerToUse = toNonBlankString(embeddingProviderId);
-        if (providerToUse == null) providerToUse = metaProviderId;
+        String overrideModel = toNonBlankString(embeddingModelOverride);
+        String overrideProviderId = toNonBlankString(embeddingProviderId);
+        boolean hasOverride = overrideModel != null && overrideProviderId != null;
 
-        if (modelToUse == null && providerToUse == null) {
-            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
-            if (target != null) {
+        String fixedModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingModel"));
+        String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
+        boolean hasFixed = fixedModel != null && fixedProviderId != null;
+        boolean fixedEnabled = hasFixed && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, fixedProviderId, fixedModel);
+        if (hasFixed && !fixedEnabled) {
+            log.warn("RAG fixed embedding target is not enabled. vectorIndexId={}, providerId={}, model={}",
+                    vectorIndexId, fixedProviderId, fixedModel);
+        }
+
+        String lastBuildModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingModel"));
+        String lastBuildProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingProviderId"));
+        boolean hasLastBuild = lastBuildModel != null && lastBuildProviderId != null;
+        boolean lastBuildEnabled = hasLastBuild && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, lastBuildProviderId, lastBuildModel);
+        if (hasLastBuild && !lastBuildEnabled) {
+            log.info("RAG lastBuild embedding target is not enabled; fallback to routing. vectorIndexId={}, providerId={}, model={}",
+                    vectorIndexId, lastBuildProviderId, lastBuildModel);
+        }
+
+        String modelToUse = null;
+        String providerToUse = null;
+
+        if (hasOverride) {
+            modelToUse = overrideModel;
+            providerToUse = overrideProviderId;
+        } else if (fixedEnabled) {
+            modelToUse = fixedModel;
+            providerToUse = fixedProviderId;
+        } else if (lastBuildEnabled) {
+            modelToUse = lastBuildModel;
+            providerToUse = lastBuildProviderId;
+        } else if (overrideProviderId != null && overrideModel == null) {
+            providerToUse = overrideProviderId;
+        }
+
+        if (modelToUse == null) {
+            LlmRoutingService.RouteTarget target = (providerToUse == null)
+                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
+                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
+            if (target == null) {
+                String legacy = toNonBlankString(ragProps.getEs().getEmbeddingModel());
+                if (legacy == null) {
+                    throw new IllegalStateException(providerToUse == null
+                            ? "no eligible embedding target (please check embedding routing config)"
+                            : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
+                }
+                modelToUse = legacy;
+                providerToUse = null;
+            } else {
                 providerToUse = target.providerId();
                 modelToUse = target.modelName();
             }
@@ -399,7 +444,7 @@ public class RagPostIndexBuildService {
     }
 
     public void syncSinglePost(Long vectorIndexId, Long postId) {
-        syncSinglePost(vectorIndexId, postId, null, null, null, null);
+        syncSinglePost(vectorIndexId, postId, null, null, null, null, null);
     }
 
     public void syncSinglePost(Long vectorIndexId,
@@ -407,8 +452,14 @@ public class RagPostIndexBuildService {
                                Integer chunkMaxChars,
                                Integer chunkOverlapChars,
                                String embeddingModelOverride,
+                               String embeddingProviderId,
                                Integer expectedEmbeddingDims) {
         if (vectorIndexId == null || postId == null) return;
+
+        String apiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
+        if (apiKey == null || apiKey.isBlank()) {
+            return; // Skip if ES is not configured
+        }
 
         VectorIndicesEntity vi = vectorIndicesRepository.findById(vectorIndexId)
                 .orElseThrow(() -> new IllegalArgumentException("vector index not found: " + vectorIndexId));
@@ -429,18 +480,59 @@ public class RagPostIndexBuildService {
         }
 
         Map<String, Object> meta0ForDefaults = vi.getMetadata();
-        String metaModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingModel"));
-        if (metaModel == null) metaModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingModel"));
-        String modelToUse = toNonBlankString(embeddingModelOverride);
-        if (modelToUse == null) modelToUse = metaModel;
-        if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
 
-        String providerToUse = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
-        if (providerToUse == null) providerToUse = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingProviderId"));
+        String overrideModel = toNonBlankString(embeddingModelOverride);
+        String overrideProviderId = toNonBlankString(embeddingProviderId);
+        boolean hasOverride = overrideModel != null && overrideProviderId != null;
 
-        if (modelToUse == null && providerToUse == null) {
-            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
-            if (target != null) {
+        String fixedModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingModel"));
+        String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
+        boolean hasFixed = fixedModel != null && fixedProviderId != null;
+        boolean fixedEnabled = hasFixed && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, fixedProviderId, fixedModel);
+        if (hasFixed && !fixedEnabled) {
+            log.warn("RAG fixed embedding target is not enabled. vectorIndexId={}, postId={}, providerId={}, model={}",
+                    vectorIndexId, postId, fixedProviderId, fixedModel);
+        }
+
+        String lastBuildModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingModel"));
+        String lastBuildProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingProviderId"));
+        boolean hasLastBuild = lastBuildModel != null && lastBuildProviderId != null;
+        boolean lastBuildEnabled = hasLastBuild && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, lastBuildProviderId, lastBuildModel);
+        if (hasLastBuild && !lastBuildEnabled) {
+            log.info("RAG lastBuild embedding target is not enabled; fallback to routing. vectorIndexId={}, postId={}, providerId={}, model={}",
+                    vectorIndexId, postId, lastBuildProviderId, lastBuildModel);
+        }
+
+        String modelToUse = null;
+        String providerToUse = null;
+
+        if (hasOverride) {
+            modelToUse = overrideModel;
+            providerToUse = overrideProviderId;
+        } else if (fixedEnabled) {
+            modelToUse = fixedModel;
+            providerToUse = fixedProviderId;
+        } else if (lastBuildEnabled) {
+            modelToUse = lastBuildModel;
+            providerToUse = lastBuildProviderId;
+        } else if (overrideProviderId != null && overrideModel == null) {
+            providerToUse = overrideProviderId;
+        }
+
+        if (modelToUse == null) {
+            LlmRoutingService.RouteTarget target = (providerToUse == null)
+                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
+                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
+            if (target == null) {
+                String legacy = toNonBlankString(ragProps.getEs().getEmbeddingModel());
+                if (legacy == null) {
+                    throw new IllegalStateException(providerToUse == null
+                            ? "no eligible embedding target (please check embedding routing config)"
+                            : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
+                }
+                modelToUse = legacy;
+                providerToUse = null;
+            } else {
                 providerToUse = target.providerId();
                 modelToUse = target.modelName();
             }

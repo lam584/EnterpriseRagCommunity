@@ -1,9 +1,10 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostLangLabelSuggestRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostLangLabelSuggestResponse;
 import com.example.EnterpriseRagCommunity.entity.ai.PostLangLabelGenConfigEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,9 +17,10 @@ import java.util.*;
 @RequiredArgsConstructor
 public class AiPostLangLabelService {
 
-    private final AiProperties aiProperties;
     private final PostLangLabelGenConfigService postLangLabelGenConfigService;
     private final LlmGateway llmGateway;
+    private final PromptsRepository promptsRepository;
+    private final PromptLlmParamResolver promptLlmParamResolver;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AiPostLangLabelSuggestResponse suggestLanguages(AiPostLangLabelSuggestRequest req) {
@@ -26,12 +28,6 @@ public class AiPostLangLabelService {
         if (!Boolean.TRUE.equals(cfg.getEnabled())) {
             throw new IllegalStateException("语言标签生成已关闭");
         }
-
-        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
-        Double temperature = cfg.getTemperature();
-        if (temperature == null) temperature = 0.0;
-        Double topP = cfg.getTopP();
-        if (topP == null) topP = 0.2;
 
         String title = req.getTitle() == null ? "" : req.getTitle().trim();
         String content = req.getContent() == null ? "" : req.getContent().trim();
@@ -41,9 +37,33 @@ public class AiPostLangLabelService {
             content = content.substring(0, maxChars);
         }
 
-        String userPrompt = renderPrompt(cfg.getPromptTemplate(), title, content);
+        String promptCode = cfg.getPromptCode();
+        if (promptCode == null || promptCode.isBlank()) {
+            promptCode = PostLangLabelGenConfigService.DEFAULT_PROMPT_CODE;
+        }
+
+        PromptsEntity prompt = promptsRepository.findByPromptCode(promptCode)
+                .orElseThrow(() -> new IllegalStateException("Prompt code not found: " + cfg.getPromptCode()));
+
+        PromptLlmParams params = promptLlmParamResolver.resolveText(
+            prompt,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0.0,
+            0.2
+        );
+
+        String modelOverride = params.model();
+        Double temperature = params.temperature();
+        Double topP = params.topP();
+
+        String userPrompt = renderPrompt(prompt.getUserPromptTemplate(), title, content);
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(cfg.getSystemPrompt()));
+        messages.add(ChatMessage.system(prompt.getSystemPrompt()));
         messages.add(ChatMessage.user(userPrompt));
 
         long started = System.currentTimeMillis();
@@ -52,14 +72,14 @@ public class AiPostLangLabelService {
         try {
             LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
                     LlmQueueTaskType.LANGUAGE_TAG_GEN,
-                    cfg.getProviderId(),
+                    params.providerId(),
                     modelOverride,
                     messages,
                     temperature,
                     topP,
                     null,
                     null,
-                    cfg.getEnableThinking()
+                        params.enableThinking()
             );
             rawJson = routed == null ? null : routed.text();
             usedModel = routed == null ? null : routed.model();
@@ -135,7 +155,7 @@ public class AiPostLangLabelService {
 
     private static String renderPrompt(String template, String title, String content) {
         String safeTemplate = (template == null || template.isBlank())
-                ? PostLangLabelGenConfigService.DEFAULT_PROMPT_TEMPLATE
+                ? ""
                 : template;
         String out = safeTemplate;
         out = out.replace("{{title}}", title == null ? "" : title.trim());

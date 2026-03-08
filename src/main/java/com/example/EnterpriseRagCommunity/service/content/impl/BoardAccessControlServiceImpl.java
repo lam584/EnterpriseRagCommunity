@@ -119,7 +119,7 @@ public class BoardAccessControlServiceImpl implements BoardAccessControlService 
             auditLogWriter.write(
                     currentUserIdOrNull(),
                     currentActorNameOrNull(),
-                    "BOARD_ACL_REPLACE",
+                    "BOARD_ACCESS_CONTROL_REPLACE",
                     "BOARD",
                     boardId,
                     AuditResult.SUCCESS,
@@ -148,7 +148,7 @@ public class BoardAccessControlServiceImpl implements BoardAccessControlService 
 
         LinkedHashSet<Long> ids = new LinkedHashSet<>();
         for (UserRoleLinksEntity l : links) {
-            if (l == null || l.getRoleId() == null) continue;
+            if (l == null || l.getRoleId() == null || l.getRoleId() <= 0) continue;
             ids.add(l.getRoleId());
         }
         return ids;
@@ -175,7 +175,7 @@ public class BoardAccessControlServiceImpl implements BoardAccessControlService 
         if (required == null || required.isEmpty()) return true;
         if (roleIds == null || roleIds.isEmpty()) return false;
         for (Long rid : required) {
-            if (rid != null && roleIds.contains(rid)) return true;
+            if (rid != null && rid > 0 && roleIds.contains(rid)) return true;
         }
         return false;
     }
@@ -188,7 +188,7 @@ public class BoardAccessControlServiceImpl implements BoardAccessControlService 
         if (required == null || required.isEmpty()) return true;
         if (roleIds == null || roleIds.isEmpty()) return false;
         for (Long rid : required) {
-            if (rid != null && roleIds.contains(rid)) return true;
+            if (rid != null && rid > 0 && roleIds.contains(rid)) return true;
         }
         return false;
     }

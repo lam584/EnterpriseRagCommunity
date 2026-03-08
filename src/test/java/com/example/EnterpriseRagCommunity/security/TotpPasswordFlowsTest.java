@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -54,7 +54,7 @@ class TotpPasswordFlowsTest {
     @Resource
     private PasswordEncoder passwordEncoder;
 
-    @MockBean
+    @MockitoBean
     private EmailVerificationMailer emailVerificationMailer;
 
     private UsersEntity createUser(String email, String rawPassword) {

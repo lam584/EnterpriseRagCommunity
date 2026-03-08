@@ -8,6 +8,7 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSample
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.ai.LlmRoutingService;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.ModerationSamplesAutoSyncConfigService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -36,6 +37,7 @@ public class ModerationSamplesSyncService {
     private final ModerationSamplesRepository samplesRepository;
     private final AiEmbeddingService embeddingService;
     private final LlmGateway llmGateway;
+    private final LlmRoutingService llmRoutingService;
     private final ModerationSimilarityConfigRepository configRepository;
     private final ModerationSamplesAutoSyncConfigService autoSyncConfigService;
 
@@ -75,6 +77,13 @@ public class ModerationSamplesSyncService {
 
             String modelToUse = toNonBlank(cfg == null ? null : cfg.getEmbeddingModel());
             if (modelToUse == null) modelToUse = toNonBlank(indexConfigService.getEmbeddingModelOrDefault());
+            if (modelToUse != null) {
+                String candidateModel = modelToUse;
+                boolean enabled = llmRoutingService.listEnabledTargets(LlmQueueTaskType.SIMILARITY_EMBEDDING)
+                        .stream()
+                        .anyMatch(t -> t != null && candidateModel.equals(t.modelName()));
+                if (!enabled) modelToUse = null;
+            }
 
             AiEmbeddingService.EmbeddingResult er;
             if (modelToUse == null) {

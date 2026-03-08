@@ -76,71 +76,12 @@ function modelKey(model: unknown, providerId: unknown): string {
   return pid ? `${pid}|${m}` : m;
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
-
-function buildQuery(params: Record<string, unknown>): string {
-  const sp = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === '') continue;
-    sp.set(k, String(v));
-  }
-  const qs = sp.toString();
-  return qs ? `?${qs}` : '';
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
-
-type ModerationCostRecordDTO = {
-  id: number;
-  contentType?: string | null;
-  contentId?: number | null;
-  verdict?: string | null;
-  model: string;
-  providerId?: string | null;
-  tokensIn?: number | null;
-  tokensOut?: number | null;
-  totalTokens?: number | null;
-  cost?: string | number | null;
-  priceMissing?: boolean | null;
-  decidedAt?: string | null;
-};
-
-type ModerationCostRecordsResponseDTO = {
-  start: string;
-  end: string;
-  currency?: string | null;
-  totalTokens?: number | null;
-  totalCost?: string | number | null;
-  content: ModerationCostRecordDTO[];
-  totalPages: number;
-  totalElements: number;
-  page: number;
-  pageSize: number;
-};
-
-async function adminListModerationCostRecords(params: { start?: string; end?: string; page?: number; pageSize?: number }): Promise<ModerationCostRecordsResponseDTO> {
-  const qs = buildQuery({ start: params.start, end: params.end, page: params.page, pageSize: params.pageSize });
-  const res = await fetch(apiUrl(`/api/admin/metrics/cost/moderation${qs}`), {
-    method: 'GET',
-    credentials: 'include',
-  });
-  const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(getBackendMessage(data) || '获取审核调用明细失败');
-  return data as ModerationCostRecordsResponseDTO;
-}
+type RangePreset = 'CUSTOM' | 'LAST_30M' | 'LAST_1H' | 'LAST_6H' | 'LAST_12H' | 'LAST_24H' | 'TODAY' | 'YESTERDAY' | 'LAST_7D' | 'LAST_30D';
 
 const CostForm: React.FC = () => {
   const [startDate, setStartDate] = useState<Date>(() => dayStart(new Date(Date.now() - 7 * 24 * 3600 * 1000)));
   const [endDate, setEndDate] = useState<Date>(() => dayEnd(new Date()));
+  const [rangePreset, setRangePreset] = useState<RangePreset>('CUSTOM');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,12 +90,6 @@ const CostForm: React.FC = () => {
   const [timelineError, setTimelineError] = useState<string | null>(null);
 
   const [chartBy, setChartBy] = useState<'cost' | 'tokens'>('cost');
-
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [detailsError, setDetailsError] = useState<string | null>(null);
-  const [details, setDetails] = useState<ModerationCostRecordsResponseDTO | null>(null);
-  const [page, setPage] = useState(1);
-  const pageSize = 20;
 
   const [providerNameById, setProviderNameById] = useState<Record<string, string>>({});
 
@@ -184,10 +119,6 @@ const CostForm: React.FC = () => {
   const items: TokenMetricsModelItemDTO[] = useMemo(() => resp?.items ?? [], [resp]);
   const getModelText = useCallback((it: TokenMetricsModelItemDTO) => formatModelWithProvider(it.model, it.providerId, providerNameById), [providerNameById]);
   const getModelKey = useCallback((it: TokenMetricsModelItemDTO) => modelKey(it.model, it.providerId), []);
-  const getDetailsModelText = useCallback(
-    (r: ModerationCostRecordDTO) => formatModelWithProvider(r.model, r.providerId, providerNameById),
-    [providerNameById],
-  );
 
   const sortedItems = useMemo(() => {
     const arr = [...items];
@@ -209,54 +140,62 @@ const CostForm: React.FC = () => {
     return max <= 0 ? 1 : max;
   }, [sortedItems, chartBy]);
 
+  const applyRangePreset = useCallback((preset: RangePreset) => {
+    setRangePreset(preset);
+    if (preset === 'CUSTOM') return;
+
+    const end = new Date();
+    if (preset === 'YESTERDAY') {
+      const y = new Date(end.getTime() - 24 * 3600 * 1000);
+      setStartDate(dayStart(y));
+      setEndDate(dayEnd(y));
+      return;
+    }
+
+    let start = new Date(end.getTime());
+    if (preset === 'LAST_30M') start = new Date(end.getTime() - 30 * 60 * 1000);
+    else if (preset === 'LAST_1H') start = new Date(end.getTime() - 1 * 3600 * 1000);
+    else if (preset === 'LAST_6H') start = new Date(end.getTime() - 6 * 3600 * 1000);
+    else if (preset === 'LAST_12H') start = new Date(end.getTime() - 12 * 3600 * 1000);
+    else if (preset === 'LAST_24H') start = new Date(end.getTime() - 24 * 3600 * 1000);
+    else if (preset === 'LAST_7D') start = new Date(end.getTime() - 7 * 24 * 3600 * 1000);
+    else if (preset === 'LAST_30D') start = new Date(end.getTime() - 30 * 24 * 3600 * 1000);
+    else if (preset === 'TODAY') start = dayStart(end);
+
+    setStartDate(start);
+    setEndDate(end);
+  }, []);
+
   const load = useCallback(
-    async (p?: number) => {
+    async () => {
       setLoading(true);
       setError(null);
       setTimelineError(null);
-      setDetailsLoading(true);
-      setDetailsError(null);
       try {
-        const start = formatLocalDateTime(dayStart(startDate));
-        const end = formatLocalDateTime(dayEnd(endDate));
-        const nextPage = p ?? page;
-        const [r, t, d] = await Promise.all([
+        const start = formatLocalDateTime(startDate);
+        const end = formatLocalDateTime(endDate);
+        const [r, t] = await Promise.all([
           adminGetTokenMetrics({ start, end, source: 'MODERATION' }),
           adminGetTokenTimeline({ start, end, source: 'MODERATION' }),
-          adminListModerationCostRecords({ start, end, page: nextPage, pageSize }),
         ]);
         setResp(r);
         setTimeline(t);
-        setDetails(d);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setError(msg);
         setTimelineError(msg);
-        setDetailsError(msg);
         setResp(null);
         setTimeline(null);
-        setDetails(null);
       } finally {
         setLoading(false);
-        setDetailsLoading(false);
       }
     },
-    [startDate, endDate, page, pageSize],
+    [startDate, endDate],
   );
 
   useEffect(() => {
-    load(1);
-    setPage(1);
+    load();
   }, [startDate, endDate]);
-
-  const gotoPage = useCallback(
-    async (p: number) => {
-      const next = Math.max(1, p);
-      setPage(next);
-      await load(next);
-    },
-    [load],
-  );
 
   return (
     <div className="bg-white rounded-lg shadow p-4 space-y-4">
@@ -268,12 +207,36 @@ const CostForm: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="flex flex-col gap-1">
+          <div className="text-sm text-gray-600">常用范围</div>
+          <select
+            className="rounded border px-3 py-2 w-full"
+            value={rangePreset}
+            onChange={(e) => applyRangePreset(e.target.value as RangePreset)}
+          >
+            <option value="CUSTOM">自定义</option>
+            <option value="LAST_30M">近 30 分钟</option>
+            <option value="LAST_1H">近 1 小时</option>
+            <option value="LAST_6H">近 6 小时</option>
+            <option value="LAST_12H">近 12 小时</option>
+            <option value="LAST_24H">近 24 小时</option>
+            <option value="TODAY">今天</option>
+            <option value="YESTERDAY">昨天</option>
+            <option value="LAST_7D">近 7 天</option>
+            <option value="LAST_30D">近 30 天</option>
+          </select>
+        </div>
         <div className="flex flex-col gap-1">
           <div className="text-sm text-gray-600">开始时间</div>
           <DatePicker
             selected={startDate}
-            onChange={(d) => d && setStartDate(dayStart(d))}
+            onChange={(d) => {
+              if (!d) return;
+              setRangePreset('CUSTOM');
+              setStartDate(d);
+              if (d.getTime() > endDate.getTime()) setEndDate(d);
+            }}
             showTimeSelect
             timeFormat="HH:mm"
             timeIntervals={30}
@@ -285,7 +248,12 @@ const CostForm: React.FC = () => {
           <div className="text-sm text-gray-600">结束时间</div>
           <DatePicker
             selected={endDate}
-            onChange={(d) => d && setEndDate(dayEnd(d))}
+            onChange={(d) => {
+              if (!d) return;
+              setRangePreset('CUSTOM');
+              setEndDate(d);
+              if (d.getTime() < startDate.getTime()) setStartDate(d);
+            }}
             showTimeSelect
             timeFormat="HH:mm"
             timeIntervals={30}
@@ -296,10 +264,10 @@ const CostForm: React.FC = () => {
         <div className="flex items-end gap-2">
           <button
             className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-50"
-            onClick={() => load(1)}
-            disabled={loading || detailsLoading}
+            onClick={() => load()}
+            disabled={loading}
           >
-            {loading || detailsLoading ? '计算中...' : '计算'}
+            {loading ? '计算中...' : '计算'}
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -318,8 +286,8 @@ const CostForm: React.FC = () => {
         </div>
       </div>
 
-      {(error || timelineError || detailsError) && (
-        <div className="rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm">{error || timelineError || detailsError}</div>
+      {(error || timelineError) && (
+        <div className="rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm">{error || timelineError}</div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -344,7 +312,7 @@ const CostForm: React.FC = () => {
       <div className="space-y-2">
         <div className="text-sm font-medium">按模型聚合</div>
         <ModelTokenCostChart title="按模型 Token/费用对比" items={sortedItems.slice(0, 30)} currency={resp?.currency} providerNameById={providerNameById} />
-        <div className="space-y-2">
+        <div className="space-y-2 w-full max-w-5xl mx-auto">
           {sortedItems.map((it) => {
             const v = chartBy === 'tokens' ? Number(it.totalTokens || 0) : toNumber(it.cost) ?? 0;
             const pct = Math.max(0, Math.min(1, v / maxChartValue));
@@ -407,71 +375,6 @@ const CostForm: React.FC = () => {
               )}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-sm font-medium">审核调用明细</div>
-          <div className="text-xs text-gray-600">
-            {details ? `共 ${details.totalElements} 条，页码 ${details.page}/${details.totalPages}` : ''}
-          </div>
-        </div>
-        <div className="text-xs text-gray-500">说明：此处为审核 LLM 调用明细，不包含相似检测向量化调用。</div>
-        <div className="overflow-auto border rounded">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left px-3 py-2">时间</th>
-                <th className="text-left px-3 py-2">内容</th>
-                <th className="text-left px-3 py-2">模型</th>
-                <th className="text-right px-3 py-2">Total</th>
-                <th className="text-right px-3 py-2">费用</th>
-                <th className="text-left px-3 py-2">结论</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(details?.content ?? []).map((r) => (
-                <tr key={r.id} className="border-t">
-                  <td className="px-3 py-2 whitespace-nowrap">{r.decidedAt ? String(r.decidedAt).replace('T', ' ') : '-'}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {r.contentType ?? '-'}#{r.contentId ?? '-'}
-                  </td>
-                  <td className="px-3 py-2" title={getDetailsModelText(r)}>
-                    {getDetailsModelText(r)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmtInt(r.totalTokens)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {fmtCost(r.cost)} {details?.currency ? String(details.currency) : ''}
-                  </td>
-                  <td className="px-3 py-2">{r.verdict ?? '-'}</td>
-                </tr>
-              ))}
-              {(details?.content ?? []).length === 0 && (
-                <tr>
-                  <td className="px-3 py-3 text-gray-500" colSpan={6}>
-                    {detailsLoading ? '加载中...' : '暂无数据'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex items-center justify-end gap-2">
-          <button
-            className="rounded border px-3 py-2 text-sm disabled:opacity-50"
-            onClick={() => gotoPage((details?.page ?? page) - 1)}
-            disabled={detailsLoading || (details?.page ?? page) <= 1}
-          >
-            上一页
-          </button>
-          <button
-            className="rounded border px-3 py-2 text-sm disabled:opacity-50"
-            onClick={() => gotoPage((details?.page ?? page) + 1)}
-            disabled={detailsLoading || (details?.totalPages ?? 1) <= (details?.page ?? page)}
-          >
-            下一页
-          </button>
         </div>
       </div>
     </div>

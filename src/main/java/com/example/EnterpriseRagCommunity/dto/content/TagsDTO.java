@@ -38,6 +38,9 @@ public class TagsDTO {
     @ApiModelProperty(value = "是否启用", example = "true")
     private Boolean isActive;
 
+    @ApiModelProperty(value = "风险阈值", example = "0.5")
+    private Double threshold;
+
     @ApiModelProperty(value = "创建时间", example = "2025-01-01T00:00:00")
     private LocalDateTime createdAt;
 

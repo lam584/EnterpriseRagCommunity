@@ -47,6 +47,7 @@ const DEFAULT_CFG: ContextClipConfigDTO = {
   policy: 'TOPK',
 
   maxItems: 6,
+  contextTokenBudget: 3000,
   maxContextTokens: 12000,
   reserveAnswerTokens: 2000,
   perItemMaxTokens: 2000,
@@ -55,6 +56,11 @@ const DEFAULT_CFG: ContextClipConfigDTO = {
   minScore: null,
   maxSamePostItems: 2,
   requireTitle: false,
+  alpha: 1,
+  beta: 1,
+  gamma: 1,
+  ablationMode: 'REL_IMP_RED',
+  crossSourceDedup: true,
 
   dedupByPostId: true,
   dedupByTitle: false,
@@ -85,6 +91,32 @@ const POLICIES: { value: ContextWindowPolicy; label: string }[] = [
   { value: 'IMPORTANCE', label: 'IMPORTANCE（按重要性/信息密度挑选）' },
   { value: 'HYBRID', label: 'HYBRID（命中顺序 + 重要性混合）' },
 ];
+
+const ABLATION_MODES = [
+  { value: 'NONE', label: 'NONE（关闭实验裁剪）' },
+  { value: 'REL_ONLY', label: 'REL_ONLY（仅相关性）' },
+  { value: 'REL_IMP', label: 'REL_IMP（相关性 + 信息密度）' },
+  { value: 'REL_IMP_RED', label: 'REL_IMP_RED（相关性 + 信息密度 + 去冗余）' },
+] as const;
+
+const SOURCE_TYPE_LABEL: Record<string, string> = {
+  BM25: 'BM25 候选',
+  VEC: '向量候选',
+  RERANK: '重排候选',
+  COMMENT_VEC: '评论向量候选',
+  AGG: '聚合候选',
+  POST: '帖子来源',
+  COMMENT: '评论来源',
+  FILE_ASSET: '文件来源',
+  DOC: '文档来源',
+  UNKNOWN: '未知来源',
+};
+
+function renderSourceType(source: unknown): string {
+  const key = String(source ?? '').trim().toUpperCase();
+  if (!key) return '—';
+  return SOURCE_TYPE_LABEL[key] ?? key;
+}
 
 const ContextClipForm: React.FC = () => {
   const { loading: accessLoading, hasPerm } = useAccess();
@@ -155,6 +187,10 @@ const ContextClipForm: React.FC = () => {
   const [testBoardId, setTestBoardId] = useState<number | ''>('');
   const [useSavedConfig, setUseSavedConfig] = useState(false);
   const [testResult, setTestResult] = useState<ContextClipTestResponse | null>(null);
+  const testEchoConfig = useMemo(() => {
+    if (!testResult?.config) return null;
+    return { ...DEFAULT_CFG, ...testResult.config };
+  }, [testResult]);
 
   const onTest = useCallback(async () => {
     setError(null);
@@ -343,7 +379,16 @@ const ContextClipForm: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div>
-              <div className="text-xs text-gray-500 mb-1">最大全局预算（tokens）</div>
+              <div className="text-xs text-gray-500 mb-1">上下文预算（contextTokenBudget）</div>
+              <input
+                className={inputClass}
+                value={config.contextTokenBudget ?? ''}
+                onChange={(e) => setConfig((v) => ({ ...v, contextTokenBudget: safeNumber(e.target.value) }))}
+                disabled={!canWrite || !editing}
+              />
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">最大全局预算（maxContextTokens）</div>
               <input
                 className={inputClass}
                 value={config.maxContextTokens ?? ''}
@@ -388,6 +433,63 @@ const ContextClipForm: React.FC = () => {
               />
             </div>
           </div>
+        </div>
+
+        <div className="space-y-3 rounded border border-gray-200 p-3">
+          <div className="font-medium">权重预算与实验模式</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div>
+              <div className="text-xs text-gray-500 mb-1">α（相关性权重）</div>
+              <input
+                className={inputClass}
+                value={config.alpha ?? ''}
+                onChange={(e) => setConfig((v) => ({ ...v, alpha: safeNumber(e.target.value) }))}
+                disabled={!canWrite || !editing}
+              />
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">β（信息密度权重）</div>
+              <input
+                className={inputClass}
+                value={config.beta ?? ''}
+                onChange={(e) => setConfig((v) => ({ ...v, beta: safeNumber(e.target.value) }))}
+                disabled={!canWrite || !editing}
+              />
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">γ（冗余惩罚权重）</div>
+              <input
+                className={inputClass}
+                value={config.gamma ?? ''}
+                onChange={(e) => setConfig((v) => ({ ...v, gamma: safeNumber(e.target.value) }))}
+                disabled={!canWrite || !editing}
+              />
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">实验模式（ablationMode）</div>
+              <select
+                className={inputClass}
+                value={String(config.ablationMode ?? 'REL_IMP_RED')}
+                onChange={(e) => setConfig((v) => ({ ...v, ablationMode: e.target.value }))}
+                disabled={!canWrite || !editing}
+              >
+                {ABLATION_MODES.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(config.crossSourceDedup)}
+              onChange={(e) => setConfig((v) => ({ ...v, crossSourceDedup: e.target.checked }))}
+              disabled={!canWrite || !editing}
+            />
+            跨来源内容去重（crossSourceDedup）
+          </label>
         </div>
 
         <div className="space-y-3 rounded border border-gray-200 p-3">
@@ -691,7 +793,15 @@ const ContextClipForm: React.FC = () => {
             <input
               className={inputClass}
               value={testBoardId}
-              onChange={(e) => setTestBoardId(e.target.value === '' ? '' : Number(e.target.value))}
+              onChange={(e) => {
+                const raw = e.target.value.trim();
+                if (raw === '') {
+                  setTestBoardId('');
+                  return;
+                }
+                const next = Number(raw);
+                setTestBoardId(Number.isFinite(next) ? next : '');
+              }}
             />
           </div>
         </div>
@@ -720,6 +830,22 @@ const ContextClipForm: React.FC = () => {
                 <div className="font-medium">{testResult.itemsDropped ?? '—'}</div>
               </div>
             </div>
+            {testEchoConfig && (
+              <div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                <div className="font-medium mb-1">测试返回配置回显</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+                  <div>policy={testEchoConfig.policy ?? '—'}</div>
+                  <div>contextTokenBudget={testEchoConfig.contextTokenBudget ?? '—'}</div>
+                  <div>maxContextTokens={testEchoConfig.maxContextTokens ?? '—'}</div>
+                  <div>reserveAnswerTokens={testEchoConfig.reserveAnswerTokens ?? '—'}</div>
+                  <div>α={testEchoConfig.alpha ?? '—'}</div>
+                  <div>β={testEchoConfig.beta ?? '—'}</div>
+                  <div>γ={testEchoConfig.gamma ?? '—'}</div>
+                  <div>ablationMode={testEchoConfig.ablationMode ?? '—'}</div>
+                  <div>crossSourceDedup={String(Boolean(testEchoConfig.crossSourceDedup))}</div>
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <div className="font-medium">生成的 system prompt</div>
@@ -743,7 +869,10 @@ const ContextClipForm: React.FC = () => {
                     <div key={idx} className="rounded border border-gray-100 px-2 py-1 text-xs">
                       <div className="text-gray-700">
                         #{it.rank ?? idx + 1} postId={it.postId ?? '—'} chunk={it.chunkIndex ?? '—'} score={it.score ?? '—'} tokens=
-                        {it.tokens ?? '—'}
+                        {it.tokens ?? '—'} source={renderSourceType(it.source)}
+                      </div>
+                      <div className="text-gray-500 mt-1">
+                        rel={it.relScore ?? '—'} imp={it.impScore ?? '—'} red={it.redScore ?? '—'} final={it.finalScore ?? '—'}
                       </div>
                       {it.title && <div className="text-gray-500 mt-1">{it.title}</div>}
                     </div>
@@ -757,7 +886,10 @@ const ContextClipForm: React.FC = () => {
                     <div key={idx} className="rounded border border-gray-100 px-2 py-1 text-xs">
                       <div className="text-gray-700">
                         #{it.rank ?? idx + 1} postId={it.postId ?? '—'} chunk={it.chunkIndex ?? '—'} reason={it.reason ?? '—'} score=
-                        {it.score ?? '—'} tokens={it.tokens ?? '—'}
+                        {it.score ?? '—'} tokens={it.tokens ?? '—'} source={renderSourceType(it.source)}
+                      </div>
+                      <div className="text-gray-500 mt-1">
+                        rel={it.relScore ?? '—'} imp={it.impScore ?? '—'} red={it.redScore ?? '—'} final={it.finalScore ?? '—'}
                       </div>
                       {it.title && <div className="text-gray-500 mt-1">{it.title}</div>}
                     </div>
@@ -812,7 +944,8 @@ const ContextClipForm: React.FC = () => {
                   <div className="text-xs text-gray-500">{fmtDateTime(row.createdAt)}</div>
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  id={row.id} eventId={row.eventId ?? '—'} policy={row.policy ?? '—'} items={row.items ?? '—'} tokens={row.totalTokens ?? '—'}
+                  id={row.id} eventId={row.eventId ?? '—'} policy={row.policy ?? '—'} budget={row.budgetTokens ?? '—'} used=
+                  {row.totalTokens ?? '—'} selected={row.selectedItems ?? row.items ?? '—'} dropped={row.droppedItems ?? '—'}
                 </div>
               </button>
             ))}
@@ -830,8 +963,10 @@ const ContextClipForm: React.FC = () => {
                   </button>
                 </div>
                 <div className="text-xs text-gray-500">
-                  id={selectedWindow.id} eventId={selectedWindow.eventId ?? '—'} policy={selectedWindow.policy ?? '—'} tokens=
-                  {selectedWindow.totalTokens ?? '—'} createdAt={fmtDateTime(selectedWindow.createdAt)}
+                  id={selectedWindow.id} eventId={selectedWindow.eventId ?? '—'} policy={selectedWindow.policy ?? '—'} budget=
+                  {selectedWindow.budgetTokens ?? '—'} used={selectedWindow.totalTokens ?? '—'} selected=
+                  {selectedWindow.selectedItems ?? '—'} dropped={selectedWindow.droppedItems ?? '—'} createdAt=
+                  {fmtDateTime(selectedWindow.createdAt)}
                 </div>
                 {selectedWindow.queryText && <div className="text-sm text-gray-800">{selectedWindow.queryText}</div>}
                 <pre className="rounded border border-gray-200 bg-white p-3 text-xs overflow-auto max-h-96">

@@ -18,10 +18,13 @@ import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesReinde
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesIndexStatusResponse;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesSyncResult;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesAutoSyncConfigDTO;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesSyncService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.ModerationSamplesAutoSyncConfigService;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
@@ -34,6 +37,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +59,8 @@ public class AdminModerationEmbedController {
     private final ModerationSamplesSyncService samplesSyncService;
     private final ModerationSamplesIndexService samplesIndexService;
     private final ModerationSamplesAutoSyncConfigService samplesAutoSyncConfigService;
+    private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
 
     @PostMapping("/check")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
@@ -98,6 +105,7 @@ public class AdminModerationEmbedController {
             return e;
         });
 
+        Map<String, Object> before = summarizeConfig(cfg);
         cfg.setEnabled(enabled);
         if (payload != null) {
             if (payload.getEmbeddingModel() != null) {
@@ -112,6 +120,18 @@ public class AdminModerationEmbedController {
         }
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg = configRepository.save(cfg);
+
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "CONFIG_CHANGE",
+                "MODERATION_EMBED_CONFIG",
+                cfg.getId(),
+                AuditResult.SUCCESS,
+                "更新嵌入相似检测配置",
+                null,
+                auditDiffBuilder.build(before, summarizeConfig(cfg))
+        );
         return ResponseEntity.ok(cfg);
     }
 
@@ -161,7 +181,20 @@ public class AdminModerationEmbedController {
     public ResponseEntity<ModerationSamplesAutoSyncConfigDTO> updateSamplesAutoSyncConfig(
             @RequestBody(required = false) ModerationSamplesAutoSyncConfigDTO payload
     ) {
-        return ResponseEntity.ok(samplesAutoSyncConfigService.updateConfig(payload));
+        ModerationSamplesAutoSyncConfigDTO before = samplesAutoSyncConfigService.getConfig();
+        ModerationSamplesAutoSyncConfigDTO after = samplesAutoSyncConfigService.updateConfig(payload);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "CONFIG_CHANGE",
+                "MODERATION_EMBED_AUTO_SYNC_CONFIG",
+                null,
+                AuditResult.SUCCESS,
+                "更新样本自动同步配置",
+                null,
+                auditDiffBuilder.build(before, after)
+        );
+        return ResponseEntity.ok(after);
     }
 
     @GetMapping("/samples")
@@ -244,6 +277,18 @@ public class AdminModerationEmbedController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "duplicated sample: textHash already exists");
         }
 
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "MODERATION_SAMPLE_CREATE",
+                "MODERATION_SAMPLE",
+                e.getId(),
+                AuditResult.SUCCESS,
+                "创建相似检测样本",
+                null,
+                auditDiffBuilder.build(Map.of(), summarizeSample(e))
+        );
+
         ModerationSamplesSyncResult syncResult = null;
         try {
             syncResult = samplesSyncService.upsertById(e.getId());
@@ -272,6 +317,7 @@ public class AdminModerationEmbedController {
 
         ModerationSamplesEntity e = samplesRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "sample not found"));
+        Map<String, Object> before = summarizeSample(e);
 
         if (req.getCategory() != null) e.setCategory(req.getCategory());
         e.setRefContentType(req.getRefContentType());
@@ -309,6 +355,18 @@ public class AdminModerationEmbedController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "duplicated sample: textHash already exists");
         }
 
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "MODERATION_SAMPLE_UPDATE",
+                "MODERATION_SAMPLE",
+                e.getId(),
+                AuditResult.SUCCESS,
+                "更新相似检测样本",
+                null,
+                auditDiffBuilder.build(before, summarizeSample(e))
+        );
+
         ModerationSamplesSyncResult syncResult = null;
         try {
             syncResult = samplesSyncService.upsertById(e.getId());
@@ -329,10 +387,21 @@ public class AdminModerationEmbedController {
     @DeleteMapping("/samples/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
     public ResponseEntity<Void> deleteSample(@PathVariable("id") Long id) {
-        if (!samplesRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "sample not found");
-        }
+        ModerationSamplesEntity before = samplesRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "sample not found"));
         samplesRepository.deleteById(id);
+
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "MODERATION_SAMPLE_DELETE",
+                "MODERATION_SAMPLE",
+                id,
+                AuditResult.SUCCESS,
+                "删除相似检测样本",
+                null,
+                auditDiffBuilder.build(summarizeSample(before), Map.of())
+        );
 
         // Best-effort ES delete
         try {
@@ -355,7 +424,31 @@ public class AdminModerationEmbedController {
             @RequestParam(value = "batchSize", required = false) Integer batchSize,
             @RequestParam(value = "fromId", required = false) Long fromId
     ) {
-        return ResponseEntity.ok(samplesSyncService.reindexAll(onlyEnabled, batchSize, fromId));
+        ModerationSamplesReindexResponse res = samplesSyncService.reindexAll(onlyEnabled, batchSize, fromId);
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("onlyEnabled", onlyEnabled);
+        details.put("batchSize", batchSize);
+        details.put("fromId", fromId);
+        if (res != null) {
+            details.put("total", res.getTotal());
+            details.put("success", res.getSuccess());
+            details.put("failed", res.getFailed());
+            details.put("lastId", res.getLastId());
+            details.put("cleared", res.getCleared());
+            details.put("clearError", res.getClearError());
+        }
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "MODERATION_SAMPLES_REINDEX",
+                "MODERATION_SAMPLES_INDEX",
+                null,
+                AuditResult.SUCCESS,
+                "重建样本索引",
+                null,
+                details
+        );
+        return ResponseEntity.ok(res);
     }
 
     /**
@@ -364,7 +457,24 @@ public class AdminModerationEmbedController {
     @PostMapping("/samples/{id}/sync")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
     public ResponseEntity<ModerationSamplesSyncResult> syncOne(@PathVariable("id") Long id) {
-        return ResponseEntity.ok(samplesSyncService.upsertById(id));
+        ModerationSamplesSyncResult res = samplesSyncService.upsertById(id);
+        Map<String, Object> details = new LinkedHashMap<>();
+        if (res != null) {
+            details.put("success", res.isSuccess());
+            details.put("message", res.getMessage());
+        }
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "MODERATION_SAMPLE_SYNC",
+                "MODERATION_SAMPLE",
+                id,
+                res != null && res.isSuccess() ? AuditResult.SUCCESS : AuditResult.FAIL,
+                "同步样本到索引",
+                null,
+                details
+        );
+        return ResponseEntity.ok(res);
     }
 
     @GetMapping("/hits")
@@ -410,6 +520,71 @@ public class AdminModerationEmbedController {
             @RequestParam(value = "batchSize", required = false) Integer batchSize,
             @RequestParam(value = "fromId", required = false) Long fromId
     ) {
-        return ResponseEntity.ok(samplesSyncService.syncIncremental(onlyEnabled, batchSize, fromId));
+        ModerationSamplesReindexResponse res = samplesSyncService.syncIncremental(onlyEnabled, batchSize, fromId);
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("onlyEnabled", onlyEnabled);
+        details.put("batchSize", batchSize);
+        details.put("fromId", fromId);
+        if (res != null) {
+            details.put("total", res.getTotal());
+            details.put("success", res.getSuccess());
+            details.put("failed", res.getFailed());
+            details.put("lastId", res.getLastId());
+            details.put("cleared", res.getCleared());
+            details.put("clearError", res.getClearError());
+        }
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "MODERATION_SAMPLES_SYNC",
+                "MODERATION_SAMPLES_INDEX",
+                null,
+                AuditResult.SUCCESS,
+                "增量同步样本到索引",
+                null,
+                details
+        );
+        return ResponseEntity.ok(res);
+    }
+
+    private static Map<String, Object> summarizeConfig(ModerationSimilarityConfigEntity cfg) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (cfg == null) return m;
+        m.put("id", cfg.getId());
+        m.put("enabled", cfg.getEnabled());
+        m.put("embeddingModel", cfg.getEmbeddingModel());
+        m.put("embeddingDims", cfg.getEmbeddingDims());
+        m.put("maxInputChars", cfg.getMaxInputChars());
+        m.put("defaultTopK", cfg.getDefaultTopK());
+        m.put("defaultThreshold", cfg.getDefaultThreshold());
+        m.put("defaultNumCandidates", cfg.getDefaultNumCandidates());
+        return m;
+    }
+
+    private static Map<String, Object> summarizeSample(ModerationSamplesEntity e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (e == null) return m;
+        m.put("id", e.getId());
+        m.put("category", e.getCategory());
+        m.put("refContentType", e.getRefContentType());
+        m.put("refContentId", e.getRefContentId());
+        m.put("textHash", e.getTextHash());
+        m.put("rawTextLen", e.getRawText() == null ? 0 : e.getRawText().length());
+        m.put("riskLevel", e.getRiskLevel());
+        m.put("labels", e.getLabels());
+        m.put("source", e.getSource());
+        m.put("enabled", e.getEnabled());
+        return m;
+    }
+
+    private static String currentUsernameOrNull() {
+        try {
+            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+            String name = auth.getName();
+            return name == null || name.isBlank() ? null : name.trim();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

@@ -88,6 +88,36 @@ export const userAccessService = {
         }
     },
 
+    async banUser(id: number, reason: string): Promise<UserDTO> {
+        const csrfToken = await getCsrfToken();
+        const res = await fetch(`${API_BASE_URL}/${id}/ban`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': csrfToken
+            },
+            credentials: 'include',
+            body: JSON.stringify({ reason })
+        });
+        if (!res.ok) throw new Error((await safeReadErrorMessage(res)) || '封禁用户失败');
+        return res.json();
+    },
+
+    async unbanUser(id: number, reason: string): Promise<UserDTO> {
+        const csrfToken = await getCsrfToken();
+        const res = await fetch(`${API_BASE_URL}/${id}/unban`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-XSRF-TOKEN': csrfToken
+            },
+            credentials: 'include',
+            body: JSON.stringify({ reason })
+        });
+        if (!res.ok) throw new Error((await safeReadErrorMessage(res)) || '解封用户失败');
+        return res.json();
+    },
+
     async getUserRoles(userId: number): Promise<UserRoleDTO[]> {
         const res = await fetch(`${API_BASE_URL}/${userId}/roles`, {
             credentials: 'include'

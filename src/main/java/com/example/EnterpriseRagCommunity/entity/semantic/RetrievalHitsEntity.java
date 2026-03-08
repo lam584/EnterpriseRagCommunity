@@ -27,8 +27,8 @@ public class RetrievalHitsEntity {
     @Column(name = "hit_type", nullable = false, length = 16)
     private RetrievalHitType hitType;
 
-    @Column(name = "document_id")
-    private Long documentId;
+    @Column(name = "post_id")
+    private Long postId;
 
     @Column(name = "chunk_id")
     private Long chunkId;

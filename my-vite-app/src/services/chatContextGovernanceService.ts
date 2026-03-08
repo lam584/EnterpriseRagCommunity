@@ -1,0 +1,119 @@
+import { getCsrfToken } from '../utils/csrfUtils';
+import type { SpringPage } from '../types/page';
+
+const API_BASE: string = ((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '';
+
+function apiUrl(path: string): string {
+  if (!path.startsWith('/')) path = `/${path}`;
+  return API_BASE ? `${API_BASE}${path}` : path;
+}
+
+function getBackendMessage(data: unknown): string | undefined {
+  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
+    return (data as { message: string }).message;
+  }
+  return undefined;
+}
+
+export type ChatContextGovernanceConfigDTO = {
+  enabled?: boolean | null;
+
+  maxPromptTokens?: number | null;
+  reserveAnswerTokens?: number | null;
+  maxPromptChars?: number | null;
+  perMessageMaxTokens?: number | null;
+  keepLastMessages?: number | null;
+
+  allowDropRagContext?: boolean | null;
+
+  compressionEnabled?: boolean | null;
+  compressionTriggerTokens?: number | null;
+  compressionKeepLastMessages?: number | null;
+  compressionPerMessageSnippetChars?: number | null;
+  compressionMaxChars?: number | null;
+
+  maxFiles?: number | null;
+  perFileMaxChars?: number | null;
+  totalFilesMaxChars?: number | null;
+
+  logEnabled?: boolean | null;
+  logSampleRate?: number | null;
+  logMaxDays?: number | null;
+};
+
+export type AdminChatContextEventLogDTO = {
+  id: number;
+  userId?: number | null;
+  sessionId?: number | null;
+  questionMessageId?: number | null;
+  kind?: string | null;
+  reason?: string | null;
+  beforeTokens?: number | null;
+  afterTokens?: number | null;
+  beforeChars?: number | null;
+  afterChars?: number | null;
+  latencyMs?: number | null;
+  createdAt?: string | null;
+};
+
+export type AdminChatContextEventDetailDTO = AdminChatContextEventLogDTO & {
+  targetPromptTokens?: number | null;
+  reserveAnswerTokens?: number | null;
+  detailJson?: Record<string, unknown> | null;
+};
+
+export async function adminGetChatContextConfig(): Promise<ChatContextGovernanceConfigDTO> {
+  const res = await fetch(apiUrl('api/admin/ai/chat-context/config'), {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取对话上下文治理配置失败');
+  return data as ChatContextGovernanceConfigDTO;
+}
+
+export async function adminUpdateChatContextConfig(payload: ChatContextGovernanceConfigDTO): Promise<ChatContextGovernanceConfigDTO> {
+  const csrf = await getCsrfToken();
+  const res = await fetch(apiUrl('/api/admin/ai/chat-context/config'), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrf,
+    },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '保存对话上下文治理配置失败');
+  return data as ChatContextGovernanceConfigDTO;
+}
+
+export async function adminListChatContextLogs(params?: {
+  page?: number;
+  size?: number;
+  from?: string;
+  to?: string;
+}): Promise<SpringPage<AdminChatContextEventLogDTO>> {
+  const sp = new URLSearchParams();
+  sp.set('page', String(params?.page ?? 0));
+  sp.set('size', String(params?.size ?? 20));
+  if (params?.from) sp.set('from', params.from);
+  if (params?.to) sp.set('to', params.to);
+  const res = await fetch(apiUrl(`/api/admin/ai/chat-context/logs?${sp.toString()}`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取对话上下文治理日志失败');
+  return data as SpringPage<AdminChatContextEventLogDTO>;
+}
+
+export async function adminGetChatContextLog(id: number): Promise<AdminChatContextEventDetailDTO> {
+  const res = await fetch(apiUrl(`/api/admin/ai/chat-context/logs/${id}`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取对话上下文治理日志详情失败');
+  return data as AdminChatContextEventDetailDTO;
+}

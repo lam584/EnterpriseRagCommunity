@@ -7,15 +7,16 @@ import {
   type PostTitleGenConfigDTO,
   type PostTitleGenHistoryDTO,
 } from '../../../../services/titleGenAdminService';
+import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
 import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
 import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { suggestPostTitles, type AiPostTitleSuggestResponse } from '../../../../services/aiTitleService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
+import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
 
 type FormState = {
   enabled: boolean;
-  systemPrompt: string;
-  promptTemplate: string;
+  promptCode: string;
   model: string;
   providerId: string;
   temperature: string;
@@ -39,8 +40,7 @@ function parseOptionalNumber(raw: string): number | undefined {
 function defaultConfig(): PostTitleGenConfigDTO {
   return {
     enabled: true,
-    systemPrompt: '你是专业的中文社区运营编辑，擅长给帖子拟标题。',
-    promptTemplate: `请为下面这段社区帖子内容生成 {{count}} 个中文标题候选。\n要求：\n- 每个标题不超过 30 个汉字\n- 风格适度多样（提问式/总结式/爆点式），但不要低俗\n- 标题之间不要重复\n- 只输出严格 JSON，不要输出任何解释文字\n- JSON 格式：{\"titles\":[\"...\", \"...\"]}\n\n{{boardLine}}{{tagsLine}}帖子内容：\n{{content}}\n`,
+    promptCode: 'TITLE_GEN',
     temperature: 0.4,
     topP: 0.9,
     enableThinking: false,
@@ -53,32 +53,54 @@ function defaultConfig(): PostTitleGenConfigDTO {
   };
 }
 
-function toFormState(cfg?: PostTitleGenConfigDTO | null): FormState {
+function toPromptDraft(dto?: PromptContentDTO | null): PromptContentDraft {
   return {
-    enabled: Boolean(cfg?.enabled),
-    systemPrompt: cfg?.systemPrompt ?? '',
-    promptTemplate: cfg?.promptTemplate ?? '',
-    model: cfg?.model ?? '',
-    providerId: cfg?.providerId ?? '',
-    temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
-    topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
-    enableThinking: Boolean(cfg?.enableThinking),
-    defaultCount: cfg?.defaultCount === null || cfg?.defaultCount === undefined ? '' : String(cfg.defaultCount),
-    maxCount: cfg?.maxCount === null || cfg?.maxCount === undefined ? '' : String(cfg.maxCount),
-    maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
-    historyEnabled: Boolean(cfg?.historyEnabled),
-    historyKeepDays: cfg?.historyKeepDays === null || cfg?.historyKeepDays === undefined ? '' : String(cfg.historyKeepDays),
-    historyKeepRows: cfg?.historyKeepRows === null || cfg?.historyKeepRows === undefined ? '' : String(cfg.historyKeepRows),
+    name: dto?.name ?? '',
+    systemPrompt: dto?.systemPrompt ?? '',
+    userPromptTemplate: dto?.userPromptTemplate ?? '',
+  };
+}
+
+function toFormState(cfg?: PostTitleGenConfigDTO | null): FormState {
+  const base = defaultConfig();
+  return {
+    enabled: cfg?.enabled === null || cfg?.enabled === undefined ? base.enabled : Boolean(cfg.enabled),
+    promptCode: cfg?.promptCode ?? base.promptCode,
+    model: cfg?.model ?? base.model ?? '',
+    providerId: cfg?.providerId ?? base.providerId ?? '',
+    temperature:
+      cfg?.temperature === null || cfg?.temperature === undefined ? String(base.temperature) : String(cfg.temperature),
+    topP: cfg?.topP === null || cfg?.topP === undefined ? String(base.topP) : String(cfg.topP),
+    enableThinking:
+      cfg?.enableThinking === null || cfg?.enableThinking === undefined
+        ? Boolean(base.enableThinking)
+        : Boolean(cfg.enableThinking),
+    defaultCount:
+      cfg?.defaultCount === null || cfg?.defaultCount === undefined ? String(base.defaultCount) : String(cfg.defaultCount),
+    maxCount: cfg?.maxCount === null || cfg?.maxCount === undefined ? String(base.maxCount) : String(cfg.maxCount),
+    maxContentChars:
+      cfg?.maxContentChars === null || cfg?.maxContentChars === undefined
+        ? String(base.maxContentChars)
+        : String(cfg.maxContentChars),
+    historyEnabled:
+      cfg?.historyEnabled === null || cfg?.historyEnabled === undefined
+        ? Boolean(base.historyEnabled)
+        : Boolean(cfg.historyEnabled),
+    historyKeepDays:
+      cfg?.historyKeepDays === null || cfg?.historyKeepDays === undefined
+        ? String(base.historyKeepDays)
+        : String(cfg.historyKeepDays),
+    historyKeepRows:
+      cfg?.historyKeepRows === null || cfg?.historyKeepRows === undefined
+        ? String(base.historyKeepRows)
+        : String(cfg.historyKeepRows),
   };
 }
 
 function validateForm(s: FormState): string[] {
   const errors: string[] = [];
 
-  if (!s.systemPrompt.trim()) errors.push('systemPrompt 不能为空');
-  if (!s.promptTemplate.trim()) errors.push('promptTemplate 不能为空');
-  if (s.promptTemplate.trim().length < 50) errors.push('promptTemplate 建议不少于 50 个字符（避免过短导致输出不稳定）');
-  if (s.promptTemplate.length > 20000) errors.push('promptTemplate 过长（> 20000），请精简');
+  if (!s.promptCode.trim()) errors.push('promptCode 不能为空');
 
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
@@ -104,8 +126,6 @@ function validateForm(s: FormState): string[] {
 }
 
 function buildPayload(s: FormState) {
-  const temperature = parseOptionalNumber(s.temperature);
-  const topP = parseOptionalNumber(s.topP);
   const defaultCount = parseOptionalNumber(s.defaultCount);
   const maxCount = parseOptionalNumber(s.maxCount);
   const maxContentChars = parseOptionalNumber(s.maxContentChars);
@@ -114,13 +134,7 @@ function buildPayload(s: FormState) {
 
   return {
     enabled: s.enabled,
-    systemPrompt: s.systemPrompt,
-    promptTemplate: s.promptTemplate,
-    model: s.model.trim() ? s.model.trim() : null,
-    providerId: s.providerId.trim() ? s.providerId.trim() : null,
-    temperature: temperature === undefined ? null : temperature,
-    topP: topP === undefined ? null : topP,
-    enableThinking: s.enableThinking,
+    promptCode: s.promptCode,
     defaultCount: defaultCount === undefined ? 5 : Math.trunc(defaultCount),
     maxCount: maxCount === undefined ? 10 : Math.trunc(maxCount),
     maxContentChars: maxContentChars === undefined ? 4000 : Math.trunc(maxContentChars),
@@ -142,17 +156,20 @@ const TitleGenForm: React.FC = () => {
   const [activeProviderId, setActiveProviderId] = useState<string>('');
   const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
 
-  const [form, setForm] = useState<FormState>(() => toFormState(null));
-  const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(null));
+  const [promptLoadError, setPromptLoadError] = useState<string | null>(null);
+  const [committedPromptDraft, setCommittedPromptDraft] = useState<PromptContentDraft | null>(null);
+  const [promptDraft, setPromptDraft] = useState<PromptContentDraft | null>(null);
+
+  const [form, setForm] = useState<FormState>(() => toFormState(defaultConfig()));
+  const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(defaultConfig()));
 
   const formErrors = useMemo(() => validateForm(form), [form]);
   const canSave = formErrors.length === 0 && !saving && !loading;
 
-  const hasUnsavedChanges = useMemo(() => {
+  const formHasUnsavedChanges = useMemo(() => {
     return (
       form.enabled !== committedForm.enabled ||
-      form.systemPrompt !== committedForm.systemPrompt ||
-      form.promptTemplate !== committedForm.promptTemplate ||
+      form.promptCode !== committedForm.promptCode ||
       form.model !== committedForm.model ||
       form.providerId !== committedForm.providerId ||
       form.temperature !== committedForm.temperature ||
@@ -166,6 +183,11 @@ const TitleGenForm: React.FC = () => {
       form.historyKeepRows !== committedForm.historyKeepRows
     );
   }, [form, committedForm]);
+  const promptHasUnsavedChanges = useMemo(
+    () => JSON.stringify(promptDraft) !== JSON.stringify(committedPromptDraft),
+    [promptDraft, committedPromptDraft],
+  );
+  const hasUnsavedChanges = formHasUnsavedChanges || promptHasUnsavedChanges;
 
   useEffect(() => {
     let cancelled = false;
@@ -207,20 +229,30 @@ const TitleGenForm: React.FC = () => {
     setLoading(true);
     setError(null);
     setSavedHint(null);
+    setPromptLoadError(null);
     try {
       const cfg = await adminGetPostTitleGenConfig();
-      const prompt = cfg?.promptTemplate?.trim();
-      if (!prompt) {
-        const next = toFormState({ ...defaultConfig(), ...cfg });
-        setForm(next);
-        setCommittedForm(next);
-        setEditing(false);
-        setSavedHint('后端配置为空，已加载内置默认值（可编辑后保存写入数据库）');
-      } else {
-        const next = toFormState(cfg);
-        setForm(next);
-        setCommittedForm(next);
-        setEditing(false);
+      const next = cfg.promptCode ? toFormState(cfg) : toFormState({ ...defaultConfig(), ...cfg, promptCode: defaultConfig().promptCode });
+      setForm(next);
+      setCommittedForm(next);
+      setEditing(false);
+      if (!cfg.promptCode) setSavedHint('后端配置为空，已加载内置默认值（可编辑后保存写入数据库）');
+
+      try {
+        const resp = await adminBatchGetPrompts([next.promptCode]);
+        const dto = resp.prompts?.[0];
+        if (!dto || (resp.missingCodes ?? []).length) {
+          setCommittedPromptDraft(null);
+          setPromptDraft(null);
+        } else {
+          const draft = toPromptDraft(dto);
+          setCommittedPromptDraft(draft);
+          setPromptDraft(draft);
+        }
+      } catch (e: unknown) {
+        setPromptLoadError(e instanceof Error ? e.message : String(e));
+        setCommittedPromptDraft(null);
+        setPromptDraft(null);
       }
     } catch (e) {
       const next = toFormState(defaultConfig());
@@ -229,6 +261,8 @@ const TitleGenForm: React.FC = () => {
       setEditing(false);
       setError(e instanceof Error ? e.message : String(e));
       setSavedHint('后端接口不可用，已加载前端默认配置（可用于演示）');
+      setCommittedPromptDraft(null);
+      setPromptDraft(null);
     } finally {
       setLoading(false);
     }
@@ -247,17 +281,35 @@ const TitleGenForm: React.FC = () => {
     try {
       const payload = buildPayload(form);
       const saved = await adminUpsertPostTitleGenConfig(payload);
+
+      let promptUpdateErr: string | null = null;
+      if (promptDraft && promptHasUnsavedChanges) {
+        try {
+          await adminUpdatePromptContent(form.promptCode, {
+            systemPrompt: promptDraft.systemPrompt,
+            userPromptTemplate: promptDraft.userPromptTemplate,
+          });
+          setCommittedPromptDraft(promptDraft);
+        } catch (e: unknown) {
+          promptUpdateErr = e instanceof Error ? e.message : String(e);
+        }
+      }
+
       const next = toFormState(saved);
       setForm(next);
       setCommittedForm(next);
       setEditing(false);
-      setSavedHint('保存成功');
+      if (promptUpdateErr) {
+        setError(`配置已保存，但提示词保存失败：${promptUpdateErr}`);
+      } else {
+        setSavedHint('保存成功');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
-  }, [canSave, form, saving]);
+  }, [canSave, form, saving, promptDraft, promptHasUnsavedChanges]);
 
   const [testContent, setTestContent] = useState('');
   const [testCount, setTestCount] = useState('');
@@ -368,6 +420,7 @@ const TitleGenForm: React.FC = () => {
               onClick={() => {
                 if (editing) {
                   setForm(committedForm);
+                  setPromptDraft(committedPromptDraft);
                   setEditing(false);
                   setError(null);
                   setSavedHint(null);
@@ -486,29 +539,16 @@ const TitleGenForm: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <div className="text-xs text-gray-600 mb-1">System Prompt（会作为 system 角色消息）</div>
-            <textarea
-              value={form.systemPrompt}
-              onChange={(e) => setForm((p) => ({ ...p, systemPrompt: e.target.value }))}
-              disabled={!editing || loading || saving}
-              className="w-full rounded border px-3 py-2 text-sm min-h-[90px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-              placeholder="例如：你是专业的中文社区运营编辑..."
-            />
-          </div>
-          <div>
-            <div className="text-xs text-gray-600 mb-1">Prompt Template（支持占位符）</div>
-            <textarea
-              value={form.promptTemplate}
-              onChange={(e) => setForm((p) => ({ ...p, promptTemplate: e.target.value }))}
-              disabled={!editing || loading || saving}
-              className="w-full rounded border px-3 py-2 text-sm min-h-[90px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-              placeholder="使用 {{count}} / {{boardLine}} / {{tagsLine}} / {{content}}"
-            />
-            <div className="text-[11px] text-gray-500 mt-1">
-              可用占位符：{'{{count}}'} / {'{{boardLine}}'} / {'{{tagsLine}}'} / {'{{content}}'}
-            </div>
-          </div>
+          <PromptContentCard
+            title="标题生成提示词"
+            draft={promptDraft}
+            editing={editing}
+            onChange={(next) => {
+              setPromptDraft(next);
+              setSavedHint(null);
+            }}
+            hint={promptLoadError ?? '引用 prompts 表中的 prompt_code'}
+          />
         </div>
       </div>
 

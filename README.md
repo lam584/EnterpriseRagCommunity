@@ -15,7 +15,7 @@
 |--------------|-----------------------|---------|---------------------------------------|
 | 核心框架         | Spring Boot           | 3.5.7   | 核心应用容器与启动器                          |
 | 构建工具         | Gradle                | 8.12.1  | 项目构建与依赖管理                          |
-| JDK           | Eclipse Temurin OpenJDK | 25      | Java 运行时环境                           |
+| JDK           | Eclipse Temurin OpenJDK | 25 (LTS) | Java 运行时环境（项目默认 toolchain=25；编译 release 默认为 21） |
 | ORM & 数据访问    | Spring Data JPA       | 3.5.7   | 主流 ORM 框架，自动生成 Repository 接口         |
 |                | MyBatis               | 3.0.3   | 辅助 SQL 映射，用于复杂查询                      |
 | 数据库 & 迁移     | MySQL                 | 8.4.7   | 关系型数据库                                |
@@ -125,7 +125,12 @@ EnterpriseRagCommunity
    ```bash
     cmd /c E:\EnterpriseRagCommunity-main\gen-tree.cmd
    ```
-# 项目完整目录结构及注释
+
 ``` 
 
 ```  
+---
+###  在终端中执行以下命令进行清理和重建：
+   ```bash
+   .\gradlew.bat clean build -x test
+   ```

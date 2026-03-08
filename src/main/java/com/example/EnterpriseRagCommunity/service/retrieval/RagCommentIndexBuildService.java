@@ -9,6 +9,8 @@ import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexStatu
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.ai.LlmRoutingService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationSampleTextUtils;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagCommentsIndexService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
@@ -36,6 +38,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +52,7 @@ public class RagCommentIndexBuildService {
     private final VectorIndicesRepository vectorIndicesRepository;
     private final CommentsRepository commentsRepository;
     private final AiEmbeddingService embeddingService;
+    private final LlmRoutingService llmRoutingService;
     private final RetrievalRagProperties ragProps;
     private final RagCommentsIndexService indexService;
     private final ElasticsearchTemplate esTemplate;
@@ -88,6 +92,16 @@ public class RagCommentIndexBuildService {
         String modelToUse = toNonBlankString(embeddingModelOverride);
         if (modelToUse == null) modelToUse = metaModel;
         if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
+
+        String providerToUse = null;
+        if (modelToUse == null) {
+            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
+            if (target == null) {
+                throw new IllegalStateException("no eligible embedding target (please check embedding routing config)");
+            }
+            providerToUse = target.providerId();
+            modelToUse = target.modelName();
+        }
 
         Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
         if (configuredDims == null) {
@@ -179,7 +193,7 @@ public class RagCommentIndexBuildService {
 
                     String docId = "comment_" + commentId + "_chunk_" + ci;
                     try {
-                        AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnce(chunk, modelToUse);
+                        AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnceForTask(chunk, modelToUse, providerToUse, LlmQueueTaskType.POST_EMBEDDING);
                         if (emb == null || emb.vector() == null || emb.vector().length == 0) {
                             throw new IllegalStateException("embedding returned empty vector");
                         }
@@ -418,6 +432,16 @@ public class RagCommentIndexBuildService {
         }
         if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
 
+        String providerToUse = null;
+        if (modelToUse == null) {
+            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
+            if (target == null) {
+                throw new IllegalStateException("no eligible embedding target (please check embedding routing config)");
+            }
+            providerToUse = target.providerId();
+            modelToUse = target.modelName();
+        }
+
         Integer configuredDims = null;
         Integer d = vi.getDim();
         configuredDims = d != null && d > 0 ? d : null;
@@ -452,7 +476,7 @@ public class RagCommentIndexBuildService {
             if (chunk == null || chunk.isBlank()) continue;
             String docId = "comment_" + commentId + "_chunk_" + ci;
             try {
-                AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnce(chunk, modelToUse);
+                AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnceForTask(chunk, modelToUse, providerToUse, LlmQueueTaskType.POST_EMBEDDING);
                 if (emb == null || emb.vector() == null || emb.vector().length == 0) {
                     throw new IllegalStateException("embedding returned empty vector");
                 }

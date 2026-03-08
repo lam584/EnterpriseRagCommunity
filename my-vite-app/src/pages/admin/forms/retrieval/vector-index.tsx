@@ -5,11 +5,15 @@ import {
   adminDeleteVectorIndex,
   adminGetRagAutoSyncConfig,
   adminListVectorIndices,
+  adminRebuildFileRagIndex,
   adminRebuildPostRagIndex,
+  adminSyncFileRagIndex,
   adminSyncPostRagIndex,
+  adminTestQueryFileRagIndex,
   adminTestQueryPostRagIndex,
   adminUpdateVectorIndex,
   adminUpdateRagAutoSyncConfig,
+  type RagFilesTestQueryResponse,
   type RagPostsTestQueryResponse,
   type VectorIndexDTO,
   type VectorIndexProvider,
@@ -36,6 +40,14 @@ function metaStr(meta: VectorIndexDTO['metadata'], key: string): unknown {
   if (!meta || typeof meta !== 'object') return undefined;
   return (meta as Record<string, unknown>)[key];
 }
+
+function sourceTypeOfIndex(it?: VectorIndexDTO): string {
+  const raw = String(metaStr(it?.metadata, 'sourceType') ?? '').trim();
+  return raw || 'POST';
+}
+
+type PostTestHit = NonNullable<RagPostsTestQueryResponse['hits']>[number];
+type FileTestHit = NonNullable<RagFilesTestQueryResponse['hits']>[number];
 
 const PROVIDER_LABEL: Record<VectorIndexProvider, string> = {
   FAISS: 'FAISS',
@@ -77,6 +89,7 @@ const VectorIndexForm: React.FC = () => {
     if (!selectedIndexId) return undefined;
     return indices.find(it => it.id === selectedIndexId);
   }, [indices, selectedIndexId]);
+  const selectedSourceType = useMemo(() => sourceTypeOfIndex(selectedIndex).toUpperCase(), [selectedIndex]);
 
   const [indexConfig, setIndexConfig] = useState({
     dim: '' as number | '',
@@ -98,8 +111,10 @@ const VectorIndexForm: React.FC = () => {
     embeddingModel: '',
     embeddingProviderId: '',
     boardId: '' as number | '',
+    fileAssetId: '' as number | '',
+    postId: '' as number | '',
   });
-  const [testResult, setTestResult] = useState<RagPostsTestQueryResponse | null>(null);
+  const [testResult, setTestResult] = useState<RagPostsTestQueryResponse | RagFilesTestQueryResponse | null>(null);
 
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -112,8 +127,13 @@ const VectorIndexForm: React.FC = () => {
     const metaDefaultOverlap = safeNumber(metaStr(meta, 'defaultChunkOverlapChars'));
     const metaLastMax = safeNumber(metaStr(meta, 'lastBuildChunkMaxChars'));
     const metaLastOverlap = safeNumber(metaStr(meta, 'lastBuildChunkOverlapChars'));
-    const metaModel = String(metaStr(meta, 'embeddingModel') ?? metaStr(meta, 'lastBuildEmbeddingModel') ?? '').trim();
-    const metaProviderId = String(metaStr(meta, 'embeddingProviderId') ?? metaStr(meta, 'lastBuildEmbeddingProviderId') ?? '').trim();
+    const cfgModel = String(metaStr(meta, 'embeddingModel') ?? '').trim();
+    const cfgProviderId = String(metaStr(meta, 'embeddingProviderId') ?? '').trim();
+    const lastBuildModel = String(metaStr(meta, 'lastBuildEmbeddingModel') ?? '').trim();
+    const lastBuildProviderId = String(metaStr(meta, 'lastBuildEmbeddingProviderId') ?? '').trim();
+    const hasFixedEmbedding = Boolean(cfgModel && cfgProviderId);
+    const metaModel = hasFixedEmbedding ? cfgModel : '';
+    const metaProviderId = hasFixedEmbedding ? cfgProviderId : '';
 
     const nextDefaultMax = metaDefaultMax ?? metaLastMax ?? 800;
     const nextDefaultOverlap = metaDefaultOverlap ?? metaLastOverlap ?? 80;
@@ -129,8 +149,8 @@ const VectorIndexForm: React.FC = () => {
 
     setTestForm((v) => ({
       ...v,
-      embeddingModel: metaModel || v.embeddingModel,
-      embeddingProviderId: metaProviderId || v.embeddingProviderId,
+      embeddingModel: cfgModel || lastBuildModel || v.embeddingModel,
+      embeddingProviderId: cfgProviderId || lastBuildProviderId || v.embeddingProviderId,
     }));
   }, [selectedIndex]);
 
@@ -252,24 +272,49 @@ const VectorIndexForm: React.FC = () => {
     setError(null);
     setMessage(null);
     try {
-      const res = await adminRebuildPostRagIndex({
-        id: selectedIndexId,
-        postBatchSize: 50,
-        chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
-        chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
-        embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-        embeddingModel: indexConfig.embeddingModel.trim() ? indexConfig.embeddingModel.trim() : undefined,
-        embeddingProviderId: indexConfig.embeddingProviderId.trim() ? indexConfig.embeddingProviderId.trim() : undefined,
-      });
-      const clearedText =
-        res.cleared === true ? '已删除并重建索引' : res.cleared === false ? `清空失败：${res.clearError ?? ''}` : '';
-      const msgParts = [
-        clearedText,
-        `成功 ${res.successChunks ?? 0}`,
-        `失败 ${res.failedChunks ?? 0}`,
-        `耗时 ${res.tookMs ?? 0}ms`,
-      ].filter(Boolean);
-      setMessage(`全量重建完成：${msgParts.join('，')}`);
+      const embModel = indexConfig.embeddingModel.trim();
+      const embProviderId = indexConfig.embeddingProviderId.trim();
+      const hasEmbeddingOverride = Boolean(embModel && embProviderId);
+      if (selectedSourceType === 'FILE_ASSET') {
+        const res = await adminRebuildFileRagIndex({
+          id: selectedIndexId,
+          fileBatchSize: 50,
+          chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
+          chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
+          embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
+          embeddingModel: hasEmbeddingOverride ? embModel : undefined,
+          embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+        });
+        const clearedText =
+          res.cleared === true ? '已删除并重建索引' : res.cleared === false ? `清空失败：${res.clearError ?? ''}` : '';
+        const msgParts = [
+          clearedText,
+          `文件 ${res.totalFiles ?? 0}`,
+          `成功 ${res.successChunks ?? 0}`,
+          `失败 ${res.failedChunks ?? 0}`,
+          `耗时 ${res.tookMs ?? 0}ms`,
+        ].filter(Boolean);
+        setMessage(`文件索引全量重建完成：${msgParts.join('，')}`);
+      } else {
+        const res = await adminRebuildPostRagIndex({
+          id: selectedIndexId,
+          postBatchSize: 50,
+          chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
+          chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
+          embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
+          embeddingModel: hasEmbeddingOverride ? embModel : undefined,
+          embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+        });
+        const clearedText =
+          res.cleared === true ? '已删除并重建索引' : res.cleared === false ? `清空失败：${res.clearError ?? ''}` : '';
+        const msgParts = [
+          clearedText,
+          `成功 ${res.successChunks ?? 0}`,
+          `失败 ${res.failedChunks ?? 0}`,
+          `耗时 ${res.tookMs ?? 0}ms`,
+        ].filter(Boolean);
+        setMessage(`全量重建完成：${msgParts.join('，')}`);
+      }
       await load();
       await loadHistory();
     } catch (e: any) {
@@ -279,7 +324,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId]);
+  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId, selectedSourceType]);
 
   const onSync = useCallback(async () => {
     if (!canAction) return;
@@ -291,16 +336,32 @@ const VectorIndexForm: React.FC = () => {
     setError(null);
     setMessage(null);
     try {
-      const res = await adminSyncPostRagIndex({
-        id: selectedIndexId,
-        postBatchSize: 50,
-        chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
-        chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
-        embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-        embeddingModel: indexConfig.embeddingModel.trim() ? indexConfig.embeddingModel.trim() : undefined,
-        embeddingProviderId: indexConfig.embeddingProviderId.trim() ? indexConfig.embeddingProviderId.trim() : undefined,
-      });
-      setMessage(`${res.failedChunks ? '增量同步完成（部分失败）' : '增量同步完成'}：新增帖子 ${res.totalPosts ?? 0}，成功 ${res.successChunks ?? 0}，失败 ${res.failedChunks ?? 0}`);
+      const embModel = indexConfig.embeddingModel.trim();
+      const embProviderId = indexConfig.embeddingProviderId.trim();
+      const hasEmbeddingOverride = Boolean(embModel && embProviderId);
+      if (selectedSourceType === 'FILE_ASSET') {
+        const res = await adminSyncFileRagIndex({
+          id: selectedIndexId,
+          fileBatchSize: 50,
+          chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
+          chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
+          embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
+          embeddingModel: hasEmbeddingOverride ? embModel : undefined,
+          embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+        });
+        setMessage(`${res.failedChunks ? '文件增量同步完成（部分失败）' : '文件增量同步完成'}：新增文件 ${res.totalFiles ?? 0}，成功 ${res.successChunks ?? 0}，失败 ${res.failedChunks ?? 0}`);
+      } else {
+        const res = await adminSyncPostRagIndex({
+          id: selectedIndexId,
+          postBatchSize: 50,
+          chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
+          chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
+          embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
+          embeddingModel: hasEmbeddingOverride ? embModel : undefined,
+          embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+        });
+        setMessage(`${res.failedChunks ? '增量同步完成（部分失败）' : '增量同步完成'}：新增帖子 ${res.totalPosts ?? 0}，成功 ${res.successChunks ?? 0}，失败 ${res.failedChunks ?? 0}`);
+      }
       await load();
       await loadHistory();
     } catch (e: any) {
@@ -310,7 +371,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId]);
+  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId, selectedSourceType]);
 
   const onSaveAutoSync = useCallback(async (next?: { enabled?: boolean; intervalSeconds?: number }) => {
     if (!canAction) return;
@@ -345,10 +406,14 @@ const VectorIndexForm: React.FC = () => {
       return false;
     }
 
+    const embModel = indexConfig.embeddingModel.trim();
+    const embProviderId = indexConfig.embeddingProviderId.trim();
+    const hasFixedEmbedding = Boolean(embModel && embProviderId);
+
     const mergedMeta = {
       ...(selectedIndex?.metadata ?? {}),
-      embeddingModel: indexConfig.embeddingModel.trim() ? indexConfig.embeddingModel.trim() : undefined,
-      embeddingProviderId: indexConfig.embeddingProviderId.trim() ? indexConfig.embeddingProviderId.trim() : undefined,
+      embeddingModel: hasFixedEmbedding ? embModel : undefined,
+      embeddingProviderId: hasFixedEmbedding ? embProviderId : undefined,
       defaultChunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
       defaultChunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
     } as Record<string, unknown>;
@@ -390,19 +455,39 @@ const VectorIndexForm: React.FC = () => {
     setMessage(null);
     setTestResult(null);
     try {
-      const res = await adminTestQueryPostRagIndex({
-        id: selectedIndexId,
-        payload: {
-          queryText: testForm.queryText.trim(),
-          topK: Math.max(1, Math.min(50, Math.trunc(testForm.topK))),
-          numCandidates: testForm.numCandidates === '' ? undefined : Math.max(10, Math.min(10_000, Math.trunc(Number(testForm.numCandidates)))),
-          embeddingModel: testForm.embeddingModel.trim() ? testForm.embeddingModel.trim() : undefined,
-          embeddingProviderId: testForm.embeddingProviderId.trim() ? testForm.embeddingProviderId.trim() : undefined,
-          boardId: testForm.boardId === '' ? undefined : Number(testForm.boardId),
-        },
-      });
-      setTestResult(res);
-      setMessage(`测试查询完成：命中 ${(res.hits ?? []).length} 条，耗时 ${res.tookMs ?? 0}ms`);
+      const embModel = testForm.embeddingModel.trim();
+      const embProviderId = testForm.embeddingProviderId.trim();
+      const hasEmbeddingOverride = Boolean(embModel && embProviderId);
+      if (selectedSourceType === 'FILE_ASSET') {
+        const res = await adminTestQueryFileRagIndex({
+          id: selectedIndexId,
+          payload: {
+            queryText: testForm.queryText.trim(),
+            topK: Math.max(1, Math.min(50, Math.trunc(testForm.topK))),
+            numCandidates: testForm.numCandidates === '' ? undefined : Math.max(10, Math.min(10_000, Math.trunc(Number(testForm.numCandidates)))),
+            embeddingModel: hasEmbeddingOverride ? embModel : undefined,
+            embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+            fileAssetId: testForm.fileAssetId === '' ? undefined : Number(testForm.fileAssetId),
+            postId: testForm.postId === '' ? undefined : Number(testForm.postId),
+          },
+        });
+        setTestResult(res);
+        setMessage(`文件测试查询完成：命中 ${(res.hits ?? []).length} 条，耗时 ${res.tookMs ?? 0}ms`);
+      } else {
+        const res = await adminTestQueryPostRagIndex({
+          id: selectedIndexId,
+          payload: {
+            queryText: testForm.queryText.trim(),
+            topK: Math.max(1, Math.min(50, Math.trunc(testForm.topK))),
+            numCandidates: testForm.numCandidates === '' ? undefined : Math.max(10, Math.min(10_000, Math.trunc(Number(testForm.numCandidates)))),
+            embeddingModel: hasEmbeddingOverride ? embModel : undefined,
+            embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+            boardId: testForm.boardId === '' ? undefined : Number(testForm.boardId),
+          },
+        });
+        setTestResult(res);
+        setMessage(`测试查询完成：命中 ${(res.hits ?? []).length} 条，耗时 ${res.tookMs ?? 0}ms`);
+      }
       await loadHistory();
     } catch (e: any) {
       setError(e?.message || '测试查询失败');
@@ -410,7 +495,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, loadHistory, selectedIndexId, testForm.boardId, testForm.embeddingModel, testForm.embeddingProviderId, testForm.numCandidates, testForm.queryText, testForm.topK]);
+  }, [canAction, loadHistory, selectedIndexId, selectedSourceType, testForm.boardId, testForm.embeddingModel, testForm.embeddingProviderId, testForm.fileAssetId, testForm.numCandidates, testForm.postId, testForm.queryText, testForm.topK]);
 
   if (accessLoading) {
     return <div className="bg-white rounded-lg shadow p-4 text-sm text-gray-600 animate-pulse">加载中…</div>;
@@ -432,7 +517,7 @@ const VectorIndexForm: React.FC = () => {
         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
           <div>
              <h3 className="font-semibold text-gray-800">向量索引管理</h3>
-             <div className="text-xs text-gray-500 mt-0.5">管理与构建帖子向量索引（基于 Elasticsearch）</div>
+             <div className="text-xs text-gray-500 mt-0.5">管理与构建帖子/评论/文件向量索引（基于 Elasticsearch）</div>
           </div>
           <button className={btnSecondaryClass} disabled={loading} onClick={() => void load()}>刷新</button>
         </div>
@@ -450,6 +535,7 @@ const VectorIndexForm: React.FC = () => {
                   <tr className="text-left text-gray-500 font-medium text-sm uppercase tracking-wider">
                     <th className="py-2 px-3">ID</th>
                     <th className="py-2 px-3">集合名</th>
+                    <th className="py-2 px-3">来源</th>
                     <th className="py-2 px-3">引擎</th>
                     <th className="py-2 px-3">维度</th>
                     <th className="py-2 px-3">度量</th>
@@ -461,6 +547,7 @@ const VectorIndexForm: React.FC = () => {
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {indices.map(it => {
                     const lastBuildAt = metaStr(it.metadata, 'lastBuildAt');
+                    const sourceType = sourceTypeOfIndex(it).toUpperCase();
                     return (
                       <tr
                         key={it.id}
@@ -469,6 +556,7 @@ const VectorIndexForm: React.FC = () => {
                       >
                         <td className="py-2 px-3 text-gray-500 text-sm">{it.id}</td>
                         <td className="py-2 px-3 font-mono text-gray-900 break-all text-sm font-medium">{it.collectionName}</td>
+                        <td className="py-2 px-3 text-gray-500 text-sm">{sourceType}</td>
                         <td className="py-2 px-3 text-gray-500 text-sm">{PROVIDER_LABEL[it.provider] ?? it.provider}</td>
                         <td className="py-2 px-3 text-gray-500 text-sm">{it.dim}</td>
                         <td className="py-2 px-3 text-gray-500 text-sm">{it.metric}</td>
@@ -533,7 +621,7 @@ const VectorIndexForm: React.FC = () => {
           <div className="px-4 py-2 border-b border-gray-100 bg-blue-50/50 flex items-center justify-between">
             <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              操作台：{selectedIndex?.collectionName}
+              操作台：{selectedIndex?.collectionName}（{selectedSourceType}）
             </div>
             <div className="flex items-center gap-2">
                <button className={btnSecondaryClass} disabled={loading || !canAction} onClick={() => void onSync()}>增量同步</button>
@@ -596,12 +684,27 @@ const VectorIndexForm: React.FC = () => {
                          providers={providers}
                          activeProviderId={activeProviderId}
                          mode="embedding"
+                         includeProviderOnlyOptions
+                         label="嵌入来源:"
                          providerId={indexConfig.embeddingProviderId}
-                         model={indexConfig.embeddingModel}
+                         model=""
                          disabled={loading || !canAction || !indexConfigEditing}
                          selectClassName={`${inputClass} disabled:bg-gray-50 disabled:text-gray-500`}
-                         onChange={(next) => setIndexConfig((v) => ({ ...v, embeddingProviderId: next.providerId, embeddingModel: next.model }))}
+                         onChange={(next) => setIndexConfig((v) => ({ ...v, embeddingProviderId: next.providerId }))}
                        />
+                     </div>
+                     <div className="col-span-2">
+                       <label className="text-xs text-gray-500 font-medium mb-1 block">嵌入模型（可选，留空=自动）</label>
+                       <input
+                         className={`${inputClass} disabled:bg-gray-50 disabled:text-gray-500`}
+                         placeholder="留空=自动（均衡负载）"
+                         value={indexConfig.embeddingModel}
+                         disabled={loading || !canAction || !indexConfigEditing}
+                         onChange={(e) => setIndexConfig((v) => ({ ...v, embeddingModel: e.target.value }))}
+                       />
+                       <div className="text-[11px] text-gray-500 mt-1">
+                         留空表示按负载均衡从嵌入模型池选择；若已限定来源，则只在该来源的可用模型池内选择。
+                       </div>
                      </div>
                      <div>
                        <label className="text-xs text-gray-500 font-medium mb-1 block">维度 dim（0=自动）</label>
@@ -736,10 +839,25 @@ Enter 搜索，Shift + Enter 换行"
                              onChange={(e) => setTestForm(v => ({ ...v, embeddingModel: e.target.value }))} />
                         </div>
                         <div className="flex items-center gap-2 text-xs text-gray-500 font-medium">
-                           <span>版块 ID</span>
-                           <input className="border-b border-gray-300 bg-transparent w-16 focus:outline-none focus:border-blue-500 text-center py-1"
-                             placeholder="全部" value={testForm.boardId}
-                             onChange={(e) => setTestForm(v => ({ ...v, boardId: e.target.value ? (safeNumber(e.target.value) ?? '') : '' }))} />
+                           {selectedSourceType === 'FILE_ASSET' ? (
+                             <>
+                               <span>文件ID</span>
+                               <input className="border-b border-gray-300 bg-transparent w-20 focus:outline-none focus:border-blue-500 text-center py-1"
+                                 placeholder="全部" value={testForm.fileAssetId}
+                                 onChange={(e) => setTestForm(v => ({ ...v, fileAssetId: e.target.value ? (safeNumber(e.target.value) ?? '') : '' }))} />
+                               <span>帖子ID</span>
+                               <input className="border-b border-gray-300 bg-transparent w-20 focus:outline-none focus:border-blue-500 text-center py-1"
+                                 placeholder="全部" value={testForm.postId}
+                                 onChange={(e) => setTestForm(v => ({ ...v, postId: e.target.value ? (safeNumber(e.target.value) ?? '') : '' }))} />
+                             </>
+                           ) : (
+                             <>
+                               <span>版块 ID</span>
+                               <input className="border-b border-gray-300 bg-transparent w-16 focus:outline-none focus:border-blue-500 text-center py-1"
+                                 placeholder="全部" value={testForm.boardId}
+                                 onChange={(e) => setTestForm(v => ({ ...v, boardId: e.target.value ? (safeNumber(e.target.value) ?? '') : '' }))} />
+                             </>
+                           )}
                         </div>
                      </div>
                      
@@ -755,13 +873,27 @@ Enter 搜索，Shift + Enter 换行"
                          (testResult.hits ?? []).map((h, idx) => (
                            <div key={`${h.docId ?? idx}`} className="p-3 rounded border border-gray-200 bg-white shadow-sm text-sm hover:border-blue-300 transition-colors">
                              <div className="flex justify-between items-start mb-1">
-                               <span className="font-medium text-blue-700 truncate max-w-[70%]">{h.title || '无标题'}</span>
+                              <span className="font-medium text-blue-700 truncate max-w-[70%]">
+                                {selectedSourceType === 'FILE_ASSET'
+                                  ? ((h as FileTestHit).fileName || '无文件名')
+                                  : ((h as PostTestHit).title || '无标题')}
+                              </span>
                                <span className="font-mono text-orange-500 bg-orange-50 px-1 rounded">{(h.score ?? 0).toFixed(3)}</span>
                              </div>
                              <div className="text-gray-600 line-clamp-2 leading-relaxed" title={h.contentTextPreview ?? undefined}>{h.contentTextPreview}</div>
                              <div className="mt-1 flex gap-2 text-xs text-gray-400 font-mono">
-                               <span>帖子ID：{h.postId}</span>
-                               <span>分块：{h.chunkIndex}</span>
+                              {selectedSourceType === 'FILE_ASSET' ? (
+                                <>
+                                  <span>文件ID：{(h as FileTestHit).fileAssetId ?? '—'}</span>
+                                  <span>帖子IDs：{((h as FileTestHit).postIds ?? []).join(',') || '—'}</span>
+                                  <span>分块：{(h as FileTestHit).chunkIndex ?? '—'}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>帖子ID：{(h as PostTestHit).postId ?? '—'}</span>
+                                  <span>分块：{(h as PostTestHit).chunkIndex ?? '—'}</span>
+                                </>
+                              )}
                              </div>
                            </div>
                          ))

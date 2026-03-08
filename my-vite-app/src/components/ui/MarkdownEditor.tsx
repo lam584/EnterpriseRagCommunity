@@ -61,7 +61,7 @@ function parseAdmonitionFromBlockquoteChildren(
   const match = lineText.match(/^\[!(TIP|NOTE|IMPORTANT|WARNING|CAUTION)\](?:\s+(.*))?$/i);
   if (!match) return null;
 
-  const kind = String(match[1] ?? '').toUpperCase();
+  const kind = match[1].toUpperCase();
   const title = (match[2] ?? '').trim() || kind;
 
   const restParts = brIndex >= 0 ? trimLeadingWhitespaceNodes(firstParts.slice(brIndex + 1)) : [];
@@ -116,19 +116,30 @@ export default function MarkdownEditor(props: {
   onChange: (next: MarkdownEditorValue) => void;
   onInsertImage?: (file: File) => Promise<string>; // returns markdown snippet, e.g. ![](url)
   onInsertAttachment?: (file: File) => Promise<string>; // returns markdown snippet, e.g. [name](url)
+  fileAccept?: string;
   placeholder?: string;
   onBoxHeightChange?: (heightPx: number) => void;
   editorHeightPx?: number;
   toolbarAfterTabs?: ReactNode;
 }) {
-  const { value, onChange, onInsertImage, onInsertAttachment, placeholder, onBoxHeightChange, editorHeightPx, toolbarAfterTabs } =
-    props;
+  const {
+    value,
+    onChange,
+    onInsertImage,
+    onInsertAttachment,
+    fileAccept,
+    placeholder,
+    onBoxHeightChange,
+    editorHeightPx,
+    toolbarAfterTabs,
+  } = props;
   const [tab, setTab] = useState<'edit' | 'preview'>('edit');
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [boxHeightPx, setBoxHeightPx] = useState<number | null>(null);
 
   const [live, setLive] = useState(value.markdown);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     setLive(value.markdown);
@@ -181,12 +192,19 @@ export default function MarkdownEditor(props: {
     const handler = kind === 'image' ? onInsertImage : onInsertAttachment;
     if (!handler) return;
 
-    const snippet = await handler(file);
-    // If inserting into the middle, avoid forcing newline; just use snippet.
-    // Add a trailing newline when caret is at line end or doc end for nicer typing.
-    const el = textareaRef.current;
-    const needsNewline = !el || el.selectionStart === live.length || live.endsWith('\n');
-    insertSnippetAtCursor(`${needsNewline ? '' : ''}${snippet}${needsNewline ? '\n' : ''}`);
+    setUploadError(null);
+    try {
+      const snippet = await handler(file);
+      const el = textareaRef.current;
+      const needsNewline = !el || el.selectionStart === live.length || live.endsWith('\n');
+      insertSnippetAtCursor(`${needsNewline ? '' : ''}${snippet}${needsNewline ? '\n' : ''}`);
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'message' in e && typeof (e as { message?: unknown }).message === 'string'
+          ? (e as { message: string }).message
+          : '上传失败';
+      setUploadError(msg);
+    }
   };
 
   const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -239,10 +257,13 @@ export default function MarkdownEditor(props: {
   }, []);
 
   const effectiveBoxHeightPx = boxHeightPx ?? editorHeightPx ?? null;
-  const normalizedLiveForPreview = useMemo(() => normalizeMarkdownForPreview(live || ''), [live]);
+  const normalizedLiveForPreview = useMemo(() => normalizeMarkdownForPreview(live), [live]);
 
   return (
     <div className="space-y-2">
+      {uploadError ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{uploadError}</div>
+      ) : null}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-md border border-gray-200 overflow-hidden">
@@ -266,29 +287,21 @@ export default function MarkdownEditor(props: {
 
         <div className="flex items-center gap-2">
           <label className="px-3 py-1.5 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer">
-            插入图片
+            插入文件
             <input
               type="file"
-              accept="image/*"
               className="hidden"
+              accept={fileAccept}
               onChange={async (e) => {
                 const f = e.target.files?.[0];
                 e.target.value = '';
                 if (!f) return;
-                await insertUploaded(f, 'image');
-              }}
-            />
-          </label>
-          <label className="px-3 py-1.5 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer">
-            插入附件
-            <input
-              type="file"
-              className="hidden"
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                e.target.value = '';
-                if (!f) return;
-                await insertUploaded(f, 'attachment');
+                const isImage = (f.type || '').startsWith('image/');
+                if (isImage && onInsertImage) {
+                  await insertUploaded(f, 'image');
+                } else {
+                  await insertUploaded(f, 'attachment');
+                }
               }}
             />
           </label>
@@ -398,7 +411,7 @@ export default function MarkdownEditor(props: {
                 ),
               }}
             >
-              {normalizedLiveForPreview || ''}
+              {normalizedLiveForPreview}
             </ReactMarkdown>
           </div>
         </div>

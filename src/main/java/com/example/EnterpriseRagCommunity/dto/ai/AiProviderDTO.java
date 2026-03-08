@@ -19,6 +19,5 @@ public class AiProviderDTO {
     private Map<String, String> extraHeaders;
     private Integer connectTimeoutMs;
     private Integer readTimeoutMs;
-    private Integer maxConcurrent;
     private Boolean enabled;
 }

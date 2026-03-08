@@ -111,7 +111,21 @@ INSERT IGNORE INTO permissions(resource, action, description) VALUES
   ('admin_role_permissions','read','角色-权限矩阵读取'),
   ('admin_role_permissions','write','角色-权限矩阵写入/更新/删除'),
   ('admin_user_roles','read','用户-角色关联读取'),
-  ('admin_user_roles','write','用户-角色关联写入/更新/清空');
+  ('admin_user_roles','write','用户-角色关联写入/更新/清空'),
+  ('admin_content_formats','access','后台-内容管理-格式管理'),
+  ('admin_content_formats','write','后台-内容管理-格式管理配置更新'),
+  ('admin_content_posts_compose','access','后台-内容管理-发帖表单配置'),
+  ('admin_content_posts_compose','write','后台-内容管理-发帖表单配置更新'),
+  ('admin_moderation_chunk_review','access','后台-审核-分片审核配置与进度查看'),
+  ('admin_moderation_chunk_review','write','后台-审核-分片审核配置更新'),
+  ('admin_ai_chat_context','access','后台-LLM-对话上下文治理'),
+  ('admin_ai_chat_context','write','后台-LLM-对话上下文治理配置更新'),
+  ('admin_metrics_llm_queue','access','后台-评估与监控-LLM 调用队列页面'),
+  ('admin_metrics_llm_queue','read','后台-LLM 调用队列读取'),
+  ('admin_metrics_llm_queue','write','后台-LLM 调用队列配置写入'),
+  ('admin_metrics_circuit_breaker','access','后台-评估与监控-内容安全熔断'),
+  ('admin_safety_circuit_breaker','read','内容安全熔断读取'),
+  ('admin_safety_circuit_breaker','write','内容安全熔断配置更新/一键启停');
 
 -- 2.1) 运维/后台工具权限
 INSERT IGNORE INTO permissions(resource, action, description) VALUES
@@ -197,9 +211,12 @@ WHERE NOT EXISTS (
   SELECT 1
   FROM boards b
   WHERE b.tenant_id IS NULL
-    AND b.parent_id IS NULL
-    AND b.name = '默认版块'
+  AND b.parent_id IS NULL
+  AND b.name = '默认版块'
 );
+
+INSERT IGNORE INTO roles(role_id, role_name, builtin, immutable)
+VALUES (1, 'USER', 1, 1);
 
 -- 6) 初始化：基线 USER 角色（role_id=1）并授予所有 portal_* 权限
 -- 说明：
@@ -207,29 +224,325 @@ WHERE NOT EXISTS (
 -- - 前台路由由 RBAC 权限控制
 -- 幂等：INSERT IGNORE 依赖主键 (role_id, permission_id)
 
-UPDATE role_permissions
-SET role_name = 'USER'
-WHERE role_id = 1
-  AND (role_name IS NULL OR role_name = '');
+-- 9) 默认配置：moderation_samples 增量同步（MySQL -> ES）
+-- 说明：默认关闭，避免后台自动向量化带来不可预期成本
+
+INSERT IGNORE INTO app_settings(k, v) VALUES ('moderation.samples.autoSync.enabled', 'false');
+INSERT IGNORE INTO app_settings(k, v) VALUES ('moderation.samples.autoSync.intervalSeconds', '60');
+
+-- 10) 默认配置：相似检测样本库 ES 索引 + 相似检测运行时配置
+-- 幂等：表为空时才插入
+
+INSERT INTO moderation_samples_index_config (
+  index_name,
+  ik_enabled,
+  embedding_model,
+  embedding_dims,
+  default_top_k,
+  default_threshold,
+  updated_at
+)
+SELECT
+  'ad_violation_samples_v1',
+  1,
+  NULL,
+  0,
+  5,
+  0.15,
+  NOW(3)
+WHERE NOT EXISTS (
+  SELECT 1 FROM moderation_samples_index_config
+);
+
+INSERT INTO moderation_similarity_config (
+  enabled,
+  embedding_model,
+  embedding_dims,
+  max_input_chars,
+  default_top_k,
+  default_threshold,
+  default_num_candidates,
+  updated_at
+)
+SELECT
+  1,
+  NULL,
+  0,
+  0,
+  5,
+  0.15,
+  0,
+  NOW(3)
+WHERE NOT EXISTS (
+  SELECT 1 FROM moderation_similarity_config
+);
+
+INSERT IGNORE INTO app_settings (k, v, updated_at)
+VALUES
+('retrieval_rag_config', '{
+  "enabled": true,
+  "provider": "MILVUS",
+  "embeddingModel": "",
+  "embeddingDim": 1024,
+  "collectionName": "rag_chunks",
+  "topK": 100,
+  "scoreThreshold": 0.0
+}', NOW()),
+('retrieval_hybrid_config', '{
+  "enabled": true,
+  "bm25K": 50,
+  "bm25TitleBoost": 2,
+  "bm25ContentBoost": 1,
+  "vecK": 50,
+  "fileVecEnabled": true,
+  "fileVecK": 30,
+  "hybridK": 30,
+  "fusionMode": "RRF",
+  "bm25Weight": 1,
+  "vecWeight": 1,
+  "fileVecWeight": 1,
+  "rrfK": 60,
+  "rerankEnabled": true,
+  "rerankModel": "",
+  "rerankTemperature": 0,
+  "rerankK": 30,
+  "maxDocs": 500,
+  "perDocMaxTokens": 4000,
+  "maxInputTokens": 30000
+}', NOW());
+
+INSERT INTO vector_indices (provider, collection_name, metric, dim, status, metadata)
+SELECT
+  'OTHER',
+  'rag_post_chunks_v1',
+  'cosine',
+  1024,
+  'READY',
+  JSON_OBJECT(
+    'sourceType', 'POST',
+    'embeddingModel', '',
+    'defaultChunkMaxChars', 800,
+    'defaultChunkOverlapChars', 80
+  )
+WHERE NOT EXISTS (
+  SELECT 1 FROM vector_indices
+  WHERE provider = 'OTHER' AND collection_name = 'rag_post_chunks_v1'
+);
+
+INSERT INTO vector_indices (provider, collection_name, metric, dim, status, metadata)
+SELECT
+  'OTHER',
+  'rag_post_chunks_v1_comments',
+  'cosine',
+  1024,
+  'READY',
+  JSON_OBJECT(
+    'sourceType', 'COMMENT',
+    'embeddingModel', '',
+    'defaultChunkMaxChars', 800,
+    'defaultChunkOverlapChars', 80
+  )
+WHERE NOT EXISTS (
+  SELECT 1 FROM vector_indices
+  WHERE provider = 'OTHER' AND collection_name = 'rag_post_chunks_v1_comments'
+);
+
+INSERT INTO vector_indices (provider, collection_name, metric, dim, status, metadata)
+SELECT
+  'OTHER',
+  'rag_file_assets_v1',
+  'cosine',
+  1024,
+  'READY',
+  JSON_OBJECT(
+    'sourceType', 'FILE_ASSET',
+    'embeddingModel', '',
+    'defaultChunkMaxChars', 1200,
+    'defaultChunkOverlapChars', 120
+  )
+WHERE NOT EXISTS (
+  SELECT 1 FROM vector_indices
+  WHERE provider = 'OTHER' AND collection_name = 'rag_file_assets_v1'
+);
+
+-- 11) 默认配置：RAG 与 Hybrid 检索配置（JSON 存入 app_settings）
+-- 说明：
+-- - retrieval_rag_config：向量检索基础配置
+-- - retrieval_hybrid_config：BM25 + 向量融合 + rerank 等混合检索配置
 
 INSERT IGNORE INTO role_permissions(role_id, role_name, permission_id, allow)
 SELECT
-  1,
-  'USER',
-  p.id,
+  rp.role_id,
+  rp.role_name,
+  p_new.id,
   1
-FROM permissions p
-WHERE p.resource LIKE 'portal\\_%' ESCAPE '\\';
+FROM role_permissions rp
+JOIN permissions p_old
+  ON p_old.id = rp.permission_id
+  AND p_old.resource = 'admin_metrics'
+  AND p_old.action = 'access'
+  AND rp.allow = 1
+JOIN permissions p_new
+  ON p_new.resource = 'admin_metrics_circuit_breaker'
+  AND p_new.action = 'access';
+INSERT IGNORE INTO role_permissions(role_id, role_name, permission_id, allow)
+SELECT
+  rp.role_id,
+  rp.role_name,
+  p_new.id,
+  1
+FROM role_permissions rp
+JOIN permissions p_old
+  ON p_old.id = rp.permission_id
+  AND p_old.resource = 'admin_metrics'
+  AND p_old.action = 'access'
+  AND rp.allow = 1
+JOIN permissions p_new
+  ON p_new.resource = 'admin_safety_circuit_breaker'
+  AND p_new.action = 'read';
+INSERT IGNORE INTO role_permissions(role_id, role_name, permission_id, allow)
+SELECT
+  rp.role_id,
+  rp.role_name,
+  p_write.id,
+  1
+FROM role_permissions rp
+JOIN permissions p_read
+  ON p_read.id = rp.permission_id
+  AND p_read.resource = 'admin_safety_circuit_breaker'
+  AND p_read.action = 'read'
+  AND rp.allow = 1
+JOIN permissions p_write
+  ON p_write.resource = 'admin_safety_circuit_breaker'
+  AND p_write.action = 'write';
 
--- 7) 初始化：用户注册默认角色（role_id=1 固定保留为 USER）
-INSERT IGNORE INTO app_settings(k, v) VALUES ('default_register_role_id', '1');
+-- Insert risk tags forcefully (no IGNORE) to ensure they exist
+INSERT INTO tags (tenant_id, type, name, slug, description, is_system, is_active, threshold, created_at)
+SELECT
+  v.tenant_id,
+  v.type,
+  v.name,
+  v.slug,
+  v.description,
+  v.is_system,
+  v.is_active,
+  v.threshold,
+  v.created_at
+FROM (
+  SELECT NULL AS tenant_id, 'RISK' AS type, '政治敏感' AS name, 'political' AS slug, '涉及政治敏感内容' AS description, 1 AS is_system, 1 AS is_active, 0.5 AS threshold, NOW() AS created_at
+  UNION ALL SELECT NULL, 'RISK', '暴力血腥', 'violence', '涉及暴力血腥内容', 1, 1, 0.5, NOW()
+  UNION ALL SELECT NULL, 'RISK', '诈骗引流', 'scam', '涉及诈骗、引流、杀猪盘等', 1, 1, 0.85, NOW()
+  UNION ALL SELECT NULL, 'RISK', '色情低俗', 'pornography', '涉及色情低俗内容', 1, 1, 0.5, NOW()
+  UNION ALL SELECT NULL, 'RISK', '辱骂攻击', 'abuse', '涉及辱骂、人身攻击', 1, 1, 0.6, NOW()
+  UNION ALL SELECT NULL, 'RISK', '违禁品', 'contraband', '涉及违禁品（毒品、枪支等）', 1, 1, 0.7, NOW()
+  UNION ALL SELECT NULL, 'RISK', '未成年人', 'minor', '涉及未成年人不良内容', 1, 1, 0.1, NOW()
+  UNION ALL SELECT NULL, 'RISK', '垃圾广告', 'advertisement', '垃圾广告', 1, 1, 0.8, NOW()
+  UNION ALL SELECT NULL, 'RISK', '无意义灌水', 'meaningless', '无意义灌水', 1, 1, 0.9, NOW()
+  UNION ALL SELECT NULL, 'RISK', '负面情绪', 'negative', '负面情绪、丧文化', 1, 1, 0.6, NOW()
+  UNION ALL SELECT NULL, 'RISK', '宗教敏感', 'religion', '涉及宗教敏感内容', 1, 1, 0.5, NOW()
+  UNION ALL SELECT NULL, 'RISK', '恐怖主义', 'terrorism', '涉及恐怖主义', 1, 1, 0.1, NOW()
+  UNION ALL SELECT NULL, 'RISK', '赌博博彩', 'gambling', '涉及赌博、博彩内容', 1, 1, 0.8, NOW()
+  UNION ALL SELECT NULL, 'RISK', '仇恨言论', 'hate-speech', '涉及种族、性别、地域等仇恨言论', 1, 1, 0.4, NOW()
+  UNION ALL SELECT NULL, 'RISK', '自残自杀', 'self-harm', '涉及自残、自杀、厌世内容', 1, 1, 0.3, NOW()
+  UNION ALL SELECT NULL, 'RISK', '隐私泄露', 'privacy', '涉及他人隐私泄露', 1, 1, 0.7, NOW()
+  UNION ALL SELECT NULL, 'RISK', '谣言', 'rumor', '传播谣言、不实信息', 1, 1, 0.6, NOW()
+  UNION ALL SELECT NULL, 'RISK', '歧视', 'discrimination', '涉及性别、职业、身体等歧视', 1, 1, 0.5, NOW()
+  UNION ALL SELECT NULL, 'RISK', '诱导点击', 'clickbait', '夸大其词、诱导点击', 1, 1, 0.8, NOW()
+  UNION ALL SELECT NULL, 'RISK', '低质内容', 'low-quality', '内容空洞、排版混乱', 1, 1, 0.9, NOW()
+  UNION ALL SELECT NULL, 'RISK', '竞品拉踩', 'competitor', '竞品宣传、恶意拉踩', 1, 1, 0.9, NOW()
+  UNION ALL SELECT NULL, 'RISK', '虐待动物', 'animal-abuse', '虐待、残害动物', 1, 1, 0.4, NOW()
+  UNION ALL SELECT NULL, 'RISK', '非法服务', 'illegal-service', '办证、洗钱、代孕等非法服务', 1, 1, 0.7, NOW()
+  UNION ALL SELECT NULL, 'RISK', '二维码引流', 'qrcode', '包含不明二维码，疑似引流', 1, 1, 0.85, NOW()
+  UNION ALL SELECT NULL, 'RISK', '邪教', 'cult', '涉及邪教组织、教义', 1, 1, 0.1, NOW()
+  UNION ALL SELECT NULL, 'RISK', '传销', 'pyramid-scheme', '涉及传销、拉人头', 1, 1, 0.2, NOW()
+  UNION ALL SELECT NULL, 'RISK', '非法集资', 'illegal-fundraising', '涉及非法集资、庞氏骗局', 1, 1, 0.2, NOW()
+  UNION ALL SELECT NULL, 'RISK', '贩卖人口', 'human-trafficking', '涉及贩卖人口、器官', 1, 1, 0.1, NOW()
+  UNION ALL SELECT NULL, 'RISK', '网络暴力', 'cyberbullying', '网络暴力、群体攻击', 1, 1, 0.4, NOW()
+  UNION ALL SELECT NULL, 'RISK', '人身攻击', 'personal-attack', '针对个人的恶意攻击、谩骂', 1, 1, 0.5, NOW()
+  UNION ALL SELECT NULL, 'RISK', '血腥恐怖', 'gore', '极其血腥、恐怖、令人不适的画面', 1, 1, 0.3, NOW()
+  UNION ALL SELECT NULL, 'RISK', '软色情', 'overexposure', '衣着暴露、软色情、擦边球', 1, 1, 0.6, NOW()
+  UNION ALL SELECT NULL, 'RISK', '引战对立', 'provocation', '故意引战、制造对立', 1, 1, 0.6, NOW()
+  UNION ALL SELECT NULL, 'RISK', '地域歧视', 'regional-discrimination', '地域歧视、地图炮', 1, 1, 0.5, NOW()
+  UNION ALL SELECT NULL, 'RISK', '虚假宣传', 'false-advertising', '虚假宣传、夸大功效', 1, 1, 0.7, NOW()
+  UNION ALL SELECT NULL, 'RISK', '侵犯版权', 'copyright-infringement', '侵犯版权、盗版资源', 1, 1, 0.8, NOW()
+  UNION ALL SELECT NULL, 'RISK', '抄袭洗稿', 'plagiarism', '抄袭、洗稿', 1, 1, 0.8, NOW()
+  UNION ALL SELECT NULL, 'RISK', '刷屏', 'spamming', '恶意刷屏、重复发布', 1, 1, 0.9, NOW()
+  UNION ALL SELECT NULL, 'RISK', '烟酒推广', 'tobacco-alcohol', '涉及烟草、酒精推广', 1, 1, 0.6, NOW()
+  UNION ALL SELECT NULL, 'RISK', '野生动物交易', 'wildlife-trade', '涉及非法野生动物交易', 1, 1, 0.3, NOW()
+  UNION ALL SELECT NULL, 'RISK', '非法医疗', 'illegal-medical', '非法行医、违规药品', 1, 1, 0.4, NOW()
+  UNION ALL SELECT NULL, 'RISK', '黑客攻击', 'hacking', '黑客攻击、木马病毒、网络入侵', 1, 1, 0.3, NOW()
+  UNION ALL SELECT NULL, 'RISK', '恶意骚扰', 'harassment', '恶意骚扰、跟踪、威胁', 1, 1, 0.6, NOW()
+  UNION ALL SELECT NULL, 'RISK', '封建迷信', 'superstition', '封建迷信、伪科学', 1, 1, 0.6, NOW()
+  UNION ALL SELECT NULL, 'RISK', '其他', 'other', '其他未分类违规内容', 1, 1, 0.5, NOW()
+) v
+LEFT JOIN tags t
+  ON t.tenant_id <=> v.tenant_id
+  AND t.type = v.type
+  AND t.slug = v.slug
+WHERE t.id IS NULL;
 
--- 8) 初始化：默认开启 RAG 帖子增量同步（用于向量索引）
-INSERT IGNORE INTO app_settings(k, v) VALUES ('retrieval.rag.autoSync.enabled', 'true');
-INSERT IGNORE INTO app_settings(k, v) VALUES ('retrieval.rag.autoSync.intervalSeconds', '30');
+INSERT INTO system_configurations (config_key, config_value, is_encrypted, description)
+VALUES ('image.storage.mode', 'DASHSCOPE_TEMP', FALSE, '图片存储模式: LOCAL / DASHSCOPE_TEMP / ALIYUN_OSS')
+ON DUPLICATE KEY UPDATE
+    config_value = CASE
+        WHEN config_value IS NULL OR TRIM(config_value) = '' THEN VALUES(config_value)
+        ELSE config_value
+    END,
+    is_encrypted = VALUES(is_encrypted),
+    description = VALUES(description);
 
-INSERT IGNORE INTO app_settings(k, v) VALUES ('security_login2fa_scope_policy', 'ALLOW_ALL');
-INSERT IGNORE INTO app_settings(k, v) VALUES ('security_login2fa_mode', 'EMAIL_OR_TOTP');
+INSERT IGNORE INTO system_configurations (config_key, config_value, is_encrypted, description)
+VALUES
+    ('image.storage.local.base_url', '', FALSE, 'LOCAL 模式下的公网域名 (如 https://example.com)'),
+    ('image.storage.dashscope.model', 'qwen-vl-plus', FALSE, '百炼临时存储绑定的模型名称'),
+    ('image.storage.oss.endpoint', '', TRUE, '阿里云 OSS Endpoint (如 oss-cn-hangzhou.aliyuncs.com)'),
+    ('image.storage.oss.bucket', '', FALSE, '阿里云 OSS Bucket 名称'),
+    ('image.storage.oss.access_key_id', '', TRUE, '阿里云 OSS AccessKey ID'),
+    ('image.storage.oss.access_key_secret', '', TRUE, '阿里云 OSS AccessKey Secret'),
+    ('image.storage.oss.region', '', FALSE, '阿里云 OSS Region (如 cn-hangzhou)'),
+    ('image.compression.enabled', 'true', FALSE, '是否在上传前压缩图片'),
+    ('image.compression.max_width', '1920', FALSE, '压缩最大宽度 (px)'),
+    ('image.compression.max_height', '1920', FALSE, '压缩最大高度 (px)'),
+    ('image.compression.quality', '0.85', FALSE, 'JPEG 压缩质量 (0.0-1.0)'),
+    ('image.compression.max_bytes', '500000', FALSE, '压缩后最大字节数');
+
+INSERT IGNORE INTO permissions(resource, action, description) VALUES
+    ('admin_ai_image_storage', 'access', '后台-LLM-图片存储管理查看'),
+    ('admin_ai_image_storage', 'write', '后台-LLM-图片存储管理配置更新');
+
+INSERT IGNORE INTO role_permissions(role_id, role_name, permission_id, allow)
+SELECT
+  rp.role_id,
+  rp.role_name,
+  p_new.id,
+  1
+FROM role_permissions rp
+JOIN permissions p_old
+  ON p_old.id = rp.permission_id
+  AND p_old.resource = 'admin_review'
+  AND p_old.action = 'access'
+  AND rp.allow = 1
+JOIN permissions p_new
+  ON p_new.resource = 'admin_ai_image_storage'
+  AND p_new.action = 'access';
+
+INSERT IGNORE INTO role_permissions(role_id, role_name, permission_id, allow)
+SELECT
+  rp.role_id,
+  rp.role_name,
+  p_new.id,
+  1
+FROM role_permissions rp
+JOIN permissions p_old
+  ON p_old.id = rp.permission_id
+  AND p_old.resource = 'admin_moderation_llm'
+  AND p_old.action = 'write'
+  AND rp.allow = 1
+JOIN permissions p_new
+  ON p_new.resource = 'admin_ai_image_storage'
+  AND p_new.action = 'write';
+
+
 
 INSERT INTO supported_languages (language_code, display_name, native_name, is_active, sort_order) VALUES
 -- 表：supported_languages
@@ -357,151 +670,3 @@ INSERT INTO supported_languages (language_code, display_name, native_name, is_ac
 ('war', '瓦莱语（Waray (Philippines)）', 'Winaray', 1, 117),
 ('ht', '海地语（Haitian）', 'Kreyòl ayisyen', 1, 118),
 ('pap', '帕皮阿门托语（Papiamento）', 'Papiamentu', 1, 119);
-
-INSERT IGNORE INTO permissions(resource, action, description) VALUES
-  ('admin_metrics_llm_queue','access','后台-评估与监控-LLM 调用队列页面'),
-  ('admin_metrics_llm_queue','read','后台-LLM 调用队列读取');
-
-INSERT IGNORE INTO permissions(resource, action, description) VALUES
-  ('admin_metrics_llm_queue','write','后台-LLM 调用队列配置写入');
-
-INSERT IGNORE INTO role_permissions(role_id, role_name, permission_id, allow)
-SELECT
-  rp.role_id,
-  rp.role_name,
-  p_write.id,
-  1
-FROM role_permissions rp
-JOIN permissions p_read
-  ON p_read.id = rp.permission_id
-  AND p_read.resource = 'admin_metrics_llm_queue'
-  AND p_read.action = 'read'
-  AND rp.allow = 1
-JOIN permissions p_write
-  ON p_write.resource = 'admin_metrics_llm_queue'
-  AND p_write.action = 'write';
-
--- 9) 默认配置：moderation_samples 增量同步（MySQL -> ES）
--- 说明：默认关闭，避免后台自动向量化带来不可预期成本
-
-INSERT IGNORE INTO app_settings(k, v) VALUES ('moderation.samples.autoSync.enabled', 'false');
-INSERT IGNORE INTO app_settings(k, v) VALUES ('moderation.samples.autoSync.intervalSeconds', '60');
-
--- 10) 默认配置：相似检测样本库 ES 索引 + 相似检测运行时配置
--- 幂等：表为空时才插入
-
-INSERT INTO moderation_samples_index_config (
-  index_name,
-  ik_enabled,
-  embedding_model,
-  embedding_dims,
-  default_top_k,
-  default_threshold,
-  updated_at
-)
-SELECT
-  'ad_violation_samples_v1',
-  1,
-  'text-embedding-v4',
-  0,
-  5,
-  0.15,
-  NOW(3)
-WHERE NOT EXISTS (
-  SELECT 1 FROM moderation_samples_index_config
-);
-
-INSERT INTO moderation_similarity_config (
-  enabled,
-  embedding_model,
-  embedding_dims,
-  max_input_chars,
-  default_top_k,
-  default_threshold,
-  default_num_candidates,
-  updated_at
-)
-SELECT
-  1,
-  NULL,
-  0,
-  0,
-  5,
-  0.15,
-  0,
-  NOW(3)
-WHERE NOT EXISTS (
-  SELECT 1 FROM moderation_similarity_config
-);
-
-INSERT IGNORE INTO app_settings (k, v, updated_at)
-VALUES
-('retrieval_rag_config', '{
-  "enabled": true,
-  "provider": "MILVUS",
-  "embeddingModel": "",
-  "embeddingDim": 1024,
-  "collectionName": "rag_chunks",
-  "topK": 100,
-  "scoreThreshold": 0.0
-}', NOW()),
-('retrieval_hybrid_config', '{
-  "enabled": true,
-  "bm25K": 50,
-  "bm25TitleBoost": 2,
-  "bm25ContentBoost": 1,
-  "vecK": 50,
-  "hybridK": 30,
-  "fusionMode": "RRF",
-  "bm25Weight": 1,
-  "vecWeight": 1,
-  "rrfK": 60,
-  "rerankEnabled": true,
-  "rerankModel": "",
-  "rerankTemperature": 0,
-  "rerankK": 30,
-  "maxDocs": 500,
-  "perDocMaxTokens": 4000,
-  "maxInputTokens": 30000
-}', NOW());
-
--- 11) 默认配置：RAG 与 Hybrid 检索配置（JSON 存入 app_settings）
--- 说明：
--- - retrieval_rag_config：向量检索基础配置
--- - retrieval_hybrid_config：BM25 + 向量融合 + rerank 等混合检索配置
-
-INSERT INTO vector_indices (provider, collection_name, metric, dim, status, metadata)
-SELECT
-  'OTHER',
-  'rag_post_chunks_v1',
-  'cosine',
-  1024,
-  'READY',
-  JSON_OBJECT(
-    'sourceType', 'POST',
-    'embeddingModel', '',
-    'defaultChunkMaxChars', 800,
-    'defaultChunkOverlapChars', 80
-  )
-WHERE NOT EXISTS (
-  SELECT 1 FROM vector_indices
-  WHERE provider = 'OTHER' AND collection_name = 'rag_post_chunks_v1'
-);
-
-INSERT INTO vector_indices (provider, collection_name, metric, dim, status, metadata)
-SELECT
-  'OTHER',
-  'rag_post_chunks_v1_comments',
-  'cosine',
-  1024,
-  'READY',
-  JSON_OBJECT(
-    'sourceType', 'COMMENT',
-    'embeddingModel', '',
-    'defaultChunkMaxChars', 800,
-    'defaultChunkOverlapChars', 80
-  )
-WHERE NOT EXISTS (
-  SELECT 1 FROM vector_indices
-  WHERE provider = 'OTHER' AND collection_name = 'rag_post_chunks_v1_comments'
-);

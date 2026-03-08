@@ -2,7 +2,6 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelsDTO;
-import com.example.EnterpriseRagCommunity.dto.ai.AiUpstreamModelsDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiUpstreamModelsPreviewRequestDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmModelEntity;
 import com.example.EnterpriseRagCommunity.exception.UpstreamRequestException;
@@ -23,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -37,6 +37,7 @@ public class AiProviderModelsAdminService {
     private final LlmProviderRepository llmProviderRepository;
     private final AiProvidersConfigService aiProvidersConfigService;
     private final ObjectMapper objectMapper;
+    private final LlmRoutingService llmRoutingService;
 
     @Transactional(readOnly = true)
     public AiProviderModelsDTO listProviderModels(String providerId) {
@@ -78,7 +79,7 @@ public class AiProviderModelsAdminService {
 
         boolean providerExists = llmProviderRepository.findByEnvAndProviderId(ENV_DEFAULT, pid).isPresent();
         if (!providerExists) {
-            throw new IllegalArgumentException("模型来源不存在（providerId=" + pid + "），请先保存“模型来源”配置后再添加模型");
+            throw new IllegalArgumentException("模型提供商不存在（providerId=" + pid + "），请先保存“模型提供商”配置后再添加模型");
         }
 
         Optional<LlmModelEntity> existing = llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, purp, name);
@@ -116,8 +117,6 @@ public class AiProviderModelsAdminService {
         }
         e.setSortIndex(maxSortIndex + 1);
 
-        e.setMaxConcurrent(null);
-        e.setMinDelayMs(null);
         e.setQps(null);
         e.setPriceConfigId(null);
         e.setMetadata(null);
@@ -126,6 +125,8 @@ public class AiProviderModelsAdminService {
         e.setUpdatedAt(now);
         e.setUpdatedBy(actorUserId);
         llmModelRepository.save(e);
+
+        llmRoutingService.resetRuntimeState();
 
         return listProviderModels(pid);
     }
@@ -140,26 +141,31 @@ public class AiProviderModelsAdminService {
         if (name == null) throw new IllegalArgumentException("modelName 不能为空");
 
         llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, purp, name).ifPresent(llmModelRepository::delete);
+        llmRoutingService.resetRuntimeState();
         return listProviderModels(pid);
     }
 
     @Transactional(readOnly = true)
-    public AiUpstreamModelsDTO fetchUpstreamModels(String providerId) {
+    public Map<String, Object> fetchUpstreamModels(String providerId) {
         String pid = toNonBlank(providerId);
         if (pid == null) throw new IllegalArgumentException("providerId 不能为空");
 
         AiProvidersConfigService.ResolvedProvider p = aiProvidersConfigService.resolveProvider(pid);
         String endpoint = buildEndpoint(p.baseUrl(), "/models");
 
-        List<String> models = requestUpstreamModels(endpoint, p.apiKey(), p.extraHeaders(), p.connectTimeoutMs(), p.readTimeoutMs());
-        AiUpstreamModelsDTO out = new AiUpstreamModelsDTO();
-        out.setProviderId(pid);
-        out.setModels(models);
+        Integer connectTimeoutObj = p.connectTimeoutMs();
+        int connectTimeout = (connectTimeoutObj == null || connectTimeoutObj <= 0) ? 10_000 : connectTimeoutObj;
+        Integer readTimeoutObj = p.readTimeoutMs();
+        int readTimeout = (readTimeoutObj == null || readTimeoutObj <= 0) ? 60_000 : readTimeoutObj;
+        List<String> models = requestUpstreamModels(endpoint, p.apiKey(), p.extraHeaders(), connectTimeout, readTimeout);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("providerId", pid);
+        out.put("models", models);
         return out;
     }
 
     @Transactional(readOnly = true)
-    public AiUpstreamModelsDTO previewUpstreamModels(AiUpstreamModelsPreviewRequestDTO req) {
+    public Map<String, Object> previewUpstreamModels(AiUpstreamModelsPreviewRequestDTO req) {
         if (req == null) throw new IllegalArgumentException("payload 不能为空");
         String baseUrl = toNonBlank(req.getBaseUrl());
         if (baseUrl == null) throw new IllegalArgumentException("baseUrl 不能为空");
@@ -168,9 +174,9 @@ public class AiProviderModelsAdminService {
         int readTimeoutMs = req.getReadTimeoutMs() == null ? 60_000 : Math.max(1, req.getReadTimeoutMs());
 
         List<String> models = requestUpstreamModels(endpoint, req.getApiKey(), req.getExtraHeaders(), connectTimeoutMs, readTimeoutMs);
-        AiUpstreamModelsDTO out = new AiUpstreamModelsDTO();
-        out.setProviderId(toNonBlank(req.getProviderId()));
-        out.setModels(models);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("providerId", toNonBlank(req.getProviderId()));
+        out.put("models", models);
         return out;
     }
 

@@ -19,7 +19,7 @@ public interface RetrievalHitsRepository extends JpaRepository<RetrievalHitsEnti
     // by type
     List<RetrievalHitsEntity> findByHitType(RetrievalHitType hitType);
 
-    // by document/chunk FKs
-    List<RetrievalHitsEntity> findByDocumentId(Long documentId);
+    // by post/chunk FKs
+    List<RetrievalHitsEntity> findByPostId(Long postId);
     List<RetrievalHitsEntity> findByChunkId(Long chunkId);
 }

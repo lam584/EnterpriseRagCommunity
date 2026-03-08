@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/1.png';
 import AuthFooter from './AuthFooter';
+import { getRegistrationStatus } from '../../services/authService';
 import {
   getPasswordResetStatus,
   resetPasswordByEmailCode,
@@ -16,6 +17,7 @@ export default function ForgotPassword() {
   const navigate = useNavigate();
   const [currentImage, setCurrentImage] = useState(backgroundImage1);
   const images = useMemo(() => [backgroundImage1], []);
+  const [registrationEnabled, setRegistrationEnabled] = useState(true);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -27,6 +29,17 @@ export default function ForgotPassword() {
     }, 2000);
     return () => clearInterval(interval);
   }, [images]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await getRegistrationStatus();
+        setRegistrationEnabled(s.registrationEnabled);
+      } catch {
+        setRegistrationEnabled(true);
+      }
+    })();
+  }, []);
 
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
@@ -185,9 +198,11 @@ export default function ForgotPassword() {
                 <Link to="/login" className="font-bold text-blue-500 hover:text-blue-800">
                   返回登录
                 </Link>
-                <Link to="/register" className="font-bold text-blue-500 hover:text-blue-800">
-                  注册
-                </Link>
+                {registrationEnabled ? (
+                  <Link to="/register" className="font-bold text-blue-500 hover:text-blue-800">
+                    注册
+                  </Link>
+                ) : null}
               </div>
             </form>
           ) : null}

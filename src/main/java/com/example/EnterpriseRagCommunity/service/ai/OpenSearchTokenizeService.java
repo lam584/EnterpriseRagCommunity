@@ -30,25 +30,88 @@ public class OpenSearchTokenizeService {
         Map<String, Object> body = new HashMap<>();
         body.put("messages", messages);
 
-        try {
-            String apiKey = blankToNull(tokenizerProps.getApiKey());
-            return new OpenSearchTokenizerClient(props).tokenize(null, apiKey, workspaceName, serviceId, body);
-        } catch (IllegalStateException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IllegalStateException("Token 计算失败: " + e.getMessage(), e);
+        String apiKey = blankToNull(tokenizerProps.getApiKey());
+        if (!canCallUpstream(apiKey, workspaceName, serviceId)) {
+            return fallbackResponse(messages);
         }
+
+        try {
+            return new OpenSearchTokenizerClient(props).tokenize(null, apiKey, workspaceName, serviceId, body);
+        } catch (Exception e) {
+            return fallbackResponse(messages);
+        }
+    }
+
+    private boolean canCallUpstream(String apiKey, String workspaceName, String serviceId) {
+        if (apiKey == null || apiKey.isBlank()) return false;
+        String host = blankToNull(props.getHost());
+        if (host == null) return false;
+        String ws = workspaceName == null ? blankToNull(props.getWorkspaceName()) : workspaceName;
+        if (ws == null) return false;
+        String sid = serviceId == null ? blankToNull(props.getServiceId()) : serviceId;
+        return sid != null;
+    }
+
+    private static OpenSearchTokenizeResponse fallbackResponse(List<Map<String, String>> messages) {
+        StringBuilder sb = new StringBuilder();
+        if (messages != null) {
+            for (Map<String, String> m : messages) {
+                if (m == null) continue;
+                String c = m.get("content");
+                if (c == null || c.isBlank()) continue;
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(c);
+            }
+        }
+        int est = estimateTokens(sb.toString());
+
+        OpenSearchTokenizeResponse resp = new OpenSearchTokenizeResponse();
+        OpenSearchTokenizeResponse.Usage usage = new OpenSearchTokenizeResponse.Usage();
+        usage.setInputTokens(est);
+        resp.setUsage(usage);
+        return resp;
+    }
+
+    private static int estimateTokens(String text) {
+        if (text == null) return 0;
+        String t = text.trim();
+        if (t.isEmpty()) return 0;
+
+        int cjk = 0;
+        int other = 0;
+        for (int i = 0; i < t.length(); ) {
+            int cp = t.codePointAt(i);
+            i += Character.charCount(cp);
+
+            if (isCjkLike(cp)) {
+                cjk++;
+            } else {
+                other++;
+            }
+        }
+
+        int otherTokens = (other + 3) / 4;
+        int total = cjk + otherTokens;
+        return Math.max(1, total);
+    }
+
+    private static boolean isCjkLike(int cp) {
+        if (cp >= 0x4E00 && cp <= 0x9FFF) return true;
+        if (cp >= 0x3400 && cp <= 0x4DBF) return true;
+        if (cp >= 0x20000 && cp <= 0x2A6DF) return true;
+        if (cp >= 0x2A700 && cp <= 0x2B73F) return true;
+        if (cp >= 0x2B740 && cp <= 0x2B81F) return true;
+        if (cp >= 0x2B820 && cp <= 0x2CEAF) return true;
+        if (cp >= 0xF900 && cp <= 0xFAFF) return true;
+        if (cp >= 0x2F800 && cp <= 0x2FA1F) return true;
+        if (cp >= 0x3040 && cp <= 0x30FF) return true;
+        if (cp >= 0xAC00 && cp <= 0xD7AF) return true;
+        return false;
     }
 
     private static List<Map<String, String>> normalizeMessages(OpenSearchTokenizeRequest req) {
         List<OpenSearchTokenizeRequest.Message> raw = req.getMessages();
         if (raw != null && !raw.isEmpty()) {
-            OpenSearchTokenizeRequest.Message last = raw.get(raw.size() - 1);
-            String lastRole = last == null ? null : blankToNull(last.getRole());
-            if (lastRole == null || !lastRole.equalsIgnoreCase("user")) {
-                throw new IllegalArgumentException("Messages must be end with role[user].");
-            }
-
             List<Map<String, String>> out = new ArrayList<>();
             for (OpenSearchTokenizeRequest.Message m : raw) {
                 if (m == null) continue;
@@ -62,6 +125,11 @@ public class OpenSearchTokenizeService {
             }
             if (out.isEmpty()) {
                 throw new IllegalArgumentException("messages 不能为空");
+            }
+
+            String lastRole = blankToNull(out.get(out.size() - 1).get("role"));
+            if (lastRole == null || !lastRole.equalsIgnoreCase("user")) {
+                throw new IllegalArgumentException("Messages must be end with role[user].");
             }
             return out;
         }

@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAccess } from '../../../../contexts/AccessContext';
-import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
-import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
-import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+import { adminGetAiProvidersConfig, adminListProviderModels, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
 import {
   adminGetHybridRetrievalConfig,
   adminListHybridRetrievalEvents,
@@ -46,10 +44,13 @@ const DEFAULT_CFG: HybridRetrievalConfigDTO = {
   bm25TitleBoost: 2,
   bm25ContentBoost: 1,
   vecK: 50,
+  fileVecEnabled: true,
+  fileVecK: 30,
   hybridK: 30,
   fusionMode: 'RRF',
   bm25Weight: 1,
   vecWeight: 1,
+  fileVecWeight: 1,
   rrfK: 60,
   rerankEnabled: true,
   rerankModel: 'qwen3-rerank',
@@ -83,7 +84,7 @@ const RERANK_TEST_DATASETS: RerankTestDataset[] = [
       {
         docId: 'cors-03',
         title: 'Fetch credentials/include 的常见坑',
-        text: '浏览器默认不会在跨域请求里带 cookie，需要 fetch(url, { credentials: \"include\" })；同时后端要回 Access-Control-Allow-Credentials: true，且明确允许的 Origin。',
+        text: '浏览器默认不会在跨域请求里带 cookie，需要 fetch(url, { credentials: "include" })；同时后端要回 Access-Control-Allow-Credentials: true，且明确允许的 Origin。',
       },
       {
         docId: 'cors-04',
@@ -130,7 +131,7 @@ const RERANK_TEST_DATASETS: RerankTestDataset[] = [
         text: '确认响应头不是 Access-Control-Allow-Origin: *；确认浏览器没有把请求当作不可信上下文（HTTP + SameSite=None）；确认后端没有在异常路径漏掉 CORS 头。',
       },
       { docId: 'cors-16', title: '无关：SQL 索引为什么会失效', text: '函数/隐式类型转换/不符合最左前缀等会导致索引失效。与跨域无关。' },
-      { docId: 'cors-17', title: '前端常见：axios withCredentials 与 fetch credentials', text: 'axios 需要 withCredentials: true；fetch 需要 credentials: \"include\"。两端都要配合后端的 allowCredentials 与 origin 白名单。' },
+      { docId: 'cors-17', title: '前端常见：axios withCredentials 与 fetch credentials', text: 'axios 需要 withCredentials: true；fetch 需要 credentials: "include"。两端都要配合后端的 allowCredentials 与 origin 白名单。' },
       { docId: 'cors-18', title: '无关：向量检索里 cosine 与 dot 的区别', text: 'cosine 关注方向相似度，dot 还受向量模长影响。与跨域无关。' },
       { docId: 'cors-19', title: '无关：HTTP 缓存 ETag 的原理', text: 'ETag 用于协商缓存，If-None-Match 与 304。与跨域无关。' },
       { docId: 'cors-20', title: '无关：Windows 端口被占用怎么排查', text: '可以用 netstat/PowerShell 查监听进程，再定位 PID。与跨域无关。' },
@@ -203,8 +204,7 @@ const HybridSearchForm: React.FC = () => {
   const [configLoaded, setConfigLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [providers, setProviders] = useState<AiProviderDTO[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState<string>('');
-  const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
+  const [rerankModelOptions, setRerankModelOptions] = useState<string[]>([]);
 
   const hasUnsavedChanges = useMemo(() => JSON.stringify(config) !== JSON.stringify(committedConfig), [config, committedConfig]);
 
@@ -240,11 +240,9 @@ const HybridSearchForm: React.FC = () => {
         const cfg = await adminGetAiProvidersConfig();
         if (cancelled) return;
         setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
-        setActiveProviderId(cfg.activeProviderId ?? '');
       } catch {
         if (cancelled) return;
         setProviders([]);
-        setActiveProviderId('');
       }
     })();
     return () => {
@@ -256,19 +254,53 @@ const HybridSearchForm: React.FC = () => {
     if (!canAccess) return;
     let cancelled = false;
     (async () => {
-      try {
-        const opts = await getAiChatOptions();
-        if (cancelled) return;
-        setChatProviders((opts.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[]);
-      } catch {
-        if (cancelled) return;
-        setChatProviders([]);
+      const providerIds = (providers ?? [])
+        .map((p) => String(p?.id ?? '').trim())
+        .filter(Boolean);
+      if (providerIds.length === 0) {
+        setRerankModelOptions([]);
+        return;
       }
+
+      const tasks = providerIds.map((pid) => adminListProviderModels(pid));
+      const settled = await Promise.allSettled(tasks);
+
+      const names: string[] = [];
+      for (let i = 0; i < providerIds.length; i++) {
+        const pid = providerIds[i];
+        const p = providers.find((x) => String(x?.id ?? '').trim() === pid);
+        const fallback = String(p?.defaultRerankModel ?? '').trim();
+        if (fallback) names.push(fallback);
+
+        const r = settled[i];
+        if (r.status !== 'fulfilled') continue;
+        const list = Array.isArray(r.value?.models) ? r.value.models : [];
+        for (const row of list) {
+          const purpose = String((row as { purpose?: unknown }).purpose ?? '').trim().toUpperCase();
+          if (purpose !== 'RERANK') continue;
+          const enabled = (row as { enabled?: unknown }).enabled;
+          if (enabled === false) continue;
+          const modelName = String((row as { modelName?: unknown }).modelName ?? '').trim();
+          if (!modelName) continue;
+          names.push(modelName);
+        }
+      }
+
+      const uniq = Array.from(new Set(names));
+      uniq.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+      if (!cancelled) setRerankModelOptions(uniq);
     })();
     return () => {
       cancelled = true;
     };
-  }, [canAccess]);
+  }, [canAccess, providers]);
+
+  const rerankModelsForSelect = useMemo(() => {
+    const cur = String(config.rerankModel ?? '').trim();
+    const list = [...rerankModelOptions];
+    if (cur && !list.includes(cur)) list.unshift(cur);
+    return list;
+  }, [config.rerankModel, rerankModelOptions]);
 
   const onSave = useCallback(async () => {
     if (!canWrite || !editing) return;
@@ -614,6 +646,37 @@ const HybridSearchForm: React.FC = () => {
                 placeholder="1.0"
               />
             </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">文件向量 权重</div>
+              <input
+                className={inputClass}
+                value={config.fileVecWeight ?? ''}
+                onChange={e => setConfig(v => ({ ...v, fileVecWeight: safeNumber(e.target.value) }))}
+                disabled={!canWrite || !editing}
+                placeholder="1.0"
+              />
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">文件向量 数量</div>
+              <input
+                className={inputClass}
+                value={config.fileVecK ?? ''}
+                onChange={e => setConfig(v => ({ ...v, fileVecK: safeNumber(e.target.value) }))}
+                disabled={!canWrite || !editing}
+                placeholder="30"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={Boolean(config.fileVecEnabled)}
+                  onChange={e => setConfig(v => ({ ...v, fileVecEnabled: e.target.checked }))}
+                  disabled={!canWrite || !editing}
+                />
+                启用帖子文件向量召回
+              </label>
+            </div>
           </div>
         </div>
 
@@ -631,18 +694,20 @@ const HybridSearchForm: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div className="md:col-span-2">
-              <ProviderModelSelect
-                providers={providers}
-                activeProviderId={activeProviderId}
-                chatProviders={chatProviders}
-                mode="chat"
-                includeProviderOnlyOptions={false}
-                providerId=""
-                model={config.rerankModel ?? ''}
+              <div className="text-xs text-gray-500 mb-1">重排模型（留空=自动）</div>
+              <select
+                className={inputClass}
+                value={String(config.rerankModel ?? '')}
+                onChange={(e) => setConfig((v) => ({ ...v, rerankModel: e.target.value }))}
                 disabled={!canWrite || !editing}
-                selectClassName={inputClass}
-                onChange={(next) => setConfig((v) => ({ ...v, rerankModel: next.model }))}
-              />
+              >
+                <option value="">留空=自动（均衡负载）</option>
+                {rerankModelsForSelect.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <div className="text-xs text-gray-500 mb-1">重排 数量</div>

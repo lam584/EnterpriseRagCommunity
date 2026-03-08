@@ -187,9 +187,15 @@ const asSteps = (detail?: AdminModerationPipelineRunDetailDTO): StepLike[] => {
 
 export const ModerationPipelineHistoryPanel: React.FC<{
   title?: string;
+  titleClassName?: string;
+  density?: 'normal' | 'compact';
   initialMode?: Mode;
   /** If true (default), and initialMode is not provided, auto load latest runs (page=1) on mount. */
   autoLatest?: boolean;
+  showPageSummary?: boolean;
+  showPaginationTitle?: boolean;
+  showRefreshButton?: boolean;
+  paginationPlacement?: 'panel' | 'header';
   /**
    * 只展示指定 stage 的 steps。
    * - 不传：展示全部 stages（兼容现有行为）
@@ -211,9 +217,15 @@ export const ModerationPipelineHistoryPanel: React.FC<{
    */
   stepDetailsFormat?: 'wrap' | 'nowrap';
 }> = ({
-  title = '历史记录（流水线 Run + Steps）',
+  title,
+  titleClassName,
   initialMode,
   autoLatest = true,
+  showPageSummary = true,
+  showPaginationTitle = true,
+  showRefreshButton = true,
+  paginationPlacement = 'panel',
+  density = 'normal',
   stageFilter,
   autoLoadDetails = true,
   stepDetailsFormat = 'wrap',
@@ -221,10 +233,6 @@ export const ModerationPipelineHistoryPanel: React.FC<{
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<Mode | null>(initialMode ?? null);
-
-  const [queueId, setQueueId] = useState<string>(() => (initialMode?.kind === 'queue' ? String(initialMode.queueId) : ''));
-  const [contentType, setContentType] = useState<'POST' | 'COMMENT'>(() => (initialMode?.kind === 'content' ? initialMode.contentType : 'POST'));
-  const [contentId, setContentId] = useState<string>(() => (initialMode?.kind === 'content' ? String(initialMode.contentId) : ''));
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -237,24 +245,8 @@ export const ModerationPipelineHistoryPanel: React.FC<{
   useEffect(() => {
     if (!initialMode) return;
     setMode(initialMode);
-    if (initialMode.kind === 'queue') {
-      setQueueId(String(initialMode.queueId));
-    } else {
-      setContentType(initialMode.contentType);
-      setContentId(String(initialMode.contentId));
-    }
     setPage(1);
   }, [initialMode]);
-
-  const parsedQueueId = useMemo(() => {
-    const n = Number(queueId);
-    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : undefined;
-  }, [queueId]);
-
-  const parsedContentId = useMemo(() => {
-    const n = Number(contentId);
-    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : undefined;
-  }, [contentId]);
 
   const canPrev = page > 1;
   const canNext = (data?.totalPages ?? 1) > page;
@@ -266,12 +258,8 @@ export const ModerationPipelineHistoryPanel: React.FC<{
     if (mode?.kind === 'content') {
       return { contentType: mode.contentType, contentId: mode.contentId, page, pageSize };
     }
-    // fallback: try infer from inputs
-    if (parsedQueueId) return { queueId: parsedQueueId, page, pageSize };
-    if (parsedContentId) return { contentType, contentId: parsedContentId, page, pageSize };
-    // final fallback: global latest
     return { page, pageSize };
-  }, [contentType, mode, page, pageSize, parsedContentId, parsedQueueId]);
+  }, [mode, page, pageSize]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -307,26 +295,6 @@ export const ModerationPipelineHistoryPanel: React.FC<{
       void load();
     }
   }, [load, mode, page, pageSize]);
-
-  const applyQueueMode = () => {
-    if (!parsedQueueId) {
-      setError('请输入合法的 queueId');
-      return;
-    }
-    setError(null);
-    setPage(1);
-    setMode({ kind: 'queue', queueId: parsedQueueId });
-  };
-
-  const applyContentMode = () => {
-    if (!parsedContentId) {
-      setError('请输入合法的 contentId');
-      return;
-    }
-    setError(null);
-    setPage(1);
-    setMode({ kind: 'content', contentType, contentId: parsedContentId });
-  };
 
   // details cache: runId -> detail (only fetched on-demand)
   const [detailMap, setDetailMap] = useState<Record<string, AdminModerationPipelineRunDetailDTO | undefined>>({});
@@ -466,88 +434,65 @@ export const ModerationPipelineHistoryPanel: React.FC<{
   };
 
   const stageBadgeClass = `${badgeBase} bg-gray-50 text-gray-700 border-gray-200`;
+  const paginationControls = (
+    <div className="flex items-center gap-2 flex-wrap">
+      <button type="button" className="border rounded px-2 py-1 text-xs disabled:opacity-60" disabled={!canPrev || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+        上一页
+      </button>
+      <button type="button" className="border rounded px-2 py-1 text-xs disabled:opacity-60" disabled={!canNext || loading} onClick={() => setPage((p) => p + 1)}>
+        下一页
+      </button>
+      {showRefreshButton ? (
+        <button type="button" className="border rounded px-2 py-1 text-xs disabled:opacity-60" disabled={loading} onClick={() => void load()}>
+          刷新
+        </button>
+      ) : null}
+      <label className="text-xs text-gray-600 flex items-center gap-1">
+        每页条数
+        <select className="border rounded px-1.5 py-1 text-xs" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+          {[10, 20, 50, 100].map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+
+  const showHeader = Boolean(title) || showPageSummary || paginationPlacement === 'header';
+  const dense = density === 'compact';
 
   return (
-    <div className="bg-white rounded-lg shadow p-3 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="font-semibold text-lg">{title}</div>
-        <div className="text-xs text-gray-500">
-          页码 {page}/{data?.totalPages ?? 1} · 总数 {data?.totalElements ?? '—'}
-        </div>
-      </div>
-
-      {/* 查询区（保持原有能力，但更紧凑） */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        <div className="border rounded p-2 space-y-1">
-          <div className="text-xs font-medium">按队列ID</div>
-          <div className="flex items-center gap-2">
-            <input
-              className="border rounded px-2 py-1 text-xs w-full"
-              placeholder="队列ID"
-              value={queueId}
-              onChange={(e) => setQueueId(e.target.value)}
-            />
-            <button type="button" className="border rounded px-2 py-1 text-xs" onClick={applyQueueMode}>
-              查询
-            </button>
+    <div className={dense ? 'bg-white rounded-lg shadow p-2 space-y-2' : 'bg-white rounded-lg shadow p-3 space-y-3'}>
+      {showHeader ? (
+        <div className="flex items-center justify-between gap-2">
+          {title ? <div className={titleClassName ?? 'font-semibold text-lg'}>{title}</div> : <div />}
+          <div className={dense ? 'flex items-center gap-2' : 'flex items-center gap-3'}>
+            {showPageSummary ? (
+              <div className="text-xs text-gray-500">
+                页码 {page}/{data?.totalPages ?? 1} · 总数 {data?.totalElements ?? '—'}
+              </div>
+            ) : null}
+            {paginationPlacement === 'header' ? paginationControls : null}
           </div>
         </div>
+      ) : null}
 
-        <div className="border rounded p-2 space-y-1">
-          <div className="text-xs font-medium">按内容</div>
-          <div className="flex items-center gap-2">
-            <select
-              className="border rounded px-2 py-1 text-xs"
-              value={contentType}
-              onChange={(e) => setContentType(e.target.value === 'COMMENT' ? 'COMMENT' : 'POST')}
-            >
-              {/* 注意：option 的 value 必须保留 POST/COMMENT（技术字段值），这里只改显示文案 */}
-              <option value="POST">帖子</option>
-              <option value="COMMENT">评论</option>
-            </select>
-            <input
-              className="border rounded px-2 py-1 text-xs w-full"
-              placeholder="内容ID"
-              value={contentId}
-              onChange={(e) => setContentId(e.target.value)}
-            />
-            <button type="button" className="border rounded px-2 py-1 text-xs" onClick={applyContentMode}>
-              查询
-            </button>
+      {paginationPlacement === 'panel' ? (
+        <div className="grid grid-cols-1 gap-2">
+          <div className={showPaginationTitle ? 'border rounded p-2 space-y-1' : 'border rounded p-2'}>
+            {showPaginationTitle ? <div className="text-xs font-medium">分页</div> : null}
+            {paginationControls}
           </div>
         </div>
-
-        <div className="border rounded p-2 space-y-1">
-          <div className="text-xs font-medium">分页</div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button type="button" className="border rounded px-2 py-1 text-xs disabled:opacity-60" disabled={!canPrev || loading} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              上一页
-            </button>
-            <button type="button" className="border rounded px-2 py-1 text-xs disabled:opacity-60" disabled={!canNext || loading} onClick={() => setPage((p) => p + 1)}>
-              下一页
-            </button>
-            <button type="button" className="border rounded px-2 py-1 text-xs disabled:opacity-60" disabled={loading} onClick={() => void load()}>
-              刷新
-            </button>
-            <label className="text-xs text-gray-600 flex items-center gap-1">
-              每页条数
-              <select className="border rounded px-1.5 py-1 text-xs" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
-                {[10, 20, 50, 100].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </div>
-      </div>
+      ) : null}
 
       {error ? <div className="text-xs text-red-600">{error}</div> : null}
       {loading ? <div className="text-xs text-gray-600">加载中…</div> : null}
 
       {runs.length ? (
-        <div className="space-y-2">
+        <div className={dense ? 'space-y-1' : 'space-y-2'}>
           {runs.map((r) => {
             const rr = r as RunLike;
             const rid = asRunId(rr);
@@ -575,7 +520,11 @@ export const ModerationPipelineHistoryPanel: React.FC<{
             return (
               <div
                 key={runKey}
-                className="border rounded-md px-2 py-1.5 space-y-1 cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                className={
+                  dense
+                    ? 'border rounded-md px-2 py-1 space-y-1 cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-200'
+                    : 'border rounded-md px-2 py-1.5 space-y-1 cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-200'
+                }
                 role="button"
                 tabIndex={0}
                 aria-expanded={isExpanded}

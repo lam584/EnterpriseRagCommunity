@@ -141,6 +141,18 @@ public class TokenCountService {
             List<ChatMessage> messages,
             String assistantRawText
     ) {
+        return decideChatTokens(providerId, model, enableThinking, usage, messages, assistantRawText, false);
+    }
+
+    public TokenDecision decideChatTokens(
+            String providerId,
+            String model,
+            boolean enableThinking,
+            LlmCallQueueService.UsageMetrics usage,
+            List<ChatMessage> messages,
+            String assistantRawText,
+            boolean preferTokenizerIn
+    ) {
         NormalizedOutput norm = normalizeOutputText(assistantRawText, enableThinking);
 
         Integer tokensIn = usage == null ? null : usage.promptTokens();
@@ -182,13 +194,16 @@ public class TokenCountService {
             }
         }
 
-        if (tokensIn == null) {
+        if (preferTokenizerIn) {
+            Integer in = countChatMessagesTokens(messages);
+            if (in != null) tokensIn = in;
+        } else if (tokensIn == null) {
             Integer in = countChatMessagesTokens(messages);
             if (in != null) tokensIn = in;
         }
 
         if (tokensIn != null && usageTotal != null && usageTotal > 0 && usageTotal < tokensIn) {
-            if (tokensOut == null || usageTotal > tokensOut) {
+            if (tokensOut == null || tokensOut <= 0) {
                 tokensOut = usageTotal;
                 if (!"TOKENIZER".equals(outSource)) outSource = "USAGE_TOTAL_AS_OUT";
             }

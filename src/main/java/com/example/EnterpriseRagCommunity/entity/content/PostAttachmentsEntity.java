@@ -1,5 +1,6 @@
 package com.example.EnterpriseRagCommunity.entity.content;
 
+import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -19,20 +20,12 @@ public class PostAttachmentsEntity {
     @Column(name = "post_id", nullable = false)
     private Long postId;
 
-    @Column(name = "file_asset_id")
+    @Column(name = "file_asset_id", nullable = false)
     private Long fileAssetId;
 
-    @Column(name = "url", nullable = false, length = 512)
-    private String url;
-
-    @Column(name = "file_name", nullable = false, length = 512)
-    private String fileName;
-
-    @Column(name = "mime_type", nullable = false, length = 64)
-    private String mimeType;
-
-    @Column(name = "size_bytes", nullable = false)
-    private Long sizeBytes;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "file_asset_id", insertable = false, updatable = false)
+    private FileAssetsEntity fileAsset;
 
     @Column(name = "width")
     private Integer width;

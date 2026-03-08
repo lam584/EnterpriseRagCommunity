@@ -17,7 +17,7 @@ public class SemanticTranslateHistoryEntity {
     @Column(name = "id")
     private Long id;
 
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "user_id")
     private Long userId;
 
     @Column(name = "created_at", nullable = false)
@@ -51,21 +51,6 @@ public class SemanticTranslateHistoryEntity {
     @Column(name = "translated_markdown", nullable = false)
     private String translatedMarkdown;
 
-    @Column(name = "model", length = 128)
-    private String model;
-
-    @Column(name = "provider_id", length = 64)
-    private String providerId;
-
-    @Column(name = "temperature")
-    private Double temperature;
-
-    @Column(name = "top_p")
-    private Double topP;
-
-    @Column(name = "latency_ms")
-    private Long latencyMs;
-
-    @Column(name = "prompt_version")
-    private Integer promptVersion;
+    @Column(name = "job_id")
+    private Long jobId;
 }

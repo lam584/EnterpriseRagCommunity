@@ -17,6 +17,9 @@ public interface PromptsRepository extends JpaRepository<PromptsEntity, Long>, J
 
     List<PromptsEntity> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
 
+    Optional<PromptsEntity> findByPromptCode(String promptCode);
+    List<PromptsEntity> findByPromptCodeIn(List<String> promptCodes);
+
     Optional<PromptsEntity> findTopByNameAndIsActiveOrderByVersionDesc(String name, Boolean isActive);
 }
 

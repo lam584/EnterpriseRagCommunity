@@ -24,6 +24,7 @@ import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextClipCon
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextClipTestService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextWindowLogsService;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -44,7 +45,7 @@ public class AdminRetrievalContextController {
 
     @PutMapping("/config")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_context','write'))")
-    public ContextClipConfigDTO updateConfig(@RequestBody ContextClipConfigDTO payload) {
+    public ContextClipConfigDTO updateConfig(@RequestBody @Valid ContextClipConfigDTO payload) {
         return contextClipConfigService.updateConfig(payload);
     }
 

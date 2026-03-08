@@ -10,6 +10,8 @@ export type TranslatePreferencesDTO = {
   targetLanguage: string;
   autoTranslatePosts: boolean;
   autoTranslateComments: boolean;
+  titleGenCount?: number | null;
+  tagGenCount?: number | null;
 };
 
 function getBackendMessage(data: unknown): string | null {

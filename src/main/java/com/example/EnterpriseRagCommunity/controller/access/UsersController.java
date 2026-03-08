@@ -3,14 +3,18 @@ package com.example.EnterpriseRagCommunity.controller.access;
 import com.example.EnterpriseRagCommunity.dto.access.UsersCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.access.UsersQueryDTO;
 import com.example.EnterpriseRagCommunity.dto.access.UsersUpdateDTO;
+import com.example.EnterpriseRagCommunity.dto.access.UserBanActionRequest;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UserRoleLinksEntity;
+import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.UsersService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,6 +26,7 @@ import java.util.stream.Collectors;
 public class UsersController {
 
     private final UsersService usersService;
+    private final AdministratorService administratorService;
 
     @PostMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
@@ -42,6 +47,22 @@ public class UsersController {
     public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         usersService.delete(id);
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/ban")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
+    public ResponseEntity<UsersUpdateDTO> ban(@PathVariable("id") Long id, @Valid @RequestBody UserBanActionRequest req) {
+        UsersEntity actor = currentUserOrThrow();
+        UsersEntity updated = usersService.banUser(id, actor.getId(), actorName(actor), req.getReason(), "ADMIN_USERS", null);
+        return ResponseEntity.ok(convertToDTO(updated));
+    }
+
+    @PostMapping("/{id}/unban")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
+    public ResponseEntity<UsersUpdateDTO> unban(@PathVariable("id") Long id, @Valid @RequestBody UserBanActionRequest req) {
+        UsersEntity actor = currentUserOrThrow();
+        UsersEntity updated = usersService.unbanUser(id, actor.getId(), actorName(actor), req.getReason());
+        return ResponseEntity.ok(convertToDTO(updated));
     }
 
     /**
@@ -114,6 +135,24 @@ public class UsersController {
         dto.setScopeId(entity.getScopeId());
         dto.setExpiresAt(entity.getExpiresAt());
         return dto;
+    }
+
+    private UsersEntity currentUserOrThrow() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
+            };
+        }
+        String email = auth.getName();
+        return administratorService.findByUsername(email)
+                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"));
+    }
+
+    private static String actorName(UsersEntity user) {
+        if (user == null) return null;
+        String u = user.getUsername();
+        if (u != null && !u.isBlank()) return u;
+        return user.getEmail();
     }
 
     /**

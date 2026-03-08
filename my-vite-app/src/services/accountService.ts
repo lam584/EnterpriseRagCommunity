@@ -1,6 +1,5 @@
 // src/services/accountService.ts
 import { getCsrfToken } from '../utils/csrfUtils';
-import { getCurrentAdmin } from './authService';
 import type { UpdateUserProfileRequest, UserProfile } from '../types/userProfile';
 
 export interface AdminAccountInfo {
@@ -75,26 +74,80 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
+function getBackendMessage(data: unknown): string | undefined {
+  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
+    return (data as { message: string }).message;
+  }
+  if (data && typeof data === 'object' && 'error' in data && typeof (data as { error?: unknown }).error === 'string') {
+    return (data as { error: string }).error;
+  }
+  return undefined;
+}
+
 function toUserProfileFromCurrentAdmin(data: unknown): UserProfile {
   const d = data as Record<string, unknown> | null;
   const metadata = isPlainObject(d?.metadata) ? (d!.metadata as Record<string, unknown>) : undefined;
-  const profile = metadata && isPlainObject(metadata.profile) ? (metadata.profile as Record<string, unknown>) : undefined;
+  const profilePublic = metadata && isPlainObject(metadata.profile) ? (metadata.profile as Record<string, unknown>) : undefined;
+  const profilePending = metadata && isPlainObject((metadata as Record<string, unknown>).profilePending)
+    ? ((metadata as Record<string, unknown>).profilePending as Record<string, unknown>)
+    : undefined;
+  const effectiveProfile = profilePending || profilePublic;
+
+  const publicUsername = String(d?.username ?? '');
+  const pendingUsername = profilePending && 'username' in profilePending ? (profilePending.username == null ? undefined : String(profilePending.username)) : undefined;
+  const effectiveUsername = pendingUsername ?? publicUsername;
+
+  const profileModeration =
+    metadata && isPlainObject((metadata as Record<string, unknown>).profileModeration)
+      ? ((metadata as Record<string, unknown>).profileModeration as Record<string, unknown>)
+      : undefined;
 
   return {
     id: Number(d?.id),
     email: String(d?.email ?? ''),
-    username: String(d?.username ?? ''),
+    username: effectiveUsername,
     // don't use truthy checks here; empty string is a valid persisted value
-    avatarUrl: profile && 'avatarUrl' in profile ? (profile.avatarUrl == null ? undefined : String(profile.avatarUrl)) : undefined,
-    bio: profile && 'bio' in profile ? (profile.bio == null ? undefined : String(profile.bio)) : undefined,
-    location: profile && 'location' in profile ? (profile.location == null ? undefined : String(profile.location)) : undefined,
-    website: profile && 'website' in profile ? (profile.website == null ? undefined : String(profile.website)) : undefined,
+    avatarUrl:
+      effectiveProfile && 'avatarUrl' in effectiveProfile
+        ? (effectiveProfile.avatarUrl == null ? undefined : String(effectiveProfile.avatarUrl))
+        : undefined,
+    bio: effectiveProfile && 'bio' in effectiveProfile ? (effectiveProfile.bio == null ? undefined : String(effectiveProfile.bio)) : undefined,
+    location:
+      effectiveProfile && 'location' in effectiveProfile ? (effectiveProfile.location == null ? undefined : String(effectiveProfile.location)) : undefined,
+    website:
+      effectiveProfile && 'website' in effectiveProfile ? (effectiveProfile.website == null ? undefined : String(effectiveProfile.website)) : undefined,
+    publicProfile: {
+      username: publicUsername,
+      avatarUrl:
+        profilePublic && 'avatarUrl' in profilePublic ? (profilePublic.avatarUrl == null ? undefined : String(profilePublic.avatarUrl)) : undefined,
+      bio: profilePublic && 'bio' in profilePublic ? (profilePublic.bio == null ? undefined : String(profilePublic.bio)) : undefined,
+      location: profilePublic && 'location' in profilePublic ? (profilePublic.location == null ? undefined : String(profilePublic.location)) : undefined,
+      website: profilePublic && 'website' in profilePublic ? (profilePublic.website == null ? undefined : String(profilePublic.website)) : undefined,
+    },
+    profileModeration: profileModeration
+      ? {
+          caseType: 'caseType' in profileModeration ? (profileModeration.caseType == null ? undefined : String(profileModeration.caseType)) : undefined,
+          queueId: 'queueId' in profileModeration ? (profileModeration.queueId == null ? undefined : Number(profileModeration.queueId)) : undefined,
+          status: 'status' in profileModeration ? (profileModeration.status == null ? undefined : String(profileModeration.status)) : undefined,
+          stage: 'stage' in profileModeration ? (profileModeration.stage == null ? undefined : String(profileModeration.stage)) : undefined,
+          updatedAt:
+            'updatedAt' in profileModeration ? (profileModeration.updatedAt == null ? undefined : String(profileModeration.updatedAt)) : undefined,
+          reason: 'reason' in profileModeration ? (profileModeration.reason == null ? undefined : String(profileModeration.reason)) : undefined,
+        }
+      : undefined,
   };
 }
 
 export async function getMyProfile(): Promise<UserProfile> {
-  const admin = await getCurrentAdmin();
-  return toUserProfileFromCurrentAdmin(admin);
+  const res = await fetch(`${BASE_URL}/profile`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(getBackendMessage(data) || '加载个人资料失败');
+  }
+  return toUserProfileFromCurrentAdmin(data);
 }
 
 export async function updateMyProfile(body: UpdateUserProfileRequest): Promise<UserProfile> {

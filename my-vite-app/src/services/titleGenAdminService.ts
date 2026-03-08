@@ -15,8 +15,7 @@ function getBackendMessage(data: unknown): string | undefined {
 
 export type PostTitleGenConfig = {
   enabled: boolean;
-  systemPrompt: string;
-  promptTemplate: string;
+  promptCode: string;
   model?: string | null;
   providerId?: string | null;
   temperature?: number | null;

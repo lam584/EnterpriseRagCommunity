@@ -17,8 +17,8 @@ public class RetrievalHitsQueryDTO extends com.example.EnterpriseRagCommunity.dt
     @ApiModelProperty(value = "命中类型", example = "BM25")
     private RetrievalHitType hitType;
 
-    @ApiModelProperty(value = "文档ID", example = "100")
-    private Long documentId;
+    @ApiModelProperty(value = "帖子ID", example = "100")
+    private Long postId;
 
     @ApiModelProperty(value = "分块ID", example = "999")
     private Long chunkId;

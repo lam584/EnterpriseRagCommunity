@@ -25,6 +25,8 @@ import com.example.EnterpriseRagCommunity.dto.access.RegistrationSettingsDTO;
 import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicySettingsDTO;
 import com.example.EnterpriseRagCommunity.dto.access.TotpAdminSettingsDTO;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
+import com.example.EnterpriseRagCommunity.repository.access.RolesRepository;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
@@ -42,27 +44,42 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AdminSettingsController {
     private final AppSettingsService appSettingsService;
+    private final RolesRepository rolesRepository;
     private final SystemConfigurationService systemConfigurationService;
     private final EmailSenderService emailSenderService;
     private final ObjectProvider<EmailInboxService> emailInboxServiceProvider;
     private final Security2faPolicyService security2faPolicyService;
     private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
 
     @GetMapping("/registration")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
     public ResponseEntity<RegistrationSettingsDTO> getRegistration() {
         long roleId = appSettingsService.getLongOrDefault(AppSettingsService.KEY_DEFAULT_REGISTER_ROLE_ID, 1L);
+        boolean enabled = appSettingsService.getLongOrDefault(AppSettingsService.KEY_REGISTRATION_ENABLED, 1L) == 1L;
         RegistrationSettingsDTO dto = new RegistrationSettingsDTO();
         dto.setDefaultRegisterRoleId(roleId);
+        dto.setRegistrationEnabled(enabled);
         return ResponseEntity.ok(dto);
     }
 
     @PutMapping("/registration")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','access'))")
     public ResponseEntity<RegistrationSettingsDTO> putRegistration(@RequestBody @Valid RegistrationSettingsDTO dto) {
+        RegistrationSettingsDTO before = new RegistrationSettingsDTO();
+        before.setDefaultRegisterRoleId(appSettingsService.getLongOrDefault(AppSettingsService.KEY_DEFAULT_REGISTER_ROLE_ID, 1L));
+        before.setRegistrationEnabled(appSettingsService.getLongOrDefault(AppSettingsService.KEY_REGISTRATION_ENABLED, 1L) == 1L);
+
         long roleId = dto.getDefaultRegisterRoleId() != null ? dto.getDefaultRegisterRoleId() : 1L;
         if (roleId <= 0) throw new IllegalArgumentException("defaultRegisterRoleId must be positive");
+        if (!rolesRepository.existsById(roleId)) throw new IllegalArgumentException("defaultRegisterRoleId 对应角色不存在: " + roleId);
         appSettingsService.upsertString(AppSettingsService.KEY_DEFAULT_REGISTER_ROLE_ID, String.valueOf(roleId));
+        boolean enabled = dto.getRegistrationEnabled() == null || dto.getRegistrationEnabled();
+        appSettingsService.upsertString(AppSettingsService.KEY_REGISTRATION_ENABLED, enabled ? "1" : "0");
+
+        RegistrationSettingsDTO after = new RegistrationSettingsDTO();
+        after.setDefaultRegisterRoleId(roleId);
+        after.setRegistrationEnabled(enabled);
         auditLogWriter.write(
                 null,
                 currentUsernameOrNull(),
@@ -70,9 +87,9 @@ public class AdminSettingsController {
                 "REGISTRATION_SETTINGS",
                 null,
                 AuditResult.SUCCESS,
-                "更新注册默认角色",
+                "更新注册配置",
                 null,
-                Map.of("defaultRegisterRoleId", roleId)
+                auditDiffBuilder.build(before, after)
         );
         return ResponseEntity.ok(dto);
     }
@@ -141,6 +158,9 @@ public class AdminSettingsController {
     @PutMapping("/totp")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
     public ResponseEntity<TotpAdminSettingsDTO> putTotp(@RequestBody @Valid TotpAdminSettingsDTO dto) {
+        TotpAdminSettingsDTO before = getTotp().getBody();
+        if (before == null) before = new TotpAdminSettingsDTO();
+
         TotpAdminSettingsDTO normalized = normalizeTotpSettings(dto);
 
         appSettingsService.upsertString(KEY_TOTP_ISSUER, normalized.getIssuer());
@@ -162,13 +182,7 @@ public class AdminSettingsController {
                 AuditResult.SUCCESS,
                 "更新 TOTP 管理配置",
                 null,
-                Map.of(
-                        "issuer", normalized.getIssuer(),
-                        "allowedAlgorithms", normalized.getAllowedAlgorithms(),
-                        "allowedDigits", normalized.getAllowedDigits(),
-                        "allowedPeriodSeconds", normalized.getAllowedPeriodSeconds(),
-                        "maxSkew", normalized.getMaxSkew()
-                )
+                auditDiffBuilder.build(before, normalized)
         );
         return ResponseEntity.ok(normalized);
     }
@@ -182,6 +196,7 @@ public class AdminSettingsController {
     @PutMapping("/security-2fa-policy")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
     public ResponseEntity<Security2faPolicySettingsDTO> putSecurity2faPolicy(@RequestBody Security2faPolicySettingsDTO dto) {
+        Security2faPolicySettingsDTO before = security2faPolicyService.getAdminSettingsOrDefault();
         Security2faPolicySettingsDTO saved = security2faPolicyService.saveAdminSettings(dto);
         auditLogWriter.write(
                 null,
@@ -192,7 +207,7 @@ public class AdminSettingsController {
                 AuditResult.SUCCESS,
                 "更新登录二次验证策略",
                 null,
-                Map.of()
+                auditDiffBuilder.build(before, saved)
         );
         return ResponseEntity.ok(saved);
     }
@@ -226,6 +241,9 @@ public class AdminSettingsController {
     @PutMapping("/email")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
     public ResponseEntity<EmailAdminSettingsDTO> putEmail(@RequestBody @Valid EmailAdminSettingsDTO dto) {
+        EmailAdminSettingsDTO before = getEmail().getBody();
+        if (before == null) before = new EmailAdminSettingsDTO();
+
         EmailAdminSettingsDTO normalized = normalizeEmailSettings(dto);
 
         appSettingsService.upsertString(KEY_EMAIL_ENABLED, normalized.getEnabled() != null && normalized.getEnabled() ? "1" : "0");
@@ -258,18 +276,7 @@ public class AdminSettingsController {
                 AuditResult.SUCCESS,
                 "更新邮件服务配置",
                 null,
-                Map.of(
-                        "enabled", normalized.getEnabled(),
-                        "protocol", normalized.getProtocol(),
-                        "host", normalized.getHost(),
-                        "portPlain", normalized.getPortPlain(),
-                        "portEncrypted", normalized.getPortEncrypted(),
-                        "encryption", normalized.getEncryption(),
-                        "connectTimeoutMs", normalized.getConnectTimeoutMs(),
-                        "timeoutMs", normalized.getTimeoutMs(),
-                        "writeTimeoutMs", normalized.getWriteTimeoutMs(),
-                        "debug", normalized.getDebug()
-                )
+                auditDiffBuilder.build(before, normalized)
         );
         return ResponseEntity.ok(normalized);
     }
@@ -324,6 +331,9 @@ public class AdminSettingsController {
     @PutMapping("/email/inbox-config")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
     public ResponseEntity<EmailInboxSettingsDTO> putEmailInboxConfig(@RequestBody @Valid EmailInboxSettingsDTO dto) {
+        EmailInboxSettingsDTO before = getEmailInboxConfig().getBody();
+        if (before == null) before = new EmailInboxSettingsDTO();
+
         EmailInboxSettingsDTO normalized = normalizeEmailInboxSettings(dto);
 
         appSettingsService.upsertString(KEY_EMAIL_INBOX_PROTOCOL, normalized.getProtocol());
@@ -348,15 +358,7 @@ public class AdminSettingsController {
                 AuditResult.SUCCESS,
                 "更新邮箱收件箱配置",
                 null,
-                Map.of(
-                        "protocol", normalized.getProtocol(),
-                        "host", normalized.getHost(),
-                        "portPlain", normalized.getPortPlain(),
-                        "portEncrypted", normalized.getPortEncrypted(),
-                        "encryption", normalized.getEncryption(),
-                        "folder", normalized.getFolder(),
-                        "sentFolder", normalized.getSentFolder()
-                )
+                auditDiffBuilder.build(before, normalized)
         );
         return ResponseEntity.ok(normalized);
     }

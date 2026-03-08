@@ -4,10 +4,14 @@ export type LlmQueueTaskStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'CA
 
 export type LlmQueueTaskType =
   | 'CHAT'
+  | 'TEXT_CHAT'
+  | 'IMAGE_CHAT'
   | 'MODERATION'
+  | 'TEXT_MODERATION'
+  | 'IMAGE_MODERATION'
+  | 'MODERATION_CHUNK'
   | 'TITLE_GEN'
   | 'TOPIC_TAG_GEN'
-  | 'RISK_TAG_GEN'
   | 'LANGUAGE_TAG_GEN'
   | 'SUMMARY_GEN'
   | 'TRANSLATION'
@@ -22,6 +26,7 @@ export type LlmQueueTaskDTO = {
   seq: number;
   priority: number;
   type: LlmQueueTaskType;
+  label?: string | null;
   status: LlmQueueTaskStatus;
   providerId?: string | null;
   model?: string | null;
@@ -45,6 +50,9 @@ export type LlmQueueSampleDTO = {
 };
 
 export type LlmQueueStatusDTO = {
+  snapshotAtMs?: number | null;
+  stale?: boolean | null;
+  truncated?: boolean | null;
   maxConcurrent: number;
   runningCount: number;
   pendingCount: number;
@@ -65,6 +73,7 @@ export type LlmQueueTaskDetailDTO = {
   seq: number;
   priority: number;
   type: LlmQueueTaskType;
+  label?: string | null;
   status: LlmQueueTaskStatus;
   providerId?: string | null;
   model?: string | null;

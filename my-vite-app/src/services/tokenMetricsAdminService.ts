@@ -78,10 +78,15 @@ export type AdminLlmPriceConfigUpsertRequest = {
   pricing?: AdminLlmPriceConfigPricingDTO | null;
 };
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+function getApiBase(): string {
+  const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: string }).__VITE_API_BASE_URL__;
+  if (typeof globalBase === 'string') return globalBase;
+  return (((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '') || '';
+}
 function apiUrl(path: string): string {
   if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
+  const base = getApiBase();
+  return base ? `${base}${path}` : path;
 }
 
 function buildQuery(params: Record<string, unknown>): string {
@@ -131,7 +136,7 @@ export async function adminGetTokenTimeline(params: {
 }
 
 export async function adminListTokenSources(): Promise<AdminTokenSourceDTO[]> {
-  const res = await fetch(apiUrl('/api/admin/metrics/token/sources'), {
+  const res = await fetch(apiUrl('api/admin/metrics/token/sources'), {
     method: 'GET',
     credentials: 'include',
   });

@@ -1,7 +1,7 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
+export function apiUrl(path: string): string {
   if (!path.startsWith('/')) path = `/${path}`;
   return API_BASE ? `${API_BASE}${path}` : path;
 }

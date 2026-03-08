@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.SemanticTranslateResultDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.SemanticTranslateConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.SemanticTranslateHistoryEntity;
@@ -9,6 +8,13 @@ import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.SemanticTranslateHistoryRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.entity.semantic.GenerationJobsEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationJobStatus;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationJobType;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationTargetType;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
+import com.example.EnterpriseRagCommunity.repository.semantic.GenerationJobsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -30,12 +36,14 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 public class AiSemanticTranslateService {
 
-    private final AiProperties aiProperties;
     private final SemanticTranslateConfigService semanticTranslateConfigService;
     private final SemanticTranslateHistoryRepository semanticTranslateHistoryRepository;
     private final PostsRepository postsRepository;
     private final CommentsRepository commentsRepository;
     private final LlmGateway llmGateway;
+    private final PromptsRepository promptsRepository;
+    private final GenerationJobsRepository generationJobsRepository;
+    private final PromptLlmParamResolver promptLlmParamResolver;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -108,11 +116,31 @@ public class AiSemanticTranslateService {
             normalizedContent = normalizedContent.substring(0, maxChars);
         }
 
-        final String finalNormalizedTitle = normalizedTitle;
-        final String finalNormalizedContent = normalizedContent;
+        String finalNormalizedTitle = normalizedTitle;
+        String finalNormalizedContent = normalizedContent;
+
+        String promptCode = cfg.getPromptCode();
+        if (promptCode == null || promptCode.isBlank()) {
+            promptCode = SemanticTranslateConfigService.DEFAULT_PROMPT_CODE;
+        }
+
+        PromptsEntity prompt = promptsRepository.findByPromptCode(promptCode)
+                .orElseThrow(() -> new IllegalStateException("Prompt code not found: " + cfg.getPromptCode()));
+
+        PromptLlmParams params = promptLlmParamResolver.resolveText(
+            prompt,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0.2,
+            0.4
+        );
 
         String sourceHash = sha256Hex(sourceType + "|" + finalNormalizedTitle + "\n\n" + finalNormalizedContent);
-        String configHash = sha256Hex(buildConfigSignature(cfg));
+        String configHash = sha256Hex(buildConfigSignature(cfg, prompt, params));
 
         var cached = semanticTranslateHistoryRepository
                 .findTopBySourceTypeAndSourceIdAndTargetLangAndSourceHashAndConfigHashOrderByCreatedAtDesc(
@@ -126,8 +154,8 @@ public class AiSemanticTranslateService {
                 out.setTargetLang(safeTargetLang);
                 out.setTranslatedTitle(cached.getTranslatedTitle());
                 out.setTranslatedMarkdown(cached.getTranslatedMarkdown());
-                out.setModel(cached.getModel());
-                out.setLatencyMs(cached.getLatencyMs());
+                out.setModel(null);
+                out.setLatencyMs(null);
                 out.setCached(Boolean.TRUE);
                 emitter.send(out);
                 emitter.complete();
@@ -139,16 +167,14 @@ public class AiSemanticTranslateService {
 
         CompletableFuture.runAsync(() -> {
             try {
-                String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
-                Double temperature = cfg.getTemperature();
-                if (temperature == null) temperature = 0.2;
-                Double topP = cfg.getTopP();
-                if (topP == null) topP = 0.4;
+                String modelOverride = params.model();
+                Double temperature = params.temperature();
+                Double topP = params.topP();
 
                 String streamInstruction = "\n\n[System Note: Stream Mode Active. Please output the translated content directly in Markdown. Do NOT wrap in JSON. If there is a title, put it on the first line.]";
-                String userPrompt = renderPrompt(cfg.getPromptTemplate() + streamInstruction, safeTargetLang, finalNormalizedTitle, finalNormalizedContent);
+                String userPrompt = renderPrompt(prompt.getUserPromptTemplate() + streamInstruction, safeTargetLang, finalNormalizedTitle, finalNormalizedContent);
                 List<ChatMessage> messages = new ArrayList<>();
-                messages.add(ChatMessage.system(cfg.getSystemPrompt()));
+                messages.add(ChatMessage.system(prompt.getSystemPrompt()));
                 messages.add(ChatMessage.user(userPrompt));
 
                 StringBuilder accumulated = new StringBuilder();
@@ -156,12 +182,12 @@ public class AiSemanticTranslateService {
 
                 var streamRes = llmGateway.chatStreamRouted(
                         LlmQueueTaskType.UNKNOWN,
-                        cfg.getProviderId(),
+                        params.providerId(),
                         modelOverride,
                         messages,
                         temperature,
                         topP,
-                        cfg.getEnableThinking(),
+                        params.enableThinking(),
                         null,
                         (line) -> {
                             String textDelta = extractStreamChunkText(line);
@@ -192,6 +218,21 @@ public class AiSemanticTranslateService {
                 }
 
                 if (Boolean.TRUE.equals(cfg.getHistoryEnabled())) {
+                    GenerationJobsEntity job = new GenerationJobsEntity();
+                    job.setJobType(GenerationJobType.TRANSLATE);
+                    job.setTargetType("POST".equals(sourceType) ? GenerationTargetType.POST : GenerationTargetType.COMMENT);
+                    job.setTargetId(sourceId);
+                    job.setStatus(GenerationJobStatus.SUCCEEDED);
+                    job.setModel(streamRes.model());
+                    job.setProviderId(streamRes.providerId());
+                    job.setTemperature(temperature);
+                    job.setTopP(topP);
+                    job.setLatencyMs(latency);
+                    job.setPromptVersion(cfg.getVersion());
+                    job.setCreatedAt(LocalDateTime.now());
+                    job.setUpdatedAt(job.getCreatedAt());
+                    generationJobsRepository.save(job);
+
                     SemanticTranslateHistoryEntity h = new SemanticTranslateHistoryEntity();
                     h.setUserId(actorUserId == null ? 0L : actorUserId);
                     h.setCreatedAt(LocalDateTime.now());
@@ -204,12 +245,7 @@ public class AiSemanticTranslateService {
                     h.setSourceContentExcerpt(buildExcerpt(finalNormalizedContent));
                     h.setTranslatedTitle(blankToNull(translatedTitle));
                     h.setTranslatedMarkdown(translatedMarkdown);
-                    h.setModel(streamRes.model());
-                    h.setProviderId(streamRes.providerId());
-                    h.setTemperature(temperature);
-                    h.setTopP(topP);
-                    h.setLatencyMs(latency);
-                    h.setPromptVersion(cfg.getVersion());
+                    h.setJobId(job.getId());
                     semanticTranslateConfigService.recordHistory(h);
                 }
 
@@ -274,8 +310,28 @@ public class AiSemanticTranslateService {
             normalizedContent = normalizedContent.substring(0, maxChars);
         }
 
+        String promptCode = cfg.getPromptCode();
+        if (promptCode == null || promptCode.isBlank()) {
+            promptCode = SemanticTranslateConfigService.DEFAULT_PROMPT_CODE;
+        }
+
+        PromptsEntity prompt = promptsRepository.findByPromptCode(promptCode)
+                .orElseThrow(() -> new IllegalStateException("Prompt code not found: " + cfg.getPromptCode()));
+
+        PromptLlmParams params = promptLlmParamResolver.resolveText(
+            prompt,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0.2,
+            0.4
+        );
+
         String sourceHash = sha256Hex(sourceType + "|" + normalizedTitle + "\n\n" + normalizedContent);
-        String configHash = sha256Hex(buildConfigSignature(cfg));
+        String configHash = sha256Hex(buildConfigSignature(cfg, prompt, params));
 
         var cached = semanticTranslateHistoryRepository
                 .findTopBySourceTypeAndSourceIdAndTargetLangAndSourceHashAndConfigHashOrderByCreatedAtDesc(
@@ -287,21 +343,19 @@ public class AiSemanticTranslateService {
             out.setTargetLang(safeTargetLang);
             out.setTranslatedTitle(cached.getTranslatedTitle());
             out.setTranslatedMarkdown(cached.getTranslatedMarkdown());
-            out.setModel(cached.getModel());
-            out.setLatencyMs(cached.getLatencyMs());
+            out.setModel(null);
+            out.setLatencyMs(null);
             out.setCached(Boolean.TRUE);
             return out;
         }
 
-        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
-        Double temperature = cfg.getTemperature();
-        if (temperature == null) temperature = 0.2;
-        Double topP = cfg.getTopP();
-        if (topP == null) topP = 0.4;
+        String modelOverride = params.model();
+        Double temperature = params.temperature();
+        Double topP = params.topP();
 
-        String userPrompt = renderPrompt(cfg.getPromptTemplate(), safeTargetLang, normalizedTitle, normalizedContent);
+        String userPrompt = renderPrompt(prompt.getUserPromptTemplate(), safeTargetLang, normalizedTitle, normalizedContent);
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(cfg.getSystemPrompt()));
+        messages.add(ChatMessage.system(prompt.getSystemPrompt()));
         messages.add(ChatMessage.user(userPrompt));
 
         long started = System.currentTimeMillis();
@@ -311,14 +365,14 @@ public class AiSemanticTranslateService {
         try {
             LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
                     LlmQueueTaskType.UNKNOWN,
-                    cfg.getProviderId(),
+                    params.providerId(),
                     modelOverride,
                     messages,
                     temperature,
                     topP,
                     null,
                     null,
-                    cfg.getEnableThinking()
+                        params.enableThinking()
             );
             rawJson = routed == null ? null : routed.text();
             usedProviderId = routed == null ? null : routed.providerId();
@@ -337,6 +391,21 @@ public class AiSemanticTranslateService {
         }
 
         if (Boolean.TRUE.equals(cfg.getHistoryEnabled())) {
+            GenerationJobsEntity job = new GenerationJobsEntity();
+            job.setJobType(GenerationJobType.TRANSLATE);
+            job.setTargetType("POST".equals(sourceType) ? GenerationTargetType.POST : GenerationTargetType.COMMENT);
+            job.setTargetId(sourceId);
+            job.setStatus(GenerationJobStatus.SUCCEEDED);
+            job.setModel(usedModel);
+            job.setProviderId(usedProviderId);
+            job.setTemperature(temperature);
+            job.setTopP(topP);
+            job.setLatencyMs(latency);
+            job.setPromptVersion(cfg.getVersion());
+            job.setCreatedAt(LocalDateTime.now());
+            job.setUpdatedAt(job.getCreatedAt());
+            generationJobsRepository.save(job);
+
             SemanticTranslateHistoryEntity h = new SemanticTranslateHistoryEntity();
             h.setUserId(actorUserId == null ? 0L : actorUserId);
             h.setCreatedAt(LocalDateTime.now());
@@ -349,12 +418,7 @@ public class AiSemanticTranslateService {
             h.setSourceContentExcerpt(buildExcerpt(normalizedContent));
             h.setTranslatedTitle(blankToNull(translatedTitle));
             h.setTranslatedMarkdown(translatedMarkdown);
-            h.setModel(usedModel);
-            h.setProviderId(usedProviderId);
-            h.setTemperature(temperature);
-            h.setTopP(topP);
-            h.setLatencyMs(latency);
-            h.setPromptVersion(cfg.getVersion());
+            h.setJobId(job.getId());
             semanticTranslateConfigService.recordHistory(h);
         }
 
@@ -415,7 +479,7 @@ public class AiSemanticTranslateService {
 
     private static String renderPrompt(String template, String targetLang, String title, String content) {
         String safeTemplate = (template == null || template.isBlank())
-                ? SemanticTranslateConfigService.DEFAULT_PROMPT_TEMPLATE
+                ? ""
                 : template;
         String out = safeTemplate;
         out = out.replace("{{targetLang}}", targetLang == null ? "" : targetLang.trim());
@@ -424,15 +488,15 @@ public class AiSemanticTranslateService {
         return out;
     }
 
-    private static String buildConfigSignature(SemanticTranslateConfigEntity cfg) {
-        String model = cfg.getModel() == null ? "" : cfg.getModel().trim();
-        String providerId = cfg.getProviderId() == null ? "" : cfg.getProviderId().trim();
-        String temp = cfg.getTemperature() == null ? "" : String.valueOf(cfg.getTemperature());
-        String topP = cfg.getTopP() == null ? "" : String.valueOf(cfg.getTopP());
-        String thinking = Boolean.TRUE.equals(cfg.getEnableThinking()) ? "1" : "0";
+    private static String buildConfigSignature(SemanticTranslateConfigEntity cfg, PromptsEntity prompt, PromptLlmParams params) {
+        String model = params.model() == null ? "" : params.model().trim();
+        String providerId = params.providerId() == null ? "" : params.providerId().trim();
+        String temp = params.temperature() == null ? "" : String.valueOf(params.temperature());
+        String topP = params.topP() == null ? "" : String.valueOf(params.topP());
+        String thinking = Boolean.TRUE.equals(params.enableThinking()) ? "1" : "0";
         String max = cfg.getMaxContentChars() == null ? "" : String.valueOf(cfg.getMaxContentChars());
-        String sp = cfg.getSystemPrompt() == null ? "" : cfg.getSystemPrompt().trim();
-        String pt = cfg.getPromptTemplate() == null ? "" : cfg.getPromptTemplate().trim();
+        String sp = prompt.getSystemPrompt() == null ? "" : prompt.getSystemPrompt().trim();
+        String pt = prompt.getUserPromptTemplate() == null ? "" : prompt.getUserPromptTemplate().trim();
         return "providerId=" + providerId + "|model=" + model + "|temp=" + temp + "|topP=" + topP + "|thinking=" + thinking + "|max=" + max + "|sp=" + sp + "|pt=" + pt;
     }
 

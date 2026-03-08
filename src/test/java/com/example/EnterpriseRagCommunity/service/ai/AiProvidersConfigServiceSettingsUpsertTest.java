@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmProviderSettingsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmProviderRepository;
@@ -28,22 +27,22 @@ public class AiProvidersConfigServiceSettingsUpsertTest {
     void upsertSettingsCreatesNewRowWithNullVersionSoJpaTreatsItAsNew() throws Exception {
         AppSettingsService appSettingsService = mock(AppSettingsService.class);
         ObjectMapper objectMapper = new ObjectMapper();
-        AiProperties aiProperties = mock(AiProperties.class);
         LlmProviderRepository llmProviderRepository = mock(LlmProviderRepository.class);
         LlmProviderSettingsRepository llmProviderSettingsRepository = mock(LlmProviderSettingsRepository.class);
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
         LlmSecretsCryptoService llmSecretsCryptoService = mock(LlmSecretsCryptoService.class);
         SystemConfigurationService systemConfigurationService = mock(SystemConfigurationService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
 
         AiProvidersConfigService svc = new AiProvidersConfigService(
                 appSettingsService,
                 objectMapper,
-                aiProperties,
                 llmProviderRepository,
                 llmProviderSettingsRepository,
                 llmModelRepository,
                 llmSecretsCryptoService,
-                systemConfigurationService
+                systemConfigurationService,
+                llmRoutingService
         );
 
         when(llmProviderSettingsRepository.findById("default")).thenReturn(Optional.empty());

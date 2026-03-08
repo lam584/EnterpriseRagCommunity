@@ -4,13 +4,18 @@ import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRu
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineStepEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineStepRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -28,12 +33,22 @@ class ModerationPipelineTraceServiceTest {
     @Autowired
     ModerationPipelineStepRepository stepRepository;
 
+    @Autowired
+    ModerationQueueRepository queueRepository;
+
     @Test
     void ensureRun_and_steps_shouldWork() {
         ModerationQueueEntity q = new ModerationQueueEntity();
-        q.setId(999L);
+        q.setCaseType(ModerationCaseType.CONTENT);
         q.setContentType(ContentType.POST);
         q.setContentId(123L);
+        q.setStatus(QueueStatus.PENDING);
+        q.setCurrentStage(QueueStage.RULE);
+        q.setPriority(0);
+        q.setVersion(0);
+        q.setCreatedAt(LocalDateTime.now());
+        q.setUpdatedAt(LocalDateTime.now());
+        q = queueRepository.save(q);
 
         ModerationPipelineRunEntity run = traceService.ensureRun(q);
         assertNotNull(run.getId());

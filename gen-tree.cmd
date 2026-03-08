@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 rem --- Determine project root (dir of this script) ---
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
-set "SRC=%ROOT%\src\main\java\DirectoryTreeMarkdownGenerator.java"
+set "SRC=%ROOT%\src\test\java\tools\DirectoryTreeMarkdownGenerator.java"
 
 if not exist "%SRC%" (
   echo [ERROR] Source file not found: "%SRC%"
@@ -41,7 +41,7 @@ if errorlevel 1 (
 )
 
 echo [INFO] Running DirectoryTreeMarkdownGenerator...
-"%JAVA_EXE%" -cp "%ROOT%" DirectoryTreeMarkdownGenerator "%ROOT%"
+"%JAVA_EXE%" -cp "%ROOT%" tools.DirectoryTreeMarkdownGenerator "%ROOT%"
 if errorlevel 1 (
   echo [ERROR] Execution failed.
   exit /b 1

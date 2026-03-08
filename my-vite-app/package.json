@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:ci": "vitest run --coverage"
+    "test:ci": "npx vitest run --coverage.enabled=true && node scripts/fix-istanbul-src-index.mjs && node scripts/check-changed-files-coverage.mjs && node scripts/check-services-branch-coverage.mjs"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
@@ -26,6 +26,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tabs": "^1.1.12",
     "axios": "^1.9.0",
+    "@noble/hashes": "^1.8.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "echarts": "^5.5.0",
@@ -51,6 +52,7 @@
   "devDependencies": {
     "@eslint/js": "^9.21.0",
     "@testing-library/react": "^16.3.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22.14.1",
     "@types/react": "^19.0.10",
     "@types/react-datepicker": "^6.2.0",
@@ -71,5 +73,9 @@
     "typescript-eslint": "^8.24.1",
     "vite": "^6.4.1",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "minimatch": "^10.2.1",
+    "rollup": "^4.59.0"
   }
 }

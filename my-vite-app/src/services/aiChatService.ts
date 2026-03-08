@@ -27,6 +27,7 @@ export type AiCitationSource = {
   score?: number | null;
   title?: string | null;
   url?: string | null;
+  snippet?: string | null;
 };
 
 export type AiChatStreamRequest = {
@@ -42,6 +43,7 @@ export type AiChatStreamRequest = {
   ragTopK?: number;
   dryRun?: boolean;
   images?: Array<{ url: string; mimeType?: string; fileAssetId?: number }>;
+  files?: Array<{ url: string; mimeType?: string; fileAssetId?: number; fileName?: string }>;
 };
 
 export type AiChatRegenerateStreamRequest = {
@@ -117,6 +119,7 @@ function parseEventBlock(block: string): AiStreamEvent | null {
                 score: (x as Record<string, unknown>).score as number | null | undefined,
                 title: ((x as Record<string, unknown>).title as string | null | undefined) ?? null,
                 url: ((x as Record<string, unknown>).url as string | null | undefined) ?? null,
+                snippet: ((x as Record<string, unknown>).snippet as string | null | undefined) ?? null,
               }))
           : [];
         return { type: 'sources', sources };

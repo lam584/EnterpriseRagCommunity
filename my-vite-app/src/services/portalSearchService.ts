@@ -1,11 +1,12 @@
 import type { SpringPage } from '../types/page';
 
-export type PortalSearchHitType = 'POST' | 'COMMENT';
+export type PortalSearchHitType = 'POST' | 'COMMENT' | 'FILE';
 
 export type PortalSearchHitDTO = {
   type: PortalSearchHitType;
   postId?: number | null;
   commentId?: number | null;
+  fileAssetId?: number | null;
   title?: string | null;
   snippet?: string | null;
   score?: number | null;
@@ -54,4 +55,3 @@ export async function portalSearch(
   }
   return data as SpringPage<PortalSearchHitDTO>;
 }
-

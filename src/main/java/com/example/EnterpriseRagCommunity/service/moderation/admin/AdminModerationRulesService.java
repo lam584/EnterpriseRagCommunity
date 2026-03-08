@@ -2,8 +2,11 @@ package com.example.EnterpriseRagCommunity.service.moderation.admin;
 
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationRulesCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationRulesUpdateDTO;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationRulesEntity;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationRulesRepository;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -16,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,9 +27,13 @@ import java.util.Map;
 public class AdminModerationRulesService {
 
     private final ModerationRulesRepository repository;
+    private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
 
-    public AdminModerationRulesService(ModerationRulesRepository repository) {
+    public AdminModerationRulesService(ModerationRulesRepository repository, AuditLogWriter auditLogWriter, AuditDiffBuilder auditDiffBuilder) {
         this.repository = repository;
+        this.auditLogWriter = auditLogWriter;
+        this.auditDiffBuilder = auditDiffBuilder;
     }
 
     public Page<ModerationRulesEntity> list(int page, int pageSize,
@@ -80,13 +88,26 @@ public class AdminModerationRulesService {
         e.setEnabled(dto.getEnabled() != null ? dto.getEnabled() : Boolean.TRUE);
         e.setMetadata(dto.getMetadata());
         e.setCreatedAt(LocalDateTime.now());
-        return repository.save(e);
+        ModerationRulesEntity saved = repository.save(e);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "MODERATION_RULE_CREATE",
+                "MODERATION_RULE",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "创建审核规则",
+                null,
+                auditDiffBuilder.build(Map.of(), summarize(saved))
+        );
+        return saved;
     }
 
     @Transactional
     public ModerationRulesEntity update(Long id, ModerationRulesUpdateDTO dto) {
         ModerationRulesEntity e = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("规则不存在: " + id));
+        Map<String, Object> before = summarize(e);
 
         if (dto.getName() != null && dto.getName().isPresent()) e.setName(dto.getName().get());
         if (dto.getType() != null && dto.getType().isPresent()) e.setType(dto.getType().get());
@@ -95,14 +116,61 @@ public class AdminModerationRulesService {
         if (dto.getEnabled() != null && dto.getEnabled().isPresent()) e.setEnabled(dto.getEnabled().get());
         if (dto.getMetadata() != null && dto.getMetadata().isPresent()) e.setMetadata(dto.getMetadata().get());
 
-        return repository.save(e);
+        ModerationRulesEntity saved = repository.save(e);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "MODERATION_RULE_UPDATE",
+                "MODERATION_RULE",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "更新审核规则",
+                null,
+                auditDiffBuilder.build(before, summarize(saved))
+        );
+        return saved;
     }
 
     @Transactional
     public void delete(Long id) {
-        if (!repository.existsById(id)) {
-            throw new RuntimeException("规则不存在: " + id);
-        }
+        ModerationRulesEntity e = repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("规则不存在: " + id));
+        Map<String, Object> before = summarize(e);
         repository.deleteById(id);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "MODERATION_RULE_DELETE",
+                "MODERATION_RULE",
+                id,
+                AuditResult.SUCCESS,
+                "删除审核规则",
+                null,
+                auditDiffBuilder.build(before, Map.of())
+        );
+    }
+
+    private static Map<String, Object> summarize(ModerationRulesEntity e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (e == null) return m;
+        m.put("id", e.getId());
+        m.put("name", e.getName());
+        m.put("type", e.getType());
+        m.put("pattern", e.getPattern());
+        m.put("severity", e.getSeverity());
+        m.put("enabled", e.getEnabled());
+        m.put("metadata", e.getMetadata());
+        return m;
+    }
+
+    private static String currentUsernameOrNull() {
+        try {
+            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+            String name = auth.getName();
+            return name == null || name.isBlank() ? null : name.trim();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

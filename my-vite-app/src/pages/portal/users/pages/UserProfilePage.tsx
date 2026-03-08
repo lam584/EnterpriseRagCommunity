@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { getMyProfile, updateMyProfile } from '../../../../services/accountService';
 import { getPublicUserProfile } from '../../../../services/publicUserProfileService';
 import { listMyPostsPage, listPostsPage, type PostDTO } from '../../../../services/postService';
+import { reportProfile } from '../../../../services/reportService';
 import type { SpringPage } from '../../../../types/page';
 import type { UpdateUserProfileRequest, UserProfile } from '../../../../types/userProfile';
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
@@ -21,6 +22,10 @@ function isValidWebsite(v: string): boolean {
   }
 }
 
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function toUserProfileFromPublic(dto: { id: number; username: string; avatarUrl?: string | null; bio?: string | null; location?: string | null; website?: string | null }): UserProfile {
   return {
     id: dto.id,
@@ -37,6 +42,7 @@ export default function UserProfilePage() {
   const navigate = useNavigate();
   const routeLocation = useLocation();
   const { userId } = useParams();
+  const mountedRef = useRef(true);
 
   const parsedParamUserId = useMemo(() => {
     if (typeof userId !== 'string') return null;
@@ -70,6 +76,13 @@ export default function UserProfilePage() {
   const [postsPageNo, setPostsPageNo] = useState(1);
   const [postsReloadTick, setPostsReloadTick] = useState(0);
 
+  const [profileReportOpen, setProfileReportOpen] = useState(false);
+  const [profileReportPending, setProfileReportPending] = useState(false);
+  const [profileReportDone, setProfileReportDone] = useState(false);
+  const [profileReportError, setProfileReportError] = useState<string | null>(null);
+  const [profileReportReasonCode, setProfileReportReasonCode] = useState('SPAM');
+  const [profileReportReasonText, setProfileReportReasonText] = useState('');
+
   function resetDraftFrom(p: UserProfile) {
     setUsername(p.username ?? '');
     setBio(p.bio ?? '');
@@ -77,6 +90,13 @@ export default function UserProfilePage() {
     setLocation(p.location ?? '');
     setWebsite(p.website ?? '');
   }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +160,26 @@ export default function UserProfilePage() {
       cancelled = true;
     };
   }, [paramInvalid, parsedParamUserId]);
+
+  async function refreshMyProfileModerationSoon() {
+    if (!mountedRef.current) return;
+    if (!isSelf) return;
+    const delays = [0, 200, 400, 800, 1200, 1600];
+    for (const d of delays) {
+      if (!mountedRef.current) return;
+      if (d > 0) await sleepMs(d);
+      if (!mountedRef.current) return;
+      try {
+        const me = await getMyProfile();
+        if (!mountedRef.current) return;
+        setProfile(me);
+        setBaseProfile(me);
+        if (me.profileModeration?.status && me.profileModeration.status !== 'PENDING') return;
+      } catch {
+        return;
+      }
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -292,12 +332,37 @@ export default function UserProfilePage() {
       setBaseProfile(updated);
       resetDraftFrom(updated);
       setIsEditing(false);
-      setSaveOk('已保存');
+      setSaveOk('已提交审核');
+      void refreshMyProfileModerationSoon();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : undefined;
       setSaveErr(msg || '保存失败');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onSubmitProfileReport() {
+    if (!profile) return;
+    if (isSelf) return;
+    const reasonCode = profileReportReasonCode.trim();
+    if (!reasonCode) {
+      setProfileReportError('请选择举报原因');
+      return;
+    }
+
+    setProfileReportPending(true);
+    setProfileReportError(null);
+    try {
+      await reportProfile(profile.id, { reasonCode, reasonText: profileReportReasonText.trim() || undefined });
+      setProfileReportDone(true);
+      setProfileReportOpen(false);
+      setProfileReportReasonText('');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : undefined;
+      setProfileReportError(msg || '举报失败');
+    } finally {
+      setProfileReportPending(false);
     }
   }
 
@@ -339,8 +404,43 @@ export default function UserProfilePage() {
 
   const content = (
     <div className="space-y-5">
-      <div>
-        <h3 className="text-lg font-semibold">个人资料</h3>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold">个人资料</h3>
+          {isSelf && profile.profileModeration?.status ? (
+            <div className="text-sm text-gray-600">
+              审核状态：
+              {profile.profileModeration.status === 'PENDING'
+                ? '待审核'
+                : profile.profileModeration.status === 'REVIEWING'
+                  ? '审核中'
+                  : profile.profileModeration.status === 'HUMAN'
+                    ? '待人工审核'
+                    : profile.profileModeration.status === 'REJECTED'
+                      ? '已驳回'
+                      : profile.profileModeration.status === 'APPROVED'
+                        ? '已通过'
+                        : profile.profileModeration.status}
+              {profile.profileModeration.reason ? `（${profile.profileModeration.reason}）` : null}
+            </div>
+          ) : null}
+        </div>
+
+        {!isSelf ? (
+          <button
+            type="button"
+            className="px-3 py-2 rounded-md border border-gray-300 hover:bg-gray-50 text-sm disabled:opacity-50"
+            onClick={() => {
+              setProfileReportOpen(true);
+              setProfileReportError(null);
+              setProfileReportDone(false);
+            }}
+            disabled={profileReportPending || profileReportDone}
+            title={profileReportDone ? '已举报' : '举报该用户资料'}
+          >
+            {profileReportDone ? '已举报' : '举报资料'}
+          </button>
+        ) : null}
       </div>
 
       {loadErr ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{loadErr}</div> : null}
@@ -512,6 +612,77 @@ export default function UserProfilePage() {
           onNext={() => setPostsPageNo((n) => n + 1)}
         />
       </div>
+
+      {profileReportOpen ? (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-lg">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="font-semibold">举报资料</div>
+              <button
+                type="button"
+                className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setProfileReportOpen(false)}
+                disabled={profileReportPending}
+              >
+                关闭
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3">
+              {profileReportError ? (
+                <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{profileReportError}</div>
+              ) : null}
+
+              <div className="space-y-1">
+                <div className="text-sm text-gray-700">举报原因</div>
+                <select
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  value={profileReportReasonCode}
+                  onChange={(e) => setProfileReportReasonCode(e.target.value)}
+                  disabled={profileReportPending}
+                >
+                  <option value="SPAM">垃圾/广告</option>
+                  <option value="ABUSE">辱骂/骚扰</option>
+                  <option value="HATE">仇恨/歧视</option>
+                  <option value="PORN">色情/低俗</option>
+                  <option value="ILLEGAL">违法违规</option>
+                  <option value="OTHER">其他</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-sm text-gray-700">补充说明（可选）</div>
+                <textarea
+                  className="w-full min-h-[90px] rounded border border-gray-300 px-3 py-2 text-sm"
+                  value={profileReportReasonText}
+                  onChange={(e) => setProfileReportReasonText(e.target.value)}
+                  disabled={profileReportPending}
+                  placeholder="请描述举报原因，便于审核"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  className="rounded border px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
+                  onClick={() => setProfileReportOpen(false)}
+                  disabled={profileReportPending}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-red-600 text-white px-4 py-2 hover:bg-red-700 disabled:opacity-50"
+                  onClick={onSubmitProfileReport}
+                  disabled={profileReportPending}
+                >
+                  {profileReportPending ? '提交中...' : '提交举报'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
   if (showSubTabs) {

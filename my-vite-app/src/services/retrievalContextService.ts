@@ -34,10 +34,16 @@ export type ContextClipConfigDTO = {
   reserveAnswerTokens?: number | null;
   perItemMaxTokens?: number | null;
   maxPromptChars?: number | null;
+  contextTokenBudget?: number | null;
 
   minScore?: number | null;
   maxSamePostItems?: number | null;
   requireTitle?: boolean | null;
+  alpha?: number | null;
+  beta?: number | null;
+  gamma?: number | null;
+  ablationMode?: string | null;
+  crossSourceDedup?: boolean | null;
 
   dedupByPostId?: boolean | null;
   dedupByTitle?: boolean | null;
@@ -63,6 +69,7 @@ export type ContextClipTestRequest = {
   queryText: string;
   boardId?: number | null;
   debug?: boolean | null;
+  modes?: string[] | null;
   useSavedConfig?: boolean | null;
   config?: ContextClipConfigDTO | null;
 };
@@ -72,6 +79,11 @@ export type ContextClipTestItem = {
   postId?: number | null;
   chunkIndex?: number | null;
   score?: number | null;
+  relScore?: number | null;
+  impScore?: number | null;
+  redScore?: number | null;
+  finalScore?: number | null;
+  source?: string | null;
   title?: string | null;
   tokens?: number | null;
   reason?: string | null;
@@ -88,13 +100,31 @@ export type ContextClipTestResponse = {
   contextPrompt?: string | null;
   selected?: ContextClipTestItem[] | null;
   dropped?: ContextClipTestItem[] | null;
+  comparisons?: ContextClipTestComparison[] | null;
+};
+
+export type ContextClipTestComparison = {
+  mode?: string | null;
+  config?: ContextClipConfigDTO | null;
+  budgetTokens?: number | null;
+  usedTokens?: number | null;
+  usedTokensDiff?: number | null;
+  budgetTokensDiff?: number | null;
+  itemsSelected?: number | null;
+  itemsDropped?: number | null;
+  contextPrompt?: string | null;
+  selected?: ContextClipTestItem[] | null;
+  dropped?: ContextClipTestItem[] | null;
 };
 
 export type ContextWindowLogDTO = {
   id: number;
   eventId?: number | null;
   policy?: ContextWindowPolicy | null;
+  budgetTokens?: number | null;
   totalTokens?: number | null;
+  selectedItems?: number | null;
+  droppedItems?: number | null;
   items?: number | null;
   queryText?: string | null;
   createdAt?: string | null;
@@ -105,7 +135,10 @@ export type ContextWindowDetailDTO = {
   eventId?: number | null;
   queryText?: string | null;
   policy?: ContextWindowPolicy | null;
+  budgetTokens?: number | null;
   totalTokens?: number | null;
+  selectedItems?: number | null;
+  droppedItems?: number | null;
   chunkIds?: Record<string, unknown> | null;
   createdAt?: string | null;
 };
@@ -182,4 +215,3 @@ export async function adminGetContextWindow(id: number): Promise<ContextWindowDe
   if (!res.ok) throw new Error(getBackendMessage(data) || '获取上下文窗口详情失败');
   return data as ContextWindowDetailDTO;
 }
-

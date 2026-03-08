@@ -12,6 +12,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class AppSettingsService {
     public static final String KEY_DEFAULT_REGISTER_ROLE_ID = "default_register_role_id";
+    public static final String KEY_REGISTRATION_ENABLED = "registration_enabled";
 
     private final AppSettingsRepository appSettingsRepository;
 
@@ -43,4 +44,3 @@ public class AppSettingsService {
         appSettingsRepository.save(entity);
     }
 }
-

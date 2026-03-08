@@ -6,6 +6,9 @@ import com.example.EnterpriseRagCommunity.dto.retrieval.RagCommentsTestQueryResp
 import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
+import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.ai.LlmRoutingService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagCommentsIndexService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -19,6 +22,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 
 @Service
@@ -28,7 +32,8 @@ public class RagCommentTestQueryService {
     private final VectorIndicesRepository vectorIndicesRepository;
     private final RetrievalRagProperties ragProps;
     private final RagCommentsIndexService indexService;
-    private final AiEmbeddingService embeddingService;
+    private final LlmGateway llmGateway;
+    private final LlmRoutingService llmRoutingService;
     private final ObjectMapper objectMapper;
     private final SystemConfigurationService systemConfigurationService;
 
@@ -55,20 +60,45 @@ public class RagCommentTestQueryService {
 
         long started = System.currentTimeMillis();
 
-        String modelToUse = toNonBlank(req.getEmbeddingModel());
-        if (modelToUse == null) {
-            Object metaModel = vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingModel");
-            modelToUse = toNonBlank(metaModel);
+        String overrideModel = toNonBlank(req.getEmbeddingModel());
+
+        String fixedModel = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingModel"));
+        String fixedProviderId = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingProviderId"));
+        boolean hasFixed = fixedModel != null && fixedProviderId != null;
+
+        String lastBuildModel = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("lastBuildEmbeddingModel"));
+        String lastBuildProviderId = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("lastBuildEmbeddingProviderId"));
+        boolean hasLastBuild = lastBuildModel != null && lastBuildProviderId != null;
+
+        String modelToUse = null;
+        String providerToUse = null;
+        if (overrideModel != null) {
+            modelToUse = overrideModel;
+        } else if (hasFixed && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, fixedProviderId, fixedModel)) {
+            modelToUse = fixedModel;
+            providerToUse = fixedProviderId;
+        } else if (hasLastBuild && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, lastBuildProviderId, lastBuildModel)) {
+            modelToUse = lastBuildModel;
+            providerToUse = lastBuildProviderId;
         }
-        if (modelToUse == null) {
-            Object metaModel = vi.getMetadata() == null ? null : vi.getMetadata().get("lastBuildEmbeddingModel");
-            modelToUse = toNonBlank(metaModel);
-        }
-        if (modelToUse == null) modelToUse = toNonBlank(ragProps.getEs().getEmbeddingModel());
 
         AiEmbeddingService.EmbeddingResult er;
         try {
-            er = embeddingService.embedOnce(q, modelToUse);
+            if (modelToUse == null) {
+                LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
+                if (target == null) {
+                    String legacy = toNonBlank(ragProps.getEs().getEmbeddingModel());
+                    if (legacy == null) {
+                        throw new IllegalStateException("no eligible embedding target (please check embedding routing config)");
+                    }
+                    modelToUse = legacy;
+                    providerToUse = null;
+                } else {
+                    providerToUse = target.providerId();
+                    modelToUse = target.modelName();
+                }
+            }
+            er = llmGateway.embedOnceRouted(LlmQueueTaskType.POST_EMBEDDING, providerToUse, modelToUse, q);
         } catch (Exception e) {
             throw new IllegalStateException("Embedding failed: " + e.getMessage(), e);
         }
@@ -192,4 +222,3 @@ public class RagCommentTestQueryService {
         return s.isBlank() ? null : s;
     }
 }
-

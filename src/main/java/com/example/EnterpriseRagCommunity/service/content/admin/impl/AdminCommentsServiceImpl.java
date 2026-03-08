@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.service.content.admin.impl;
 import com.example.EnterpriseRagCommunity.dto.content.admin.CommentAdminDTO;
 import com.example.EnterpriseRagCommunity.dto.content.admin.CommentSetDeletedRequest;
 import com.example.EnterpriseRagCommunity.dto.content.admin.CommentUpdateStatusRequest;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.content.CommentsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
@@ -10,6 +11,8 @@ import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.content.admin.AdminCommentsService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 import jakarta.transaction.Transactional;
@@ -25,6 +28,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 public class AdminCommentsServiceImpl implements AdminCommentsService {
@@ -45,6 +49,12 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
 
     @Autowired
     private RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
+
+    @Autowired
+    private AuditLogWriter auditLogWriter;
+
+    @Autowired
+    private AuditDiffBuilder auditDiffBuilder;
 
     private static String buildPostExcerpt(String content, int maxLen) {
         if (content == null) return null;
@@ -239,12 +249,24 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
 
         CommentsEntity e = commentsRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("评论不存在: " + id));
+        Map<String, Object> before = summarizeForAudit(e);
 
         e.setStatus(status);
         e.setUpdatedAt(LocalDateTime.now());
 
         CommentsEntity saved = commentsRepository.save(e);
         ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+        auditLogWriter.write(
+                currentUserIdOrNull(),
+                currentActorNameOrNull(),
+                "COMMENT_STATUS_UPDATE",
+                "COMMENT",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "更新评论状态",
+                null,
+                auditDiffBuilder.build(before, summarizeForAudit(saved))
+        );
         // try fill post info for single item as well
         PostsEntity p = saved.getPostId() == null ? null : postsRepository.findById(saved.getPostId()).orElse(null);
         return toAdminDTO(saved,
@@ -262,16 +284,54 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
 
         CommentsEntity e = commentsRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("评论不存在: " + id));
+        Map<String, Object> before = summarizeForAudit(e);
 
         e.setIsDeleted(req.getIsDeleted());
         e.setUpdatedAt(LocalDateTime.now());
 
         CommentsEntity saved = commentsRepository.save(e);
         ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+        auditLogWriter.write(
+                currentUserIdOrNull(),
+                currentActorNameOrNull(),
+                "COMMENT_DELETE_TOGGLE",
+                "COMMENT",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "更新评论删除标记",
+                null,
+                auditDiffBuilder.build(before, summarizeForAudit(saved))
+        );
         PostsEntity p = saved.getPostId() == null ? null : postsRepository.findById(saved.getPostId()).orElse(null);
         return toAdminDTO(saved,
                 safeAuthorName(saved.getAuthorId()),
                 p == null ? null : p.getTitle(),
                 p == null ? null : buildPostExcerpt(p.getContent(), 80));
+    }
+
+    private static Map<String, Object> summarizeForAudit(CommentsEntity e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (e == null) return m;
+        m.put("id", e.getId());
+        m.put("postId", e.getPostId());
+        m.put("parentId", e.getParentId());
+        m.put("authorId", e.getAuthorId());
+        m.put("status", e.getStatus() == null ? null : e.getStatus().name());
+        m.put("isDeleted", Boolean.TRUE.equals(e.getIsDeleted()));
+        return m;
+    }
+
+    private Long currentUserIdOrNull() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+        String email = auth.getName();
+        return administratorService.findByUsername(email).map(x -> x.getId()).orElse(null);
+    }
+
+    private String currentActorNameOrNull() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+        String name = auth.getName();
+        return name == null || name.isBlank() ? null : name.trim();
     }
 }

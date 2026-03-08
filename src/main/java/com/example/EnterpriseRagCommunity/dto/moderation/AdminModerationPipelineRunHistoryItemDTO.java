@@ -22,7 +22,6 @@ public record AdminModerationPipelineRunHistoryItemDTO(
         String errorCode,
         String errorMessage,
         String llmModel,
-        java.math.BigDecimal llmThreshold,
         LocalDateTime createdAt
 ) {
     public static AdminModerationPipelineRunHistoryItemDTO fromEntity(ModerationPipelineRunEntity e) {
@@ -41,7 +40,6 @@ public record AdminModerationPipelineRunHistoryItemDTO(
                 e.getErrorCode(),
                 e.getErrorMessage(),
                 e.getLlmModel(),
-                e.getLlmThreshold(),
                 e.getCreatedAt()
         );
     }

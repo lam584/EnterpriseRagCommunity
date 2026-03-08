@@ -45,6 +45,13 @@ function normalizeAuthorityKey(authority: string) {
   return a.startsWith('PERM_') ? a.substring('PERM_'.length) : a;
 }
 
+function normalizeRoleKey(role: string) {
+  const r = String(role ?? '').trim();
+  if (!r) return '';
+  const rr = r.replace(/^ROLE_/i, '');
+  return rr.trim().toUpperCase();
+}
+
 export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const [data, setData] = useState<AccessContextDTO>(empty);
@@ -53,14 +60,14 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const inFlightRef = useRef<Promise<AccessContextDTO> | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback((): Promise<AccessContextDTO> => {
     if (authLoading || !isAuthenticated) {
       const next = empty;
       setData(next);
       setLoading(false);
       setInitialized(false);
       inFlightRef.current = null;
-      return next;
+      return Promise.resolve(next);
     }
     if (inFlightRef.current) return inFlightRef.current;
 
@@ -98,9 +105,9 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Backend returns roles normalized as `ADMIN` (no ROLE_ prefix), but keep compatibility.
     const s = new Set<string>();
     for (const r of data.roles ?? []) {
-      const rr = String(r ?? '').trim();
+      const rr = normalizeRoleKey(String(r ?? ''));
       if (!rr) continue;
-      s.add(rr.startsWith('ROLE_') ? rr.substring('ROLE_'.length) : rr);
+      s.add(rr);
     }
     return s;
   }, [data.roles]);
@@ -122,14 +129,14 @@ export const AccessProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     loading: loading || (isAuthenticated && !initialized),
     refresh,
 
-    hasRole: (role: string) => rolesSet.has(String(role).trim().replace(/^ROLE_/i, '')),
+    hasRole: (role: string) => rolesSet.has(normalizeRoleKey(role)),
     hasAuthority: (authority: string) => {
       const a = String(authority ?? '').trim();
       if (!a) return false;
 
       // Role authorities: ROLE_ADMIN, ADMIN
-      if (a.toUpperCase().startsWith('ROLE_')) return rolesSet.has(a.substring('ROLE_'.length));
-      if (!a.includes(':')) return rolesSet.has(a);
+      if (a.toUpperCase().startsWith('ROLE_')) return rolesSet.has(normalizeRoleKey(a));
+      if (!a.includes(':')) return rolesSet.has(normalizeRoleKey(a));
 
       // Permission authorities: PERM_x:y, x:y
       return permsSet.has(normalizeAuthorityKey(a));

@@ -26,3 +26,17 @@ export function normalizeMarkdownForPreview(markdown: string): string {
 
   return normalized.join('\n');
 }
+
+export function escapeMarkdownLinkText(text: string): string {
+  if (!text) return text;
+  return text.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+}
+
+export function escapeMarkdownLinkDestination(url: string): string {
+  if (!url) return url;
+  try {
+    return encodeURI(url);
+  } catch {
+    return url;
+  }
+}

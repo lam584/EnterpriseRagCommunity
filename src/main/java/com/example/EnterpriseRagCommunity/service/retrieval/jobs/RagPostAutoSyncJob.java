@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.dto.retrieval.RagAutoSyncConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexStatus;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexBuildService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.RagAutoSyncConfigService;
 import lombok.RequiredArgsConstructor;
@@ -21,11 +22,18 @@ public class RagPostAutoSyncJob {
     private final RagAutoSyncConfigService configService;
     private final VectorIndicesRepository vectorIndicesRepository;
     private final RagPostIndexBuildService buildService;
+    private final SystemConfigurationService systemConfigurationService;
 
     private final AtomicLong lastRunAtMs = new AtomicLong(0);
 
     @Scheduled(fixedDelayString = "${app.retrieval.rag.autoSync.poll-ms:5000}")
     public void tick() {
+        // Check for ES API Key
+        String apiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
+        if (apiKey == null || apiKey.isBlank()) {
+            return; // Skip if ES is not configured
+        }
+
         RagAutoSyncConfigDTO cfg = configService.getConfig();
         if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return;
 
@@ -49,12 +57,9 @@ public class RagPostAutoSyncJob {
             Integer postBatchSize = toInt(meta == null ? null : meta.get("lastBuildPostBatchSize"));
             Integer chunkMaxChars = toInt(meta == null ? null : meta.get("lastBuildChunkMaxChars"));
             Integer chunkOverlapChars = toInt(meta == null ? null : meta.get("lastBuildChunkOverlapChars"));
-            String embeddingModel = toStr(meta == null ? null : meta.get("lastBuildEmbeddingModel"));
-            String embeddingProviderId = toStr(meta == null ? null : meta.get("embeddingProviderId"));
-            if (embeddingProviderId == null) embeddingProviderId = toStr(meta == null ? null : meta.get("lastBuildEmbeddingProviderId"));
             Integer embeddingDims = toInt(meta == null ? null : meta.get("lastBuildEmbeddingDims"));
 
-            buildService.syncPostsIncremental(vi.getId(), boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
+            buildService.syncPostsIncremental(vi.getId(), boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, null, null, embeddingDims);
         }
     }
 

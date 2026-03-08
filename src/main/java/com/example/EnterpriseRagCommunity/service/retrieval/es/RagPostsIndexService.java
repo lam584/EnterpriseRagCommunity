@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
 import com.example.EnterpriseRagCommunity.service.es.ElasticsearchIkAnalyzerProbe;
+import com.example.EnterpriseRagCommunity.service.safety.DependencyCircuitBreakerService;
+import com.example.EnterpriseRagCommunity.service.safety.DependencyIsolationGuard;
 
 import lombok.RequiredArgsConstructor;
 
@@ -26,6 +28,8 @@ public class RagPostsIndexService {
     private final ElasticsearchTemplate template;
     private final RetrievalRagProperties props;
     private final ElasticsearchIkAnalyzerProbe ikProbe;
+    private final DependencyIsolationGuard dependencyIsolationGuard;
+    private final DependencyCircuitBreakerService dependencyCircuitBreakerService;
     private final AtomicBoolean ikDisabledWarned = new AtomicBoolean(false);
 
     public String defaultIndexName() {
@@ -33,30 +37,38 @@ public class RagPostsIndexService {
     }
 
     public void recreateIndex(String indexName, int embeddingDims) {
-        String idx = (indexName == null || indexName.isBlank()) ? defaultIndexName() : indexName.trim();
-        IndexOperations ops = template.indexOps(IndexCoordinates.of(idx));
-        if (ops.exists()) {
-            ops.delete();
-        }
-        tryCreate(ops, resolveIkEnabled(), embeddingDims);
+        dependencyIsolationGuard.requireElasticsearchAllowed();
+        dependencyCircuitBreakerService.run("ES", () -> {
+            String idx = (indexName == null || indexName.isBlank()) ? defaultIndexName() : indexName.trim();
+            IndexOperations ops = template.indexOps(IndexCoordinates.of(idx));
+            if (ops.exists()) {
+                ops.delete();
+            }
+            tryCreate(ops, resolveIkEnabled(), embeddingDims);
+            return null;
+        });
     }
 
     public void ensureIndex(String indexName, int embeddingDims) {
-        String idx = (indexName == null || indexName.isBlank()) ? defaultIndexName() : indexName.trim();
-        IndexOperations ops = template.indexOps(IndexCoordinates.of(idx));
-        if (!ops.exists()) {
-            tryCreate(ops, resolveIkEnabled(), embeddingDims);
-            return;
-        }
-        if (embeddingDims > 0) {
-            Integer existingDims = readEmbeddingDims(ops);
-            if (existingDims == null) {
-                throw new IllegalStateException("ES index mapping mismatch: index='" + idx + "' has no embedding.dims but expected " + embeddingDims + ". Rebuild with clear=true (delete index) to recreate mapping.");
+        dependencyIsolationGuard.requireElasticsearchAllowed();
+        dependencyCircuitBreakerService.run("ES", () -> {
+            String idx = (indexName == null || indexName.isBlank()) ? defaultIndexName() : indexName.trim();
+            IndexOperations ops = template.indexOps(IndexCoordinates.of(idx));
+            if (!ops.exists()) {
+                tryCreate(ops, resolveIkEnabled(), embeddingDims);
+                return null;
             }
-            if (existingDims != embeddingDims) {
-                throw new IllegalStateException("ES index mapping mismatch: index='" + idx + "' embedding.dims=" + existingDims + " but expected " + embeddingDims + ". Rebuild with clear=true (delete index) to recreate mapping.");
+            if (embeddingDims > 0) {
+                Integer existingDims = readEmbeddingDims(ops);
+                if (existingDims == null) {
+                    throw new IllegalStateException("ES index mapping mismatch: index='" + idx + "' has no embedding.dims but expected " + embeddingDims + ". Rebuild with clear=true (delete index) to recreate mapping.");
+                }
+                if (existingDims != embeddingDims) {
+                    throw new IllegalStateException("ES index mapping mismatch: index='" + idx + "' embedding.dims=" + existingDims + " but expected " + embeddingDims + ". Rebuild with clear=true (delete index) to recreate mapping.");
+                }
             }
-        }
+            return null;
+        });
     }
 
     private boolean resolveIkEnabled() {
@@ -80,7 +92,7 @@ public class RagPostsIndexService {
     }
 
     @SuppressWarnings("unchecked")
-    private static Integer extractEmbeddingDims(Map<String, Object> mapping) {
+    public static Integer extractEmbeddingDims(Map<String, Object> mapping) {
         if (mapping == null) return null;
         Object props0 = mapping.get("properties");
         Integer dims = extractEmbeddingDimsFromProperties(props0);

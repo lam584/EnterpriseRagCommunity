@@ -12,8 +12,10 @@ public class ContextWindowDetailDTO {
     private Long eventId;
     private String queryText;
     private ContextWindowPolicy policy;
+    private Integer budgetTokens;
     private Integer totalTokens;
+    private Integer selectedItems;
+    private Integer droppedItems;
     private Map<String, Object> chunkIds;
     private LocalDateTime createdAt;
 }
-

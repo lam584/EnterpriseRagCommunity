@@ -19,14 +19,17 @@ const RiskTagsForm: React.FC = () => {
   const [pageNo, setPageNo] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
   const [items, setItems] = useState<RiskTagDTO[]>([]);
 
-  const [createForm, setCreateForm] = useState({ name: '', slug: '', description: '', active: true });
+  const [createForm, setCreateForm] = useState({ name: '', slug: '', description: '', active: true, threshold: 0.8 });
 
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', slug: '', description: '', active: true });
+  const [editForm, setEditForm] = useState({ name: '', slug: '', description: '', active: true, threshold: 0.8 });
 
-  const validate = (data: { name: string; slug: string; description: string }) => {
+  const validate = (data: { name: string; slug: string; description: string; threshold: number }) => {
     const v: Record<string, string> = {};
     if (!data.name.trim()) v.name = '名称不能为空';
     else if (data.name.length > MAX_NAME) v.name = `名称不能超过 ${MAX_NAME} 字符`;
@@ -36,10 +39,21 @@ const RiskTagsForm: React.FC = () => {
     else if (!isValidSlug(data.slug)) v.slug = 'Slug 必须为 kebab-case（小写字母/数字/短横线）';
 
     if (data.description && data.description.length > MAX_DESC) v.description = `描述不能超过 ${MAX_DESC} 字符`;
+
+    if (data.threshold < 0 || data.threshold > 1) v.threshold = '阈值必须在 0.0 到 1.0 之间';
     return v;
   };
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const copyText = async (label: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage(`已复制：${label}`);
+    } catch (e: unknown) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -52,9 +66,20 @@ const RiskTagsForm: React.FC = () => {
             pageSize,
             keyword: keyword.trim() ? keyword.trim() : undefined,
           });
-          setItems(page.content ?? []);
-          setTotalPages(Math.max(1, page.totalPages ?? 1));
+          const content = page.content ?? [];
+          const nextTotalPages = typeof page.totalPages === 'number' ? Math.max(1, page.totalPages) : 1;
+          const nextTotalElements = typeof page.totalElements === 'number' ? page.totalElements : 0;
+          const backendPageIndex = typeof page.number === 'number' ? Math.max(0, page.number) : Math.max(0, pageNo - 1);
+          const hasMoreByFlag = page.last === false;
+          const hasMoreByPageCount = backendPageIndex + 1 < nextTotalPages;
+          const hasMoreByTotal = nextTotalElements > (backendPageIndex + 1) * pageSize;
+
+          setItems(content);
+          setTotalPages(nextTotalPages);
+          setTotalElements(Math.max(0, nextTotalElements));
+          setHasNextPage(hasMoreByFlag || hasMoreByPageCount || hasMoreByTotal);
         } catch (e: unknown) {
+          setHasNextPage(false);
           setMessage(e instanceof Error ? e.message : String(e));
         } finally {
           setLoading(false);
@@ -63,6 +88,13 @@ const RiskTagsForm: React.FC = () => {
     }, 200);
     return () => window.clearTimeout(t);
   }, [keyword, pageNo, pageSize]);
+
+  useEffect(() => {
+    setSelectedId((prev) => {
+      if (prev == null) return null;
+      return items.some((x) => x.id === prev) ? prev : null;
+    });
+  }, [items]);
 
   const onCreateNameBlur = () => {
     if (!createForm.slug.trim() && createForm.name.trim()) {
@@ -85,9 +117,10 @@ const RiskTagsForm: React.FC = () => {
         slug: createForm.slug.trim(),
         description: createForm.description.trim() ? createForm.description.trim() : undefined,
         active: createForm.active,
+        threshold: createForm.threshold,
       });
       setMessage(`已创建风险标签：${created.name} (#${created.id})`);
-      setCreateForm({ name: '', slug: '', description: '', active: true });
+      setCreateForm({ name: '', slug: '', description: '', active: true, threshold: 0.8 });
       setPageNo(1);
     } catch (e: unknown) {
       setMessage(e instanceof Error ? e.message : String(e));
@@ -97,12 +130,14 @@ const RiskTagsForm: React.FC = () => {
   };
 
   const startEdit = (t: RiskTagDTO) => {
+    setSelectedId(t.id);
     setEditingId(t.id);
     setEditForm({
       name: t.name,
       slug: t.slug,
       description: t.description ?? '',
       active: t.active,
+      threshold: t.threshold ?? 0.8,
     });
     setErrors({});
     setMessage(null);
@@ -110,7 +145,7 @@ const RiskTagsForm: React.FC = () => {
 
   const cancelEdit = () => {
     setEditingId(null);
-    setEditForm({ name: '', slug: '', description: '', active: true });
+    setEditForm({ name: '', slug: '', description: '', active: true, threshold: 0.8 });
     setErrors({});
   };
 
@@ -127,6 +162,7 @@ const RiskTagsForm: React.FC = () => {
         slug: editForm.slug.trim(),
         description: editForm.description.trim() ? editForm.description.trim() : null,
         active: editForm.active,
+        threshold: editForm.threshold,
       });
       setItems((prev) => prev.map((x) => (x.id === id ? updated : x)));
       setEditingId(null);
@@ -153,8 +189,9 @@ const RiskTagsForm: React.FC = () => {
       setSubmitting(false);
     }
   };
+  const resolvedTotalPages = Math.max(totalPages, Math.ceil(totalElements / pageSize) || 1);
   const canPrev = pageNo > 1;
-  const canNext = pageNo < totalPages;
+  const canNext = hasNextPage || pageNo < resolvedTotalPages;
 
   const inputBase =
     'w-full h-9 rounded-md border bg-white px-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500';
@@ -215,14 +252,19 @@ const RiskTagsForm: React.FC = () => {
             </select>
           </div>
 
-          <div className="md:col-span-2 flex items-end">
-            <button
-              type="submit"
-              className="h-9 w-full rounded-md bg-blue-600 text-white px-4 text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+          <div className="md:col-span-2">
+            <label className={labelBase}>阈值 (0-1)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max="1"
+              className={`${inputBase} ${errors.threshold ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-300'}`}
+              value={createForm.threshold}
+              onChange={(e) => setCreateForm((p) => ({ ...p, threshold: parseFloat(e.target.value) }))}
               disabled={submitting}
-            >
-              {submitting ? '提交中...' : '新增风险标签'}
-            </button>
+            />
+            {errors.threshold ? <div className="text-xs text-red-600 mt-1">{errors.threshold}</div> : null}
           </div>
 
           <div className="md:col-span-12">
@@ -235,6 +277,16 @@ const RiskTagsForm: React.FC = () => {
               disabled={submitting}
             />
             {errors.description ? <div className="text-xs text-red-600 mt-1">{errors.description}</div> : null}
+          </div>
+
+          <div className="md:col-span-12 flex justify-end">
+            <button
+              type="submit"
+              className="h-9 rounded-md bg-blue-600 text-white px-4 text-sm font-medium hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={submitting}
+            >
+              {submitting ? '提交中...' : '新增风险标签'}
+            </button>
           </div>
         </form>
       </div>
@@ -264,8 +316,71 @@ const RiskTagsForm: React.FC = () => {
               <option value={100}>每页 100</option>
             </select>
           </div>
-          <div className="text-sm text-gray-600">
-            {loading ? '加载中...' : `第 ${pageNo} / ${totalPages} 页`}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded border px-3 py-2 text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
+              disabled={loading || items.length === 0}
+              onClick={() =>
+                void copyText(
+                  'allowed_labels(name)',
+                  JSON.stringify(
+                    items
+                      .filter((x) => Boolean(x.active))
+                      .map((x) => x.name)
+                      .filter((x) => Boolean(x && String(x).trim())),
+                    null,
+                    2
+                  )
+                )
+              }
+            >
+              复制启用名称 JSON
+            </button>
+            <button
+              type="button"
+              className="rounded border px-3 py-2 text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
+              disabled={loading || items.length === 0}
+              onClick={() =>
+                void copyText(
+                  'allowed_labels(slug)',
+                  JSON.stringify(
+                    items
+                      .filter((x) => Boolean(x.active))
+                      .map((x) => x.slug)
+                      .filter((x) => Boolean(x && String(x).trim())),
+                    null,
+                    2
+                  )
+                )
+              }
+            >
+              复制启用 Slug JSON
+            </button>
+            <button
+              type="button"
+              className="rounded border px-3 py-2 text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
+              disabled={loading}
+              onClick={() => void copyText('hard_reject_labels', JSON.stringify([], null, 2))}
+            >
+              复制 hard_reject_labels 空数组
+            </button>
+            <button
+              type="button"
+              className="rounded border px-3 py-2 text-sm bg-white hover:bg-gray-50 disabled:opacity-60"
+              disabled={loading || submitting || editingId != null || items.length === 0}
+              onClick={() => {
+                const target = selectedId == null ? null : items.find((x) => x.id === selectedId) ?? null;
+                if (!target) {
+                  setMessage('请先在表格中点击选择一行，再点击编辑');
+                  return;
+                }
+                startEdit(target);
+              }}
+            >
+              编辑
+            </button>
+            <div className="text-sm text-gray-600">{loading ? '加载中...' : `第 ${pageNo} / ${resolvedTotalPages} 页`}</div>
           </div>
         </div>
 
@@ -277,6 +392,7 @@ const RiskTagsForm: React.FC = () => {
                 <th className="text-left px-3 py-2">名称</th>
                 <th className="text-left px-3 py-2">标签唯一标识（Slug）</th>
                 <th className="text-left px-3 py-2">描述</th>
+                <th className="text-left px-3 py-2">阈值</th>
                 <th className="text-left px-3 py-2">使用次数</th>
                 <th className="text-left px-3 py-2">启用</th>
                 <th className="text-left px-3 py-2">创建时间</th>
@@ -286,15 +402,26 @@ const RiskTagsForm: React.FC = () => {
             <tbody>
               {items.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-4 text-gray-500" colSpan={8}>
+                  <td className="px-3 py-4 text-gray-500" colSpan={9}>
                     {loading ? '加载中…' : '暂无数据'}
                   </td>
                 </tr>
               ) : (
                 items.map((t) => {
                   const editing = editingId === t.id;
+                  const selected = selectedId === t.id;
                   return (
-                    <tr key={t.id} className="border-t">
+                    <tr
+                      key={t.id}
+                      className={`border-t ${selected ? 'bg-blue-50' : ''} ${editing ? '' : 'hover:bg-gray-50 cursor-pointer'}`}
+                      onClick={
+                        editing
+                          ? undefined
+                          : () => {
+                              setSelectedId(t.id);
+                            }
+                      }
+                    >
                       <td className="px-3 py-2">{t.id}</td>
                       <td className="px-3 py-2">
                         {editing ? (
@@ -327,6 +454,21 @@ const RiskTagsForm: React.FC = () => {
                           />
                         ) : (
                           <span className="text-gray-700">{t.description ?? ''}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {editing ? (
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="1"
+                            className="rounded border px-2 py-1 w-20"
+                            value={editForm.threshold}
+                            onChange={(e) => setEditForm((p) => ({ ...p, threshold: parseFloat(e.target.value) }))}
+                          />
+                        ) : (
+                          t.threshold
                         )}
                       </td>
                       <td className="px-3 py-2">{t.usageCount}</td>
@@ -363,27 +505,16 @@ const RiskTagsForm: React.FC = () => {
                             >
                               取消
                             </button>
-                          </>
-                        ) : (
-                          <>
                             <button
                               type="button"
-                              className="rounded border px-3 py-1 mr-2 hover:bg-gray-50 disabled:opacity-60"
-                              disabled={submitting}
-                              onClick={() => startEdit(t)}
-                            >
-                              编辑
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded border border-red-300 text-red-700 px-3 py-1 hover:bg-red-50 disabled:opacity-60"
+                              className="rounded border border-red-300 text-red-700 px-3 py-1 ml-2 hover:bg-red-50 disabled:opacity-60"
                               disabled={submitting || t.system}
                               onClick={() => void handleDelete(t.id)}
                             >
                               删除
                             </button>
                           </>
-                        )}
+                        ) : null}
                       </td>
                     </tr>
                   );
@@ -396,22 +527,26 @@ const RiskTagsForm: React.FC = () => {
         <div className="flex items-center justify-between text-sm">
           <div className="text-gray-600">共 {items.length} 条（本页）</div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="rounded border px-3 py-1 disabled:opacity-60"
-              disabled={!canPrev || loading}
-              onClick={() => setPageNo((p) => Math.max(1, p - 1))}
-            >
-              上一页
-            </button>
-            <button
-              type="button"
-              className="rounded border px-3 py-1 disabled:opacity-60"
-              disabled={!canNext || loading}
-              onClick={() => setPageNo((p) => p + 1)}
-            >
-              下一页
-            </button>
+            {canPrev ? (
+              <button
+                type="button"
+                className="rounded border px-3 py-1 disabled:opacity-60"
+                disabled={loading}
+                onClick={() => setPageNo((p) => Math.max(1, p - 1))}
+              >
+                上一页
+              </button>
+            ) : null}
+            {canNext ? (
+              <button
+                type="button"
+                className="rounded border px-3 py-1 disabled:opacity-60"
+                disabled={loading}
+                onClick={() => setPageNo((p) => p + 1)}
+              >
+                下一页
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

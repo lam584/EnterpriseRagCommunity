@@ -1,6 +1,7 @@
-param(
+﻿param(
   [string]$HostName = "localhost",
   [int]$Port = 8099,
+  [string]$Protocol = "http",
   [int]$Threads = 200,
   [int]$RampSeconds = 30,
   [int]$Loops = 50,
@@ -31,18 +32,42 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 
 $jtl = Join-Path $outDir "results.jtl"
 $reportDir = Join-Path $outDir "html-report"
+$logFile = Join-Path $outDir "jmeter.log"
 
-& $JMeterBat `
-  -n `
-  -t $testPlan `
-  -l $jtl `
-  -e `
-  -o $reportDir `
-  -Jhost=$HostName `
-  -Jport=$Port `
-  -Jthreads=$Threads `
-  -JrampSeconds=$RampSeconds `
-  -Jloops=$Loops
+$jmeterArgs = @(
+  "-n",
+  "-t", $testPlan,
+  "-l", $jtl,
+  "-j", $logFile,
+  "-Jhost=$HostName",
+  "-Jport=$Port",
+  "-Jprotocol=$Protocol",
+  "-Jthreads=$Threads",
+  "-JrampSeconds=$RampSeconds",
+  "-Jloops=$Loops"
+)
+& $JMeterBat @jmeterArgs
+
+$exitCode = $LASTEXITCODE
+if ($exitCode -ne 0) {
+  throw "JMeter 执行失败(exit=$exitCode)，请查看日志：$logFile"
+}
+
+if (Test-Path $jtl) {
+  $lineCount = (Get-Content -Path $jtl -ErrorAction SilentlyContinue | Measure-Object -Line).Lines
+  if ($lineCount -gt 1) {
+    & $JMeterBat -g $jtl -o $reportDir
+  } else {
+    Write-Warning "JMeter 未产生采样数据（results.jtl 为空或仅有表头），跳过 HTML 报告生成：$jtl"
+    if (Test-Path $logFile) {
+      Write-Host "JMeter log (tail): $logFile"
+      Get-Content -Path $logFile -Tail 120 -ErrorAction SilentlyContinue
+    }
+  }
+} else {
+  Write-Warning "未找到 JMeter 结果文件，跳过 HTML 报告生成：$jtl"
+}
 
 Write-Host "JTL: $jtl"
 Write-Host "HTML: $reportDir"
+Write-Host "LOG: $logFile"

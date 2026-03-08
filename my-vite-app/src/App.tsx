@@ -35,6 +35,7 @@ import InteractRepliesPage from './pages/portal/interact/pages/InteractRepliesPa
 import InteractLikesPage from './pages/portal/interact/pages/InteractLikesPage';
 import InteractMentionsPage from './pages/portal/interact/pages/InteractMentionsPage';
 import InteractReportsPage from './pages/portal/interact/pages/InteractReportsPage';
+import InteractModerationPage from './pages/portal/interact/pages/InteractModerationPage';
 import InteractSecurityPage from './pages/portal/interact/pages/InteractSecurityPage';
 
 import AssistantChatPage from './pages/portal/assistant/pages/AssistantChatPage';
@@ -92,7 +93,6 @@ function AdminIndexRedirect() {
     if (hasPerm('admin_content', 'access')) return <Navigate to="content" replace />;
     if (hasPerm('admin_review', 'access')) return <Navigate to="review" replace />;
     if (hasPerm('admin_semantic', 'access')) return <Navigate to="semantic" replace />;
-    if (hasPerm('admin_semantic', 'access')) return <Navigate to="llm-config" replace />;
     if (hasPerm('admin_retrieval', 'access')) return <Navigate to="retrieval" replace />;
     if (hasPerm('admin_metrics', 'access')) return <Navigate to="metrics" replace />;
     if (hasPerm('admin_users', 'access')) return <Navigate to="users" replace />;
@@ -101,7 +101,7 @@ function AdminIndexRedirect() {
     return <Navigate to="/forbidden" replace />;
 }
 
-function AppRoutes() {
+export function AppRoutes() {
     useAuth();
     const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
     const [loading, setLoading] = useState(true);
@@ -219,6 +219,7 @@ function AppRoutes() {
                     </Route>
                     <Route element={<RequireAccess requiresAuth /> }>
                         <Route path="all" element={<InteractAllPage />} />
+                        <Route path="moderation" element={<InteractModerationPage />} />
                         <Route path="security" element={<InteractSecurityPage />} />
                     </Route>
                 </Route>

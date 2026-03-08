@@ -173,7 +173,14 @@ export function TaskTable({
               shownTasks.map((t, i) => (
                 <tr key={t.id} className="border-t">
                   {showIndex ? <td className="pl-2 pr-1 py-2 text-right tabular-nums w-12 whitespace-nowrap">{rowBase + i + 1}</td> : null}
-                  <td className="px-3 py-2">{formatType(t.type)}</td>
+                  <td className="px-3 py-2">
+                    <div>{formatType(t.type)}</div>
+                    {t.label ? (
+                      <div className="mt-0.5 text-[11px] text-gray-500 font-mono max-w-[360px] truncate" title={t.label}>
+                        {t.label}
+                      </div>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2 font-mono text-xs">{t.status}</td>
                   <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{fmtHmsTs(t.finishedAt || t.createdAt)}</td>
                   <td className="px-3 py-2 font-mono text-xs break-all">{formatModelText(t)}</td>

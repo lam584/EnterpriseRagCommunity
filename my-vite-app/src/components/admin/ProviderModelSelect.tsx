@@ -60,7 +60,7 @@ function parseProviderModelValue(value: string): ProviderModelValue | null {
       return { providerId: p, model: m };
     }
     const idx = v.indexOf('|');
-    if (idx > 0) {
+    if (idx >= 0) {
       const p = dec(v.slice(0, idx)).trim();
       const m = dec(v.slice(idx + 1)).trim();
       if (!p) return null;
@@ -139,7 +139,24 @@ function buildOptions(params: {
     uniq.set(row.value, row);
   };
 
-  const currentValue = encodeProviderModelValue(current.providerId, current.model);
+  const curProviderId = trimStr(current.providerId);
+  const curModel = trimStr(current.model);
+  const isModelOnly = Boolean(!curProviderId && curModel);
+  const isProviderOnly = Boolean(curProviderId && !curModel);
+  const providerExists = curProviderId ? Boolean(findProviderById(providers, curProviderId)) : true;
+
+  const normalizedCurrent: ProviderModelValue = (() => {
+    if (isModelOnly) return { providerId: '', model: '' };
+    if (isProviderOnly) {
+      if (!includeProviderOnlyOptions) return { providerId: '', model: '' };
+      if (mode === 'embedding' && !providerExists) return { providerId: '', model: '' };
+      return { providerId: curProviderId, model: '' };
+    }
+    if (curProviderId && !providerExists && mode === 'embedding') return { providerId: '', model: '' };
+    return { providerId: curProviderId, model: curModel };
+  })();
+
+  const currentValue = encodeProviderModelValue(normalizedCurrent.providerId, normalizedCurrent.model);
 
   if (includeModelOnlyOptions && mode === 'chat') {
     const globalModelsRaw = chatModelsMap.get(trimStr(activeProviderId)) ?? [];
@@ -156,9 +173,10 @@ function buildOptions(params: {
     if (!pid) continue;
     const pLabel = `${formatProviderLabel(p)}${providerDisabledSuffix(p)}`;
     if (includeProviderOnlyOptions) {
+      const providerOnlyLabel = mode === 'embedding' ? '自动（使用该Provider默认嵌入模型）' : '自动（模型跟随全局）';
       add({
         value: encodeProviderModelValue(pid, ''),
-        label: `${pLabel}：自动（模型跟随全局）`,
+        label: `${pLabel}：${providerOnlyLabel}`,
         sortKey: `1|${pLabel}`
       });
     }
@@ -200,14 +218,17 @@ function buildOptions(params: {
   }
 
   if (currentValue && !uniq.has(currentValue)) {
-    const curProvider = current.providerId ? findProviderById(providers, current.providerId) : undefined;
-    const curProviderLabel = curProvider ? `${formatProviderLabel(curProvider)}${providerDisabledSuffix(curProvider)}` : trimStr(current.providerId);
-    const label = current.providerId
-      ? current.model
-        ? `${curProviderLabel || '—'}：${current.model}`
-        : `${curProviderLabel || '—'}：自动（模型跟随全局）`
-      : current.model
-        ? `全局（${globalProviderLabel}）：${current.model}`
+    const curProvider = normalizedCurrent.providerId ? findProviderById(providers, normalizedCurrent.providerId) : undefined;
+    const curProviderLabel = curProvider
+      ? `${formatProviderLabel(curProvider)}${providerDisabledSuffix(curProvider)}`
+      : trimStr(normalizedCurrent.providerId);
+    const providerOnlyLabel = mode === 'embedding' ? '自动（使用该Provider默认嵌入模型）' : '自动（模型跟随全局）';
+    const label = normalizedCurrent.providerId
+      ? normalizedCurrent.model
+        ? `${curProviderLabel || '—'}：${normalizedCurrent.model}`
+        : `${curProviderLabel || '—'}：${providerOnlyLabel}`
+      : normalizedCurrent.model
+        ? `全局（${globalProviderLabel}）：${normalizedCurrent.model}`
         : autoLabel;
     add({ value: currentValue, label, sortKey: `-1|${label}` });
   }

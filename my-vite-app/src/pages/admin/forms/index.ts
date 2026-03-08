@@ -10,15 +10,18 @@ export const formsLoaders: Partial<Record<string, FormLoader>> = {
   'board': () => import('./content/board'),
   'board-management': () => import('./content/BoardManagement'),
   'post': () => import('./content/post'),
+  'post-files': () => import('./content/post-files'),
   'comment': () => import('./content/comment'),
   'tags': () => import('./content/tags'),
+  'formats': () => import('./content/formats'),
 
   'queue': () => import('./review/queue'),
   'rules': () => import('./review/rules'),
   'embed': () => import('./review/embed'),
   'llm': () => import('./review/llm'),
   'fallback': () => import('./review/fallback'),
-  'logs': () => import('./review/logs'),
+  'chunk-review': () => import('./review/chunk-review'),
+  'logs': () => import('./review/review-trace'),
   'risk-tags': () => import('./review/risk-tags'),
 
   'title-gen': () => import('./semantic/title-gen'),
@@ -39,6 +42,7 @@ export const formsLoaders: Partial<Record<string, FormLoader>> = {
   'label-quality': () => import('./metrics/label-quality'),
   'global-logs': () => import('./metrics/global-logs'),
   'cost': () => import('./metrics/cost'),
+  'circuit-breaker': () => import('./metrics/circuit-breaker'),
 
   'user-role': () => import('./users/user-role'),
   'roles': () => import('./users/roles'),
@@ -47,6 +51,8 @@ export const formsLoaders: Partial<Record<string, FormLoader>> = {
 
   'ai-providers': () => import('./ai/providers'),
   'portal-chat': () => import('./ai/portal-chat'),
+  'chat-context': () => import('./ai/chat-context'),
+  'image-storage': () => import('./ai/image-storage'),
   'llm-routing-config': () => import('./metrics/llm-routing-config'),
 };
 

@@ -7,16 +7,19 @@ type Anchor = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 type FloatingWindowProps = {
   storageKey: string;
   title: string;
+  titleRight?: ReactNode | ((collapsed: boolean) => ReactNode);
   children: ReactNode;
   defaultRect?: Partial<Rect>;
   defaultAnchor?: Anchor;
   snapAnchorOnMount?: boolean;
   anchorMargin?: number;
   collapsedWidth?: number;
+  initialCollapsed?: boolean;
   defaultCollapsed?: boolean;
   minWidth?: number;
   minHeight?: number;
   zIndexClassName?: string;
+  onClose?: () => void;
 };
 
 function clamp(n: number, min: number, max: number): number {
@@ -53,16 +56,19 @@ export default function FloatingWindow(props: FloatingWindowProps) {
   const {
     storageKey,
     title,
+    titleRight,
     children,
     defaultRect,
     defaultAnchor,
     snapAnchorOnMount,
     anchorMargin = 16,
     collapsedWidth,
+    initialCollapsed,
     defaultCollapsed,
     minWidth = 320,
     minHeight = 240,
     zIndexClassName = 'z-50',
+    onClose,
   } = props;
 
   const headerHeight = 44;
@@ -103,7 +109,12 @@ export default function FloatingWindow(props: FloatingWindowProps) {
 
   useEffect(() => {
     const saved = safeParseJson<{ rect?: Rect; collapsed?: boolean; expandedRect?: Rect }>(localStorage.getItem(storageKey));
-    const nextCollapsed = typeof saved?.collapsed === 'boolean' ? saved.collapsed : Boolean(defaultCollapsed);
+    const nextCollapsed =
+      typeof initialCollapsed === 'boolean'
+        ? initialCollapsed
+        : typeof saved?.collapsed === 'boolean'
+          ? saved.collapsed
+          : Boolean(defaultCollapsed);
     const mergedRect = { ...initialRect, ...(saved?.rect ?? {}) };
 
     if (saved?.expandedRect) expandedRectRef.current = saved.expandedRect;
@@ -127,7 +138,7 @@ export default function FloatingWindow(props: FloatingWindowProps) {
 
     setRect(mergedRect);
     setCollapsed(nextCollapsed);
-  }, [anchorMargin, defaultAnchor, defaultCollapsed, headerHeight, initialRect, snapAnchorOnMount, storageKey]);
+  }, [anchorMargin, defaultAnchor, defaultCollapsed, headerHeight, initialCollapsed, initialRect, snapAnchorOnMount, storageKey]);
 
   useEffect(() => {
     try {
@@ -239,6 +250,7 @@ export default function FloatingWindow(props: FloatingWindowProps) {
   }, [collapsed, headerHeight, minHeight, minWidth]);
 
   const height = collapsed ? headerHeight : rect.height;
+  const resolvedTitleRight = typeof titleRight === 'function' ? titleRight(collapsed) : titleRight;
 
   return (
     <div
@@ -325,8 +337,24 @@ export default function FloatingWindow(props: FloatingWindowProps) {
           draggingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, startRect: rect };
         }}
       >
-        <div className="text-sm font-medium text-gray-900 truncate">{title}</div>
+        <div className="min-w-0 flex items-center gap-2">
+          <div className="text-sm font-medium text-gray-900 truncate">{title}</div>
+          {resolvedTitleRight ? (
+            <div className="shrink-0" data-no-drag>
+              {resolvedTitleRight}
+            </div>
+          ) : null}
+        </div>
         <div className="flex items-center gap-2" data-no-drag>
+          {onClose ? (
+            <button
+              type="button"
+              className="text-xs px-2 py-1 rounded-md border border-gray-300 bg-white hover:bg-gray-50"
+              onClick={() => onClose()}
+            >
+              关闭
+            </button>
+          ) : null}
           <button
             type="button"
             className="text-xs px-2 py-1 rounded-md border border-gray-300 bg-white hover:bg-gray-50"

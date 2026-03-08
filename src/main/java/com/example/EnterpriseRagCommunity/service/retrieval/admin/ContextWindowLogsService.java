@@ -72,7 +72,10 @@ public class ContextWindowLogsService {
         dto.setEventId(e.getEventId());
         dto.setQueryText(queryText == null ? null : queryText.trim());
         dto.setPolicy(e.getPolicy());
+        dto.setBudgetTokens(e.getBudgetTokens());
         dto.setTotalTokens(e.getTotalTokens());
+        dto.setSelectedItems(e.getSelectedItems());
+        dto.setDroppedItems(e.getDroppedItems());
         dto.setChunkIds(castMap(e.getChunkIds()));
         dto.setCreatedAt(e.getCreatedAt());
         return dto;
@@ -83,7 +86,10 @@ public class ContextWindowLogsService {
         dto.setId(e.getId());
         dto.setEventId(e.getEventId());
         dto.setPolicy(e.getPolicy());
+        dto.setBudgetTokens(e.getBudgetTokens());
         dto.setTotalTokens(e.getTotalTokens());
+        dto.setSelectedItems(e.getSelectedItems());
+        dto.setDroppedItems(e.getDroppedItems());
         dto.setItems(countItems(e.getChunkIds()));
         dto.setQueryText(queryText);
         dto.setCreatedAt(e.getCreatedAt());
@@ -107,4 +113,3 @@ public class ContextWindowLogsService {
         return null;
     }
 }
-

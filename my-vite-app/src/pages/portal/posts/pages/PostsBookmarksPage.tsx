@@ -111,7 +111,8 @@ export default function PostsBookmarksPage() {
               type="button"
               className="text-red-600 hover:underline"
               onClick={async () => {
-                const ok = window.confirm(`确定取消收藏《${p.title}》吗？`);
+                const title = p.title && p.title.trim().length ? p.title : '（无标题）';
+                const ok = window.confirm(`确定取消收藏《${title}》吗？`);
                 if (!ok) return;
                 await onCancelBookmark(p);
               }}

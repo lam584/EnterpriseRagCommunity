@@ -103,7 +103,7 @@ export interface RequestOptions {
 function buildQueryString(query: Record<string, unknown>): string {
   const params = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '' && value !== 'ALL') {
+    if (value !== undefined && value !== null && value !== '') {
       params.append(key, String(value));
     }
   });
@@ -157,7 +157,7 @@ export async function createPost(payload: PostCreateDTO): Promise<PostDTO> {
     ...(payload.tags ? { tags: payload.tags } : {}),
   };
 
-  const res = await fetch(apiUrl('/api/posts'), {
+  const res = await fetch(apiUrl('api/posts'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -188,7 +188,7 @@ export async function createPost(payload: PostCreateDTO): Promise<PostDTO> {
 
 export async function listPosts(options: RequestOptions = {}): Promise<PostDTO[]> {
   // Prefer backend pagination shape: Page<PostDTO> with { content: [...] }
-  const res = await fetch(apiUrl('/api/posts?page=1&pageSize=25'), {
+  const res = await fetch(apiUrl('api/posts?page=1&pageSize=25'), {
     method: 'GET',
     credentials: 'include',
     signal: options.signal,
@@ -220,7 +220,7 @@ export async function searchPosts(
     pageSize: query.pageSize ?? 25,
   });
 
-  const res = await fetch(apiUrl(`/api/posts?${qs}`), {
+  const res = await fetch(apiUrl(`api/posts?${qs}`), {
     method: 'GET',
     credentials: 'include',
     signal: options.signal,
@@ -251,7 +251,7 @@ export async function searchAdminPosts(query: PostSearchQueryDTO = {}, options: 
     pageSize: query.pageSize ?? 25,
   });
 
-  const res = await fetch(apiUrl(`/api/admin/posts?${qs}`), {
+  const res = await fetch(apiUrl(`api/admin/posts?${qs}`), {
     method: 'GET',
     credentials: 'include',
     signal: options.signal,
@@ -277,7 +277,7 @@ export async function listPostsPage(query: PostSearchQueryDTO = {}): Promise<Spr
     pageSize: query.pageSize ?? 20,
   });
 
-  const res = await fetch(apiUrl(`/api/posts?${qs}`), {
+  const res = await fetch(apiUrl(`api/posts?${qs}`), {
     method: 'GET',
     credentials: 'include',
   });
@@ -320,7 +320,7 @@ export async function listMyPostsPage(query: Omit<PostSearchQueryDTO, 'authorId'
     pageSize: query.pageSize ?? 20,
   });
 
-  const res = await fetch(apiUrl(`/api/posts/mine?${qs}`), {
+  const res = await fetch(apiUrl(`api/posts/mine?${qs}`), {
     method: 'GET',
     credentials: 'include',
   });
@@ -358,7 +358,7 @@ export async function listMyBookmarkedPostsPage(
     pageSize: query.pageSize ?? 20,
   });
 
-  const res = await fetch(apiUrl(`/api/posts/bookmarks?${qs}`), {
+  const res = await fetch(apiUrl(`api/posts/bookmarks?${qs}`), {
     method: 'GET',
     credentials: 'include',
   });
@@ -400,7 +400,7 @@ export async function listBookmarkedPostsPage(
 
 export async function updatePostStatus(id: number, status: PostStatus): Promise<PostDTO> {
   const csrfToken = await getCsrfToken();
-  const res = await fetch(apiUrl(`/api/posts/${id}/status`), {
+  const res = await fetch(apiUrl(`api/posts/${id}/status`), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -425,7 +425,7 @@ export async function updatePost(id: number, payload: PostUpdateDTO): Promise<Po
     ...(payload.tags ? { tags: payload.tags } : {}),
   };
 
-  const res = await fetch(apiUrl(`/api/posts/${id}`), {
+  const res = await fetch(apiUrl(`api/posts/${id}`), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -470,7 +470,7 @@ export async function getPost(id: number): Promise<PostDTO> {
 
 export async function deletePost(id: number): Promise<void> {
   const csrfToken = await getCsrfToken();
-  const res = await fetch(apiUrl(`/api/posts/${id}`), {
+  const res = await fetch(apiUrl(`api/posts/${id}`), {
     method: 'DELETE',
     headers: {
       'X-XSRF-TOKEN': csrfToken,
@@ -493,7 +493,7 @@ export type PostToggleResponse = {
 
 export async function togglePostLike(postId: number): Promise<PostToggleResponse | null> {
   const csrfToken = await getCsrfToken();
-  const res = await fetch(apiUrl(`/api/posts/${postId}/like`), {
+  const res = await fetch(apiUrl(`api/posts/${postId}/like`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -511,7 +511,7 @@ export async function togglePostLike(postId: number): Promise<PostToggleResponse
 
 export async function togglePostFavorite(postId: number): Promise<PostToggleResponse | null> {
   const csrfToken = await getCsrfToken();
-  const res = await fetch(apiUrl(`/api/posts/${postId}/favorite`), {
+  const res = await fetch(apiUrl(`api/posts/${postId}/favorite`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -528,7 +528,7 @@ export async function togglePostFavorite(postId: number): Promise<PostToggleResp
 
 export async function deletePostFavorite(postId: number): Promise<PostToggleResponse | null> {
   const csrfToken = await getCsrfToken();
-  const res = await fetch(apiUrl(`/api/posts/${postId}/favorite`), {
+  const res = await fetch(apiUrl(`api/posts/${postId}/favorite`), {
     method: 'DELETE',
     headers: {
       'Content-Type': 'application/json',

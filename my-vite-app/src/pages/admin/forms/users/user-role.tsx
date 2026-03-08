@@ -6,7 +6,7 @@ import { Input } from '../../../../components/ui/input';
 import { Label } from '../../../../components/ui/label';
 import { Checkbox } from '../../../../components/ui/checkbox';
 import { Badge } from '../../../../components/ui/badge';
-import { FaEdit, FaTrash, FaUserTag, FaPlus, FaSearch } from 'react-icons/fa';
+import { FaEdit, FaTrash, FaUserTag, FaPlus, FaSearch, FaBan, FaUnlock } from 'react-icons/fa';
 import { listRoleSummaries, RoleSummaryDTO } from '../../../../services/rolePermissionsService';
 import { getRegistrationSettings } from '../../../../services/adminSettingsService';
 import { useAdminStepUp } from '../../../../components/admin/useAdminStepUp';
@@ -36,6 +36,7 @@ export default function UserManagementPage() {
     });
 
     const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+    const [banLoadingIds, setBanLoadingIds] = useState<Set<number>>(new Set());
 
     // Modals state
     const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -270,15 +271,26 @@ export default function UserManagementPage() {
     const handleAssignRoles = async () => {
         if (!targetUserId) return;
         const reason = window.prompt('请输入变更原因（用于审计，可留空）') ?? '';
+        const normalizedRoleIds = Array.from(new Set(selectedRoleIds)).filter(id => Number.isFinite(id) && id > 0);
+        if (normalizedRoleIds.length !== selectedRoleIds.length) {
+            alert('角色分配失败：包含非法角色ID');
+            return;
+        }
+        const availableIds = new Set(availableRoles.map(r => r.roleId));
+        const unknown = normalizedRoleIds.filter(id => !availableIds.has(id));
+        if (unknown.length > 0) {
+            alert(`角色分配失败：选择的角色已不存在（${unknown.join(', ')}）`);
+            return;
+        }
         try {
-            await userAccessService.assignRoles(targetUserId, selectedRoleIds, { adminReason: reason.trim() || undefined });
+            await userAccessService.assignRoles(targetUserId, normalizedRoleIds, { adminReason: reason.trim() || undefined });
             setIsRolesOpen(false);
             alert('角色分配成功');
         } catch (error) {
             if (isAdminStepUpRequired(error)) {
                 const r = await ensureAdminStepUp();
                 if (r.ensured) {
-                    await userAccessService.assignRoles(targetUserId, selectedRoleIds, { adminReason: reason.trim() || undefined });
+                    await userAccessService.assignRoles(targetUserId, normalizedRoleIds, { adminReason: reason.trim() || undefined });
                     setIsRolesOpen(false);
                     alert('角色分配成功');
                     return;
@@ -309,6 +321,88 @@ export default function UserManagementPage() {
         const d = new Date(value);
         if (Number.isNaN(d.getTime())) return String(value);
         return d.toLocaleString('zh-CN');
+    };
+
+    const banInfoOf = (user: UserDTO): { active: boolean; reason?: string; at?: string } => {
+        const meta = user?.metadata;
+        if (!meta || typeof meta !== 'object') return { active: false };
+        const ban = (meta as Record<string, unknown>)['ban'];
+        if (!ban || typeof ban !== 'object') return { active: false };
+        const b = ban as Record<string, unknown>;
+        const active = b['active'] === true;
+        return {
+            active,
+            reason: typeof b['reason'] === 'string' ? b['reason'] : undefined,
+            at: typeof b['bannedAt'] === 'string' ? b['bannedAt'] : undefined,
+        };
+    };
+
+    const handleBan = async (user: UserDTO) => {
+        if (!user?.id) return;
+        if (banLoadingIds.has(user.id)) return;
+        const reason = window.prompt('请输入封禁原因（必填）：');
+        if (reason === null) return;
+        const reasonTrim = reason.trim();
+        if (!reasonTrim) {
+            alert('必须填写封禁原因');
+            return;
+        }
+        const ok = window.confirm(`确认封禁用户 ${user.username}（ID=${user.id}）？`);
+        if (!ok) return;
+
+        try {
+            setBanLoadingIds(prev => {
+                const next = new Set(prev);
+                next.add(user.id);
+                return next;
+            });
+            await userAccessService.banUser(user.id, reasonTrim);
+            await fetchUsers();
+            alert('已封禁用户');
+        } catch (e) {
+            console.error(e);
+            alert(`封禁失败：${e instanceof Error ? e.message : String(e)}`);
+        } finally {
+            setBanLoadingIds(prev => {
+                const next = new Set(prev);
+                next.delete(user.id);
+                return next;
+            });
+        }
+    };
+
+    const handleUnban = async (user: UserDTO) => {
+        if (!user?.id) return;
+        if (banLoadingIds.has(user.id)) return;
+        const reason = window.prompt('请输入解封原因（必填）：');
+        if (reason === null) return;
+        const reasonTrim = reason.trim();
+        if (!reasonTrim) {
+            alert('必须填写解封原因');
+            return;
+        }
+        const ok = window.confirm(`确认解封用户 ${user.username}（ID=${user.id}）？`);
+        if (!ok) return;
+
+        try {
+            setBanLoadingIds(prev => {
+                const next = new Set(prev);
+                next.add(user.id);
+                return next;
+            });
+            await userAccessService.unbanUser(user.id, reasonTrim);
+            await fetchUsers();
+            alert('已解封用户');
+        } catch (e) {
+            console.error(e);
+            alert(`解封失败：${e instanceof Error ? e.message : String(e)}`);
+        } finally {
+            setBanLoadingIds(prev => {
+                const next = new Set(prev);
+                next.delete(user.id);
+                return next;
+            });
+        }
     };
 
     return (
@@ -437,6 +531,7 @@ export default function UserManagementPage() {
                         <th className="p-4 font-medium">用户名</th>
                         <th className="p-4 font-medium">邮箱</th>
                         <th className="p-4 font-medium">状态</th>
+                        <th className="p-4 font-medium">封禁信息</th>
                         <th className="p-4 font-medium">上次登录</th>
                         <th className="p-4 font-medium">是否删除</th>
                         <th className="p-4 font-medium">创建时间</th>
@@ -445,8 +540,15 @@ export default function UserManagementPage() {
                     </thead>
                     <tbody>
                     {loading ? (
-                        <tr><td colSpan={8} className="p-4 text-center">加载中…</td></tr>
+                        <tr><td colSpan={9} className="p-4 text-center">加载中…</td></tr>
                     ) : users.map(user => (
+                        (() => {
+                            const ban = banInfoOf(user);
+                            const banActive = ban.active || user.status === 'DISABLED';
+                            const banText = banActive
+                                ? `${ban.at ? formatDateTimeZhCn(ban.at) : '—'}${ban.reason ? ` · ${ban.reason}` : ''}`
+                                : '—';
+                            return (
                         <tr key={user.id} className="border-b hover:bg-gray-50">
                             <td className="p-4">{user.id}</td>
                             <td className="p-4 font-medium">{user.username}</td>
@@ -455,6 +557,16 @@ export default function UserManagementPage() {
                                 <Badge variant={user.status === 'ACTIVE' ? 'default' : 'secondary'}>
                                     {statusText[user.status] ?? user.status}
                                 </Badge>
+                            </td>
+                            <td className="p-4">
+                                {banActive ? (
+                                    <div className="space-y-1">
+                                        <Badge className="bg-red-100 text-red-800">封禁中</Badge>
+                                        <div className="text-xs text-gray-600 break-words">{banText}</div>
+                                    </div>
+                                ) : (
+                                    <span className="text-gray-600">—</span>
+                                )}
                             </td>
                             <td className="p-4">{formatDateTimeZhCn(user.lastLoginAt)}</td>
                             <td className="p-4">
@@ -471,6 +583,27 @@ export default function UserManagementPage() {
                                 <Button size="sm" variant="outline" onClick={() => openRolesModal(user)} title="分配角色">
                                     <FaUserTag className="h-4 w-4" />
                                 </Button>
+                                {banActive ? (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleUnban(user)}
+                                        disabled={banLoadingIds.has(user.id)}
+                                        title="解封用户"
+                                    >
+                                        <FaUnlock className="h-4 w-4" />
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleBan(user)}
+                                        disabled={banLoadingIds.has(user.id)}
+                                        title="封禁用户"
+                                    >
+                                        <FaBan className="h-4 w-4" />
+                                    </Button>
+                                )}
                                 <Button size="sm" variant="outline" onClick={() => {
                                     setCurrentUser(user);
                                     setIsEditOpen(true);
@@ -488,6 +621,8 @@ export default function UserManagementPage() {
                                 </Button>
                             </td>
                         </tr>
+                            );
+                        })()
                     ))}
                     </tbody>
                 </table>

@@ -65,7 +65,8 @@ export async function login(email: string, password: string, csrfToken: string):
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
-    const message = (errorData && (errorData as any).message) || '登录失败';
+    const msg = errorData && typeof errorData === 'object' ? (errorData as any).message : undefined;
+    const message = typeof msg === 'string' ? msg : '登录失败';
     const err = new Error(message) as Error & {
       code?: string;
       email?: string;
@@ -269,6 +270,19 @@ export async function register(registerData: RegisterRequest): Promise<void> {
       throw new Error(api.message || '注册失败');
     }
   }
+}
+
+export async function getRegistrationStatus(): Promise<{ registrationEnabled: boolean }> {
+  const res = await fetch('/api/auth/registration-status', {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    const msg = typeof data?.message === 'string' ? data.message : undefined;
+    throw new Error(msg || '获取注册状态失败');
+  }
+  return { registrationEnabled: data?.registrationEnabled !== false };
 }
 
 export async function registerAndGetStatus(registerData: RegisterRequest): Promise<{ message?: string; status?: string }> {

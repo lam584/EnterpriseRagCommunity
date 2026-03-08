@@ -37,6 +37,8 @@ public interface CommentsRepository extends JpaRepository<CommentsEntity, Long>,
 
     long countByPostIdAndStatusAndIsDeletedFalse(Long postId, CommentStatus status);
 
+        long countByAuthorIdAndIsDeletedFalseAndCreatedAtAfter(Long authorId, LocalDateTime createdAt);
+
     // Used by user hard-delete pre-checks (avoid FK constraint errors)
     long countByAuthorId(Long authorId);
 }

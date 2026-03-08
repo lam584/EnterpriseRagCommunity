@@ -9,7 +9,7 @@ export function isAbsoluteUrl(url: string): boolean {
 export function resolveAssetUrl(input: string | undefined | null): string | undefined {
   if (!input) return undefined;
   const raw = String(input);
-  if (!raw) return raw;
+  if (!raw) return undefined;
 
   // Keep data/blob urls as-is.
   if (raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
@@ -17,7 +17,10 @@ export function resolveAssetUrl(input: string | undefined | null): string | unde
   // Already absolute.
   if (isAbsoluteUrl(raw)) return raw;
 
-  const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+  const apiBase =
+    (globalThis as unknown as { __VITE_API_BASE_URL__?: unknown }).__VITE_API_BASE_URL__ ??
+    import.meta.env.VITE_API_BASE_URL ??
+    '';
 
   // Markdown commonly stores uploads as `/uploads/...`
   if (raw.startsWith('/uploads/')) {

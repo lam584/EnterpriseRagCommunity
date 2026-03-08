@@ -1,5 +1,5 @@
 import { JSX, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { PostDTO } from '../../../../services/postService';
 import { togglePostFavorite, togglePostLike } from '../../../../services/postService';
 import { formatPostTime, getPostCoverThumbUrl } from '../../../../utils/postMeta';
@@ -72,11 +72,13 @@ function getPostStatusMeta(status?: PostDTO['status']): { label: string; classNa
 
 export default function PostCard({ post, showStatus, renderActions }: PostCardProps) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const authorLabel = post.authorName || (post.authorId ? `用户#${post.authorId}` : '匿名');
   const authorAvatarUrl = resolveAssetUrl(post.authorAvatarUrl);
   const timeLabel = formatPostTime(post);
   const statusMeta = getPostStatusMeta(post.status);
+  const titleText = (post.title ?? '').trim();
 
   const cover = getPostCoverThumbUrl(post);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export default function PostCard({ post, showStatus, renderActions }: PostCardPr
   const commentCount = typeof post.commentCount === 'number' ? post.commentCount : 0;
 
   const goDetail = () => {
-    navigate(`/portal/posts/detail/${post.id}`);
+    navigate(`/portal/posts/detail/${post.id}`, { state: { from: location } });
   };
 
   const goAuthorProfile = (e?: { stopPropagation: () => void }) => {
@@ -179,19 +181,30 @@ export default function PostCard({ post, showStatus, renderActions }: PostCardPr
             {post.boardName ? <span className="ml-auto text-gray-400 truncate">#{post.boardName}</span> : null}
           </div>
 
-          <button type="button" className="mt-1 block text-left w-full" onClick={goDetail}>
-            <div className="flex items-center justify-between gap-2">
-              <h4 className="min-w-0 text-base font-semibold text-gray-900 truncate">{post.title}</h4>
-              {showStatus && statusMeta ? (
-                <span
-                  className={`shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}
-                  title={`状态：${statusMeta.label}`}
-                >
-                  {statusMeta.label}
-                </span>
-              ) : null}
+          {titleText ? (
+            <button type="button" className="mt-1 block text-left w-full" onClick={goDetail}>
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="min-w-0 text-base font-semibold text-gray-900 truncate">{titleText}</h4>
+                {showStatus && statusMeta ? (
+                  <span
+                    className={`shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}
+                    title={`状态：${statusMeta.label}`}
+                  >
+                    {statusMeta.label}
+                  </span>
+                ) : null}
+              </div>
+            </button>
+          ) : showStatus && statusMeta ? (
+            <div className="mt-1 flex justify-end">
+              <span
+                className={`shrink-0 inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${statusMeta.className}`}
+                title={`状态：${statusMeta.label}`}
+              >
+                {statusMeta.label}
+              </span>
             </div>
-          </button>
+          ) : null}
 
           <div
             className="mt-3"

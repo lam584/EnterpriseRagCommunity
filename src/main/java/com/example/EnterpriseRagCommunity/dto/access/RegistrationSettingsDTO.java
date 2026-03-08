@@ -7,5 +7,6 @@ import lombok.Data;
 public class RegistrationSettingsDTO {
     @NotNull
     private Long defaultRegisterRoleId;
-}
 
+    private Boolean registrationEnabled;
+}

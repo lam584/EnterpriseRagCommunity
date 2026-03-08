@@ -76,8 +76,6 @@ public class LlmRoutingAdminConfigService {
             t.setWeight(m.getWeight());
             t.setPriority(m.getPriority());
             t.setSortIndex(m.getSortIndex());
-            t.setMaxConcurrent(m.getMaxConcurrent());
-            t.setMinDelayMs(m.getMinDelayMs());
             t.setQps(m.getQps());
             t.setPriceConfigId(m.getPriceConfigId());
             targets.add(t);
@@ -194,8 +192,6 @@ public class LlmRoutingAdminConfigService {
                 e.setWeight(t.getWeight() == null ? 0 : t.getWeight());
                 e.setPriority(t.getPriority() == null ? 0 : t.getPriority());
                 e.setSortIndex(t.getSortIndex() == null ? 0 : t.getSortIndex());
-                e.setMaxConcurrent(normalizePositiveIntOrNull(t.getMaxConcurrent(), 1, 10_000));
-                e.setMinDelayMs(normalizePositiveIntOrNull(t.getMinDelayMs(), 1, 60_000));
                 e.setQps(normalizePositiveDoubleOrNull(t.getQps(), 0.001, 100_000.0));
                 e.setPriceConfigId(t.getPriceConfigId());
                 e.setUpdatedAt(now);
@@ -212,6 +208,8 @@ public class LlmRoutingAdminConfigService {
                 llmModelRepository.delete(e);
             }
         }
+
+        llmRoutingService.resetRuntimeState();
 
         return getAdminConfig();
     }

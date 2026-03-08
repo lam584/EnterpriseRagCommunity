@@ -4,6 +4,8 @@ public enum GenerationJobType {
     TITLE,
     TAGS,
     SUMMARY,
-    TRANSLATE
+    TRANSLATE,
+    SUGGESTION,
+    POST_COMPOSE
 }
 

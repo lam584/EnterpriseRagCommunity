@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { SpringPage } from '../../../../types/page';
 import { portalSearch, type PortalSearchHitDTO } from '../../../../services/portalSearchService';
 
 export default function DiscoverSearchPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const qFromUrl = searchParams.get('q') ?? '';
 
@@ -59,7 +60,7 @@ export default function DiscoverSearchPage() {
     <div className="space-y-4">
       <div>
         <h3 className="text-lg font-semibold">搜索</h3>
-        <p className="text-gray-600 text-sm">向量检索帖子与评论</p>
+        <p className="text-gray-600 text-sm">向量检索帖子、评论与附件文件</p>
       </div>
 
       <form
@@ -77,7 +78,7 @@ export default function DiscoverSearchPage() {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="搜索帖子 / 评论..."
+          placeholder="搜索帖子 / 评论 / 文件..."
           className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <button
@@ -115,20 +116,21 @@ export default function DiscoverSearchPage() {
         {(data?.content ?? []).map((hit, idx) => {
           const type = (hit.type ?? '').toUpperCase();
           const isComment = type === 'COMMENT';
-          const title = String(hit.title ?? '').trim() || (isComment ? '命中评论' : '命中帖子');
+          const isFile = type === 'FILE';
+          const title = String(hit.title ?? '').trim() || (isFile ? '命中文件' : isComment ? '命中评论' : '命中帖子');
           const snippet = String(hit.snippet ?? '').trim();
           const when = hit.createdAt ? new Date(hit.createdAt).toLocaleString() : '';
           const score = typeof hit.score === 'number' ? hit.score : null;
 
           return (
             <button
-              key={`${type}-${hit.postId ?? 'p'}-${hit.commentId ?? 'c'}-${idx}`}
+              key={`${type}-${hit.postId ?? 'p'}-${hit.commentId ?? 'c'}-${hit.fileAssetId ?? 'f'}-${idx}`}
               type="button"
               className="w-full text-left rounded-lg border border-gray-200 bg-white p-3 hover:bg-gray-50"
               onClick={() => {
                 const url = String(hit.url ?? '').trim();
-                if (url) navigate(url);
-                else if (hit.postId) navigate(`/portal/posts/detail/${hit.postId}`);
+                if (url) navigate(url, { state: { from: location } });
+                else if (hit.postId) navigate(`/portal/posts/detail/${hit.postId}`, { state: { from: location } });
               }}
             >
               <div className="flex items-start justify-between gap-3">
@@ -136,10 +138,14 @@ export default function DiscoverSearchPage() {
                   <div className="flex items-center gap-2 min-w-0">
                     <span
                       className={`shrink-0 rounded px-2 py-0.5 text-xs ${
-                        isComment ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                        isFile
+                          ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                          : isComment
+                            ? 'bg-green-50 text-green-700 border border-green-200'
+                            : 'bg-blue-50 text-blue-700 border border-blue-200'
                       }`}
                     >
-                      {isComment ? '评论' : '帖子'}
+                      {isFile ? '文件' : isComment ? '评论' : '帖子'}
                     </span>
                     <div className="font-medium text-gray-900 truncate">{title}</div>
                   </div>

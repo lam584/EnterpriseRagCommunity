@@ -10,5 +10,5 @@ import java.util.List;
 
 @Repository
 public interface AccessLogsRepository extends JpaRepository<AccessLogsEntity, Long>, JpaSpecificationExecutor<AccessLogsEntity> {
-    List<AccessLogsEntity> findTop1000ByCreatedAtBeforeOrderByCreatedAtAscIdAsc(LocalDateTime createdAt);
+    List<AccessLogsEntity> findTop1000ByArchivedAtIsNullAndCreatedAtBeforeOrderByCreatedAtAscIdAsc(LocalDateTime createdAt);
 }

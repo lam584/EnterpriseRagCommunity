@@ -8,6 +8,7 @@ import com.example.EnterpriseRagCommunity.repository.ai.LlmPriceConfigRepository
 import com.example.EnterpriseRagCommunity.repository.monitor.LlmLoadTestRunDetailRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.LlmLoadTestRunHistoryRepository;
 import com.example.EnterpriseRagCommunity.service.ai.LlmCallQueueService;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.ai.OpenSearchTokenizeService;
@@ -98,7 +99,8 @@ public class AdminLlmLoadTestServiceStreamTokenFallbackTest {
                 llmModelRepository,
                 llmPriceConfigRepository,
                 llmLoadTestRunDetailRepository,
-                llmLoadTestRunHistoryRepository
+                llmLoadTestRunHistoryRepository,
+                mock(PromptsRepository.class)
         );
 
         try {
@@ -202,7 +204,8 @@ public class AdminLlmLoadTestServiceStreamTokenFallbackTest {
                 llmModelRepository,
                 llmPriceConfigRepository,
                 llmLoadTestRunDetailRepository,
-                llmLoadTestRunHistoryRepository
+                llmLoadTestRunHistoryRepository,
+                mock(PromptsRepository.class)
         );
 
         try {
@@ -306,7 +309,8 @@ public class AdminLlmLoadTestServiceStreamTokenFallbackTest {
                 llmModelRepository,
                 llmPriceConfigRepository,
                 llmLoadTestRunDetailRepository,
-                llmLoadTestRunHistoryRepository
+                llmLoadTestRunHistoryRepository,
+                mock(PromptsRepository.class)
         );
 
         try {
@@ -410,7 +414,8 @@ public class AdminLlmLoadTestServiceStreamTokenFallbackTest {
                 llmModelRepository,
                 llmPriceConfigRepository,
                 llmLoadTestRunDetailRepository,
-                llmLoadTestRunHistoryRepository
+                llmLoadTestRunHistoryRepository,
+                mock(PromptsRepository.class)
         );
 
         try {
@@ -511,7 +516,8 @@ public class AdminLlmLoadTestServiceStreamTokenFallbackTest {
                 llmModelRepository,
                 llmPriceConfigRepository,
                 llmLoadTestRunDetailRepository,
-                llmLoadTestRunHistoryRepository
+                llmLoadTestRunHistoryRepository,
+                mock(PromptsRepository.class)
         );
 
         try {

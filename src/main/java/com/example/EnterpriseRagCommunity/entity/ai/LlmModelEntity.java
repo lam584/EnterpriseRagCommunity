@@ -52,12 +52,6 @@ public class LlmModelEntity {
     @Column(name = "sort_index", nullable = false)
     private Integer sortIndex;
 
-    @Column(name = "max_concurrent")
-    private Integer maxConcurrent;
-
-    @Column(name = "min_delay_ms")
-    private Integer minDelayMs;
-
     @Column(name = "qps")
     private Double qps;
 

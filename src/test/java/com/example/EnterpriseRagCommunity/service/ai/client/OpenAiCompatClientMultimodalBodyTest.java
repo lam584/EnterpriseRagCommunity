@@ -23,6 +23,7 @@ public class OpenAiCompatClientMultimodalBodyTest {
                 List.class,
                 Boolean.class,
                 Integer.class,
+                Map.class,
                 boolean.class
         );
         m.setAccessible(true);
@@ -33,7 +34,7 @@ public class OpenAiCompatClientMultimodalBodyTest {
         );
         List<ChatMessage> messages = List.of(new ChatMessage("user", parts));
 
-        String body = (String) m.invoke(null, "gpt-4o", messages, null, null, null, null, null, null, false);
+        String body = (String) m.invoke(null, "gpt-4o", messages, null, null, null, null, null, null, null, false);
 
         assertTrue(body.contains("\"messages\":["));
         assertTrue(body.contains("\"content\":["));
@@ -54,14 +55,14 @@ public class OpenAiCompatClientMultimodalBodyTest {
                 List.class,
                 Boolean.class,
                 Integer.class,
+                Map.class,
                 boolean.class
         );
         m.setAccessible(true);
 
         List<ChatMessage> messages = List.of(ChatMessage.user("hello"));
-        String body = (String) m.invoke(null, "gpt-4o", messages, null, null, null, null, null, null, false);
+        String body = (String) m.invoke(null, "gpt-4o", messages, null, null, null, null, null, null, null, false);
 
         assertTrue(body.contains("\"content\":\"hello\""));
     }
 }
-

@@ -40,7 +40,7 @@ export default function AuthFooter(props: AuthFooterProps) {
           rel="noreferrer"
           className="inline-flex items-center gap-1"
         >
-          <img src={beianIcon} alt="备案编号" className="w-4 h-4" />
+          <img src={beianIcon} alt="" aria-hidden="true" className="w-4 h-4" />
           <span>{beianText}</span>
         </a>
       ) : null}

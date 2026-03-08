@@ -2,7 +2,6 @@ package com.example.EnterpriseRagCommunity.controller.ai.admin;
 
 import com.example.EnterpriseRagCommunity.dto.ai.AiProviderAddModelRequestDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelsDTO;
-import com.example.EnterpriseRagCommunity.dto.ai.AiUpstreamModelsDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiUpstreamModelsPreviewRequestDTO;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.AiProviderModelsAdminService;
@@ -19,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.security.Principal;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/admin/ai/providers")
@@ -38,7 +38,7 @@ public class AdminAiProviderModelsController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public AiProviderModelsDTO addModel(
             @PathVariable("providerId") String providerId,
-            @RequestBody AiProviderAddModelRequestDTO payload,
+            @RequestBody(required = false) AiProviderAddModelRequestDTO payload,
             Principal principal
     ) {
         String username = principal == null ? null : principal.getName();
@@ -63,13 +63,13 @@ public class AdminAiProviderModelsController {
 
     @GetMapping("/{providerId}/upstream-models")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','read'))")
-    public AiUpstreamModelsDTO upstreamModels(@PathVariable("providerId") String providerId) {
+    public Map<String, Object> upstreamModels(@PathVariable("providerId") String providerId) {
         return aiProviderModelsAdminService.fetchUpstreamModels(providerId);
     }
 
     @PostMapping("/upstream-models/preview")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','read'))")
-    public AiUpstreamModelsDTO previewUpstreamModels(@RequestBody AiUpstreamModelsPreviewRequestDTO payload) {
+    public Map<String, Object> previewUpstreamModels(@RequestBody AiUpstreamModelsPreviewRequestDTO payload) {
         return aiProviderModelsAdminService.previewUpstreamModels(payload);
     }
 }

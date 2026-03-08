@@ -7,7 +7,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -22,6 +25,8 @@ import java.util.Map;
 public class AuditLogWriter {
 
     private final AuditLogsRepository auditLogsRepository;
+
+    private static final String MASK = "***";
 
     public void writeSystem(
             String action,
@@ -59,7 +64,7 @@ public class AuditLogWriter {
         if (details != null) d.putAll(details);
         if (actorName != null) d.putIfAbsent("actorName", actorName);
         if (traceId != null) d.putIfAbsent("traceId", traceId);
-        if (message != null) d.putIfAbsent("message", message);
+        if (message != null) d.putIfAbsent("message", sanitizeMessage(message));
         RequestAuditContextHolder.RequestAuditContext ctx = RequestAuditContextHolder.get();
         if (ctx != null) {
             if (ctx.clientIp() != null) d.putIfAbsent("ip", ctx.clientIp());
@@ -76,9 +81,70 @@ public class AuditLogWriter {
             if (ctx.referer() != null) d.putIfAbsent("referer", ctx.referer());
             if (ctx.details() != null && !ctx.details().isEmpty()) d.putIfAbsent("req", ctx.details());
         }
-        e.setDetails(d);
+        e.setDetails(sanitizeDetails(d));
 
         auditLogsRepository.save(e);
         AuditLogContextHolder.markWritten();
+    }
+
+    private static Map<String, Object> sanitizeDetails(Map<String, Object> in) {
+        if (in == null || in.isEmpty()) return in;
+        Map<String, Object> out = new LinkedHashMap<>();
+        for (var e : in.entrySet()) {
+            String k = e.getKey();
+            Object v = e.getValue();
+            out.put(k, sanitizeValue(k, v));
+        }
+        return out;
+    }
+
+    private static Object sanitizeValue(String key, Object v) {
+        if (key != null && isSensitiveKey(key)) return MASK;
+        if (v == null) return null;
+        if (v instanceof Map<?, ?> m) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (var e : m.entrySet()) {
+                if (e.getKey() == null) continue;
+                String k = String.valueOf(e.getKey());
+                out.put(k, sanitizeValue(k, e.getValue()));
+            }
+            return out;
+        }
+        if (v instanceof List<?> list) {
+            List<Object> out = new ArrayList<>(list.size());
+            for (Object x : list) {
+                if (x instanceof Map<?, ?> || x instanceof List<?>) out.add(sanitizeValue(null, x));
+                else out.add(x);
+            }
+            return out;
+        }
+        if (v instanceof String s && key != null && key.toLowerCase(Locale.ROOT).contains("message")) {
+            return sanitizeMessage(s);
+        }
+        return v;
+    }
+
+    private static boolean isSensitiveKey(String k) {
+        if (k == null) return false;
+        String s = k.toLowerCase(Locale.ROOT);
+        return s.contains("password")
+                || s.contains("secret")
+                || s.contains("token")
+                || s.contains("apikey")
+                || s.contains("api_key")
+                || s.contains("accesskey")
+                || s.contains("access_key")
+                || s.contains("privatekey")
+                || s.contains("private_key")
+                || s.contains("authorization")
+                || s.contains("cookie");
+    }
+
+    private static String sanitizeMessage(String raw) {
+        if (raw == null) return null;
+        String s = raw;
+        s = s.replaceAll("(?i)(authorization|token|password|cookie|secret|apiKey|privateKey)\\s*[:=]\\s*([^\\s,;]+)", "$1: " + MASK);
+        s = s.replaceAll("(?i)(\"(authorization|token|password|cookie|secret|apiKey|privateKey)\"\\s*:\\s*)\"(.*?)\"", "$1\"" + MASK + "\"");
+        return s;
     }
 }

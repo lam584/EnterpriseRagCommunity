@@ -263,15 +263,14 @@ public class Security2faPolicyService {
         return readLogin2faEnabledFromMetadata(user.getMetadata());
     }
 
+    @SuppressWarnings("unchecked")
     public boolean readLogin2faEnabledFromMetadata(java.util.Map<String, Object> metadata) {
         if (metadata == null) return false;
         Object prefsObj = metadata.get("preferences");
         if (!(prefsObj instanceof java.util.Map)) return false;
-        //noinspection unchecked
         java.util.Map<String, Object> prefs = (java.util.Map<String, Object>) prefsObj;
         Object secObj = prefs.get("security");
         if (!(secObj instanceof java.util.Map)) return false;
-        //noinspection unchecked
         java.util.Map<String, Object> security = (java.util.Map<String, Object>) secObj;
         Object v = security.get("login2faEnabled");
         return v instanceof Boolean && (Boolean) v;

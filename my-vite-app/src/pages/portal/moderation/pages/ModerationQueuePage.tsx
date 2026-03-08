@@ -381,12 +381,12 @@ export default function ModerationQueuePage() {
         {!loading && items.length === 0 ? <div className="text-sm text-gray-600">暂无数据</div> : null}
 
         {items.length > 0 ? (
-          <div className="overflow-hidden rounded border border-gray-200">
-            <table className="min-w-full table-fixed divide-y divide-gray-200">
+          <div className="overflow-x-auto rounded border border-gray-200">
+            <table className="w-full min-w-[760px] table-fixed divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="w-16 px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">ID</th>
-                  <th className="w-[260px] md:w-[360px] px-3 py-2 text-left text-xs font-medium text-gray-500">标题</th>
+                  <th className="w-[200px] md:w-[280px] px-3 py-2 text-left text-xs font-medium text-gray-500">标题</th>
                   <th className="w-24 px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">状态</th>
                   <th className="w-36 px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">更新时间</th>
                   <th className="w-[240px] md:w-[300px] px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">操作</th>
@@ -396,7 +396,7 @@ export default function ModerationQueuePage() {
                 {items.map((it) => (
                   <tr key={it.id}>
                     <td className="w-16 px-3 py-2 text-sm text-gray-700 whitespace-nowrap">{it.id}</td>
-                    <td className="w-[220px] md:w-[320px] px-3 py-2 text-sm text-gray-700">
+                    <td className="w-[200px] md:w-[280px] px-3 py-2 text-sm text-gray-700">
                       <div className="font-medium truncate">{it.summary?.title ?? `contentId=${it.contentId}`}</div>
                       {it.summary?.snippet ? <div className="text-xs text-gray-500 line-clamp-2">{it.summary.snippet}</div> : null}
                     </td>

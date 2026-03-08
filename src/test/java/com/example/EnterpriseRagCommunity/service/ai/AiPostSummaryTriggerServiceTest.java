@@ -11,6 +11,15 @@ import static org.mockito.Mockito.verifyNoInteractions;
 class AiPostSummaryTriggerServiceTest {
 
     @Test
+    void scheduleGenerateAfterCommit_should_do_nothing_when_post_id_is_null() {
+        AiPostSummaryService aiPostSummaryService = mock(AiPostSummaryService.class);
+        AiPostSummaryTriggerService triggerService = new AiPostSummaryTriggerService(aiPostSummaryService);
+
+        triggerService.scheduleGenerateAfterCommit(null, 3L);
+        verifyNoInteractions(aiPostSummaryService);
+    }
+
+    @Test
     void scheduleGenerateAfterCommit_should_defer_until_after_commit_when_sync_active() {
         AiPostSummaryService aiPostSummaryService = mock(AiPostSummaryService.class);
         AiPostSummaryTriggerService triggerService = new AiPostSummaryTriggerService(aiPostSummaryService);
@@ -39,4 +48,3 @@ class AiPostSummaryTriggerServiceTest {
         verify(aiPostSummaryService).generateForPostIdAsync(10L, 3L);
     }
 }
-

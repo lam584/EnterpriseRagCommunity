@@ -2,11 +2,25 @@ export type UserProfile = {
   id: number;
   email: string;
   username: string;
-  /** optional fields stored in users.metadata.profile.* */
   avatarUrl?: string;
   bio?: string;
   location?: string;
   website?: string;
+  publicProfile?: {
+    username: string;
+    avatarUrl?: string;
+    bio?: string;
+    location?: string;
+    website?: string;
+  };
+  profileModeration?: {
+    caseType?: string;
+    queueId?: number;
+    status?: string;
+    stage?: string;
+    updatedAt?: string;
+    reason?: string;
+  };
 };
 
 export type UpdateUserProfileRequest = {

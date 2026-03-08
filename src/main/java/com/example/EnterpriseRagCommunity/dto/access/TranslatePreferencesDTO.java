@@ -7,5 +7,6 @@ public class TranslatePreferencesDTO {
     private String targetLanguage;
     private Boolean autoTranslatePosts;
     private Boolean autoTranslateComments;
+    private Integer titleGenCount;
+    private Integer tagGenCount;
 }
-

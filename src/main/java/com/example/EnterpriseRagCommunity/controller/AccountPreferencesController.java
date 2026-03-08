@@ -51,6 +51,7 @@ public class AccountPreferencesController {
     }
 
     @PutMapping("/preferences")
+    @SuppressWarnings("unchecked")
     public ResponseEntity<?> updatePreferences(@RequestBody @Valid UpdateTranslatePreferencesRequest req) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
@@ -86,6 +87,16 @@ public class AccountPreferencesController {
         }
         Map<String, Object> translate = (translate0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(translate0);
 
+        Object postsComposeObj = prefs.get("postsCompose");
+        Map<String, Object> postsCompose0;
+        if (postsComposeObj instanceof Map) {
+            //noinspection unchecked
+            postsCompose0 = (Map<String, Object>) postsComposeObj;
+        } else {
+            postsCompose0 = null;
+        }
+        Map<String, Object> postsCompose = (postsCompose0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(postsCompose0);
+
         if (req.isTargetLanguagePresent()) {
             String tl = req.getTargetLanguage() == null ? null : req.getTargetLanguage().trim();
             if (tl != null && tl.isEmpty()) tl = null;
@@ -102,7 +113,16 @@ public class AccountPreferencesController {
             translate.put("autoTranslateComments", v);
         }
 
+        if (req.isTitleGenCountPresent()) {
+            postsCompose.put("titleGenCount", req.getTitleGenCount());
+        }
+
+        if (req.isTagGenCountPresent()) {
+            postsCompose.put("tagGenCount", req.getTagGenCount());
+        }
+
         prefs.put("translate", translate);
+        prefs.put("postsCompose", postsCompose);
         metadata.put("preferences", prefs);
         user.setMetadata(metadata);
 
@@ -125,6 +145,12 @@ public class AccountPreferencesController {
             if (t instanceof Map) translate = (Map<String, Object>) t;
         }
 
+        Map<String, Object> postsCompose = null;
+        if (prefs != null) {
+            Object pc = prefs.get("postsCompose");
+            if (pc instanceof Map) postsCompose = (Map<String, Object>) pc;
+        }
+
         String targetLanguage = null;
         Boolean autoTranslatePosts = null;
         Boolean autoTranslateComments = null;
@@ -140,9 +166,26 @@ public class AccountPreferencesController {
             if (ac instanceof Boolean) autoTranslateComments = (Boolean) ac;
         }
 
+        Integer titleGenCount = null;
+        Integer tagGenCount = null;
+        if (postsCompose != null) {
+            Object tc = postsCompose.get("titleGenCount");
+            if (tc instanceof Number) {
+                int n = ((Number) tc).intValue();
+                if (n >= 1 && n <= 50) titleGenCount = n;
+            }
+            Object kc = postsCompose.get("tagGenCount");
+            if (kc instanceof Number) {
+                int n = ((Number) kc).intValue();
+                if (n >= 1 && n <= 50) tagGenCount = n;
+            }
+        }
+
         dto.setTargetLanguage(supportedLanguageService.normalizeToLanguageCode(targetLanguage));
         dto.setAutoTranslatePosts(autoTranslatePosts != null && autoTranslatePosts);
         dto.setAutoTranslateComments(autoTranslateComments != null && autoTranslateComments);
+        dto.setTitleGenCount(titleGenCount);
+        dto.setTagGenCount(tagGenCount);
         return dto;
     }
 }

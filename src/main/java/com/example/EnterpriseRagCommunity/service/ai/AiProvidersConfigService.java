@@ -1,6 +1,17 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.example.EnterpriseRagCommunity.dto.ai.AiProviderDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiProvidersConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmProviderEntity;
@@ -11,18 +22,8 @@ import com.example.EnterpriseRagCommunity.repository.ai.LlmProviderSettingsRepos
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -34,12 +35,12 @@ public class AiProvidersConfigService {
 
     private final AppSettingsService appSettingsService;
     private final ObjectMapper objectMapper;
-    private final AiProperties aiProperties;
     private final LlmProviderRepository llmProviderRepository;
     private final LlmProviderSettingsRepository llmProviderSettingsRepository;
     private final LlmModelRepository llmModelRepository;
     private final LlmSecretsCryptoService llmSecretsCryptoService;
     private final SystemConfigurationService systemConfigurationService;
+    private final LlmRoutingService llmRoutingService;
 
     @Transactional(readOnly = true)
     public AiProvidersConfigDTO getAdminConfig() {
@@ -110,7 +111,6 @@ public class AiProvidersConfigService {
 
             e.setConnectTimeoutMs(positiveOrNull(p.getConnectTimeoutMs()));
             e.setReadTimeoutMs(positiveOrNull(p.getReadTimeoutMs()));
-            e.setMaxConcurrent(positiveOrNull(p.getMaxConcurrent()));
             e.setEnabled(p.getEnabled() == null || Boolean.TRUE.equals(p.getEnabled()));
             e.setPriority(ord * 10);
             e.setUpdatedAt(now);
@@ -165,6 +165,8 @@ public class AiProvidersConfigService {
         upsertSettings(env, active, now, actorUserId);
 
         persistLegacyMaskedCopy(env);
+
+        llmRoutingService.resetRuntimeState();
 
         return getAdminConfig();
     }
@@ -261,7 +263,7 @@ public class AiProvidersConfigService {
                 apiKey = llmSecretsCryptoService.decryptStringOrNull(selected.getApiKeyEncrypted());
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException(
-                        "模型来源（providerId=" + id + "）apiKey 解密失败: " + e.getMessage() + "。请确认 app.security.totp.master-key 未变更；或在管理页重新填写并保存该来源的 apiKey。",
+                        "模型提供商（providerId=" + id + "）apiKey 解密失败: " + e.getMessage() + "。请确认 app.security.totp.master-key 未变更；或在管理页重新填写并保存该来源的 apiKey。",
                         e
                 );
             }
@@ -271,7 +273,6 @@ public class AiProvidersConfigService {
         String chatModel = toNonBlank(selected.getDefaultChatModel());
         if (chatModel == null) chatModel = getDefaultModel();
         String embModel = toNonBlank(selected.getDefaultEmbeddingModel());
-        if (embModel == null) embModel = "text-embedding-v4";
 
         Map<String, String> headers = Map.of();
         if (selected.getExtraHeadersEncrypted() != null && llmSecretsCryptoService.isConfigured()) {
@@ -279,14 +280,10 @@ public class AiProvidersConfigService {
         }
 
         Integer connectTimeoutMs = selected.getConnectTimeoutMs();
-        if (connectTimeoutMs == null || connectTimeoutMs <= 0) connectTimeoutMs = aiProperties.getConnectTimeoutMs();
         Integer readTimeoutMs = selected.getReadTimeoutMs();
-        if (readTimeoutMs == null || readTimeoutMs <= 0) readTimeoutMs = aiProperties.getReadTimeoutMs();
-        Integer maxConcurrent = selected.getMaxConcurrent();
-        if (maxConcurrent != null && maxConcurrent <= 0) maxConcurrent = null;
 
         Map<String, Object> metadata = selected.getMetadata() == null ? Map.of() : Map.copyOf(selected.getMetadata());
-        return new ResolvedProvider(id, type, baseUrl, apiKey, chatModel, embModel, metadata, headers, connectTimeoutMs, readTimeoutMs, maxConcurrent);
+        return new ResolvedProvider(id, type, baseUrl, apiKey, chatModel, embModel, metadata, headers, connectTimeoutMs, readTimeoutMs);
     }
 
     private ResolvedProvider resolveFromDto(AiProvidersConfigDTO cfg, String providerId) {
@@ -345,15 +342,10 @@ public class AiProvidersConfigService {
         String chatModel = toNonBlank(selected.getDefaultChatModel());
         if (chatModel == null) chatModel = getDefaultModel();
         String embModel = toNonBlank(selected.getDefaultEmbeddingModel());
-        if (embModel == null) embModel = "text-embedding-v4";
 
         Map<String, String> headers = normalizeHeaders(selected.getExtraHeaders());
         Integer connectTimeoutMs = selected.getConnectTimeoutMs();
-        if (connectTimeoutMs == null || connectTimeoutMs <= 0) connectTimeoutMs = aiProperties.getConnectTimeoutMs();
         Integer readTimeoutMs = selected.getReadTimeoutMs();
-        if (readTimeoutMs == null || readTimeoutMs <= 0) readTimeoutMs = aiProperties.getReadTimeoutMs();
-        Integer maxConcurrent = selected.getMaxConcurrent();
-        if (maxConcurrent != null && maxConcurrent <= 0) maxConcurrent = null;
 
         Map<String, Object> metadata = Map.of();
         {
@@ -365,44 +357,23 @@ public class AiProvidersConfigService {
             if (selected.getSupportsVision() != null) meta.put("supportsVision", Boolean.TRUE.equals(selected.getSupportsVision()));
             metadata = meta.isEmpty() ? Map.of() : Map.copyOf(meta);
         }
-        return new ResolvedProvider(id, type, baseUrl, apiKey, chatModel, embModel, metadata, headers, connectTimeoutMs, readTimeoutMs, maxConcurrent);
+        return new ResolvedProvider(id, type, baseUrl, apiKey, chatModel, embModel, metadata, headers, connectTimeoutMs, readTimeoutMs);
     }
 
     private ResolvedProvider defaultResolvedProvider() {
-        return new ResolvedProvider(
-                "default",
-                "OPENAI_COMPAT",
-                getDefaultBaseUrl(),
-                getDefaultApiKey(),
-                getDefaultModel(),
-                "text-embedding-v4",
-                Map.of(),
-                Map.of(),
-                aiProperties.getConnectTimeoutMs(),
-                aiProperties.getReadTimeoutMs(),
-                null
-        );
+        throw new IllegalStateException("未配置任何有效的 AI 模型提供商(Provider)，请在系统管理中配置。");
     }
     
     private String getDefaultBaseUrl() {
-        String val = systemConfigurationService.getConfig("APP_AI_BASE_URL");
-        if (val == null || val.isBlank()) val = systemConfigurationService.getConfig("app.ai.base-url");
-        if (val != null && !val.isBlank()) return val;
-        return aiProperties.getBaseUrl();
+        return systemConfigurationService.getConfig("APP_AI_BASE_URL");
     }
 
     private String getDefaultApiKey() {
-        String val = systemConfigurationService.getConfig("APP_AI_API_KEY");
-        if (val == null || val.isBlank()) val = systemConfigurationService.getConfig("app.ai.api-key");
-        if (val != null && !val.isBlank()) return val;
-        return aiProperties.getApiKey();
+        return systemConfigurationService.getConfig("APP_AI_API_KEY");
     }
     
     private String getDefaultModel() {
-        String val = systemConfigurationService.getConfig("APP_AI_MODEL");
-        if (val == null || val.isBlank()) val = systemConfigurationService.getConfig("app.ai.model");
-        if (val != null && !val.isBlank()) return val;
-        return aiProperties.getModel();
+        return systemConfigurationService.getConfig("APP_AI_MODEL");
     }
 
     private String firstEnabledProviderId(String env) {
@@ -471,7 +442,6 @@ public class AiProvidersConfigService {
             }
             p.setConnectTimeoutMs(e.getConnectTimeoutMs());
             p.setReadTimeoutMs(e.getReadTimeoutMs());
-            p.setMaxConcurrent(e.getMaxConcurrent());
             p.setEnabled(e.getEnabled());
             providers.add(p);
         }
@@ -505,14 +475,13 @@ public class AiProvidersConfigService {
         p.setId("default");
         p.setName("默认");
         p.setType("OPENAI_COMPAT");
-        p.setBaseUrl(aiProperties.getBaseUrl());
+        p.setBaseUrl(null);
         p.setApiKey(null);
-        p.setDefaultChatModel(aiProperties.getModel());
-        p.setDefaultEmbeddingModel("text-embedding-v4");
+        p.setDefaultChatModel(null);
+        p.setDefaultEmbeddingModel(null);
         p.setExtraHeaders(null);
         p.setConnectTimeoutMs(null);
         p.setReadTimeoutMs(null);
-        p.setMaxConcurrent(null);
         p.setEnabled(true);
 
         AiProvidersConfigDTO cfg = new AiProvidersConfigDTO();
@@ -542,7 +511,6 @@ public class AiProvidersConfigService {
             x.setExtraHeaders(normalizeHeaders(p.getExtraHeaders()));
             x.setConnectTimeoutMs(p.getConnectTimeoutMs() == null || p.getConnectTimeoutMs() <= 0 ? null : p.getConnectTimeoutMs());
             x.setReadTimeoutMs(p.getReadTimeoutMs() == null || p.getReadTimeoutMs() <= 0 ? null : p.getReadTimeoutMs());
-            x.setMaxConcurrent(p.getMaxConcurrent() == null || p.getMaxConcurrent() <= 0 ? null : p.getMaxConcurrent());
             x.setEnabled(p.getEnabled() == null || Boolean.TRUE.equals(p.getEnabled()));
             if (x.getId() == null) continue;
             out.add(x);
@@ -576,7 +544,6 @@ public class AiProvidersConfigService {
             x.setExtraHeaders(maskHeaders(p.getExtraHeaders()));
             x.setConnectTimeoutMs(p.getConnectTimeoutMs());
             x.setReadTimeoutMs(p.getReadTimeoutMs());
-            x.setMaxConcurrent(p.getMaxConcurrent());
             x.setEnabled(p.getEnabled());
             dst.add(x);
         }
@@ -616,8 +583,7 @@ public class AiProvidersConfigService {
             Map<String, Object> metadata,
             Map<String, String> extraHeaders,
             Integer connectTimeoutMs,
-            Integer readTimeoutMs,
-            Integer maxConcurrent
+            Integer readTimeoutMs
     ) {
     }
 

@@ -182,12 +182,19 @@ function writeSeenModelKeys(keys: Set<string>): void {
   }
 }
 
-const PROVIDER_MODELS_CACHE_KEY = 'llm-routing-config.provider-models-map.v1';
+type ProviderModelSets = {
+  TEXT_CHAT: Set<string>;
+  IMAGE_CHAT: Set<string>;
+  EMBEDDING: Set<string>;
+  RERANK: Set<string>;
+};
+
+const PROVIDER_MODELS_CACHE_KEY = 'llm-routing-config.provider-models-map.v2';
 const PROVIDER_MODELS_CACHE_TTL_MS = 10 * 60 * 1000;
 type ProviderModelsCache = {
   tsMs: number;
   providerIds: string[];
-  map: Record<string, { CHAT: string[]; EMBEDDING: string[]; RERANK: string[] }>;
+  map: Record<string, { TEXT_CHAT: string[]; IMAGE_CHAT: string[]; EMBEDDING: string[]; RERANK: string[] }>;
 };
 
 function readProviderModelsCache(providerIds: string[]): ProviderModelsCache | null {
@@ -213,7 +220,7 @@ function readProviderModelsCache(providerIds: string[]): ProviderModelsCache | n
   }
 }
 
-function writeProviderModelsCache(providerIds: string[], map: Record<string, { CHAT: Set<string>; EMBEDDING: Set<string>; RERANK: Set<string> }>): void {
+function writeProviderModelsCache(providerIds: string[], map: Record<string, ProviderModelSets>): void {
   try {
     const payload: ProviderModelsCache = {
       tsMs: Date.now(),
@@ -222,7 +229,8 @@ function writeProviderModelsCache(providerIds: string[], map: Record<string, { C
         Object.entries(map).map(([pid, sets]) => [
           pid,
           {
-            CHAT: Array.from(sets.CHAT.values()),
+            TEXT_CHAT: Array.from(sets.TEXT_CHAT.values()),
+            IMAGE_CHAT: Array.from(sets.IMAGE_CHAT.values()),
             EMBEDDING: Array.from(sets.EMBEDDING.values()),
             RERANK: Array.from(sets.RERANK.values()),
           },
@@ -383,7 +391,6 @@ type LlmRoutingStateItem = {
   modelName: string;
   weight: number;
   priority: number;
-  maxConcurrent: number | null;
   minDelayMs: number | null;
   qps: number | null;
   runningCount: number;
@@ -601,6 +608,7 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
   const savingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
+  const [okSource, setOkSource] = useState<'models' | 'routing' | null>(null);
   const [cfg, setCfg] = useState<AdminLlmRoutingConfigDTO | null>(null);
   const [draft, setDraft] = useState<AdminLlmRoutingConfigDTO | null>(null);
   const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
@@ -622,7 +630,7 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
   const [availabilitySummary, setAvailabilitySummary] = useState<{ total: number; ok: number; fail: number; checkedAtMs: number } | null>(null);
   const [availabilityModalOpen, setAvailabilityModalOpen] = useState(false);
   const [availabilityOnlyFailed, setAvailabilityOnlyFailed] = useState(true);
-  const [providerModelsMap, setProviderModelsMap] = useState<Record<string, { CHAT: Set<string>; EMBEDDING: Set<string>; RERANK: Set<string> }>>({});
+  const [providerModelsMap, setProviderModelsMap] = useState<Record<string, ProviderModelSets>>({});
   const [providerModelsLoading, setProviderModelsLoading] = useState(false);
   const [providerModelsFailedProviderIds, setProviderModelsFailedProviderIds] = useState<string[]>([]);
   const [providerModelsLoadedAtMs, setProviderModelsLoadedAtMs] = useState<number | null>(null);
@@ -704,29 +712,29 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
       });
     });
 
-    // 3. 从 providers 中收集默认模型
-    providers.forEach((p) => {
-      const pid = String(p.id ?? '').trim();
-      if (!pid) return;
-      [p.defaultChatModel, p.defaultEmbeddingModel, p.defaultRerankModel].forEach((m) => {
-        const mname = String(m ?? '').trim();
-        if (!mname) return;
-        const key = `${pid}|${mname}`;
-        if (!modelMap.has(key)) {
-          modelMap.set(key, {
-            providerId: pid,
-            providerName: p.name || pid,
-            modelName: mname,
-            enabledScenarios: new Set(),
-          });
-        }
-      });
-    });
+    // 3. 从 providers 中收集默认模型 (已移除：避免未显式添加的默认模型出现在列表中)
+    // providers.forEach((p) => {
+    //   const pid = String(p.id ?? '').trim();
+    //   if (!pid) return;
+    //   [p.defaultChatModel, p.defaultEmbeddingModel, p.defaultRerankModel].forEach((m) => {
+    //     const mname = String(m ?? '').trim();
+    //     if (!mname) return;
+    //     const key = `${pid}|${mname}`;
+    //     if (!modelMap.has(key)) {
+    //       modelMap.set(key, {
+    //         providerId: pid,
+    //         providerName: p.name || pid,
+    //         modelName: mname,
+    //         enabledScenarios: new Set(),
+    //       });
+    //     }
+    //   });
+    // });
 
-    // 4. 从 providerModelsMap 中收集管理员已添加的模型（覆盖 CHAT/EMBEDDING/RERANK）
+    // 4. 从 providerModelsMap 中收集管理员已添加的模型（覆盖 TEXT_CHAT/IMAGE_CHAT/EMBEDDING/RERANK）
     Object.entries(providerModelsMap).forEach(([pid, sets]) => {
       const providerName = providers.find((p) => String(p.id ?? '').trim() === pid)?.name || pid;
-      (['CHAT', 'EMBEDDING', 'RERANK'] as const).forEach((purpose) => {
+      (['TEXT_CHAT', 'IMAGE_CHAT', 'EMBEDDING', 'RERANK'] as const).forEach((purpose) => {
         for (const mname of sets[purpose]) {
           const key = `${pid}|${mname}`;
           if (!modelMap.has(key)) {
@@ -756,7 +764,8 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
       const isTextGen = categorizedScenarios.TEXT_GEN.some(s => enabledScenarios.has(s)) ||
                         chatProviders.some(cp => cp.id === providerId && cp.chatModels?.some(m => m.name === modelName)) ||
                         providers.some(p => p.id === providerId && p.defaultChatModel === modelName) ||
-                        (providerModelsMap[providerId]?.CHAT?.has(modelName) ?? false);
+                        (providerModelsMap[providerId]?.TEXT_CHAT?.has(modelName) ?? false) ||
+                        (providerModelsMap[providerId]?.IMAGE_CHAT?.has(modelName) ?? false);
       
       // 判断是否属于嵌入
       const isEmbedding = categorizedScenarios.EMBEDDING.some(s => enabledScenarios.has(s)) ||
@@ -1208,10 +1217,11 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
 
       const cached = forceLoad ? null : readProviderModelsCache(providerIds);
       if (cached) {
-        const cachedMap: Record<string, { CHAT: Set<string>; EMBEDDING: Set<string>; RERANK: Set<string> }> = {};
+      const cachedMap: Record<string, ProviderModelSets> = {};
         Object.entries(cached.map).forEach(([pid, v]) => {
           cachedMap[pid] = {
-            CHAT: new Set<string>((v?.CHAT ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
+          TEXT_CHAT: new Set<string>((v?.TEXT_CHAT ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
+          IMAGE_CHAT: new Set<string>((v?.IMAGE_CHAT ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
             EMBEDDING: new Set<string>((v?.EMBEDDING ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
             RERANK: new Set<string>((v?.RERANK ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
           };
@@ -1231,12 +1241,13 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
       const settled = await Promise.allSettled(
         providerIds.map(async (pid) => {
           const dto = await adminListProviderModels(pid);
-          const sets = { CHAT: new Set<string>(), EMBEDDING: new Set<string>(), RERANK: new Set<string>() };
+          const sets: ProviderModelSets = { TEXT_CHAT: new Set<string>(), IMAGE_CHAT: new Set<string>(), EMBEDDING: new Set<string>(), RERANK: new Set<string>() };
           for (const r of dto.models ?? []) {
             const purpose = String(r?.purpose ?? '').trim().toUpperCase();
             const name = String(r?.modelName ?? '').trim();
             if (!purpose || !name) continue;
-            if (purpose === 'CHAT' || purpose === 'TEXT_CHAT' || purpose === 'IMAGE_CHAT') sets.CHAT.add(name);
+            if (purpose === 'IMAGE_CHAT') sets.IMAGE_CHAT.add(name);
+            else if (purpose === 'TEXT_CHAT' || purpose === 'CHAT') sets.TEXT_CHAT.add(name);
             else if (purpose === 'EMBEDDING') sets.EMBEDDING.add(name);
             else if (purpose === 'RERANK') sets.RERANK.add(name);
           }
@@ -1246,7 +1257,7 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
 
       if (providerModelsLoadSeqRef.current !== seq) return;
 
-      const map: Record<string, { CHAT: Set<string>; EMBEDDING: Set<string>; RERANK: Set<string> }> = {};
+      const map: Record<string, ProviderModelSets> = {};
       const failed: string[] = [];
       for (let i = 0; i < settled.length; i++) {
         const pid = providerIds[i];
@@ -1496,10 +1507,6 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
           weight: clampInt(t.weight, 0, 10_000, 0),
           priority: clampInt(t.priority, -10_000, 10_000, 0),
           sortIndex: clampInt(t.sortIndex, 0, 1_000_000, 0),
-          maxConcurrent: (() => {
-            const x = clampInt(t.maxConcurrent, 0, 10_000, 0);
-            return x > 0 ? x : undefined;
-          })(),
           minDelayMs: (() => {
             const x = clampInt(t.minDelayMs, 0, 60_000, 0);
             return x > 0 ? x : undefined;
@@ -1522,7 +1529,8 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
 
           if (purpose === 'CHAT' || purpose === 'TEXT_CHAT' || purpose === 'IMAGE_CHAT') {
             const existsInChatOpts = chatProviders.some((cp) => cp.id === pid && cp.chatModels?.some((m) => m.name === name));
-            const existsInProviderModels = providerModelsMap[pid]?.CHAT?.has(name) ?? false;
+            const existsInProviderModels =
+              (providerModelsMap[pid]?.TEXT_CHAT?.has(name) ?? false) || (providerModelsMap[pid]?.IMAGE_CHAT?.has(name) ?? false);
             const existsAsDefault = String(provider?.defaultChatModel ?? '').trim() === name;
             const ok = existsInChatOpts || existsInProviderModels || existsAsDefault;
             if (ok) return true;
@@ -1576,7 +1584,19 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
     }
   }, [draft, chatProviders, providerModelsMap, providers]);
 
+  const saveFromModels = useCallback(() => {
+    setOkSource('models');
+    void save();
+  }, [save]);
+
+  const saveFromRouting = useCallback(() => {
+    setOkSource('routing');
+    void save();
+  }, [save]);
+
   const canEdit = !disabled && !loading && isEditingAny;
+  const okModels = ok && okSource === 'models';
+  const okRouting = ok && okSource === 'routing';
 
   return (
     <div className="space-y-4">
@@ -1588,7 +1608,8 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
         disabled={disabled}
         setIsEditingModelList={setIsEditingModelList}
         cancelEdits={cancelEdits}
-        save={save}
+        save={saveFromModels}
+        ok={okModels}
         draft={draft}
         canEdit={canEdit}
         availabilityChecking={availabilityChecking}
@@ -1599,6 +1620,7 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
         categorizedModelRows={categorizedModelRows}
         categorizedScenarios={categorizedScenarios}
         scenarioMetadata={scenarioMetadata}
+        providerModelsMap={providerModelsMap}
         healthByKey={healthByKey}
         ignoredHealthKeys={ignoredHealthKeys}
         setHealthModalKey={setHealthModalKey}
@@ -1614,7 +1636,7 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
         saving={saving}
         disabled={disabled}
         cancelEdits={cancelEdits}
-        save={save}
+        save={saveFromRouting}
         draft={draft}
         canEdit={canEdit}
         loadProviderModels={loadProviderModels}
@@ -1622,7 +1644,7 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
         providerModelsLoadedAtMs={providerModelsLoadedAtMs}
         providerModelsFailedProviderIds={providerModelsFailedProviderIds}
         error={error}
-        ok={ok}
+        ok={okRouting}
         routingDraftCacheBanner={routingDraftCacheBanner}
         setDraft={setDraft}
         copyConfig={copyConfig}
@@ -1684,7 +1706,7 @@ export const LlmRoutingConfigPage: React.FC = () => {
       const cfg = await adminGetAiProvidersConfig();
       setProviders(cfg.providers ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : '加载模型来源失败');
+      setError(e instanceof Error ? e.message : '加载模型提供商失败');
     } finally {
       setLoading(false);
     }

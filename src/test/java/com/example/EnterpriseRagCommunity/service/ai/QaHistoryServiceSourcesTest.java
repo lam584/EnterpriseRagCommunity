@@ -10,6 +10,9 @@ import com.example.EnterpriseRagCommunity.repository.rag.QaMessageSourcesReposit
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
+import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -30,12 +33,20 @@ class QaHistoryServiceSourcesTest {
         QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
         QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
         QaMessageSourcesRepository qaMessageSourcesRepository = mock(QaMessageSourcesRepository.class);
+        ChatContextGovernanceConfigService chatContextGovernanceConfigService = mock(ChatContextGovernanceConfigService.class);
+        AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
+        AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
+        AdministratorService administratorService = mock(AdministratorService.class);
 
         QaHistoryService service = new QaHistoryService(
                 qaSessionsRepository,
                 qaMessagesRepository,
                 qaTurnsRepository,
-                qaMessageSourcesRepository
+                qaMessageSourcesRepository,
+                chatContextGovernanceConfigService,
+                auditLogWriter,
+                auditDiffBuilder,
+                administratorService
         );
 
         QaSessionsEntity session = new QaSessionsEntity();
@@ -94,4 +105,3 @@ class QaHistoryServiceSourcesTest {
         assertEquals("http://x", outAssistant.getSources().get(0).getUrl());
     }
 }
-

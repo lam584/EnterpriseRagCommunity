@@ -10,7 +10,7 @@ export interface UserDTO {
      * - false/null/undefined: 未标记软删除
      */
     isDeleted?: boolean | null;
-    metadata?: string;
+    metadata?: Record<string, unknown> | null;
     createdAt?: string;
     updatedAt?: string;
     lastLoginAt?: string;
@@ -22,7 +22,7 @@ export interface UserCreateDTO {
     passwordHash: string;
     status: 'ACTIVE' | 'DISABLED' | 'EMAIL_UNVERIFIED' | 'DELETED';
     isDeleted?: boolean;
-    metadata?: string;
+    metadata?: Record<string, unknown> | null;
     roleIds?: number[];
 }
 
@@ -33,7 +33,7 @@ export interface UserUpdateDTO {
     passwordHash?: string;
     status?: 'ACTIVE' | 'DISABLED' | 'EMAIL_UNVERIFIED' | 'DELETED';
     isDeleted?: boolean;
-    metadata?: string;
+    metadata?: Record<string, unknown> | null;
 }
 
 export interface UserQueryDTO {

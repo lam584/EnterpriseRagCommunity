@@ -10,6 +10,7 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimila
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.ai.LlmRoutingService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
@@ -30,6 +31,7 @@ public class ModerationSimilarityService {
 
     private final AiEmbeddingService embeddingService;
     private final LlmGateway llmGateway;
+    private final LlmRoutingService llmRoutingService;
     private final ModerationSamplesIndexService indexService;
     private final ModerationSamplesIndexConfigService indexConfigService;
     private final ModerationSimilarHitsRepository similarHitsRepository;
@@ -62,8 +64,16 @@ public class ModerationSimilarityService {
         int maxInputChars = Math.max(0, maxInputChars0 == null ? 0 : maxInputChars0);
 
         String modelToUse = toNonBlank(req.getEmbeddingModel());
+        boolean reqHasModel = modelToUse != null;
         if (modelToUse == null) modelToUse = toNonBlank(cfg == null ? null : cfg.getEmbeddingModel());
         if (modelToUse == null) modelToUse = toNonBlank(indexConfigService.getEmbeddingModelOrDefault());
+        if (!reqHasModel && modelToUse != null) {
+            String candidateModel = modelToUse;
+            boolean enabled = llmRoutingService.listEnabledTargets(LlmQueueTaskType.SIMILARITY_EMBEDDING)
+                    .stream()
+                    .anyMatch(t -> t != null && candidateModel.equals(t.modelName()));
+            if (!enabled) modelToUse = null;
+        }
 
         Integer configuredDimsOverride = req.getEmbeddingDims();
         Integer configuredDimsCfg = cfg == null ? null : cfg.getEmbeddingDims();

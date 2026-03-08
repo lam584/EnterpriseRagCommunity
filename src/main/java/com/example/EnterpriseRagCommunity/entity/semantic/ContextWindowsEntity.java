@@ -29,6 +29,15 @@ public class ContextWindowsEntity {
     @Column(name = "total_tokens", nullable = false)
     private Integer totalTokens;
 
+    @Column(name = "budget_tokens")
+    private Integer budgetTokens;
+
+    @Column(name = "selected_items")
+    private Integer selectedItems;
+
+    @Column(name = "dropped_items")
+    private Integer droppedItems;
+
     @Convert(converter = JsonConverter.class)
     @Column(name = "chunk_ids", nullable = false, columnDefinition = "json")
     private Map<String, Object> chunkIds;

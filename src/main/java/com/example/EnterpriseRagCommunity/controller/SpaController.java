@@ -31,6 +31,7 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
 import org.springframework.core.io.Resource;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -53,42 +54,54 @@ public class SpaController implements WebMvcConfigurer {
                         "classpath:/static/"
                 )
                 .resourceChain(true)
-                .addResolver(new PathResourceResolver() {
-                    @Override
-                    protected Resource getResource(String resourcePath, Resource location) throws IOException {
-                        String normalized = resourcePath == null ? "" : resourcePath;
-                        while (normalized.startsWith("/")) {
-                            normalized = normalized.substring(1);
-                        }
-                        if (normalized.isBlank()) {
-                            Resource index = location.createRelative("index.html");
-                            if (index.exists() && index.isReadable()) {
-                                return index;
-                            }
-                            return null;
-                        }
+                .addResolver(new SpaFallbackResourceResolver());
+    }
 
-                        // 如果是 API 调用 (例如路径以 "api/" 开头)，则不由此 Handler 处理
-                        // 交给后续的 Controller Handler (例如 RequestMappingHandlerMapping)
-                        if (normalized.startsWith("api/")) {
-                            return null; // 让请求传递给下一个处理器
-                        }
+    static class SpaFallbackResourceResolver extends PathResourceResolver {
+        @Override
+        protected Resource getResource(String resourcePath, Resource location) throws IOException {
+            String normalized = resourcePath == null ? "" : resourcePath;
+            while (normalized.startsWith("/")) {
+                normalized = normalized.substring(1);
+            }
+            if (normalized.isBlank()) {
+                return resolveReadableResource(location, "index.html");
+            }
 
-                        // 先尝试读真实文件
-                        Resource requested = location.createRelative(normalized);
-                        if (requested.exists() && requested.isReadable()) {
-                            return requested;
-                        }
-                        // 如果路径里不含“.”（说明不是资源文件），则回退到 index.html
-                        if (!normalized.contains(".")) {
-                            Resource index = location.createRelative("index.html");
-                            if (index.exists() && index.isReadable()) {
-                                return index;
-                            }
-                        }
-                        // 走到这里说明既不是前端路由也不是已有文件，返回 null，交给下一个 Handler 处理
-                        return null;
+            if (normalized.startsWith("api/")) {
+                return null;
+            }
+
+            Resource requested = resolveReadableResource(location, normalized);
+            if (requested != null) {
+                return requested;
+            }
+            if (!normalized.contains(".")) {
+                return resolveReadableResource(location, "index.html");
+            }
+            return null;
+        }
+
+        private Resource resolveReadableResource(Resource location, String relativePath) throws IOException {
+            Resource resource = location.createRelative(relativePath);
+            if (resource.exists() && resource.isReadable()) {
+                return resource;
+            }
+
+            try {
+                Path basePath = location.getFile().toPath();
+                if (Files.isDirectory(basePath)) {
+                    Resource fallback = new org.springframework.core.io.FileSystemResource(
+                            basePath.resolve(relativePath).normalize().toFile());
+                    if (fallback.exists() && fallback.isReadable()) {
+                        return fallback;
                     }
-                });
+                }
+            } catch (IOException ignored) {
+                // ignore and return null when location cannot be represented as a local file
+            }
+
+            return null;
+        }
     }
 }

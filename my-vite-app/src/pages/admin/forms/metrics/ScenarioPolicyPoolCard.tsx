@@ -300,7 +300,6 @@ export const ScenarioPolicyPoolCard: React.FC<{
                         <FaQuestionCircle className="h-3 w-3" />
                       </span>
                     </th>
-                    <th className="text-left text-xs font-semibold text-gray-700 py-2 px-2 border-b w-[92px] min-w-[92px]">最大并发</th>
                     <th className="text-left text-xs font-semibold text-gray-700 py-2 px-2 border-b w-[110px] min-w-[110px]">最小间隔(ms)</th>
                     <th className="text-left text-xs font-semibold text-gray-700 py-2 px-2 border-b w-[90px] min-w-[90px]">QPS</th>
                     <th className="text-left text-xs font-semibold text-gray-700 py-2 px-2 border-b w-[90px] min-w-[90px]">冷却</th>
@@ -383,17 +382,6 @@ export const ScenarioPolicyPoolCard: React.FC<{
                         const tip = [tokenText, lastDispatchText ? `最近分发：${lastDispatchText}` : ''].filter(Boolean).join('\n');
                         return (
                           <>
-                            <td className="py-2 px-2 border-b w-[92px] min-w-[92px]">
-                              <input
-                                type="number"
-                                className="w-full rounded border px-2 py-2 text-sm"
-                                value={t.maxConcurrent ?? 0}
-                                onChange={(e) => updateTarget(targetIndex, { maxConcurrent: Number(e.target.value) })}
-                                disabled={!canEdit}
-                                min={0}
-                                max={10000}
-                              />
-                            </td>
                             <td className="py-2 px-2 border-b w-[110px] min-w-[110px]">
                               <input
                                 type="number"

@@ -15,7 +15,7 @@ import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -60,7 +60,7 @@ class AccountEmailChangeControllerTest {
     @Resource
     private PasswordEncoder passwordEncoder;
 
-    @MockBean
+    @MockitoBean
     private EmailVerificationMailer emailVerificationMailer;
 
     private UsersEntity createUser(String email) {
@@ -227,5 +227,50 @@ class AccountEmailChangeControllerTest {
                 .andExpect(jsonPath("$.message").value("邮箱更换成功，请重新登录"));
 
         assertThat(usersRepository.findByEmailAndIsDeletedFalse("zz_test_ec_new4@example.invalid")).isPresent();
+    }
+
+    @Test
+    @WithMockUser(username = "zz_test_ec_old_send_disabled_it@example.invalid")
+    void oldSendCode_shouldReject_whenMailerDisabled() throws Exception {
+        createUser("zz_test_ec_old_send_disabled_it@example.invalid");
+        when(emailVerificationMailer.isEnabled()).thenReturn(false);
+
+        MockHttpSession session = new MockHttpSession();
+        mockMvc.perform(post("/api/account/email-change/verify-password")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"pass1234\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/account/email-change/old/send-code")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("邮箱服务未启用"));
+    }
+
+    @Test
+    @WithMockUser(username = "zz_test_ec_old_verify_invalid_method_it@example.invalid")
+    void oldVerify_shouldReject_whenMethodInvalid() throws Exception {
+        createUser("zz_test_ec_old_verify_invalid_method_it@example.invalid");
+        when(emailVerificationMailer.isEnabled()).thenReturn(true);
+
+        MockHttpSession session = new MockHttpSession();
+        mockMvc.perform(post("/api/account/email-change/verify-password")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"pass1234\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/account/email-change/old/verify")
+                        .with(csrf())
+                        .session(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"method\":\"sms\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("验证方式不合法"));
     }
 }

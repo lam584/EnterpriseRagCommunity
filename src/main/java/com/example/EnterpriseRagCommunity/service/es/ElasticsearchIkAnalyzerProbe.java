@@ -39,7 +39,7 @@ public class ElasticsearchIkAnalyzerProbe {
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
 
         try {
-            URL url = new URL(endpoint + "/_analyze");
+            URL url = java.net.URI.create(endpoint + "/_analyze").toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);

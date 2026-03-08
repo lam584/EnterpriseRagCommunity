@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.ai.client;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -32,16 +31,16 @@ public class ResponsesStyleRerankClient {
     ) {
     }
 
-    private final AiProperties props;
+    private static final int DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+    private static final int DEFAULT_READ_TIMEOUT_MS = 300_000;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    public ResponsesStyleRerankClient(AiProperties props) {
-        this.props = props;
+    public ResponsesStyleRerankClient() {
     }
 
     public String rerankOnce(RerankRequest req) throws IOException {
-        String baseUrlWithV1 = normalizeBaseUrlWithV1(req.baseUrl(), props.getBaseUrl());
-        String apiKey = normalizeString(req.apiKey(), props.getApiKey());
+        String baseUrlWithV1 = normalizeBaseUrlWithV1(req.baseUrl(), null);
+        String apiKey = normalizeString(req.apiKey(), null);
         String model = normalizeString(req.model(), null);
         if (model == null || model.isBlank()) throw new IllegalArgumentException("model 不能为空");
 
@@ -86,8 +85,8 @@ public class ResponsesStyleRerankClient {
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
 
-        int cto = (connectTimeoutMs == null || connectTimeoutMs <= 0) ? props.getConnectTimeoutMs() : connectTimeoutMs;
-        int rto = (readTimeoutMs == null || readTimeoutMs <= 0) ? props.getReadTimeoutMs() : readTimeoutMs;
+        int cto = (connectTimeoutMs == null || connectTimeoutMs <= 0) ? DEFAULT_CONNECT_TIMEOUT_MS : connectTimeoutMs;
+        int rto = (readTimeoutMs == null || readTimeoutMs <= 0) ? DEFAULT_READ_TIMEOUT_MS : readTimeoutMs;
         conn.setConnectTimeout(cto);
         conn.setReadTimeout(rto);
 

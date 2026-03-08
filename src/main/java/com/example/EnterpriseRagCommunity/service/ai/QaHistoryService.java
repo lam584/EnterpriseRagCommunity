@@ -1,12 +1,30 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.dto.ai.QaMessageDTO;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.example.EnterpriseRagCommunity.dto.ai.ChatContextGovernanceConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaCitationSourceDTO;
+import com.example.EnterpriseRagCommunity.dto.ai.QaCompressContextResultDTO;
+import com.example.EnterpriseRagCommunity.dto.ai.QaMessageDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSearchHitDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSessionDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSessionUpdateRequest;
-import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.rag.QaMessageSourcesEntity;
+import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.MessageRole;
@@ -15,18 +33,11 @@ import com.example.EnterpriseRagCommunity.repository.rag.QaMessageSourcesReposit
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +47,10 @@ public class QaHistoryService {
     private final QaMessagesRepository qaMessagesRepository;
     private final QaTurnsRepository qaTurnsRepository;
     private final QaMessageSourcesRepository qaMessageSourcesRepository;
+    private final ChatContextGovernanceConfigService chatContextGovernanceConfigService;
+    private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
+    private final AdministratorService administratorService;
 
     public Page<QaSessionDTO> listMySessions(Long userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -95,6 +110,7 @@ public class QaHistoryService {
     public QaSessionDTO updateMySession(Long userId, Long sessionId, QaSessionUpdateRequest req) {
         QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("session not found"));
+        Map<String, Object> before = summarizeSessionForAudit(s);
 
         if (req.getTitle() != null) {
             String t = req.getTitle().trim();
@@ -105,7 +121,153 @@ public class QaHistoryService {
             s.setIsActive(req.getIsActive());
         }
         QaSessionsEntity saved = qaSessionsRepository.save(s);
+        auditLogWriter.write(
+                userId,
+                resolveActorNameOrNull(userId),
+                "QA_SESSION_UPDATE",
+                "QA_SESSION",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "更新对话会话",
+                null,
+                auditDiffBuilder.build(before, summarizeSessionForAudit(saved))
+        );
         return toSessionDTO(saved);
+    }
+
+    @Transactional
+    public QaCompressContextResultDTO compressMySessionContext(Long userId, Long sessionId) {
+        QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
+        if (Boolean.FALSE.equals(s.getIsActive())) {
+            throw new IllegalArgumentException("session inactive");
+        }
+
+        ChatContextGovernanceConfigDTO cfg = chatContextGovernanceConfigService.getConfigOrDefault();
+        int keepLast = cfg == null || cfg.getCompressionKeepLastMessages() == null ? 0 : Math.max(0, cfg.getCompressionKeepLastMessages());
+
+        QaCompressContextResultDTO out = new QaCompressContextResultDTO();
+        out.setSessionId(sessionId);
+        out.setKeptLast(keepLast);
+
+        if (cfg == null || Boolean.FALSE.equals(cfg.getCompressionEnabled())) {
+            out.setSummaryMessageId(null);
+            out.setCompressedDeletedCount(0);
+            out.setSummary("");
+            auditLogWriter.write(
+                    userId,
+                    resolveActorNameOrNull(userId),
+                    "QA_CONTEXT_COMPRESS",
+                    "QA_SESSION",
+                    sessionId,
+                    AuditResult.SUCCESS,
+                    "压缩对话上下文",
+                    null,
+                    summarizeCompressResultForAudit(out)
+            );
+            return out;
+        }
+
+        List<QaMessagesEntity> msgs = qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+        int systemPrefix = 0;
+        while (systemPrefix < msgs.size()) {
+            QaMessagesEntity m = msgs.get(systemPrefix);
+            if (m == null || m.getRole() != MessageRole.SYSTEM) break;
+            systemPrefix++;
+        }
+
+        int available = msgs.size() - systemPrefix;
+        if (available <= keepLast) {
+            out.setSummaryMessageId(null);
+            out.setCompressedDeletedCount(0);
+            out.setSummary("");
+            auditLogWriter.write(
+                    userId,
+                    resolveActorNameOrNull(userId),
+                    "QA_CONTEXT_COMPRESS",
+                    "QA_SESSION",
+                    sessionId,
+                    AuditResult.SUCCESS,
+                    "压缩对话上下文",
+                    null,
+                    summarizeCompressResultForAudit(out)
+            );
+            return out;
+        }
+
+        int compressCount = available - keepLast;
+        List<QaMessagesEntity> toCompress = new ArrayList<>(msgs.subList(systemPrefix, systemPrefix + compressCount));
+
+        int snippetChars = cfg.getCompressionPerMessageSnippetChars() == null ? 200 : Math.max(10, cfg.getCompressionPerMessageSnippetChars());
+        int maxChars = cfg.getCompressionMaxChars() == null ? 8000 : Math.max(200, cfg.getCompressionMaxChars());
+        String summary = buildSummaryFromEntities(toCompress, snippetChars, maxChars);
+        if (summary == null || summary.isBlank()) {
+            out.setSummaryMessageId(null);
+            out.setCompressedDeletedCount(0);
+            out.setSummary("");
+            auditLogWriter.write(
+                    userId,
+                    resolveActorNameOrNull(userId),
+                    "QA_CONTEXT_COMPRESS",
+                    "QA_SESSION",
+                    sessionId,
+                    AuditResult.SUCCESS,
+                    "压缩对话上下文",
+                    null,
+                    summarizeCompressResultForAudit(out)
+            );
+            return out;
+        }
+
+        QaMessagesEntity summaryMsg = new QaMessagesEntity();
+        summaryMsg.setSessionId(sessionId);
+        summaryMsg.setRole(MessageRole.SYSTEM);
+        summaryMsg.setContent(summary);
+        summaryMsg.setCreatedAt(toCompress.get(0) != null ? toCompress.get(0).getCreatedAt() : java.time.LocalDateTime.now());
+        summaryMsg = qaMessagesRepository.save(summaryMsg);
+
+        List<Long> deleteIds = toCompress.stream()
+                .filter(Objects::nonNull)
+                .map(QaMessagesEntity::getId)
+                .filter(Objects::nonNull)
+                .toList();
+
+        List<Long> deletedAssistantIds = toCompress.stream()
+                .filter(m -> m != null && m.getRole() == MessageRole.ASSISTANT && m.getId() != null)
+                .map(QaMessagesEntity::getId)
+                .toList();
+        if (!deletedAssistantIds.isEmpty()) {
+            qaMessageSourcesRepository.deleteByMessageIdIn(deletedAssistantIds);
+        }
+
+        if (!deleteIds.isEmpty()) {
+            List<QaTurnsEntity> turns = qaTurnsRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
+            for (QaTurnsEntity t : turns) {
+                if (t == null) continue;
+                Long qid = t.getQuestionMessageId();
+                Long aid = t.getAnswerMessageId();
+                if ((qid != null && deleteIds.contains(qid)) || (aid != null && deleteIds.contains(aid))) {
+                    qaTurnsRepository.delete(t);
+                }
+            }
+            qaMessagesRepository.deleteAllById(deleteIds);
+        }
+
+        out.setSummaryMessageId(summaryMsg.getId());
+        out.setCompressedDeletedCount(deleteIds.size());
+        out.setSummary(summary);
+        auditLogWriter.write(
+                userId,
+                resolveActorNameOrNull(userId),
+                "QA_CONTEXT_COMPRESS",
+                "QA_SESSION",
+                sessionId,
+                AuditResult.SUCCESS,
+                "压缩对话上下文",
+                null,
+                summarizeCompressResultForAudit(out)
+        );
+        return out;
     }
 
     public Page<QaSearchHitDTO> searchMyHistory(Long userId, String q, int page, int size) {
@@ -167,6 +329,48 @@ public class QaHistoryService {
         qaTurnsRepository.deleteBySessionId(s.getId());
         qaMessagesRepository.deleteBySessionId(s.getId());
         qaSessionsRepository.deleteById(s.getId());
+        auditLogWriter.write(
+                userId,
+                resolveActorNameOrNull(userId),
+                "QA_SESSION_DELETE",
+                "QA_SESSION",
+                sessionId,
+                AuditResult.SUCCESS,
+                "删除对话会话",
+                null,
+                summarizeSessionForAudit(s)
+        );
+    }
+
+    private String resolveActorNameOrNull(Long userId) {
+        if (userId == null) return null;
+        try {
+            return administratorService.findById(userId).map(UsersEntity::getEmail).orElse(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Map<String, Object> summarizeSessionForAudit(QaSessionsEntity e) {
+        Map<String, Object> m = new HashMap<>();
+        if (e == null) return m;
+        m.put("id", e.getId());
+        m.put("titleLen", e.getTitle() == null ? 0 : e.getTitle().length());
+        m.put("contextStrategy", e.getContextStrategy());
+        m.put("isActive", e.getIsActive());
+        return m;
+    }
+
+    private static Map<String, Object> summarizeCompressResultForAudit(QaCompressContextResultDTO out) {
+        Map<String, Object> m = new HashMap<>();
+        if (out == null) return m;
+        m.put("sessionId", out.getSessionId());
+        m.put("keptLast", out.getKeptLast());
+        m.put("summaryMessageId", out.getSummaryMessageId());
+        m.put("compressedDeletedCount", out.getCompressedDeletedCount());
+        String summary = out.getSummary();
+        m.put("summaryLen", summary == null ? 0 : summary.length());
+        return m;
     }
 
     public Page<QaMessageDTO> listMyFavoriteMessages(Long userId, int page, int size) {
@@ -231,5 +435,26 @@ public class QaHistoryService {
         String t = s.replaceAll("\\s+", " ").trim();
         if (t.length() <= max) return t;
         return t.substring(0, max) + "…";
+    }
+
+    private static String buildSummaryFromEntities(List<QaMessagesEntity> msgs, int snippetChars, int maxChars) {
+        if (msgs == null || msgs.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("以下为较早历史消息摘要（自动压缩，仅供参考，必要时请向用户确认）：\n");
+        for (QaMessagesEntity m : msgs) {
+            if (m == null) continue;
+            MessageRole role = m.getRole();
+            if (role == MessageRole.SYSTEM) continue;
+            String text = m.getContent();
+            if (text == null || text.isBlank()) continue;
+            String oneLine = text.replace('\r', ' ').replace('\n', ' ').trim();
+            if (oneLine.length() > snippetChars) oneLine = oneLine.substring(0, snippetChars);
+            String prefix = role == MessageRole.USER ? "U: " : (role == MessageRole.ASSISTANT ? "A: " : (String.valueOf(role).toLowerCase(Locale.ROOT) + ": "));
+            sb.append("- ").append(prefix).append(oneLine).append('\n');
+            if (sb.length() >= maxChars) break;
+        }
+        String s = sb.toString().trim();
+        if (s.length() > maxChars) s = s.substring(0, maxChars);
+        return s;
     }
 }

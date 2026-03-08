@@ -136,6 +136,7 @@ export const ModelTokenCostChart: React.FC<{
           name: 'Input',
           type: 'bar',
           stack: 'tokens',
+          barMaxWidth: 22,
           data: normalized.tokensIn,
           itemStyle: { color: '#60A5FA' },
         },
@@ -143,6 +144,7 @@ export const ModelTokenCostChart: React.FC<{
           name: 'Output',
           type: 'bar',
           stack: 'tokens',
+          barMaxWidth: 22,
           data: normalized.tokensOut,
           itemStyle: { color: '#2563EB' },
         },
@@ -192,4 +194,3 @@ export const ModelTokenCostChart: React.FC<{
 
   return <div className="rounded border p-3" ref={elRef} style={{ height: Math.max(220, height) }} />;
 };
-

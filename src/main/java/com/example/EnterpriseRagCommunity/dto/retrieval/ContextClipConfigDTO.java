@@ -1,6 +1,11 @@
 package com.example.EnterpriseRagCommunity.dto.retrieval;
 
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.ContextWindowPolicy;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 @Data
@@ -14,10 +19,28 @@ public class ContextClipConfigDTO {
     private Integer reserveAnswerTokens;
     private Integer perItemMaxTokens;
     private Integer maxPromptChars;
+    @Min(100)
+    @Max(1_000_000)
+    private Integer contextTokenBudget;
 
     private Double minScore;
     private Integer maxSamePostItems;
     private Boolean requireTitle;
+    @DecimalMin("0.0")
+    @DecimalMax("10.0")
+    private Double alpha;
+    @DecimalMin("0.0")
+    @DecimalMax("10.0")
+    private Double beta;
+    @DecimalMin("0.0")
+    @DecimalMax("10.0")
+    private Double gamma;
+    @Pattern(
+            regexp = "^(NONE|REL_ONLY|REL_IMP|REL_IMP_RED)$",
+            flags = Pattern.Flag.CASE_INSENSITIVE
+    )
+    private String ablationMode;
+    private Boolean crossSourceDedup;
 
     private Boolean dedupByPostId;
     private Boolean dedupByTitle;
@@ -38,4 +61,3 @@ public class ContextClipConfigDTO {
     private Double logSampleRate;
     private Integer logMaxDays;
 }
-

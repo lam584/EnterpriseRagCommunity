@@ -22,6 +22,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.csrf.CsrfToken; // 添加 TenantsRepository 导入
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionAspectSupport;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -52,6 +53,7 @@ import com.example.EnterpriseRagCommunity.entity.content.BoardModeratorsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
 import com.example.EnterpriseRagCommunity.repository.access.PermissionsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.RolePermissionsRepository;
+import com.example.EnterpriseRagCommunity.repository.access.RolesRepository;
 import com.example.EnterpriseRagCommunity.repository.access.TenantsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UserRoleLinksRepository;
 import com.example.EnterpriseRagCommunity.repository.content.BoardModeratorsRepository;
@@ -111,6 +113,9 @@ public class AuthController {
 
     @Autowired
     private AppSettingsService appSettingsService;
+
+    @Autowired
+    private RolesRepository rolesRepository;
 
     @Autowired
     private BoardsRepository boardsRepository;
@@ -269,6 +274,8 @@ public class AuthController {
         SecurityContextHolder.getContext().setAuthentication(authentication);
         HttpSession session = request.getSession(true);
         session.setAttribute("SPRING_SECURITY_CONTEXT", SecurityContextHolder.getContext());
+        session.setAttribute("auth.userId", currentUser.getId());
+        session.setAttribute("auth.email", currentUser.getEmail());
 
         String sessionId = session.getId();
 
@@ -297,7 +304,7 @@ public class AuthController {
         auditLogWriter.write(
                 currentUser.getId(),
                 currentUser.getEmail(),
-                "AUTH_LOGIN",
+                "AUTH_LOGIN_SUCCESS",
                 "SESSION",
                 null,
                 AuditResult.SUCCESS,
@@ -323,7 +330,7 @@ public class AuthController {
                     auditLogWriter.write(
                             user.getId(),
                             loginRequest.getEmail(),
-                            "AUTH_LOGIN",
+                            "AUTH_LOGIN_FAIL",
                             "SESSION",
                             null,
                             AuditResult.FAIL,
@@ -338,7 +345,7 @@ public class AuthController {
                 auditLogWriter.write(
                         user.getId(),
                         loginRequest.getEmail(),
-                        "AUTH_LOGIN",
+                        "AUTH_LOGIN_FAIL",
                         "SESSION",
                         null,
                         AuditResult.FAIL,
@@ -419,7 +426,7 @@ public class AuthController {
             auditLogWriter.write(
                     null,
                     loginRequest == null ? null : loginRequest.getEmail(),
-                    "AUTH_LOGIN",
+                    "AUTH_LOGIN_FAIL",
                     "SESSION",
                     null,
                     AuditResult.FAIL,
@@ -476,12 +483,34 @@ public class AuthController {
     public ResponseEntity<?> verifyLogin2fa(@RequestBody @Valid Login2faVerifyRequest req, HttpServletRequest request, HttpServletResponse servletResponse) {
         HttpSession session = request.getSession(false);
         if (session == null) {
+            auditLogWriter.write(
+                    null,
+                    null,
+                    "AUTH_2FA_VERIFY_FAIL",
+                    "SESSION",
+                    null,
+                    AuditResult.FAIL,
+                    "登录二次验证失败：会话已过期",
+                    null,
+                    Map.of("code", "SESSION_EXPIRED")
+            );
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "会话已过期，请重新登录"));
         }
         Object uidObj = session.getAttribute(SESSION_LOGIN2FA_PENDING_USER_ID);
         Long userId = uidObj instanceof Number ? ((Number) uidObj).longValue() : null;
         String email = (String) session.getAttribute(SESSION_LOGIN2FA_PENDING_EMAIL);
         if (userId == null || userId <= 0 || email == null || email.isBlank()) {
+            auditLogWriter.write(
+                    userId,
+                    email,
+                    "AUTH_2FA_VERIFY_FAIL",
+                    "SESSION",
+                    null,
+                    AuditResult.FAIL,
+                    "登录二次验证失败：会话状态不合法",
+                    null,
+                    Map.of("code", "INVALID_SESSION_STATE")
+            );
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "当前会话不处于登录二次验证状态"));
         }
 
@@ -494,6 +523,17 @@ public class AuthController {
         String method = req.getMethod() == null ? "" : req.getMethod().trim().toLowerCase();
         String code = req.getCode() == null ? "" : req.getCode().trim();
         if (code.isEmpty()) {
+            auditLogWriter.write(
+                    userId,
+                    email,
+                    "AUTH_2FA_VERIFY_FAIL",
+                    "SESSION",
+                    null,
+                    AuditResult.FAIL,
+                    "登录二次验证失败：验证码为空",
+                    null,
+                    Map.of("method", method)
+            );
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请输入验证码"));
         }
 
@@ -505,17 +545,62 @@ public class AuthController {
         try {
             if ("email".equals(method)) {
                 if (!emailMode || !allowEmail) {
+                    auditLogWriter.write(
+                            userId,
+                            email,
+                            "AUTH_2FA_VERIFY_FAIL",
+                            "SESSION",
+                            null,
+                            AuditResult.FAIL,
+                            "登录二次验证失败：当前不支持邮箱验证码二次验证",
+                            null,
+                            Map.of("method", method)
+                    );
                     return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "当前不支持邮箱验证码二次验证"));
                 }
                 emailVerificationService.verifyAndConsume(userId, EmailVerificationPurpose.LOGIN_2FA, code);
             } else if ("totp".equals(method)) {
                 if (!totpMode || !allowTotp) {
+                    auditLogWriter.write(
+                            userId,
+                            email,
+                            "AUTH_2FA_VERIFY_FAIL",
+                            "SESSION",
+                            null,
+                            AuditResult.FAIL,
+                            "登录二次验证失败：当前不支持动态验证码二次验证",
+                            null,
+                            Map.of("method", method)
+                    );
                     return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "当前不支持动态验证码二次验证"));
                 }
                 accountTotpService.requireValidEnabledCodeByEmail(email, code);
             } else {
+                auditLogWriter.write(
+                        userId,
+                        email,
+                        "AUTH_2FA_VERIFY_FAIL",
+                        "SESSION",
+                        null,
+                        AuditResult.FAIL,
+                        "登录二次验证失败：验证方式不合法",
+                        null,
+                        Map.of("method", method)
+                );
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "验证方式不合法"));
             }
+
+            auditLogWriter.write(
+                    userId,
+                    email,
+                    "AUTH_2FA_VERIFY_SUCCESS",
+                    "SESSION",
+                    null,
+                    AuditResult.SUCCESS,
+                    "登录二次验证通过",
+                    null,
+                    Map.of("method", method)
+            );
 
             session.removeAttribute(SESSION_LOGIN2FA_PENDING_USER_ID);
             session.removeAttribute(SESSION_LOGIN2FA_PENDING_EMAIL);
@@ -528,8 +613,30 @@ public class AuthController {
             Authentication authentication = new UsernamePasswordAuthenticationToken(details, null, details.getAuthorities());
             return completeLogin(request, servletResponse, currentUser, authentication);
         } catch (IllegalArgumentException e) {
+            auditLogWriter.write(
+                    userId,
+                    email,
+                    "AUTH_2FA_VERIFY_FAIL",
+                    "SESSION",
+                    null,
+                    AuditResult.FAIL,
+                    safeText(e.getMessage(), 512),
+                    null,
+                    Map.of("method", method)
+            );
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
+            auditLogWriter.write(
+                    userId,
+                    email,
+                    "AUTH_2FA_VERIFY_FAIL",
+                    "SESSION",
+                    null,
+                    AuditResult.FAIL,
+                    safeText(e.getMessage(), 512),
+                    null,
+                    Map.of("method", method)
+            );
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "验证失败：" + e.getMessage()));
         }
     }
@@ -602,7 +709,10 @@ public class AuthController {
 
     @GetMapping("/csrf-token")
     public ResponseEntity<?> getCsrfToken(HttpServletRequest request) {
-        CsrfToken csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
+        CsrfToken csrfToken = (CsrfToken) request.getAttribute("_csrf");
+        if (csrfToken == null) {
+            csrfToken = (CsrfToken) request.getAttribute(CsrfToken.class.getName());
+        }
         Map<String, String> response = new HashMap<>();
 
         if (csrfToken != null) {
@@ -625,13 +735,26 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/registration-status")
+    public ResponseEntity<?> getRegistrationStatus() {
+        boolean enabled = appSettingsService.getLongOrDefault(AppSettingsService.KEY_REGISTRATION_ENABLED, 1L) == 1L;
+        return ResponseEntity.ok(Map.of("registrationEnabled", enabled));
+    }
+
     /**
      * 普通用户注册
      * 此端点允许匿名访问
      */
     @PostMapping("/register")
+    @Transactional
     public ResponseEntity<?> register(@Valid @RequestBody com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest request) {
         try {
+            boolean registrationEnabled = appSettingsService.getLongOrDefault(AppSettingsService.KEY_REGISTRATION_ENABLED, 1L) == 1L;
+            if (!registrationEnabled) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(new ApiResponse<>(false, "已关闭用户注册", null));
+            }
+
             // 检查邮箱是否已存在
             if (administratorService.findByUsername(request.getEmail()).isPresent()) {
                 return ResponseEntity.status(HttpStatus.CONFLICT)
@@ -657,6 +780,9 @@ public class AuthController {
             if (userRoleId <= 0) {
                 userRoleId = 1L;
             }
+            if (!rolesRepository.existsById(userRoleId)) {
+                throw new IllegalStateException("默认注册角色不存在: roleId=" + userRoleId);
+            }
 
             UserRoleLinksEntity link = new UserRoleLinksEntity();
             link.setUserId(savedUser.getId());
@@ -672,9 +798,18 @@ public class AuthController {
             }
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(new ApiResponse<>(true, "注册成功", responseDTO));
+        } catch (IllegalArgumentException e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
+        } catch (IllegalStateException e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new ApiResponse<>(false, e.getMessage(), null));
         } catch (Exception e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ApiResponse<>(false, "注册失败：" + e.getMessage(), null));
+                    .body(new ApiResponse<>(false, "注册失败：" + e.getMessage(), null));
         }
     }
 
@@ -756,6 +891,9 @@ public class AuthController {
             }
 
             Long adminRoleId = 2L;
+            if (!rolesRepository.existsById(adminRoleId)) {
+                throw new IllegalStateException("管理员角色不存在: roleId=" + adminRoleId);
+            }
 
             UsersEntity savedUser;
             Optional<UsersEntity> existingOpt = administratorService.findByUsername(request.getEmail());
@@ -857,7 +995,16 @@ public class AuthController {
             logger.debug("registerInitialAdmin success response ready");
             return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new ApiResponse<>(true, "初始管理员注册成功", resp));
+        } catch (IllegalArgumentException e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ApiResponse<>(false, "注册失败：" + e.getMessage(), null));
+        } catch (IllegalStateException e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new ApiResponse<>(false, "注册失败：" + e.getMessage(), null));
         } catch (Exception e) {
+            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             logger.error("registerInitialAdmin failed: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiResponse<>(false, "注册失败：" + e.getMessage(), null));

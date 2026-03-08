@@ -12,6 +12,8 @@ export type PostReportResponse = {
 
 export type CommentReportRequest = PostReportRequest;
 export type CommentReportResponse = PostReportResponse;
+export type ProfileReportRequest = PostReportRequest;
+export type ProfileReportResponse = PostReportResponse;
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 function apiUrl(path: string): string {
@@ -29,7 +31,7 @@ function getBackendMessage(data: unknown): string | undefined {
 export async function reportPost(postId: number, payload: PostReportRequest): Promise<PostReportResponse> {
   const csrfToken = await getCsrfToken();
 
-  const res = await fetch(apiUrl(`/api/posts/${postId}/report`), {
+  const res = await fetch(apiUrl(`api/posts/${postId}/report`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -53,7 +55,7 @@ export async function reportPost(postId: number, payload: PostReportRequest): Pr
 export async function reportComment(commentId: number, payload: CommentReportRequest): Promise<CommentReportResponse> {
   const csrfToken = await getCsrfToken();
 
-  const res = await fetch(apiUrl(`/api/comments/${commentId}/report`), {
+  const res = await fetch(apiUrl(`api/comments/${commentId}/report`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -72,4 +74,28 @@ export async function reportComment(commentId: number, payload: CommentReportReq
     throw new Error(getBackendMessage(data) || '举报失败');
   }
   return data as CommentReportResponse;
+}
+
+export async function reportProfile(userId: number, payload: ProfileReportRequest): Promise<ProfileReportResponse> {
+  const csrfToken = await getCsrfToken();
+
+  const res = await fetch(apiUrl(`api/users/${userId}/report`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({
+      reasonCode: payload.reasonCode,
+      reasonText: payload.reasonText,
+    }),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401) throw new Error('请先登录后再举报');
+    throw new Error(getBackendMessage(data) || '举报失败');
+  }
+  return data as ProfileReportResponse;
 }

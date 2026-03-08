@@ -27,7 +27,6 @@ export type AiProviderDTO = {
   extraHeaders?: Record<string, string> | null;
   connectTimeoutMs?: number | null;
   readTimeoutMs?: number | null;
-  maxConcurrent?: number | null;
   enabled?: boolean | null;
 };
 
@@ -42,7 +41,7 @@ export async function adminGetAiProvidersConfig(): Promise<AiProvidersConfigDTO>
     credentials: 'include',
   });
   const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(getBackendMessage(data) || '获取模型来源配置失败');
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取模型提供商配置失败');
   return data as AiProvidersConfigDTO;
 }
 
@@ -58,7 +57,7 @@ export async function adminUpdateAiProvidersConfig(payload: AiProvidersConfigDTO
     body: JSON.stringify(payload),
   });
   const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(getBackendMessage(data) || '保存模型来源配置失败');
+  if (!res.ok) throw new Error(getBackendMessage(data) || '保存模型提供商配置失败');
   return data as AiProvidersConfigDTO;
 }
 

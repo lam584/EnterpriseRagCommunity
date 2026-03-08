@@ -53,8 +53,6 @@ public class AdminLlmRoutingMonitorController {
             row.setModelName(it.modelName());
             row.setWeight(it.weight());
             row.setPriority(it.priority());
-            row.setMaxConcurrent(it.maxConcurrent());
-            row.setMinDelayMs(it.minDelayMs());
             row.setQps(it.qps());
             row.setRunningCount(it.runningCount());
             row.setConsecutiveFailures(it.consecutiveFailures());

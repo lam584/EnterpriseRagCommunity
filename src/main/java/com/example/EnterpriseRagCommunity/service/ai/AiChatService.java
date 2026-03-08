@@ -16,6 +16,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,10 +26,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatResponseDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatRegenerateStreamRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatStreamRequest;
+import com.example.EnterpriseRagCommunity.dto.ai.ChatContextGovernanceConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ChatRagAugmentConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
@@ -55,6 +57,8 @@ import com.example.EnterpriseRagCommunity.repository.rag.QaTurnsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.ContextWindowsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalEventsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalHitsRepository;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagChatPostCommentAggregationService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentChatRetrievalService;
@@ -65,7 +69,10 @@ import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextClipCon
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalConfigService;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
+import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
+import com.example.EnterpriseRagCommunity.service.ai.ChatContextGovernanceConfigService;
+import com.example.EnterpriseRagCommunity.service.ai.ChatContextGovernanceService;
 
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -77,8 +84,8 @@ public class AiChatService {
 
     private static final Logger logger = LoggerFactory.getLogger(AiChatService.class);
     private static final String ENV_DEFAULT = "default";
+    private static final Pattern FILE_ASSET_ID_PATTERN = Pattern.compile("file_asset_id\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
 
-    private final AiProperties aiProperties;
     private final LlmGateway llmGateway;
     private final LlmModelRepository llmModelRepository;
     private final QaSessionsRepository qaSessionsRepository;
@@ -101,7 +108,11 @@ public class AiChatService {
     private final TokenCountService tokenCountService;
     private final UsersRepository usersRepository;
     private final FileAssetsRepository fileAssetsRepository;
+    private final FileAssetExtractionsRepository fileAssetExtractionsRepository;
     private final PortalChatConfigService portalChatConfigService;
+    private final PromptsRepository promptsRepository;
+    private final ChatContextGovernanceConfigService chatContextGovernanceConfigService;
+    private final ChatContextGovernanceService chatContextGovernanceService;
 
     @Value("${app.upload.root:uploads}")
     private String uploadRoot;
@@ -136,9 +147,14 @@ public class AiChatService {
         PrintWriter out = response.getWriter();
 
         List<AiChatStreamRequest.ImageInput> images = resolveImages(req);
-        String messageForHistory = images == null || images.isEmpty()
-                ? req.getMessage()
-                : appendImagesAsText(req.getMessage(), images);
+        List<AiChatStreamRequest.FileInput> files = resolveFiles(req);
+        String messageForHistory = req.getMessage();
+        if (images != null && !images.isEmpty()) {
+            messageForHistory = appendImagesAsText(messageForHistory, images);
+        }
+        if (files != null && !files.isEmpty()) {
+            messageForHistory = appendFilesAsText(messageForHistory, files);
+        }
 
         // 3) persist user msg + turn shell
         QaMessagesEntity userMsg = null;
@@ -177,7 +193,10 @@ public class AiChatService {
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        String systemPrompt = deepThink ? portalCfg.getDeepThinkSystemPrompt() : portalCfg.getSystemPrompt();
+        
+        String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
+        String systemPrompt = resolvePromptText(systemPromptCode);
+
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
@@ -218,6 +237,7 @@ public class AiChatService {
         CitationConfigDTO citationCfg = null;
         ChatRagAugmentConfigDTO chatRagCfg = null;
         RagContextPromptService.AssembleResult contextAssembled = null;
+        List<RagContextPromptService.CitationSource> citedSourcesForPersist = null;
         try {
             contextCfg = contextClipConfigService.getConfigOrDefault();
             citationCfg = citationConfigService.getConfigOrDefault();
@@ -327,7 +347,10 @@ public class AiChatService {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
                             cw.setPolicy(contextAssembled.getPolicy());
+                            cw.setBudgetTokens(contextAssembled.getBudgetTokens());
                             cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                            cw.setSelectedItems(contextAssembled.getSelected() == null ? 0 : contextAssembled.getSelected().size());
+                            cw.setDroppedItems(contextAssembled.getDropped() == null ? 0 : contextAssembled.getDropped().size());
                             cw.setChunkIds(contextAssembled.getChunkIds());
                             cw.setCreatedAt(LocalDateTime.now());
                             contextWindowsRepository.save(cw);
@@ -347,6 +370,13 @@ public class AiChatService {
                 deepThink,
                 resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
+        ChatContextGovernanceConfigDTO govCfg = chatContextGovernanceConfigService.getConfigOrDefault();
+        if (files != null && !files.isEmpty()) {
+            String filesBlock = buildFilesBlockForModel(files, currentUserId, govCfg);
+            if (filesBlock != null && !filesBlock.isBlank()) {
+                userMessageForModel = userMessageForModel + "\n\n" + filesBlock.trim();
+            }
+        }
         boolean hasImages = images != null && !images.isEmpty();
         List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
         if (hasImages) {
@@ -363,6 +393,12 @@ public class AiChatService {
         }
 
         messages = messagesMultimodal;
+        messages = chatContextGovernanceService.apply(
+                currentUserId,
+                session == null ? null : session.getId(),
+                userMsg == null ? null : userMsg.getId(),
+                messages
+        ).getMessages();
 
         StringBuilder assistantAccum = new StringBuilder();
         long startedAt = System.currentTimeMillis();
@@ -456,6 +492,7 @@ public class AiChatService {
                         sources,
                         assistantAccum.toString()
                 );
+                citedSourcesForPersist = citedSources;
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSources);
                 if (sourcesText != null && !sourcesText.isBlank()) {
@@ -481,6 +518,7 @@ public class AiChatService {
                         sb.append(",\"score\":").append(s.getScore() == null ? "null" : String.format(Locale.ROOT, "%.6f", s.getScore()));
                         sb.append(",\"title\":\"").append(jsonEscape(s.getTitle() == null ? "" : s.getTitle())).append('"');
                         sb.append(",\"url\":\"").append(jsonEscape(s.getUrl() == null ? "" : s.getUrl())).append('"');
+                        sb.append(",\"snippet\":\"").append(jsonEscape(s.getSnippet() == null ? "" : s.getSnippet())).append('"');
                         sb.append('}');
                     }
                     sb.append("]}");
@@ -531,10 +569,10 @@ public class AiChatService {
                 }
 
                 if (contextAssembled != null) {
-                    List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
-                            contextAssembled.getSources(),
-                            assistantMsg.getContent()
-                    );
+                    List<RagContextPromptService.CitationSource> citedSources = citedSourcesForPersist;
+                    if (citedSources == null) {
+                        citedSources = filterSourcesByCitations(contextAssembled.getSources(), assistantMsg.getContent());
+                    }
                     persistAssistantSources(assistantMsg.getId(), citedSources);
                 }
 
@@ -578,9 +616,14 @@ public class AiChatService {
         logger.info("ai_chat_once_session_resolved userId={} sessionId={}", currentUserId, session.getId());
 
         List<AiChatStreamRequest.ImageInput> images = resolveImages(req);
-        String messageForHistory = images == null || images.isEmpty()
-                ? req.getMessage()
-                : appendImagesAsText(req.getMessage(), images);
+        List<AiChatStreamRequest.FileInput> files = resolveFiles(req);
+        String messageForHistory = req.getMessage();
+        if (images != null && !images.isEmpty()) {
+            messageForHistory = appendImagesAsText(messageForHistory, images);
+        }
+        if (files != null && !files.isEmpty()) {
+            messageForHistory = appendFilesAsText(messageForHistory, files);
+        }
 
         QaMessagesEntity userMsg = null;
         QaTurnsEntity turn = null;
@@ -603,7 +646,10 @@ public class AiChatService {
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        String systemPrompt = deepThink ? portalCfg.getDeepThinkSystemPrompt() : portalCfg.getSystemPrompt();
+        
+        String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
+        String systemPrompt = resolvePromptText(systemPromptCode);
+        
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
@@ -714,7 +760,7 @@ public class AiChatService {
                             he.setEventId(retrievalEventId);
                             he.setRank(i + 1);
                             he.setHitType(h.getType() == null ? RetrievalHitType.POST : h.getType());
-                            he.setDocumentId(h.getPostId());
+                            he.setPostId(h.getPostId());
                             he.setChunkId(h.getChunkIndex() == null ? null : h.getChunkIndex().longValue());
                             he.setScore(h.getScore() == null ? 0.0 : h.getScore());
                             he.setCreatedAt(LocalDateTime.now());
@@ -736,7 +782,10 @@ public class AiChatService {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
                             cw.setPolicy(contextAssembled.getPolicy());
+                            cw.setBudgetTokens(contextAssembled.getBudgetTokens());
                             cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                            cw.setSelectedItems(contextAssembled.getSelected() == null ? 0 : contextAssembled.getSelected().size());
+                            cw.setDroppedItems(contextAssembled.getDropped() == null ? 0 : contextAssembled.getDropped().size());
                             cw.setChunkIds(contextAssembled.getChunkIds());
                             cw.setCreatedAt(LocalDateTime.now());
                             contextWindowsRepository.save(cw);
@@ -756,6 +805,13 @@ public class AiChatService {
                 deepThink,
                 resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
+        ChatContextGovernanceConfigDTO govCfg = chatContextGovernanceConfigService.getConfigOrDefault();
+        if (files != null && !files.isEmpty()) {
+            String filesBlock = buildFilesBlockForModel(files, currentUserId, govCfg);
+            if (filesBlock != null && !filesBlock.isBlank()) {
+                userMessageForModel = userMessageForModel + "\n\n" + filesBlock.trim();
+            }
+        }
         boolean hasImages = images != null && !images.isEmpty();
         List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
         if (hasImages) {
@@ -772,6 +828,12 @@ public class AiChatService {
         }
 
         messages = messagesMultimodal;
+        messages = chatContextGovernanceService.apply(
+                currentUserId,
+                session == null ? null : session.getId(),
+                userMsg == null ? null : userMsg.getId(),
+                messages
+        ).getMessages();
 
         StringBuilder assistantAccum = new StringBuilder();
         long startedAt = System.currentTimeMillis();
@@ -962,14 +1024,16 @@ public class AiChatService {
                 Long oldAnswerId = turn.getAnswerMessageId();
                 turn.setAnswerMessageId(null);
                 qaTurnsRepository.save(turn);
-                qaMessagesRepository.deleteById(oldAnswerId);
             }
         }
 
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        String systemPrompt = deepThink ? portalCfg.getDeepThinkSystemPrompt() : portalCfg.getSystemPrompt();
+        
+        String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
+        String systemPrompt = resolvePromptText(systemPromptCode);
+        
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
@@ -1008,6 +1072,14 @@ public class AiChatService {
                 deepThink,
                 resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
+        ChatContextGovernanceConfigDTO govCfg = chatContextGovernanceConfigService.getConfigOrDefault();
+        List<AiChatStreamRequest.FileInput> filesFromHistory = extractFilesFromHistoryText(questionText);
+        if (filesFromHistory != null && !filesFromHistory.isEmpty()) {
+            String filesBlock = buildFilesBlockForModel(filesFromHistory, currentUserId, govCfg);
+            if (filesBlock != null && !filesBlock.isBlank()) {
+                userMessageForModel = userMessageForModel + "\n\n" + filesBlock.trim();
+            }
+        }
         messages.add(ChatMessage.user(userMessageForModel));
 
         boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
@@ -1094,7 +1166,7 @@ public class AiChatService {
                             he.setEventId(retrievalEventId);
                             he.setRank(i + 1);
                             he.setHitType(h.getType() == null ? RetrievalHitType.POST : h.getType());
-                            he.setDocumentId(h.getPostId());
+                            he.setPostId(h.getPostId());
                             he.setChunkId(h.getChunkIndex() == null ? null : h.getChunkIndex().longValue());
                             he.setScore(h.getScore() == null ? 0.0 : h.getScore());
                             he.setCreatedAt(LocalDateTime.now());
@@ -1116,7 +1188,10 @@ public class AiChatService {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
                             cw.setPolicy(contextAssembled.getPolicy());
+                            cw.setBudgetTokens(contextAssembled.getBudgetTokens());
                             cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                            cw.setSelectedItems(contextAssembled.getSelected() == null ? 0 : contextAssembled.getSelected().size());
+                            cw.setDroppedItems(contextAssembled.getDropped() == null ? 0 : contextAssembled.getDropped().size());
                             cw.setChunkIds(contextAssembled.getChunkIds());
                             cw.setCreatedAt(LocalDateTime.now());
                             contextWindowsRepository.save(cw);
@@ -1127,6 +1202,13 @@ public class AiChatService {
         } catch (Exception ex) {
             logger.warn("ai_chat_regenerate_once_rag_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
         }
+
+        messages = chatContextGovernanceService.apply(
+                currentUserId,
+                session == null ? null : session.getId(),
+                questionMsg == null ? null : questionMsg.getId(),
+                messages
+        ).getMessages();
 
         StringBuilder assistantAccum = new StringBuilder();
         long startedAt = System.currentTimeMillis();
@@ -1280,6 +1362,7 @@ public class AiChatService {
             dto.setScore(s.getScore());
             dto.setTitle(s.getTitle());
             dto.setUrl(s.getUrl());
+            dto.setSnippet(s.getSnippet());
             out.add(dto);
         }
         return out;
@@ -1326,7 +1409,6 @@ public class AiChatService {
                 Long oldAnswerId = turn.getAnswerMessageId();
                 turn.setAnswerMessageId(null);
                 qaTurnsRepository.save(turn);
-                qaMessagesRepository.deleteById(oldAnswerId);
             }
         }
 
@@ -1337,7 +1419,10 @@ public class AiChatService {
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        String systemPrompt = deepThink ? portalCfg.getDeepThinkSystemPrompt() : portalCfg.getSystemPrompt();
+        
+        String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
+        String systemPrompt = resolvePromptText(systemPromptCode);
+        
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
@@ -1376,6 +1461,14 @@ public class AiChatService {
                 deepThink,
                 resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
+        ChatContextGovernanceConfigDTO govCfg = chatContextGovernanceConfigService.getConfigOrDefault();
+        List<AiChatStreamRequest.FileInput> filesFromHistory = extractFilesFromHistoryText(questionText);
+        if (filesFromHistory != null && !filesFromHistory.isEmpty()) {
+            String filesBlock = buildFilesBlockForModel(filesFromHistory, currentUserId, govCfg);
+            if (filesBlock != null && !filesBlock.isBlank()) {
+                questionTextForModel = questionTextForModel + "\n\n" + filesBlock.trim();
+            }
+        }
         messages.add(ChatMessage.user(questionTextForModel));
 
         boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
@@ -1500,7 +1593,10 @@ public class AiChatService {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
                             cw.setPolicy(contextAssembled.getPolicy());
+                            cw.setBudgetTokens(contextAssembled.getBudgetTokens());
                             cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
+                            cw.setSelectedItems(contextAssembled.getSelected() == null ? 0 : contextAssembled.getSelected().size());
+                            cw.setDroppedItems(contextAssembled.getDropped() == null ? 0 : contextAssembled.getDropped().size());
                             cw.setChunkIds(contextAssembled.getChunkIds());
                             cw.setCreatedAt(LocalDateTime.now());
                             contextWindowsRepository.save(cw);
@@ -1511,6 +1607,13 @@ public class AiChatService {
         } catch (Exception ex) {
             logger.warn("ai_chat_regenerate_rag_failed userId={} sessionId={} err={}", currentUserId, session.getId(), ex.getMessage());
         }
+
+        messages = chatContextGovernanceService.apply(
+                currentUserId,
+                session == null ? null : session.getId(),
+                questionMsg == null ? null : questionMsg.getId(),
+                messages
+        ).getMessages();
 
         StringBuilder assistantAccum = new StringBuilder();
         long startedAt = System.currentTimeMillis();
@@ -1876,7 +1979,82 @@ public class AiChatService {
             }
             i++;
         }
-        return sb.toString();
+        return decodeEscapedContent(sb.toString());
+    }
+
+    private static String decodeEscapedContent(String text) {
+        if (text == null || text.isEmpty()) return text;
+        StringBuilder out = new StringBuilder(text.length());
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == '\\' && i + 1 < text.length()) {
+                char n = text.charAt(i + 1);
+                switch (n) {
+                    case '"' -> {
+                        out.append('"');
+                        i += 2;
+                        continue;
+                    }
+                    case '\\' -> {
+                        out.append('\\');
+                        i += 2;
+                        continue;
+                    }
+                    case '/' -> {
+                        out.append('/');
+                        i += 2;
+                        continue;
+                    }
+                    case 'b' -> {
+                        out.append('\b');
+                        i += 2;
+                        continue;
+                    }
+                    case 'f' -> {
+                        out.append('\f');
+                        i += 2;
+                        continue;
+                    }
+                    case 'n' -> {
+                        out.append('\n');
+                        i += 2;
+                        continue;
+                    }
+                    case 'r' -> {
+                        out.append('\r');
+                        i += 2;
+                        continue;
+                    }
+                    case 't' -> {
+                        out.append('\t');
+                        i += 2;
+                        continue;
+                    }
+                    case 'u' -> {
+                        if (i + 5 < text.length()) {
+                            String hex = text.substring(i + 2, i + 6);
+                            try {
+                                out.append((char) Integer.parseInt(hex, 16));
+                            } catch (Exception ignore) {
+                            }
+                            i += 6;
+                            continue;
+                        }
+                        i += 2;
+                        continue;
+                    }
+                    default -> {
+                        out.append(n);
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+            out.append(c);
+            i++;
+        }
+        return out.toString();
     }
 
     private String resolveModelNameForThinkDirective(String providerId, String modelOverride) {
@@ -1888,7 +2066,7 @@ public class AiChatService {
             if (m != null) return m;
         } catch (Exception ignored) {
         }
-        return toNonBlank(aiProperties.getModel());
+        return null;
     }
 
     private static String applyThinkingDirective(String content, boolean deepThink, String modelName) {
@@ -1972,7 +2150,7 @@ public class AiChatService {
                 }
             }
             if (effectiveProviderId == null) {
-                throw new IllegalArgumentException("未指定模型来源(providerId)，无法发送图片");
+                throw new IllegalArgumentException("未指定模型提供商(providerId)，无法发送图片");
             }
             if (!isEnabledImageChatModel(effectiveProviderId, mo)) {
                 throw new IllegalArgumentException("当前选择的模型不支持图片，请选择视觉模型（图片聊天）或切换为“自动(均衡负载)”");
@@ -1994,7 +2172,7 @@ public class AiChatService {
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
-                throw new IllegalArgumentException("模型来源解析失败，无法发送图片");
+                throw new IllegalArgumentException("模型提供商解析失败，无法发送图片");
             }
             return;
         }
@@ -2032,6 +2210,52 @@ public class AiChatService {
         return out;
     }
 
+    private static List<AiChatStreamRequest.FileInput> resolveFiles(AiChatStreamRequest req) {
+        if (req == null || req.getFiles() == null || req.getFiles().isEmpty()) return List.of();
+        List<AiChatStreamRequest.FileInput> out = new ArrayList<>();
+        Set<Long> seenIds = new HashSet<>();
+        Set<String> seenUrls = new HashSet<>();
+        for (AiChatStreamRequest.FileInput f : req.getFiles()) {
+            if (f == null) continue;
+            if (out.size() >= 20) break;
+            Long id = f.getFileAssetId();
+            String url = toNonBlank(f.getUrl());
+            if (id == null && url == null) continue;
+            if (id != null) {
+                if (seenIds.contains(id)) continue;
+                seenIds.add(id);
+            } else {
+                if (seenUrls.contains(url)) continue;
+                seenUrls.add(url);
+            }
+            out.add(f);
+        }
+        return out;
+    }
+
+    private static List<AiChatStreamRequest.FileInput> extractFilesFromHistoryText(String text) {
+        String t = text == null ? "" : text;
+        Matcher m = FILE_ASSET_ID_PATTERN.matcher(t);
+        List<AiChatStreamRequest.FileInput> out = new ArrayList<>();
+        Set<Long> seen = new HashSet<>();
+        while (m.find()) {
+            if (out.size() >= 20) break;
+            String raw = m.group(1);
+            if (raw == null || raw.isBlank()) continue;
+            try {
+                long id = Long.parseLong(raw.trim());
+                if (id <= 0) continue;
+                if (seen.contains(id)) continue;
+                seen.add(id);
+                AiChatStreamRequest.FileInput fi = new AiChatStreamRequest.FileInput();
+                fi.setFileAssetId(id);
+                out.add(fi);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return out;
+    }
+
     private static boolean isLikelyImageUrl(String url) {
         String u = toNonBlank(url);
         if (u == null) return false;
@@ -2062,6 +2286,117 @@ public class AiChatService {
         return sb.toString();
     }
 
+    private static String appendFilesAsText(String userMsg, List<AiChatStreamRequest.FileInput> files) {
+        String base = userMsg == null ? "" : userMsg;
+        StringBuilder sb = new StringBuilder(base);
+        sb.append("\n\n[FILES]\n");
+        int take = 0;
+        for (AiChatStreamRequest.FileInput f : files) {
+            if (f == null) continue;
+            if (take >= 20) break;
+            String url = toNonBlank(f.getUrl());
+            Long id = f.getFileAssetId();
+            String name = toNonBlank(f.getFileName());
+            String mt = toNonBlank(f.getMimeType());
+            sb.append("- file_asset_id=").append(id == null ? "null" : id);
+            if (name != null) sb.append(" name=").append(name);
+            if (mt != null) sb.append(" mime=").append(mt);
+            if (url != null) sb.append(" url=").append(url);
+            sb.append("\n");
+            take += 1;
+        }
+        return sb.toString();
+    }
+
+    private String buildFilesBlockForModel(List<AiChatStreamRequest.FileInput> files, Long currentUserId, ChatContextGovernanceConfigDTO cfg) {
+        if (files == null || files.isEmpty() || currentUserId == null) return null;
+        int maxFiles = cfg == null || cfg.getMaxFiles() == null ? 10 : Math.max(0, Math.min(50, cfg.getMaxFiles()));
+        if (maxFiles <= 0) return null;
+        int perFileMaxChars = cfg == null || cfg.getPerFileMaxChars() == null ? 6000 : Math.max(100, cfg.getPerFileMaxChars());
+        int totalFilesMaxChars = cfg == null || cfg.getTotalFilesMaxChars() == null ? 24000 : Math.max(100, cfg.getTotalFilesMaxChars());
+
+        List<Long> ids = new ArrayList<>();
+        for (AiChatStreamRequest.FileInput f : files) {
+            if (f == null) continue;
+            if (f.getFileAssetId() == null) continue;
+            ids.add(f.getFileAssetId());
+            if (ids.size() >= maxFiles) break;
+        }
+        if (ids.isEmpty()) return null;
+
+        Map<Long, com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity> assets = new java.util.HashMap<>();
+        for (var a : fileAssetsRepository.findAllById(ids)) {
+            if (a == null || a.getId() == null) continue;
+            assets.put(a.getId(), a);
+        }
+
+        List<Long> allowedIds = new ArrayList<>();
+        for (Long id : ids) {
+            var a = assets.get(id);
+            if (a == null) continue;
+            Long ownerId = null;
+            try {
+                ownerId = a.getOwner() == null ? null : a.getOwner().getId();
+            } catch (Exception ignored) {
+                ownerId = null;
+            }
+            if (ownerId == null || !ownerId.equals(currentUserId)) continue;
+            allowedIds.add(id);
+        }
+        if (allowedIds.isEmpty()) return null;
+
+        Map<Long, com.example.EnterpriseRagCommunity.entity.monitor.FileAssetExtractionsEntity> exMap = new java.util.HashMap<>();
+        for (var ex : fileAssetExtractionsRepository.findAllById(allowedIds)) {
+            if (ex == null || ex.getFileAssetId() == null) continue;
+            exMap.put(ex.getFileAssetId(), ex);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("[FILES]\n");
+        int used = 0;
+        int take = 0;
+        for (Long id : allowedIds) {
+            if (take >= maxFiles) break;
+            var a = assets.get(id);
+            if (a == null) continue;
+            var ex = exMap.get(id);
+            String name = toNonBlank(a.getOriginalName());
+            String mt = toNonBlank(a.getMimeType());
+            String url = toNonBlank(a.getUrl());
+            sb.append("- file_asset_id=").append(id);
+            if (name != null) sb.append(" name=").append(name);
+            if (mt != null) sb.append(" mime=").append(mt);
+            if (url != null) sb.append(" url=").append(url);
+            if (ex != null && ex.getExtractStatus() != null) sb.append(" extract=").append(ex.getExtractStatus().name());
+            sb.append("\n");
+
+            if (ex != null) {
+                String text = ex.getExtractedText();
+                if (text != null && !text.isBlank()) {
+                    String t = text.trim();
+                    if (t.length() > perFileMaxChars) t = t.substring(0, perFileMaxChars);
+                    if (used + t.length() > totalFilesMaxChars) {
+                        int remain = Math.max(0, totalFilesMaxChars - used);
+                        if (remain > 0) {
+                            sb.append(t, 0, Math.min(remain, t.length()));
+                            sb.append("\n\n");
+                            used += Math.min(remain, t.length());
+                        }
+                        break;
+                    }
+                    sb.append(t).append("\n\n");
+                    used += t.length();
+                } else if (ex.getErrorMessage() != null && !ex.getErrorMessage().isBlank()) {
+                    String em = ex.getErrorMessage().trim();
+                    if (em.length() > 300) em = em.substring(0, 300);
+                    sb.append("（解析失败：").append(em).append("）\n\n");
+                }
+            }
+            take += 1;
+        }
+        return sb.toString().trim();
+    }
+
     private String encodeImageUrlForUpstream(AiChatStreamRequest.ImageInput img) {
         if (img == null) return null;
         String url = toNonBlank(img.getUrl());
@@ -2087,6 +2422,21 @@ public class AiChatService {
 
     private byte[] readLocalUploadBytes(Long fileAssetId, String url) {
         try {
+            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
+            String u = toNonBlank(url);
+            if (u != null && !prefix.isEmpty() && u.startsWith(prefix + "/")) {
+                int q = u.indexOf('?');
+                if (q >= 0) u = u.substring(0, q);
+                String rel = u.substring(prefix.length());
+                while (rel.startsWith("/")) rel = rel.substring(1);
+
+                Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
+                Path p = root.resolve(rel).normalize();
+                if (p.startsWith(root) && Files.exists(p) && Files.isRegularFile(p)) {
+                    return Files.readAllBytes(p);
+                }
+            }
+
             if (fileAssetId != null) {
                 var fa = fileAssetsRepository.findById(fileAssetId).orElse(null);
                 if (fa != null && fa.getPath() != null && !fa.getPath().isBlank()) {
@@ -2097,21 +2447,7 @@ public class AiChatService {
                 }
             }
 
-            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
-            String u = toNonBlank(url);
-            if (u == null || prefix.isEmpty()) return null;
-            if (!u.startsWith(prefix + "/")) return null;
-
-            int q = u.indexOf('?');
-            if (q >= 0) u = u.substring(0, q);
-            String rel = u.substring(prefix.length());
-            while (rel.startsWith("/")) rel = rel.substring(1);
-
-            Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
-            Path p = root.resolve(rel).normalize();
-            if (!p.startsWith(root)) return null;
-            if (!Files.exists(p) || !Files.isRegularFile(p)) return null;
-            return Files.readAllBytes(p);
+            return null;
         } catch (Exception ignored) {
             return null;
         }
@@ -2183,7 +2519,11 @@ public class AiChatService {
             if (s == null) s = h.getFusedScore();
             if (s == null) s = h.getScore();
             rr.setScore(s);
-            rr.setPostId(h.getPostId());
+            Long postId = h.getPostId();
+            if (postId == null && h.getPostIds() != null && !h.getPostIds().isEmpty()) {
+                postId = h.getPostIds().get(0);
+            }
+            rr.setPostId(postId);
             rr.setChunkIndex(h.getChunkIndex());
             rr.setBoardId(h.getBoardId());
             rr.setTitle(h.getTitle());
@@ -2203,7 +2543,11 @@ public class AiChatService {
             rh.setEventId(eventId);
             rh.setRank(i + 1);
             rh.setHitType(type);
-            rh.setDocumentId(h.getPostId());
+            Long postId = h.getPostId();
+            if (postId == null && h.getPostIds() != null && !h.getPostIds().isEmpty()) {
+                postId = h.getPostIds().get(0);
+            }
+            rh.setPostId(postId);
             rh.setChunkId(null);
             Double s = h.getScore();
             if (type == RetrievalHitType.BM25 && h.getBm25Score() != null) s = h.getBm25Score();
@@ -2225,7 +2569,7 @@ public class AiChatService {
             rh.setEventId(eventId);
             rh.setRank(i + 1);
             rh.setHitType(type);
-            rh.setDocumentId(h.getPostId());
+            rh.setPostId(h.getPostId());
             rh.setChunkId(null);
             rh.setScore(h.getScore() == null ? 0.0 : h.getScore());
             out.add(rh);
@@ -2242,7 +2586,7 @@ public class AiChatService {
             rh.setEventId(eventId);
             rh.setRank(i + 1);
             rh.setHitType(type);
-            rh.setDocumentId(h.getPostId());
+            rh.setPostId(h.getPostId());
             rh.setChunkId(h.getCommentId());
             rh.setScore(h.getScore() == null ? 0.0 : h.getScore());
             out.add(rh);
@@ -2332,7 +2676,7 @@ public class AiChatService {
         List<Long> ids = new ArrayList<>();
         for (RetrievalHitsEntity h : hits) {
             if (h == null) continue;
-            Long id = h.getDocumentId();
+            Long id = h.getPostId();
             if (id != null) ids.add(id);
         }
         if (ids.isEmpty()) return;
@@ -2344,8 +2688,8 @@ public class AiChatService {
         if (existing.size() == unique.size()) return;
         for (RetrievalHitsEntity h : hits) {
             if (h == null) continue;
-            Long id = h.getDocumentId();
-            if (id != null && !existing.contains(id)) h.setDocumentId(null);
+            Long id = h.getPostId();
+            if (id != null && !existing.contains(id)) h.setPostId(null);
         }
     }
 
@@ -2372,5 +2716,12 @@ public class AiChatService {
             end = i + 1;
         }
         return s.substring(0, end);
+    }
+
+    private String resolvePromptText(String code) {
+        if (code == null || code.isBlank()) return "";
+        return promptsRepository.findByPromptCode(code)
+                .map(PromptsEntity::getSystemPrompt)
+                .orElse("");
     }
 }

@@ -27,27 +27,8 @@ public class PostSuggestionGenConfigEntity {
     @Column(name = "enabled", nullable = false)
     private Boolean enabled;
 
-    @Column(name = "system_prompt", length = 512, nullable = false)
-    private String systemPrompt;
-
-    @Lob
-    @Column(name = "prompt_template", nullable = false)
-    private String promptTemplate;
-
-    @Column(name = "model", length = 128)
-    private String model;
-
-    @Column(name = "provider_id", length = 64)
-    private String providerId;
-
-    @Column(name = "temperature")
-    private Double temperature;
-
-    @Column(name = "top_p")
-    private Double topP;
-
-    @Column(name = "enable_thinking", nullable = false)
-    private Boolean enableThinking;
+    @Column(name = "prompt_code", length = 64, nullable = false)
+    private String promptCode;
 
     @Column(name = "default_count", nullable = false)
     private Integer defaultCount;

@@ -1,36 +1,44 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
-vi.mock('../../services/authService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/authService')>();
-  return {
-    ...actual,
-    registerInitialAdmin: vi.fn(),
-  };
-});
+import AdminSetup from './AdminSetup';
 
-vi.mock('../../services/setupService', async () => {
+const setupServiceMocks = vi.hoisted(() => {
   return {
-    checkEnvFile: vi.fn().mockResolvedValue({ exists: false }),
-    generateTotpKey: vi.fn(),
     saveSetupConfig: vi.fn(),
-    testEsConnection: vi.fn(),
     initIndices: vi.fn(),
     completeSetup: vi.fn(),
-    checkIndicesStatus: vi.fn()
+    checkEnvFile: vi.fn(async () => ({ exists: false })),
   };
 });
 
-import AdminSetup from './AdminSetup';
-import { registerInitialAdmin } from '../../services/authService';
+vi.mock('react-hot-toast', () => {
+  return {
+    default: {
+      success: vi.fn(),
+      error: vi.fn(),
+    },
+  };
+});
 
-const mockRegisterInitialAdmin = vi.mocked(registerInitialAdmin);
+vi.mock('../../services/setupService', () => {
+  return {
+    checkEnvFile: setupServiceMocks.checkEnvFile,
+    generateTotpKey: vi.fn(),
+    saveSetupConfig: setupServiceMocks.saveSetupConfig,
+    testEsConnection: vi.fn(),
+    initIndices: setupServiceMocks.initIndices,
+    completeSetup: setupServiceMocks.completeSetup,
+    checkIndicesStatus: vi.fn(),
+    encryptValue: vi.fn(),
+  };
+});
 
 function LoginPage() {
   const location = useLocation();
-  const state = location.state as { email?: string; setupJustCompleted?: boolean } | null;
-  return <div>LOGIN:{state?.email ?? ''}:{state?.setupJustCompleted ? 'BYPASS' : ''}</div>;
+  const state = location.state as { setupJustCompleted?: boolean } | null;
+  return <div>LOGIN:{state?.setupJustCompleted ? 'BYPASS' : ''}</div>;
 }
 
 function SetupGateRoutes() {
@@ -63,36 +71,33 @@ function LoginBypassGate() {
 describe('AdminSetup (with setup gate)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setupServiceMocks.checkEnvFile.mockResolvedValue({ exists: false });
+    setupServiceMocks.saveSetupConfig.mockResolvedValue(undefined);
+    setupServiceMocks.initIndices.mockResolvedValue(undefined);
+    setupServiceMocks.completeSetup.mockResolvedValue(undefined);
   });
 
-  // TODO: This test is outdated. The AdminSetup component now uses a multi-step wizard (ImportConfigurationForm) 
-  // and inputs do not have 'name' attributes as expected by this test. Needs rewrite to match new UI flow.
-  it.skip('navigates to /login even when /login is guarded by setupRequired', async () => {
-    mockRegisterInitialAdmin.mockResolvedValue(undefined as never);
+  afterEach(() => {
+    cleanup();
+  });
 
+  it('navigates to /login even when /login is guarded by setupRequired', async () => {
     render(
       <MemoryRouter initialEntries={['/admin-setup']}>
         <SetupGateRoutes />
       </MemoryRouter>
     );
 
-    const emailInput = document.querySelector('input[name="email"]') as HTMLInputElement | null;
-    const usernameInput = document.querySelector('input[name="username"]') as HTMLInputElement | null;
-    const passwordInput = document.querySelector('input[name="password"]') as HTMLInputElement | null;
-    expect(emailInput).not.toBeNull();
-    expect(usernameInput).not.toBeNull();
-    expect(passwordInput).not.toBeNull();
+    fireEvent.click(screen.getByText('跳过'));
+    await screen.findByText('创建管理员账户');
 
-    fireEvent.change(emailInput!, { target: { name: 'email', value: 'admin@example.com' } });
-    fireEvent.change(usernameInput!, { target: { name: 'username', value: 'Admin' } });
-    fireEvent.change(passwordInput!, { target: { name: 'password', value: '123456' } });
+    fireEvent.change(screen.getByPlaceholderText('请输入管理员邮箱'), { target: { value: 'admin@example.com' } });
+    fireEvent.change(screen.getByPlaceholderText('请输入用户名'), { target: { value: 'Admin' } });
+    fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: '123456' } });
+    fireEvent.change(screen.getByPlaceholderText('请再次输入密码'), { target: { value: '123456' } });
 
-    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    fireEvent.click(screen.getByText('完成设置'));
 
-    expect(await screen.findByText(/初始化管理员注册成功，请前往登录/)).not.toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: '去登录' }));
-
-    expect(await screen.findByText('LOGIN:admin@example.com:BYPASS')).not.toBeNull();
+    expect(await screen.findByText('LOGIN:BYPASS')).not.toBeNull();
   });
 });

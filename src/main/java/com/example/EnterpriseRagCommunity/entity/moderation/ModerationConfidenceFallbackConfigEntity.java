@@ -1,10 +1,12 @@
 package com.example.EnterpriseRagCommunity.entity.moderation;
 
+import com.example.EnterpriseRagCommunity.entity.converter.MapJsonConverter;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
@@ -64,6 +66,12 @@ public class ModerationConfidenceFallbackConfigEntity {
     @Column(name = "llm_human_threshold", nullable = false)
     private Double llmHumanThreshold;
 
+    @Column(name = "chunk_llm_reject_threshold", nullable = false)
+    private Double chunkLlmRejectThreshold;
+
+    @Column(name = "chunk_llm_human_threshold", nullable = false)
+    private Double chunkLlmHumanThreshold;
+
     @Column(name = "llm_text_risk_threshold", nullable = false)
     private Double llmTextRiskThreshold;
 
@@ -81,6 +89,13 @@ public class ModerationConfidenceFallbackConfigEntity {
 
     @Column(name = "report_human_threshold", nullable = false)
     private Integer reportHumanThreshold;
+
+    @Column(name = "chunk_threshold_chars", nullable = false)
+    private Integer chunkThresholdChars;
+
+    @Convert(converter = MapJsonConverter.class)
+    @Column(name = "thresholds_json")
+    private Map<String, Object> thresholds;
 
     @Version
     @Column(name = "version", nullable = false)

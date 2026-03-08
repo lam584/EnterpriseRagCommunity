@@ -1,9 +1,8 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
-import org.junit.jupiter.api.Test;
-
 import java.util.List;
+
+import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -12,7 +11,7 @@ public class AiRerankServiceParseTest {
 
     @Test
     void parseResults_supportsNativeShape_outputResults() {
-        AiRerankService svc = new AiRerankService(new AiProperties(), null, null);
+        AiRerankService svc = new AiRerankService(null, null, null);
         String raw = """
                 {
                   "output": {
@@ -37,7 +36,7 @@ public class AiRerankServiceParseTest {
 
     @Test
     void parseResults_supportsCompatShape_dataArray() {
-        AiRerankService svc = new AiRerankService(new AiProperties(), null, null);
+        AiRerankService svc = new AiRerankService(null, null, null);
         String raw = """
                 {
                   "data": [
@@ -60,7 +59,7 @@ public class AiRerankServiceParseTest {
 
     @Test
     void normalizeResponses_extractsOutputTextJson() throws Exception {
-        AiRerankService svc = new AiRerankService(new AiProperties(), null, null);
+        AiRerankService svc = new AiRerankService(null, null, null);
         String raw = """
                 {
                   "id": "resp_1",

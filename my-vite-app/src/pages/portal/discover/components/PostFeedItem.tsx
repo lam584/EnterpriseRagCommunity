@@ -11,6 +11,7 @@ export default function PostFeedItem({ post }: { post: PostDTO }) {
   const authorAvatarUrl = resolveAssetUrl(post.authorAvatarUrl);
   const timeLabel = formatPostTime(post);
   const excerpt = getPostExcerpt(post.content);
+  const titleText = (post.title ?? '').trim();
 
   const goAuthorProfile = () => {
     if (!post.authorId) return;
@@ -37,7 +38,7 @@ export default function PostFeedItem({ post }: { post: PostDTO }) {
           {post.boardName ? <span className="ml-auto text-gray-400 truncate">#{post.boardName}</span> : null}
         </div>
 
-        <h4 className="mt-1 text-base font-semibold text-gray-900 line-clamp-2">{post.title}</h4>
+        {titleText ? <h4 className="mt-1 text-base font-semibold text-gray-900 line-clamp-2">{titleText}</h4> : null}
         {excerpt ? <p className="mt-1 text-sm text-gray-700 line-clamp-3">{excerpt}</p> : null}
 
         <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">

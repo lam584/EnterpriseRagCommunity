@@ -6,12 +6,15 @@ import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationConfidenceFallbackConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRunEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineStepEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPolicyConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationConfidenceFallbackConfigRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPolicyConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationSimilarityService;
 import com.example.EnterpriseRagCommunity.service.moderation.trace.ModerationPipelineTraceService;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +40,8 @@ public class ModerationVecAutoRunner {
     private final ModerationQueueRepository queueRepository;
     private final ModerationSimilarityService similarityService;
     private final ModerationConfidenceFallbackConfigRepository fallbackRepository;
+    private final ModerationPolicyConfigRepository policyConfigRepository;
+    private final AdminModerationQueueService queueService;
     private final ModerationContentTextLoader textLoader;
 
     private final ModerationPipelineTraceService pipelineTraceService;
@@ -70,9 +75,23 @@ public class ModerationVecAutoRunner {
             try {
                 handleOne(q);
             } catch (Exception ex) {
-                log.warn("VEC autorun handle queueId={} failed: {}", q.getId(), ex.getMessage());
+                log.warn("VEC autorun handle queueId={} failed", q.getId(), ex);
             }
         }
+    }
+
+    public void runForQueueId(Long queueId) {
+        if (queueId == null) return;
+        ModerationQueueEntity q;
+        try {
+            q = queueRepository.findById(queueId).orElse(null);
+        } catch (Exception e) {
+            return;
+        }
+        if (q == null) return;
+        if (q.getCurrentStage() != QueueStage.VEC) return;
+        if (q.getStatus() != QueueStatus.PENDING && q.getStatus() != QueueStatus.REVIEWING) return;
+        handleOne(q);
     }
 
     private void handleOne(ModerationQueueEntity q) {
@@ -117,13 +136,48 @@ public class ModerationVecAutoRunner {
             queueRepository.updateStageIfPendingOrReviewing(q.getId(), QueueStage.VEC, LocalDateTime.now());
         }
 
-        ModerationConfidenceFallbackConfigEntity cfg = fallbackRepository.findAll(org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "updatedAt"))
-                .stream().findFirst().orElse(null);
-        if (cfg == null) cfg = defaultFallback();
+        ModerationConfidenceFallbackConfigEntity cfg = fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc()
+                .orElseThrow(() -> new IllegalStateException("moderation_confidence_fallback_config not initialized"));
 
-        if (!Boolean.TRUE.equals(cfg.getVecEnabled())) {
+        Map<String, Object> policyConfig = null;
+        try {
+            ModerationPolicyConfigEntity policy = policyConfigRepository.findByContentType(q.getContentType()).orElse(null);
+            policyConfig = policy == null ? null : policy.getConfig();
+        } catch (Exception ignore) {
+            policyConfig = null;
+        }
+
+        Boolean vecEnabled = deepGetBool(policyConfig, "precheck.vec.enabled");
+        if (vecEnabled == null) vecEnabled = cfg.getVecEnabled();
+
+        String vecHitAction = firstNonBlank(deepGetString(policyConfig, "precheck.vec.hit_action"), cfg.getVecHitAction() == null ? null : cfg.getVecHitAction().name());
+        String vecMissAction = firstNonBlank(deepGetString(policyConfig, "precheck.vec.miss_action"), cfg.getVecMissAction() == null ? null : cfg.getVecMissAction().name());
+        Double vecThreshold = deepGetDouble(policyConfig, "precheck.vec.threshold");
+        if (vecThreshold == null) vecThreshold = cfg.getVecThreshold();
+
+        if (!Boolean.TRUE.equals(vecEnabled)) {
             // skip VEC -> decide miss action
-            QueueStage next = mapAction(cfg.getVecMissAction());
+            if ("REJECT".equals(normalizeAction(vecMissAction))) {
+                queueService.autoReject(q.getId(), "相似检测关闭且未命中策略为拒绝", run == null ? null : run.getTraceId());
+                if (vecStepId > 0) {
+                    pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, Map.of("reason", "vec disabled", "action", vecMissAction));
+                }
+                if (run != null) {
+                    pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
+                    auditLogWriter.writeSystem(
+                            "VEC_DECISION",
+                            "MODERATION_QUEUE",
+                            q.getId(),
+                            AuditResult.SUCCESS,
+                            "VEC disabled -> REJECT",
+                            run.getTraceId(),
+                            Map.of("runId", run.getId(), "stage", "VEC", "decision", "REJECT", "action", vecMissAction)
+                    );
+                }
+                return;
+            }
+
+            QueueStage next = mapNextStage(vecMissAction);
             q.setCurrentStage(next);
             queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
 
@@ -147,7 +201,27 @@ public class ModerationVecAutoRunner {
         String text = textLoader.load(q);
         if (text == null || text.isBlank()) {
             // If no text, treat as miss
-            QueueStage next = mapAction(cfg.getVecMissAction());
+            if ("REJECT".equals(normalizeAction(vecMissAction))) {
+                queueService.autoReject(q.getId(), "相似检测空文本且未命中策略为拒绝", run == null ? null : run.getTraceId());
+                if (vecStepId > 0) {
+                    pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, Map.of("reason", "empty text", "action", vecMissAction));
+                }
+                if (run != null) {
+                    pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
+                    auditLogWriter.writeSystem(
+                            "VEC_DECISION",
+                            "MODERATION_QUEUE",
+                            q.getId(),
+                            AuditResult.SUCCESS,
+                            "VEC empty text -> REJECT",
+                            run.getTraceId(),
+                            Map.of("runId", run.getId(), "stage", "VEC", "decision", "REJECT", "action", vecMissAction)
+                    );
+                }
+                return;
+            }
+
+            QueueStage next = mapNextStage(vecMissAction);
             q.setCurrentStage(next);
             queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
 
@@ -172,12 +246,49 @@ public class ModerationVecAutoRunner {
         req.setText(text);
         req.setContentType(q.getContentType());
         req.setContentId(q.getContentId());
-        if (cfg.getVecThreshold() != null) req.setThreshold(cfg.getVecThreshold());
+        if (vecThreshold != null) req.setThreshold(vecThreshold);
 
         SimilarityCheckResponse resp = similarityService.check(req);
 
         boolean hit = resp != null && resp.isHit();
-        QueueStage next = hit ? mapAction(cfg.getVecHitAction()) : mapAction(cfg.getVecMissAction());
+        String decidedAction = hit ? vecHitAction : vecMissAction;
+        if ("REJECT".equals(normalizeAction(decidedAction))) {
+            queueService.autoReject(q.getId(), hit ? "相似检测命中自动拒绝" : "相似检测未命中自动拒绝", run == null ? null : run.getTraceId());
+
+            if (vecStepId > 0) {
+                Map<String, Object> details = new LinkedHashMap<>();
+                details.put("hit", hit);
+                details.put("bestDistance", resp == null ? null : resp.getBestDistance());
+                details.put("threshold", resp == null ? null : resp.getThreshold());
+                details.put("hits", resp == null ? List.of() : resp.getHits());
+                details.put("action", decidedAction);
+                pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, details);
+            }
+
+            if (run != null) {
+                pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
+                Map<String, Object> auditDetails = new LinkedHashMap<>();
+                auditDetails.put("runId", run.getId());
+                auditDetails.put("stage", "VEC");
+                auditDetails.put("decision", "REJECT");
+                auditDetails.put("bestDistance", resp == null ? null : resp.getBestDistance());
+                auditDetails.put("threshold", resp == null ? null : resp.getThreshold());
+                auditDetails.put("action", decidedAction);
+
+                auditLogWriter.writeSystem(
+                        "VEC_DECISION",
+                        "MODERATION_QUEUE",
+                        q.getId(),
+                        AuditResult.SUCCESS,
+                        hit ? "VEC hit -> REJECT" : "VEC miss -> REJECT",
+                        run.getTraceId(),
+                        auditDetails
+                );
+            }
+            return;
+        }
+
+        QueueStage next = mapNextStage(decidedAction);
 
         q.setCurrentStage(next);
         queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
@@ -193,6 +304,14 @@ public class ModerationVecAutoRunner {
         }
 
         if (run != null) {
+            Map<String, Object> auditDetails = new LinkedHashMap<>();
+            auditDetails.put("runId", run.getId());
+            auditDetails.put("stage", "VEC");
+            auditDetails.put("decision", hit ? "HIT" : "MISS");
+            auditDetails.put("bestDistance", resp == null ? null : resp.getBestDistance());
+            auditDetails.put("threshold", resp == null ? null : resp.getThreshold());
+            auditDetails.put("nextStage", String.valueOf(next));
+
             auditLogWriter.writeSystem(
                     "VEC_DECISION",
                     "MODERATION_QUEUE",
@@ -200,14 +319,7 @@ public class ModerationVecAutoRunner {
                     AuditResult.SUCCESS,
                     hit ? "VEC hit" : "VEC miss",
                     run.getTraceId(),
-                    Map.of(
-                            "runId", run.getId(),
-                            "stage", "VEC",
-                            "decision", hit ? "HIT" : "MISS",
-                            "bestDistance", resp == null ? null : resp.getBestDistance(),
-                            "threshold", resp == null ? null : resp.getThreshold(),
-                            "nextStage", String.valueOf(next)
-                    )
+                    auditDetails
             );
         }
     }
@@ -221,21 +333,70 @@ public class ModerationVecAutoRunner {
         };
     }
 
-    private static ModerationConfidenceFallbackConfigEntity defaultFallback() {
-        ModerationConfidenceFallbackConfigEntity e = new ModerationConfidenceFallbackConfigEntity();
-        e.setRuleEnabled(Boolean.TRUE);
-        e.setRuleHighAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        e.setRuleMediumAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setRuleLowAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setVecEnabled(Boolean.TRUE);
-        e.setVecThreshold(0.2);
-        e.setVecHitAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        e.setVecMissAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setLlmEnabled(Boolean.TRUE);
-        e.setLlmRejectThreshold(0.75);
-        e.setLlmHumanThreshold(0.5);
-        e.setVersion(0);
-        e.setUpdatedAt(LocalDateTime.now());
-        return e;
+    private static QueueStage mapNextStage(String action) {
+        String a = normalizeAction(action);
+        if (a == null) return QueueStage.HUMAN;
+        return switch (a) {
+            case "LLM" -> QueueStage.LLM;
+            case "VEC" -> QueueStage.VEC;
+            case "HUMAN", "REJECT" -> QueueStage.HUMAN;
+            default -> QueueStage.HUMAN;
+        };
     }
+
+    private static String normalizeAction(String action) {
+        String a = action == null ? null : action.trim().toUpperCase(Locale.ROOT);
+        if (a == null || a.isBlank()) return null;
+        return a;
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        String x = a == null ? null : a.trim();
+        if (x != null && !x.isBlank()) return x;
+        String y = b == null ? null : b.trim();
+        if (y != null && !y.isBlank()) return y;
+        return null;
+    }
+
+    private static Boolean deepGetBool(Map<String, Object> m, String path) {
+        Object v = deepGet(m, path);
+        if (v instanceof Boolean bb) return bb;
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        if (s.equalsIgnoreCase("true")) return Boolean.TRUE;
+        if (s.equalsIgnoreCase("false")) return Boolean.FALSE;
+        return null;
+    }
+
+    private static String deepGetString(Map<String, Object> m, String path) {
+        Object v = deepGet(m, path);
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    private static Double deepGetDouble(Map<String, Object> m, String path) {
+        Object v = deepGet(m, path);
+        if (v == null) return null;
+        if (v instanceof Number n) return n.doubleValue();
+        try {
+            return Double.parseDouble(String.valueOf(v).trim());
+        } catch (Exception ignore) {
+            return null;
+        }
+    }
+
+    private static Object deepGet(Map<String, Object> m, String path) {
+        if (m == null || path == null || path.isBlank()) return null;
+        String[] segs = path.split("\\.");
+        Object cur = m;
+        for (String seg : segs) {
+            if (seg == null || seg.isBlank()) continue;
+            if (!(cur instanceof Map<?, ?> mm)) return null;
+            cur = mm.get(seg);
+        }
+        return cur;
+    }
+
 }

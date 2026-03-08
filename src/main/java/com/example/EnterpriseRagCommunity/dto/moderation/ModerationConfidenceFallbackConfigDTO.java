@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.entity.moderation.ModerationConfidence
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 @Data
 public class ModerationConfidenceFallbackConfigDTO {
@@ -28,6 +29,9 @@ public class ModerationConfidenceFallbackConfigDTO {
     private Double llmRejectThreshold;
     private Double llmHumanThreshold;
 
+    private Double chunkLlmRejectThreshold;
+    private Double chunkLlmHumanThreshold;
+
     private Double llmTextRiskThreshold;
     private Double llmImageRiskThreshold;
     private Double llmStrongRejectThreshold;
@@ -35,6 +39,10 @@ public class ModerationConfidenceFallbackConfigDTO {
     private Double llmCrossModalThreshold;
 
     private Integer reportHumanThreshold;
+
+    private Integer chunkThresholdChars;
+
+    private Map<String, Object> thresholds;
 
     private LocalDateTime updatedAt;
     private String updatedBy;

@@ -31,6 +31,9 @@ public class RiskLabelingService {
     private final RiskLabelingRepository riskLabelingRepository;
     private final TagsRepository tagsRepository;
 
+    public record RiskTagItem(String slug, String name) {
+    }
+
     @Transactional(readOnly = true)
     public List<String> getRiskTagSlugs(ContentType targetType, Long targetId) {
         if (targetType == null || targetId == null) return List.of();
@@ -39,13 +42,21 @@ public class RiskLabelingService {
         return mapToSlugs(rows);
     }
 
+    @Transactional(readOnly = true)
+    public List<RiskTagItem> getRiskTagItems(ContentType targetType, Long targetId) {
+        if (targetType == null || targetId == null) return List.of();
+        List<RiskLabelingEntity> rows = riskLabelingRepository.findAllByTargetTypeAndTargetId(targetType, targetId);
+        if (rows.isEmpty()) return List.of();
+        return mapToItems(rows);
+    }
+
     @Transactional
     public void replaceRiskTags(ContentType targetType, Long targetId, Source source, List<String> rawTags, BigDecimal confidence, boolean clearAllExisting) {
         if (targetType == null) throw new IllegalArgumentException("targetType 不能为空");
         if (targetId == null) throw new IllegalArgumentException("targetId 不能为空");
         if (source == null) throw new IllegalArgumentException("source 不能为空");
 
-        List<String> normalized = normalizeSlugs(rawTags);
+        List<String> inputs = rawTags == null ? List.of() : rawTags;
         LocalDateTime now = LocalDateTime.now();
 
         if (clearAllExisting) {
@@ -54,10 +65,51 @@ public class RiskLabelingService {
             riskLabelingRepository.deleteAllByTargetTypeAndTargetIdAndSource(targetType, targetId, source);
         }
 
-        if (normalized.isEmpty()) return;
+        if (inputs.isEmpty()) return;
 
-        for (String slug : normalized) {
-            TagsEntity tag = ensureRiskTagExists(slug);
+        List<TagsEntity> activeRiskTags;
+        try {
+            activeRiskTags = tagsRepository.findByTypeAndIsActiveTrue(TagType.RISK);
+        } catch (Exception e) {
+            activeRiskTags = List.of();
+        }
+        if (activeRiskTags.isEmpty()) return;
+
+        Map<String, TagsEntity> byName = new HashMap<>();
+        Map<String, TagsEntity> bySlug = new HashMap<>();
+
+        for (int pass = 0; pass < 2; pass++) {
+            for (TagsEntity t : activeRiskTags) {
+                if (t == null || !Boolean.TRUE.equals(t.getIsActive())) continue;
+                boolean systemFirst = (t.getTenantId() == null);
+                if ((pass == 0) != systemFirst) continue;
+
+                String name = t.getName();
+                if (name != null) {
+                    String k = name.trim();
+                    if (!k.isBlank()) byName.putIfAbsent(k, t);
+                }
+                String slug = t.getSlug();
+                if (slug != null) {
+                    String k = slug.trim().toLowerCase(Locale.ROOT);
+                    if (!k.isBlank()) bySlug.putIfAbsent(k, t);
+                }
+            }
+        }
+
+        for (String raw : inputs) {
+            if (raw == null) continue;
+            String t = raw.trim();
+            if (t.isBlank()) continue;
+
+            TagsEntity tag = byName.get(t);
+            if (tag == null) tag = bySlug.get(t.toLowerCase(Locale.ROOT));
+            if (tag == null) {
+                String ns = normalizeSlug(t);
+                if (ns != null) tag = bySlug.get(ns);
+            }
+            if (tag == null) continue;
+
             RiskLabelingEntity rl = new RiskLabelingEntity();
             rl.setTargetType(targetType);
             rl.setTargetId(targetId);
@@ -91,6 +143,28 @@ public class RiskLabelingService {
         return out;
     }
 
+    @Transactional(readOnly = true)
+    public Map<Long, List<RiskTagItem>> getRiskTagItemsByTargets(ContentType targetType, Collection<Long> targetIds) {
+        if (targetType == null || targetIds == null || targetIds.isEmpty()) return Map.of();
+        List<Long> ids = targetIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) return Map.of();
+
+        List<RiskLabelingEntity> rows = riskLabelingRepository.findAllByTargetTypeAndTargetIdIn(targetType, ids);
+        if (rows.isEmpty()) return Map.of();
+
+        Map<Long, List<RiskLabelingEntity>> byTarget = new HashMap<>();
+        for (RiskLabelingEntity rl : rows) {
+            if (rl == null || rl.getTargetId() == null) continue;
+            byTarget.computeIfAbsent(rl.getTargetId(), k -> new ArrayList<>()).add(rl);
+        }
+
+        Map<Long, List<RiskTagItem>> out = new HashMap<>();
+        for (Map.Entry<Long, List<RiskLabelingEntity>> e : byTarget.entrySet()) {
+            out.put(e.getKey(), mapToItems(e.getValue()));
+        }
+        return out;
+    }
+
     private List<String> mapToSlugs(List<RiskLabelingEntity> rows) {
         LinkedHashSet<Long> tagIds = new LinkedHashSet<>();
         for (RiskLabelingEntity rl : rows) {
@@ -109,20 +183,31 @@ public class RiskLabelingService {
         return new ArrayList<>(slugs);
     }
 
-    private TagsEntity ensureRiskTagExists(String slug) {
-        TagsEntity exists = tagsRepository.findByTenantIdAndTypeAndSlug(1L, TagType.RISK, slug).orElse(null);
-        if (exists != null) return exists;
+    private List<RiskTagItem> mapToItems(List<RiskLabelingEntity> rows) {
+        LinkedHashSet<Long> tagIds = new LinkedHashSet<>();
+        for (RiskLabelingEntity rl : rows) {
+            if (rl != null && rl.getTagId() != null) tagIds.add(rl.getTagId());
+        }
+        if (tagIds.isEmpty()) return List.of();
 
-        TagsEntity created = new TagsEntity();
-        created.setTenantId(1L);
-        created.setType(TagType.RISK);
-        created.setName(slug.length() > 64 ? slug.substring(0, 64) : slug);
-        created.setSlug(slug);
-        created.setDescription(null);
-        created.setIsSystem(false);
-        created.setIsActive(true);
-        created.setCreatedAt(LocalDateTime.now());
-        return tagsRepository.save(created);
+        Map<Long, TagsEntity> byId = new HashMap<>();
+        tagsRepository.findAllById(tagIds).forEach(t -> {
+            if (t != null && t.getId() != null) byId.put(t.getId(), t);
+        });
+
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        List<RiskTagItem> out = new ArrayList<>();
+        for (Long id : tagIds) {
+            TagsEntity t = byId.get(id);
+            if (t == null) continue;
+            String slug = t.getSlug();
+            if (slug == null || slug.isBlank()) continue;
+            if (!seen.add(slug)) continue;
+            String name = t.getName();
+            if (name == null || name.isBlank()) name = slug;
+            out.add(new RiskTagItem(slug, name));
+        }
+        return out;
     }
 
     static List<String> normalizeSlugs(List<String> rawTags) {

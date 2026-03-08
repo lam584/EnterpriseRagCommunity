@@ -38,6 +38,9 @@ public class TagsUpdateDTO {
     @ApiModelProperty(value = "是否启用", example = "true")
     private Optional<Boolean> isActive = Optional.empty();
 
+    @ApiModelProperty(value = "风险阈值", example = "0.5")
+    private Optional<Double> threshold = Optional.empty();
+
     // 审计字段：仅映射不可修改，可在业务层忽略修改
     @ApiModelProperty(value = "创建时间(只读)", example = "2025-01-01T00:00:00")
     private Optional<LocalDateTime> createdAt = Optional.empty();

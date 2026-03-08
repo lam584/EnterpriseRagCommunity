@@ -58,6 +58,13 @@ function inferPurposeFromName(modelName: string): ModelPurpose {
   return 'TEXT_CHAT';
 }
 
+function getModelPurposeWarning(requestedPurpose: ModelPurpose, modelName: string): string | null {
+  if (requestedPurpose !== 'IMAGE_CHAT') return null;
+  const tags = inferModelCapabilityTags(modelName);
+  if (tags.includes('视觉')) return null;
+  return '该模型名未识别出视觉能力，可能不支持图片输入。继续添加时，仍会加入视觉模型列表。';
+}
+
 type ProviderModelsState = {
   loading: boolean;
   error: string | null;
@@ -170,7 +177,6 @@ function mapDtoToForm(dto?: AiProvidersConfigDTO | null): ConfigForm {
       supportsVision: p.supportsVision ?? false,
       connectTimeoutMs: p.connectTimeoutMs ?? null,
       readTimeoutMs: p.readTimeoutMs ?? null,
-      maxConcurrent: p.maxConcurrent ?? null,
       enabled: p.enabled ?? true,
       extraHeadersRows: mapHeadersToRows(p.extraHeaders),
     }));
@@ -198,7 +204,6 @@ function buildPayload(form: ConfigForm): AiProvidersConfigDTO {
       extraHeaders: rowsToHeaders(p.extraHeadersRows),
       connectTimeoutMs: p.connectTimeoutMs ?? null,
       readTimeoutMs: p.readTimeoutMs ?? null,
-      maxConcurrent: p.maxConcurrent ?? null,
       enabled: p.enabled ?? true,
     })),
   };
@@ -355,6 +360,9 @@ export default function AiProvidersForm() {
       setPersistedProviderIds(ids);
       await Promise.all(ids.map((id) => refreshProviderModels(id)));
       setSuccess('保存成功');
+      try {
+        window.localStorage.removeItem('llm-routing-config.provider-models-map.v2');
+      } catch {}
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : '保存失败');
@@ -404,7 +412,6 @@ export default function AiProvidersForm() {
             supportsVision: false,
             connectTimeoutMs: null,
             readTimeoutMs: null,
-            maxConcurrent: null,
             enabled: true,
             extraHeadersRows: [],
           },
@@ -422,7 +429,7 @@ export default function AiProvidersForm() {
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow p-4 space-y-2">
-        <h3 className="text-lg font-semibold">模型来源</h3>
+        <h3 className="text-lg font-semibold">模型提供商</h3>
         <div className="text-sm text-gray-600">加载中…</div>
       </div>
     );
@@ -700,12 +707,13 @@ function AiProvidersFormInner(props: InnerProps) {
     const pid = providerId.trim();
     const name = modelName.trim();
     if (!pid || !name) return;
-    const inferredPurpose = inferPurposeFromName(name);
-    const actualPurpose: ModelPurpose = (() => {
-      if (purpose === 'EMBEDDING' || purpose === 'RERANK') return purpose;
-      if (inferredPurpose === 'EMBEDDING' || inferredPurpose === 'RERANK') return inferredPurpose;
-      return inferredPurpose;
-    })();
+    const actualPurpose = purpose;
+    const purposeWarning = getModelPurposeWarning(actualPurpose, name);
+
+    if (purposeWarning) {
+      const confirmed = window.confirm(`${purposeWarning}\n\n模型：${name}\n目标列表：${purposeLabel(actualPurpose)}\n\n确认仍然添加？`);
+      if (!confirmed) return;
+    }
 
     if (getModelsForProvider(pid, actualPurpose).includes(name)) {
       setModalSuccess(`已存在（${purposeLabel(actualPurpose)}）：${name}`);
@@ -724,8 +732,11 @@ function AiProvidersFormInner(props: InnerProps) {
       } else {
         const dto = await adminAddProviderModel(pid, actualPurpose, name);
         setProviderModels((prev) => ({ ...prev, [pid]: mapModelsDtoToState(dto) }));
-        setModalSuccess(actualPurpose === purpose ? `已添加：${name}` : `已添加：${name}（已按能力归类为：${purposeLabel(actualPurpose)}）`);
+        setModalSuccess(`已添加：${name}`);
       }
+      try {
+        window.localStorage.removeItem('llm-routing-config.provider-models-map.v2');
+      } catch {}
       setModalManualName('');
     } catch (e) {
       setModalError(e instanceof Error ? e.message : '添加失败');
@@ -750,6 +761,9 @@ function AiProvidersFormInner(props: InnerProps) {
         const dto = await adminDeleteProviderModel(pid, purpose, name);
         setProviderModels((prev) => ({ ...prev, [pid]: mapModelsDtoToState(dto) }));
       }
+      try {
+        window.localStorage.removeItem('llm-routing-config.provider-models-map.v2');
+      } catch {}
     } catch (e) {
       window.alert(e instanceof Error ? e.message : '删除失败');
     }
@@ -848,10 +862,9 @@ function AiProvidersFormInner(props: InnerProps) {
         defaultRerankModel: '',
         supportsVision: false,
         connectTimeoutMs: null,
-        readTimeoutMs: null,
-        maxConcurrent: null,
-        enabled: true,
-        extraHeadersRows: [],
+            readTimeoutMs: null,
+            enabled: true,
+            extraHeadersRows: [],
       };
       return {
         ...prev,
@@ -888,11 +901,16 @@ function AiProvidersFormInner(props: InnerProps) {
   }, [getModelsForProvider, modalProviderId]);
   const modalExistingForPurpose = modalExistingSets[addModelsModal.purpose] ?? new Set<string>();
   const manualAlreadyAdded = modalManualName.trim() ? modalExistingForPurpose.has(modalManualName.trim()) : false;
+  const manualModelWarning = useMemo(() => {
+    const name = modalManualName.trim();
+    if (!name) return null;
+    return getModelPurposeWarning(addModelsModal.purpose, name);
+  }, [addModelsModal.purpose, modalManualName]);
 
   return (
     <div className="bg-white rounded-lg shadow p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">模型来源</h3>
+        <h3 className="text-lg font-semibold">模型提供商</h3>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -945,7 +963,7 @@ function AiProvidersFormInner(props: InnerProps) {
       )}
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">全局默认模型来源</label>
+        <label className="block text-sm font-medium text-gray-700">全局默认模型提供商</label>
         <select
           className="w-full border rounded px-3 py-2 text-sm"
           value={form.activeProviderId}
@@ -962,7 +980,7 @@ function AiProvidersFormInner(props: InnerProps) {
       </div>
 
       <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-700">模型来源（{form.providers.length}）</div>
+        <div className="text-sm text-gray-700">模型提供商（{form.providers.length}）</div>
         {isEditing && (
           <button
             type="button"
@@ -971,7 +989,7 @@ function AiProvidersFormInner(props: InnerProps) {
             disabled={saving}
           >
             <span className="text-base leading-none">＋</span>
-            新增模型来源
+            新增模型提供商
           </button>
         )}
       </div>
@@ -1178,15 +1196,6 @@ function AiProvidersFormInner(props: InnerProps) {
                           inputMode="numeric"
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">最大并发</label>
-                        <input
-                          className="w-full border rounded px-3 py-2 text-sm"
-                          value={p.maxConcurrent === null || p.maxConcurrent === undefined ? '' : String(p.maxConcurrent)}
-                          onChange={(e) => updateProvider(idx, { maxConcurrent: e.target.value.trim() ? Number(e.target.value) : null })}
-                          inputMode="numeric"
-                        />
-                      </div>
                     </div>
 
                     <div>
@@ -1311,7 +1320,7 @@ function AiProvidersFormInner(props: InnerProps) {
           <div className="bg-white rounded-lg shadow max-w-2xl w-full p-4 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-lg font-semibold">新增模型来源</div>
+                <div className="text-lg font-semibold">新增模型提供商</div>
                 <div className="text-sm text-gray-600">选择一个常见 API 预设，或创建空白配置</div>
               </div>
               <button
@@ -1363,7 +1372,7 @@ function AiProvidersFormInner(props: InnerProps) {
               <div>
                 <div className="text-lg font-semibold">添加模型</div>
                 <div className="text-sm text-gray-600">
-                  模型来源：{addModelsModal.providerId}，类型：{purposeLabel(addModelsModal.purpose)}
+                  模型提供商：{addModelsModal.providerId}，类型：{purposeLabel(addModelsModal.purpose)}
                 </div>
               </div>
               <button type="button" className="px-3 py-1.5 rounded bg-gray-100 hover:bg-gray-200 text-sm" onClick={closeModal}>
@@ -1398,6 +1407,7 @@ function AiProvidersFormInner(props: InnerProps) {
                   placeholder="例如 gpt-4o-mini"
                 />
                 {manualAlreadyAdded && <div className="mt-1 text-xs text-gray-500">该模型已添加，无需重复添加</div>}
+                {!manualAlreadyAdded && manualModelWarning && <div className="mt-1 text-xs text-amber-700">{manualModelWarning}</div>}
               </div>
               <div className="flex items-end">
                 <button
@@ -1458,19 +1468,23 @@ function AiProvidersFormInner(props: InnerProps) {
                     if (modalExistingSets.RERANK.has(m)) existingPurposes.push('重排');
                     const inferred = modelCapabilityTags(m);
                     const tags = Array.from(new Set([...existingPurposes, ...inferred]));
+                    const addWarning = getModelPurposeWarning(addModelsModal.purpose, m);
                     return (
                       <div key={m} className="grid grid-cols-12 items-center px-3 py-2 border-t gap-2">
-                        {canAddModels && !alreadyAdded ? (
-                          <button
-                            type="button"
-                            className="col-span-6 text-left text-sm text-gray-800 hover:underline truncate"
-                            onClick={() => addModel(addModelsModal.providerId, addModelsModal.purpose, m)}
-                          >
-                            {m}
-                          </button>
-                        ) : (
-                          <div className={`col-span-6 text-sm truncate ${alreadyAdded ? 'text-gray-500' : 'text-gray-800'}`}>{m}</div>
-                        )}
+                        <div className="col-span-6 min-w-0">
+                          {canAddModels && !alreadyAdded ? (
+                            <button
+                              type="button"
+                              className="w-full text-left text-sm text-gray-800 hover:underline truncate"
+                              onClick={() => addModel(addModelsModal.providerId, addModelsModal.purpose, m)}
+                            >
+                              {m}
+                            </button>
+                          ) : (
+                            <div className={`text-sm truncate ${alreadyAdded ? 'text-gray-500' : 'text-gray-800'}`}>{m}</div>
+                          )}
+                          {!alreadyAdded && addWarning && <div className="mt-1 text-xs text-amber-700">{addWarning}</div>}
+                        </div>
                         <div className="col-span-5 flex flex-wrap gap-1 justify-start">
                           {tags.length ? (
                             tags.map((t) => (

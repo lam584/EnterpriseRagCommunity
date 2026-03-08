@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -9,7 +10,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.zip.CRC32;
 
 import org.springframework.stereotype.Service;
@@ -23,6 +23,11 @@ import lombok.Data;
 
 @Service
 public class RagContextPromptService {
+
+    private static final String ABLATION_NONE = "NONE";
+    private static final String ABLATION_REL_ONLY = "REL_ONLY";
+    private static final String ABLATION_REL_IMP = "REL_IMP";
+    private static final String ABLATION_REL_IMP_RED = "REL_IMP_RED";
 
     public AssembleResult assemble(String queryText, List<RagPostChatRetrievalService.Hit> hits, ContextClipConfigDTO cfg, CitationConfigDTO citationCfg) {
         ContextClipConfigDTO safe = cfg;
@@ -44,15 +49,16 @@ public class RagContextPromptService {
 
         ContextWindowPolicy policy = safe.getPolicy() == null ? ContextWindowPolicy.TOPK : safe.getPolicy();
         int maxItems = safe.getMaxItems() == null ? 6 : clampInt(safe.getMaxItems(), 1, 100, 6);
-        int maxContextTokens = safe.getMaxContextTokens() == null ? 12000 : clampInt(safe.getMaxContextTokens(), 100, 1_000_000, 12000);
+        int maxContextTokens = safe.getMaxContextTokens() == null ? 12000 : clampInt(safe.getMaxContextTokens(), 1, 1_000_000, 12000);
+        int contextTokenBudget = safe.getContextTokenBudget() == null ? maxContextTokens : clampInt(safe.getContextTokenBudget(), 100, 1_000_000, 3000);
         int reserve = safe.getReserveAnswerTokens() == null ? 2000 : clampInt(safe.getReserveAnswerTokens(), 0, 1_000_000, 2000);
         int perItemMaxTokens = safe.getPerItemMaxTokens() == null ? 2000 : clampInt(safe.getPerItemMaxTokens(), 50, 200_000, 2000);
         int maxPromptChars = safe.getMaxPromptChars() == null ? 200_000 : clampInt(safe.getMaxPromptChars(), 1000, 2_000_000, 200_000);
 
         int budgetTokens = switch (policy) {
-            case FIXED -> maxContextTokens;
-            case ADAPTIVE -> Math.max(0, maxContextTokens - reserve - Math.max(0, approxTokens(queryText)) * 2);
-            default -> Math.max(0, maxContextTokens - reserve);
+            case FIXED -> contextTokenBudget;
+            case ADAPTIVE -> Math.max(0, contextTokenBudget - reserve - Math.max(0, approxTokens(queryText)) * 2);
+            default -> Math.max(0, contextTokenBudget - reserve);
         };
 
         Double minScore = safe.getMinScore();
@@ -61,6 +67,11 @@ public class RagContextPromptService {
         boolean dedupByPostId = Boolean.TRUE.equals(safe.getDedupByPostId());
         boolean dedupByTitle = Boolean.TRUE.equals(safe.getDedupByTitle());
         boolean dedupByContentHash = Boolean.TRUE.equals(safe.getDedupByContentHash());
+        boolean crossSourceDedup = safe.getCrossSourceDedup() == null || Boolean.TRUE.equals(safe.getCrossSourceDedup());
+        double alpha = clampDouble(safe.getAlpha(), 0.0, 10.0, 1.0);
+        double beta = clampDouble(safe.getBeta(), 0.0, 10.0, 1.0);
+        double gamma = clampDouble(safe.getGamma(), 0.0, 10.0, 1.0);
+        String ablationMode = normalizeAblationMode(safe.getAblationMode());
 
         String sectionTitle = trimOrDefault(safe.getSectionTitle(), "");
         String separator = safe.getSeparator() == null ? "\n\n" : safe.getSeparator();
@@ -125,6 +136,7 @@ public class RagContextPromptService {
                 String truncated = truncateByApproxTokens(trimmed, perItemMaxTokens);
                 int tokens = approxTokens(truncated);
                 item.setTokens(tokens);
+                item.setSnippet(buildSnippet(truncated));
                 if (tokens <= 0) {
                     item.setReason("noTokens");
                     dropped.add(item);
@@ -135,6 +147,7 @@ public class RagContextPromptService {
                 c.item = item;
                 c.text = truncated;
                 c.tokens = tokens;
+                c.sourceKey = resolveSourceKey(h);
                 if (dedupByTitle && item.getTitle() != null) {
                     String key = normalizeTitle(item.getTitle());
                     c.titleKey = key.isBlank() ? null : key;
@@ -142,22 +155,27 @@ public class RagContextPromptService {
                 if (dedupByContentHash) {
                     c.contentHash = crc32(truncated);
                 }
+                c.textKey = normalizeTextKey(truncated);
+                c.tokenSet = tokenizeSet(truncated, 80);
                 candidates.add(c);
             }
+
+            prepareCandidateScores(candidates);
 
             SelectionState st = new SelectionState();
             st.dedupByPostId = dedupByPostId;
             st.dedupByTitle = dedupByTitle;
             st.dedupByContentHash = dedupByContentHash;
+            st.crossSourceDedup = crossSourceDedup;
             st.maxSamePostItems = maxSamePostItems;
 
             List<Candidate> selectedCandidates;
             if (policy == ContextWindowPolicy.SLIDING) {
-                selectedCandidates = selectSliding(candidates, st, maxItems, budgetTokens, dropped);
+                selectedCandidates = selectSliding(candidates, st, maxItems, budgetTokens, dropped, alpha, beta, gamma, ablationMode);
             } else if (policy == ContextWindowPolicy.IMPORTANCE) {
-                selectedCandidates = selectImportance(candidates, st, maxItems, budgetTokens, dropped);
+                selectedCandidates = selectImportance(candidates, st, maxItems, budgetTokens, dropped, alpha, beta, gamma, ablationMode);
             } else {
-                selectedCandidates = selectHybrid(candidates, st, maxItems, budgetTokens, dropped);
+                selectedCandidates = selectHybrid(candidates, st, maxItems, budgetTokens, dropped, alpha, beta, gamma, ablationMode);
             }
 
             usedTokens = 0;
@@ -169,6 +187,7 @@ public class RagContextPromptService {
                 sb.append(c.text == null ? "" : c.text);
                 sb.append(separator);
                 usedTokens += Math.max(0, c.tokens);
+                c.item.setReason("selected");
                 selected.add(c.item);
                 if (sb.length() > maxPromptChars) break;
             }
@@ -176,6 +195,7 @@ public class RagContextPromptService {
             Set<Long> seenPostIds = new HashSet<>();
             Set<String> seenTitles = new HashSet<>();
             Set<Long> seenContentHash = new HashSet<>();
+            Map<String, String> textKeySource = new HashMap<>();
             Map<Long, Integer> postCount = new HashMap<>();
 
             usedTokens = 0;
@@ -232,7 +252,9 @@ public class RagContextPromptService {
                 String trimmed = text.trim();
                 String truncated = truncateByApproxTokens(trimmed, perItemMaxTokens);
                 int tokens = approxTokens(truncated);
+                String textKey = normalizeTextKey(truncated);
                 item.setTokens(tokens);
+                item.setSnippet(buildSnippet(truncated));
                 if (tokens <= 0) {
                     item.setReason("noTokens");
                     dropped.add(item);
@@ -247,6 +269,16 @@ public class RagContextPromptService {
                         continue;
                     }
                     seenContentHash.add(h32);
+                }
+
+                if (crossSourceDedup && textKey != null) {
+                    String sourceKey = resolveSourceKey(h);
+                    String prevSource = textKeySource.get(textKey);
+                    if (prevSource != null && sourceKey != null && !sourceKey.equals(prevSource)) {
+                        item.setReason("crossSourceDedup");
+                        dropped.add(item);
+                        continue;
+                    }
                 }
 
                 if (maxSamePostItems > 0 && item.getPostId() != null) {
@@ -271,6 +303,7 @@ public class RagContextPromptService {
                 sb.append(separator);
 
                 usedTokens += tokens;
+                item.setReason("selected");
                 selected.add(item);
 
                 if (dedupByPostId && item.getPostId() != null) seenPostIds.add(item.getPostId());
@@ -281,7 +314,10 @@ public class RagContextPromptService {
                 if (maxSamePostItems > 0 && item.getPostId() != null) {
                     postCount.put(item.getPostId(), postCount.getOrDefault(item.getPostId(), 0) + 1);
                 }
-
+                if (crossSourceDedup && textKey != null) {
+                    String sourceKey = resolveSourceKey(h);
+                    textKeySource.putIfAbsent(textKey, sourceKey == null ? "UNKNOWN" : sourceKey);
+                }
                 if (sb.length() > maxPromptChars) break;
             }
         }
@@ -326,20 +362,39 @@ public class RagContextPromptService {
         Integer tokens;
         Long contentHash;
         String titleKey;
+        String sourceKey;
+        String textKey;
+        Set<String> tokenSet = Collections.emptySet();
+        Double relScore;
+        Double impScore;
+        Double redScore;
+        Double finalScore;
     }
 
     private static class SelectionState {
         boolean dedupByPostId;
         boolean dedupByTitle;
         boolean dedupByContentHash;
+        boolean crossSourceDedup;
         int maxSamePostItems;
         final Set<Long> seenPostIds = new HashSet<>();
         final Set<String> seenTitles = new HashSet<>();
         final Set<Long> seenContentHash = new HashSet<>();
+        final Map<String, String> textKeySources = new HashMap<>();
         final Map<Long, Integer> postCount = new HashMap<>();
     }
 
-    private static List<Candidate> selectSliding(List<Candidate> candidates, SelectionState st, int maxItems, int budgetTokens, List<Item> dropped) {
+    private static List<Candidate> selectSliding(
+            List<Candidate> candidates,
+            SelectionState st,
+            int maxItems,
+            int budgetTokens,
+            List<Item> dropped,
+            double alpha,
+            double beta,
+            double gamma,
+            String ablationMode
+    ) {
         if (candidates == null || candidates.isEmpty()) return List.of();
         List<Candidate> out = new ArrayList<>();
         int used = 0;
@@ -354,11 +409,15 @@ public class RagContextPromptService {
                 continue;
             }
 
+            double red = redundancyWithSelected(c, out);
+            applyCandidateScore(c, alpha, beta, gamma, ablationMode, red);
             int tok = c.tokens == null ? 0 : c.tokens;
             int remaining = Math.max(0, budgetTokens - used);
             if (tok > remaining) {
                 if (remaining >= 50) {
                     Candidate clipped = clipToTokens(c, remaining);
+                    double clippedRed = redundancyWithSelected(clipped, out);
+                    applyCandidateScore(clipped, alpha, beta, gamma, ablationMode, clippedRed);
                     markTaken(clipped, st);
                     out.add(clipped);
                     used += clipped.tokens == null ? 0 : clipped.tokens;
@@ -376,25 +435,31 @@ public class RagContextPromptService {
         return out;
     }
 
-    private static List<Candidate> selectImportance(List<Candidate> candidates, SelectionState st, int maxItems, int budgetTokens, List<Item> dropped) {
-        if (candidates == null || candidates.isEmpty()) return List.of();
-
-        List<Candidate> pool = candidates;
-        if (st.dedupByPostId) {
-            pool = dedupKeepBest(pool, (c) -> c.item == null ? null : c.item.getPostId(), "dedupPostId", dropped);
-        }
-        if (st.dedupByTitle) {
-            pool = dedupKeepBest(pool, (c) -> c.titleKey, "dedupTitle", dropped);
-        }
-        if (st.dedupByContentHash) {
-            pool = dedupKeepBest(pool, (c) -> c.contentHash, "dedupContent", dropped);
-        }
-
-        List<Candidate> selected = selectImportanceCore(pool, st, maxItems, budgetTokens, dropped, false);
-        return selected;
+    private static List<Candidate> selectImportance(
+            List<Candidate> candidates,
+            SelectionState st,
+            int maxItems,
+            int budgetTokens,
+            List<Item> dropped,
+            double alpha,
+            double beta,
+            double gamma,
+            String ablationMode
+    ) {
+        return selectGreedyByScore(candidates, st, maxItems, budgetTokens, dropped, false, alpha, beta, gamma, ablationMode);
     }
 
-    private static List<Candidate> selectHybrid(List<Candidate> candidates, SelectionState st, int maxItems, int budgetTokens, List<Item> dropped) {
+    private static List<Candidate> selectHybrid(
+            List<Candidate> candidates,
+            SelectionState st,
+            int maxItems,
+            int budgetTokens,
+            List<Item> dropped,
+            double alpha,
+            double beta,
+            double gamma,
+            String ablationMode
+    ) {
         if (candidates == null || candidates.isEmpty()) return List.of();
         int headN = Math.min(2, maxItems);
 
@@ -411,6 +476,8 @@ public class RagContextPromptService {
                 continue;
             }
 
+            double red = redundancyWithSelected(c, out);
+            applyCandidateScore(c, alpha, beta, gamma, ablationMode, red);
             int tok = c.tokens == null ? 0 : c.tokens;
             if (used + tok > budgetTokens) {
                 c.item.setReason("budgetExceeded");
@@ -439,19 +506,7 @@ public class RagContextPromptService {
             }
             rest.add(c);
         }
-
-        List<Candidate> pool = rest;
-        if (st.dedupByPostId) {
-            pool = dedupKeepBest(pool, (c) -> c.item == null ? null : c.item.getPostId(), "dedupPostId", dropped);
-        }
-        if (st.dedupByTitle) {
-            pool = dedupKeepBest(pool, (c) -> c.titleKey, "dedupTitle", dropped);
-        }
-        if (st.dedupByContentHash) {
-            pool = dedupKeepBest(pool, (c) -> c.contentHash, "dedupContent", dropped);
-        }
-
-        List<Candidate> tail = selectImportanceCore(pool, st, remainingSlots, remainingBudget, dropped, true);
+        List<Candidate> tail = selectGreedyByScore(rest, st, remainingSlots, remainingBudget, dropped, true, alpha, beta, gamma, ablationMode);
         for (Candidate c : tail) {
             if (c == null || c.item == null) continue;
             markTaken(c, st);
@@ -460,179 +515,76 @@ public class RagContextPromptService {
         return out;
     }
 
-    private static List<Candidate> selectImportanceCore(
+    private static List<Candidate> selectGreedyByScore(
             List<Candidate> pool,
             SelectionState st,
             int maxItems,
             int budgetTokens,
             List<Item> dropped,
-            boolean allowSlidingFill
+            boolean allowSlidingFill,
+            double alpha,
+            double beta,
+            double gamma,
+            String ablationMode
     ) {
         if (pool == null || pool.isEmpty() || maxItems <= 0 || budgetTokens <= 0) return List.of();
-
-        boolean canDp = !allowSlidingFill
-                && st.maxSamePostItems <= 0
-                && budgetTokens <= 50_000
-                && maxItems <= 20
-                && pool.size() <= 200;
-
-        if (canDp) {
-            List<Candidate> out = selectByDp(pool, maxItems, budgetTokens);
-            for (Candidate c : pool) {
-                if (c == null || c.item == null) continue;
-                if (out.contains(c)) continue;
-                if (c.item.getReason() != null && !c.item.getReason().isBlank()) continue;
-                c.item.setReason("notSelected");
-                dropped.add(c.item);
-            }
-            return out;
-        }
-
-        List<Candidate> sorted = new ArrayList<>(pool);
-        sorted.sort((a, b) -> {
-            double av = importanceValue(a);
-            double bv = importanceValue(b);
-            int c = Double.compare(bv, av);
-            if (c != 0) return c;
-            double as = a == null || a.item == null || a.item.getScore() == null ? 0.0 : a.item.getScore();
-            double bs = b == null || b.item == null || b.item.getScore() == null ? 0.0 : b.item.getScore();
-            c = Double.compare(bs, as);
-            if (c != 0) return c;
-            int at = a == null || a.tokens == null ? 0 : a.tokens;
-            int bt = b == null || b.tokens == null ? 0 : b.tokens;
-            c = Integer.compare(at, bt);
-            if (c != 0) return c;
-            int ar = a == null || a.item == null || a.item.getRank() == null ? Integer.MAX_VALUE : a.item.getRank();
-            int br = b == null || b.item == null || b.item.getRank() == null ? Integer.MAX_VALUE : b.item.getRank();
-            return Integer.compare(ar, br);
-        });
-
+        List<Candidate> remaining = new ArrayList<>(pool);
         List<Candidate> out = new ArrayList<>();
         int used = 0;
-        Map<Long, Integer> localPostCount = st.maxSamePostItems > 0 ? new HashMap<>(st.postCount) : Map.of();
-        for (Candidate c : sorted) {
-            if (c == null || c.item == null) continue;
-            if (out.size() >= maxItems) break;
-
-            if (st.maxSamePostItems > 0 && c.item.getPostId() != null) {
-                int cnt = localPostCount.getOrDefault(c.item.getPostId(), 0);
-                if (cnt >= st.maxSamePostItems) {
-                    c.item.setReason("maxSamePostItems");
-                    dropped.add(c.item);
+        while (!remaining.isEmpty() && out.size() < maxItems) {
+            Candidate best = null;
+            int bestIdx = -1;
+            for (int i = 0; i < remaining.size(); i++) {
+                Candidate c = remaining.get(i);
+                if (c == null || c.item == null) {
+                    remaining.remove(i);
+                    i--;
                     continue;
                 }
+                String reason = canTake(c, st);
+                if (reason != null) {
+                    c.item.setReason(reason);
+                    dropped.add(c.item);
+                    remaining.remove(i);
+                    i--;
+                    continue;
+                }
+                double red = redundancyWithSelected(c, out);
+                applyCandidateScore(c, alpha, beta, gamma, ablationMode, red);
+                if (isBetterGreedyCandidate(c, best, ablationMode)) {
+                    best = c;
+                    bestIdx = i;
+                }
             }
-
-            int tok = c.tokens == null ? 0 : c.tokens;
-            int remaining = Math.max(0, budgetTokens - used);
-            if (tok > remaining) {
-                if (allowSlidingFill && remaining >= 50) {
-                    Candidate clipped = clipToTokens(c, remaining);
+            if (best == null || bestIdx < 0) break;
+            remaining.remove(bestIdx);
+            int tok = best.tokens == null ? 0 : best.tokens;
+            int remainingBudget = Math.max(0, budgetTokens - used);
+            if (tok > remainingBudget) {
+                if (allowSlidingFill && remainingBudget >= 50) {
+                    Candidate clipped = clipToTokens(best, remainingBudget);
+                    double red = redundancyWithSelected(clipped, out);
+                    applyCandidateScore(clipped, alpha, beta, gamma, ablationMode, red);
+                    markTaken(clipped, st);
                     out.add(clipped);
                     used += clipped.tokens == null ? 0 : clipped.tokens;
                     break;
                 }
-                c.item.setReason("budgetExceeded");
-                dropped.add(c.item);
+                best.item.setReason("budgetExceeded");
+                dropped.add(best.item);
                 continue;
             }
-
-            out.add(c);
+            markTaken(best, st);
+            out.add(best);
             used += tok;
-            if (st.maxSamePostItems > 0 && c.item.getPostId() != null) {
-                localPostCount.put(c.item.getPostId(), localPostCount.getOrDefault(c.item.getPostId(), 0) + 1);
-            }
         }
-
-        for (Candidate c : pool) {
+        for (Candidate c : remaining) {
             if (c == null || c.item == null) continue;
-            if (out.contains(c)) continue;
             if (c.item.getReason() != null && !c.item.getReason().isBlank()) continue;
             c.item.setReason("notSelected");
             dropped.add(c.item);
         }
         return out;
-    }
-
-    private static List<Candidate> selectByDp(List<Candidate> pool, int maxItems, int budgetTokens) {
-        int n = pool.size();
-        int K = Math.max(0, maxItems);
-        int B = Math.max(0, budgetTokens);
-        double negInf = -1e30;
-        double[][] dp = new double[K + 1][B + 1];
-        int[][] parentItem = new int[K + 1][B + 1];
-        int[][] parentTok = new int[K + 1][B + 1];
-        for (int c = 0; c <= K; c++) {
-            for (int t = 0; t <= B; t++) {
-                dp[c][t] = negInf;
-                parentItem[c][t] = -1;
-                parentTok[c][t] = -1;
-            }
-        }
-        dp[0][0] = 0.0;
-
-        for (int i = 0; i < n; i++) {
-            Candidate it = pool.get(i);
-            if (it == null || it.item == null) continue;
-            int w = it.tokens == null ? 0 : it.tokens;
-            if (w <= 0 || w > B) continue;
-            double v = importanceValue(it);
-            for (int c = K - 1; c >= 0; c--) {
-                for (int t = B - w; t >= 0; t--) {
-                    if (dp[c][t] <= negInf / 2) continue;
-                    double cand = dp[c][t] + v;
-                    int nt = t + w;
-                    if (cand > dp[c + 1][nt]) {
-                        dp[c + 1][nt] = cand;
-                        parentItem[c + 1][nt] = i;
-                        parentTok[c + 1][nt] = t;
-                    }
-                }
-            }
-        }
-
-        int bestC = 0;
-        int bestT = 0;
-        double bestV = negInf;
-        for (int c = 0; c <= K; c++) {
-            for (int t = 0; t <= B; t++) {
-                if (dp[c][t] > bestV) {
-                    bestV = dp[c][t];
-                    bestC = c;
-                    bestT = t;
-                }
-            }
-        }
-
-        List<Candidate> chosen = new ArrayList<>();
-        int c = bestC;
-        int t = bestT;
-        while (c > 0) {
-            int idx = parentItem[c][t];
-            int pt = parentTok[c][t];
-            if (idx < 0 || pt < 0) break;
-            chosen.add(pool.get(idx));
-            t = pt;
-            c--;
-        }
-        chosen.sort((a, b) -> {
-            double av = importanceValue(a);
-            double bv = importanceValue(b);
-            int x = Double.compare(bv, av);
-            if (x != 0) return x;
-            int ar = a == null || a.item == null || a.item.getRank() == null ? Integer.MAX_VALUE : a.item.getRank();
-            int br = b == null || b.item == null || b.item.getRank() == null ? Integer.MAX_VALUE : b.item.getRank();
-            return Integer.compare(ar, br);
-        });
-        return chosen;
-    }
-
-    private static double importanceValue(Candidate c) {
-        if (c == null || c.item == null) return 0.0;
-        double score = c.item.getScore() == null ? 0.0 : c.item.getScore();
-        int tok = c.tokens == null ? 0 : c.tokens;
-        if (tok <= 0) return 0.0;
-        return score / Math.sqrt(Math.max(1, tok));
     }
 
     private static Candidate clipToTokens(Candidate c, int maxTokens) {
@@ -649,12 +601,20 @@ public class RagContextPromptService {
         String clipped = truncateByApproxTokens(text, maxTokens);
         int tokens = approxTokens(clipped);
         item.setTokens(tokens);
+        item.setSnippet(buildSnippet(clipped));
 
         out.item = item;
         out.text = clipped;
         out.tokens = tokens;
         out.titleKey = c.titleKey;
         out.contentHash = c.contentHash;
+        out.sourceKey = c.sourceKey;
+        out.textKey = normalizeTextKey(clipped);
+        out.tokenSet = tokenizeSet(clipped, 80);
+        out.relScore = c.relScore;
+        out.impScore = c.impScore;
+        out.redScore = c.redScore;
+        out.finalScore = c.finalScore;
         return out;
     }
 
@@ -663,6 +623,10 @@ public class RagContextPromptService {
         if (st.dedupByPostId && c.item.getPostId() != null && st.seenPostIds.contains(c.item.getPostId())) return "dedupPostId";
         if (st.dedupByTitle && c.titleKey != null && st.seenTitles.contains(c.titleKey)) return "dedupTitle";
         if (st.dedupByContentHash && c.contentHash != null && st.seenContentHash.contains(c.contentHash)) return "dedupContent";
+        if (st.crossSourceDedup && c.textKey != null && c.sourceKey != null) {
+            String prev = st.textKeySources.get(c.textKey);
+            if (prev != null && !prev.equals(c.sourceKey)) return "crossSourceDedup";
+        }
         if (st.maxSamePostItems > 0 && c.item.getPostId() != null) {
             int cnt = st.postCount.getOrDefault(c.item.getPostId(), 0);
             if (cnt >= st.maxSamePostItems) return "maxSamePostItems";
@@ -675,63 +639,37 @@ public class RagContextPromptService {
         if (st.dedupByPostId && c.item.getPostId() != null) st.seenPostIds.add(c.item.getPostId());
         if (st.dedupByTitle && c.titleKey != null) st.seenTitles.add(c.titleKey);
         if (st.dedupByContentHash && c.contentHash != null) st.seenContentHash.add(c.contentHash);
+        if (st.crossSourceDedup && c.textKey != null && c.sourceKey != null) {
+            st.textKeySources.putIfAbsent(c.textKey, c.sourceKey);
+        }
         if (st.maxSamePostItems > 0 && c.item.getPostId() != null) {
             st.postCount.put(c.item.getPostId(), st.postCount.getOrDefault(c.item.getPostId(), 0) + 1);
         }
     }
 
-    private static <K> List<Candidate> dedupKeepBest(
-            List<Candidate> pool,
-            Function<Candidate, K> keyFn,
-            String reason,
-            List<Item> dropped
-    ) {
-        if (pool == null || pool.isEmpty()) return List.of();
-        Map<K, Candidate> best = new HashMap<>();
-        List<Candidate> keep = new ArrayList<>();
-        for (Candidate c : pool) {
-            if (c == null || c.item == null) continue;
-            K k = keyFn == null ? null : keyFn.apply(c);
-            if (k == null || (k instanceof String s && s.isBlank())) {
-                keep.add(c);
-                continue;
-            }
-            Candidate prev = best.get(k);
-            if (prev == null) {
-                best.put(k, c);
-                keep.add(c);
-                continue;
-            }
-            if (isBetterCandidate(c, prev)) {
-                prev.item.setReason(reason);
-                dropped.add(prev.item);
-                keep.remove(prev);
-                best.put(k, c);
-                keep.add(c);
-            } else {
-                c.item.setReason(reason);
-                dropped.add(c.item);
-            }
+    private static boolean isBetterGreedyCandidate(Candidate a, Candidate b, String ablationMode) {
+        if (a == null || a.item == null) return false;
+        if (b == null || b.item == null) return true;
+        if (ABLATION_NONE.equals(ablationMode)) {
+            int ar = a.item.getRank() == null ? Integer.MAX_VALUE : a.item.getRank();
+            int br = b.item.getRank() == null ? Integer.MAX_VALUE : b.item.getRank();
+            return ar < br;
         }
-        return keep;
-    }
-
-    private static boolean isBetterCandidate(Candidate a, Candidate b) {
-        double av = importanceValue(a);
-        double bv = importanceValue(b);
+        double av = a.finalScore == null ? 0.0 : a.finalScore;
+        double bv = b.finalScore == null ? 0.0 : b.finalScore;
         int c = Double.compare(av, bv);
         if (c != 0) return c > 0;
-        double as = a == null || a.item == null || a.item.getScore() == null ? 0.0 : a.item.getScore();
-        double bs = b == null || b.item == null || b.item.getScore() == null ? 0.0 : b.item.getScore();
-        c = Double.compare(as, bs);
+        double ar = a.relScore == null ? 0.0 : a.relScore;
+        double br = b.relScore == null ? 0.0 : b.relScore;
+        c = Double.compare(ar, br);
         if (c != 0) return c > 0;
-        int at = a == null || a.tokens == null ? Integer.MAX_VALUE : a.tokens;
-        int bt = b == null || b.tokens == null ? Integer.MAX_VALUE : b.tokens;
+        int at = a.tokens == null ? Integer.MAX_VALUE : a.tokens;
+        int bt = b.tokens == null ? Integer.MAX_VALUE : b.tokens;
         c = Integer.compare(bt, at);
         if (c != 0) return c > 0;
-        int ar = a == null || a.item == null || a.item.getRank() == null ? Integer.MAX_VALUE : a.item.getRank();
-        int br = b == null || b.item == null || b.item.getRank() == null ? Integer.MAX_VALUE : b.item.getRank();
-        return ar < br;
+        int arank = a.item.getRank() == null ? Integer.MAX_VALUE : a.item.getRank();
+        int brank = b.item.getRank() == null ? Integer.MAX_VALUE : b.item.getRank();
+        return arank < brank;
     }
 
     public static Map<String, Object> buildChunkIds(AssembleResult r) {
@@ -747,8 +685,14 @@ public class RagContextPromptService {
             m.put("postId", it.getPostId());
             m.put("chunkIndex", it.getChunkIndex());
             m.put("score", it.getScore());
+            m.put("relScore", it.getRelScore());
+            m.put("impScore", it.getImpScore());
+            m.put("redScore", it.getRedScore());
+            m.put("finalScore", it.getFinalScore());
+            m.put("source", it.getSource());
             m.put("title", it.getTitle());
             m.put("tokens", it.getTokens());
+            m.put("reason", it.getReason());
             items.add(m);
         }
         Map<String, Object> stats = new HashMap<>();
@@ -765,6 +709,7 @@ public class RagContextPromptService {
     private static String renderHeader(String tpl, int idx, Item item, boolean showPostId, boolean showChunkIndex, boolean showScore, boolean showTitle) {
         String t = tpl;
         if (t == null || t.isBlank()) {
+            if (!showPostId && !showChunkIndex && !showScore && !showTitle) return "";
             StringBuilder sb = new StringBuilder();
             sb.append('[').append(idx).append("] ");
             if (showPostId && item.getPostId() != null) sb.append("post_id=").append(item.getPostId()).append(' ');
@@ -803,6 +748,7 @@ public class RagContextPromptService {
             s.setScore(it.getScore());
             s.setTitle(it.getTitle());
             s.setUrl(buildPostUrl(cfg, it.getPostId()));
+            s.setSnippet(it.getSnippet());
             out.add(s);
         }
         return out;
@@ -860,6 +806,122 @@ public class RagContextPromptService {
         return t;
     }
 
+    private static void prepareCandidateScores(List<Candidate> candidates) {
+        if (candidates == null || candidates.isEmpty()) return;
+        double maxRel = 0.0;
+        double maxImp = 0.0;
+        for (Candidate c : candidates) {
+            if (c == null || c.item == null) continue;
+            double rel = Math.max(0.0, c.item.getScore() == null ? 0.0 : c.item.getScore());
+            int tok = Math.max(1, c.tokens == null ? 0 : c.tokens);
+            double imp = 1.0 / Math.sqrt(tok);
+            maxRel = Math.max(maxRel, rel);
+            maxImp = Math.max(maxImp, imp);
+        }
+        if (maxRel <= 0) maxRel = 1.0;
+        if (maxImp <= 0) maxImp = 1.0;
+        for (Candidate c : candidates) {
+            if (c == null || c.item == null) continue;
+            double rel = Math.max(0.0, c.item.getScore() == null ? 0.0 : c.item.getScore()) / maxRel;
+            int tok = Math.max(1, c.tokens == null ? 0 : c.tokens);
+            double imp = (1.0 / Math.sqrt(tok)) / maxImp;
+            c.relScore = rel;
+            c.impScore = imp;
+            c.redScore = 0.0;
+            c.finalScore = rel;
+            syncCandidateScoreToItem(c);
+        }
+    }
+
+    private static void applyCandidateScore(Candidate c, double alpha, double beta, double gamma, String ablationMode, double red) {
+        if (c == null || c.item == null) return;
+        double rel = c.relScore == null ? 0.0 : c.relScore;
+        double imp = c.impScore == null ? 0.0 : c.impScore;
+        double redClamped = Math.max(0.0, Math.min(1.0, red));
+        double finalScore = switch (ablationMode) {
+            case ABLATION_NONE -> rel;
+            case ABLATION_REL_ONLY -> alpha * rel;
+            case ABLATION_REL_IMP -> alpha * rel + beta * imp;
+            default -> alpha * rel + beta * imp - gamma * redClamped;
+        };
+        c.redScore = redClamped;
+        c.finalScore = finalScore;
+        syncCandidateScoreToItem(c);
+    }
+
+    private static void syncCandidateScoreToItem(Candidate c) {
+        if (c == null || c.item == null) return;
+        c.item.setRelScore(c.relScore);
+        c.item.setImpScore(c.impScore);
+        c.item.setRedScore(c.redScore);
+        c.item.setFinalScore(c.finalScore);
+        c.item.setSource(c.sourceKey);
+    }
+
+    private static double redundancyWithSelected(Candidate c, List<Candidate> selected) {
+        if (c == null || selected == null || selected.isEmpty()) return 0.0;
+        double best = 0.0;
+        for (Candidate s : selected) {
+            if (s == null || s.item == null) continue;
+            double sim = similarity(c, s);
+            if (sim > best) best = sim;
+        }
+        return best;
+    }
+
+    private static double similarity(Candidate a, Candidate b) {
+        if (a == null || b == null) return 0.0;
+        double score = 0.0;
+        if (a.contentHash != null && b.contentHash != null && a.contentHash.equals(b.contentHash)) score = Math.max(score, 1.0);
+        if (a.textKey != null && b.textKey != null && a.textKey.equals(b.textKey)) score = Math.max(score, 1.0);
+        if (a.titleKey != null && b.titleKey != null && a.titleKey.equals(b.titleKey)) score = Math.max(score, 0.85);
+        if (a.item != null && b.item != null && a.item.getPostId() != null && a.item.getPostId().equals(b.item.getPostId())) score = Math.max(score, 0.75);
+        if (a.tokenSet != null && !a.tokenSet.isEmpty() && b.tokenSet != null && !b.tokenSet.isEmpty()) {
+            int inter = 0;
+            for (String tok : a.tokenSet) {
+                if (b.tokenSet.contains(tok)) inter++;
+            }
+            int union = a.tokenSet.size() + b.tokenSet.size() - inter;
+            if (union > 0) {
+                double jac = (double) inter / (double) union;
+                score = Math.max(score, jac);
+            }
+        }
+        return Math.max(0.0, Math.min(1.0, score));
+    }
+
+    private static Set<String> tokenizeSet(String text, int maxTerms) {
+        if (text == null || text.isBlank() || maxTerms <= 0) return Collections.emptySet();
+        String normalized = text.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
+        if (normalized.isBlank()) return Collections.emptySet();
+        String[] arr = normalized.split("\\s+");
+        Set<String> out = new HashSet<>();
+        for (String s : arr) {
+            if (s == null || s.isBlank()) continue;
+            out.add(s);
+            if (out.size() >= maxTerms) break;
+        }
+        return out;
+    }
+
+    private static String normalizeTextKey(String text) {
+        if (text == null) return null;
+        String normalized = text.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
+        if (normalized.isBlank()) return null;
+        int cap = Math.min(normalized.length(), 600);
+        return normalized.substring(0, cap);
+    }
+
+    private static String resolveSourceKey(RagPostChatRetrievalService.Hit h) {
+        if (h == null) return null;
+        if (h.getType() != null) return h.getType().name();
+        String docId = trimOrNull(h.getDocId());
+        if (docId == null) return "UNKNOWN";
+        int p = docId.indexOf(':');
+        if (p > 0) return docId.substring(0, p).toUpperCase(Locale.ROOT);
+        return "DOC";
+    }
+
     private static String trimOrDefault(String s, String def) {
         if (s == null) return def;
         String t = s.trim();
@@ -872,11 +934,41 @@ public class RagContextPromptService {
         return t.isBlank() ? null : t;
     }
 
+    private static String buildSnippet(String s) {
+        if (s == null) return null;
+        String t = s.replaceAll("\\s+", " ").trim();
+        if (t.isBlank()) return null;
+        int maxChars = 320;
+        if (t.length() <= maxChars) return t;
+        return t.substring(0, maxChars) + "…";
+    }
+
     private static int clampInt(Integer v, int min, int max, int def) {
         int x = v == null ? def : v;
         if (x < min) x = min;
         if (x > max) x = max;
         return x;
+    }
+
+    private static double clampDouble(Double v, double min, double max, double def) {
+        double x = v == null ? def : v;
+        if (Double.isNaN(x) || Double.isInfinite(x)) x = def;
+        if (x < min) x = min;
+        if (x > max) x = max;
+        return x;
+    }
+
+    private static String normalizeAblationMode(String mode) {
+        String x = trimOrNull(mode);
+        if (x == null) return ABLATION_REL_IMP_RED;
+        String key = x.toUpperCase(Locale.ROOT).replace('-', '_').replace('+', '_');
+        return switch (key) {
+            case "NONE", "NO_PRUNING" -> ABLATION_NONE;
+            case "REL", "REL_ONLY" -> ABLATION_REL_ONLY;
+            case "REL_IMP", "RELATIVE_IMPORTANCE" -> ABLATION_REL_IMP;
+            case "REL_IMP_RED", "REL_IMP_REDUCTION", "REL_IMP_REDUNDANCY" -> ABLATION_REL_IMP_RED;
+            default -> ABLATION_REL_IMP_RED;
+        };
     }
 
     static int approxTokens(String s) {
@@ -931,7 +1023,13 @@ public class RagContextPromptService {
         private Long postId;
         private Integer chunkIndex;
         private Double score;
+        private Double relScore;
+        private Double impScore;
+        private Double redScore;
+        private Double finalScore;
+        private String source;
         private String title;
+        private String snippet;
         private Integer tokens;
         private String reason;
     }
@@ -944,5 +1042,6 @@ public class RagContextPromptService {
         private Double score;
         private String title;
         private String url;
+        private String snippet;
     }
 }

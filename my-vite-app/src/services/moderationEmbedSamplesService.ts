@@ -124,7 +124,7 @@ export async function listSamples(params: {
 }
 
 export async function createSample(payload: ModerationSampleCreateRequest): Promise<ModerationSample> {
-  return apiFetch<ModerationSample>(`/api/admin/moderation/embed/samples`, {
+  return apiFetch<ModerationSample>(`api/admin/moderation/embed/samples`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

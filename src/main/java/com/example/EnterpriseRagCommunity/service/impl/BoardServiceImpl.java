@@ -4,9 +4,12 @@ import com.example.EnterpriseRagCommunity.dto.content.BoardsCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.content.BoardsDTO;
 import com.example.EnterpriseRagCommunity.dto.content.BoardsQueryDTO;
 import com.example.EnterpriseRagCommunity.dto.content.BoardsUpdateDTO;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
 import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.service.BoardService;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -21,13 +24,17 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 public class BoardServiceImpl implements BoardService {
 
     private final BoardsRepository boardsRepository;
+    private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
 
     @Override
     public Page<BoardsDTO> queryBoards(BoardsQueryDTO queryDTO) {
@@ -120,6 +127,17 @@ public class BoardServiceImpl implements BoardService {
         }
 
         BoardsEntity saved = boardsRepository.save(entity);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "BOARD_CREATE",
+                "BOARD",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "创建版块",
+                null,
+                auditDiffBuilder.build(Map.of(), summarize(saved))
+        );
         return convertToDTO(saved);
     }
 
@@ -128,6 +146,7 @@ public class BoardServiceImpl implements BoardService {
     public BoardsDTO updateBoard(BoardsUpdateDTO updateDTO) {
         BoardsEntity entity = boardsRepository.findById(updateDTO.getId())
                 .orElseThrow(() -> new RuntimeException("Board not found with id: " + updateDTO.getId()));
+        Map<String, Object> before = summarize(entity);
 
         if (updateDTO.getTenantId() != null && updateDTO.getTenantId().isPresent()) {
             entity.setTenantId(updateDTO.getTenantId().get());
@@ -160,21 +179,66 @@ public class BoardServiceImpl implements BoardService {
         entity.setUpdatedAt(LocalDateTime.now());
 
         BoardsEntity saved = boardsRepository.save(entity);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "BOARD_UPDATE",
+                "BOARD",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "更新版块",
+                null,
+                auditDiffBuilder.build(before, summarize(saved))
+        );
         return convertToDTO(saved);
     }
 
     @Override
     @Transactional
     public void deleteBoard(Long id) {
-        if (!boardsRepository.existsById(id)) {
-            throw new RuntimeException("Board not found with id: " + id);
-        }
+        BoardsEntity beforeEntity = boardsRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Board not found with id: " + id));
         boardsRepository.deleteById(id);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "BOARD_DELETE",
+                "BOARD",
+                id,
+                AuditResult.SUCCESS,
+                "删除版块",
+                null,
+                auditDiffBuilder.build(summarize(beforeEntity), Map.of())
+        );
     }
 
     private BoardsDTO convertToDTO(BoardsEntity entity) {
         BoardsDTO dto = new BoardsDTO();
         BeanUtils.copyProperties(entity, dto);
         return dto;
+    }
+
+    private static Map<String, Object> summarize(BoardsEntity e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (e == null) return m;
+        m.put("id", e.getId());
+        m.put("tenantId", e.getTenantId());
+        m.put("parentId", e.getParentId());
+        m.put("name", e.getName());
+        m.put("description", e.getDescription());
+        m.put("visible", e.getVisible());
+        m.put("sortOrder", e.getSortOrder());
+        return m;
+    }
+
+    private static String currentUsernameOrNull() {
+        try {
+            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+            String name = auth.getName();
+            return name == null || name.isBlank() ? null : name.trim();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

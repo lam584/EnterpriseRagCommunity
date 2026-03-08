@@ -27,8 +27,8 @@ export type PortalChatConfigDTO = {
     defaultUseRag?: boolean | null;
     ragTopK?: number | null;
     defaultStream?: boolean | null;
-    systemPrompt?: string | null;
-    deepThinkSystemPrompt?: string | null;
+    systemPromptCode?: string | null;
+    deepThinkSystemPromptCode?: string | null;
   } | null;
   postComposeAssistant?: {
     providerId?: string | null;
@@ -37,9 +37,9 @@ export type PortalChatConfigDTO = {
     topP?: number | null;
     chatHistoryLimit?: number | null;
     defaultDeepThink?: boolean | null;
-    systemPrompt?: string | null;
-    deepThinkSystemPrompt?: string | null;
-    composeSystemPrompt?: string | null;
+    systemPromptCode?: string | null;
+    deepThinkSystemPromptCode?: string | null;
+    composeSystemPromptCode?: string | null;
   } | null;
 };
 

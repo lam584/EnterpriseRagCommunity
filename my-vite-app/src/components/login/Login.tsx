@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/1.png';
 import backgroundImage2 from '../../assets/images/2.png';
-import { login, resendLogin2faEmail, resendRegisterCode, verifyLogin2fa, verifyRegister } from '../../services/authService';
+import { getRegistrationStatus, login, resendLogin2faEmail, resendRegisterCode, verifyLogin2fa, verifyRegister } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
 import OtpCodeInput from '../common/OtpCodeInput';
 import AuthFooter from './AuthFooter';
@@ -16,10 +16,17 @@ interface LoginFormData {
 const Login: React.FC = () => {
     const navigate = useNavigate();
     const { setCurrentUser, setIsAuthenticated } = useAuth();
-    const [formData, setFormData] = useState<LoginFormData>({
-        email: '', 
-        password: '',
-        rememberMe: false
+    const [formData, setFormData] = useState<LoginFormData>(() => {
+        const rememberedEmail = localStorage.getItem('rememberedEmail');
+        const rememberedPassword = localStorage.getItem('rememberedPassword');
+        if (rememberedEmail) {
+            return {
+                email: rememberedEmail,
+                password: rememberedPassword || '',
+                rememberMe: true
+            };
+        }
+        return { email: '', password: '', rememberMe: false };
     });
 
     const [csrfToken, setCsrfToken] = useState<string>('');
@@ -38,6 +45,18 @@ const Login: React.FC = () => {
     const [login2faEmailCode, setLogin2faEmailCode] = useState('');
     const [login2faTotpCode, setLogin2faTotpCode] = useState('');
     const [login2faTotpDigits, setLogin2faTotpDigits] = useState(6);
+    const [registrationEnabled, setRegistrationEnabled] = useState(true);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const s = await getRegistrationStatus();
+                setRegistrationEnabled(s.registrationEnabled);
+            } catch {
+                setRegistrationEnabled(true);
+            }
+        })();
+    }, []);
     const [login2faSubmitting, setLogin2faSubmitting] = useState(false);
     const [login2faResendLoading, setLogin2faResendLoading] = useState(false);
     const [login2faResendCountdown, setLogin2faResendCountdown] = useState(0);
@@ -46,20 +65,6 @@ const Login: React.FC = () => {
     // 轮播图相关状态
     const [currentImage, setCurrentImage] = useState(backgroundImage1);
     const images = [backgroundImage1, backgroundImage2];
-
-    // 初始化时加载记住的邮箱和密码
-    useEffect(() => {
-        const rememberedEmail = localStorage.getItem('rememberedEmail');
-        const rememberedPassword = localStorage.getItem('rememberedPassword');
-        if (rememberedEmail) {
-            setFormData(prev => ({
-                ...prev,
-                email: rememberedEmail,
-                password: rememberedPassword || '',
-                rememberMe: true
-            }));
-        }
-    }, []);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -139,7 +144,7 @@ const Login: React.FC = () => {
         
         setFormData(prev => ({
             ...prev,
-            [name]: type === 'checkbox' ? checked : value
+            [name]: type === 'checkbox' && name === 'rememberMe' ? !prev.rememberMe : type === 'checkbox' ? checked : value
         }));
     };
 
@@ -515,9 +520,11 @@ const Login: React.FC = () => {
                                 <Link to="/forgot-password" title="忘记密码" className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
                                     忘记密码？
                                 </Link>
-                                <Link to="/register" className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
-                                    注册
-                                </Link>
+                                {registrationEnabled ? (
+                                    <Link to="/register" className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
+                                        注册
+                                    </Link>
+                                ) : null}
                             </div>
                         </div>
                     </form>

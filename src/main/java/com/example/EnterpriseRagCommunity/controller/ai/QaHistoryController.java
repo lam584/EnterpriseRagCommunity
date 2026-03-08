@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.controller.ai;
 
 import com.example.EnterpriseRagCommunity.dto.ai.QaMessageDTO;
+import com.example.EnterpriseRagCommunity.dto.ai.QaCompressContextResultDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSearchHitDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSessionDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.QaSessionUpdateRequest;
@@ -54,6 +55,12 @@ public class QaHistoryController {
     public QaSessionDTO updateSession(@PathVariable("sessionId") Long sessionId, @Valid @RequestBody QaSessionUpdateRequest req) {
         Long me = currentUserIdOrThrow();
         return qaHistoryService.updateMySession(me, sessionId, req);
+    }
+
+    @PostMapping("/sessions/{sessionId}/compress-context")
+    public QaCompressContextResultDTO compressContext(@PathVariable("sessionId") Long sessionId) {
+        Long me = currentUserIdOrThrow();
+        return qaHistoryService.compressMySessionContext(me, sessionId);
     }
 
     @GetMapping("/search")

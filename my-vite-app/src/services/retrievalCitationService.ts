@@ -1,10 +1,15 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 
-const API_BASE: string = ((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '';
+function getApiBase(): string {
+  const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: string }).__VITE_API_BASE_URL__;
+  if (typeof globalBase === 'string') return globalBase;
+  return (((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '') || '';
+}
 
 function apiUrl(path: string): string {
   if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
+  const base = getApiBase();
+  return base ? `${base}${path}` : path;
 }
 
 function getBackendMessage(data: unknown): string | undefined {
@@ -61,7 +66,7 @@ export type CitationTestResponse = {
 };
 
 export async function adminGetCitationConfig(): Promise<CitationConfigDTO> {
-  const res = await fetch(apiUrl('/api/admin/retrieval/citation/config'), {
+  const res = await fetch(apiUrl('api/admin/retrieval/citation/config'), {
     method: 'GET',
     credentials: 'include',
   });
@@ -101,4 +106,3 @@ export async function adminTestCitation(payload: CitationTestRequest): Promise<C
   if (!res.ok) throw new Error(getBackendMessage(data) || '引用配置测试失败');
   return data as CitationTestResponse;
 }
-

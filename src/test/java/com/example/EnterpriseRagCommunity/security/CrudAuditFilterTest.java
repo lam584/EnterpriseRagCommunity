@@ -30,6 +30,7 @@ public class CrudAuditFilterTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void writesAuditLogForPostWhenAuthenticated() throws Exception {
         AuditLogWriter auditLogWriter = Mockito.mock(AuditLogWriter.class);
         AdministratorService administratorService = Mockito.mock(AdministratorService.class);

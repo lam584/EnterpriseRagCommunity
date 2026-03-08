@@ -111,6 +111,7 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
   }, [trimmedNewEmail]);
 
   const handleVerifyPassword = async () => {
+    if (passwordVerified || verifyingPassword || saving) return;
     setErrorMsg(null);
     if (!password.trim()) {
       toast.error('请输入密码');
@@ -138,7 +139,7 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
 
   const handleSendOldCode = async () => {
     setErrorMsg(null);
-    if (!passwordVerified) return;
+    if (!passwordVerified || oldVerified || sendingOldCode || saving) return;
     try {
       setSendingOldCode(true);
       const resp = await sendOldEmailVerificationCode();
@@ -157,7 +158,7 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
   const handleVerifyOld = async () => {
     setErrorMsg(null);
     try {
-      if (!passwordVerified) return;
+      if (!passwordVerified || oldVerified || verifyingOld || saving) return;
       setVerifyingOld(true);
       if (oldVerifyMethod === 'email') {
         if (!oldEmailCode.trim()) {
@@ -319,14 +320,15 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                   type="password"
                   value={password}
                   onChange={(ev) => setPassword(ev.target.value)}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={passwordVerified || verifyingPassword || saving}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                   placeholder="请输入登录密码"
                   autoComplete="current-password"
                 />
               </div>
               <button
                 type="button"
-                disabled={verifyingPassword || saving}
+                disabled={passwordVerified || verifyingPassword || saving}
                 onClick={handleVerifyPassword}
                 className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
               >
@@ -351,6 +353,7 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                         name="oldVerifyMethod"
                         checked={oldVerifyMethod === 'totp'}
                         onChange={() => setOldVerifyMethod('totp')}
+                        disabled={oldVerified || verifyingOld || saving}
                         className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                       />
                       <span className="text-sm font-medium text-gray-700">动态验证码</span>
@@ -361,6 +364,7 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                         name="oldVerifyMethod"
                         checked={oldVerifyMethod === 'email'}
                         onChange={() => setOldVerifyMethod('email')}
+                        disabled={oldVerified || verifyingOld || saving}
                         className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                       />
                       <span className="text-sm font-medium text-gray-700">旧邮箱验证码</span>
@@ -401,13 +405,14 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                             type="text"
                             value={oldEmailCode}
                             onChange={(ev) => setOldEmailCode(ev.target.value)}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            disabled={verifyingOld || oldVerified || saving}
+                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                             placeholder="请输入验证码"
                           />
                         </div>
                         <button
                           type="button"
-                          disabled={sendingOldCode || saving || oldCountdown > 0}
+                          disabled={sendingOldCode || saving || oldCountdown > 0 || oldVerified}
                           onClick={handleSendOldCode}
                           className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
                         >
@@ -437,13 +442,14 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                         type="text"
                         value={oldEmailCode}
                         onChange={(ev) => setOldEmailCode(ev.target.value)}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={verifyingOld || oldVerified || saving}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                         placeholder="请输入验证码"
                       />
                     </div>
                     <button
                       type="button"
-                      disabled={sendingOldCode || saving || oldCountdown > 0}
+                      disabled={sendingOldCode || saving || oldCountdown > 0 || oldVerified}
                       onClick={handleSendOldCode}
                       className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
                     >
@@ -545,14 +551,15 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                     type="password"
                     value={password}
                     onChange={(ev) => setPassword(ev.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={passwordVerified || verifyingPassword || saving}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                     placeholder="请输入登录密码"
                     autoComplete="current-password"
                   />
                 </div>
                 <button
                   type="button"
-                  disabled={verifyingPassword || saving}
+                  disabled={passwordVerified || verifyingPassword || saving}
                   onClick={handleVerifyPassword}
                   className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
                 >
@@ -574,6 +581,7 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                           name="oldVerifyMethod"
                           checked={oldVerifyMethod === 'totp'}
                           onChange={() => setOldVerifyMethod('totp')}
+                          disabled={oldVerified || verifyingOld || saving}
                           className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                         />
                         <span className="text-sm font-medium text-gray-700">动态验证码</span>
@@ -584,6 +592,7 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                           name="oldVerifyMethod"
                           checked={oldVerifyMethod === 'email'}
                           onChange={() => setOldVerifyMethod('email')}
+                          disabled={oldVerified || verifyingOld || saving}
                           className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
                         />
                         <span className="text-sm font-medium text-gray-700">旧邮箱验证码</span>
@@ -624,13 +633,14 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                               type="text"
                               value={oldEmailCode}
                               onChange={(ev) => setOldEmailCode(ev.target.value)}
-                              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              disabled={verifyingOld || oldVerified || saving}
+                              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                               placeholder="请输入验证码"
                             />
                           </div>
                           <button
                             type="button"
-                            disabled={sendingOldCode || saving || oldCountdown > 0}
+                            disabled={sendingOldCode || saving || oldCountdown > 0 || oldVerified}
                             onClick={handleSendOldCode}
                             className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
                           >
@@ -660,13 +670,14 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                           type="text"
                           value={oldEmailCode}
                           onChange={(ev) => setOldEmailCode(ev.target.value)}
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          disabled={verifyingOld || oldVerified || saving}
+                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
                           placeholder="请输入验证码"
                         />
                       </div>
                       <button
                         type="button"
-                        disabled={sendingOldCode || saving || oldCountdown > 0}
+                        disabled={sendingOldCode || saving || oldCountdown > 0 || oldVerified}
                         onClick={handleSendOldCode}
                         className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
                       >

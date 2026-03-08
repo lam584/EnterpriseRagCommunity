@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.service.access;
 
 import com.example.EnterpriseRagCommunity.entity.access.RbacAuditLogsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.repository.access.RbacAuditLogsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,6 +26,7 @@ public class RbacAuditService {
     private final RbacAuditLogsRepository rbacAuditLogsRepository;
     private final UsersRepository usersRepository;
     private final ObjectMapper objectMapper;
+    private final AuditLogWriter auditLogWriter;
 
     @Transactional
     public void record(String action, String targetType, String targetId, Object before, Object after) {
@@ -50,6 +52,33 @@ public class RbacAuditService {
         e.setDiffJson(toJsonOrNull(diff));
         e.setCreatedAt(LocalDateTime.now());
         rbacAuditLogsRepository.save(e);
+
+        try {
+            String actorName = currentEmailOrNull();
+            String mappedAction = action == null ? "RBAC_UNKNOWN" : (action.startsWith("RBAC_") ? action : ("RBAC_" + action));
+
+            Map<String, Object> details = new HashMap<>();
+            details.put("targetType", targetType);
+            details.put("targetId", targetId);
+            details.put("diff", diff);
+            if (e.getReason() != null) details.put("reason", e.getReason());
+            if (e.getRequestId() != null) details.put("requestId", e.getRequestId());
+            if (e.getRequestIp() != null) details.put("ip", e.getRequestIp());
+            if (e.getUserAgent() != null) details.put("userAgent", e.getUserAgent());
+
+            auditLogWriter.write(
+                    e.getActorUserId(),
+                    actorName,
+                    mappedAction,
+                    "RBAC",
+                    null,
+                    AuditResult.SUCCESS,
+                    "RBAC 变更：" + mappedAction,
+                    null,
+                    details
+            );
+        } catch (Exception ignore) {
+        }
     }
 
     private Map<String, Object> buildDiff(Object before, Object after) {

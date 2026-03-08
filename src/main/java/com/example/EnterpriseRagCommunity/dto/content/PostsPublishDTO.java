@@ -16,9 +16,8 @@ public class PostsPublishDTO {
     @ApiModelProperty(value = "板块ID", required = true)
     private Long boardId;
 
-    @NotBlank
     @Size(max = 191)
-    @ApiModelProperty(value = "标题", required = true)
+    @ApiModelProperty(value = "标题（可为空）")
     private String title;
 
     @NotBlank
@@ -30,6 +29,9 @@ public class PostsPublishDTO {
 
     @ApiModelProperty(value = "附件 fileAssetIds")
     private List<Long> attachmentIds;
+
+    @ApiModelProperty(value = "标签 slugs（可为空）")
+    private List<String> tags;
 
     @ApiModelProperty(value = "元数据(JSON)，可存 tags 等")
     private Map<String, Object> metadata;

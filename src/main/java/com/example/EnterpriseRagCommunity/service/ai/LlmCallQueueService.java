@@ -9,6 +9,8 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -22,7 +24,12 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -63,6 +70,7 @@ public class LlmCallQueueService {
         private final long seq;
         private final int priority;
         private final LlmQueueTaskType type;
+        private final String label;
         private final LlmQueueTaskStatus status;
         private final String providerId;
         private final String model;
@@ -82,6 +90,7 @@ public class LlmCallQueueService {
                 long seq,
                 int priority,
                 LlmQueueTaskType type,
+                String label,
                 LlmQueueTaskStatus status,
                 String providerId,
                 String model,
@@ -100,6 +109,7 @@ public class LlmCallQueueService {
             this.seq = seq;
             this.priority = priority;
             this.type = type;
+            this.label = label;
             this.status = status;
             this.providerId = providerId;
             this.model = model;
@@ -139,11 +149,18 @@ public class LlmCallQueueService {
     ) {
     }
 
+    public record CachedQueueSnapshot(
+            QueueSnapshot snapshot,
+            long snapshotAtMs
+    ) {
+    }
+
     public record TaskDetailSnapshot(
             String id,
             long seq,
             int priority,
             LlmQueueTaskType type,
+            String label,
             LlmQueueTaskStatus status,
             String providerId,
             String model,
@@ -173,6 +190,12 @@ public class LlmCallQueueService {
         }
     }
 
+    private record DedupEntry(
+            String key,
+            CompletableFuture<Object> future
+    ) {
+    }
+
     private static LocalDateTime toLocalDateTime(long epochMs) {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMs), ZoneId.systemDefault());
     }
@@ -197,9 +220,53 @@ public class LlmCallQueueService {
     private final ArrayDeque<String> completedDetailOrder = new ArrayDeque<>();
     private final CopyOnWriteArrayList<Consumer<TaskSnapshot>> completedListeners = new CopyOnWriteArrayList<>();
     private final ConcurrentHashMap<String, CompletableFuture<Object>> inFlight = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CompletableFuture<Object>> recentDedup = new ConcurrentHashMap<>();
+    private final ArrayDeque<DedupEntry> recentDedupOrder = new ArrayDeque<>();
     private int active = 0;
+    private volatile QueueSnapshot lastSnapshot;
+    private volatile long lastSnapshotAtMs = 0L;
+    private final AtomicBoolean stopped = new AtomicBoolean(false);
+    private final AtomicBoolean dispatcherStarted = new AtomicBoolean(false);
+    private volatile Thread dispatcherThread;
+    private final ThreadPoolExecutor executor = new ThreadPoolExecutor(
+            0,
+            1024,
+            60L,
+            TimeUnit.SECONDS,
+            new SynchronousQueue<>(),
+            new ThreadFactory() {
+                private final AtomicLong idSeq = new AtomicLong(0);
 
-    private static final int MAX_DETAIL_CHARS = 20000;
+                @Override
+                public Thread newThread(Runnable r) {
+                    Thread t = new Thread(r);
+                    t.setDaemon(true);
+                    t.setName("llm-call-queue-" + idSeq.incrementAndGet());
+                    return t;
+                }
+            }
+    );
+
+    private static final int MAX_DETAIL_CHARS = 5000000;
+
+    @PostConstruct
+    public void init() {
+        ensureDispatcherStarted();
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        stopped.set(true);
+        lock.lock();
+        try {
+            changed.signalAll();
+        } finally {
+            lock.unlock();
+        }
+        Thread t = dispatcherThread;
+        if (t != null) t.interrupt();
+        executor.shutdownNow();
+    }
 
     public final class TaskHandle {
         private final String taskId;
@@ -223,6 +290,10 @@ public class LlmCallQueueService {
         public void reportOutput(String output) {
             updateRunningOutput(taskId, output);
         }
+
+        public void reportModel(String model) {
+            updateRunningModel(taskId, model);
+        }
     }
 
     private static class Task {
@@ -230,8 +301,9 @@ public class LlmCallQueueService {
         private final long seq;
         private final int priority;
         private final LlmQueueTaskType type;
-        private final String providerId;
-        private final String model;
+        private final String label;
+        private volatile String providerId;
+        private volatile String model;
         private final long createdAtMs;
         private volatile LlmQueueTaskStatus status = LlmQueueTaskStatus.PENDING;
         private volatile Long startedAtMs;
@@ -243,15 +315,34 @@ public class LlmCallQueueService {
         private volatile String error;
         private volatile String input;
         private volatile String output;
+        private final CheckedTaskSupplier<Object> supplier;
+        private final ResultMetricsExtractor<Object> metricsExtractor;
+        private final CompletableFuture<Object> future;
 
-        private Task(String id, long seq, int priority, LlmQueueTaskType type, String providerId, String model, long createdAtMs) {
+        private Task(
+                String id,
+                long seq,
+                int priority,
+                LlmQueueTaskType type,
+                String label,
+                String providerId,
+                String model,
+                long createdAtMs,
+                CheckedTaskSupplier<Object> supplier,
+                ResultMetricsExtractor<Object> metricsExtractor,
+                CompletableFuture<Object> future
+        ) {
             this.id = id;
             this.seq = seq;
             this.priority = priority;
             this.type = type == null ? LlmQueueTaskType.UNKNOWN : type;
+            this.label = label;
             this.providerId = providerId;
             this.model = model;
             this.createdAtMs = createdAtMs;
+            this.supplier = supplier;
+            this.metricsExtractor = metricsExtractor;
+            this.future = future;
         }
 
         private Long calcWaitMs() {
@@ -278,6 +369,7 @@ public class LlmCallQueueService {
                     seq,
                     priority,
                     type,
+                    label,
                     status,
                     providerId,
                     model,
@@ -302,6 +394,7 @@ public class LlmCallQueueService {
                     seq,
                     priority,
                     type,
+                    label,
                     status,
                     providerId,
                     model,
@@ -353,37 +446,12 @@ public class LlmCallQueueService {
             CheckedTaskSupplier<T> supplier,
             ResultMetricsExtractor<T> metricsExtractor
     ) throws Exception {
-        if (dedupKey == null || dedupKey.isBlank()) {
-            return call(type, providerId, model, priority, supplier, metricsExtractor);
-        }
-
-        String key = buildInFlightKey(type, providerId, model, dedupKey);
-        CompletableFuture<Object> mine = new CompletableFuture<>();
-        CompletableFuture<Object> existing = inFlight.putIfAbsent(key, mine);
-        if (existing != null) {
-            try {
-                @SuppressWarnings("unchecked")
-                T reused = (T) existing.get();
-                return reused;
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException("等待去重任务结果被中断", ie);
-            } catch (ExecutionException ee) {
-                Throwable cause = ee.getCause();
-                if (cause instanceof Exception ex) throw ex;
-                throw new RuntimeException(cause);
-            }
-        }
-
         try {
-            T result = call(type, providerId, model, priority, supplier, metricsExtractor);
-            mine.complete(result);
-            return result;
-        } catch (Exception e) {
-            mine.completeExceptionally(e);
-            throw e;
-        } finally {
-            inFlight.remove(key, mine);
+            CompletableFuture<T> f = submitDedup(type, providerId, model, priority, dedupKey, supplier, metricsExtractor);
+            return await(f);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待去重任务结果被中断", ie);
         }
     }
 
@@ -395,23 +463,12 @@ public class LlmCallQueueService {
             CheckedTaskSupplier<T> supplier,
             ResultMetricsExtractor<T> metricsExtractor
     ) throws Exception {
-        Task task = enqueue(type, providerId, model, priority);
-        TaskHandle handle = new TaskHandle(task.id);
         try {
-            T result = supplier.get(handle);
-            UsageMetrics metrics = null;
-            if (metricsExtractor != null) {
-                try {
-                    metrics = metricsExtractor.extract(result);
-                } catch (Exception ignore) {
-                    metrics = null;
-                }
-            }
-            finishSuccess(task, metrics);
-            return result;
-        } catch (Exception e) {
-            finishFailure(task, e);
-            throw e;
+            CompletableFuture<T> f = submit(type, providerId, model, priority, supplier, metricsExtractor);
+            return await(f);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待 LLM 调用结果被中断", ie);
         }
     }
 
@@ -431,6 +488,18 @@ public class LlmCallQueueService {
         String m = model == null ? "" : model.trim();
         String d = dedupKey == null ? "" : dedupKey.trim();
         return t + "|" + p + "|" + m + "|" + d;
+    }
+
+    private static <T> T await(CompletableFuture<T> f) throws Exception {
+        try {
+            return f.get();
+        } catch (InterruptedException ie) {
+            throw ie;
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause();
+            if (cause instanceof Exception ex) throw ex;
+            throw new RuntimeException(cause);
+        }
     }
 
     private void updateRunningTokensOut(String taskId, int tokensOutSoFar) {
@@ -483,6 +552,23 @@ public class LlmCallQueueService {
                 if (t == null) continue;
                 if (!taskId.equals(t.id)) continue;
                 t.output = next;
+                return;
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private void updateRunningModel(String taskId, String model) {
+        if (taskId == null || taskId.isBlank()) return;
+        String next = model == null ? null : model.trim();
+        if (next == null || next.isBlank()) return;
+        lock.lock();
+        try {
+            for (Task t : running) {
+                if (t == null) continue;
+                if (!taskId.equals(t.id)) continue;
+                t.model = next;
                 return;
             }
         } finally {
@@ -588,57 +674,91 @@ public class LlmCallQueueService {
 
         lock.lock();
         try {
-            List<TaskSnapshot> runningSnaps;
-            if (runLimit <= 0 || running.isEmpty()) {
-                runningSnaps = List.of();
-            } else {
-                runningSnaps = new ArrayList<>(Math.min(running.size(), runLimit));
-                for (Task t : running) runningSnaps.add(t.toSnapshot());
-                runningSnaps.sort(Comparator.comparingLong(TaskSnapshot::getSeq));
-                if (runningSnaps.size() > runLimit) runningSnaps = runningSnaps.subList(0, runLimit);
-            }
-
-            List<TaskSnapshot> pendingSnaps;
-            if (pendLimit <= 0 || pending.isEmpty()) {
-                pendingSnaps = List.of();
-            } else {
-                int take = Math.min(pending.size(), pendLimit);
-                List<Task> drained = new ArrayList<>(take);
-                pendingSnaps = new ArrayList<>(take);
-                for (int i = 0; i < take; i++) {
-                    Task t = pending.poll();
-                    if (t == null) break;
-                    drained.add(t);
-                    pendingSnaps.add(t.toSnapshot());
-                }
-                for (Task t : drained) pending.add(t);
-            }
-
-            List<TaskSnapshot> completedSnaps;
-            if (doneLimit <= 0 || completed.isEmpty()) {
-                completedSnaps = List.of();
-            } else if (completed.size() <= doneLimit) {
-                completedSnaps = new ArrayList<>(completed);
-            } else {
-                completedSnaps = new ArrayList<>(doneLimit);
-                for (TaskSnapshot t : completed) {
-                    if (t == null) continue;
-                    completedSnaps.add(t);
-                    if (completedSnaps.size() >= doneLimit) break;
-                }
-            }
-            return new QueueSnapshot(
-                    Math.max(1, props.getMaxConcurrent()),
-                    Math.max(1, props.getMaxQueueSize()),
-                    active,
-                    pending.size(),
-                    runningSnaps,
-                    pendingSnaps,
-                    completedSnaps
-            );
+            return snapshotLocked(runLimit, pendLimit, doneLimit);
         } finally {
             lock.unlock();
         }
+    }
+
+    public QueueSnapshot trySnapshot(int maxRunning, int maxPending, int maxCompleted, long maxWaitMs) {
+        int runLimit = Math.max(0, maxRunning);
+        int pendLimit = Math.max(0, maxPending);
+        int doneLimit = Math.max(0, maxCompleted);
+        long waitMs = Math.max(0L, maxWaitMs);
+
+        boolean locked;
+        try {
+            locked = lock.tryLock(waitMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+        if (!locked) return null;
+
+        try {
+            return snapshotLocked(runLimit, pendLimit, doneLimit);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public CachedQueueSnapshot cachedSnapshot() {
+        return new CachedQueueSnapshot(lastSnapshot, lastSnapshotAtMs);
+    }
+
+    private QueueSnapshot snapshotLocked(int runLimit, int pendLimit, int doneLimit) {
+        List<TaskSnapshot> runningSnaps;
+        if (runLimit <= 0 || running.isEmpty()) {
+            runningSnaps = List.of();
+        } else {
+            runningSnaps = new ArrayList<>(Math.min(running.size(), runLimit));
+            for (Task t : running) runningSnaps.add(t.toSnapshot());
+            runningSnaps.sort(Comparator.comparingLong(TaskSnapshot::getSeq));
+            if (runningSnaps.size() > runLimit) runningSnaps = runningSnaps.subList(0, runLimit);
+        }
+
+        List<TaskSnapshot> pendingSnaps;
+        if (pendLimit <= 0 || pending.isEmpty()) {
+            pendingSnaps = List.of();
+        } else {
+            int take = Math.min(pending.size(), pendLimit);
+            List<Task> drained = new ArrayList<>(take);
+            pendingSnaps = new ArrayList<>(take);
+            for (int i = 0; i < take; i++) {
+                Task t = pending.poll();
+                if (t == null) break;
+                drained.add(t);
+                pendingSnaps.add(t.toSnapshot());
+            }
+            for (Task t : drained) pending.add(t);
+        }
+
+        List<TaskSnapshot> completedSnaps;
+        if (doneLimit <= 0 || completed.isEmpty()) {
+            completedSnaps = List.of();
+        } else if (completed.size() <= doneLimit) {
+            completedSnaps = new ArrayList<>(completed);
+        } else {
+            completedSnaps = new ArrayList<>(doneLimit);
+            for (TaskSnapshot t : completed) {
+                if (t == null) continue;
+                completedSnaps.add(t);
+                if (completedSnaps.size() >= doneLimit) break;
+            }
+        }
+
+        QueueSnapshot snap = new QueueSnapshot(
+                Math.max(1, props.getMaxConcurrent()),
+                Math.max(1, props.getMaxQueueSize()),
+                active,
+                pending.size(),
+                runningSnaps,
+                pendingSnaps,
+                completedSnaps
+        );
+        lastSnapshot = snap;
+        lastSnapshotAtMs = System.currentTimeMillis();
+        return snap;
     }
 
     public TaskDetailSnapshot findTaskDetail(String taskId) {
@@ -660,45 +780,253 @@ public class LlmCallQueueService {
         }
     }
 
-    private Task enqueue(LlmQueueTaskType type, String providerId, String model, int priority) {
+    public <T> CompletableFuture<T> submit(
+            LlmQueueTaskType type,
+            String providerId,
+            String model,
+            int priority,
+            CheckedSupplier<T> supplier,
+            ResultMetricsExtractor<T> metricsExtractor
+    ) {
+        ensureDispatcherStarted();
+        return submit(type, providerId, model, priority, null, (TaskHandle _t) -> supplier.get(), metricsExtractor);
+    }
+
+    public <T> CompletableFuture<T> submit(
+            LlmQueueTaskType type,
+            String providerId,
+            String model,
+            int priority,
+            CheckedTaskSupplier<T> supplier,
+            ResultMetricsExtractor<T> metricsExtractor
+    ) {
+        ensureDispatcherStarted();
+        return submit(type, providerId, model, priority, null, supplier, metricsExtractor);
+    }
+
+    public <T> CompletableFuture<T> submit(
+            LlmQueueTaskType type,
+            String providerId,
+            String model,
+            int priority,
+            String label,
+            CheckedTaskSupplier<T> supplier,
+            ResultMetricsExtractor<T> metricsExtractor
+    ) {
+        ensureDispatcherStarted();
+        CompletableFuture<Object> future = new CompletableFuture<>();
+        CheckedTaskSupplier<Object> sup = (TaskHandle t) -> supplier.get(t);
+        ResultMetricsExtractor<Object> mex = metricsExtractor == null ? null : (Object r) -> {
+            @SuppressWarnings("unchecked")
+            T casted = (T) r;
+            return metricsExtractor.extract(casted);
+        };
+        Task task = createTask(type, providerId, model, priority, label, sup, mex, future);
+        enqueuePending(task);
+        @SuppressWarnings("unchecked")
+        CompletableFuture<T> out = (CompletableFuture<T>) (CompletableFuture<?>) future;
+        return out;
+    }
+
+    public <T> CompletableFuture<T> submitDedup(
+            LlmQueueTaskType type,
+            String providerId,
+            String model,
+            int priority,
+            String dedupKey,
+            CheckedSupplier<T> supplier,
+            ResultMetricsExtractor<T> metricsExtractor
+    ) {
+        ensureDispatcherStarted();
+        return submitDedup(type, providerId, model, priority, null, dedupKey, (TaskHandle _t) -> supplier.get(), metricsExtractor);
+    }
+
+    public <T> CompletableFuture<T> submitDedup(
+            LlmQueueTaskType type,
+            String providerId,
+            String model,
+            int priority,
+            String dedupKey,
+            CheckedTaskSupplier<T> supplier,
+            ResultMetricsExtractor<T> metricsExtractor
+    ) {
+        ensureDispatcherStarted();
+        return submitDedup(type, providerId, model, priority, null, dedupKey, supplier, metricsExtractor);
+    }
+
+    public <T> CompletableFuture<T> submitDedup(
+            LlmQueueTaskType type,
+            String providerId,
+            String model,
+            int priority,
+            String label,
+            String dedupKey,
+            CheckedTaskSupplier<T> supplier,
+            ResultMetricsExtractor<T> metricsExtractor
+    ) {
+        ensureDispatcherStarted();
+        if (dedupKey == null || dedupKey.isBlank()) {
+            return submit(type, providerId, model, priority, label, supplier, metricsExtractor);
+        }
+
+        String key = buildInFlightKey(type, providerId, model, dedupKey);
+        CompletableFuture<Object> existing = inFlight.get(key);
+        if (existing != null) {
+            @SuppressWarnings("unchecked")
+            CompletableFuture<T> reused = (CompletableFuture<T>) (CompletableFuture<?>) existing;
+            return reused;
+        }
+        CompletableFuture<Object> done = recentDedup.get(key);
+        if (done != null) {
+            @SuppressWarnings("unchecked")
+            CompletableFuture<T> reused = (CompletableFuture<T>) (CompletableFuture<?>) done;
+            return reused;
+        }
+
+        CompletableFuture<Object> mine = new CompletableFuture<>();
+        existing = inFlight.putIfAbsent(key, mine);
+        if (existing != null) {
+            @SuppressWarnings("unchecked")
+            CompletableFuture<T> reused = (CompletableFuture<T>) (CompletableFuture<?>) existing;
+            return reused;
+        }
+
+        CheckedTaskSupplier<Object> sup = (TaskHandle t) -> supplier.get(t);
+        ResultMetricsExtractor<Object> mex = metricsExtractor == null ? null : (Object r) -> {
+            @SuppressWarnings("unchecked")
+            T casted = (T) r;
+            return metricsExtractor.extract(casted);
+        };
+        Task task = createTask(type, providerId, model, priority, label, sup, mex, mine);
+        mine.whenComplete((r, e) -> {
+            recordRecentDedup(key, mine);
+            inFlight.remove(key, mine);
+        });
+        enqueuePending(task);
+        @SuppressWarnings("unchecked")
+        CompletableFuture<T> out = (CompletableFuture<T>) (CompletableFuture<?>) mine;
+        return out;
+    }
+
+    private Task createTask(
+            LlmQueueTaskType type,
+            String providerId,
+            String model,
+            int priority,
+            String label,
+            CheckedTaskSupplier<Object> supplier,
+            ResultMetricsExtractor<Object> metricsExtractor,
+            CompletableFuture<Object> future
+    ) {
         String id = UUID.randomUUID().toString();
         long s = seq.incrementAndGet();
         long now = System.currentTimeMillis();
-        Task task = new Task(id, s, priority, type, providerId == null ? null : providerId.trim(), model == null ? null : model.trim(), now);
+        return new Task(
+                id,
+                s,
+                priority,
+                type,
+                label,
+                providerId == null ? null : providerId.trim(),
+                model == null ? null : model.trim(),
+                now,
+                supplier,
+                metricsExtractor,
+                future
+        );
+    }
 
+    private void enqueuePending(Task task) {
         lock.lock();
         try {
             int maxQueueSize = Math.max(1, props.getMaxQueueSize());
             if (pending.size() >= maxQueueSize) {
-                throw new IllegalStateException("LLM 调用队列已满，请稍后重试");
+                task.status = LlmQueueTaskStatus.FAILED;
+                task.error = "queue_full";
+                pushCompleted(task.toSnapshot());
+                pushCompletedDetail(task);
+                task.future.completeExceptionally(new IllegalStateException("LLM 调用队列已满，请稍后重试"));
+                changed.signalAll();
+                return;
             }
             pending.add(task);
             changed.signalAll();
-            while (true) {
-                int maxConcurrent = Math.max(1, props.getMaxConcurrent());
-                Task head = pending.peek();
-                if (active < maxConcurrent && head == task) {
-                    pending.poll();
-                    active++;
-                    task.status = LlmQueueTaskStatus.RUNNING;
-                    task.startedAtMs = System.currentTimeMillis();
-                    running.add(task);
-                    changed.signalAll();
-                    return task;
-                }
-                try {
-                    changed.await();
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    pending.remove(task);
-                    task.status = LlmQueueTaskStatus.CANCELLED;
-                    task.error = "interrupted";
-                    changed.signalAll();
-                    throw new IllegalStateException("LLM 调用排队被中断", ie);
-                }
-            }
         } finally {
             lock.unlock();
+        }
+    }
+
+    private void ensureDispatcherStarted() {
+        if (stopped.get()) return;
+        if (!dispatcherStarted.compareAndSet(false, true)) return;
+        Thread t = new Thread(this::dispatchLoop);
+        t.setDaemon(true);
+        t.setName("llm-call-queue-dispatcher");
+        dispatcherThread = t;
+        t.start();
+    }
+
+    private void dispatchLoop() {
+        while (!stopped.get()) {
+            Task task = null;
+            lock.lock();
+            try {
+                while (!stopped.get()) {
+                    Task head = pending.peek();
+                    if (head != null && head.future != null && head.future.isCancelled()) {
+                        pending.poll();
+                        head.status = LlmQueueTaskStatus.CANCELLED;
+                        head.error = "cancelled";
+                        pushCompleted(head.toSnapshot());
+                        pushCompletedDetail(head);
+                        changed.signalAll();
+                        continue;
+                    }
+                    int maxConcurrent = Math.max(1, props.getMaxConcurrent());
+                    if (head != null && active < maxConcurrent) {
+                        task = pending.poll();
+                        if (task == null) break;
+                        active++;
+                        task.status = LlmQueueTaskStatus.RUNNING;
+                        task.startedAtMs = System.currentTimeMillis();
+                        running.add(task);
+                        changed.signalAll();
+                        break;
+                    }
+                    try {
+                        changed.await(250, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException ie) {
+                        if (stopped.get()) return;
+                    }
+                }
+            } finally {
+                lock.unlock();
+            }
+
+            if (task != null) {
+                Task toRun = task;
+                executor.execute(() -> executeTask(toRun));
+            }
+        }
+    }
+
+    private void executeTask(Task task) {
+        TaskHandle handle = new TaskHandle(task.id);
+        try {
+            Object result = task.supplier == null ? null : task.supplier.get(handle);
+            UsageMetrics metrics = null;
+            if (task.metricsExtractor != null) {
+                try {
+                    metrics = task.metricsExtractor.extract(result);
+                } catch (Exception ignore) {
+                    metrics = null;
+                }
+            }
+            finishSuccess(task, metrics);
+            task.future.complete(result);
+        } catch (Exception e) {
+            finishFailure(task, e);
+            task.future.completeExceptionally(e);
         }
     }
 
@@ -751,6 +1079,9 @@ public class LlmCallQueueService {
         task.tokensIn = metrics.promptTokens();
         task.tokensOut = metrics.tokensOut();
         task.totalTokens = metrics.totalTokens();
+        if (task.tokensIn == null && task.totalTokens != null && (task.tokensOut == null || task.tokensOut <= 0)) {
+            task.tokensIn = task.totalTokens;
+        }
         if (task.startedAtMs != null && task.finishedAtMs != null && task.tokensOut != null && task.tokensOut > 0) {
             long durMs = Math.max(1L, task.finishedAtMs - task.startedAtMs);
             task.tokensPerSec = (task.tokensOut * 1000.0) / durMs;
@@ -773,6 +1104,23 @@ public class LlmCallQueueService {
         while (completedDetailOrder.size() > keep) {
             String old = completedDetailOrder.removeLast();
             if (old != null) completedDetails.remove(old);
+        }
+    }
+
+    private void recordRecentDedup(String key, CompletableFuture<Object> future) {
+        int keep = Math.max(0, props.getKeepCompleted());
+        if (keep <= 0 || key == null || key.isBlank() || future == null) return;
+
+        recentDedup.put(key, future);
+        lock.lock();
+        try {
+            recentDedupOrder.addFirst(new DedupEntry(key, future));
+            while (recentDedupOrder.size() > keep) {
+                DedupEntry old = recentDedupOrder.removeLast();
+                if (old != null) recentDedup.remove(old.key(), old.future());
+            }
+        } finally {
+            lock.unlock();
         }
     }
 

@@ -186,13 +186,13 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
         Set<Long> roleIds = boardAccessControlService.currentUserRoleIds();
         var visiblePosts = rs.getContent().stream()
-                .filter(e -> e == null || e.getBoardId() == null || boardAccessControlService.canViewBoard(e.getBoardId(), roleIds))
+                .filter(e -> e != null)
+                .filter(e -> e.getBoardId() == null || boardAccessControlService.canViewBoard(e.getBoardId(), roleIds))
                 .toList();
 
         LinkedHashSet<Long> authorIds = new LinkedHashSet<>();
         LinkedHashSet<Long> boardIds = new LinkedHashSet<>();
         for (PostsEntity e : visiblePosts) {
-            if (e == null) continue;
             if (e.getAuthorId() != null) authorIds.add(e.getAuthorId());
             if (e.getBoardId() != null) boardIds.add(e.getBoardId());
         }

@@ -12,6 +12,7 @@ public class AdminLlmQueueTaskDTO {
     private Long seq;
     private Integer priority;
     private LlmQueueTaskType type;
+    private String label;
     private LlmQueueTaskStatus status;
     private String providerId;
     private String model;
@@ -26,4 +27,3 @@ public class AdminLlmQueueTaskDTO {
     private Double tokensPerSec;
     private String error;
 }
-

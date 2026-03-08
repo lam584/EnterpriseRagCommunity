@@ -49,8 +49,6 @@ public class LlmRoutingService {
             TargetId id,
             int weight,
             int priority,
-            Integer maxConcurrent,
-            Integer minDelayMs,
             Double qps
     ) {
         public String providerId() {
@@ -87,8 +85,6 @@ public class LlmRoutingService {
             String modelName,
             int weight,
             int priority,
-            Integer maxConcurrent,
-            Integer minDelayMs,
             Double qps,
             int runningCount,
             int consecutiveFailures,
@@ -166,8 +162,6 @@ public class LlmRoutingService {
                     new TargetId(providerId, modelName),
                     m.getWeight() == null ? 0 : m.getWeight(),
                     m.getPriority() == null ? 0 : m.getPriority(),
-                    m.getMaxConcurrent(),
-                    m.getMinDelayMs(),
                     m.getQps()
             ));
         }
@@ -179,9 +173,55 @@ public class LlmRoutingService {
         return listEnabledTargets(normalizeTaskType(taskType));
     }
 
+    @Transactional(readOnly = true)
+    public boolean isEnabledTarget(LlmQueueTaskType taskType, String providerId, String modelName) {
+        String purpose = normalizeTaskType(taskType);
+        String pid = toNonBlank(providerId);
+        String mn = toNonBlank(modelName);
+        if (pid == null || mn == null) return false;
+        boolean ok = llmModelRepository.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue(ENV_DEFAULT, purpose, pid, mn);
+        if (!ok) return false;
+        if ("IMAGE_MODERATION".equalsIgnoreCase(purpose)) {
+            return llmModelRepository.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue(ENV_DEFAULT, "IMAGE_CHAT", pid, mn);
+        }
+        return true;
+    }
+
     public RouteTarget pickNext(LlmQueueTaskType taskType, Set<TargetId> exclude) {
         Policy policy = getPolicy(taskType);
         List<RouteTarget> candidates = listEnabledTargets(taskType);
+        long nowMs = System.currentTimeMillis();
+        candidates.removeIf(t -> isExcludedOrCooling(taskType, t, exclude, nowMs));
+        if (candidates.isEmpty()) return null;
+
+        Map<ProviderModelKey, Integer> running = runningByModel();
+        List<RouteTarget> eligible = new ArrayList<>(candidates);
+        eligible.removeIf(t -> !isEligible(t, running, nowMs, true));
+        if (eligible.isEmpty()) {
+            eligible = new ArrayList<>(candidates);
+            eligible.removeIf(t -> !isEligible(t, running, nowMs, false));
+        }
+        if (eligible.isEmpty()) eligible = candidates;
+
+        for (int guard = 0; guard < Math.max(1, eligible.size()); guard++) {
+            RouteTarget best = (policy.strategy() == Strategy.PRIORITY_FALLBACK)
+                    ? pickPriorityFallback(eligible)
+                    : pickWeightedRoundRobin(taskType, eligible);
+            if (best == null) return null;
+            if (reserveRate(best, nowMs)) return best;
+            eligible.remove(best);
+            if (eligible.isEmpty()) return best;
+        }
+        return eligible.get(0);
+    }
+
+    public RouteTarget pickNextInProvider(LlmQueueTaskType taskType, String providerId, Set<TargetId> exclude) {
+        String pid = toNonBlank(providerId);
+        if (pid == null) return pickNext(taskType, exclude);
+
+        Policy policy = getPolicy(taskType);
+        List<RouteTarget> candidates = listEnabledTargets(taskType);
+        candidates.removeIf(t -> t == null || !pid.equals(toNonBlank(t.providerId())));
         long nowMs = System.currentTimeMillis();
         candidates.removeIf(t -> isExcludedOrCooling(taskType, t, exclude, nowMs));
         if (candidates.isEmpty()) return null;
@@ -241,8 +281,6 @@ public class LlmRoutingService {
                     modelName,
                     t.weight(),
                     t.priority(),
-                    t.maxConcurrent(),
-                    t.minDelayMs(),
                     t.qps(),
                     runningCount,
                     failures,
@@ -365,17 +403,12 @@ public class LlmRoutingService {
         String modelName = toNonBlank(t.modelName());
         if (providerId == null || modelName == null) return false;
 
-        ProviderModelKey key = new ProviderModelKey(providerId, modelName);
-        int rc = running == null ? 0 : (running.getOrDefault(key, 0));
-        Integer maxConcurrent = t.maxConcurrent();
-        if (maxConcurrent != null && maxConcurrent > 0 && rc >= maxConcurrent) return false;
-
         if (!strictRate) return true;
 
-        Integer minDelayMs = t.minDelayMs();
         Double qps = t.qps();
-        if ((minDelayMs == null || minDelayMs <= 0) && (qps == null || !(qps > 0.0))) return true;
+        if (qps == null || !(qps > 0.0)) return true;
 
+        ProviderModelKey key = new ProviderModelKey(providerId, modelName);
         Object lock = rateLocks.computeIfAbsent(key, _k -> new Object());
         synchronized (lock) {
             RateState st = rate.computeIfAbsent(key, _k -> {
@@ -386,10 +419,6 @@ public class LlmRoutingService {
                 return x;
             });
 
-            if (minDelayMs != null && minDelayMs > 0) {
-                long since = nowMs - st.lastDispatchAtMs;
-                if (since < minDelayMs) return false;
-            }
             if (qps != null && qps > 0.0) {
                 RateState peek = peekRefill(st, nowMs, qps);
                 if (peek.tokens < 1.0) return false;
@@ -405,9 +434,8 @@ public class LlmRoutingService {
         if (providerId == null || modelName == null) return true;
         ProviderModelKey key = new ProviderModelKey(providerId, modelName);
 
-        Integer minDelayMs = t.minDelayMs();
         Double qps = t.qps();
-        if ((minDelayMs == null || minDelayMs <= 0) && (qps == null || !(qps > 0.0))) return true;
+        if (qps == null || !(qps > 0.0)) return true;
 
         Object lock = rateLocks.computeIfAbsent(key, _k -> new Object());
         synchronized (lock) {
@@ -418,10 +446,6 @@ public class LlmRoutingService {
                 x.lastRefillAtMs = nowMs;
                 return x;
             });
-            if (minDelayMs != null && minDelayMs > 0) {
-                long since = nowMs - st.lastDispatchAtMs;
-                if (since < minDelayMs) return false;
-            }
             if (qps != null && qps > 0.0) {
                 refillInPlace(st, nowMs, qps);
                 if (st.tokens < 1.0) return false;
@@ -517,5 +541,13 @@ public class LlmRoutingService {
         if (x < min) return min;
         if (x > max) return max;
         return x;
+    }
+
+    public void resetRuntimeState() {
+        health.clear();
+        weighted.clear();
+        groupLocks.clear();
+        rate.clear();
+        rateLocks.clear();
     }
 }

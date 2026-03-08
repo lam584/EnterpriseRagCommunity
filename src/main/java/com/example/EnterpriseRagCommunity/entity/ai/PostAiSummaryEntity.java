@@ -30,23 +30,8 @@ public class PostAiSummaryEntity {
     @Column(name = "summary_text")
     private String summaryText;
 
-    @Column(name = "model", length = 128)
-    private String model;
-
-    @Column(name = "provider_id", length = 64)
-    private String providerId;
-
-    @Column(name = "temperature")
-    private Double temperature;
-
-    @Column(name = "top_p")
-    private Double topP;
-
     @Column(name = "applied_max_content_chars")
     private Integer appliedMaxContentChars;
-
-    @Column(name = "latency_ms")
-    private Long latencyMs;
 
     @Column(name = "generated_at")
     private LocalDateTime generatedAt;
@@ -54,6 +39,9 @@ public class PostAiSummaryEntity {
     @Lob
     @Column(name = "error_message")
     private String errorMessage;
+
+    @Column(name = "job_id")
+    private Long jobId;
 
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;

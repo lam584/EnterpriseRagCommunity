@@ -14,6 +14,17 @@ import LlmLoadTestPanel from './llm-loadtest';
 import { stripThinkBlocks } from '../../../../utils/thinkTags';
 import { SparkLine, fmtMs, fmtNum, fmtTs, fmtHmsTs, fmtType, normalizeSamples, sliceSamplesByWindow } from './llm-queue.sparkline';
 import { TaskTable } from './llm-queue.task-table';
+import DetailDialog from '../../../../components/common/DetailDialog';
+
+function fmtJson(s: string | null | undefined): string {
+  if (!s) return '—';
+  try {
+    const o = JSON.parse(s);
+    return JSON.stringify(o, null, 2);
+  } catch {
+    return s;
+  }
+}
 
 const LlmQueueForm: React.FC = () => {
   const [queueWindowSec, setQueueWindowSec] = useState(300);
@@ -28,8 +39,8 @@ const LlmQueueForm: React.FC = () => {
   const [maxConcurrentDirty, setMaxConcurrentDirty] = useState(false);
   const [isEditingMaxConcurrent, setIsEditingMaxConcurrent] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshIntervalMs, setRefreshIntervalMs] = useState(2000);
-  const [refreshIntervalInput, setRefreshIntervalInput] = useState('2000');
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
+  const [refreshIntervalInput, setRefreshIntervalInput] = useState('5000');
   const [refreshIntervalDirty, setRefreshIntervalDirty] = useState(false);
   const [lastUpdatedAtMs, setLastUpdatedAtMs] = useState<number | null>(null);
   const [lastRefreshCostMs, setLastRefreshCostMs] = useState<number | null>(null);
@@ -40,7 +51,10 @@ const LlmQueueForm: React.FC = () => {
   const [detailTask, setDetailTask] = useState<LlmQueueTaskDTO | null>(null);
   const [detail, setDetail] = useState<LlmQueueTaskDetailDTO | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailLoadError, setDetailLoadError] = useState<string | null>(null);
+  const [detailRefreshError, setDetailRefreshError] = useState<string | null>(null);
+  const [detailRefreshing, setDetailRefreshing] = useState(false);
+  const [detailTab, setDetailTab] = useState<'overview' | 'input' | 'output'>('overview');
   const [typeLabels, setTypeLabels] = useState<Record<string, string>>({});
   const [providerNameById, setProviderNameById] = useState<Record<string, string>>({});
 
@@ -56,6 +70,7 @@ const LlmQueueForm: React.FC = () => {
         labels.LANGUAGE_TAG_GEN = '语言标签生成';
         labels.EMBEDDING = '嵌入向量化';
         labels.TOPIC_TAG_GEN = '主题标签生成';
+        labels.MODERATION_CHUNK = '分片审核';
         setTypeLabels(labels);
       })
       .catch((e) => console.error('Failed to load routing config for labels', e));
@@ -153,52 +168,109 @@ const LlmQueueForm: React.FC = () => {
 
   const closeDetail = useCallback(() => {
     setDetailOpen(false);
+    setDetailTab('overview');
     setDetailTask(null);
     setDetail(null);
     setDetailLoading(false);
-    setDetailError(null);
+    setDetailLoadError(null);
+    setDetailRefreshError(null);
+    setDetailRefreshing(false);
     try {
       detailAbortRef.current?.abort();
     } catch {}
     detailAbortRef.current = null;
   }, []);
 
-  useEffect(() => {
-    if (!detailOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeDetail();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [detailOpen, closeDetail]);
+  const fetchDetail = useCallback(async (taskId: string, opts: { background?: boolean; timeoutMs?: number } = {}) => {
+    if (detailAbortRef.current) return;
 
-  const openDetail = useCallback((t: LlmQueueTaskDTO) => {
-    setDetailOpen(true);
-    setDetailTask(t);
-    setDetail(null);
-    setDetailError(null);
-    setDetailLoading(true);
+    const background = Boolean(opts.background);
+    if (background) {
+      setDetailRefreshing(true);
+      setDetailRefreshError(null);
+    } else {
+      setDetailLoading(true);
+      setDetailLoadError(null);
+      setDetailRefreshError(null);
+    }
 
-    try {
-      detailAbortRef.current?.abort();
-    } catch {}
     const controller = new AbortController();
     detailAbortRef.current = controller;
 
-    adminGetLlmQueueTaskDetail(t.id, { signal: controller.signal, timeoutMs: 20000 })
-      .then((d) => {
-        if (detailAbortRef.current !== controller) return;
-        setDetail(d);
-      })
-      .catch((e) => {
-        if (detailAbortRef.current !== controller) return;
-        setDetailError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (detailAbortRef.current !== controller) return;
-        setDetailLoading(false);
-      });
+    const timeoutMs = Number(opts.timeoutMs);
+    const clampedTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.max(500, Math.min(60000, Math.floor(timeoutMs))) : 20000;
+
+    try {
+      const d = await adminGetLlmQueueTaskDetail(taskId, { signal: controller.signal, timeoutMs: clampedTimeoutMs });
+      if (detailAbortRef.current !== controller) return;
+      setDetail(d);
+      setDetailLoadError(null);
+      setDetailRefreshError(null);
+    } catch (e) {
+      if (detailAbortRef.current !== controller) return;
+      const isAbort = e instanceof DOMException && e.name === 'AbortError';
+      if (isAbort) return;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (background) setDetailRefreshError(msg);
+      else setDetailLoadError(msg);
+    } finally {
+      if (detailAbortRef.current === controller) detailAbortRef.current = null;
+      if (background) setDetailRefreshing(false);
+      else setDetailLoading(false);
+    }
   }, []);
+
+  const openDetail = useCallback(
+    (t: LlmQueueTaskDTO) => {
+      setDetailOpen(true);
+      setDetailTab('overview');
+      setDetailTask(t);
+      setDetail(null);
+      setDetailLoadError(null);
+      setDetailRefreshError(null);
+      setDetailRefreshing(false);
+      void fetchDetail(t.id);
+    },
+    [fetchDetail]
+  );
+
+  const canAutoRefreshDetail = useMemo(() => {
+    const s = detail?.status;
+    return detailOpen && Boolean(detailTask?.id) && (s === 'PENDING' || s === 'RUNNING');
+  }, [detail?.status, detailOpen, detailTask?.id]);
+
+  const detailRefreshIntervalMs = useMemo(() => {
+    const base = Math.floor(Number(refreshIntervalMs));
+    if (!Number.isFinite(base) || base <= 0) return 2000;
+    return Math.max(500, Math.min(5000, base));
+  }, [refreshIntervalMs]);
+
+  useEffect(() => {
+    if (!canAutoRefreshDetail || !detailTask?.id) return;
+    let stopped = false;
+    let timer: number | null = null;
+    const timeoutMs = Math.max(800, Math.min(15000, Math.floor(detailRefreshIntervalMs * 2)));
+
+    const tick = async () => {
+      if (stopped) return;
+      if (document.visibilityState === 'hidden') {
+        timer = window.setTimeout(() => void tick(), detailRefreshIntervalMs);
+        return;
+      }
+      if (!detailAbortRef.current) {
+        const id = detailTask.id;
+        await fetchDetail(id, { background: true, timeoutMs });
+      }
+      if (stopped) return;
+      timer = window.setTimeout(() => void tick(), detailRefreshIntervalMs);
+    };
+
+    timer = window.setTimeout(() => void tick(), detailRefreshIntervalMs);
+    return () => {
+      stopped = true;
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [canAutoRefreshDetail, detailRefreshIntervalMs, detailTask?.id, fetchDetail]);
 
   const load = useCallback(
     async (opts: { background?: boolean; timeoutMs?: number } = {}) => {
@@ -261,6 +333,10 @@ const LlmQueueForm: React.FC = () => {
     let timer: number | null = null;
     const tick = async () => {
       if (stopped) return;
+      if (document.visibilityState === 'hidden') {
+        timer = window.setTimeout(() => void tick(), interval);
+        return;
+      }
       if (inflightRef.current) {
         timer = window.setTimeout(() => void tick(), interval);
         return;
@@ -303,10 +379,41 @@ const LlmQueueForm: React.FC = () => {
       }
     } catch {}
     const lower = inputRaw.toLowerCase();
-    const shouldStrip = enableThinking === false || lower.includes('/no_think');
+    const outLower = rawOut.toLowerCase();
+    const shouldStrip =
+      enableThinking === false ||
+      lower.includes('/no_think') ||
+      outLower.includes('<think') ||
+      outLower.includes('reasoning_content');
     const out = shouldStrip ? stripThinkBlocks(rawOut) : rawOut;
-    return out.trim() || '—';
+    return fmtJson(out.trim());
   }, [detail?.input, detail?.output]);
+
+  const detailMeta = useMemo(() => {
+    const raw = String(detail?.input || '').trim();
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== 'object') return null;
+      const o = parsed as Record<string, unknown>;
+      const queueId = typeof o.queueId === 'number' ? o.queueId : Number(o.queueId);
+      const chunkId = typeof o.chunkId === 'number' ? o.chunkId : Number(o.chunkId);
+      const kind = typeof o.kind === 'string' ? o.kind : null;
+      return {
+        kind,
+        queueId: Number.isFinite(queueId) && queueId > 0 ? queueId : null,
+        chunkId: Number.isFinite(chunkId) && chunkId > 0 ? chunkId : null,
+      };
+    } catch {
+      return null;
+    }
+  }, [detail?.input]);
+
+  const detailInputText = useMemo(() => {
+    return fmtJson(detail?.input);
+  }, [detail?.input]);
+
+
 
   const saveMaxConcurrent = useCallback(async () => {
     const n = Math.floor(Number(maxConcurrentInput));
@@ -335,6 +442,19 @@ const LlmQueueForm: React.FC = () => {
     return fmtTs(new Date(lastUpdatedAtMs).toISOString());
   }, [lastUpdatedAtMs]);
 
+  const snapshotInfo = useMemo(() => {
+    const at = Number(data?.snapshotAtMs || 0);
+    if (!Number.isFinite(at) || at <= 0) return null;
+    const ageMs = Date.now() - at;
+    const ageSec = Math.max(0, Math.floor(ageMs / 1000));
+    return {
+      atIso: new Date(at).toISOString(),
+      ageSec,
+      stale: Boolean(data?.stale),
+      truncated: Boolean(data?.truncated),
+    };
+  }, [data?.snapshotAtMs, data?.stale, data?.truncated]);
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg shadow p-4 space-y-4">
@@ -344,6 +464,12 @@ const LlmQueueForm: React.FC = () => {
           <div className="text-[11px] text-gray-500">
             自动刷新：{autoRefresh ? `${refreshIntervalMs}ms` : '关闭'} · 最近刷新：{lastUpdatedLabel} · 耗时：
             {lastRefreshCostMs == null ? '—' : `${Math.max(0, Math.round(lastRefreshCostMs))}ms`}
+            {snapshotInfo ? (
+              <span className="ml-2" title={`快照时间：${fmtHmsTs(snapshotInfo.atIso)}`}>
+                · 快照：{snapshotInfo.stale ? '降级' : '实时'}（{snapshotInfo.ageSec}s 前）
+                {snapshotInfo.truncated ? ' · 已裁剪' : ''}
+              </span>
+            ) : null}
             {backgroundError ? (
               <span className="ml-2 text-red-600" title={backgroundError}>
                 自动刷新异常
@@ -574,7 +700,6 @@ const LlmQueueForm: React.FC = () => {
           typeLabels={typeLabels}
         />
       </div>
-
       <TaskTable
         title={`最近完成任务（${recent.length}）`}
         tasks={recent}
@@ -587,30 +712,58 @@ const LlmQueueForm: React.FC = () => {
       />
 
       {detailOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeDetail();
-          }}
-        >
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl max-h-[92vh] overflow-hidden">
-            <div className="px-4 py-3 border-b flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold">任务详情</div>
-              <button type="button" className="rounded border px-2 py-1 text-sm" onClick={closeDetail}>
-                关闭
+        <DetailDialog
+          open={detailOpen}
+          onClose={closeDetail}
+          title={detailTask?.id ? `任务详情 #${detailTask.id}` : '任务详情'}
+          headerActions={
+            <>
+              {detailRefreshing ? <div className="text-xs text-gray-500">自动刷新中…</div> : null}
+              <button
+                type="button"
+                className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50 active:bg-gray-100 disabled:opacity-60"
+                onClick={() => {
+                  if (!detailTask?.id) return;
+                  void fetchDetail(detailTask.id, { background: true });
+                }}
+                disabled={!detailTask?.id || detailRefreshing || detailLoading}
+              >
+                刷新
               </button>
+            </>
+          }
+          tabs={[
+            { id: 'overview', label: '概览' },
+            { id: 'input', label: '输入' },
+            { id: 'output', label: '输出' },
+          ]}
+          activeTabId={detailTab}
+          onTabChange={(id) => setDetailTab(id as 'overview' | 'input' | 'output')}
+          containerClassName="max-w-5xl max-h-[92vh]"
+          bodyClassName="flex-1 overflow-auto p-4 space-y-4"
+        >
+          <div className="text-xs text-gray-600 font-mono break-all">{detailTask ? `ID: ${detailTask.id}` : ''}</div>
+          {detail?.label ? <div className="text-xs text-gray-600 font-mono break-all">Label: {detail.label}</div> : null}
+          {detailMeta?.queueId ? (
+            <div className="text-xs">
+              <a className="text-blue-700 hover:underline" href={`/admin/review?active=queue&taskId=${detailMeta.queueId}`} title="在审核队列中查看该队列编号">
+                打开审核队列（queueId={detailMeta.queueId}）
+              </a>
+              {detailMeta.chunkId ? (
+                <a className="ml-3 text-blue-700 hover:underline" href="/admin/review?active=chunk-review" title="打开分片审核页面，可按队列编号/分片编号筛选">
+                  打开分片审核页（chunkId={detailMeta.chunkId}）
+                </a>
+              ) : null}
             </div>
-            <div className="p-4 overflow-auto max-h-[calc(92vh-56px)] space-y-4">
-              <div className="text-xs text-gray-600 font-mono break-all">
-                {detailTask ? `ID: ${detailTask.id}` : ''}
-              </div>
-              {detailLoading ? (
-                <div className="text-sm text-gray-600">加载中...</div>
-              ) : detailError ? (
-                <div className="text-sm text-red-600">{detailError}</div>
-              ) : detail ? (
+          ) : null}
+          {detailLoading && !detail ? (
+            <div className="text-sm text-gray-600">加载中...</div>
+          ) : detailLoadError && !detail ? (
+            <div className="text-sm text-red-600">{detailLoadError}</div>
+          ) : detail ? (
+            <>
+              {detailRefreshError ? <div className="text-sm text-amber-700">{detailRefreshError}</div> : null}
+              {detailTab === 'overview' ? (
                 <div className="space-y-4">
                   <div className="rounded border overflow-hidden">
                     <div className="px-3 py-2 text-sm font-semibold bg-gray-50">概要</div>
@@ -631,6 +784,12 @@ const LlmQueueForm: React.FC = () => {
                         <div className="text-xs text-gray-500">Model</div>
                         <div className="font-mono break-all">{detail.model || '—'}</div>
                       </div>
+                      {detail.label ? (
+                        <div className="rounded border px-3 py-2 sm:col-span-2 lg:col-span-2">
+                          <div className="text-xs text-gray-500">标签</div>
+                          <div className="font-mono break-all">{detail.label}</div>
+                        </div>
+                      ) : null}
                       <div className="rounded border px-3 py-2">
                         <div className="text-xs text-gray-500">创建</div>
                         <div className="font-mono">{fmtHmsTs(detail.createdAt)}</div>
@@ -649,7 +808,6 @@ const LlmQueueForm: React.FC = () => {
                           {fmtMs(detail.waitMs)} / {fmtMs(detail.durationMs)}
                         </div>
                       </div>
-
                       <div className="rounded border px-3 py-2">
                         <div className="text-xs text-gray-500">Tokens(in/out/total)</div>
                         <div className="font-mono">
@@ -662,33 +820,29 @@ const LlmQueueForm: React.FC = () => {
                       </div>
                       <div className="rounded border px-3 py-2 sm:col-span-2 lg:col-span-2">
                         <div className="text-xs text-gray-500">错误</div>
-                        <div className={`font-mono break-all ${detail.error ? 'text-red-700' : ''}`}>
-                          {detail.error || '—'}
-                        </div>
+                        <div className={`font-mono break-all ${detail.error ? 'text-red-700' : ''}`}>{detail.error || '—'}</div>
                       </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                    <div className="rounded border overflow-hidden">
-                      <div className="px-3 py-2 text-sm font-semibold bg-gray-50">输入</div>
-                      <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words">
-                        {(detail.input || '').trim() || '—'}
-                      </pre>
-                    </div>
-                    <div className="rounded border overflow-hidden">
-                      <div className="px-3 py-2 text-sm font-semibold bg-gray-50">输出</div>
-                      <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words">
-                        {detailOutputText}
-                      </pre>
-                    </div>
-                  </div>
                 </div>
-              ) : (
-                <div className="text-sm text-gray-600">暂无详情</div>
-              )}
-            </div>
-          </div>
-        </div>
+              ) : null}
+              {detailTab === 'input' ? (
+                <div className="rounded border overflow-hidden">
+                  <div className="px-3 py-2 text-sm font-semibold bg-gray-50">输入</div>
+                  <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words">{detailInputText}</pre>
+                </div>
+              ) : null}
+              {detailTab === 'output' ? (
+                <div className="rounded border overflow-hidden">
+                  <div className="px-3 py-2 text-sm font-semibold bg-gray-50">输出</div>
+                  <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words">{detailOutputText}</pre>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="text-sm text-gray-600">暂无详情</div>
+          )}
+        </DetailDialog>
       ) : null}
     </div>
 

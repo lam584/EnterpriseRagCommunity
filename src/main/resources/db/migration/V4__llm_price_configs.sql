@@ -563,3 +563,103 @@ VALUES (
     JSON_OBJECT('upToTokens', 1000000, 'inputCostPerUnit', 5, 'outputCostPerUnit', 25)
   )))
 ) ON DUPLICATE KEY UPDATE name = name;
+
+INSERT INTO llm_price_configs (name, currency, input_cost_per_1k, output_cost_per_1k, metadata)
+VALUES (
+  'qwen3.5-plus',
+  'CNY',
+  NULL,
+  NULL,
+  JSON_OBJECT('pricing', JSON_OBJECT('strategy', 'TIERED', 'unit', 'PER_1M', 'tiers', JSON_ARRAY(
+    JSON_OBJECT('upToTokens', 128000, 'inputCostPerUnit', 0.8, 'outputCostPerUnit', 4.8),
+    JSON_OBJECT('upToTokens', 256000, 'inputCostPerUnit', 2, 'outputCostPerUnit', 12),
+    JSON_OBJECT('upToTokens', 1000000, 'inputCostPerUnit', 4, 'outputCostPerUnit', 24)
+  )))
+) ON DUPLICATE KEY UPDATE name = name;
+
+INSERT INTO llm_price_configs (name, currency, input_cost_per_1k, output_cost_per_1k, metadata)
+VALUES (
+  'qwen3.5-plus-2026-02-15',
+  'CNY',
+  NULL,
+  NULL,
+  JSON_OBJECT('pricing', JSON_OBJECT('strategy', 'TIERED', 'unit', 'PER_1M', 'tiers', JSON_ARRAY(
+    JSON_OBJECT('upToTokens', 128000, 'inputCostPerUnit', 0.8, 'outputCostPerUnit', 4.8),
+    JSON_OBJECT('upToTokens', 256000, 'inputCostPerUnit', 2, 'outputCostPerUnit', 12),
+    JSON_OBJECT('upToTokens', 1000000, 'inputCostPerUnit', 4, 'outputCostPerUnit', 24)
+  )))
+) ON DUPLICATE KEY UPDATE name = name;
+
+INSERT INTO llm_price_configs (name, currency, input_cost_per_1k, output_cost_per_1k, metadata)
+VALUES (
+  'qwen3.5-flash',
+  'CNY',
+  NULL,
+  NULL,
+  JSON_OBJECT('pricing', JSON_OBJECT('strategy', 'TIERED', 'unit', 'PER_1M', 'tiers', JSON_ARRAY(
+    JSON_OBJECT('upToTokens', 128000, 'inputCostPerUnit', 0.2, 'outputCostPerUnit', 2),
+    JSON_OBJECT('upToTokens', 256000, 'inputCostPerUnit', 0.8, 'outputCostPerUnit', 8),
+    JSON_OBJECT('upToTokens', 1000000, 'inputCostPerUnit', 1.2, 'outputCostPerUnit', 12)
+  )))
+) ON DUPLICATE KEY UPDATE name = name;
+
+INSERT INTO llm_price_configs (name, currency, input_cost_per_1k, output_cost_per_1k, metadata)
+VALUES (
+  'qwen3.5-flash-2026-02-23',
+  'CNY',
+  NULL,
+  NULL,
+  JSON_OBJECT('pricing', JSON_OBJECT('strategy', 'TIERED', 'unit', 'PER_1M', 'tiers', JSON_ARRAY(
+    JSON_OBJECT('upToTokens', 128000, 'inputCostPerUnit', 0.2, 'outputCostPerUnit', 2),
+    JSON_OBJECT('upToTokens', 256000, 'inputCostPerUnit', 0.8, 'outputCostPerUnit', 8),
+    JSON_OBJECT('upToTokens', 1000000, 'inputCostPerUnit', 1.2, 'outputCostPerUnit', 12)
+  )))
+) ON DUPLICATE KEY UPDATE name = name;
+
+INSERT INTO llm_price_configs (name, currency, input_cost_per_1k, output_cost_per_1k, metadata)
+VALUES (
+  'qwen3.5-397b-a17b',
+  'CNY',
+  NULL,
+  NULL,
+  JSON_OBJECT('pricing', JSON_OBJECT('strategy', 'TIERED', 'unit', 'PER_1M', 'tiers', JSON_ARRAY(
+    JSON_OBJECT('upToTokens', 128000, 'inputCostPerUnit', 1.2, 'outputCostPerUnit', 7.2),
+    JSON_OBJECT('upToTokens', 256000, 'inputCostPerUnit', 3, 'outputCostPerUnit', 18)
+  )))
+) ON DUPLICATE KEY UPDATE name = name;
+
+INSERT INTO llm_price_configs (name, currency, input_cost_per_1k, output_cost_per_1k, metadata)
+VALUES (
+  'qwen3.5-122b-a10b',
+  'CNY',
+  NULL,
+  NULL,
+  JSON_OBJECT('pricing', JSON_OBJECT('strategy', 'TIERED', 'unit', 'PER_1M', 'tiers', JSON_ARRAY(
+    JSON_OBJECT('upToTokens', 128000, 'inputCostPerUnit', 0.8, 'outputCostPerUnit', 6.4),
+    JSON_OBJECT('upToTokens', 256000, 'inputCostPerUnit', 2, 'outputCostPerUnit', 16)
+  )))
+) ON DUPLICATE KEY UPDATE name = name;
+
+INSERT INTO llm_price_configs (name, currency, input_cost_per_1k, output_cost_per_1k, metadata)
+VALUES (
+  'qwen3.5-27b',
+  'CNY',
+  NULL,
+  NULL,
+  JSON_OBJECT('pricing', JSON_OBJECT('strategy', 'TIERED', 'unit', 'PER_1M', 'tiers', JSON_ARRAY(
+    JSON_OBJECT('upToTokens', 128000, 'inputCostPerUnit', 0.6, 'outputCostPerUnit', 4.8),
+    JSON_OBJECT('upToTokens', 256000, 'inputCostPerUnit', 1.8, 'outputCostPerUnit', 14.4)
+  )))
+) ON DUPLICATE KEY UPDATE name = name;
+
+INSERT INTO llm_price_configs (name, currency, input_cost_per_1k, output_cost_per_1k, metadata)
+VALUES (
+  'qwen3.5-35b-a3b',
+  'CNY',
+  NULL,
+  NULL,
+  JSON_OBJECT('pricing', JSON_OBJECT('strategy', 'TIERED', 'unit', 'PER_1M', 'tiers', JSON_ARRAY(
+    JSON_OBJECT('upToTokens', 128000, 'inputCostPerUnit', 0.4, 'outputCostPerUnit', 3.2),
+    JSON_OBJECT('upToTokens', 256000, 'inputCostPerUnit', 1.6, 'outputCostPerUnit', 12.8)
+  )))
+) ON DUPLICATE KEY UPDATE name = name;
