@@ -60,6 +60,7 @@ import com.example.EnterpriseRagCommunity.service.moderation.RiskLabelingService
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmService;
 import com.example.EnterpriseRagCommunity.service.moderation.trace.ModerationPipelineTraceService;
 import com.example.EnterpriseRagCommunity.service.monitor.FileAssetExtractionService;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
@@ -74,6 +75,7 @@ public class ModerationLlmAutoRunner {
     private static final Logger log = LoggerFactory.getLogger(ModerationLlmAutoRunner.class);
     private static final java.util.regex.Pattern IMAGE_PLACEHOLDER = java.util.regex.Pattern.compile("\\[\\[IMAGE_(\\d+)\\]\\]");
     private static final ObjectMapper EVIDENCE_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> STRING_OBJECT_MAP_TYPE = new TypeReference<>() {};
 
     private final ModerationLlmConfigRepository llmConfigRepository;
     private final ModerationQueueRepository queueRepository;
@@ -2700,7 +2702,7 @@ public class ModerationLlmAutoRunner {
         if (t.isEmpty()) return "";
         if (!(t.startsWith("{") && t.endsWith("}"))) return "raw|" + normalizeForAnchorMatch(t);
         try {
-            Map<String, Object> node = EVIDENCE_MAPPER.readValue(t, Map.class);
+            Map<String, Object> node = EVIDENCE_MAPPER.readValue(t, STRING_OBJECT_MAP_TYPE);
             if (node == null) return "raw|" + normalizeForAnchorMatch(t);
             String text = canonicalEvidenceValue(String.valueOf(node.get("text") == null ? "" : node.get("text")));
             if (!text.isBlank()) return "text|" + text;
@@ -2762,7 +2764,7 @@ public class ModerationLlmAutoRunner {
 
         Map<String, Object> meta;
         try {
-            meta = objectMapper.readValue(extractedMetadataJson, Map.class);
+            meta = objectMapper.readValue(extractedMetadataJson, STRING_OBJECT_MAP_TYPE);
         } catch (Exception ignore) {
             return List.of();
         }
@@ -2885,7 +2887,7 @@ public class ModerationLlmAutoRunner {
 
         Map<String, Object> node;
         try {
-            node = objectMapper.readValue(raw, Map.class);
+            node = objectMapper.readValue(raw, STRING_OBJECT_MAP_TYPE);
         } catch (Exception e) {
             return raw;
         }
@@ -3073,7 +3075,7 @@ public class ModerationLlmAutoRunner {
         if (t.isEmpty()) return "";
         if (!(t.startsWith("{") && t.endsWith("}"))) return "raw|" + normalizeForAnchorMatch(t);
         try {
-            Map<String, Object> node = objectMapper.readValue(t, Map.class);
+            Map<String, Object> node = objectMapper.readValue(t, STRING_OBJECT_MAP_TYPE);
             if (node == null) return "raw|" + normalizeForAnchorMatch(t);
             String text = canonicalEvidenceValue(node.get("text"));
             if (!text.isBlank()) return "text|" + text;
