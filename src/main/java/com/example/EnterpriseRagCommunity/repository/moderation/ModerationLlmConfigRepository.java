@@ -4,7 +4,10 @@ import com.example.EnterpriseRagCommunity.entity.moderation.ModerationLlmConfigE
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public interface ModerationLlmConfigRepository extends JpaRepository<ModerationLlmConfigEntity, Long> {
+    Optional<ModerationLlmConfigEntity> findTopByOrderByUpdatedAtDescIdDesc();
 }
 

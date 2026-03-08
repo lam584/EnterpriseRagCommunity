@@ -9,7 +9,7 @@ public class RetrievalHitLogDTO {
     private Long eventId;
     private Integer rank;
     private RetrievalHitType hitType;
-    private Long documentId;
+    private Long postId;
     private Long chunkId;
     private Double score;
 }

@@ -7,6 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -33,6 +34,7 @@ import java.util.List;
  */
 @Component
 @RequiredArgsConstructor
+@ConditionalOnBean({AccessControlService.class, UsersRepository.class})
 public class AccessChangedFilter extends OncePerRequestFilter {
 
     public static final String SESSION_ACCESS_TS_KEY = "ACCESS_TS";

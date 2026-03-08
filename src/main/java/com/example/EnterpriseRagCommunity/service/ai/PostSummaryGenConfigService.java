@@ -5,8 +5,10 @@ import com.example.EnterpriseRagCommunity.dto.ai.PostSummaryGenHistoryDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostSummaryGenPublicConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSummaryGenConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSummaryGenHistoryEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.PostSummaryGenConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.PostSummaryGenHistoryRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,24 +25,11 @@ public class PostSummaryGenConfigService {
     public static final int DEFAULT_MAX_CONTENT_CHARS = 4000;
     private static final String GROUP_CODE = "POST_SUMMARY";
     private static final String SUB_TYPE = "DEFAULT";
-
-    public static final String DEFAULT_PROMPT_TEMPLATE = """
-请为以下社区帖子生成“帖子摘要”。
-要求：
-- 只输出严格 JSON，不要输出任何解释文字，不要包裹 ```；
-- JSON 字段：{"title":"...","summary":"..."}；
-- title：可选，若原文标题已足够清晰可直接复用或略微改写；
-- summary：中文摘要，建议 80~200 字，尽量覆盖关键信息、结论与可执行要点；
-
-帖子标题：
-{{title}}
-
-帖子正文：
-{{content}}
-""";
+    public static final String DEFAULT_PROMPT_CODE = "SUMMARY_GEN";
 
     private final PostSummaryGenConfigRepository configRepository;
     private final PostSummaryGenHistoryRepository historyRepository;
+    private final PromptsRepository promptsRepository;
 
     @Transactional(readOnly = true)
     public PostSummaryGenConfigDTO getAdminConfig() {
@@ -102,13 +91,8 @@ public class PostSummaryGenConfigService {
         e.setGroupCode(GROUP_CODE);
         e.setSubType(SUB_TYPE);
         e.setEnabled(Boolean.TRUE);
-        e.setModel(null);
-        e.setProviderId(null);
-        e.setTemperature(0.3);
-        e.setTopP(0.7);
-        e.setEnableThinking(Boolean.FALSE);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
-        e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
+        e.setPromptCode(DEFAULT_PROMPT_CODE);
         e.setVersion(0);
         e.setUpdatedAt(LocalDateTime.now());
         e.setUpdatedBy(null);
@@ -118,35 +102,24 @@ public class PostSummaryGenConfigService {
     private PostSummaryGenConfigEntity mergeAndValidate(PostSummaryGenConfigEntity base, PostSummaryGenConfigDTO payload) {
         if (payload == null) throw new IllegalArgumentException("payload 不能为空");
 
-        String promptTemplate = payload.getPromptTemplate() == null ? "" : payload.getPromptTemplate().trim();
-        if (promptTemplate.isBlank()) throw new IllegalArgumentException("promptTemplate 不能为空");
-        if (promptTemplate.length() > 20000) throw new IllegalArgumentException("promptTemplate 过长（>20000），请精简");
+        String promptCode = payload.getPromptCode();
+        if (promptCode == null || promptCode.isBlank()) {
+            throw new IllegalArgumentException("promptCode 不能为空");
+        }
+        if (promptCode.length() > 64) {
+             throw new IllegalArgumentException("promptCode 长度不能超过 64");
+        }
 
         Integer maxContentChars = payload.getMaxContentChars();
         if (maxContentChars == null) maxContentChars = DEFAULT_MAX_CONTENT_CHARS;
         if (maxContentChars < 200 || maxContentChars > 50000) throw new IllegalArgumentException("maxContentChars 需在 [200,50000] 范围内");
 
-        Double temperature = payload.getTemperature();
-        if (temperature != null && (temperature < 0 || temperature > 1)) {
-            throw new IllegalArgumentException("temperature 需在 [0,1] 范围内");
-        }
-
-        Double topP = payload.getTopP();
-        if (topP != null && (topP < 0 || topP > 1)) {
-            throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
-        }
-
-        String model = payload.getModel();
-        base.setModel(model == null || model.isBlank() ? null : model.trim());
-        String providerId = payload.getProviderId();
-        base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
-
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
-        base.setTemperature(temperature);
-        base.setTopP(topP);
-        base.setEnableThinking(Boolean.TRUE.equals(payload.getEnableThinking()));
         base.setMaxContentChars(maxContentChars);
-        base.setPromptTemplate(promptTemplate);
+        base.setPromptCode(promptCode);
+
+        promptsRepository.findByPromptCode(promptCode)
+            .orElseThrow(() -> new IllegalArgumentException("promptCode 不存在: " + promptCode));
         return base;
     }
 
@@ -155,13 +128,16 @@ public class PostSummaryGenConfigService {
         dto.setId(e.getId());
         dto.setVersion(e.getVersion());
         dto.setEnabled(e.getEnabled());
-        dto.setModel(e.getModel());
-        dto.setProviderId(e.getProviderId());
-        dto.setTemperature(e.getTemperature());
-        dto.setTopP(e.getTopP());
-        dto.setEnableThinking(e.getEnableThinking());
+        PromptsEntity prompt = (e.getPromptCode() == null || e.getPromptCode().isBlank())
+            ? null
+            : promptsRepository.findByPromptCode(e.getPromptCode()).orElse(null);
+        dto.setModel(prompt != null ? prompt.getModelName() : null);
+        dto.setProviderId(prompt != null ? prompt.getProviderId() : null);
+        dto.setTemperature(prompt != null ? prompt.getTemperature() : null);
+        dto.setTopP(prompt != null ? prompt.getTopP() : null);
+        dto.setEnableThinking(prompt != null ? prompt.getEnableDeepThinking() : null);
         dto.setMaxContentChars(e.getMaxContentChars());
-        dto.setPromptTemplate(e.getPromptTemplate());
+        dto.setPromptCode(e.getPromptCode());
         dto.setUpdatedAt(e.getUpdatedAt());
         dto.setUpdatedBy(updatedByName);
         return dto;
@@ -172,9 +148,7 @@ public class PostSummaryGenConfigService {
         dto.setId(e.getId());
         dto.setPostId(e.getPostId());
         dto.setStatus(e.getStatus());
-        dto.setModel(e.getModel());
         dto.setCreatedAt(e.getCreatedAt());
-        dto.setLatencyMs(e.getLatencyMs());
         dto.setErrorMessage(e.getErrorMessage());
         return dto;
     }

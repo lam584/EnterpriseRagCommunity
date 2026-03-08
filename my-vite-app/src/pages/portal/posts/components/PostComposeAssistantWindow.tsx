@@ -15,6 +15,7 @@ import {
 } from '../../../../services/postComposeAiSnapshotService';
 import { stripThinkBlocks } from '../../../../utils/thinkTags';
 import { createAiComposeChannelRouterState, routeAiComposeDelta } from '../../../../utils/aiComposeChannelRouter';
+import { normalizeMarkdownForPreview } from '../../../../utils/markdownUtils';
 
 const MAX_VISION_IMAGES = 10;
 
@@ -26,6 +27,7 @@ type Props = {
   busy: boolean;
   setComposeLocked: (locked: boolean) => void;
   setSearchParams: (next: Record<string, string>) => void;
+  onClose?: () => void;
 };
 
 function isNumericId(id: string | null | undefined): boolean {
@@ -89,8 +91,51 @@ function extractMarkdownImageUrls(md: string, maxCount: number): string[] {
   return out;
 }
 
+function normalizeAiPostMarkdown(text: string): string {
+  let out = String(text ?? '');
+  if (!out) return out;
+
+  const fenced = out.match(/^\s*```(?:markdown|md|mdown)?\s*\r?\n([\s\S]*?)\r?\n?```\s*$/i);
+  if (fenced?.[1]) out = fenced[1];
+
+  const maybeQuoted = out.trim();
+  if (maybeQuoted.startsWith('"') && maybeQuoted.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(maybeQuoted);
+      if (typeof parsed === 'string') out = parsed;
+    } catch {
+    }
+  }
+
+  const escapedNlCount = (out.match(/\\r\\n|\\n/g) ?? []).length;
+  const actualNlCount = (out.match(/\r?\n/g) ?? []).length;
+  if (escapedNlCount >= 2 && escapedNlCount > actualNlCount * 2) {
+    out = out.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+  }
+
+  out = out.replace(/\r\n/g, '\n');
+  return normalizeMarkdownForPreview(out);
+}
+
+function sanitizeAssistantChatOutput(text: string): string {
+  let out = stripThinkBlocks(String(text ?? ''));
+  if (!out) return '';
+
+  out = out
+    .replace(/<\/think>/gi, '')
+    .replace(/＜\/think＞/gi, '')
+    .replace(/&lt;\/think&gt;/gi, '')
+    .replace(/<\\\/think>/gi, '')
+    .replace(/&lt;\\\/think&gt;/gi, '');
+
+  out = out.replace(/^(?:\s|\\r\\n|\\n)+/g, '');
+  const residue = out.replace(/\\r\\n|\\n|\\t/g, '').trim();
+  if (!residue) return '';
+  return out;
+}
+
 export default function PostComposeAssistantWindow(props: Props) {
-  const { draft, setDraft, draftId, postId, busy, setComposeLocked, setSearchParams } = props;
+  const { draft, setDraft, draftId, postId, busy, setComposeLocked, setSearchParams, onClose } = props;
 
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -522,11 +567,12 @@ export default function PostComposeAssistantWindow(props: Props) {
           if (ev.type === 'delta') {
             const { postChanged, chatChanged } = appendRoutedDelta(ev.content);
             if (postChanged) {
-              const nextPost = stripThinkBlocks(routerRef.current.post);
+              const nextPost = normalizeAiPostMarkdown(stripThinkBlocks(routerRef.current.post));
               setDraft((prev) => ({ ...prev, content: nextPost, updatedAt: new Date().toISOString() }));
             }
             if (chatChanged) {
-              const nextChat = stripThinkBlocks(routerRef.current.chat);
+              const nextChat = sanitizeAssistantChatOutput(routerRef.current.chat);
+              routerRef.current.chat = nextChat;
               setLog((prev) => {
                 const copy = [...prev];
                 for (let i = copy.length - 1; i >= 0; i -= 1) {
@@ -545,6 +591,14 @@ export default function PostComposeAssistantWindow(props: Props) {
         },
         signal
       );
+
+      if (routerRef.current.hasPost) {
+        const normalizedPost = normalizeAiPostMarkdown(stripThinkBlocks(routerRef.current.post));
+        routerRef.current.post = normalizedPost;
+        setDraft((prev) => ({ ...prev, content: normalizedPost, updatedAt: new Date().toISOString() }));
+      }
+
+      routerRef.current.chat = sanitizeAssistantChatOutput(routerRef.current.chat);
 
       if (!routerRef.current.hasPost) {
         try {
@@ -582,7 +636,7 @@ export default function PostComposeAssistantWindow(props: Props) {
     setError(null);
     try {
       const raw = routerRef.current.post || draft.content || '';
-      await applyPostComposeAiSnapshot(pendingSnapshot.snapshotId, stripThinkBlocks(raw));
+      await applyPostComposeAiSnapshot(pendingSnapshot.snapshotId, normalizeAiPostMarkdown(stripThinkBlocks(raw)));
       setPendingSnapshot(null);
       setComposeLocked(false);
       routerRef.current = createAiComposeChannelRouterState();
@@ -645,6 +699,21 @@ export default function PostComposeAssistantWindow(props: Props) {
       defaultAnchor="bottom-right"
       snapAnchorOnMount
       collapsedWidth={320}
+      initialCollapsed={false}
+      onClose={
+        onClose
+          ? () => {
+              abortRef.current?.abort();
+              abortRef.current = null;
+              if (pendingSnapshot) {
+                void handleRevert();
+              } else if (streaming) {
+                setComposeLocked(false);
+              }
+              onClose();
+            }
+          : undefined
+      }
     >
       <div className="h-full flex flex-col">
         <div className="p-3 border-b border-gray-200 space-y-2">
@@ -864,7 +933,7 @@ export default function PostComposeAssistantWindow(props: Props) {
             </button>
           </div>
           <div className="mt-2 text-xs text-gray-500 flex items-center justify-between gap-2">
-            <span className="min-w-0">快捷键：Ctrl/⌘ + Enter 发送 · Ctrl/⌘ + V 粘贴图片</span>
+            <span className="min-w-0">Ctrl + Enter 发送 · Ctrl + V 粘贴图片</span>
             <div className="shrink-0 flex items-center gap-3">
               <label className="inline-flex items-center gap-2 text-xs text-gray-600 select-none">
                 <input

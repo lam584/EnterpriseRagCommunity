@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { fetchHotPosts, type HotPostDTO, type HotWindow } from '../../../../services/hotService';
 
 
 export default function HotSidebar({ initialWindow = '24h', limit = 8 }: { initialWindow?: HotWindow; limit?: number }) {
+  const location = useLocation();
   const [window] = useState<HotWindow>(initialWindow);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,10 +46,14 @@ export default function HotSidebar({ initialWindow = '24h', limit = 8 }: { initi
             <li key={it.post.id} className="flex gap-2">
               <span className="w-6 text-right text-sm text-gray-500">{idx + 1}.</span>
               <div className="min-w-0 flex-1">
-                <Link to={`/portal/posts/detail/${it.post.id}`} className="text-sm hover:text-blue-600 line-clamp-2">
-                  {it.post.title}
-                </Link>
-                <div className="text-xs text-gray-500 mt-0.5">分数：{(it.score ?? 0).toFixed(2)}</div>
+                {(it.post.title ?? '').trim() ? (
+                  <Link to={`/portal/posts/detail/${it.post.id}`} state={{ from: location }} className="text-sm hover:text-blue-600 line-clamp-2">
+                    {(it.post.title ?? '').trim()}
+                  </Link>
+                ) : null}
+                <div className={`text-xs text-gray-500 ${(it.post.title ?? '').trim() ? 'mt-0.5' : ''}`}>
+                  分数：{(it.score ?? 0).toFixed(2)}
+                </div>
               </div>
             </li>
           ))}

@@ -31,6 +31,32 @@ export default tseslint.config({
 })
 ```
 
+## Tests & Coverage
+
+### Commands
+- `npm run test`: run Vitest once
+- `npm run test:ci`: run Vitest with coverage + generate reports + enforce incremental coverage gate
+
+### Coverage reports
+- HTML: `test-reports/vitest-coverage/index.html`
+- JUnit: `test-reports/vitest-junit.xml`
+
+### Coverage scope (Vitest config)
+Coverage includes `src/**/*.{ts,tsx}` and excludes:
+- `src/**/*.test.{ts,tsx}`
+- `src/**/*.d.ts`
+- `src/assets/**`
+- `src/pages/**`
+- `src/types/**`
+- `src/vite-env.d.ts`
+- `src/main.tsx`
+
+### Incremental coverage gate
+`npm run test:ci` runs `scripts/check-changed-files-coverage.mjs`, which enforces 100% (lines/branches/functions/statements) for changed `src/**` non-test `ts/tsx` files, excluding the same non-business-logic paths as above.
+
+### Note on HTML navigation
+If you open `test-reports/vitest-coverage/src/index.html`, it is a directory view for `src`. This repository also generates directory pages (e.g. `src/services/index.html`). The post-step `scripts/fix-istanbul-src-index.mjs` makes `src/index.html` list key subdirectories for easier navigation.
+
 You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
 ```js

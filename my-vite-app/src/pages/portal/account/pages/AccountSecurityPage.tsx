@@ -320,7 +320,7 @@ export default function AccountSecurityPage() {
                 管理员已禁止启用 TOTP。
               </div>
             ) : null}
-            {(String(enrollAlg).toUpperCase() !== 'SHA1' || Number(enrollDigits) !== 6 || Number(enrollPeriod) !== 30) ? (
+            {enrollResult && (String(enrollResult.algorithm).toUpperCase() !== 'SHA1' || Number(enrollResult.digits) !== 6 || Number(enrollResult.periodSeconds) !== 30) ? (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 提示：当使用 SHA256/SHA512/8 位时，请优先用“扫码”绑定。注：Microsoft Authenticator只支持SHA1；如需60秒步长请使用支持自定义算法的认证器（例如Aegis / 2FAS）。
               </div>
@@ -425,65 +425,8 @@ export default function AccountSecurityPage() {
                     </button>
                   </div>
                 </div>
-
                 {enablePasswordVerified ? (
                   <div className="space-y-2">
-                    {totpPolicy ? (
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">算法</label>
-                          <select
-                            value={enrollAlg}
-                            onChange={(e) => setEnrollAlg(e.target.value)}
-                            disabled={totpEnrollSaving || totpLoading || Boolean(enrollResult)}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
-                          >
-                            {totpPolicy.allowedAlgorithms.map((alg) => (
-                              <option key={alg} value={alg}>{alg}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">位数</label>
-                          <select
-                            value={String(enrollDigits)}
-                            onChange={(e) => setEnrollDigits(Number(e.target.value) || 6)}
-                            disabled={totpEnrollSaving || totpLoading || Boolean(enrollResult)}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
-                          >
-                            {totpPolicy.allowedDigits.map((d) => (
-                              <option key={String(d)} value={String(d)}>{String(d)}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">步长（秒）</label>
-                          <select
-                            value={String(enrollPeriod)}
-                            onChange={(e) => setEnrollPeriod(Number(e.target.value) || 30)}
-                            disabled={totpEnrollSaving || totpLoading || Boolean(enrollResult)}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
-                          >
-                            {totpPolicy.allowedPeriodSeconds.map((s) => (
-                              <option key={String(s)} value={String(s)}>{String(s)}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Skew</label>
-                          <select
-                            value={String(enrollSkew)}
-                            onChange={(e) => setEnrollSkew(Number(e.target.value) || 1)}
-                            disabled={totpEnrollSaving || totpLoading || Boolean(enrollResult)}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white"
-                          >
-                            {Array.from({ length: Math.max(1, Number(totpPolicy.maxSkew) || 1) }, (_, i) => i + 1).map((v) => (
-                              <option key={String(v)} value={String(v)}>{String(v)}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    ) : null}
                     <div className="flex items-center gap-2">
                       <div className="h-6 w-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center">2</div>
                       <div className="text-sm font-medium text-gray-900">验证邮箱</div>
@@ -578,6 +521,26 @@ export default function AccountSecurityPage() {
                       <div className="h-6 w-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center">3</div>
                       <div className="text-sm font-medium text-gray-900">输入并验证动态验证码</div>
                     </div>
+                    {totpPolicy ? (
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                        <div className="rounded-md border bg-gray-50 px-3 py-2">
+                          <div className="text-xs text-gray-500">算法</div>
+                          <div className="text-sm font-medium text-gray-900">{enrollResult.algorithm}</div>
+                        </div>
+                        <div className="rounded-md border bg-gray-50 px-3 py-2">
+                          <div className="text-xs text-gray-500">位数</div>
+                          <div className="text-sm font-medium text-gray-900">{String(enrollResult.digits)}</div>
+                        </div>
+                        <div className="rounded-md border bg-gray-50 px-3 py-2">
+                          <div className="text-xs text-gray-500">步长（秒）</div>
+                          <div className="text-sm font-medium text-gray-900">{String(enrollResult.periodSeconds)}</div>
+                        </div>
+                        <div className="rounded-md border bg-gray-50 px-3 py-2">
+                          <div className="text-xs text-gray-500">Skew</div>
+                          <div className="text-sm font-medium text-gray-900">{String(enrollResult.skew)}</div>
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="rounded-md border bg-gray-50 p-3 space-y-2">
                       <div className="text-sm font-medium">绑定信息</div>
                       <div className="text-sm text-gray-700">

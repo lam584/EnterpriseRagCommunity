@@ -76,7 +76,7 @@ public class HybridRetrievalLogsService {
         dto.setEventId(e.getEventId());
         dto.setRank(e.getRank());
         dto.setHitType(e.getHitType());
-        dto.setDocumentId(e.getDocumentId());
+        dto.setPostId(e.getPostId());
         dto.setChunkId(e.getChunkId());
         dto.setScore(e.getScore());
         return dto;

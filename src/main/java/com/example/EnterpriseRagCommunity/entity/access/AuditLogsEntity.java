@@ -44,4 +44,7 @@ public class AuditLogsEntity {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    @Column(name = "archived_at")
+    private LocalDateTime archivedAt;
 }

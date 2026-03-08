@@ -2,6 +2,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { getMyTranslatePreferences, updateMyTranslatePreferences } from '../../../../services/accountPreferencesService';
 import { getTranslateConfig } from '../../../../services/translateService';
 import { listSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
+import { getPostTitleGenPublicConfig, type PostTitleGenPublicConfigDTO } from '../../../../services/titleGenPublicService';
+import { getPostTagGenPublicConfig, type PostTagGenPublicConfigDTO } from '../../../../services/tagGenPublicService';
+
+function clampCount(n: number, maxCount?: number | null): number {
+  const max = Math.max(1, Math.min(maxCount ?? 50, 50));
+  const nn = Number.isFinite(n) ? Math.trunc(n) : 1;
+  return Math.max(1, Math.min(max, nn));
+}
+
+function normalizeCount(raw: unknown, fallback: number): number {
+  const n = typeof raw === 'number' ? raw : raw == null ? NaN : Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  const nn = Math.trunc(n);
+  if (nn < 1 || nn > 50) return fallback;
+  return nn;
+}
 
 export default function AccountPreferencesPage() {
   const [emailNoti, setEmailNoti] = useState(false);
@@ -11,6 +27,10 @@ export default function AccountPreferencesPage() {
   const [allowedTargetLanguageCodes, setAllowedTargetLanguageCodes] = useState<string[]>([]);
   const [autoTranslatePosts, setAutoTranslatePosts] = useState(false);
   const [autoTranslateComments, setAutoTranslateComments] = useState(false);
+  const [titleGenCount, setTitleGenCount] = useState(5);
+  const [tagGenCount, setTagGenCount] = useState(5);
+  const [titleGenConfig, setTitleGenConfig] = useState<PostTitleGenPublicConfigDTO | null>(null);
+  const [tagGenConfig, setTagGenConfig] = useState<PostTagGenPublicConfigDTO | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,6 +41,8 @@ export default function AccountPreferencesPage() {
     targetLanguage: 'zh-CN',
     autoTranslatePosts: false,
     autoTranslateComments: false,
+    titleGenCount: 5,
+    tagGenCount: 5,
   }));
 
   const controlsDisabled = !editing || saving || loading;
@@ -38,9 +60,11 @@ export default function AccountPreferencesPage() {
       emailNoti !== committed.emailNoti ||
       targetLanguage !== committed.targetLanguage ||
       autoTranslatePosts !== committed.autoTranslatePosts ||
-      autoTranslateComments !== committed.autoTranslateComments
+      autoTranslateComments !== committed.autoTranslateComments ||
+      titleGenCount !== committed.titleGenCount ||
+      tagGenCount !== committed.tagGenCount
     );
-  }, [autoTranslateComments, autoTranslatePosts, committed, emailNoti, targetLanguage]);
+  }, [autoTranslateComments, autoTranslatePosts, committed, emailNoti, tagGenCount, targetLanguage, titleGenCount]);
 
   useEffect(() => {
     let mounted = true;
@@ -55,11 +79,15 @@ export default function AccountPreferencesPage() {
           targetLanguage: p.targetLanguage || 'zh-CN',
           autoTranslatePosts: !!p.autoTranslatePosts,
           autoTranslateComments: !!p.autoTranslateComments,
+          titleGenCount: normalizeCount(p.titleGenCount, 5),
+          tagGenCount: normalizeCount(p.tagGenCount, 5),
         };
         setEmailNoti(next.emailNoti);
         setTargetLanguage(next.targetLanguage);
         setAutoTranslatePosts(next.autoTranslatePosts);
         setAutoTranslateComments(next.autoTranslateComments);
+        setTitleGenCount(next.titleGenCount);
+        setTagGenCount(next.tagGenCount);
         setCommitted(next);
         setEditing(false);
       } catch (e) {
@@ -73,6 +101,48 @@ export default function AccountPreferencesPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const cfg = await getPostTitleGenPublicConfig();
+        if (!mounted) return;
+        setTitleGenConfig(cfg);
+      } catch {
+        if (!mounted) return;
+        setTitleGenConfig(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const cfg = await getPostTagGenPublicConfig();
+        if (!mounted) return;
+        setTagGenConfig(cfg);
+      } catch {
+        if (!mounted) return;
+        setTagGenConfig(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setTitleGenCount((prev) => clampCount(prev, titleGenConfig?.maxCount));
+  }, [titleGenConfig?.maxCount]);
+
+  useEffect(() => {
+    setTagGenCount((prev) => clampCount(prev, tagGenConfig?.maxCount));
+  }, [tagGenConfig?.maxCount]);
 
   useEffect(() => {
     let mounted = true;
@@ -147,6 +217,8 @@ export default function AccountPreferencesPage() {
                   setTargetLanguage(committed.targetLanguage);
                   setAutoTranslatePosts(committed.autoTranslatePosts);
                   setAutoTranslateComments(committed.autoTranslateComments);
+                  setTitleGenCount(committed.titleGenCount);
+                  setTagGenCount(committed.tagGenCount);
                   setEditing(false);
                   setError(null);
                   setSavedHint(null);
@@ -167,16 +239,22 @@ export default function AccountPreferencesPage() {
                       targetLanguage: targetLanguage.trim() || 'zh-CN',
                       autoTranslatePosts,
                       autoTranslateComments,
+                      titleGenCount: clampCount(titleGenCount, titleGenConfig?.maxCount),
+                      tagGenCount: clampCount(tagGenCount, tagGenConfig?.maxCount),
                     });
                     const next = {
                       emailNoti,
                       targetLanguage: saved.targetLanguage || 'zh-CN',
                       autoTranslatePosts: !!saved.autoTranslatePosts,
                       autoTranslateComments: !!saved.autoTranslateComments,
+                      titleGenCount: clampCount(normalizeCount(saved.titleGenCount, titleGenCount), titleGenConfig?.maxCount),
+                      tagGenCount: clampCount(normalizeCount(saved.tagGenCount, tagGenCount), tagGenConfig?.maxCount),
                     };
                     setTargetLanguage(next.targetLanguage);
                     setAutoTranslatePosts(next.autoTranslatePosts);
                     setAutoTranslateComments(next.autoTranslateComments);
+                    setTitleGenCount(next.titleGenCount);
+                    setTagGenCount(next.tagGenCount);
                     setCommitted(next);
                     setEditing(false);
                     setSavedHint('保存成功');
@@ -263,6 +341,67 @@ export default function AccountPreferencesPage() {
               <div className="mt-2 text-xs text-gray-500">
                 自动翻译仅在语言标签为单一语言且与目标语言不同的情况下触发；多语言内容默认不自动翻译。
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-base font-semibold text-gray-900">发帖 AI 生成</div>
+              <div className="mt-0.5 text-sm text-gray-600">设置标题/标签生成时的默认生成数量。</div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">标题生成数量</label>
+              <select
+                value={titleGenCount}
+                onChange={(e) => setTitleGenCount(clampCount(Number(e.target.value), titleGenConfig?.maxCount))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-not-allowed"
+                disabled={controlsDisabled || titleGenConfig?.enabled === false}
+              >
+                {Array.from(
+                  { length: Math.max(1, Math.min(titleGenConfig?.maxCount ?? 10, 50)) },
+                  (_, i) => i + 1
+                ).map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-1 text-xs text-gray-500">用于“生成标题”的候选数量。</div>
+              {titleGenConfig?.enabled === false ? (
+                <div className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  标题生成已被管理员关闭。
+                </div>
+              ) : null}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">标签生成数量</label>
+              <select
+                value={tagGenCount}
+                onChange={(e) => setTagGenCount(clampCount(Number(e.target.value), tagGenConfig?.maxCount))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-600 disabled:cursor-not-allowed"
+                disabled={controlsDisabled || tagGenConfig?.enabled === false}
+              >
+                {Array.from(
+                  { length: Math.max(1, Math.min(tagGenConfig?.maxCount ?? 10, 50)) },
+                  (_, i) => i + 1
+                ).map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-1 text-xs text-gray-500">用于“生成标签”的候选数量。</div>
+              {tagGenConfig?.enabled === false ? (
+                <div className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  主题标签生成已被管理员关闭。
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

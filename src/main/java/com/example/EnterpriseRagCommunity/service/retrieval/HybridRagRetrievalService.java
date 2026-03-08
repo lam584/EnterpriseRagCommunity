@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -28,14 +29,14 @@ import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
+import com.example.EnterpriseRagCommunity.service.safety.DependencyCircuitBreakerService;
+import com.example.EnterpriseRagCommunity.service.safety.DependencyIsolationGuard;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.Data;
-import lombok.RequiredArgsConstructor;
 
 @Service
-@RequiredArgsConstructor
 public class HybridRagRetrievalService {
 
     private final RetrievalRagProperties ragProps;
@@ -44,8 +45,65 @@ public class HybridRagRetrievalService {
     private final ObjectMapper objectMapper;
     private final AiRerankService aiRerankService;
     private final LlmGateway llmGateway;
+    private final RagFileAssetChatRetrievalService ragFileAssetChatRetrievalService;
     private final PostsRepository postsRepository;
     private final SystemConfigurationService systemConfigurationService;
+    private final DependencyIsolationGuard dependencyIsolationGuard;
+    private final DependencyCircuitBreakerService dependencyCircuitBreakerService;
+
+    @Autowired
+    public HybridRagRetrievalService(
+            RetrievalRagProperties ragProps,
+            RagPostsIndexService indexService,
+            AiEmbeddingService embeddingService,
+            ObjectMapper objectMapper,
+            AiRerankService aiRerankService,
+            LlmGateway llmGateway,
+            RagFileAssetChatRetrievalService ragFileAssetChatRetrievalService,
+            PostsRepository postsRepository,
+            SystemConfigurationService systemConfigurationService,
+            DependencyIsolationGuard dependencyIsolationGuard,
+            DependencyCircuitBreakerService dependencyCircuitBreakerService
+    ) {
+        this.ragProps = ragProps;
+        this.indexService = indexService;
+        this.embeddingService = embeddingService;
+        this.objectMapper = objectMapper;
+        this.aiRerankService = aiRerankService;
+        this.llmGateway = llmGateway;
+        this.ragFileAssetChatRetrievalService = ragFileAssetChatRetrievalService;
+        this.postsRepository = postsRepository;
+        this.systemConfigurationService = systemConfigurationService;
+        this.dependencyIsolationGuard = dependencyIsolationGuard;
+        this.dependencyCircuitBreakerService = dependencyCircuitBreakerService;
+    }
+
+    public HybridRagRetrievalService(
+            RetrievalRagProperties ragProps,
+            RagPostsIndexService indexService,
+            AiEmbeddingService embeddingService,
+            ObjectMapper objectMapper,
+            AiRerankService aiRerankService,
+            LlmGateway llmGateway,
+            PostsRepository postsRepository,
+            SystemConfigurationService systemConfigurationService,
+            DependencyIsolationGuard dependencyIsolationGuard,
+            DependencyCircuitBreakerService dependencyCircuitBreakerService
+    ) {
+        this(
+                ragProps,
+                indexService,
+                embeddingService,
+                objectMapper,
+                aiRerankService,
+                llmGateway,
+                null,
+                postsRepository,
+                systemConfigurationService,
+                dependencyIsolationGuard,
+                dependencyCircuitBreakerService
+        );
+    }
 
     public RetrieveResult retrieve(String queryText, Long boardId, HybridRetrievalConfigDTO cfg, boolean debug) {
         RetrieveResult out = new RetrieveResult();
@@ -61,11 +119,14 @@ public class HybridRagRetrievalService {
         HybridRetrievalConfigDTO safe = cfg == null ? null : cfg;
         int bm25K = safe == null ? 0 : safe.getBm25K() == null ? 0 : safe.getBm25K();
         int vecK = safe == null ? 0 : safe.getVecK() == null ? 0 : safe.getVecK();
+        boolean fileVecEnabled = safe == null || safe.getFileVecEnabled() == null || Boolean.TRUE.equals(safe.getFileVecEnabled());
+        int fileVecK = safe == null ? 0 : safe.getFileVecK() == null ? 0 : safe.getFileVecK();
         int hybridK = safe == null ? 6 : safe.getHybridK() == null ? 6 : safe.getHybridK();
         int maxDocs = safe == null ? 500 : safe.getMaxDocs() == null ? 500 : safe.getMaxDocs();
 
         bm25K = clampInt(bm25K, 0, Math.max(0, maxDocs));
         vecK = clampInt(vecK, 0, Math.max(0, maxDocs));
+        fileVecK = fileVecEnabled ? clampInt(fileVecK, 0, Math.max(0, maxDocs)) : 0;
         hybridK = clampInt(hybridK, 1, Math.max(1, maxDocs));
 
         long t0 = System.currentTimeMillis();
@@ -88,8 +149,18 @@ public class HybridRagRetrievalService {
         out.setVecHits(vecHits);
         out.setVecLatencyMs((int) (System.currentTimeMillis() - t1));
 
+        long t1f = System.currentTimeMillis();
+        List<DocHit> fileVecHits = List.of();
+        try {
+            if (fileVecK > 0) fileVecHits = fileVecSearch(queryText, fileVecK);
+        } catch (Exception e) {
+            out.setFileVecError(e.getMessage());
+        }
+        out.setFileVecHits(fileVecHits);
+        out.setFileVecLatencyMs((int) (System.currentTimeMillis() - t1f));
+
         long t2 = System.currentTimeMillis();
-        List<DocHit> fused = fuse(bm25Hits, vecHits, safe, maxDocs);
+        List<DocHit> fused = fuse(bm25Hits, vecHits, fileVecHits, safe, maxDocs);
         out.setFusedHits(fused);
         out.setFuseLatencyMs((int) (System.currentTimeMillis() - t2));
 
@@ -135,7 +206,8 @@ public class HybridRagRetrievalService {
 
         AiEmbeddingService.EmbeddingResult er;
         try {
-            er = embeddingService.embedOnce(queryText, ragProps.getEs().getEmbeddingModel());
+            String mo = ragProps.getEs().getEmbeddingModel();
+            er = llmGateway.embedOnceRouted(LlmQueueTaskType.POST_EMBEDDING, null, mo, queryText);
         } catch (Exception e) {
             throw new IllegalStateException("Embedding failed: " + e.getMessage(), e);
         }
@@ -159,6 +231,29 @@ public class HybridRagRetrievalService {
         String body = buildKnnBody(k, Math.max(100, Math.min(20_000, k * 10)), boardId, vec);
         JsonNode root = postSearch(indexName, body);
         return filterVisibleHits(parseEsHits(root));
+    }
+
+    private List<DocHit> fileVecSearch(String queryText, int topK) {
+        List<RagFileAssetChatRetrievalService.Hit> raw = ragFileAssetChatRetrievalService.retrieve(queryText, topK);
+        if (raw == null || raw.isEmpty()) return List.of();
+        List<DocHit> out = new ArrayList<>();
+        for (RagFileAssetChatRetrievalService.Hit h : raw) {
+            if (h == null || h.getDocId() == null) continue;
+            DocHit d = new DocHit();
+            d.setDocId(h.getDocId());
+            d.setScore(h.getScore());
+            d.setSourceType("FILE_ASSET");
+            d.setFileAssetId(h.getFileAssetId());
+            d.setPostIds(h.getPostIds());
+            Long firstPostId = null;
+            if (h.getPostIds() != null && !h.getPostIds().isEmpty()) firstPostId = h.getPostIds().get(0);
+            d.setPostId(firstPostId);
+            d.setChunkIndex(h.getChunkIndex());
+            d.setTitle(h.getFileName());
+            d.setContentText(h.getContentText());
+            out.add(d);
+        }
+        return out;
     }
 
     private List<DocHit> filterVisibleHits(List<DocHit> hits) {
@@ -185,10 +280,11 @@ public class HybridRagRetrievalService {
         return out;
     }
 
-    private List<DocHit> fuse(List<DocHit> bm25, List<DocHit> vec, HybridRetrievalConfigDTO cfg, int maxDocs) {
+    private List<DocHit> fuse(List<DocHit> bm25, List<DocHit> vec, List<DocHit> fileVec, HybridRetrievalConfigDTO cfg, int maxDocs) {
         Map<String, DocHit> m = new LinkedHashMap<>();
         Map<String, Integer> bmRank = new HashMap<>();
         Map<String, Integer> vecRank = new HashMap<>();
+        Map<String, Integer> fileVecRank = new HashMap<>();
 
         if (bm25 != null) {
             for (int i = 0; i < bm25.size(); i++) {
@@ -208,18 +304,29 @@ public class HybridRagRetrievalService {
                 m.get(h.getDocId()).setVecScore(h.getScore());
             }
         }
+        if (fileVec != null) {
+            for (int i = 0; i < fileVec.size(); i++) {
+                DocHit h = fileVec.get(i);
+                if (h == null || h.getDocId() == null) continue;
+                fileVecRank.put(h.getDocId(), i + 1);
+                m.putIfAbsent(h.getDocId(), h.copyShallow());
+                m.get(h.getDocId()).setFileVecScore(h.getScore());
+            }
+        }
 
         String mode = cfg == null || cfg.getFusionMode() == null ? "RRF" : cfg.getFusionMode().trim().toUpperCase();
         if (!mode.equals("RRF") && !mode.equals("LINEAR")) mode = "RRF";
 
         double wBm25 = cfg == null || cfg.getBm25Weight() == null ? 1.0 : cfg.getBm25Weight();
         double wVec = cfg == null || cfg.getVecWeight() == null ? 1.0 : cfg.getVecWeight();
+        double wFileVec = cfg == null || cfg.getFileVecWeight() == null ? 1.0 : cfg.getFileVecWeight();
         int rrfK = cfg == null || cfg.getRrfK() == null ? 60 : Math.max(1, cfg.getRrfK());
 
         List<DocHit> out = new ArrayList<>();
         if (mode.equals("LINEAR")) {
             double bmMin = Double.POSITIVE_INFINITY, bmMax = Double.NEGATIVE_INFINITY;
             double vMin = Double.POSITIVE_INFINITY, vMax = Double.NEGATIVE_INFINITY;
+            double fvMin = Double.POSITIVE_INFINITY, fvMax = Double.NEGATIVE_INFINITY;
 
             if (bm25 != null) {
                 for (DocHit h : bm25) {
@@ -235,20 +342,30 @@ public class HybridRagRetrievalService {
                     vMax = Math.max(vMax, h.getScore());
                 }
             }
+            if (fileVec != null) {
+                for (DocHit h : fileVec) {
+                    if (h == null || h.getScore() == null) continue;
+                    fvMin = Math.min(fvMin, h.getScore());
+                    fvMax = Math.max(fvMax, h.getScore());
+                }
+            }
 
             for (DocHit h : m.values()) {
                 double b = h.getBm25Score() == null ? 0.0 : normalizeMinMax(h.getBm25Score(), bmMin, bmMax);
                 double v = h.getVecScore() == null ? 0.0 : normalizeMinMax(h.getVecScore(), vMin, vMax);
-                h.setFusedScore(wBm25 * b + wVec * v);
+                double fv = h.getFileVecScore() == null ? 0.0 : normalizeMinMax(h.getFileVecScore(), fvMin, fvMax);
+                h.setFusedScore(wBm25 * b + wVec * v + wFileVec * fv);
                 out.add(h);
             }
         } else {
             for (DocHit h : m.values()) {
                 Integer rb = bmRank.get(h.getDocId());
                 Integer rv = vecRank.get(h.getDocId());
+                Integer rfv = fileVecRank.get(h.getDocId());
                 double s = 0.0;
                 if (rb != null) s += wBm25 / (rrfK + rb);
                 if (rv != null) s += wVec / (rrfK + rv);
+                if (rfv != null) s += wFileVec / (rrfK + rfv);
                 h.setFusedScore(s);
                 out.add(h);
             }
@@ -362,7 +479,7 @@ public class HybridRagRetrievalService {
             if (!title.isBlank()) sb.append("  title: ").append(title).append('\n');
             sb.append("  text: ").append(Objects.toString(d.get("text"), "")).append("\n\n");
         }
-        sb.append("输出格式（严格 JSON，不要解释）：\n");
+        sb.append("Output format (Strict JSON, no explanation):\n");
         sb.append("{\"ranked\":[{\"doc_id\":\"...\",\"score\":0.0}]}\n");
         return sb.toString();
     }
@@ -412,38 +529,41 @@ public class HybridRagRetrievalService {
     }
 
     private JsonNode postSearch(String indexName, String body) {
-        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-        String endpoint = elasticsearchUris;
-        if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
-        if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
-        if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        dependencyIsolationGuard.requireElasticsearchAllowed();
+        return dependencyCircuitBreakerService.run("ES", () -> {
+            String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
+            String endpoint = elasticsearchUris;
+            if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
+            if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
+            if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
 
-        try {
-            URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(20_000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
-            if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
+            try {
+                URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setConnectTimeout(2000);
+                conn.setReadTimeout(20_000);
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Content-Type", "application/json");
+                String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
+                if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
+                    conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
+                }
+
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(body.getBytes(StandardCharsets.UTF_8));
+                }
+
+                int code = conn.getResponseCode();
+                InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+                if (is == null) return objectMapper.createObjectNode();
+                String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                if (code < 200 || code >= 300) throw new IllegalStateException("ES error HTTP " + code + ": " + json);
+                return objectMapper.readTree(json);
+            } catch (Exception e) {
+                throw new IllegalStateException("ES search failed: " + e.getMessage(), e);
             }
-
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(body.getBytes(StandardCharsets.UTF_8));
-            }
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            if (is == null) return objectMapper.createObjectNode();
-            String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            if (code < 200 || code >= 300) throw new IllegalStateException("ES error HTTP " + code + ": " + json);
-            return objectMapper.readTree(json);
-        } catch (Exception e) {
-            throw new IllegalStateException("ES search failed: " + e.getMessage(), e);
-        }
+        });
     }
 
     private List<DocHit> parseEsHits(JsonNode root) {
@@ -458,6 +578,7 @@ public class HybridRagRetrievalService {
                 if (src.hasNonNull("post_id")) out.setPostId(src.path("post_id").asLong());
                 if (src.hasNonNull("chunk_index")) out.setChunkIndex(src.path("chunk_index").asInt());
                 if (src.hasNonNull("board_id")) out.setBoardId(src.path("board_id").asLong());
+                out.setSourceType("POST");
                 out.setTitle(src.path("title").asText(null));
                 out.setContentText(src.path("content_text").asText(null));
                 hits.add(out);
@@ -548,7 +669,7 @@ public class HybridRagRetrievalService {
 
     private static int clampInt(Integer v, int min, int max) {
         if (v == null) return min;
-        return clampInt(v, min, max);
+        return clampInt(v.intValue(), min, max);
     }
 
     private static int approxTokens(String s) {
@@ -580,10 +701,12 @@ public class HybridRagRetrievalService {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("bm25LatencyMs", r.getBm25LatencyMs());
         m.put("vecLatencyMs", r.getVecLatencyMs());
+        m.put("fileVecLatencyMs", r.getFileVecLatencyMs());
         m.put("fuseLatencyMs", r.getFuseLatencyMs());
         m.put("rerankLatencyMs", r.getRerankLatencyMs());
         m.put("bm25Error", r.getBm25Error());
         m.put("vecError", r.getVecError());
+        m.put("fileVecError", r.getFileVecError());
         m.put("rerankError", r.getRerankError());
         return m;
     }
@@ -596,15 +719,18 @@ public class HybridRagRetrievalService {
 
         private Integer bm25LatencyMs;
         private Integer vecLatencyMs;
+        private Integer fileVecLatencyMs;
         private Integer fuseLatencyMs;
         private Integer rerankLatencyMs;
 
         private String bm25Error;
         private String vecError;
+        private String fileVecError;
         private String rerankError;
 
         private List<DocHit> bm25Hits;
         private List<DocHit> vecHits;
+        private List<DocHit> fileVecHits;
         private List<DocHit> fusedHits;
         private List<DocHit> rerankHits;
         private List<DocHit> finalHits;
@@ -617,13 +743,17 @@ public class HybridRagRetrievalService {
         private String docId;
         private Double score;
         private Long postId;
+        private List<Long> postIds;
+        private Long fileAssetId;
         private Integer chunkIndex;
         private Long boardId;
+        private String sourceType;
         private String title;
         private String contentText;
 
         private Double bm25Score;
         private Double vecScore;
+        private Double fileVecScore;
         private Double fusedScore;
 
         private Integer rerankRank;
@@ -634,12 +764,16 @@ public class HybridRagRetrievalService {
             h.docId = this.docId;
             h.score = this.score;
             h.postId = this.postId;
+            h.postIds = this.postIds == null ? null : new ArrayList<>(this.postIds);
+            h.fileAssetId = this.fileAssetId;
             h.chunkIndex = this.chunkIndex;
             h.boardId = this.boardId;
+            h.sourceType = this.sourceType;
             h.title = this.title;
             h.contentText = this.contentText;
             h.bm25Score = this.bm25Score;
             h.vecScore = this.vecScore;
+            h.fileVecScore = this.fileVecScore;
             h.fusedScore = this.fusedScore;
             h.rerankRank = this.rerankRank;
             h.rerankScore = this.rerankScore;

@@ -1,13 +1,9 @@
 package com.example.EnterpriseRagCommunity.config;
 
-import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
-import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexProvider;
-import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
-import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
-import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
-import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
-import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
-import lombok.RequiredArgsConstructor;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,9 +11,18 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexProvider;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
+import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
+import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
+import com.example.EnterpriseRagCommunity.service.retrieval.es.RagCommentsIndexService;
+import com.example.EnterpriseRagCommunity.service.retrieval.es.RagFileAssetsIndexService;
+import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
+
+import lombok.RequiredArgsConstructor;
 
 @Component
 @RequiredArgsConstructor
@@ -28,9 +33,12 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
     private final VectorIndicesRepository vectorIndicesRepository;
     private final RetrievalRagProperties ragProps;
     private final RagPostsIndexService ragPostsIndexService;
+    private final RagCommentsIndexService ragCommentsIndexService;
+    private final RagFileAssetsIndexService ragFileAssetsIndexService;
     private final ModerationSamplesIndexService moderationSamplesIndexService;
     private final ModerationSamplesIndexConfigService moderationSamplesIndexConfigService;
     private final ModerationSimilarityConfigRepository moderationSimilarityConfigRepository;
+    private final SystemConfigurationService systemConfigurationService;
 
     @Value("${app.es.init.enabled:true}")
     private boolean enabled;
@@ -43,7 +51,18 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        init();
+    }
+
+    public void init() {
         if (!enabled) return;
+
+        // Check for ES API Key before attempting initialization
+        String apiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("ES init skipped: APP_ES_API_KEY is missing in system configuration. Please configure it in the Setup Wizard.");
+            return;
+        }
 
         tryInitModerationSamplesIndex();
         tryInitRagVectorIndices();
@@ -79,7 +98,7 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
             }
             String indexName = ragProps.getEs().getIndex();
             try {
-                ensureOrRecreateRagIndex(indexName, dims);
+                ensureOrRecreateRagIndex(indexName, dims, "POST");
                 log.info("ES init default RAG index ok. index={}, dims={}", indexName, dims);
             } catch (Exception ex) {
                 if (failOnError) throw ex;
@@ -115,7 +134,8 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
             if (dims == -1) continue;
 
             try {
-                ensureOrRecreateRagIndex(indexName, dims);
+                String sourceType = resolveSourceType(list, indexName);
+                ensureOrRecreateRagIndex(indexName, dims, sourceType);
                 log.info("ES init RAG vector index ok. index={}, dims={}", indexName, dims);
             } catch (Exception ex) {
                 if (failOnError) throw ex;
@@ -124,16 +144,66 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
         }
     }
 
-    private void ensureOrRecreateRagIndex(String indexName, int dims) {
+    private void ensureOrRecreateRagIndex(String indexName, int dims, String sourceType) {
         if (forceRecreate) {
-            ragPostsIndexService.recreateIndex(indexName, dims);
+            recreateIndexBySourceType(indexName, dims, sourceType);
             return;
         }
         try {
-            ragPostsIndexService.ensureIndex(indexName, dims);
+            ensureIndexBySourceType(indexName, dims, sourceType);
         } catch (IllegalStateException mismatch) {
-            ragPostsIndexService.recreateIndex(indexName, dims);
+            recreateIndexBySourceType(indexName, dims, sourceType);
         }
+    }
+
+    private void ensureIndexBySourceType(String indexName, int dims, String sourceType) {
+        String st = sourceType == null ? "" : sourceType.trim().toUpperCase();
+        if ("COMMENT".equals(st)) {
+            ragCommentsIndexService.ensureIndex(indexName, dims);
+            return;
+        }
+        if ("FILE_ASSET".equals(st)) {
+            ragFileAssetsIndexService.ensureIndex(indexName, dims, ragProps.getEs().isIkEnabled());
+            return;
+        }
+        if ("TEMP".equals(st)) {
+            log.info("ES init skip TEMP index. index={}, dims={}", indexName, dims);
+            return;
+        }
+        ragPostsIndexService.ensureIndex(indexName, dims);
+    }
+
+    private void recreateIndexBySourceType(String indexName, int dims, String sourceType) {
+        String st = sourceType == null ? "" : sourceType.trim().toUpperCase();
+        if ("COMMENT".equals(st)) {
+            ragCommentsIndexService.recreateIndex(indexName, dims);
+            return;
+        }
+        if ("FILE_ASSET".equals(st)) {
+            ragFileAssetsIndexService.recreateIndex(indexName, dims, ragProps.getEs().isIkEnabled());
+            return;
+        }
+        if ("TEMP".equals(st)) {
+            log.info("ES init skip TEMP index recreate. index={}, dims={}", indexName, dims);
+            return;
+        }
+        ragPostsIndexService.recreateIndex(indexName, dims);
+    }
+
+    private static String resolveSourceType(List<VectorIndicesEntity> list, String indexName) {
+        if (list == null || indexName == null) return null;
+        for (VectorIndicesEntity vi : list) {
+            if (vi == null) continue;
+            String n = vi.getCollectionName();
+            if (n == null || n.isBlank()) continue;
+            if (!indexName.equals(n.trim())) continue;
+            Object st = vi.getMetadata() == null ? null : vi.getMetadata().get("sourceType");
+            if (st != null) {
+                String s = String.valueOf(st).trim();
+                if (!s.isBlank()) return s;
+            }
+        }
+        return null;
     }
 
     private Integer bestDimsFor(VectorIndicesEntity vi) {

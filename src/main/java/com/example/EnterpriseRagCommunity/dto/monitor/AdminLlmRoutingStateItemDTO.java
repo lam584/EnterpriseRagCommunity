@@ -10,8 +10,6 @@ public class AdminLlmRoutingStateItemDTO {
 
     private Integer weight;
     private Integer priority;
-    private Integer maxConcurrent;
-    private Integer minDelayMs;
     private Double qps;
 
     private Integer runningCount;

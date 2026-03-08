@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { splitThinkText, stripThinkBlocks } from '../../../../utils/thinkTags';
 import { RefreshCw, Pencil, Trash2, Bot, Send, Square, Copy, Check, Languages, X, ChevronDown, Heart } from 'lucide-react';
 
-import { chatOnce, chatStream, regenerateOnce, regenerateStream, type AiCitationSource, type AiStreamEvent } from '../../../../services/aiChatService';
+import { chatOnce, chatStream, regenerateOnce, type AiCitationSource, type AiStreamEvent } from '../../../../services/aiChatService';
 import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { getMyAssistantPreferences, updateMyAssistantPreferences } from '../../../../services/assistantPreferencesService';
 import { uploadFile, type UploadResult } from '../../../../services/uploadService';
@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/a
 import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
 import {
   deleteQaMessage,
+  compressQaSessionContext,
   getQaSessionMessages,
   listQaSessions,
   type QaMessageDTO,
@@ -21,10 +22,11 @@ import {
 } from '../../../../services/qaHistoryService';
 
 const MAX_VISION_IMAGES = 10;
+const MAX_CHAT_FILES = 10;
 
 type ChatMsg = {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   createdAt?: string;
   isFavorite?: boolean;
@@ -49,6 +51,21 @@ type ThinkPerf = {
 
 type ThinkUi = {
   collapsed: boolean;
+};
+
+type BranchInfo = {
+  id: string;
+  label: string;
+};
+
+type BranchAnchorState = {
+  activeBranchId: string;
+  branches: BranchInfo[];
+};
+
+type BranchMembership = {
+  anchorId: string;
+  branchId: string;
 };
 
 function uid(): string {
@@ -123,7 +140,7 @@ function colorClassForCitationIndex(index: number): string {
   return palette[i % palette.length] ?? 'text-blue-600';
 }
 
-function linkifyCitations(md: string): string {
+function linkifyCitations(md: string, anchorPrefix = 'cite-'): string {
   if (!md) return md;
   const parts: string[] = [];
   const re = /```[\s\S]*?```/g;
@@ -131,12 +148,12 @@ function linkifyCitations(md: string): string {
   let match: RegExpExecArray | null;
   while ((match = re.exec(md)) !== null) {
     const before = md.slice(lastIndex, match.index);
-    parts.push(before.replace(/\[(\d{1,3})\](?!\()/g, (_m, n) => `[[${n}]](#cite-${n})`));
+    parts.push(before.replace(/\[(\d{1,3})\](?!\()/g, (_m, n) => `[[${n}]](#${anchorPrefix}${n})`));
     parts.push(match[0]);
     lastIndex = match.index + match[0].length;
   }
   const tail = md.slice(lastIndex);
-  parts.push(tail.replace(/\[(\d{1,3})\](?!\()/g, (_m, n) => `[[${n}]](#cite-${n})`));
+  parts.push(tail.replace(/\[(\d{1,3})\](?!\()/g, (_m, n) => `[[${n}]](#${anchorPrefix}${n})`));
   return parts.join('');
 }
 
@@ -158,6 +175,100 @@ function extractCitationIndexes(md: string): Set<number> {
   }
   extractFromText(md.slice(lastIndex));
   return out;
+}
+
+function normalizeCitationContext(text: string): string {
+  return String(text ?? '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/[#>*_~]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractHighlightTerms(text: string): string[] {
+  const src = normalizeCitationContext(text);
+  if (!src) return [];
+  const matches = src.match(/[\u4e00-\u9fa5]{2,}|[a-zA-Z][a-zA-Z0-9_-]{2,}|[0-9]{2,}/g) ?? [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of matches) {
+    const t = raw.trim();
+    if (!t) continue;
+    if (t.length > 28) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+
+function buildCitationHighlightTerms(md: string): Map<number, string[]> {
+  const out = new Map<number, string[]>();
+  if (!md) return out;
+  const reCode = /```[\s\S]*?```/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const collect = (txt: string) => {
+    for (const m of txt.matchAll(/\[(\d{1,3})\](?!\()/g)) {
+      const idx = Number(m[1]);
+      if (!Number.isFinite(idx) || idx <= 0) continue;
+      const pos = m.index ?? 0;
+      const before = txt.slice(Math.max(0, pos - 180), pos);
+      const cleaned = normalizeCitationContext(before);
+      if (!cleaned) continue;
+      const segments = cleaned.split(/[。！？!?；;\n]/).map((s) => s.trim()).filter(Boolean);
+      const context = segments.length > 0 ? segments[segments.length - 1] : cleaned;
+      const terms = extractHighlightTerms(context);
+      if (terms.length === 0) continue;
+      const merged = [...(out.get(idx) ?? [])];
+      const seen = new Set(merged.map((x) => x.toLowerCase()));
+      for (const t of terms) {
+        const key = t.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(t);
+        if (merged.length >= 12) break;
+      }
+      out.set(idx, merged);
+    }
+  };
+  while ((match = reCode.exec(md)) !== null) {
+    collect(md.slice(lastIndex, match.index));
+    lastIndex = match.index + match[0].length;
+  }
+  collect(md.slice(lastIndex));
+  return out;
+}
+
+function buildHighlightedParts(text: string, terms: string[]): Array<{ text: string; hit: boolean }> {
+  const src = String(text ?? '');
+  if (!src) return [{ text: '', hit: false }];
+  const picked = terms
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2)
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 8);
+  if (picked.length === 0) return [{ text: src, hit: false }];
+  const re = new RegExp(`(${picked.map((x) => escapeRegExp(x)).join('|')})`, 'ig');
+  const out: Array<{ text: string; hit: boolean }> = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src)) !== null) {
+    if (m.index > last) out.push({ text: src.slice(last, m.index), hit: false });
+    out.push({ text: m[0], hit: true });
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) out.push({ text: src.slice(last), hit: false });
+  return out.length > 0 ? out : [{ text: src, hit: false }];
 }
 
 function isThinkingOnlyModel(model: string): boolean {
@@ -204,10 +315,12 @@ export default function AssistantChatPage() {
   const [sessionId, setSessionId] = useState<number | undefined>(undefined);
   const [question, setQuestion] = useState('');
   const [pendingImages, setPendingImages] = useState<UploadResult[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<UploadResult[]>([]);
   const [imageUploading, setImageUploading] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [chatOptions, setChatOptions] = useState<AiChatOptionsDTO | null>(null);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
@@ -220,18 +333,25 @@ export default function AssistantChatPage() {
   const [temperature, setTemperature] = useState<number | null>(null);
   const [topP, setTopP] = useState<number | null>(null);
   const [sourcesByMsgId, setSourcesByMsgId] = useState<Record<string, AiCitationSource[]>>({});
+  const [focusedCitationByMsgId, setFocusedCitationByMsgId] = useState<Record<string, number | null>>({});
   const [editing, setEditing] = useState<{ id: string; draft: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [perfByMsgId, setPerfByMsgId] = useState<Record<string, MsgPerf>>({});
   const [deepThinkByMsgId, setDeepThinkByMsgId] = useState<Record<string, boolean>>({});
   const [thinkPerfByMsgId, setThinkPerfByMsgId] = useState<Record<string, ThinkPerf>>({});
   const [thinkUiByMsgId, setThinkUiByMsgId] = useState<Record<string, ThinkUi>>({});
+  const [editedAtByMsgId, setEditedAtByMsgId] = useState<Record<string, string>>({});
+  const [branchAnchorsByMsgId, setBranchAnchorsByMsgId] = useState<Record<string, BranchAnchorState>>({});
+  const [branchMembershipByMsgId, setBranchMembershipByMsgId] = useState<Record<string, BranchMembership>>({});
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
+  const [compressingContext, setCompressingContext] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | undefined>(undefined);
   const [inputHeight, setInputHeight] = useState<number>(120);
   const [isResizing, setIsResizing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const activeBranchContextRef = useRef<{ anchorId: string; branchId: string } | null>(null);
+  const prevPersistedMsgIdsRef = useRef<Set<string>>(new Set());
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -347,37 +467,69 @@ export default function AssistantChatPage() {
   const thinkingOnly = useMemo(() => isThinkingOnlyModel(selectedModel), [selectedModel]);
   const effectiveDeepThink = thinkingOnly ? true : deepThink;
 
-  const canSend = useMemo(() => !isStreaming && (question.trim().length > 0 || pendingImages.length > 0), [isStreaming, pendingImages, question]);
+  const canSend = useMemo(
+    () => !isStreaming && (question.trim().length > 0 || pendingImages.length > 0 || pendingFiles.length > 0),
+    [isStreaming, pendingFiles, pendingImages, question]
+  );
 
   const handlePickImages = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
 
   const handleUploadFiles = useCallback(async (files: File[]) => {
-    const list = files.filter((f) => String(f.type ?? '').toLowerCase().startsWith('image/'));
-    if (list.length === 0) return;
+    const list = (files ?? []).filter(Boolean);
+    if (!list.length) return;
+
+    const imgs = list.filter((f) => String(f.type ?? '').toLowerCase().startsWith('image/'));
+    const others = list.filter((f) => !String(f.type ?? '').toLowerCase().startsWith('image/'));
+
+    const imgSpace = Math.max(0, MAX_VISION_IMAGES - pendingImages.length);
+    const fileSpace = Math.max(0, MAX_CHAT_FILES - pendingFiles.length);
+    const toUpload = [...imgs.slice(0, imgSpace), ...others.slice(0, fileSpace)];
+    if (!toUpload.length) return;
+
     setImageUploading(true);
     setError(null);
     try {
-      const uploaded = await Promise.all(list.slice(0, MAX_VISION_IMAGES).map((f) => uploadFile(f)));
-      setPendingImages((prev) => {
-        const seen = new Set(prev.map((x) => String(x.fileUrl ?? '').trim()).filter(Boolean));
-        const merged = [...prev];
-        for (const u of uploaded) {
-          const url = String(u.fileUrl ?? '').trim();
-          if (!url) continue;
-          if (seen.has(url)) continue;
-          seen.add(url);
-          merged.push(u);
-        }
-        return merged.slice(0, MAX_VISION_IMAGES);
-      });
+      const uploaded = await Promise.all(toUpload.map((f) => uploadFile(f)));
+      const uploadedImages = uploaded.filter((u) => String(u.mimeType ?? '').toLowerCase().startsWith('image/'));
+      const uploadedFiles = uploaded.filter((u) => !String(u.mimeType ?? '').toLowerCase().startsWith('image/'));
+
+      if (uploadedImages.length) {
+        setPendingImages((prev) => {
+          const seen = new Set(prev.map((x) => String(x.fileUrl ?? '').trim()).filter(Boolean));
+          const merged = [...prev];
+          for (const u of uploadedImages) {
+            const url = String(u.fileUrl ?? '').trim();
+            if (!url) continue;
+            if (seen.has(url)) continue;
+            seen.add(url);
+            merged.push(u);
+          }
+          return merged.slice(0, MAX_VISION_IMAGES);
+        });
+      }
+
+      if (uploadedFiles.length) {
+        setPendingFiles((prev) => {
+          const seen = new Set(prev.map((x) => String(x.fileUrl ?? '').trim()).filter(Boolean));
+          const merged = [...prev];
+          for (const u of uploadedFiles) {
+            const url = String(u.fileUrl ?? '').trim();
+            if (!url) continue;
+            if (seen.has(url)) continue;
+            seen.add(url);
+            merged.push(u);
+          }
+          return merged.slice(0, MAX_CHAT_FILES);
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setImageUploading(false);
     }
-  }, []);
+  }, [pendingFiles.length, pendingImages.length]);
 
   const providerOptions = useMemo(() => {
     const providers = (chatOptions?.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[];
@@ -653,24 +805,31 @@ export default function AssistantChatPage() {
 
     let cancelled = false;
     setError(null);
+    setNotice(null);
     setIsStreaming(false);
     setSessionId(undefined);
     setMessages([]);
     setSourcesByMsgId({});
+    setPerfByMsgId({});
     setDeepThinkByMsgId({});
     setThinkPerfByMsgId({});
     setThinkUiByMsgId({});
+    setEditedAtByMsgId({});
+    setBranchAnchorsByMsgId({});
+    setBranchMembershipByMsgId({});
     setStreamingAssistantId(null);
+    activeBranchContextRef.current = null;
+    prevPersistedMsgIdsRef.current = new Set();
 
     void (async () => {
       try {
         const list = await getQaSessionMessages(initialSessionId);
         if (cancelled) return;
         const mapped: ChatMsg[] = list
-          .filter((m) => m.role === 'USER' || m.role === 'ASSISTANT')
+          .filter((m) => m.role === 'USER' || m.role === 'ASSISTANT' || m.role === 'SYSTEM')
           .map((m: QaMessageDTO) => ({
             id: String(m.id),
-            role: m.role === 'USER' ? 'user' : 'assistant',
+            role: m.role === 'USER' ? 'user' : m.role === 'SYSTEM' ? 'system' : 'assistant',
             content: m.content,
             createdAt: m.createdAt,
             model: m.model ?? null,
@@ -708,10 +867,10 @@ export default function AssistantChatPage() {
   async function reloadSessionMessages(id: number, transferPerfFromAssistantId?: string) {
     const list = await getQaSessionMessages(id);
     const mapped: ChatMsg[] = list
-      .filter((m) => m.role === 'USER' || m.role === 'ASSISTANT')
+      .filter((m) => m.role === 'USER' || m.role === 'ASSISTANT' || m.role === 'SYSTEM')
       .map((m: QaMessageDTO) => ({
         id: String(m.id),
-        role: m.role === 'USER' ? 'user' : 'assistant',
+        role: m.role === 'USER' ? 'user' : m.role === 'SYSTEM' ? 'system' : 'assistant',
         content: m.content,
         createdAt: m.createdAt,
         model: m.model ?? null,
@@ -774,6 +933,68 @@ export default function AssistantChatPage() {
     }
   }
 
+  function getBranchStorageKey(id: number): string {
+    return `assistantChatBranches:${id}`;
+  }
+
+  useEffect(() => {
+    if (!sessionId || sessionId <= 0) return;
+    try {
+      const raw = localStorage.getItem(getBranchStorageKey(sessionId));
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      const p = parsed as Record<string, unknown>;
+      const anchors = (p.anchors && typeof p.anchors === 'object') ? (p.anchors as Record<string, BranchAnchorState>) : {};
+      const membership = (p.membership && typeof p.membership === 'object') ? (p.membership as Record<string, BranchMembership>) : {};
+      setBranchAnchorsByMsgId(anchors ?? {});
+      setBranchMembershipByMsgId(membership ?? {});
+    } catch {}
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId || sessionId <= 0) return;
+    try {
+      const payload = JSON.stringify({ anchors: branchAnchorsByMsgId, membership: branchMembershipByMsgId });
+      localStorage.setItem(getBranchStorageKey(sessionId), payload);
+    } catch {}
+  }, [branchAnchorsByMsgId, branchMembershipByMsgId, sessionId]);
+
+  function setActiveBranch(anchorId: string, branchId: string) {
+    setBranchAnchorsByMsgId((prev) => {
+      const cur = prev[anchorId];
+      if (!cur) return prev;
+      if (cur.activeBranchId === branchId) return prev;
+      return { ...prev, [anchorId]: { ...cur, activeBranchId: branchId } };
+    });
+    activeBranchContextRef.current = { anchorId, branchId };
+  }
+
+  function assignMembershipForAnchor(messageIds: string[], anchorId: string, branchId: string) {
+    if (messageIds.length === 0) return;
+    setBranchMembershipByMsgId((prev) => {
+      const next: Record<string, BranchMembership> = { ...prev };
+      let changed = false;
+      for (const id of messageIds) {
+        const cur = next[id];
+        if (cur && cur.anchorId !== anchorId) continue;
+        if (cur && cur.branchId === branchId) continue;
+        next[id] = { anchorId, branchId };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }
+
+  function cycleBranch(anchorId: string) {
+    const st = branchAnchorsByMsgId[anchorId];
+    if (!st || st.branches.length <= 1) return;
+    const idx = st.branches.findIndex((b) => b.id === st.activeBranchId);
+    const next = st.branches[(idx + 1) % st.branches.length];
+    if (!next) return;
+    setActiveBranch(anchorId, next.id);
+  }
+
   useEffect(() => {
     setThinkUiByMsgId((prev) => {
       let changed = false;
@@ -799,6 +1020,50 @@ export default function AssistantChatPage() {
     });
   }, [messages]);
 
+  useEffect(() => {
+    const cur = new Set<string>();
+    for (const m of messages) {
+      if (!isPersistedId(m.id)) continue;
+      cur.add(m.id);
+    }
+    const prev = prevPersistedMsgIdsRef.current;
+    prevPersistedMsgIdsRef.current = cur;
+    const ctx = activeBranchContextRef.current;
+    if (!ctx) return;
+    const added: string[] = [];
+    for (const id of cur) {
+      if (!prev.has(id)) added.push(id);
+    }
+    if (added.length === 0) return;
+    assignMembershipForAnchor(added, ctx.anchorId, ctx.branchId);
+  }, [messages]);
+
+  useEffect(() => {
+    const idsInUse = new Set<string>(messages.map((m) => m.id));
+    setBranchMembershipByMsgId((prev) => {
+      let changed = false;
+      const next: Record<string, BranchMembership> = { ...prev };
+      for (const k of Object.keys(next)) {
+        if (!idsInUse.has(k)) {
+          delete next[k];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setBranchAnchorsByMsgId((prev) => {
+      let changed = false;
+      const next: Record<string, BranchAnchorState> = { ...prev };
+      for (const k of Object.keys(next)) {
+        if (!idsInUse.has(k)) {
+          delete next[k];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [messages]);
+
   function markFirstDelta(messageId: string) {
     setPerfByMsgId((prev) => {
       const now = Date.now();
@@ -817,9 +1082,14 @@ export default function AssistantChatPage() {
     });
   }
 
-  async function sendText(text: string, images: UploadResult[]) {
+  async function sendText(
+    text: string,
+    images: UploadResult[],
+    files: UploadResult[],
+    branch?: { anchorId: string; branchId: string } | null
+  ) {
     const raw = String(text ?? '');
-    const trimmed = raw.trim() || (images.length ? '请分析这些图片。' : '');
+    const trimmed = raw.trim() || (images.length || files.length ? '请分析这些附件。' : '');
     if (!trimmed || isStreaming) return;
 
     setError(null);
@@ -830,6 +1100,14 @@ export default function AssistantChatPage() {
     const userId = uid();
     const assistantId = uid();
     const nowIso = new Date().toISOString();
+
+    if (branch) {
+      setBranchMembershipByMsgId((prev) => ({
+        ...prev,
+        [userId]: { anchorId: branch.anchorId, branchId: branch.branchId },
+        [assistantId]: { anchorId: branch.anchorId, branchId: branch.branchId }
+      }));
+    }
 
     setMessages((prev) => [
       ...prev,
@@ -885,6 +1163,9 @@ export default function AssistantChatPage() {
             providerId: providerIdToSend,
             model: modelToSend,
             images: images.length ? images.map((x) => ({ url: x.fileUrl, mimeType: x.mimeType, fileAssetId: x.id })) : undefined,
+            files: files.length
+              ? files.map((x) => ({ url: x.fileUrl, mimeType: x.mimeType, fileAssetId: x.id, fileName: x.fileName }))
+              : undefined,
           },
           (ev: AiStreamEvent) => {
             if (ev.type === 'meta') {
@@ -985,6 +1266,9 @@ export default function AssistantChatPage() {
             providerId: providerIdToSend,
             model: modelToSend,
             images: images.length ? images.map((x) => ({ url: x.fileUrl, mimeType: x.mimeType, fileAssetId: x.id })) : undefined,
+            files: files.length
+              ? files.map((x) => ({ url: x.fileUrl, mimeType: x.mimeType, fileAssetId: x.id, fileName: x.fileName }))
+              : undefined,
           },
           ac.signal
         );
@@ -1054,11 +1338,13 @@ export default function AssistantChatPage() {
 
   async function handleSend() {
     const text = question.trim();
-    if ((!text && pendingImages.length === 0) || isStreaming) return;
+    if ((!text && pendingImages.length === 0 && pendingFiles.length === 0) || isStreaming) return;
     setQuestion('');
     const imgs = pendingImages;
+    const files = pendingFiles;
     setPendingImages([]);
-    await sendText(text, imgs);
+    setPendingFiles([]);
+    await sendText(text, imgs, files, activeBranchContextRef.current);
   }
 
   async function handleTranslate(m: ChatMsg) {
@@ -1066,7 +1352,32 @@ export default function AssistantChatPage() {
     const src = (m.content ?? '').trim();
     if (!src) return;
     const prompt = `请将以下内容翻译成中文，保持原意，保留 Markdown/代码块格式：\n\n${src}`;
-    await sendText(prompt, []);
+    await sendText(prompt, [], [], activeBranchContextRef.current);
+  }
+
+  function openNewBranch(anchorId: string, oldTailStartMessageId: string, label: string): string {
+    const newBranchId = uid();
+    const prevAnchor = branchAnchorsByMsgId[anchorId];
+    const oldBranchId = prevAnchor?.activeBranchId ?? 'main';
+    setBranchAnchorsByMsgId((prev) => {
+      const cur = prev[anchorId];
+      const existing = cur?.branches ?? [];
+      const nextBranches: BranchInfo[] = [...existing];
+      if (!nextBranches.some((b) => b.id === oldBranchId)) {
+        nextBranches.push({ id: oldBranchId, label: existing.length ? `分支 ${existing.length}` : '原分支' });
+      }
+      nextBranches.push({ id: newBranchId, label });
+      return { ...prev, [anchorId]: { activeBranchId: newBranchId, branches: nextBranches } };
+    });
+
+    const idx = messages.findIndex((m) => m.id === oldTailStartMessageId);
+    if (idx >= 0) {
+      const oldTailIds = messages.slice(idx).map((m) => m.id);
+      assignMembershipForAnchor(oldTailIds, anchorId, oldBranchId);
+    }
+
+    activeBranchContextRef.current = { anchorId, branchId: newBranchId };
+    return newBranchId;
   }
 
   async function handleSaveEdit(messageId: string, draft: string) {
@@ -1077,6 +1388,15 @@ export default function AssistantChatPage() {
     setError(null);
     setEditing(null);
     await updateQaMessage(Number(messageId), { content: trimmed });
+    const nowIso = new Date().toISOString();
+    setEditedAtByMsgId((prev) => ({ ...prev, [messageId]: nowIso }));
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m;
+        if (m.role === 'user') return { ...m, content: trimmed, tokensIn: null };
+        return { ...m, content: trimmed };
+      })
+    );
     await reloadSessionMessages(sessionId);
   }
 
@@ -1090,9 +1410,10 @@ export default function AssistantChatPage() {
 
     setError(null);
     setEditing(null);
-    await updateQaMessage(Number(questionMessageId), { content: trimmed });
-    setMessages((prev) => prev.map((m) => (m.id === questionMessageId ? { ...m, content: trimmed } : m)));
-    await handleRegenerate(Number(questionMessageId), assistantMessageId);
+    const nowIso = new Date().toISOString();
+    const label = formatDateTime(nowIso) ?? nowIso;
+    const newBranchId = openNewBranch(questionMessageId, assistantMessageId, label);
+    await sendText(trimmed, [], [], { anchorId: questionMessageId, branchId: newBranchId });
   }
 
   async function handleDeleteMessage(messageId: string) {
@@ -1110,106 +1431,34 @@ export default function AssistantChatPage() {
     if (!isPersistedId(assistantMessageId)) return;
 
     setError(null);
+    setEditing(null);
     const providerIdToSend = selectedProviderId.trim() ? selectedProviderId.trim() : undefined;
     const modelToSend = selectedModel.trim() ? selectedModel.trim() : undefined;
     const requestDeepThink = effectiveDeepThink;
-    setDeepThinkByMsgId((prev) => ({ ...prev, [assistantMessageId]: requestDeepThink }));
-    setEditing(null);
-    setSourcesByMsgId((prev) => {
-      const next = { ...prev };
-      delete next[assistantMessageId];
-      return next;
-    });
-    setMessages((prev) =>
-      prev.map((x) =>
-        x.id === assistantMessageId ? { ...x, content: '', tokensIn: null, tokensOut: null, latencyMs: null, firstTokenLatencyMs: null } : x
-      )
-    );
+    const nowIso = new Date().toISOString();
+    const label = formatDateTime(nowIso) ?? nowIso;
+    const anchorId = String(questionMessageId);
+    openNewBranch(anchorId, assistantMessageId, label);
 
     setIsStreaming(true);
     streamAutoScrollDisabledRef.current = false;
     const ac = new AbortController();
     abortRef.current = ac;
-    setPerfByMsgId((prev) => ({ ...prev, [assistantMessageId]: { startAtMs: Date.now() } }));
-    setStreamingAssistantId(assistantMessageId);
-    streamRawByMsgIdRef.current[assistantMessageId] = '';
+    setStreamingAssistantId(null);
     try {
-      if (streamOutput) {
-        await regenerateStream(
-          questionMessageId,
-          { deepThink: requestDeepThink, useRag, ragTopK, temperature: temperature ?? undefined, topP: topP ?? undefined, providerId: providerIdToSend, model: modelToSend },
-          (ev: AiStreamEvent) => {
-            if (ev.type === 'delta') {
-              if (!ev.content) return;
-              markFirstDelta(assistantMessageId);
-              const prevRaw = streamRawByMsgIdRef.current[assistantMessageId] ?? '';
-              const nextRaw = prevRaw + ev.content;
-              streamRawByMsgIdRef.current[assistantMessageId] = nextRaw;
-              setMessages((prev) => {
-                const nextContent = requestDeepThink ? nextRaw : stripThinkBlocks(nextRaw);
-                return prev.map((m) => (m.id === assistantMessageId ? { ...m, content: nextContent } : m));
-              });
-              if (requestDeepThink) {
-                const before = splitThinkText(prevRaw);
-                const after = splitThinkText(nextRaw);
-                if (after.hasThink) {
-                  const now = Date.now();
-                  setThinkUiByMsgId((p) =>
-                    p[assistantMessageId] ? p : { ...p, [assistantMessageId]: { collapsed: after.thinkClosed } }
-                  );
-                  if (!before.hasThink) {
-                    setThinkPerfByMsgId((p) => {
-                      const cur = p[assistantMessageId];
-                      if (cur?.startedAtMs) return p;
-                      return { ...p, [assistantMessageId]: { ...(cur ?? {}), startedAtMs: now } };
-                    });
-                  }
-                  if (!before.thinkClosed && after.thinkClosed) {
-                    setThinkUiByMsgId((p) => ({ ...p, [assistantMessageId]: { collapsed: true } }));
-                    setThinkPerfByMsgId((p) => {
-                      const cur = p[assistantMessageId];
-                      if (cur?.endedAtMs) return p;
-                      const startedAtMs = cur?.startedAtMs ?? now;
-                      return { ...p, [assistantMessageId]: { ...(cur ?? {}), startedAtMs, endedAtMs: now } };
-                    });
-                  }
-                }
-              }
-            } else if (ev.type === 'sources') {
-              setSourcesByMsgId((prev) => ({ ...prev, [assistantMessageId]: ev.sources ?? [] }));
-            } else if (ev.type === 'error') {
-              setError(ev.message || '生成失败');
-            } else if (ev.type === 'done') {
-              markDone(assistantMessageId, ev.latencyMs);
-              if (requestDeepThink) {
-                setThinkPerfByMsgId((p) => {
-                  const cur = p[assistantMessageId];
-                  if (!cur?.startedAtMs || cur.endedAtMs) return p;
-                  return { ...p, [assistantMessageId]: { ...cur, endedAtMs: Date.now() } };
-                });
-              }
-            }
-          },
-          ac.signal
-        );
-      } else {
-        const res = await regenerateOnce(
-          questionMessageId,
-          { deepThink: requestDeepThink, useRag, ragTopK, temperature: temperature ?? undefined, topP: topP ?? undefined, providerId: providerIdToSend, model: modelToSend },
-          ac.signal
-        );
-        if (!ac.signal.aborted) {
-          const raw = String(res.content ?? '');
-          streamRawByMsgIdRef.current[assistantMessageId] = raw;
-          markFirstDelta(assistantMessageId);
-          setMessages((prev) => {
-            const nextContent = requestDeepThink ? raw : stripThinkBlocks(raw);
-            return prev.map((m) => (m.id === assistantMessageId ? { ...m, content: nextContent } : m));
-          });
+      const res = await regenerateOnce(
+        questionMessageId,
+        { deepThink: requestDeepThink, useRag, ragTopK, temperature: temperature ?? undefined, topP: topP ?? undefined, providerId: providerIdToSend, model: modelToSend },
+        ac.signal
+      );
+      if (!ac.signal.aborted) {
+        const newAssistantId = res.assistantMessageId != null ? String(res.assistantMessageId) : '';
+        if (newAssistantId) {
+          setDeepThinkByMsgId((prev) => ({ ...prev, [newAssistantId]: requestDeepThink }));
+          setPerfByMsgId((prev) => ({ ...prev, [newAssistantId]: { startAtMs: Date.now(), doneAtMs: Date.now(), backendLatencyMs: res.latencyMs } }));
           if (res.sources) {
-            setSourcesByMsgId((prev) => ({ ...prev, [assistantMessageId]: res.sources ?? [] }));
+            setSourcesByMsgId((prev) => ({ ...prev, [newAssistantId]: res.sources ?? [] }));
           }
-          markDone(assistantMessageId, res.latencyMs);
         }
       }
       if (!ac.signal.aborted) {
@@ -1219,7 +1468,6 @@ export default function AssistantChatPage() {
       const msg = e instanceof Error ? e.message : String(e);
       if (!ac.signal.aborted) setError(msg || '请求失败');
     } finally {
-      delete streamRawByMsgIdRef.current[assistantMessageId];
       if (abortRef.current === ac) abortRef.current = null;
       setIsStreaming(false);
       setStreamingAssistantId(null);
@@ -1240,6 +1488,7 @@ export default function AssistantChatPage() {
     abortRef.current = null;
     setIsStreaming(false);
     setError(null);
+    setNotice(null);
     setSessionId(undefined);
     setMessages([]);
     setSourcesByMsgId({});
@@ -1247,13 +1496,49 @@ export default function AssistantChatPage() {
     setDeepThinkByMsgId({});
     setThinkPerfByMsgId({});
     setThinkUiByMsgId({});
+    setEditedAtByMsgId({});
+    setBranchAnchorsByMsgId({});
+    setBranchMembershipByMsgId({});
     setStreamingAssistantId(null);
     streamRawByMsgIdRef.current = {};
+    activeBranchContextRef.current = null;
+    prevPersistedMsgIdsRef.current = new Set();
     lastSyncedSessionIdRef.current = undefined;
     pendingUrlSyncRef.current = null;
     urlSyncScheduledRef.current = false;
     navigate('/portal/assistant/chat', { replace: false });
   }
+
+  async function handleCompressContext() {
+    if (isStreaming || compressingContext) return;
+    if (!sessionId || sessionId <= 0) return;
+    setError(null);
+    setNotice(null);
+    setCompressingContext(true);
+    try {
+      const res = await compressQaSessionContext(sessionId);
+      const deleted = Number(res.compressedDeletedCount ?? 0);
+      setNotice(deleted > 0 ? `已压缩 ${deleted} 条历史消息` : '暂无可压缩内容');
+      await reloadSessionMessages(sessionId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg || '压缩失败');
+    } finally {
+      setCompressingContext(false);
+    }
+  }
+
+  const visibleMessages = useMemo(() => {
+    const hasMembership = Object.keys(branchMembershipByMsgId).length > 0;
+    if (!hasMembership) return messages;
+    return messages.filter((m) => {
+      const mem = branchMembershipByMsgId[m.id];
+      if (!mem) return true;
+      const anchor = branchAnchorsByMsgId[mem.anchorId];
+      if (!anchor) return true;
+      return anchor.activeBranchId === mem.branchId;
+    });
+  }, [branchAnchorsByMsgId, branchMembershipByMsgId, messages]);
 
   return (
     <div className="space-y-3 flex flex-col h-[calc(100vh-140px)] gap-4">
@@ -1301,6 +1586,14 @@ export default function AssistantChatPage() {
               ) : null}
               {optionsError ? <div className="text-xs text-red-600">{optionsError}</div> : null}
             </div>
+            <button
+              type="button"
+              onClick={() => void handleCompressContext()}
+              disabled={isStreaming || compressingContext || !sessionId}
+              className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm disabled:opacity-60"
+            >
+              {compressingContext ? '压缩中…' : '压缩上下文'}
+            </button>
             <button type="button" onClick={startNewChat} className="px-3 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm">
               新对话
             </button>
@@ -1311,6 +1604,9 @@ export default function AssistantChatPage() {
       {error && (
         <div className="border border-red-200 bg-red-50 text-red-700 rounded-md px-3 py-2 text-sm">{error}</div>
       )}
+      {notice && (
+        <div className="border border-emerald-200 bg-emerald-50 text-emerald-800 rounded-md px-3 py-2 text-sm">{notice}</div>
+      )}
 
       <div className="flex-1 min-h-0 w-full flex flex-col gap-4">
           <div className="relative flex-1 min-h-0">
@@ -1319,31 +1615,33 @@ export default function AssistantChatPage() {
               className="h-full overflow-y-auto overflow-x-auto border border-gray-200 rounded-md p-3 space-y-3 bg-white"
               onScroll={handleChatScroll}
             >
-              {messages.length === 0 ? (
+              {visibleMessages.length === 0 ? (
                 <div className="text-sm text-gray-500">还没有消息，输入问题开始对话。</div>
               ) : (
                 <div className="space-y-3">
-                  {messages.map((m, idx) => {
+                  {visibleMessages.map((m, idx) => {
               const persisted = isPersistedId(m.id);
               const isEditing = editing?.id === m.id;
               const canRegenerate =
                 m.role === 'assistant' &&
                 idx > 0 &&
-                messages[idx - 1]?.role === 'user' &&
-                isPersistedId(messages[idx - 1]!.id) &&
+                visibleMessages[idx - 1]?.role === 'user' &&
+                isPersistedId(visibleMessages[idx - 1]!.id) &&
                 persisted &&
                 !isStreaming;
               
               const isUser = m.role === 'user';
+              const isSystem = m.role === 'system';
               const canResendEditedUser =
                 isUser &&
                 isEditing &&
-                (editing?.draft ?? '').trim() !== (m.content ?? '').trim() &&
-                messages[idx + 1]?.role === 'assistant' &&
-                isPersistedId(messages[idx + 1]!.id) &&
+                (editing?.draft ?? '').trim().length > 0 &&
+                visibleMessages[idx + 1]?.role === 'assistant' &&
+                isPersistedId(visibleMessages[idx + 1]!.id) &&
                 !isStreaming;
               const isThisStreaming = isStreaming && streamingAssistantId === m.id;
               const dt = formatDateTime(m.createdAt) ?? '';
+              const editedAt = formatDateTime(editedAtByMsgId[m.id]) ?? '';
               const perf = perfByMsgId[m.id];
               const allowThink = (deepThinkByMsgId[m.id] ?? effectiveDeepThink) && m.role === 'assistant';
               const thinkMeta = (() => {
@@ -1390,6 +1688,10 @@ export default function AssistantChatPage() {
                       <AvatarImage src={profileAvatarUrl} alt={displayUsername} />
                       <AvatarFallback className="bg-blue-500 text-white text-xs">{avatarFallbackText}</AvatarFallback>
                     </Avatar>
+                  ) : isSystem ? (
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-gray-500 text-white text-[10px]">
+                      SYS
+                    </div>
                   ) : (
                     <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center bg-green-600 text-white">
                       <Bot size={18} />
@@ -1405,12 +1707,13 @@ export default function AssistantChatPage() {
                       {isUser ? (
                         <>
                           {dt ? <span>{dt}</span> : null}
-                          {dt ? <span>·</span> : null}
+                          {editedAt ? <span>{dt ? '· ' : ''}编辑于 {editedAt}</span> : null}
+                          {dt || editedAt ? <span>·</span> : null}
                           <span>{displayUsername}</span>
                         </>
                       ) : (
                         <>
-                          <span>{m.model || 'Qwen3'}</span>
+                          <span>{isSystem ? '系统' : (m.model || 'Qwen3')}</span>
                           {dt ? <span>· {dt}</span> : null}
                         </>
                       )}
@@ -1420,9 +1723,13 @@ export default function AssistantChatPage() {
                     <div
                       className={
                         'min-w-0 max-w-full rounded-lg px-4 py-3 text-sm break-words overflow-x-auto shadow-sm ' +
-                        (isUser || isEditing ? 'whitespace-pre-wrap ' : 'whitespace-normal ') +
+                        (isUser || isEditing || isSystem ? 'whitespace-pre-wrap ' : 'whitespace-normal ') +
                         (isEditing ? 'w-full ' : '') +
-                        (isUser ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-900')
+                        (isUser
+                          ? 'bg-blue-600 text-white'
+                          : isSystem
+                            ? 'bg-gray-50 border border-gray-200 text-gray-800'
+                            : 'bg-white border border-gray-200 text-gray-900')
                       }
                     >
                       {isEditing ? (
@@ -1462,17 +1769,32 @@ export default function AssistantChatPage() {
                             const dur = formatDurationMs(elapsedMs);
                             return thinkingNow && !thinkPerf.endedAtMs ? `已用 ${dur}` : `用时 ${dur}`;
                           })();
+                          const citationAnchorPrefix = `cite-${m.id}-`;
                           const renderMd = (md: string) => (
                             <MarkdownPreview
-                              markdown={linkifyCitations(md)}
+                              markdown={linkifyCitations(md, citationAnchorPrefix)}
                               components={{
                                 a: ({ href, children, ...props }) => {
                                   const h = href ?? '';
-                                  if (h.startsWith('#cite-')) {
-                                    const n = Number(h.slice('#cite-'.length));
+                                  const targetPrefix = `#${citationAnchorPrefix}`;
+                                  if (h.startsWith(targetPrefix)) {
+                                    const n = Number(h.slice(targetPrefix.length));
                                     const cls = colorClassForCitationIndex(n);
                                     return (
-                                      <a href={h} className={`${cls} font-semibold hover:underline`} {...props}>
+                                      <a
+                                        href={h}
+                                        className={`${cls} font-semibold hover:underline`}
+                                        onClick={() => {
+                                          if (!Number.isFinite(n) || n <= 0) return;
+                                          setFocusedCitationByMsgId((prev) => ({ ...prev, [m.id]: n }));
+                                          window.setTimeout(() => {
+                                            setFocusedCitationByMsgId((prev) =>
+                                              prev[m.id] === n ? { ...prev, [m.id]: null } : prev
+                                            );
+                                          }, 1800);
+                                        }}
+                                        {...props}
+                                      >
                                         {children}
                                       </a>
                                     );
@@ -1537,17 +1859,17 @@ export default function AssistantChatPage() {
                           );
                         })()
                       ) : (
-                        m.content
+                        m.role === 'system' ? <MarkdownPreview markdown={m.content} /> : m.content
                       )}
                     </div>
 
                     <div className={`mt-1 px-1 text-xs text-gray-500 flex items-center gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-                      {!isUser ? <span className="whitespace-nowrap">{formatMsgTokensInfo(m)}</span> : null}
-                      {!isUser && thinkMeta ? <span className="whitespace-nowrap">{thinkMeta}</span> : null}
-                      {!isUser && firstTokenLatencyMs != null ? (
+                      {!isUser && !isSystem ? <span className="whitespace-nowrap">{formatMsgTokensInfo(m)}</span> : null}
+                      {!isUser && !isSystem && thinkMeta ? <span className="whitespace-nowrap">{thinkMeta}</span> : null}
+                      {!isUser && !isSystem && firstTokenLatencyMs != null ? (
                         <span className="whitespace-nowrap">首字 {Math.round(firstTokenLatencyMs)}ms</span>
                       ) : null}
-                      {!isUser && tokensOutSpeedTokPerSec != null ? (
+                      {!isUser && !isSystem && tokensOutSpeedTokPerSec != null ? (
                         <span className="whitespace-nowrap">速度 {tokensOutSpeedTokPerSec.toFixed(1)} tok/s</span>
                       ) : null}
 
@@ -1579,7 +1901,7 @@ export default function AssistantChatPage() {
                                   className="p-1.5 rounded-md text-gray-500 hover:text-blue-600 hover:bg-gray-100 transition-colors"
                                   title="重新发送"
                                   onClick={() =>
-                                    void handleResendEditedUserMessage(m.id, editing?.draft ?? '', messages[idx + 1]!.id)
+                                    void handleResendEditedUserMessage(m.id, editing?.draft ?? '', visibleMessages[idx + 1]!.id)
                                   }
                                 >
                                   <Send size={14} />
@@ -1619,7 +1941,7 @@ export default function AssistantChatPage() {
                                   type="button"
                                   className="p-1.5 rounded-md text-gray-500 hover:text-blue-600 hover:bg-gray-100 transition-colors"
                                   title="重新生成"
-                                  onClick={() => void handleRegenerate(Number(messages[idx - 1]!.id), m.id)}
+                                  onClick={() => void handleRegenerate(Number(visibleMessages[idx - 1]!.id), m.id)}
                                 >
                                   <RefreshCw size={14} />
                                 </button>
@@ -1648,14 +1970,36 @@ export default function AssistantChatPage() {
                       {isUser ? <span className="whitespace-nowrap">{formatMsgTokensInfo(m)}</span> : null}
                     </div>
 
+                    {isUser && !isEditing
+                      ? (() => {
+                          const st = branchAnchorsByMsgId[m.id];
+                          if (!st || st.branches.length <= 1) return null;
+                          const active = st.branches.find((b) => b.id === st.activeBranchId);
+                          return (
+                            <div className={`mt-1 px-1 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                              <button
+                                type="button"
+                                className="text-[11px] px-2 py-1 rounded border border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
+                                onClick={() => cycleBranch(m.id)}
+                              >
+                                分支：{active?.label ?? st.activeBranchId}（{st.branches.length}）
+                              </button>
+                            </div>
+                          );
+                        })()
+                      : null}
+
                     {/* Sources (Assistant only) */}
                     {(() => {
                       if (m.role !== 'assistant') return null;
                       if (!useRag) return null;
                       const cited = extractCitationIndexes(m.content || '');
+                      const citationTerms = buildCitationHighlightTerms(m.content || '');
+                      const focusedCitation = focusedCitationByMsgId[m.id];
                       if (cited.size === 0) return null;
                       const shownSources = (sourcesByMsgId[m.id] ?? []).filter((s) => cited.has(Number(s.index))).slice(0, 20);
                       if (shownSources.length === 0) return null;
+                      const citationAnchorPrefix = `cite-${m.id}-`;
                       return (
                       <div className="mt-2 w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
                         <div className="font-medium text-gray-900 mb-1">来源</div>
@@ -1663,11 +2007,17 @@ export default function AssistantChatPage() {
                           {shownSources.map((s) => {
                             const idx = Number(s.index);
                             const cls = colorClassForCitationIndex(idx);
+                            const sourceAnchorId = Number.isFinite(idx) ? `${citationAnchorPrefix}${idx}` : undefined;
+                            const highlightTerms = citationTerms.get(idx) ?? [];
+                            const snippet = String(s.snippet ?? '').trim();
+                            const snippetParts = buildHighlightedParts(snippet, highlightTerms);
+                            const highlighted = snippetParts.some((p) => p.hit);
+                            const isFocused = Number.isFinite(idx) && focusedCitation === idx;
                             return (
                               <div
                                 key={`${s.index}-${s.postId ?? 'x'}`}
-                                className="break-words"
-                                id={Number.isFinite(idx) ? `cite-${idx}` : undefined}
+                                className={`break-words rounded px-1 py-1 transition-colors ${isFocused ? 'bg-yellow-100 ring-1 ring-yellow-300' : ''}`}
+                                id={sourceAnchorId}
                               >
                                 <span className={`${cls} font-semibold`}>[{s.index}] </span>
                                 {s.title ? <span className="mr-2">{s.title}</span> : null}
@@ -1675,6 +2025,21 @@ export default function AssistantChatPage() {
                                   <a className="text-blue-600 hover:underline" href={s.url} target="_blank" rel="noreferrer">
                                     {s.url}
                                   </a>
+                                ) : null}
+                                {snippet ? (
+                                  <p className="mt-1 text-[12px] leading-5 text-gray-700">
+                                    {highlighted
+                                      ? snippetParts.map((part, partIdx) =>
+                                          part.hit ? (
+                                            <mark key={`${s.index}-${partIdx}`} className="bg-yellow-200 rounded px-0.5">
+                                              {part.text}
+                                            </mark>
+                                          ) : (
+                                            <span key={`${s.index}-${partIdx}`}>{part.text}</span>
+                                          )
+                                        )
+                                      : snippet}
+                                  </p>
                                 ) : null}
                               </div>
                             );
@@ -1715,7 +2080,7 @@ export default function AssistantChatPage() {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.pdf,.txt,.md,.html,.htm,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -1778,6 +2143,27 @@ export default function AssistantChatPage() {
           </div>
         ) : null}
 
+        {pendingFiles.length ? (
+          <div className="flex flex-wrap gap-2">
+            {pendingFiles.slice(0, MAX_CHAT_FILES).map((it) => (
+              <div
+                key={`${it.id}-${it.fileUrl}`}
+                className="inline-flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700"
+              >
+                <span className="max-w-[260px] truncate">{it.fileName}</span>
+                <button
+                  type="button"
+                  className="text-gray-600 hover:text-gray-900"
+                  onClick={() => setPendingFiles((prev) => prev.filter((x) => x.fileUrl !== it.fileUrl))}
+                  disabled={isStreaming}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-4">
             <label className="inline-flex items-center gap-2 text-sm text-gray-600">
@@ -1818,7 +2204,7 @@ export default function AssistantChatPage() {
               onClick={handlePickImages}
               disabled={isStreaming || imageUploading}
             >
-              {imageUploading ? '上传中…' : '添加图片'}
+              {imageUploading ? '上传中…' : '添加文件/图片'}
             </button>
             {isStreaming ? (
               <button

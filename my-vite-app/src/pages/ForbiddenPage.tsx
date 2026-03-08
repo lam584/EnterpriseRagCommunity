@@ -1,4 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 type FromLocationState = {
   from?: {
@@ -9,18 +10,16 @@ type FromLocationState = {
 export default function ForbiddenPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { setCurrentUser, setIsAuthenticated } = useAuth();
   const state = (location.state ?? null) as FromLocationState | null;
   const attemptedPath = state?.from?.pathname || location.pathname;
 
   const handleSwitchAccount = async () => {
     try {
       // Lazy import avoids circular deps if any and keeps this page lightweight.
-      const [{ logout }, { useAuth }] = await Promise.all([
+      const [{ logout }] = await Promise.all([
         import('../services/authService'),
-        import('../contexts/AuthContext')
       ]);
-
-      const { setCurrentUser, setIsAuthenticated } = useAuth();
 
       await logout();
 

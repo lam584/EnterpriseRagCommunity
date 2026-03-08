@@ -35,11 +35,26 @@ public class GenerationJobsEntity {
     @Column(name = "status", nullable = false, length = 16)
     private GenerationJobStatus status;
 
-    @Column(name = "prompt_id")
-    private Long promptId;
+    @Column(name = "prompt_code", length = 128)
+    private String promptCode;
 
-    @Column(name = "model", length = 64)
+    @Column(name = "model", length = 128)
     private String model;
+
+    @Column(name = "provider_id", length = 64)
+    private String providerId;
+
+    @Column(name = "temperature")
+    private Double temperature;
+
+    @Column(name = "top_p")
+    private Double topP;
+
+    @Column(name = "latency_ms")
+    private Long latencyMs;
+
+    @Column(name = "prompt_version")
+    private Integer promptVersion;
 
     @Convert(converter = com.example.EnterpriseRagCommunity.entity.converter.JsonConverter.class)
     @Column(name = "params", columnDefinition = "json")

@@ -1,11 +1,16 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 import type { SpringPage } from '../types/page';
 
-const API_BASE: string = ((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '';
+function getApiBase(): string {
+  const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: string }).__VITE_API_BASE_URL__;
+  if (typeof globalBase === 'string') return globalBase;
+  return (((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '') || '';
+}
 
 function apiUrl(path: string): string {
   if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
+  const base = getApiBase();
+  return base ? `${base}${path}` : path;
 }
 
 function getBackendMessage(data: unknown): string | undefined {
@@ -99,6 +104,59 @@ export type RagPostsTestQueryResponse = {
     authorId?: number | null;
     boardId?: number | null;
     title?: string | null;
+    contentTextPreview?: string | null;
+  }> | null;
+};
+
+export type RagFilesBuildResponse = {
+  totalFiles?: number;
+  totalChunks?: number;
+  successChunks?: number;
+  failedChunks?: number;
+  failedDocIds?: string[] | null;
+  failedDocs?: Array<{ docId?: string | null; error?: string | null }> | null;
+  fromFileAssetId?: number | null;
+  lastFileAssetId?: number | null;
+  fileBatchSize?: number | null;
+  chunkMaxChars?: number | null;
+  chunkOverlapChars?: number | null;
+  embeddingDims?: number | null;
+  embeddingModel?: string | null;
+  embeddingProviderId?: string | null;
+  cleared?: boolean | null;
+  clearError?: string | null;
+  tookMs?: number | null;
+};
+
+export type RagFilesTestQueryRequest = {
+  queryText: string;
+  topK?: number;
+  fileAssetId?: number;
+  postId?: number;
+  numCandidates?: number;
+  embeddingModel?: string;
+  embeddingProviderId?: string;
+};
+
+export type RagFilesTestQueryResponse = {
+  indexName?: string | null;
+  topK?: number | null;
+  fileAssetId?: number | null;
+  postId?: number | null;
+  embeddingDims?: number | null;
+  embeddingModel?: string | null;
+  embeddingProviderId?: string | null;
+  numCandidates?: number | null;
+  tookMs?: number | null;
+  hits?: Array<{
+    docId?: string | null;
+    score?: number | null;
+    fileAssetId?: number | null;
+    chunkIndex?: number | null;
+    ownerUserId?: number | null;
+    fileName?: string | null;
+    mimeType?: string | null;
+    postIds?: number[] | null;
     contentTextPreview?: string | null;
   }> | null;
 };
@@ -272,6 +330,100 @@ export async function adminSyncPostRagIndex(params: {
   return data as RagPostsBuildResponse;
 }
 
+export async function adminBuildFileRagIndex(params: {
+  id: number;
+  fromFileAssetId?: number;
+  fileBatchSize?: number;
+  chunkMaxChars?: number;
+  chunkOverlapChars?: number;
+  clear?: boolean;
+  embeddingModel?: string;
+  embeddingProviderId?: string;
+  embeddingDims?: number;
+}): Promise<RagFilesBuildResponse> {
+  const sp = new URLSearchParams();
+  if (params.fromFileAssetId) sp.set('fromFileAssetId', String(params.fromFileAssetId));
+  if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
+  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
+  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
+  if (params.clear) sp.set('clear', 'true');
+  if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
+  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
+  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+
+  const csrf = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/build/files?${sp.toString()}`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      ...(csrf ? { 'X-XSRF-TOKEN': csrf } : {}),
+    },
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '构建文件向量索引失败');
+  return data as RagFilesBuildResponse;
+}
+
+export async function adminRebuildFileRagIndex(params: {
+  id: number;
+  fileBatchSize?: number;
+  chunkMaxChars?: number;
+  chunkOverlapChars?: number;
+  embeddingModel?: string;
+  embeddingProviderId?: string;
+  embeddingDims?: number;
+}): Promise<RagFilesBuildResponse> {
+  const sp = new URLSearchParams();
+  if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
+  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
+  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
+  if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
+  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
+  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+
+  const csrf = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/rebuild/files?${sp.toString()}`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      ...(csrf ? { 'X-XSRF-TOKEN': csrf } : {}),
+    },
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '全量重建文件索引失败');
+  return data as RagFilesBuildResponse;
+}
+
+export async function adminSyncFileRagIndex(params: {
+  id: number;
+  fileBatchSize?: number;
+  chunkMaxChars?: number;
+  chunkOverlapChars?: number;
+  embeddingModel?: string;
+  embeddingProviderId?: string;
+  embeddingDims?: number;
+}): Promise<RagFilesBuildResponse> {
+  const sp = new URLSearchParams();
+  if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
+  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
+  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
+  if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
+  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
+  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+
+  const csrf = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/sync/files?${sp.toString()}`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      ...(csrf ? { 'X-XSRF-TOKEN': csrf } : {}),
+    },
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '增量同步文件索引失败');
+  return data as RagFilesBuildResponse;
+}
+
 export async function adminGetRagAutoSyncConfig(): Promise<RagAutoSyncConfigDTO> {
   const res = await fetch(apiUrl('/api/admin/retrieval/rag-sync/config'), {
     method: 'GET',
@@ -312,4 +464,20 @@ export async function adminTestQueryPostRagIndex(params: { id: number; payload: 
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '测试查询失败');
   return data as RagPostsTestQueryResponse;
+}
+
+export async function adminTestQueryFileRagIndex(params: { id: number; payload: RagFilesTestQueryRequest }): Promise<RagFilesTestQueryResponse> {
+  const csrf = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/test-query/files`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrf ? { 'X-XSRF-TOKEN': csrf } : {}),
+    },
+    body: JSON.stringify(params.payload),
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '测试查询文件索引失败');
+  return data as RagFilesTestQueryResponse;
 }

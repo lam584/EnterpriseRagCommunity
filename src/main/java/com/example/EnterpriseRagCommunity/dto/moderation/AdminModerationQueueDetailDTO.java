@@ -29,12 +29,16 @@ public class AdminModerationQueueDetailDTO {
     private LocalDateTime updatedAt;
 
     private List<String> riskTags;
+    private List<AdminModerationQueueRiskTagItemDTO> riskTagItems;
 
     private AdminModerationQueueItemDTO.Summary summary;
+
+    private AdminModerationQueueItemDTO.ChunkProgress chunkProgress;
 
     /** 详情内容：根据 contentType 选择 post/comment */
     private PostContent post;
     private CommentContent comment;
+    private ProfileContent profile;
 
     private List<ReportInfo> reports;
 
@@ -82,6 +86,30 @@ public class AdminModerationQueueDetailDTO {
         private Integer width;
         private Integer height;
         private LocalDateTime createdAt;
+
+        private String extractStatus;
+        private Integer extractedTextChars;
+        private String extractedTextSnippet;
+        private String extractedMetadataJsonSnippet;
+        private String extractionErrorMessage;
+        private LocalDateTime extractionUpdatedAt;
+    }
+
+    @Data
+    public static class ProfileContent {
+        private Long id;
+        private String publicUsername;
+        private String publicAvatarUrl;
+        private String publicBio;
+        private String publicLocation;
+        private String publicWebsite;
+
+        private String pendingUsername;
+        private String pendingAvatarUrl;
+        private String pendingBio;
+        private String pendingLocation;
+        private String pendingWebsite;
+        private String pendingSubmittedAt;
     }
 }
 

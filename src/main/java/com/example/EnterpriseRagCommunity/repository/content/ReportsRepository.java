@@ -20,7 +20,13 @@ import com.example.EnterpriseRagCommunity.entity.content.enums.ReportTargetType;
 public interface ReportsRepository extends JpaRepository<ReportsEntity, Long>, JpaSpecificationExecutor<ReportsEntity> {
     Page<ReportsEntity> findByTargetTypeAndTargetId(ReportTargetType targetType, Long targetId, Pageable pageable);
     List<ReportsEntity> findAllByTargetTypeAndTargetIdAndStatus(ReportTargetType targetType, Long targetId, ReportStatus status);
+        List<ReportsEntity> findAllByTargetTypeAndTargetIdAndCreatedAtAfter(ReportTargetType targetType, Long targetId, LocalDateTime after);
     long countByTargetTypeAndTargetId(ReportTargetType targetType, Long targetId);
+    long countByTargetTypeAndTargetIdAndCreatedAtAfter(ReportTargetType targetType, Long targetId, LocalDateTime after);
+    @Query("select count(distinct r.reporterId) from ReportsEntity r where r.targetType = :targetType and r.targetId = :targetId and r.createdAt >= :after")
+    long countDistinctReporterIdByTargetTypeAndTargetIdAndCreatedAtAfter(@Param("targetType") ReportTargetType targetType,
+                                                                         @Param("targetId") Long targetId,
+                                                                         @Param("after") LocalDateTime after);
     Page<ReportsEntity> findByStatus(ReportStatus status, Pageable pageable);
     Page<ReportsEntity> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end, Pageable pageable);
     Page<ReportsEntity> findByHandledById(Long handledById, Pageable pageable);

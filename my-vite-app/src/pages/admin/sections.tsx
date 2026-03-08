@@ -356,8 +356,10 @@ export const ContentMgmtPage: React.FC = () => (
     items={[
       { id: 'board-management', label: '版块管理' },
       { id: 'post', label: '帖子管理' },
+      { id: 'post-files', label: '帖子文件解析' },
       { id: 'comment', label: '评论管理' },
       { id: 'tags', label: '标签体系管理' },
+      { id: 'formats', label: '格式管理' },
     ]}
   />
 );
@@ -370,9 +372,10 @@ export const ReviewCenterPage: React.FC = () => (
     items={[
       { id: 'queue', label: '审核队列面板' },
       { id: 'rules', label: '规则过滤层' },
-      { id: 'embed', label: '嵌入相似检测' },
+            { id: 'embed', label: '嵌入相似检测（VEC）控制台' },
       { id: 'llm', label: 'LLM 审核层' },
-      { id: 'fallback', label: '置信回退机制' },
+      { id: 'fallback', label: '审核策略配置（Policy）' },
+      { id: 'chunk-review', label: '分片审核配置' },
       { id: 'logs', label: '审核日志与追溯' },
       { id: 'risk-tags', label: '风险标签管理' },
     ]}
@@ -414,6 +417,7 @@ export const MetricsMonitorPage: React.FC = () => (
       { id: 'global-logs', label: '全局日志中心' },
       { id: 'cost', label: '审核成本分析' },
       { id: 'metrics', label: '指标采集层' },
+      { id: 'circuit-breaker', label: '内容安全熔断' },
       { id: 'abtest', label: '实验对比脚本' },
       { id: 'label-quality', label: '标签质量评估工具' },
     ]}
@@ -436,8 +440,10 @@ export const LlmConfigPage: React.FC = () => (
   <AdminSection
     title="LLM 配置"
     items={[
-      { id: 'ai-providers', label: '模型来源' },
+      { id: 'ai-providers', label: '模型提供商' },
       { id: 'portal-chat', label: '前台对话配置' },
+      { id: 'chat-context', label: '对话上下文治理' },
+      { id: 'image-storage', label: '图片存储管理' },
       { id: 'llm-routing-config', label: '负载均衡配置' },
     ]}
   />

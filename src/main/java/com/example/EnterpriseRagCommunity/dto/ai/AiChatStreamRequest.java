@@ -53,6 +53,8 @@ public class AiChatStreamRequest {
 
     private List<ImageInput> images;
 
+    private List<FileInput> files;
+
     @Data
     public static class ImageInput {
         private Long fileAssetId;
@@ -62,5 +64,19 @@ public class AiChatStreamRequest {
 
         @Size(max = 128)
         private String mimeType;
+    }
+
+    @Data
+    public static class FileInput {
+        private Long fileAssetId;
+
+        @Size(max = 2048)
+        private String url;
+
+        @Size(max = 128)
+        private String mimeType;
+
+        @Size(max = 255)
+        private String fileName;
     }
 }

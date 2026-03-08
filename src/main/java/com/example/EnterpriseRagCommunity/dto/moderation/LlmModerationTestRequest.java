@@ -7,9 +7,11 @@ import lombok.Data;
 @Data
 public class LlmModerationTestRequest {
     private Long queueId;
+    private String reviewStage; // default | reported | appeal
     private String text;
     private List<ImageInput> images;
     private LlmModerationConfigOverrideDTO configOverride;
+    private Boolean useQueue;
 
     @Data
     public static class ImageInput {
@@ -22,23 +24,9 @@ public class LlmModerationTestRequest {
     public static class LlmModerationConfigOverrideDTO {
         private String promptTemplate;
         private String visionPromptTemplate;
-        private String model;
-        private String providerId;
-        private String visionModel;
-        private String visionProviderId;
-        private Double temperature;
-        private Double topP;
-        private Double visionTemperature;
-        private Double visionTopP;
-        private Integer maxTokens;
-        private Integer visionMaxTokens;
-        private Boolean enableThinking;
-        private Boolean visionEnableThinking;
-        private Double threshold;
+        private String judgePromptTemplate;
+        private String systemPrompt;
+        private String visionSystemPrompt;
         private Boolean autoRun;
-
-        private Integer maxConcurrent;
-        private Integer minDelayMs;
-        private Double qps;
     }
 }

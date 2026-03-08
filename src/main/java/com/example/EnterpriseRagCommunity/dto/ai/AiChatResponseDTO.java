@@ -22,5 +22,6 @@ public class AiChatResponseDTO {
         private Double score;
         private String title;
         private String url;
+        private String snippet;
     }
 }

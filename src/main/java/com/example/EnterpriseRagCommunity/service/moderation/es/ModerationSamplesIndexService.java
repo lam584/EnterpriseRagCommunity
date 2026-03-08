@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.service.es.ElasticsearchIkAnalyzerProbe;
+import com.example.EnterpriseRagCommunity.service.safety.DependencyCircuitBreakerService;
+import com.example.EnterpriseRagCommunity.service.safety.DependencyIsolationGuard;
 
 import lombok.RequiredArgsConstructor;
 
@@ -29,11 +31,16 @@ public class ModerationSamplesIndexService {
     private final ModerationSamplesIndexConfigService indexConfigService;
     private final ModerationSimilarityConfigRepository similarityConfigRepository;
     private final ElasticsearchIkAnalyzerProbe ikProbe;
+    private final DependencyIsolationGuard dependencyIsolationGuard;
+    private final DependencyCircuitBreakerService dependencyCircuitBreakerService;
     private final AtomicBoolean ikDisabledWarned = new AtomicBoolean(false);
 
     public boolean indexExists() {
-        IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
-        return ops.exists();
+        dependencyIsolationGuard.requireElasticsearchAllowed();
+        return dependencyCircuitBreakerService.run("ES", () -> {
+            IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
+            return ops.exists();
+        });
     }
 
     public String getIndexName() {
@@ -41,26 +48,36 @@ public class ModerationSamplesIndexService {
     }
 
     public Integer getEmbeddingDimsInMapping() {
-        IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
-        if (!ops.exists()) return null;
-        return readEmbeddingDims(ops);
+        dependencyIsolationGuard.requireElasticsearchAllowed();
+        return dependencyCircuitBreakerService.run("ES", () -> {
+            IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
+            if (!ops.exists()) return null;
+            return readEmbeddingDims(ops);
+        });
     }
 
     public Long countDocs() {
+        dependencyIsolationGuard.requireElasticsearchAllowed();
         try {
-            IndexCoordinates idx = IndexCoordinates.of(indexConfigService.getIndexNameOrDefault());
-            return template.count(Query.findAll(), idx);
+            return dependencyCircuitBreakerService.run("ES", () -> {
+                IndexCoordinates idx = IndexCoordinates.of(indexConfigService.getIndexNameOrDefault());
+                return template.count(Query.findAll(), idx);
+            });
         } catch (Exception e) {
             return null;
         }
     }
 
     public void recreateIndex(int embeddingDims) {
-        IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
-        if (ops.exists()) {
-            ops.delete();
-        }
-        tryCreate(ops, resolveIkEnabled(), embeddingDims);
+        dependencyIsolationGuard.requireElasticsearchAllowed();
+        dependencyCircuitBreakerService.run("ES", () -> {
+            IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
+            if (ops.exists()) {
+                ops.delete();
+            }
+            tryCreate(ops, resolveIkEnabled(), embeddingDims);
+            return null;
+        });
     }
 
     /**
@@ -79,19 +96,23 @@ public class ModerationSamplesIndexService {
      * we can infer dims from the embedding result and still bootstrap ES mapping correctly.
      */
     public void ensureIndex(int embeddingDims) {
-        IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
-        if (ops.exists()) {
-            if (embeddingDims > 0) {
-                Integer existingDims = readEmbeddingDims(ops);
-                if (existingDims == null || existingDims != embeddingDims) {
-                    ops.delete();
-                    tryCreate(ops, resolveIkEnabled(), embeddingDims);
+        dependencyIsolationGuard.requireElasticsearchAllowed();
+        dependencyCircuitBreakerService.run("ES", () -> {
+            IndexOperations ops = template.indexOps(IndexCoordinates.of(indexConfigService.getIndexNameOrDefault()));
+            if (ops.exists()) {
+                if (embeddingDims > 0) {
+                    Integer existingDims = readEmbeddingDims(ops);
+                    if (existingDims == null || existingDims != embeddingDims) {
+                        ops.delete();
+                        tryCreate(ops, resolveIkEnabled(), embeddingDims);
+                    }
                 }
+                return null;
             }
-            return;
-        }
 
-        tryCreate(ops, resolveIkEnabled(), embeddingDims);
+            tryCreate(ops, resolveIkEnabled(), embeddingDims);
+            return null;
+        });
     }
 
     private boolean resolveIkEnabled() {

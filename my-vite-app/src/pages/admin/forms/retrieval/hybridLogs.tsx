@@ -121,7 +121,7 @@ const HybridLogsSection: React.FC<Props> = ({
                     <tr key={h.id} className="border-t">
                       <td className="px-2 py-2">{h.rank ?? '—'}</td>
                       <td className="px-2 py-2">{h.hitType ?? '—'}</td>
-                      <td className="px-2 py-2">{h.documentId ?? '—'}</td>
+                      <td className="px-2 py-2">{h.postId ?? '—'}</td>
                       <td className="px-2 py-2">{h.chunkId ?? '—'}</td>
                       <td className="px-2 py-2">{h.score ?? '—'}</td>
                     </tr>

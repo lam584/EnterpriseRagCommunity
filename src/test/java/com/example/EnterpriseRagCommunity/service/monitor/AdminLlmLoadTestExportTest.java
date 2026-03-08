@@ -6,6 +6,7 @@ import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmPriceConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.LlmLoadTestRunDetailRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.LlmLoadTestRunHistoryRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.TokenCountService;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmService;
@@ -78,11 +79,12 @@ public class AdminLlmLoadTestExportTest {
                 mock(LlmModelRepository.class),
                 mock(LlmPriceConfigRepository.class),
                 detailRepo,
-                historyRepo
+                historyRepo,
+                mock(PromptsRepository.class)
         );
 
         ResponseEntity<StreamingResponseBody> res = svc.export(runId, "json");
-        assertEquals(200, res.getStatusCodeValue());
+        assertEquals(200, res.getStatusCode().value());
         assertNotNull(res.getBody());
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -142,11 +144,12 @@ public class AdminLlmLoadTestExportTest {
                 mock(LlmModelRepository.class),
                 mock(LlmPriceConfigRepository.class),
                 detailRepo,
-                historyRepo
+                historyRepo,
+                mock(PromptsRepository.class)
         );
 
         ResponseEntity<StreamingResponseBody> res = svc.export(runId, "csv");
-        assertEquals(200, res.getStatusCodeValue());
+        assertEquals(200, res.getStatusCode().value());
         assertNotNull(res.getBody());
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();

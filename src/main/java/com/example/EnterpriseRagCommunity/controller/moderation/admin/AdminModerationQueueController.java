@@ -3,6 +3,9 @@ package com.example.EnterpriseRagCommunity.controller.moderation.admin;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueActionRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueBackfillRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueBackfillResponse;
+import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationChunkProgressDTO;
+import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueBatchRequeueRequest;
+import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueBatchRequeueResponse;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueDetailDTO;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueItemDTO;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueRiskTagsRequest;
@@ -11,6 +14,7 @@ import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkReviewService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
@@ -28,6 +32,9 @@ public class AdminModerationQueueController {
 
     @Autowired
     private AdminModerationQueueService adminModerationQueueService;
+
+    @Autowired
+    private ModerationChunkReviewService moderationChunkReviewService;
 
     @GetMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or (#boardId != null and @boardAcl.canModerateBoard(#boardId))")
@@ -72,6 +79,16 @@ public class AdminModerationQueueController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO getDetail(@PathVariable("id") Long id) {
         return adminModerationQueueService.getDetail(id);
+    }
+
+    @GetMapping("/{id}/chunk-progress")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#id)")
+    public AdminModerationChunkProgressDTO getChunkProgress(@PathVariable("id") Long id,
+                                                            @RequestParam(value = "includeChunks", defaultValue = "0") int includeChunks,
+                                                            @RequestParam(value = "limit", defaultValue = "80") int limit) {
+        boolean inc = includeChunks == 1;
+        int lim = Math.max(0, Math.min(limit, 300));
+        return moderationChunkReviewService.getProgress(id, inc, lim);
     }
 
     @GetMapping("/{id}/risk-tags")
@@ -138,7 +155,23 @@ public class AdminModerationQueueController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
     public AdminModerationQueueDetailDTO requeue(@PathVariable("id") Long id,
                                                 @Valid @RequestBody AdminModerationQueueActionRequest req) {
-        return adminModerationQueueService.requeueToAuto(id, req.getReason());
+        return adminModerationQueueService.requeueToAuto(id, req.getReason(), req.getReviewStage());
+    }
+
+    @PostMapping("/{id}/ban-user")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
+    public AdminModerationQueueDetailDTO banUser(@PathVariable("id") Long id,
+                                                 @Valid @RequestBody AdminModerationQueueActionRequest req) {
+        return adminModerationQueueService.banUser(id, req.getReason());
+    }
+
+    @PostMapping("/batch/requeue")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
+    public AdminModerationQueueBatchRequeueResponse batchRequeue(@RequestBody(required = false) AdminModerationQueueBatchRequeueRequest req) {
+        List<Long> ids = req == null ? null : req.getIds();
+        String reason = req == null ? null : req.getReason();
+        String reviewStage = req == null ? null : req.getReviewStage();
+        return adminModerationQueueService.batchRequeueToAuto(ids, reason, reviewStage);
     }
 
     @PostMapping("/{id}/to-human")

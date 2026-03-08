@@ -61,9 +61,6 @@ public class ModerationPipelineRunEntity {
     @Column(name = "llm_model", length = 128)
     private String llmModel;
 
-    @Column(name = "llm_threshold", precision = 6, scale = 4)
-    private BigDecimal llmThreshold;
-
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 }

@@ -10,6 +10,7 @@ import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepos
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesSyncService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexBuildService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetIndexBuildService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexBuildService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -31,6 +32,7 @@ public class InitialAdminIndexBootstrapService {
     private final RetrievalRagProperties ragProps;
     private final RagPostIndexBuildService ragPostIndexBuildService;
     private final RagCommentIndexBuildService ragCommentIndexBuildService;
+    private final RagFileAssetIndexBuildService ragFileAssetIndexBuildService;
 
     private final ModerationSamplesSyncService moderationSamplesSyncService;
     private final ModerationSimilarityConfigRepository moderationSimilarityConfigRepository;
@@ -44,52 +46,37 @@ public class InitialAdminIndexBootstrapService {
     }
 
     private void ensureDefaultRagVectorIndexRecordsIfEmpty() {
-        List<VectorIndicesEntity> existing = vectorIndicesRepository.findByProvider(VectorIndexProvider.OTHER);
-        if (existing != null && !existing.isEmpty()) {
-            return;
-        }
-
         String indexName = toNonBlank(ragProps.getEs().getIndex());
         if (indexName == null) return;
 
         int dims = ragProps.getEs().getEmbeddingDims();
         if (dims <= 0) dims = 1024;
 
+        ensureDefaultVectorIndex(indexName, dims, "POST", 800, 80, "Seeded default post vector_indices record");
+        ensureDefaultVectorIndex(indexName + "_comments", dims, "COMMENT", 800, 80, "Seeded default comment vector_indices record");
+        ensureDefaultVectorIndex("rag_file_assets_v1", dims, "FILE_ASSET", 1200, 120, "Seeded default file vector_indices record");
+    }
+
+    private void ensureDefaultVectorIndex(String collectionName, int dims, String sourceType, int chunkMaxChars, int chunkOverlapChars, String logPrefix) {
+        String cname = toNonBlank(collectionName);
+        if (cname == null) return;
+        if (vectorIndicesRepository.existsByProviderAndCollectionName(VectorIndexProvider.OTHER, cname)) return;
+
         VectorIndicesEntity e = new VectorIndicesEntity();
         e.setProvider(VectorIndexProvider.OTHER);
-        e.setCollectionName(indexName);
+        e.setCollectionName(cname);
         e.setMetric("cosine");
         e.setDim(dims);
         e.setStatus(VectorIndexStatus.READY);
 
         Map<String, Object> meta = new LinkedHashMap<>();
-        meta.put("sourceType", "POST");
-        meta.put("embeddingModel", toNonBlank(ragProps.getEs().getEmbeddingModel()));
-        meta.put("defaultChunkMaxChars", 800);
-        meta.put("defaultChunkOverlapChars", 80);
+        meta.put("sourceType", sourceType);
+        meta.put("defaultChunkMaxChars", chunkMaxChars);
+        meta.put("defaultChunkOverlapChars", chunkOverlapChars);
         e.setMetadata(meta);
 
         vectorIndicesRepository.save(e);
-        log.info("Seeded default vector_indices record. provider={}, collectionName={}, dim={}",
-                e.getProvider(), e.getCollectionName(), e.getDim());
-
-        VectorIndicesEntity c = new VectorIndicesEntity();
-        c.setProvider(VectorIndexProvider.OTHER);
-        c.setCollectionName(indexName + "_comments");
-        c.setMetric("cosine");
-        c.setDim(dims);
-        c.setStatus(VectorIndexStatus.READY);
-
-        Map<String, Object> meta2 = new LinkedHashMap<>();
-        meta2.put("sourceType", "COMMENT");
-        meta2.put("embeddingModel", toNonBlank(ragProps.getEs().getEmbeddingModel()));
-        meta2.put("defaultChunkMaxChars", 800);
-        meta2.put("defaultChunkOverlapChars", 80);
-        c.setMetadata(meta2);
-
-        vectorIndicesRepository.save(c);
-        log.info("Seeded default comment vector_indices record. provider={}, collectionName={}, dim={}",
-                c.getProvider(), c.getCollectionName(), c.getDim());
+        log.info("{}. provider={}, collectionName={}, dim={}", logPrefix, e.getProvider(), e.getCollectionName(), e.getDim());
     }
 
     private void ensureModerationConfigRecord(Long initialAdminUserId) {
@@ -187,6 +174,13 @@ public class InitialAdminIndexBootstrapService {
                     log.info("Rebuilt RAG comment index. index={}, vectorIndexId={}", indexName, vi.getId());
                 } catch (Exception ex) {
                     log.warn("Rebuild RAG comment index failed. index={}, vectorIndexId={}, err={}", indexName, vi.getId(), ex.getMessage());
+                }
+            } else if ("FILE_ASSET".equalsIgnoreCase(sourceType)) {
+                try {
+                    ragFileAssetIndexBuildService.rebuildFiles(vi.getId(), null, null, null, null, null, vi.getDim());
+                    log.info("Rebuilt RAG file index. index={}, vectorIndexId={}", indexName, vi.getId());
+                } catch (Exception ex) {
+                    log.warn("Rebuild RAG file index failed. index={}, vectorIndexId={}, err={}", indexName, vi.getId(), ex.getMessage());
                 }
             } else {
                 try {

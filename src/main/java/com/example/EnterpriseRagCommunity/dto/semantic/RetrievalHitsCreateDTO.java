@@ -22,8 +22,8 @@ public class RetrievalHitsCreateDTO {
     @NotNull
     private RetrievalHitType hitType; // hit_type ENUM NOT NULL
 
-    @ApiModelProperty(value = "文档ID，可为空")
-    private Long documentId; // document_id BIGINT NULL
+    @ApiModelProperty(value = "帖子ID，可为空")
+    private Long postId; // post_id BIGINT NULL
 
     @ApiModelProperty(value = "分片ID，可为空")
     private Long chunkId; // chunk_id BIGINT NULL

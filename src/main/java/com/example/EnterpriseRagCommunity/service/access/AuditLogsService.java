@@ -28,6 +28,8 @@ public class AuditLogsService {
 
     private final AuditLogsRepository auditLogsRepository;
 
+    private static final int MAX_LOG_PAGE_SIZE = 20_000;
+
     @Transactional(readOnly = true)
     public Page<AuditLogsViewDTO> query(
             Integer page,
@@ -46,7 +48,7 @@ public class AuditLogsService {
             String sort
     ) {
         int safePage = page == null ? 1 : Math.max(page, 1);
-        int safePageSize = pageSize == null ? 20 : Math.min(Math.max(pageSize, 1), 200);
+        int safePageSize = pageSize == null ? 20 : Math.min(Math.max(pageSize, 1), MAX_LOG_PAGE_SIZE);
 
         Pageable pageable = PageRequest.of(safePage - 1, safePageSize, parseSort(sort));
 
@@ -64,6 +66,9 @@ public class AuditLogsService {
             }
 
             List<Predicate> ps = new ArrayList<>();
+
+            // Only show non-archived logs by default
+            ps.add(cb.isNull(root.get("archivedAt")));
 
             if (actorId != null) {
                 ps.add(cb.equal(root.get("actorUserId"), actorId));

@@ -10,6 +10,6 @@ import org.springframework.context.annotation.Configuration;
 public class LlmQueueProperties {
     private int maxConcurrent = 4;
     private int maxQueueSize = 5000;
-    private int keepCompleted = 2000;
+    private int keepCompleted = 200;
     private int historyKeepDays = 30;
 }

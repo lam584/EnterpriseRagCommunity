@@ -17,4 +17,8 @@ public interface ModerationActionsRepository extends JpaRepository<ModerationAct
 
     // 时间范围
     List<ModerationActionsEntity> findAllByCreatedAtBetween(LocalDateTime start, LocalDateTime end);
+
+    long countByQueueIdAndReasonAndCreatedAtAfter(Long queueId, String reason, LocalDateTime createdAt);
+
+    long countByQueueIdAndReasonAndCreatedAtBetween(Long queueId, String reason, LocalDateTime start, LocalDateTime end);
 }

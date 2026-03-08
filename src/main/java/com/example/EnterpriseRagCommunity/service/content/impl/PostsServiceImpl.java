@@ -25,36 +25,39 @@ import com.example.EnterpriseRagCommunity.dto.content.PostsUpdateDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.content.PostAttachmentsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
-import com.example.EnterpriseRagCommunity.entity.content.TagsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
-import com.example.EnterpriseRagCommunity.entity.content.enums.TagType;
-import com.example.EnterpriseRagCommunity.entity.moderation.RiskLabelingEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
-import com.example.EnterpriseRagCommunity.entity.moderation.enums.Source;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity;
 import com.example.EnterpriseRagCommunity.entity.monitor.enums.FileAssetStatus;
 import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.TagsRepository;
-import com.example.EnterpriseRagCommunity.repository.moderation.RiskLabelingRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
-import com.example.EnterpriseRagCommunity.service.ai.AiPostRiskTagService;
 import com.example.EnterpriseRagCommunity.service.ai.AiPostSummaryTriggerService;
 import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
+import com.example.EnterpriseRagCommunity.service.content.PostComposeConfigService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
 import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetIndexAsyncService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexVisibilitySyncService;
+import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexStatus;
 
 import jakarta.transaction.Transactional;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class PostsServiceImpl implements PostsService {
@@ -84,16 +87,10 @@ public class PostsServiceImpl implements PostsService {
     private ModerationLlmAutoRunner moderationLlmAutoRunner;
 
     @Autowired
-    private AiPostRiskTagService aiPostRiskTagService;
-
-    @Autowired
     private AiPostSummaryTriggerService aiPostSummaryTriggerService;
 
     @Autowired
     private TagsRepository tagsRepository;
-
-    @Autowired
-    private RiskLabelingRepository riskLabelingRepository;
 
     @Autowired
     private RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
@@ -102,10 +99,22 @@ public class PostsServiceImpl implements PostsService {
     private HybridRagRetrievalService hybridRagRetrievalService;
 
     @Autowired
+    private VectorIndicesRepository vectorIndicesRepository;
+
+    @Autowired
+    private RagFileAssetIndexAsyncService ragFileAssetIndexAsyncService;
+
+    @Autowired
     private BoardAccessControlService boardAccessControlService;
 
     @Autowired
     private AuditLogWriter auditLogWriter;
+
+    @Autowired
+    private PostComposeConfigService postComposeConfigService;
+
+    @Autowired
+    private ModerationQueueRepository moderationQueueRepository;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -136,70 +145,60 @@ public class PostsServiceImpl implements PostsService {
                 throw new AccessDeniedException("无权在该版块发帖");
             }
 
+            var composeCfg = postComposeConfigService.getConfig();
+
             PostsEntity post = new PostsEntity();
             post.setTenantId(null);
             post.setBoardId(boardId);
             post.setAuthorId(me);
-            post.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
+            String title = dto.getTitle() == null ? "" : dto.getTitle().trim();
+            if (Boolean.TRUE.equals(composeCfg.getRequireTitle()) && title.isBlank()) {
+                throw new IllegalArgumentException("标题不能为空");
+            }
+            if (title.length() > 191) {
+                throw new IllegalArgumentException("标题过长（最多 191 字符）");
+            }
+            post.setTitle(title);
             post.setContent(dto.getContent());
+            int contentLen = dto.getContent() == null ? 0 : dto.getContent().length();
+            Integer maxContentChars = composeCfg.getMaxContentChars();
+            if (maxContentChars != null && maxContentChars > 0 && contentLen > maxContentChars) {
+                throw new IllegalArgumentException("内容过长（最多 " + maxContentChars + " 字符）");
+            }
+            post.setContentLength(contentLen);
             post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
 
             post.setStatus(PostStatus.PENDING);
             post.setPublishedAt(null);
 
             post.setIsDeleted(false);
-            post.setMetadata(dto.getMetadata());
+            List<String> tags = resolveTags(dto.getTags(), dto.getMetadata());
+            if (Boolean.TRUE.equals(composeCfg.getRequireTags()) && tags.isEmpty()) {
+                throw new IllegalArgumentException("标签不能为空");
+            }
+            Map<String, Object> mergedMetadata = mergeMetadataWithTags(dto.getMetadata(), dto.getTags());
+            post.setMetadata(mergedMetadata);
+
+            Integer threshold = composeCfg.getChunkThresholdChars();
+            boolean isChunked = threshold != null && threshold > 0 && contentLen > threshold;
+            post.setIsChunkedReview(isChunked);
+            post.setChunkThresholdChars(isChunked ? threshold : null);
+            post.setChunkingStrategy(isChunked ? "CHARS" : null);
 
             post = postsRepository.save(post);
 
-            try {
-                List<String> suggested = aiPostRiskTagService.suggestRiskTags(post.getTitle(), post.getContent());
-                if (suggested != null && !suggested.isEmpty()) {
-                    for (String raw : suggested) {
-                        String slug = normalizeRiskTagSlug(raw);
-                        if (slug == null || slug.isBlank()) continue;
-
-                        TagsEntity tag = tagsRepository.findByTenantIdAndTypeAndSlug(1L, TagType.RISK, slug).orElse(null);
-                        if (tag == null) {
-                            TagsEntity created = new TagsEntity();
-                            created.setTenantId(1L);
-                            created.setType(TagType.RISK);
-                            created.setName(normalizeRiskTagName(raw, slug));
-                            created.setSlug(slug);
-                            created.setDescription(null);
-                            created.setIsSystem(false);
-                            created.setIsActive(true);
-                            created.setCreatedAt(LocalDateTime.now());
-                            tag = tagsRepository.save(created);
-                        }
-
-                        if (riskLabelingRepository.findByTargetTypeAndTargetIdAndTagIdAndSource(ContentType.POST, post.getId(), tag.getId(), Source.LLM).isEmpty()) {
-                            RiskLabelingEntity rl = new RiskLabelingEntity();
-                            rl.setTargetType(ContentType.POST);
-                            rl.setTargetId(post.getId());
-                            rl.setTagId(tag.getId());
-                            rl.setSource(Source.LLM);
-                            rl.setConfidence(null);
-                            rl.setCreatedAt(LocalDateTime.now());
-                            riskLabelingRepository.save(rl);
-                        }
-                    }
-                }
-            } catch (Exception ignore) {
-            }
-
-            adminModerationQueueService.ensureEnqueuedPost(post.getId());
-
-            try {
-                moderationRuleAutoRunner.runOnce();
-                moderationVecAutoRunner.runOnce();
-                moderationLlmAutoRunner.runOnce();
-            } catch (Exception ignore) {
-            }
-
             List<Long> attachmentIds = dto.getAttachmentIds();
             if (attachmentIds != null && !attachmentIds.isEmpty()) {
+                int uniqCount = new LinkedHashSet<>(attachmentIds).size();
+                Integer maxAttachments = composeCfg.getMaxAttachments();
+                boolean bypass = isChunked && Boolean.TRUE.equals(composeCfg.getBypassAttachmentLimitWhenChunked());
+                if (!bypass && maxAttachments != null && maxAttachments > 0 && uniqCount > maxAttachments) {
+                    throw new IllegalArgumentException("附件数量超限（最多 " + maxAttachments + " 个）");
+                }
+            }
+            if (attachmentIds != null && !attachmentIds.isEmpty()) {
                 LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
+                List<Long> syncedAttachmentIds = new ArrayList<>();
                 for (Long id : uniq) {
                     if (id == null) continue;
                     FileAssetsEntity fa = fileAssetsRepository.findById(id)
@@ -235,14 +234,15 @@ public class PostsServiceImpl implements PostsService {
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();
                     pa.setPostId(post.getId());
                     pa.setFileAssetId(fa.getId());
-                    pa.setUrl(fa.getUrl());
-                    pa.setFileName(fileName);
-                    pa.setMimeType(fa.getMimeType());
-                    pa.setSizeBytes(fa.getSizeBytes());
                     pa.setCreatedAt(LocalDateTime.now());
                     postAttachmentsRepository.save(pa);
+                    syncedAttachmentIds.add(fa.getId());
                 }
+                scheduleFileAssetRagSyncAfterCommit(syncedAttachmentIds);
             }
+
+            adminModerationQueueService.ensureEnqueuedPost(post.getId());
+            scheduleModerationAutoRunAfterCommit();
 
             try {
                 aiPostSummaryTriggerService.scheduleGenerateAfterCommit(post.getId(), me);
@@ -258,7 +258,7 @@ public class PostsServiceImpl implements PostsService {
                     AuditResult.SUCCESS,
                     "发帖",
                     null,
-                    Map.of(
+                    mapOfNonNull(
                             "boardId", boardId,
                             "title", safeText(post.getTitle(), 128),
                             "status", post.getStatus() == null ? null : post.getStatus().name()
@@ -281,26 +281,113 @@ public class PostsServiceImpl implements PostsService {
         }
     }
 
-    private static String normalizeRiskTagName(String raw, String slug) {
-        String n = raw == null ? "" : raw.trim();
-        if (n.isBlank()) n = slug;
-        n = n.replaceAll("[\\r\\n\\t]+", " ");
-        if (n.length() > 64) n = n.substring(0, 64);
-        return n.trim();
+    private void scheduleModerationAutoRunAfterCommit() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        moderationRuleAutoRunner.runOnce();
+                    } catch (Exception ignore) {
+                    }
+                    try {
+                        moderationVecAutoRunner.runOnce();
+                    } catch (Exception ignore) {
+                    }
+                    try {
+                        moderationLlmAutoRunner.runOnce();
+                    } catch (Exception ignore) {
+                    }
+                }
+            });
+            return;
+        }
+        try {
+            moderationRuleAutoRunner.runOnce();
+        } catch (Exception ignore) {
+        }
+        try {
+            moderationVecAutoRunner.runOnce();
+        } catch (Exception ignore) {
+        }
+        try {
+            moderationLlmAutoRunner.runOnce();
+        } catch (Exception ignore) {
+        }
     }
 
-    private static String normalizeRiskTagSlug(String raw) {
+    private static List<String> resolveTags(List<String> tags, Map<String, Object> metadata) {
+        List<String> out = new ArrayList<>();
+        if (tags != null) {
+            for (String t : tags) {
+                String s = normalizeTagSlug(t);
+                if (s != null) out.add(s);
+            }
+            return out;
+        }
+        if (metadata == null) return out;
+        Object raw = metadata.get("tags");
+        if (!(raw instanceof List<?> list)) return out;
+        for (Object v : list) {
+            String s = normalizeTagSlug(v == null ? null : String.valueOf(v));
+            if (s != null) out.add(s);
+        }
+        return out;
+    }
+
+    private void scheduleFileAssetRagSyncAfterCommit(List<Long> fileAssetIds) {
+        if (fileAssetIds == null || fileAssetIds.isEmpty()) return;
+        LinkedHashSet<Long> uniqFileAssetIds = new LinkedHashSet<>();
+        for (Long id : fileAssetIds) {
+            if (id != null) uniqFileAssetIds.add(id);
+        }
+        if (uniqFileAssetIds.isEmpty()) return;
+
+        Runnable syncAction = () -> {
+            List<VectorIndicesEntity> indices = vectorIndicesRepository.findByStatus(VectorIndexStatus.READY);
+            if (indices == null || indices.isEmpty()) return;
+            for (VectorIndicesEntity vi : indices) {
+                if (vi == null || vi.getId() == null) continue;
+                Map<String, Object> meta = vi.getMetadata();
+                String sourceType = meta == null || meta.get("sourceType") == null ? null : String.valueOf(meta.get("sourceType")).trim();
+                if (!"FILE_ASSET".equalsIgnoreCase(sourceType)) continue;
+                for (Long fileAssetId : uniqFileAssetIds) {
+                    ragFileAssetIndexAsyncService.syncSingleFileAssetAsync(vi.getId(), fileAssetId);
+                }
+            }
+        };
+
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    syncAction.run();
+                }
+            });
+            return;
+        }
+        syncAction.run();
+    }
+
+    private static Map<String, Object> mergeMetadataWithTags(Map<String, Object> metadata, List<String> tags) {
+        if (metadata == null && tags == null) return null;
+        Map<String, Object> out = new HashMap<>();
+        if (metadata != null) out.putAll(metadata);
+        if (tags != null) {
+            List<String> normalized = resolveTags(tags, null);
+            out.put("tags", normalized);
+        }
+        return out.isEmpty() ? null : out;
+    }
+
+    private static String normalizeTagSlug(String raw) {
         if (raw == null) return null;
-        String s = raw.trim().toLowerCase(Locale.ROOT);
-        if (s.isBlank()) return null;
-        s = s.replace('_', '-');
-        s = s.replaceAll("[^a-z0-9\\-\\s]+", "");
-        s = s.replaceAll("\\s+", "-");
-        s = s.replaceAll("-{2,}", "-");
-        s = s.replaceAll("^-+|-+$", "");
+        String s = raw.trim();
+        if (s.isEmpty()) return null;
+        s = s.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (s.isEmpty()) return null;
         if (s.length() > 96) s = s.substring(0, 96);
-        s = s.replaceAll("^-+|-+$", "");
-        return s.isBlank() ? null : s;
+        return s.trim().isEmpty() ? null : s.trim();
     }
 
     @Override
@@ -485,17 +572,19 @@ public class PostsServiceImpl implements PostsService {
             );
             return saved;
         } catch (RuntimeException e) {
-            auditLogWriter.write(
-                    me,
-                    actorName,
-                    "POST_UPDATE_STATUS",
-                    "POST",
-                    id,
-                    AuditResult.FAIL,
-                    safeText(e.getMessage(), 512),
-                    null,
-                    Map.of("status", status.name())
-            );
+            if (me == null) {
+                auditLogWriter.write(
+                        me,
+                        actorName,
+                        "POST_UPDATE_STATUS",
+                        "POST",
+                        id,
+                        AuditResult.FAIL,
+                        safeText(e.getMessage(), 512),
+                        null,
+                        Map.of("status", status.name())
+                );
+            }
             throw e;
         }
     }
@@ -538,17 +627,52 @@ public class PostsServiceImpl implements PostsService {
                 throw new AccessDeniedException("无权在该版块发帖");
             }
 
+            var composeCfg = postComposeConfigService.getConfig();
+
             post.setBoardId(boardId);
-            post.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
+            String title = dto.getTitle() == null ? "" : dto.getTitle().trim();
+            if (Boolean.TRUE.equals(composeCfg.getRequireTitle()) && title.isBlank()) {
+                throw new IllegalArgumentException("标题不能为空");
+            }
+            if (title.length() > 191) {
+                throw new IllegalArgumentException("标题过长（最多 191 字符）");
+            }
+            post.setTitle(title);
             post.setContent(dto.getContent());
+            int contentLen = dto.getContent() == null ? 0 : dto.getContent().length();
+            Integer maxContentChars = composeCfg.getMaxContentChars();
+            if (maxContentChars != null && maxContentChars > 0 && contentLen > maxContentChars) {
+                throw new IllegalArgumentException("内容过长（最多 " + maxContentChars + " 字符）");
+            }
+            post.setContentLength(contentLen);
             post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
-            post.setMetadata(dto.getMetadata());
+            List<String> tags = resolveTags(dto.getTags(), dto.getMetadata());
+            if (Boolean.TRUE.equals(composeCfg.getRequireTags()) && tags.isEmpty()) {
+                throw new IllegalArgumentException("标签不能为空");
+            }
+            Map<String, Object> mergedMetadata = mergeMetadataWithTags(dto.getMetadata(), dto.getTags());
+            post.setMetadata(mergedMetadata);
+
+            Integer threshold = composeCfg.getChunkThresholdChars();
+            boolean isChunked = threshold != null && threshold > 0 && contentLen > threshold;
+            post.setIsChunkedReview(isChunked);
+            post.setChunkThresholdChars(isChunked ? threshold : null);
+            post.setChunkingStrategy(isChunked ? "CHARS" : null);
 
             postAttachmentsRepository.deleteByPostId(post.getId());
 
             List<Long> attachmentIds = dto.getAttachmentIds();
             if (attachmentIds != null && !attachmentIds.isEmpty()) {
+                int uniqCount = new LinkedHashSet<>(attachmentIds).size();
+                Integer maxAttachments = composeCfg.getMaxAttachments();
+                boolean bypass = isChunked && Boolean.TRUE.equals(composeCfg.getBypassAttachmentLimitWhenChunked());
+                if (!bypass && maxAttachments != null && maxAttachments > 0 && uniqCount > maxAttachments) {
+                    throw new IllegalArgumentException("附件数量超限（最多 " + maxAttachments + " 个）");
+                }
+            }
+            if (attachmentIds != null && !attachmentIds.isEmpty()) {
                 LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
+                List<Long> syncedAttachmentIds = new ArrayList<>();
                 for (Long faId : uniq) {
                     if (faId == null) continue;
                     FileAssetsEntity fa = fileAssetsRepository.findById(faId)
@@ -584,13 +708,11 @@ public class PostsServiceImpl implements PostsService {
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();
                     pa.setPostId(post.getId());
                     pa.setFileAssetId(fa.getId());
-                    pa.setUrl(fa.getUrl());
-                    pa.setFileName(fileName);
-                    pa.setMimeType(fa.getMimeType());
-                    pa.setSizeBytes(fa.getSizeBytes());
                     pa.setCreatedAt(LocalDateTime.now());
                     postAttachmentsRepository.save(pa);
+                    syncedAttachmentIds.add(fa.getId());
                 }
+                scheduleFileAssetRagSyncAfterCommit(syncedAttachmentIds);
             }
 
             PostsEntity saved = postsRepository.save(post);
@@ -607,7 +729,7 @@ public class PostsServiceImpl implements PostsService {
                     AuditResult.SUCCESS,
                     "编辑帖子",
                     null,
-                    Map.of(
+                    mapOfNonNull(
                             "boardId", boardId,
                             "title", safeText(saved.getTitle(), 128)
                     )
@@ -631,6 +753,63 @@ public class PostsServiceImpl implements PostsService {
         }
     }
 
+    @Override
+    @Transactional
+    public void delete(Long id) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+
+        Long me = null;
+        String actorName = currentUsernameOrNull();
+        try {
+            me = currentUserIdOrThrow();
+            PostsEntity post = postsRepository.findById(id)
+                    .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + id));
+
+            if (Boolean.TRUE.equals(post.getIsDeleted())) {
+                return;
+            }
+
+            boolean isAuthor = post.getAuthorId() != null && post.getAuthorId().equals(me);
+            if (!isAuthor) {
+                throw new IllegalArgumentException("无权删除该帖子");
+            }
+
+            post.setIsDeleted(true);
+            post.setStatus(PostStatus.ARCHIVED);
+            PostsEntity saved = postsRepository.save(post);
+
+            postAttachmentsRepository.deleteByPostId(saved.getId());
+            moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.POST, saved.getId())
+                    .ifPresent(moderationQueueRepository::delete);
+            ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "POST_DELETE",
+                    "POST",
+                    saved.getId(),
+                    AuditResult.SUCCESS,
+                    "删除帖子",
+                    null,
+                    mapOfNonNull("status", saved.getStatus() == null ? null : saved.getStatus().name())
+            );
+        } catch (RuntimeException e) {
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "POST_DELETE",
+                    "POST",
+                    id,
+                    AuditResult.FAIL,
+                    safeText(e.getMessage(), 512),
+                    null,
+                    Map.of()
+            );
+            throw e;
+        }
+    }
+
     private static String currentUsernameOrNull() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -640,6 +819,20 @@ public class PostsServiceImpl implements PostsService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static Map<String, Object> mapOfNonNull(Object... kv) {
+        if (kv == null || kv.length == 0) return Map.of();
+        if (kv.length % 2 != 0) throw new IllegalArgumentException("kv 必须为偶数长度");
+        Map<String, Object> out = new HashMap<>();
+        for (int i = 0; i < kv.length; i += 2) {
+            Object k = kv[i];
+            Object v = kv[i + 1];
+            if (k == null) continue;
+            if (v == null) continue;
+            out.put(String.valueOf(k), v);
+        }
+        return out.isEmpty() ? Map.of() : out;
     }
 
     private static String safeText(String s, int maxLen) {

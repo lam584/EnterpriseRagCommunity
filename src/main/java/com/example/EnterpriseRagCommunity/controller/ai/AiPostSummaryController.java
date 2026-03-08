@@ -45,9 +45,9 @@ public class AiPostSummaryController {
             dto.setSummaryTitle(s.getSummaryTitle());
             dto.setSummaryText(s.getSummaryText());
         }
-        dto.setModel(s.getModel());
+        dto.setModel(null);
         dto.setGeneratedAt(s.getGeneratedAt());
-        dto.setLatencyMs(s.getLatencyMs());
+        dto.setLatencyMs(null);
         dto.setErrorMessage(normalizePublicError(s.getErrorMessage()));
         return dto;
     }

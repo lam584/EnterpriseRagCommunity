@@ -15,7 +15,7 @@ import java.util.Map;
 @Table(name = "moderation_pipeline_step")
 public class ModerationPipelineStepEntity {
 
-    public enum Stage { RULE, VEC, LLM }
+    public enum Stage { RULE, VEC, TEXT, VISION, JUDGE, UPGRADE, LLM }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

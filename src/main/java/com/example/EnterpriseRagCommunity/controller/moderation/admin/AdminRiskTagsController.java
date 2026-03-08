@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,10 +25,13 @@ import com.example.EnterpriseRagCommunity.dto.content.TagsCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.content.TagsDTO;
 import com.example.EnterpriseRagCommunity.dto.content.TagsQueryDTO;
 import com.example.EnterpriseRagCommunity.dto.content.TagsUpdateDTO;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.content.TagsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.TagType;
 import com.example.EnterpriseRagCommunity.repository.content.TagsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.RiskLabelingRepository;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.content.TagsService;
 
 import jakarta.validation.Valid;
@@ -42,6 +46,8 @@ public class AdminRiskTagsController {
     private final TagsService tagsService;
     private final TagsRepository tagsRepository;
     private final RiskLabelingRepository riskLabelingRepository;
+    private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
 
     @GetMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_risk_tags','read'))")
@@ -70,6 +76,17 @@ public class AdminRiskTagsController {
         if (createDTO.getIsActive() == null) createDTO.setIsActive(true);
 
         TagsEntity saved = tagsService.create(createDTO);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "RISK_TAG_CREATE",
+                "TAG",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "创建风险标签",
+                null,
+                auditDiffBuilder.build(Map.of(), saved)
+        );
         return ResponseEntity.status(HttpStatus.CREATED).body(toDTO(saved, 0L));
     }
 
@@ -88,6 +105,17 @@ public class AdminRiskTagsController {
         }
 
         TagsEntity saved = tagsService.update(updateDTO);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "RISK_TAG_UPDATE",
+                "TAG",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "更新风险标签",
+                null,
+                auditDiffBuilder.build(current, saved)
+        );
         long usageCount = riskLabelingRepository.countUsageByTagIds(Collections.singleton(saved.getId())).stream()
                 .findFirst()
                 .map(RiskLabelingRepository.TagUsageCount::getUsageCount)
@@ -107,7 +135,29 @@ public class AdminRiskTagsController {
             throw new IllegalStateException("标签正在使用，无法删除。");
         }
         tagsService.delete(id);
+        auditLogWriter.write(
+                null,
+                currentUsernameOrNull(),
+                "RISK_TAG_DELETE",
+                "TAG",
+                id,
+                AuditResult.SUCCESS,
+                "删除风险标签",
+                null,
+                auditDiffBuilder.build(current, Map.of())
+        );
         return ResponseEntity.noContent().build();
+    }
+
+    private static String currentUsernameOrNull() {
+        try {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+            String name = auth.getName();
+            return name == null || name.isBlank() ? null : name.trim();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private TagsDTO toDTO(TagsEntity entity, Long usageCount) {

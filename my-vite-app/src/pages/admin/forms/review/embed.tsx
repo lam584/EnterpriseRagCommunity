@@ -18,8 +18,6 @@ import {
   type ModerationSamplesIndexStatusResponse
 } from '../../../../services/moderationService';
 import { ModerationPipelineHistoryPanel } from '../../../../components/admin/ModerationPipelineHistoryPanel';
-import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
-import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 
 // ===== 后端/运行时配置 =====
 // 保持兼容：本页允许通过 Vite 环境变量配置 API_BASE；未配置时使用同域相对路径
@@ -58,6 +56,26 @@ interface SimilarityCheckResponse {
   maxInputChars?: number | null;
   hits?: SimilarityHit[];
 }
+
+type AiProviderDTO = {
+  id?: string | null;
+  defaultEmbeddingModel?: string | null;
+};
+
+type AiProvidersConfigDTO = {
+  providers?: AiProviderDTO[] | null;
+};
+
+type AiProviderModelDTO = {
+  purpose?: string | null;
+  modelName?: string | null;
+  enabled?: boolean | null;
+};
+
+type AiProviderModelsDTO = {
+  providerId?: string | null;
+  models?: AiProviderModelDTO[] | null;
+};
 
 // NOTE: “相似命中记录（moderation_similar_hits）” 功能已移除；保留审核历史记录即可。
 
@@ -180,8 +198,7 @@ const EmbedForm: React.FC = () => {
   const [cfg, setCfg] = useState<SimilarityConfig | null>(null);
   const [cfgForm, setCfgForm] = useState<SimilarityConfigForm>(() => toCfgFormState(null));
   const [cfgEditing, setCfgEditing] = useState(false);
-  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState<string>('');
+  const [embeddingModelOptions, setEmbeddingModelOptions] = useState<string[]>([]);
 
   const [autoSyncLoading, setAutoSyncLoading] = useState(false);
   const [autoSyncCfg, setAutoSyncCfg] = useState<SamplesAutoSyncConfig | null>(null);
@@ -209,25 +226,6 @@ const EmbedForm: React.FC = () => {
   const [samples, setSamples] = useState<ModerationSample[]>([]);
   const [samplesTotalPages, setSamplesTotalPages] = useState(1);
   const [samplesTotalElements, setSamplesTotalElements] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const cfg = await adminGetAiProvidersConfig();
-        if (cancelled) return;
-        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
-        setActiveProviderId(cfg.activeProviderId ?? '');
-      } catch {
-        if (cancelled) return;
-        setProviders([]);
-        setActiveProviderId('');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const loadSamplesIndexStatus = useCallback(async () => {
     setSamplesIndexLoading(true);
@@ -397,6 +395,62 @@ const EmbedForm: React.FC = () => {
     }
   }, []);
 
+  const loadEmbeddingModelOptions = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl('/api/admin/ai/providers/config'), {
+        method: 'GET',
+        credentials: 'include',
+      });
+      const data: unknown = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setEmbeddingModelOptions([]);
+        return;
+      }
+
+      const cfg = data as AiProvidersConfigDTO;
+      const ps = ((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]).filter((p) => String(p.id ?? '').trim());
+      const providerIds = ps.map((p) => String(p.id ?? '').trim());
+
+      const names: string[] = [];
+      for (const p of ps) {
+        const dm = String(p.defaultEmbeddingModel ?? '').trim();
+        if (dm) names.push(dm);
+      }
+
+      const tasks = providerIds.map(async (providerId) => {
+        const r = await fetch(apiUrl(`/api/admin/ai/providers/${encodeURIComponent(providerId)}/models`), {
+          method: 'GET',
+          credentials: 'include',
+        });
+        const d: unknown = await r.json().catch(() => ({}));
+        if (!r.ok) return null;
+        return d as AiProviderModelsDTO;
+      });
+
+      const settled = await Promise.allSettled(tasks);
+      for (const s of settled) {
+        if (s.status !== 'fulfilled') continue;
+        const dto = s.value;
+        if (!dto) continue;
+        const list = Array.isArray(dto.models) ? dto.models : [];
+        for (const row of list) {
+          const purpose = String(row?.purpose ?? '').trim().toUpperCase();
+          if (purpose !== 'EMBEDDING') continue;
+          if (row?.enabled === false) continue;
+          const modelName = String(row?.modelName ?? '').trim();
+          if (!modelName) continue;
+          names.push(modelName);
+        }
+      }
+
+      const uniq = Array.from(new Set(names));
+      uniq.sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+      setEmbeddingModelOptions(uniq);
+    } catch {
+      setEmbeddingModelOptions([]);
+    }
+  }, []);
+
   const saveConfig = useCallback(async () => {
     setCfgSaving(true);
     setError(null);
@@ -470,6 +524,13 @@ const EmbedForm: React.FC = () => {
       setCfgSaving(false);
     }
   }, [cfgForm, autoSyncForm]);
+
+  const embeddingModelsForSelect = useMemo(() => {
+    const cur = cfgForm.embeddingModel.trim();
+    const list = [...embeddingModelOptions];
+    if (cur && !list.includes(cur)) list.unshift(cur);
+    return list;
+  }, [cfgForm.embeddingModel, embeddingModelOptions]);
 
   const manualCheck = useCallback(async () => {
     setChecking(true);
@@ -594,6 +655,10 @@ const EmbedForm: React.FC = () => {
   }, [loadAutoSyncConfig]);
 
   useEffect(() => {
+    void loadEmbeddingModelOptions();
+  }, [loadEmbeddingModelOptions]);
+
+  useEffect(() => {
     if (autoSyncEnableEnsureInFlightRef.current) return;
     if (cfgEditing || cfgSaving || cfgLoading || autoSyncLoading) return;
     if (cfg?.enabled !== true) return;
@@ -652,6 +717,7 @@ const EmbedForm: React.FC = () => {
             onClick={() => {
               void loadConfig();
               void loadAutoSyncConfig();
+              void loadEmbeddingModelOptions();
               void loadSamples();
               void loadSamplesIndexStatus();
             }}
@@ -851,21 +917,26 @@ const EmbedForm: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <ProviderModelSelect
-                  providers={providers}
-                  activeProviderId={activeProviderId}
-                  mode="embedding"
-                  includeProviderOnlyOptions={false}
-                  providerId=""
-                  model={cfgForm.embeddingModel}
-                  disabled={!cfgEditing || cfgLoading || cfgSaving}
-                  selectClassName="w-full rounded border px-3 py-2 text-sm bg-white disabled:bg-gray-50"
-                  onChange={(next) => {
+                <div className="text-sm font-medium mb-1">嵌入模型（留空=自动）</div>
+                <select
+                  className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : 'bg-white'}`}
+                  value={cfgForm.embeddingModel}
+                  disabled={!cfgEditing}
+                  onChange={(e) => {
                     if (!cfgEditing) return;
-                    setCfgForm((p) => ({ ...p, embeddingModel: next.model }));
+                    setCfgForm((p) => ({ ...p, embeddingModel: e.target.value }));
                   }}
-                />
-                <div className="text-xs text-gray-500 mt-1">用于“把文本变成向量”的模型。更换模型后，通常需要重建索引以避免维度/分布不一致。</div>
+                >
+                  <option value="">留空=自动（均衡负载）</option>
+                  {embeddingModelsForSelect.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-gray-500 mt-1">
+                  用于“把文本变成向量”的模型。留空表示按负载均衡从嵌入模型池选择；更换/切换模型后通常需要重建索引以避免维度/分布不一致。
+                </div>
               </div>
               <div>
                 <div className="text-sm font-medium mb-1">维度（0=自动）</div>

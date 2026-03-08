@@ -6,9 +6,19 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   showFooterClose?: boolean;
+  containerClassName?: string;
+  bodyClassName?: string;
 }
 
-const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, showFooterClose = true }) => {
+const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  showFooterClose = true,
+  containerClassName,
+  bodyClassName,
+}) => {
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -22,7 +32,9 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, showFoo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden overflow-y-auto outline-none focus:outline-none">
       <div className="fixed inset-0 bg-black opacity-50" onClick={onClose}></div>
-      <div className="relative w-full max-w-lg mx-auto my-6 bg-white rounded-lg shadow-lg outline-none focus:outline-none z-50">
+      <div
+        className={`relative w-full ${containerClassName ?? 'max-w-lg'} mx-auto my-6 bg-white rounded-lg shadow-lg outline-none focus:outline-none z-50`}
+      >
         <div className="flex items-start justify-between p-5 border-b border-solid border-gray-300 rounded-t">
           <h3 className="text-xl font-semibold">{title}</h3>
           <button
@@ -34,8 +46,12 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, showFoo
             </span>
           </button>
         </div>
-        <div className="relative p-6 flex-auto max-h-[70vh] overflow-y-auto text-gray-700 leading-relaxed">
-            {children}
+        <div
+          className={`relative p-6 flex-auto text-gray-700 leading-relaxed ${
+            bodyClassName ?? 'max-h-[70vh] overflow-y-auto'
+          }`}
+        >
+          {children}
         </div>
         {showFooterClose ? (
           <div className="flex items-center justify-end p-6 border-t border-solid border-gray-300 rounded-b">

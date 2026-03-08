@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -15,7 +16,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.springframework.stereotype.Service;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,12 +28,12 @@ import lombok.RequiredArgsConstructor;
 public class LlmGateway {
 
     private final AiProvidersConfigService aiProvidersConfigService;
-    private final AiProperties aiProperties;
     private final AiEmbeddingService aiEmbeddingService;
     private final AiRerankService aiRerankService;
     private final LlmCallQueueService llmCallQueueService;
     private final LlmRoutingService llmRoutingService;
     private final LlmRoutingTelemetryService llmRoutingTelemetryService;
+    private final TokenCountService tokenCountService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AtomicInteger rrCounter = new AtomicInteger(0);
@@ -131,6 +131,39 @@ public class LlmGateway {
             Boolean enableThinking,
             Integer thinkingBudget
     ) {
+        return chatOnceRouted(taskType, providerId, modelOverride, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, null);
+    }
+
+    public RoutedChatOnceResult chatOnceRouted(
+            LlmQueueTaskType taskType,
+            String providerId,
+            String modelOverride,
+            List<ChatMessage> messages,
+            Double temperature,
+            Double topP,
+            Integer maxTokens,
+            List<String> stop,
+            Boolean enableThinking,
+            Integer thinkingBudget,
+            Map<String, Object> extraBody
+    ) {
+        return chatOnceRouted(taskType, providerId, modelOverride, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, null);
+    }
+
+    public RoutedChatOnceResult chatOnceRouted(
+            LlmQueueTaskType taskType,
+            String providerId,
+            String modelOverride,
+            List<ChatMessage> messages,
+            Double temperature,
+            Double topP,
+            Integer maxTokens,
+            List<String> stop,
+            Boolean enableThinking,
+            Integer thinkingBudget,
+            Map<String, Object> extraBody,
+            Map<String, String> extraRequestHeaders
+    ) {
         LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.TEXT_CHAT : taskType;
         String pid = providerId == null ? null : providerId.trim();
         String mo = modelOverride == null ? null : modelOverride.trim();
@@ -139,7 +172,7 @@ public class LlmGateway {
             AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
             String model = mo;
             try {
-                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, 3, null);
+                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 3, null, extraRequestHeaders);
                 return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
             } catch (RuntimeException e) {
                 throw e;
@@ -152,7 +185,7 @@ public class LlmGateway {
             AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
             String model = provider.defaultChatModel();
             try {
-                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, 3, null);
+                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 3, null, extraRequestHeaders);
                 return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
             } catch (RuntimeException e) {
                 throw e;
@@ -205,7 +238,7 @@ public class LlmGateway {
                         null,
                         "chatOnce"
                 ));
-                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, 2, taskIdRef);
+                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 2, taskIdRef, extraRequestHeaders);
                 llmRoutingService.recordSuccess(tt, target);
                 llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                         System.currentTimeMillis(),
@@ -253,7 +286,7 @@ public class LlmGateway {
         }
 
         try {
-            AiProvidersConfigService.ResolvedProvider provider = resolve(pickNextEnabledProviderIdRoundRobin());
+            AiProvidersConfigService.ResolvedProvider provider = resolve(pickFallbackProviderId(AiProvidersConfigService.ResolvedProvider::defaultChatModel));
             String model = provider.defaultChatModel();
             AtomicReference<String> taskIdRef = new AtomicReference<>(null);
             long startedNs = System.nanoTime();
@@ -271,7 +304,7 @@ public class LlmGateway {
                     null,
                     "chatOnce"
             ));
-            ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, 2, taskIdRef);
+            ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 2, taskIdRef, extraRequestHeaders);
             llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                     System.currentTimeMillis(),
                     "FALLBACK_OK",
@@ -285,6 +318,147 @@ public class LlmGateway {
                     "",
                     elapsedMs(startedNs),
                     "chatOnce"
+            ));
+            return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            Exception ex = last == null ? e : last;
+            throw new IllegalStateException("上游AI调用失败: " + ex.getMessage(), ex);
+        }
+    }
+
+    public RoutedChatOnceResult chatOnceRoutedNoQueue(
+            LlmQueueTaskType taskType,
+            String providerId,
+            String modelOverride,
+            List<ChatMessage> messages,
+            Double temperature,
+            Double topP,
+            Integer maxTokens,
+            List<String> stop,
+            Boolean enableThinking,
+            Integer thinkingBudget,
+            Map<String, Object> extraBody
+    ) {
+        return chatOnceRoutedNoQueue(taskType, providerId, modelOverride, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, null);
+    }
+
+    public RoutedChatOnceResult chatOnceRoutedNoQueue(
+            LlmQueueTaskType taskType,
+            String providerId,
+            String modelOverride,
+            List<ChatMessage> messages,
+            Double temperature,
+            Double topP,
+            Integer maxTokens,
+            List<String> stop,
+            Boolean enableThinking,
+            Integer thinkingBudget,
+            Map<String, Object> extraBody,
+            Map<String, String> extraRequestHeaders
+    ) {
+        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.TEXT_CHAT : taskType;
+        String pid = providerId == null ? null : providerId.trim();
+        String mo = modelOverride == null ? null : modelOverride.trim();
+
+        if (mo != null && !mo.isBlank()) {
+            AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
+            String model = mo;
+            try {
+                ChatOnceInternalResult res = callChatOnceSingleNoQueue(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 3, extraRequestHeaders);
+                return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);
+            }
+        }
+
+        if (pid != null && !pid.isBlank()) {
+            AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
+            String model = provider.defaultChatModel();
+            try {
+                ChatOnceInternalResult res = callChatOnceSingleNoQueue(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 3, extraRequestHeaders);
+                return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);
+            }
+        }
+
+        LlmRoutingService.Policy policy = llmRoutingService.getPolicy(tt);
+        Set<LlmRoutingService.TargetId> tried = new java.util.HashSet<>();
+        Exception last = null;
+
+        for (int attempt = 1; attempt <= Math.max(1, policy.maxAttempts()); attempt++) {
+            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(tt, tried);
+            if (target == null) break;
+            tried.add(target.id());
+
+            AiProvidersConfigService.ResolvedProvider provider = resolve(target.providerId());
+            String model = target.modelName();
+            long startedNs = System.nanoTime();
+            try {
+                ChatOnceInternalResult res = callChatOnceSingleNoQueue(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 2, extraRequestHeaders);
+                llmRoutingService.recordSuccess(tt, target);
+                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                        System.currentTimeMillis(),
+                        "ROUTE_OK_NOQUEUE",
+                        tt.name(),
+                        attempt,
+                        null,
+                        provider.id(),
+                        model,
+                        true,
+                        "",
+                        "",
+                        elapsedMs(startedNs),
+                        "chatOnceNoQueue"
+                ));
+                return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
+            } catch (Exception e) {
+                last = e;
+                if (!isRetriable(e)) {
+                    throw new IllegalStateException("上游AI调用失败: " + e.getMessage(), e);
+                }
+                llmRoutingService.recordFailure(tt, target, extractErrorCode(e));
+                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                        System.currentTimeMillis(),
+                        "ROUTE_FAIL_NOQUEUE",
+                        tt.name(),
+                        attempt,
+                        null,
+                        provider.id(),
+                        model,
+                        false,
+                        safeErrorCode(e),
+                        safeErrorMessage(e),
+                        elapsedMs(startedNs),
+                        "chatOnceNoQueue"
+                ));
+            }
+        }
+
+        try {
+            AiProvidersConfigService.ResolvedProvider provider = resolve(pickFallbackProviderId(AiProvidersConfigService.ResolvedProvider::defaultChatModel));
+            String model = provider.defaultChatModel();
+            long startedNs = System.nanoTime();
+            ChatOnceInternalResult res = callChatOnceSingleNoQueue(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 2, extraRequestHeaders);
+            llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                    System.currentTimeMillis(),
+                    "ROUTE_FALLBACK_NOQUEUE",
+                    tt.name(),
+                    null,
+                    null,
+                    provider.id(),
+                    model,
+                    true,
+                    "",
+                    "",
+                    elapsedMs(startedNs),
+                    "chatOnceNoQueue"
             ));
             return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
         } catch (RuntimeException e) {
@@ -351,7 +525,7 @@ public class LlmGateway {
             String model = mo;
             try {
                 List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 2, null);
+                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, null, consumer, 2, null);
                 return new RoutedChatStreamResult(provider.id(), model, usage);
             } catch (RuntimeException e) {
                 throw e;
@@ -365,7 +539,7 @@ public class LlmGateway {
             String model = provider.defaultChatModel();
             try {
                 List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 2, null);
+                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, null, consumer, 2, null);
                 return new RoutedChatStreamResult(provider.id(), model, usage);
             } catch (RuntimeException e) {
                 throw e;
@@ -420,7 +594,7 @@ public class LlmGateway {
                         "chatStream"
                 ));
                 List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 1, taskIdRef);
+                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, null, consumer, 1, taskIdRef);
                 llmRoutingService.recordSuccess(tt, target);
                 llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                         System.currentTimeMillis(),
@@ -485,7 +659,7 @@ public class LlmGateway {
         }
 
         try {
-            AiProvidersConfigService.ResolvedProvider provider = resolve(pickNextEnabledProviderIdRoundRobin());
+            AiProvidersConfigService.ResolvedProvider provider = resolve(pickFallbackProviderId(AiProvidersConfigService.ResolvedProvider::defaultChatModel));
             String model = provider.defaultChatModel();
             AtomicReference<String> taskIdRef = new AtomicReference<>(null);
             long startedNs = System.nanoTime();
@@ -504,7 +678,7 @@ public class LlmGateway {
                     "chatStream"
             ));
             List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-            LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 1, taskIdRef);
+            LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, null, consumer, 1, taskIdRef);
             llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                     System.currentTimeMillis(),
                     "FALLBACK_OK",
@@ -541,16 +715,16 @@ public class LlmGateway {
         if (mo != null && !mo.isBlank()) {
             return aiEmbeddingService.embedOnceForTask(input, mo, pid, tt);
         }
-        if (pid != null && !pid.isBlank()) {
-            return aiEmbeddingService.embedOnceForTask(input, null, pid, tt);
-        }
+        boolean providerOnly = (pid != null && !pid.isBlank());
 
         LlmRoutingService.Policy policy = llmRoutingService.getPolicy(tt);
         Set<LlmRoutingService.TargetId> tried = new java.util.HashSet<>();
         Exception last = null;
 
         for (int attempt = 1; attempt <= Math.max(1, policy.maxAttempts()); attempt++) {
-            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(tt, tried);
+            LlmRoutingService.RouteTarget target = providerOnly
+                    ? llmRoutingService.pickNextInProvider(tt, pid, tried)
+                    : llmRoutingService.pickNext(tt, tried);
             if (target == null) {
                 llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                         System.currentTimeMillis(),
@@ -558,11 +732,11 @@ public class LlmGateway {
                         tt.name(),
                         attempt,
                         null,
-                        null,
+                        providerOnly ? pid : null,
                         null,
                         false,
                         "",
-                        "no eligible target",
+                        providerOnly ? ("no eligible target (providerId=" + pid + ")") : "no eligible target",
                         0L,
                         "embeddingOnce"
                 ));
@@ -631,7 +805,9 @@ public class LlmGateway {
 
         if (last instanceof IOException ioe) throw ioe;
         if (last != null) throw new IOException("Embedding failed: " + last.getMessage(), last);
-        throw new IOException("Embedding failed: no eligible upstream target");
+        throw new IOException(providerOnly
+                ? ("Embedding failed: no eligible upstream target for providerId=" + pid + " (please check embedding routing config)")
+                : "Embedding failed: no eligible upstream target (please check embedding routing config)");
     }
 
     public AiRerankService.RerankResult rerankOnceRouted(
@@ -755,40 +931,48 @@ public class LlmGateway {
             provider = aiProvidersConfigService.resolveActiveProvider();
         }
         if (provider == null) {
-            provider = new AiProvidersConfigService.ResolvedProvider(
-                    "default",
-                    "OPENAI_COMPAT",
-                    aiProperties.getBaseUrl(),
-                    aiProperties.getApiKey(),
-                    aiProperties.getModel(),
-                    "text-embedding-v4",
-                    Map.<String, Object>of(),
-                    Map.<String, String>of(),
-                    aiProperties.getConnectTimeoutMs(),
-                    aiProperties.getReadTimeoutMs(),
-                    null
-            );
+            throw new IllegalStateException("未配置任何有效的 AI 模型提供商(Provider)，请在系统管理中配置。");
         }
 
         String type = provider.type() == null ? "OPENAI_COMPAT" : provider.type().trim().toUpperCase(Locale.ROOT);
         if (!"OPENAI_COMPAT".equals(type) && !"LOCAL_OPENAI_COMPAT".equals(type)) {
-            throw new IllegalStateException("暂不支持的模型来源类型: " + type);
+            throw new IllegalStateException("暂不支持的模型提供商类型: " + type);
         }
         return provider;
     }
 
-    private String pickNextEnabledProviderIdRoundRobin() {
+    private String pickFallbackProviderId(java.util.function.Function<AiProvidersConfigService.ResolvedProvider, String> modelExtractor) {
         List<String> ids = aiProvidersConfigService.listEnabledProviderIds();
         if (ids == null || ids.isEmpty()) return null;
-        int idx = Math.floorMod(rrCounter.getAndIncrement(), ids.size());
-        String id = ids.get(idx);
-        return id == null || id.isBlank() ? null : id.trim();
+
+        java.util.List<String> validIds = new java.util.ArrayList<>();
+        for (String id : ids) {
+            try {
+                AiProvidersConfigService.ResolvedProvider p = resolve(id);
+                if (p != null) {
+                    String model = modelExtractor.apply(p);
+                    if (model != null && !model.isBlank()) {
+                        validIds.add(id);
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+        }
+
+        if (validIds.isEmpty()) return null;
+        int idx = Math.floorMod(rrCounter.getAndIncrement(), validIds.size());
+        return validIds.get(idx);
     }
 
     private record ChatOnceInternalResult(String text, LlmCallQueueService.UsageMetrics usage) {}
 
     private static boolean shouldStripThinkBlocks(Boolean enableThinking) {
         return Boolean.FALSE.equals(enableThinking);
+    }
+
+    private static boolean shouldPreferTokenizerIn(LlmQueueTaskType taskType) {
+        if (taskType == null) return false;
+        return taskType == LlmQueueTaskType.TEXT_MODERATION || taskType == LlmQueueTaskType.MODERATION_CHUNK;
     }
 
     private static boolean supportsThinkingDirectiveModel(String modelName) {
@@ -998,7 +1182,7 @@ public class LlmGateway {
         private long appendLimited(StringBuilder out, String seg, int maxChars) {
             if (seg == null || seg.isEmpty()) return 0L;
             long produced = seg.length();
-            if (out != null && out.length() < maxChars) {
+            if (out != null) {
                 int remain = maxChars - out.length();
                 if (remain > 0) {
                     int take = Math.min(remain, seg.length());
@@ -1047,13 +1231,6 @@ public class LlmGateway {
                         produced += appendLimited(out, input.substring(i, start), maxChars);
                     }
                     boolean escaped = isEscapedStartAt(input, start);
-                    boolean raw = isRawStartAt(input, start);
-                    if (!escaped && !raw) {
-                        produced += appendLimited(out, input.substring(start, Math.min(input.length(), start + 1)), maxChars);
-                        i = start + 1;
-                        continue;
-                    }
-
                     int openEndExclusive;
                     if (escaped) {
                         int gt = indexOfIgnoreCase(input, "&gt;", start);
@@ -1100,24 +1277,31 @@ public class LlmGateway {
             List<String> stop,
             Boolean enableThinking,
             Integer thinkingBudget,
+            Map<String, Object> extraBody,
             int httpAttempts,
-            AtomicReference<String> taskIdOut
+            AtomicReference<String> taskIdOut,
+            Map<String, String> extraRequestHeaders
     ) throws Exception {
-        OpenAiCompatClient client = new OpenAiCompatClient(aiProperties);
-        Boolean enableThinkingToSend = shouldSendDashscopeThinking(provider) ? enableThinking : null;
-        Integer thinkingBudgetToSend = shouldSendDashscopeThinking(provider) ? thinkingBudget : null;
+        OpenAiCompatClient client = new OpenAiCompatClient();
+        List<ChatMessage> patchedMessages = applyThinkingDirectiveToMessages(messages, enableThinking, model);
+        boolean stripThink = shouldStripThinkBlocks(enableThinking);
+        boolean isDashscope = shouldSendDashscopeThinking(provider);
+        Boolean enableThinkingToSend = isDashscope ? Boolean.FALSE : null;
+        Integer thinkingBudgetToSend = null;
+        Map<String, Object> extraBodyToSend = filterExtraBody(provider, extraBody);
         OpenAiCompatClient.ChatRequest req = new OpenAiCompatClient.ChatRequest(
                 provider.apiKey(),
                 provider.baseUrl(),
                 model,
-                messages,
+            patchedMessages,
                 temperature,
                 topP,
                 maxTokens,
                 stop,
                 enableThinkingToSend,
                 thinkingBudgetToSend,
-                provider.extraHeaders(),
+                extraBodyToSend,
+                mergeHeaders(provider.extraHeaders(), extraRequestHeaders),
                 provider.connectTimeoutMs(),
                 provider.readTimeoutMs(),
                 false
@@ -1129,27 +1313,63 @@ public class LlmGateway {
                 0,
                 (task) -> {
                     if (taskIdOut != null) taskIdOut.set(task.id());
-                    task.reportInput(buildChatInputDetail(provider.id(), model, false, messages, temperature, enableThinking, thinkingBudget));
+                    task.reportInput(buildChatInputDetail(provider.id(), model, false, patchedMessages, temperature, enableThinking, thinkingBudget));
                     String raw = withRetry(Math.max(1, httpAttempts), () -> client.chatCompletionsOnce(req));
                     String assistantRaw = extractAssistantContent(raw);
-                    String assistant = shouldStripThinkBlocks(enableThinking)
+                    String assistant = stripThink
                             ? stripReasoningArtifacts(stripThinkBlocks(assistantRaw))
                             : assistantRaw;
-                    if (raw != null && !raw.isBlank() && assistant != null && !assistant.equals(raw)) {
+                    if (stripThink) {
+                        task.reportOutput(assistant == null ? "" : assistant);
+                    } else if (raw != null && !raw.isBlank() && assistant != null && !assistant.equals(raw)) {
                         task.reportOutput("输出文本:\n" + assistant + "\n\n原始响应:\n" + raw);
                     } else {
                         task.reportOutput(assistant == null ? "" : assistant);
                     }
                     return raw;
                 },
-                llmCallQueueService::parseOpenAiUsageFromJson
+                (raw) -> {
+                    LlmCallQueueService.UsageMetrics usage = llmCallQueueService.parseOpenAiUsageFromJson(raw);
+                    if (usage == null || usage.promptTokens() == null || usage.totalTokens() == null || usage.completionTokens() == null) {
+                        int estIn = estimateInputTokens(patchedMessages);
+                        String assistantForTokens = extractAssistantContent(raw);
+                        if (stripThink) {
+                            assistantForTokens = stripReasoningArtifacts(stripThinkBlocks(assistantForTokens));
+                        }
+                        int estOut = estimateTokens(assistantForTokens == null ? 0 : assistantForTokens.length());
+                        Integer prompt = (usage != null && usage.promptTokens() != null) ? usage.promptTokens() : estIn;
+                        Integer completion = (usage != null && usage.completionTokens() != null) ? usage.completionTokens() : estOut;
+                        Integer total = (usage != null && usage.totalTokens() != null) ? usage.totalTokens() : (prompt + completion);
+                        usage = new LlmCallQueueService.UsageMetrics(prompt, completion, total, estOut);
+                    }
+                    if (shouldPreferTokenizerIn(taskType) && tokenCountService != null) {
+                        String assistantForTokens = extractAssistantContent(raw);
+                        if (stripThink) {
+                            assistantForTokens = stripReasoningArtifacts(stripThinkBlocks(assistantForTokens));
+                        }
+                        TokenCountService.TokenDecision dec = tokenCountService.decideChatTokens(
+                                provider.id(),
+                                model,
+                                Boolean.TRUE.equals(enableThinking),
+                                usage,
+                                patchedMessages,
+                                assistantForTokens,
+                                true
+                        );
+                        if (dec != null) {
+                            Integer estOut = usage == null ? null : usage.estimatedCompletionTokens();
+                            usage = new LlmCallQueueService.UsageMetrics(dec.tokensIn(), dec.tokensOut(), dec.totalTokens(), estOut);
+                        }
+                    }
+                    return usage;
+                }
         );
         
         LlmCallQueueService.UsageMetrics usage = llmCallQueueService.parseOpenAiUsageFromJson(text);
         if (usage == null || usage.promptTokens() == null || usage.totalTokens() == null || usage.completionTokens() == null) {
-            int estIn = estimateInputTokens(messages);
+            int estIn = estimateInputTokens(patchedMessages);
             String assistantForTokens = extractAssistantContent(text);
-            if (shouldStripThinkBlocks(enableThinking)) {
+            if (stripThink) {
                 assistantForTokens = stripReasoningArtifacts(stripThinkBlocks(assistantForTokens));
             }
             int estOut = estimateTokens(assistantForTokens == null ? 0 : assistantForTokens.length());
@@ -1159,8 +1379,99 @@ public class LlmGateway {
             Integer total = (usage != null && usage.totalTokens() != null) ? usage.totalTokens() : (prompt + completion);
             usage = new LlmCallQueueService.UsageMetrics(prompt, completion, total, estOut);
         }
+        if (shouldPreferTokenizerIn(taskType) && tokenCountService != null) {
+            String assistantForTokens = extractAssistantContent(text);
+            if (stripThink) {
+                assistantForTokens = stripReasoningArtifacts(stripThinkBlocks(assistantForTokens));
+            }
+            TokenCountService.TokenDecision dec = tokenCountService.decideChatTokens(
+                    provider.id(),
+                    model,
+                    Boolean.TRUE.equals(enableThinking),
+                    usage,
+                    patchedMessages,
+                    assistantForTokens,
+                    true
+            );
+            if (dec != null) {
+                Integer estOut = usage == null ? null : usage.estimatedCompletionTokens();
+                usage = new LlmCallQueueService.UsageMetrics(dec.tokensIn(), dec.tokensOut(), dec.totalTokens(), estOut);
+            }
+        }
         
         return new ChatOnceInternalResult(text, usage);
+    }
+
+    private ChatOnceInternalResult callChatOnceSingleNoQueue(
+            LlmQueueTaskType taskType,
+            AiProvidersConfigService.ResolvedProvider provider,
+            String model,
+            List<ChatMessage> messages,
+            Double temperature,
+            Double topP,
+            Integer maxTokens,
+            List<String> stop,
+            Boolean enableThinking,
+            Integer thinkingBudget,
+            Map<String, Object> extraBody,
+            int httpAttempts,
+            Map<String, String> extraRequestHeaders
+    ) throws Exception {
+        OpenAiCompatClient client = new OpenAiCompatClient();
+        List<ChatMessage> patchedMessages = applyThinkingDirectiveToMessages(messages, enableThinking, model);
+        boolean stripThink = shouldStripThinkBlocks(enableThinking);
+        boolean isDashscope = shouldSendDashscopeThinking(provider);
+        Boolean enableThinkingToSend = isDashscope ? Boolean.FALSE : null;
+        Integer thinkingBudgetToSend = null;
+        Map<String, Object> extraBodyToSend = filterExtraBody(provider, extraBody);
+        OpenAiCompatClient.ChatRequest req = new OpenAiCompatClient.ChatRequest(
+                provider.apiKey(),
+                provider.baseUrl(),
+                model,
+            patchedMessages,
+                temperature,
+                topP,
+                maxTokens,
+                stop,
+                enableThinkingToSend,
+                thinkingBudgetToSend,
+                extraBodyToSend,
+                mergeHeaders(provider.extraHeaders(), extraRequestHeaders),
+                provider.connectTimeoutMs(),
+                provider.readTimeoutMs(),
+                false
+        );
+        String raw = withRetry(Math.max(1, httpAttempts), () -> client.chatCompletionsOnce(req));
+        String assistantRaw = extractAssistantContent(raw);
+        String assistant = stripThink
+                ? stripReasoningArtifacts(stripThinkBlocks(assistantRaw))
+                : assistantRaw;
+        LlmCallQueueService.UsageMetrics usage = llmCallQueueService.parseOpenAiUsageFromJson(raw);
+        if (usage == null || usage.promptTokens() == null || usage.totalTokens() == null || usage.completionTokens() == null) {
+            int estIn = estimateInputTokens(patchedMessages);
+            String assistantForTokens = assistant;
+            int estOut = estimateTokens(assistantForTokens == null ? 0 : assistantForTokens.length());
+            Integer prompt = (usage != null && usage.promptTokens() != null) ? usage.promptTokens() : estIn;
+            Integer completion = (usage != null && usage.completionTokens() != null) ? usage.completionTokens() : estOut;
+            Integer total = (usage != null && usage.totalTokens() != null) ? usage.totalTokens() : (prompt + completion);
+            usage = new LlmCallQueueService.UsageMetrics(prompt, completion, total, estOut);
+        }
+        if (shouldPreferTokenizerIn(taskType) && tokenCountService != null) {
+            TokenCountService.TokenDecision dec = tokenCountService.decideChatTokens(
+                    provider.id(),
+                    model,
+                    Boolean.TRUE.equals(enableThinking),
+                    usage,
+                    patchedMessages,
+                    assistant,
+                    true
+            );
+            if (dec != null) {
+                Integer estOut = usage == null ? null : usage.estimatedCompletionTokens();
+                usage = new LlmCallQueueService.UsageMetrics(dec.tokensIn(), dec.tokensOut(), dec.totalTokens(), estOut);
+            }
+        }
+        return new ChatOnceInternalResult(raw, usage);
     }
 
     private LlmCallQueueService.UsageMetrics callChatStreamSingle(
@@ -1172,13 +1483,15 @@ public class LlmGateway {
             Double topP,
             Boolean enableThinking,
             Integer thinkingBudget,
+            Map<String, Object> extraBody,
             OpenAiCompatClient.SseLineConsumer consumer,
             int streamAttempts,
             AtomicReference<String> taskIdOut
     ) throws Exception {
-        OpenAiCompatClient client = new OpenAiCompatClient(aiProperties);
+        OpenAiCompatClient client = new OpenAiCompatClient();
         Boolean enableThinkingToSend = shouldSendDashscopeThinking(provider) ? enableThinking : null;
         Integer thinkingBudgetToSend = shouldSendDashscopeThinking(provider) ? thinkingBudget : null;
+        Map<String, Object> extraBodyToSend = filterExtraBody(provider, extraBody);
         OpenAiCompatClient.ChatRequest req = new OpenAiCompatClient.ChatRequest(
                 provider.apiKey(),
                 provider.baseUrl(),
@@ -1190,6 +1503,7 @@ public class LlmGateway {
                 null,
                 enableThinkingToSend,
                 thinkingBudgetToSend,
+                extraBodyToSend,
                 provider.extraHeaders(),
                 provider.connectTimeoutMs(),
                 provider.readTimeoutMs(),
@@ -1263,6 +1577,14 @@ public class LlmGateway {
         );
     }
 
+    private static Map<String, String> mergeHeaders(Map<String, String> base, Map<String, String> extra) {
+        if (extra == null || extra.isEmpty()) return base;
+        if (base == null || base.isEmpty()) return extra;
+        var merged = new java.util.LinkedHashMap<>(base);
+        merged.putAll(extra);
+        return merged;
+    }
+
     private static long elapsedMs(long startedNs) {
         long ns = System.nanoTime() - startedNs;
         if (ns <= 0) return 0L;
@@ -1301,12 +1623,32 @@ public class LlmGateway {
         T get() throws Exception;
     }
 
-    private boolean shouldSendDashscopeThinking(AiProvidersConfigService.ResolvedProvider provider) {
+    private static boolean shouldSendDashscopeThinking(AiProvidersConfigService.ResolvedProvider provider) {
         String baseUrl = provider == null ? null : provider.baseUrl();
-        if (baseUrl == null || baseUrl.isBlank()) baseUrl = aiProperties.getBaseUrl();
         if (baseUrl == null || baseUrl.isBlank()) return false;
         String u = baseUrl.trim().toLowerCase(Locale.ROOT);
         return u.contains("dashscope.aliyuncs.com") || u.contains("dashscope-intl.aliyuncs.com");
+    }
+
+    private static Map<String, Object> filterExtraBody(AiProvidersConfigService.ResolvedProvider provider, Map<String, Object> extraBody) {
+        if (extraBody == null || extraBody.isEmpty()) return null;
+        String baseUrl = provider == null ? null : provider.baseUrl();
+        boolean isDashscope = false;
+        if (baseUrl != null && !baseUrl.isBlank()) {
+            String u = baseUrl.trim().toLowerCase(Locale.ROOT);
+            isDashscope = u.contains("dashscope.aliyuncs.com") || u.contains("dashscope-intl.aliyuncs.com");
+        }
+        if (isDashscope) return extraBody;
+
+        LinkedHashMap<String, Object> out = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : extraBody.entrySet()) {
+            String k = e.getKey();
+            if (k == null || k.isBlank()) continue;
+            String kn = k.trim();
+            if (kn.equals("vl_high_resolution_images")) continue;
+            out.put(kn, e.getValue());
+        }
+        return out.isEmpty() ? null : out;
     }
 
     private static <T> T withRetry(int maxAttempts, CheckedSupplier<T> call) throws Exception {
@@ -1592,17 +1934,117 @@ public class LlmGateway {
     ) {
         try {
             java.util.LinkedHashMap<String, Object> m = new java.util.LinkedHashMap<>();
-            m.put("providerId", providerId);
-            m.put("model", model);
-            m.put("stream", stream);
-            m.put("temperature", temperature);
-            m.put("enableThinking", enableThinking);
-            m.put("thinkingBudget", thinkingBudget);
-            m.put("messages", messages);
+            m.put("messages", sanitizeMessagesForTrace(messages));
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(m);
         } catch (Exception e) {
             return String.valueOf(messages);
         }
+    }
+
+    private List<ChatMessage> sanitizeMessagesForTrace(List<ChatMessage> messages) {
+        if (messages == null || messages.isEmpty()) return messages;
+        List<ChatMessage> out = new java.util.ArrayList<>();
+        for (ChatMessage msg : messages) {
+            if (msg == null) continue;
+            String role = msg.role();
+            Object content = msg.content();
+            if (content instanceof String s) {
+                String t = stripTraceLines(s);
+                t = removeLabelMapFromEmbeddedJson(t);
+                out.add(new ChatMessage(role, t));
+                continue;
+            }
+            if (content instanceof List<?> parts) {
+                List<Object> outParts = new java.util.ArrayList<>();
+                for (Object p : parts) {
+                    if (p instanceof Map<?, ?> pm) {
+                        java.util.LinkedHashMap<String, Object> copy = new java.util.LinkedHashMap<>();
+                        for (Map.Entry<?, ?> e : pm.entrySet()) {
+                            Object k = e.getKey();
+                            if (!(k instanceof String ks)) continue;
+                            Object v = e.getValue();
+                            if ("text".equals(ks) && v instanceof String vs) {
+                                String t = stripTraceLines(vs);
+                                t = removeLabelMapFromEmbeddedJson(t);
+                                copy.put(ks, t);
+                            } else {
+                                copy.put(ks, v);
+                            }
+                        }
+                        outParts.add(copy);
+                    } else {
+                        outParts.add(p);
+                    }
+                }
+                out.add(new ChatMessage(role, outParts));
+                continue;
+            }
+            out.add(msg);
+        }
+        return out;
+    }
+
+    private String stripTraceLines(String raw) {
+        if (raw == null || raw.isBlank()) return raw;
+        String[] lines = raw.split("\\r?\\n", -1);
+        StringBuilder sb = new StringBuilder(raw.length());
+        boolean wrote = false;
+        for (String line : lines) {
+            if (line != null && line.startsWith("TRACE ")) continue;
+            if (wrote) sb.append('\n');
+            sb.append(line == null ? "" : line);
+            wrote = true;
+        }
+        return sb.toString().trim();
+    }
+
+    private String removeLabelMapFromEmbeddedJson(String raw) {
+        if (raw == null || raw.isBlank()) return raw;
+        int idxObj = raw.lastIndexOf("\n\n{");
+        int idxArr = raw.lastIndexOf("\n\n[");
+        int idx = Math.max(idxObj, idxArr);
+        if (idx < 0) {
+            idxObj = raw.lastIndexOf("\n{");
+            idxArr = raw.lastIndexOf("\n[");
+            idx = Math.max(idxObj, idxArr);
+        }
+        if (idx < 0) return raw;
+        int startObj = raw.indexOf('{', idx);
+        int startArr = raw.indexOf('[', idx);
+        int start;
+        if (startObj < 0) start = startArr;
+        else if (startArr < 0) start = startObj;
+        else start = Math.min(startObj, startArr);
+        if (start < 0) return raw;
+
+        String prefix = raw.substring(0, start).trim();
+        String json = raw.substring(start).trim();
+        if (json.isBlank()) return raw;
+        try {
+            com.fasterxml.jackson.databind.JsonNode n = objectMapper.readTree(json);
+            if (n == null) return raw;
+            if (n.isObject()) {
+                com.fasterxml.jackson.databind.node.ObjectNode o = (com.fasterxml.jackson.databind.node.ObjectNode) n;
+                com.fasterxml.jackson.databind.JsonNode lt = o.get("label_taxonomy");
+                if (lt != null && lt.isObject()) ((com.fasterxml.jackson.databind.node.ObjectNode) lt).remove("label_map");
+                String outJson = objectMapper.writeValueAsString(o);
+                if (prefix.isBlank()) return outJson;
+                return (prefix + "\n\n" + outJson).trim();
+            }
+            if (n.isArray()) {
+                for (com.fasterxml.jackson.databind.JsonNode it : n) {
+                    if (it != null && it.isObject()) {
+                        com.fasterxml.jackson.databind.JsonNode lt = it.get("label_taxonomy");
+                        if (lt != null && lt.isObject()) ((com.fasterxml.jackson.databind.node.ObjectNode) lt).remove("label_map");
+                    }
+                }
+                String outJson = objectMapper.writeValueAsString(n);
+                if (prefix.isBlank()) return outJson;
+                return (prefix + "\n\n" + outJson).trim();
+            }
+        } catch (Exception ignore) {
+        }
+        return raw;
     }
 
     private static int estimateTokens(long chars) {

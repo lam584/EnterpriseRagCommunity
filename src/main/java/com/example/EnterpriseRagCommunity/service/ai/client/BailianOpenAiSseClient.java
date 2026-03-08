@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.ai.client;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -24,11 +23,11 @@ public class BailianOpenAiSseClient {
         void onLine(String line) throws IOException;
     }
 
-    private final AiProperties props;
+    private static final int DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+    private static final int DEFAULT_READ_TIMEOUT_MS = 300_000;
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    public BailianOpenAiSseClient(AiProperties props) {
-        this.props = props;
+    public BailianOpenAiSseClient() {
     }
 
     public void chatCompletionsStream(
@@ -39,9 +38,9 @@ public class BailianOpenAiSseClient {
             Double temperature,
             SseLineConsumer consumer
     ) throws IOException {
-        if (baseUrl == null || baseUrl.isBlank()) baseUrl = props.getBaseUrl();
-        if (model == null || model.isBlank()) model = props.getModel();
-        if (apiKey == null || apiKey.isBlank()) apiKey = props.getApiKey();
+        if (baseUrl == null || baseUrl.isBlank()) throw new IllegalArgumentException("baseUrl 不能为空");
+        if (model == null || model.isBlank()) throw new IllegalArgumentException("model 不能为空");
+        if (apiKey == null) apiKey = "";
 
         String endpoint = baseUrl;
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
@@ -50,8 +49,8 @@ public class BailianOpenAiSseClient {
         HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
-        conn.setConnectTimeout(props.getConnectTimeoutMs());
-        conn.setReadTimeout(props.getReadTimeoutMs());
+        conn.setConnectTimeout(DEFAULT_CONNECT_TIMEOUT_MS);
+        conn.setReadTimeout(DEFAULT_READ_TIMEOUT_MS);
         if (apiKey != null && !apiKey.isBlank()) {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
         }
@@ -89,9 +88,9 @@ public class BailianOpenAiSseClient {
             List<ChatMessage> messages,
             Double temperature
     ) throws IOException {
-        if (baseUrl == null || baseUrl.isBlank()) baseUrl = props.getBaseUrl();
-        if (model == null || model.isBlank()) model = props.getModel();
-        if (apiKey == null || apiKey.isBlank()) apiKey = props.getApiKey();
+        if (baseUrl == null || baseUrl.isBlank()) throw new IllegalArgumentException("baseUrl 不能为空");
+        if (model == null || model.isBlank()) throw new IllegalArgumentException("model 不能为空");
+        if (apiKey == null) apiKey = "";
 
         String endpoint = baseUrl;
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
@@ -100,8 +99,8 @@ public class BailianOpenAiSseClient {
         HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
-        conn.setConnectTimeout(props.getConnectTimeoutMs());
-        conn.setReadTimeout(props.getReadTimeoutMs());
+        conn.setConnectTimeout(DEFAULT_CONNECT_TIMEOUT_MS);
+        conn.setReadTimeout(DEFAULT_READ_TIMEOUT_MS);
         if (apiKey != null && !apiKey.isBlank()) {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
         }

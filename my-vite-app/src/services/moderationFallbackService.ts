@@ -33,6 +33,9 @@ export interface ModerationConfidenceFallbackConfig {
   llmRejectThreshold: number;
   llmHumanThreshold: number;
 
+  chunkLlmRejectThreshold: number;
+  chunkLlmHumanThreshold: number;
+
   llmTextRiskThreshold: number;
   llmImageRiskThreshold: number;
   llmStrongRejectThreshold: number;
@@ -40,6 +43,10 @@ export interface ModerationConfidenceFallbackConfig {
   llmCrossModalThreshold: number;
 
   reportHumanThreshold: number;
+
+  chunkThresholdChars: number;
+
+  thresholds?: Record<string, unknown>;
 
   updatedAt?: string;
   updatedBy?: string | null;

@@ -18,8 +18,35 @@ public class PromptsUpdateDTO {
     @Size(max = 96)
     private String name;
 
-    @ApiModelProperty(value = "模板内容")
-    private String template;
+    @ApiModelProperty(value = "Prompt编码", example = "default-answer-code")
+    @Size(max = 64)
+    private String promptCode;
+
+    @ApiModelProperty(value = "系统Prompt")
+    private String systemPrompt;
+
+    @ApiModelProperty(value = "用户Prompt模板内容")
+    private String userPromptTemplate;
+
+    @ApiModelProperty(value = "模型名称", example = "gpt-4")
+    @Size(max = 128)
+    private String modelName;
+
+    @ApiModelProperty(value = "供应商ID", example = "openai")
+    @Size(max = 64)
+    private String providerId;
+
+    @ApiModelProperty(value = "温度", example = "0.7")
+    private Double temperature;
+
+    @ApiModelProperty(value = "Top P", example = "0.9")
+    private Double topP;
+
+    @ApiModelProperty(value = "最大Token数", example = "1000")
+    private Integer maxTokens;
+
+    @ApiModelProperty(value = "是否启用深度思考", example = "false")
+    private Boolean enableDeepThinking;
 
     @ApiModelProperty(value = "模板变量(JSON)")
     private Map<String, Object> variables;

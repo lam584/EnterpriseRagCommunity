@@ -22,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class AccessLogsFilterBodyCaptureTest {
 
     @Test
+    @SuppressWarnings("unchecked")
     void capturesAndMasksJsonRequestAndResponseBodies() throws Exception {
         AccessLogWriter accessLogWriter = Mockito.mock(AccessLogWriter.class);
         AdministratorService administratorService = Mockito.mock(AdministratorService.class);
@@ -89,6 +90,7 @@ public class AccessLogsFilterBodyCaptureTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void truncatesBodiesByConfiguredLimit() throws Exception {
         AccessLogWriter accessLogWriter = Mockito.mock(AccessLogWriter.class);
         AdministratorService administratorService = Mockito.mock(AdministratorService.class);
@@ -153,6 +155,7 @@ public class AccessLogsFilterBodyCaptureTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void skipsResponseBodyForEventStream() throws Exception {
         AccessLogWriter accessLogWriter = Mockito.mock(AccessLogWriter.class);
         AdministratorService administratorService = Mockito.mock(AdministratorService.class);

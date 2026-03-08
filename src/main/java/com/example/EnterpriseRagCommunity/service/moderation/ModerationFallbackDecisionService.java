@@ -52,13 +52,22 @@ public final class ModerationFallbackDecisionService {
         if (s < 0) s = 0;
         if (s > 1) s = 1;
 
-        double r = rejectThreshold == null ? 0.75 : rejectThreshold;
-        double h = humanThreshold == null ? 0.5 : humanThreshold;
+        if (rejectThreshold == null) throw new IllegalStateException("missing llmRejectThreshold");
+        if (humanThreshold == null) throw new IllegalStateException("missing llmHumanThreshold");
+        double r = clamp01(rejectThreshold);
+        double h = clamp01(humanThreshold);
         if (h > r) h = r;
 
         if (s >= r) return Verdict.REJECT;
         if (s >= h) return Verdict.REVIEW;
         return Verdict.APPROVE;
+    }
+
+    private static double clamp01(double v) {
+        if (!Double.isFinite(v)) throw new IllegalStateException("invalid threshold");
+        if (v < 0) return 0.0;
+        if (v > 1) return 1.0;
+        return v;
     }
 
     public static String normalizeDecision(String decision) {

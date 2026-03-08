@@ -12,11 +12,14 @@ import org.springframework.aop.target.HotSwappableTargetSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.util.StringUtils;
 
+import jakarta.annotation.PreDestroy;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @Configuration
@@ -25,12 +28,15 @@ public class DynamicElasticsearchConfig {
 
     private final SystemConfigurationService systemConfigurationService;
     private HotSwappableTargetSource targetSource;
+    private final AtomicReference<RestClient> currentClient = new AtomicReference<>();
 
     @Bean
+    @Lazy
     @Primary
     public RestClient restClient() {
         // 1. 创建初始的实际 Client
         RestClient initialClient = createClient();
+        currentClient.set(initialClient);
         
         // 2. 创建 TargetSource
         this.targetSource = new HotSwappableTargetSource(initialClient);
@@ -50,12 +56,16 @@ public class DynamicElasticsearchConfig {
      */
     public void refresh() {
         if (targetSource == null) {
+            restClient();
+        }
+        if (targetSource == null) {
             log.warn("TargetSource is null, cannot refresh RestClient.");
             return;
         }
         log.info("Refreshing Elasticsearch RestClient...");
         RestClient newClient = createClient();
         RestClient oldClient = (RestClient) targetSource.swap(newClient);
+        currentClient.set(newClient);
         
         try {
             if (oldClient != null) {
@@ -66,6 +76,17 @@ public class DynamicElasticsearchConfig {
             log.warn("Error closing old RestClient: {}", e.getMessage());
         }
         log.info("Swapped to new RestClient.");
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        RestClient client = currentClient.getAndSet(null);
+        if (client == null) return;
+        try {
+            client.close();
+        } catch (Exception e) {
+            log.warn("Error closing RestClient on shutdown: {}", e.getMessage());
+        }
     }
 
     private RestClient createClient() {

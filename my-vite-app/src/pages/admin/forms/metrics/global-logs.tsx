@@ -15,6 +15,14 @@ import {
 import { downloadBlob } from '../../../../utils/download';
 import { adminGetLogRetentionConfig, adminUpdateLogRetentionConfig } from '../../../../services/logRetentionService';
 import type { LogRetentionConfigDTO } from '../../../../services/logRetentionService';
+import DetailDialog from '../../../../components/common/DetailDialog';
+
+const PAGE_SIZE_OPTIONS = [15, 30, 100, 500, 1000, 5000, 20000] as const;
+
+function normalizePageSize(n?: number): number {
+  if (!n) return PAGE_SIZE_OPTIONS[0];
+  return (PAGE_SIZE_OPTIONS as readonly number[]).includes(n) ? n : PAGE_SIZE_OPTIONS[0];
+}
 
 function formatDateTime(s?: string | null): string {
   if (!s) return '—';
@@ -29,6 +37,40 @@ function safeJson(v: unknown): string {
   } catch {
     return String(v);
   }
+}
+
+type AuditFieldChange = { field: string; from: unknown; to: unknown };
+
+function shallowDiff(before: unknown, after: unknown): AuditFieldChange[] {
+  const b = (before && typeof before === 'object' ? (before as Record<string, unknown>) : {}) as Record<string, unknown>;
+  const a = (after && typeof after === 'object' ? (after as Record<string, unknown>) : {}) as Record<string, unknown>;
+  const keys = new Set([...Object.keys(b), ...Object.keys(a)]);
+  const out: AuditFieldChange[] = [];
+  for (const k of keys) {
+    const bv = b[k];
+    const av = a[k];
+    if (safeJson(bv) === safeJson(av)) continue;
+    out.push({ field: k, from: bv, to: av });
+  }
+  return out;
+}
+
+function readAuditChanges(details: unknown): AuditFieldChange[] {
+  if (!details || typeof details !== 'object') return [];
+  const d = details as Record<string, unknown>;
+  const c = d.changes;
+  if (Array.isArray(c)) {
+    return c
+      .map((x) => {
+        const r = x as Record<string, unknown>;
+        const field = typeof r.field === 'string' ? r.field : '';
+        if (!field) return null;
+        return { field, from: r.from, to: r.to } as AuditFieldChange;
+      })
+      .filter((x): x is AuditFieldChange => Boolean(x));
+  }
+  if (d.before && d.after) return shallowDiff(d.before, d.after);
+  return [];
 }
 
 function parsePositiveInt(s: string | null): number | undefined {
@@ -165,7 +207,7 @@ const GlobalLogsForm: React.FC = () => {
   });
 
   const [page, setPage] = useState<number>(() => parsePositiveInt(searchParams.get('page')) ?? 1);
-  const [pageSize, setPageSize] = useState<number>(() => parsePositiveInt(searchParams.get('pageSize')) ?? 20);
+  const [pageSize, setPageSize] = useState<number>(() => normalizePageSize(parsePositiveInt(searchParams.get('pageSize'))));
 
   const [auditQuery, setAuditQuery] = useState<AuditQueryState>(() => {
     const q: AuditQueryState = { ...defaultAuditQuery };
@@ -193,9 +235,11 @@ const GlobalLogsForm: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalElements, setTotalElements] = useState(0);
 
+  const [exportOpen, setExportOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detail, setDetail] = useState<AuditLogDTO | AccessLogDTO | null>(null);
+  const [detailTab, setDetailTab] = useState<'overview' | 'body' | 'json'>('overview');
 
   const [retentionLoading, setRetentionLoading] = useState(false);
   const [retentionError, setRetentionError] = useState<string | null>(null);
@@ -207,7 +251,7 @@ const GlobalLogsForm: React.FC = () => {
         (prev) => {
           const sp = new URLSearchParams(prev);
 
-          sp.delete('active');
+          sp.set('active', 'global-logs');
           sp.set('glTab', nextTab);
           sp.set('page', String(nextPage));
           sp.set('pageSize', String(nextPageSize));
@@ -230,6 +274,16 @@ const GlobalLogsForm: React.FC = () => {
     },
     [setSearchParams]
   );
+
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const current = prev.get('active') ?? '';
+      if (current === 'global-logs') return prev;
+      const sp = new URLSearchParams(prev);
+      sp.set('active', 'global-logs');
+      return sp;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const loadRetention = useCallback(async () => {
     setRetentionLoading(true);
@@ -317,6 +371,7 @@ const GlobalLogsForm: React.FC = () => {
 
   const openDetail = useCallback(async (id: number) => {
     setDetailOpen(true);
+    setDetailTab('overview');
     setDetailLoading(true);
     setDetail(null);
     try {
@@ -336,6 +391,11 @@ const GlobalLogsForm: React.FC = () => {
       if (mountedRef.current) setDetailLoading(false);
     }
   }, [tab]);
+
+  const closeDetail = useCallback(() => {
+    setDetailOpen(false);
+    setDetailTab('overview');
+  }, []);
 
   const exportCsv = useCallback(async () => {
     setLoading(true);
@@ -379,6 +439,16 @@ const GlobalLogsForm: React.FC = () => {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
+  }, [accessQuery, auditQuery, tab]);
+
+  const exportRange = useMemo(() => {
+    const q = tab === 'audit' ? auditQuery : accessQuery;
+    const fromIso = normalizeIso(q.createdFrom);
+    const toIso = normalizeIso(q.createdTo);
+    return {
+      from: fromIso ? formatDateTime(fromIso) : '未限制',
+      to: toIso ? formatDateTime(toIso) : '未限制',
+    };
   }, [accessQuery, auditQuery, tab]);
 
   const paginationText = useMemo(() => {
@@ -447,11 +517,70 @@ const GlobalLogsForm: React.FC = () => {
           <button
             className="rounded bg-blue-600 text-white px-3 py-2 text-sm disabled:opacity-50"
             disabled={loading}
-            onClick={exportCsv}
+            onClick={() => setExportOpen(true)}
             type="button"
           >
             导出 CSV
           </button>
+        </div>
+      </div>
+
+      <div className="rounded border p-3 space-y-3">
+        <div className="flex items-center gap-3">
+          <div>
+            <div className="font-medium">日志自动清理/归档任务</div>
+            <div className="text-xs text-gray-600">默认关闭。开启后将按保留天数定期清理/归档历史日志。</div>
+          </div>
+        </div>
+
+        {retentionError ? <div className="text-sm text-red-700">{retentionError}</div> : null}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">保留天数</div>
+            <input
+              className="rounded border px-3 py-2 text-sm w-full"
+              value={retention?.keepDays ?? 180}
+              disabled={retentionLoading || !retention}
+              onChange={(e) => updateRetention({ keepDays: toIntOrUndefined(e.target.value) ?? 180 })}
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">模式</div>
+            <select
+              className="rounded border px-3 py-2 text-sm bg-white w-full"
+              value={retention?.mode ?? 'ARCHIVE_TABLE'}
+              disabled={retentionLoading || !retention}
+              onChange={(e) => updateRetention({ mode: e.target.value as LogRetentionConfigDTO['mode'] })}
+            >
+              <option value="ARCHIVE_TABLE">归档到归档表</option>
+              <option value="DELETE">直接删除</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">状态</div>
+            <select
+              className={`rounded border px-3 py-2 text-sm bg-white w-full ${retention?.enabled ? 'text-green-700' : 'text-gray-700'}`}
+              value={retention ? (retention.enabled ? 'ENABLED' : 'DISABLED') : retentionLoading ? '__loading__' : '__none__'}
+              disabled={retentionLoading || !retention}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === 'ENABLED' || v === 'DISABLED') updateRetention({ enabled: v === 'ENABLED' });
+              }}
+            >
+              {retention ? (
+                <>
+                  <option value="ENABLED">已开启</option>
+                  <option value="DISABLED">已关闭</option>
+                </>
+              ) : (
+                <>
+                  <option value="__loading__">正在加载…</option>
+                  <option value="__none__">—</option>
+                </>
+              )}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -633,7 +762,8 @@ const GlobalLogsForm: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-center">
           <input
             className="rounded border px-3 py-2 text-sm"
-            placeholder="开始时间（如 2026-02-12T00:00:00）"
+            type="datetime-local"
+            step="1"
             value={tab === 'audit' ? auditQuery.createdFrom : accessQuery.createdFrom}
             onChange={(e) => {
               const v = e.target.value;
@@ -643,7 +773,8 @@ const GlobalLogsForm: React.FC = () => {
           />
           <input
             className="rounded border px-3 py-2 text-sm"
-            placeholder="结束时间（如 2026-02-12T23:59:59）"
+            type="datetime-local"
+            step="1"
             value={tab === 'audit' ? auditQuery.createdTo : accessQuery.createdTo}
             onChange={(e) => {
               const v = e.target.value;
@@ -667,11 +798,11 @@ const GlobalLogsForm: React.FC = () => {
             <button
               className="rounded border px-3 py-2 text-sm bg-white"
               onClick={() => {
-                setPageSize(20);
+                setPageSize(PAGE_SIZE_OPTIONS[0]);
                 setPage(1);
                 setAuditQuery({ ...defaultAuditQuery });
                 setAccessQuery({ ...defaultAccessQuery });
-                syncToUrl(tab, 1, 20, defaultAuditQuery, defaultAccessQuery);
+                syncToUrl(tab, 1, PAGE_SIZE_OPTIONS[0], defaultAuditQuery, defaultAccessQuery);
               }}
               type="button"
               disabled={loading}
@@ -679,8 +810,6 @@ const GlobalLogsForm: React.FC = () => {
               重置
             </button>
           </div>
-
-          <div className="text-sm text-gray-600">{paginationText}</div>
         </div>
       </div>
 
@@ -785,13 +914,13 @@ const GlobalLogsForm: React.FC = () => {
             className="rounded border px-2 py-2 text-sm bg-white"
             value={pageSize}
             onChange={(e) => {
-              const v = parsePositiveInt(e.target.value) ?? 20;
+              const v = normalizePageSize(parsePositiveInt(e.target.value));
               setPageSize(v);
               setPage(1);
               syncToUrl(tab, 1, v, auditQuery, accessQuery);
             }}
           >
-            {[10, 20, 50, 100, 200].map((n) => (
+            {PAGE_SIZE_OPTIONS.map((n) => (
               <option key={n} value={n}>
                 {n} / 页
               </option>
@@ -824,71 +953,77 @@ const GlobalLogsForm: React.FC = () => {
         </div>
       </div>
 
-      <div className="rounded border p-3 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="font-medium">日志自动清理/归档任务</div>
-            <div className="text-xs text-gray-600">默认关闭。开启后将按保留天数定期清理/归档历史日志。</div>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={retention?.enabled ?? false}
-              disabled={retentionLoading || !retention}
-              onChange={(e) => updateRetention({ enabled: e.target.checked })}
-            />
-            <span>启用</span>
-          </label>
-        </div>
-
-        {retentionError ? <div className="text-sm text-red-700">{retentionError}</div> : null}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <div className="space-y-1">
-            <div className="text-xs text-gray-600">保留天数</div>
-            <input
-              className="rounded border px-3 py-2 text-sm w-full"
-              value={retention?.keepDays ?? 90}
-              disabled={retentionLoading || !retention}
-              onChange={(e) => updateRetention({ keepDays: toIntOrUndefined(e.target.value) ?? 90 })}
-            />
-          </div>
-          <div className="space-y-1">
-            <div className="text-xs text-gray-600">模式</div>
-            <select
-              className="rounded border px-3 py-2 text-sm bg-white w-full"
-              value={retention?.mode ?? 'ARCHIVE_TABLE'}
-              disabled={retentionLoading || !retention}
-              onChange={(e) => updateRetention({ mode: e.target.value as LogRetentionConfigDTO['mode'] })}
-            >
-              <option value="ARCHIVE_TABLE">归档到归档表</option>
-              <option value="DELETE">直接删除</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <div className="text-xs text-gray-600">状态</div>
-            <div className="rounded border px-3 py-2 text-sm bg-gray-50">
-              {retentionLoading ? '正在加载…' : retention ? (retention.enabled ? '已开启' : '已关闭') : '—'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {detailOpen ? (
-        <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/30" onClick={() => setDetailOpen(false)}>
-          <div className="w-full max-w-2xl h-full bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+      {exportOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setExportOpen(false)}>
+          <div className="w-full max-w-lg bg-white rounded shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b flex items-center justify-between">
-              <div className="font-semibold">日志详情</div>
-              <button className="rounded border px-3 py-1.5 text-sm" type="button" onClick={() => setDetailOpen(false)}>
+              <div className="font-semibold">导出 CSV</div>
+              <button className="rounded border px-3 py-1.5 text-sm" type="button" onClick={() => setExportOpen(false)}>
                 关闭
               </button>
             </div>
-            <div className="p-4 space-y-3 overflow-auto h-[calc(100%-57px)]">
-              {detailLoading ? (
-                <div className="text-sm text-gray-600">正在加载详情…</div>
-              ) : detail ? (
+            <div className="p-4 space-y-3">
+              <div className="text-sm text-gray-700">导出范围（时间）</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <div className="rounded border p-2">
+                  <div className="text-xs text-gray-600">开始时间</div>
+                  <div>{exportRange.from}</div>
+                </div>
+                <div className="rounded border p-2">
+                  <div className="text-xs text-gray-600">结束时间</div>
+                  <div>{exportRange.to}</div>
+                </div>
+              </div>
+              <div className="text-xs text-gray-500">未设置时间表示不限制。</div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  className="rounded border px-3 py-2 text-sm bg-white disabled:opacity-50"
+                  disabled={loading}
+                  onClick={() => setExportOpen(false)}
+                  type="button"
+                >
+                  取消
+                </button>
+                <button
+                  className="rounded bg-blue-600 text-white px-3 py-2 text-sm disabled:opacity-50"
+                  disabled={loading}
+                  onClick={async () => {
+                    setExportOpen(false);
+                    await exportCsv();
+                  }}
+                  type="button"
+                >
+                  确认导出
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {detailOpen ? (
+        <DetailDialog
+          open={detailOpen}
+          onClose={closeDetail}
+          variant="drawerRight"
+          title="日志详情"
+          tabs={[
+            { id: 'overview', label: '概览' },
+            { id: 'body', label: '正文' },
+            { id: 'json', label: 'JSON' },
+          ]}
+          activeTabId={detailTab}
+          onTabChange={(id) => setDetailTab(id as 'overview' | 'body' | 'json')}
+          containerClassName="max-w-2xl overflow-hidden rounded-l-2xl"
+          bodyClassName="flex-1 overflow-auto p-4 space-y-3"
+        >
+          {detailLoading ? (
+            <div className="text-sm text-gray-600">正在加载详情…</div>
+          ) : detail ? (
+            <>
+              {'action' in detail ? (
                 <>
-                  {'action' in detail ? (
+                  {detailTab === 'overview' ? (
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div className="rounded border p-2">
                         <div className="text-xs text-gray-600">时间</div>
@@ -914,18 +1049,61 @@ const GlobalLogsForm: React.FC = () => {
                         <div className="text-xs text-gray-600">关联ID（TraceId）</div>
                         <div>{detail.traceId ?? '—'}</div>
                       </div>
+                    </div>
+                  ) : null}
+
+                  {detailTab === 'body' ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm">
                       <div className="rounded border p-2 col-span-2">
                         <div className="text-xs text-gray-600">消息</div>
                         <div className="whitespace-pre-wrap break-words">{detail.message ?? '—'}</div>
                       </div>
-                      <div className="rounded border p-2 col-span-2">
-                        <div className="text-xs text-gray-600">详情（JSON）</div>
-                        <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto whitespace-pre-wrap break-words">
-                          {safeJson(detail.details ?? {})}
-                        </pre>
-                      </div>
+                      {(() => {
+                        const changes = readAuditChanges(detail.details ?? {});
+                        if (!changes.length) return null;
+                        return (
+                          <div className="rounded border p-2 col-span-2">
+                            <div className="text-xs text-gray-600 mb-2">字段变更</div>
+                            <div className="overflow-auto">
+                              <table className="min-w-[720px] w-full text-sm">
+                                <thead>
+                                  <tr className="text-left text-xs text-gray-500">
+                                    <th className="py-2 pr-3 w-[240px]">字段</th>
+                                    <th className="py-2 pr-3">旧值</th>
+                                    <th className="py-2">新值</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {changes.map((c) => (
+                                    <tr key={c.field} className="border-t align-top">
+                                      <td className="py-2 pr-3 font-mono break-all">{c.field}</td>
+                                      <td className="py-2 pr-3">
+                                        <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto max-h-[180px]">{safeJson(c.from)}</pre>
+                                      </td>
+                                      <td className="py-2">
+                                        <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto max-h-[180px]">{safeJson(c.to)}</pre>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
-                  ) : (
+                  ) : null}
+
+                  {detailTab === 'json' ? (
+                    <div className="rounded border p-2">
+                      <div className="text-xs text-gray-600 mb-2">详情（JSON）</div>
+                      <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto whitespace-pre-wrap break-words">{safeJson(detail.details ?? {})}</pre>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {detailTab === 'overview' ? (
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div className="rounded border p-2">
                         <div className="text-xs text-gray-600">时间</div>
@@ -965,7 +1143,12 @@ const GlobalLogsForm: React.FC = () => {
                         <div className="text-xs text-gray-600">关联ID（RequestId/TraceId）</div>
                         <div>{detail.requestId ?? detail.traceId ?? '—'}</div>
                       </div>
-                      <div className="rounded border p-2 col-span-2">
+                    </div>
+                  ) : null}
+
+                  {detailTab === 'body' ? (
+                    <>
+                      <div className="rounded border p-2">
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-xs text-gray-600">请求体</div>
                           {(() => {
@@ -973,11 +1156,7 @@ const GlobalLogsForm: React.FC = () => {
                             const body = reqBody?.body;
                             if (!body) return null;
                             return (
-                              <button
-                                className="text-xs rounded border px-2 py-1 bg-white"
-                                type="button"
-                                onClick={() => copyToClipboard(String(body))}
-                              >
+                              <button className="text-xs rounded border px-2 py-1 bg-white" type="button" onClick={() => copyToClipboard(String(body))}>
                                 复制
                               </button>
                             );
@@ -995,9 +1174,7 @@ const GlobalLogsForm: React.FC = () => {
                             <>
                               <div className="text-xs text-gray-500">{meta}</div>
                               {reqBody.body ? (
-                                <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto whitespace-pre-wrap break-words mt-2">
-                                  {String(reqBody.body)}
-                                </pre>
+                                <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto whitespace-pre-wrap break-words mt-2">{String(reqBody.body)}</pre>
                               ) : (
                                 <div className="text-xs text-gray-500 mt-2">—</div>
                               )}
@@ -1005,7 +1182,7 @@ const GlobalLogsForm: React.FC = () => {
                           );
                         })()}
                       </div>
-                      <div className="rounded border p-2 col-span-2">
+                      <div className="rounded border p-2">
                         <div className="flex items-center justify-between gap-2">
                           <div className="text-xs text-gray-600">响应体</div>
                           {(() => {
@@ -1013,11 +1190,7 @@ const GlobalLogsForm: React.FC = () => {
                             const body = resBody?.body;
                             if (!body) return null;
                             return (
-                              <button
-                                className="text-xs rounded border px-2 py-1 bg-white"
-                                type="button"
-                                onClick={() => copyToClipboard(String(body))}
-                              >
+                              <button className="text-xs rounded border px-2 py-1 bg-white" type="button" onClick={() => copyToClipboard(String(body))}>
                                 复制
                               </button>
                             );
@@ -1036,9 +1209,7 @@ const GlobalLogsForm: React.FC = () => {
                             <>
                               <div className="text-xs text-gray-500">{meta}</div>
                               {resBody.body ? (
-                                <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto whitespace-pre-wrap break-words mt-2">
-                                  {String(resBody.body)}
-                                </pre>
+                                <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto whitespace-pre-wrap break-words mt-2">{String(resBody.body)}</pre>
                               ) : (
                                 <div className="text-xs text-gray-500 mt-2">—</div>
                               )}
@@ -1046,21 +1217,22 @@ const GlobalLogsForm: React.FC = () => {
                           );
                         })()}
                       </div>
-                      <div className="rounded border p-2 col-span-2">
-                        <div className="text-xs text-gray-600">详情（JSON）</div>
-                        <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto whitespace-pre-wrap break-words">
-                          {safeJson(detail.details ?? {})}
-                        </pre>
-                      </div>
+                    </>
+                  ) : null}
+
+                  {detailTab === 'json' ? (
+                    <div className="rounded border p-2">
+                      <div className="text-xs text-gray-600 mb-2">详情（JSON）</div>
+                      <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto whitespace-pre-wrap break-words">{safeJson(detail.details ?? {})}</pre>
                     </div>
-                  )}
+                  ) : null}
                 </>
-              ) : (
-                <div className="text-sm text-gray-600">未加载到详情</div>
               )}
-            </div>
-          </div>
-        </div>
+            </>
+          ) : (
+            <div className="text-sm text-gray-600">未加载到详情</div>
+          )}
+        </DetailDialog>
       ) : null}
     </div>
   );

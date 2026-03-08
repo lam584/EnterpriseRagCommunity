@@ -3,6 +3,8 @@ package com.example.EnterpriseRagCommunity.service.retrieval;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
 import com.example.EnterpriseRagCommunity.service.ai.AiRerankService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
+import com.example.EnterpriseRagCommunity.service.safety.DependencyCircuitBreakerService;
+import com.example.EnterpriseRagCommunity.service.safety.DependencyIsolationGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
@@ -40,7 +42,9 @@ public class HybridRagRetrievalServiceRerankMappingTest {
                 mock(AiRerankService.class),
                 llmGateway,
                 null,
-                null
+                null,
+                mock(DependencyIsolationGuard.class),
+                mock(DependencyCircuitBreakerService.class)
         );
 
         HybridRetrievalConfigDTO cfg = new HybridRetrievalConfigDTO();

@@ -39,7 +39,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const inFlightRefreshRef = useRef<Promise<boolean> | null>(null);
 
   // 添加刷新认证状态的函数
-  const refreshAuth = async (): Promise<boolean> => {
+  const refreshAuth = (): Promise<boolean> => {
     if (inFlightRefreshRef.current) return inFlightRefreshRef.current;
 
     setLoading(true);

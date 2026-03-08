@@ -38,14 +38,6 @@ function dayEnd(d: Date): Date {
   return x;
 }
 
-function floorToMinuteInterval(d: Date, intervalMinutes: number): Date {
-  const x = new Date(d.getTime());
-  const ms = intervalMinutes * 60 * 1000;
-  x.setTime(Math.floor(x.getTime() / ms) * ms);
-  x.setSeconds(0, 0);
-  return x;
-}
-
 function toNumber(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
@@ -298,9 +290,17 @@ const TokenForm: React.FC = () => {
     setRangePreset(preset);
     if (preset === 'CUSTOM') return;
 
-    const end = floorToMinuteInterval(new Date(), 30);
-    let start = new Date(end.getTime());
+    const end = new Date();
 
+    if (preset === 'YESTERDAY') {
+      const y = new Date(end.getTime() - 24 * 3600 * 1000);
+      const start = dayStart(y);
+      setStartDate(start);
+      setEndDate(dayEnd(y));
+      return;
+    }
+
+    let start = new Date(end.getTime());
     if (preset === 'LAST_30M') start = new Date(end.getTime() - 30 * 60 * 1000);
     else if (preset === 'LAST_1H') start = new Date(end.getTime() - 1 * 3600 * 1000);
     else if (preset === 'LAST_6H') start = new Date(end.getTime() - 6 * 3600 * 1000);
@@ -309,15 +309,8 @@ const TokenForm: React.FC = () => {
     else if (preset === 'LAST_7D') start = new Date(end.getTime() - 7 * 24 * 3600 * 1000);
     else if (preset === 'LAST_30D') start = new Date(end.getTime() - 30 * 24 * 3600 * 1000);
     else if (preset === 'TODAY') start = dayStart(end);
-    else if (preset === 'YESTERDAY') {
-      const y = new Date(end.getTime() - 24 * 3600 * 1000);
-      start = dayStart(y);
-      setStartDate(start);
-      setEndDate(dayEnd(y));
-      return;
-    }
 
-    setStartDate(floorToMinuteInterval(start, 30));
+    setStartDate(start);
     setEndDate(end);
   }, []);
 
@@ -694,7 +687,7 @@ const TokenForm: React.FC = () => {
 
       <ModelTokenCostChart title="按模型 Token/费用对比" items={sortedItems.slice(0, 30)} currency={resp?.currency} providerNameById={providerNameById} />
 
-      <div className="rounded border p-3 space-y-2">
+      <div className="rounded border p-3 space-y-2 w-full max-w-5xl mx-auto">
         {sortedItems.length === 0 ? (
           <div className="text-sm text-gray-500">该时间范围内暂无记录。</div>
         ) : (

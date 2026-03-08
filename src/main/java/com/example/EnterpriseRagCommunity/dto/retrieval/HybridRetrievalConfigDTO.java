@@ -11,11 +11,14 @@ public class HybridRetrievalConfigDTO {
     private Double bm25ContentBoost;
 
     private Integer vecK;
+    private Boolean fileVecEnabled;
+    private Integer fileVecK;
 
     private Integer hybridK;
     private String fusionMode;
     private Double bm25Weight;
     private Double vecWeight;
+    private Double fileVecWeight;
     private Integer rrfK;
 
     private Boolean rerankEnabled;

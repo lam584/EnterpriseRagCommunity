@@ -136,6 +136,7 @@ public class PortalAuditLogsController {
                     .append('\n');
         }
 
+        sb.insert(0, '\uFEFF');
         String filename = "my-moderation-audit-logs.csv";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")

@@ -8,9 +8,11 @@ import {
   type PostSummaryGenConfigDTO,
   type PostSummaryGenHistoryDTO,
 } from '../../../../services/postSummaryAdminService';
+import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
 import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
 import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
+import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
 
 type FormState = {
   enabled: boolean;
@@ -20,7 +22,7 @@ type FormState = {
   topP: string;
   enableThinking: boolean;
   maxContentChars: string;
-  promptTemplate: string;
+  promptCode: string;
 };
 
 function parseOptionalNumber(raw: string): number | undefined {
@@ -38,7 +40,15 @@ function defaultConfig(): PostSummaryGenConfigDTO {
     topP: 0.7,
     enableThinking: false,
     maxContentChars: 8000,
-    promptTemplate: `请为以下社区帖子生成“帖子摘要”。\n要求：\n- 只输出严格 JSON，不要输出任何解释文字，不要包裹 \`\`\`；\n- JSON 字段：{\"title\":\"...\",\"summary\":\"...\"}；\n- title：可选，若原文标题已足够清晰可直接复用或略微改写；\n- summary：中文摘要，建议 80~200 字，尽量覆盖关键信息、结论与可执行要点；\n\n帖子标题：\n{{title}}\n\n帖子正文：\n{{content}}\n`,
+    promptCode: 'SUMMARY_GEN',
+  };
+}
+
+function toPromptDraft(dto?: PromptContentDTO | null): PromptContentDraft {
+  return {
+    name: dto?.name ?? '',
+    systemPrompt: dto?.systemPrompt ?? '',
+    userPromptTemplate: dto?.userPromptTemplate ?? '',
   };
 }
 
@@ -51,15 +61,13 @@ function toFormState(cfg?: PostSummaryGenConfigDTO | null): FormState {
     topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
     enableThinking: Boolean(cfg?.enableThinking),
     maxContentChars: cfg?.maxContentChars === null || cfg?.maxContentChars === undefined ? '' : String(cfg.maxContentChars),
-    promptTemplate: cfg?.promptTemplate ?? '',
+    promptCode: cfg?.promptCode ?? '',
   };
 }
 
 function validateForm(s: FormState): string[] {
   const errors: string[] = [];
-  if (!s.promptTemplate.trim()) errors.push('提示词不能为空');
-  if (s.promptTemplate.length > 20000) errors.push('提示词过长（>20000），请精简');
-  if (s.promptTemplate.trim().length < 50) errors.push('提示词建议不少于 50 个字符（避免过短导致输出不稳定）');
+  if (!s.promptCode.trim()) errors.push('提示词编码不能为空');
 
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 1)) errors.push('温度参数需在 [0, 1] 范围内');
@@ -74,18 +82,11 @@ function validateForm(s: FormState): string[] {
 }
 
 function buildPayload(s: FormState) {
-  const temperature = parseOptionalNumber(s.temperature);
-  const topP = parseOptionalNumber(s.topP);
   const maxContentChars = parseOptionalNumber(s.maxContentChars);
   return {
     enabled: s.enabled,
-    model: s.model.trim() ? s.model.trim() : null,
-    providerId: s.providerId.trim() ? s.providerId.trim() : null,
-    temperature: temperature === undefined ? null : temperature,
-    topP: topP === undefined ? null : topP,
-    enableThinking: s.enableThinking,
     maxContentChars: maxContentChars === undefined ? 4000 : Math.trunc(maxContentChars),
-    promptTemplate: s.promptTemplate,
+    promptCode: s.promptCode,
   };
 }
 
@@ -99,13 +100,21 @@ const SummaryForm: React.FC = () => {
   const [providers, setProviders] = useState<AiProviderDTO[]>([]);
   const [activeProviderId, setActiveProviderId] = useState<string>('');
   const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
+  const [promptLoadError, setPromptLoadError] = useState<string | null>(null);
+  const [committedPromptDraft, setCommittedPromptDraft] = useState<PromptContentDraft | null>(null);
+  const [promptDraft, setPromptDraft] = useState<PromptContentDraft | null>(null);
 
   const [form, setForm] = useState<FormState>(() => toFormState(defaultConfig()));
   const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(defaultConfig()));
 
   const formErrors = useMemo(() => validateForm(form), [form]);
   const canSave = formErrors.length === 0 && !loading && !saving;
-  const hasUnsavedChanges = useMemo(() => JSON.stringify(form) !== JSON.stringify(committedForm), [form, committedForm]);
+  const formHasUnsavedChanges = useMemo(() => JSON.stringify(form) !== JSON.stringify(committedForm), [form, committedForm]);
+  const promptHasUnsavedChanges = useMemo(
+    () => JSON.stringify(promptDraft) !== JSON.stringify(committedPromptDraft),
+    [promptDraft, committedPromptDraft]
+  );
+  const hasUnsavedChanges = formHasUnsavedChanges || promptHasUnsavedChanges;
 
   useEffect(() => {
     let cancelled = false;
@@ -147,14 +156,32 @@ const SummaryForm: React.FC = () => {
     setLoading(true);
     setError(null);
     setSavedHint(null);
+    setPromptLoadError(null);
     try {
       const cfg = await adminGetPostSummaryConfig();
-      const prompt = cfg?.promptTemplate?.trim();
+      const prompt = cfg?.promptCode?.trim();
       const next = toFormState(prompt ? cfg : { ...defaultConfig(), ...cfg });
       setForm(next);
       setCommittedForm(next);
       setEditing(false);
       if (!prompt) setSavedHint('后端配置为空，已加载内置默认值（可编辑后保存写入数据库）');
+
+      try {
+        const resp = await adminBatchGetPrompts([next.promptCode]);
+        const dto = resp.prompts?.[0];
+        if (!dto || (resp.missingCodes ?? []).length) {
+          setCommittedPromptDraft(null);
+          setPromptDraft(null);
+        } else {
+          const draft = toPromptDraft(dto);
+          setCommittedPromptDraft(draft);
+          setPromptDraft(draft);
+        }
+      } catch (e) {
+        setPromptLoadError(e instanceof Error ? e.message : String(e));
+        setCommittedPromptDraft(null);
+        setPromptDraft(null);
+      }
     } catch (e) {
       const next = toFormState(defaultConfig());
       setForm(next);
@@ -162,6 +189,8 @@ const SummaryForm: React.FC = () => {
       setEditing(false);
       setError(e instanceof Error ? e.message : String(e));
       setSavedHint('后端接口不可用，已加载前端默认配置（可用于演示）');
+      setCommittedPromptDraft(null);
+      setPromptDraft(null);
     } finally {
       setLoading(false);
     }
@@ -180,17 +209,35 @@ const SummaryForm: React.FC = () => {
     try {
       const payload = buildPayload(form);
       const saved = await adminUpsertPostSummaryConfig(payload);
+
+      let promptUpdateErr: string | null = null;
+      if (promptDraft && promptHasUnsavedChanges) {
+        try {
+          await adminUpdatePromptContent(form.promptCode, {
+            systemPrompt: promptDraft.systemPrompt,
+            userPromptTemplate: promptDraft.userPromptTemplate,
+          });
+          setCommittedPromptDraft(promptDraft);
+        } catch (e) {
+          promptUpdateErr = e instanceof Error ? e.message : String(e);
+        }
+      }
+
       const next = toFormState(saved);
       setForm(next);
       setCommittedForm(next);
       setEditing(false);
-      setSavedHint('保存成功');
+      if (promptUpdateErr) {
+        setError(`配置已保存，但提示词保存失败：${promptUpdateErr}`);
+      } else {
+        setSavedHint('保存成功');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
-  }, [canSave, form, saving]);
+  }, [canSave, form, saving, promptDraft, promptHasUnsavedChanges]);
 
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -308,6 +355,7 @@ const SummaryForm: React.FC = () => {
               onClick={() => {
                 if (editing) {
                   setForm(committedForm);
+                  setPromptDraft(committedPromptDraft);
                   setEditing(false);
                   setError(null);
                   setSavedHint(null);
@@ -392,19 +440,16 @@ const SummaryForm: React.FC = () => {
           </div>
         </div>
 
-        <div>
-          <div className="text-xs text-gray-600 mb-1">提示词</div>
-          <textarea
-            value={form.promptTemplate}
-            onChange={(e) => setForm((p) => ({ ...p, promptTemplate: e.target.value }))}
-            disabled={!editing || loading || saving}
-            className="w-full rounded border px-3 py-2 text-sm min-h-[140px] disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
-            placeholder="建议要求模型严格输出 JSON，避免混入解释文字"
-          />
-          <div className="text-[11px] text-gray-500 mt-1">
-            可用占位符：{'{{title}}'} / {'{{content}}'} / {'{{tagsLine}}'}
-          </div>
-        </div>
+        <PromptContentCard
+          title="摘要生成提示词"
+          draft={promptDraft}
+          editing={editing}
+          onChange={(next) => {
+            setPromptDraft(next);
+            setSavedHint(null);
+          }}
+          hint={promptLoadError ?? '引用当前配置的提示词'}
+        />
       </div>
 
       <div className="bg-white rounded-lg shadow p-4 space-y-3">

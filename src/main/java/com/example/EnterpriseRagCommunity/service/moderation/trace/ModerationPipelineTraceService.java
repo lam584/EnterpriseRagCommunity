@@ -3,8 +3,10 @@ package com.example.EnterpriseRagCommunity.service.moderation.trace;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRunEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineStepEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineStepRepository;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +25,7 @@ public class ModerationPipelineTraceService {
 
     private final ModerationPipelineRunRepository runRepository;
     private final ModerationPipelineStepRepository stepRepository;
+    private final AuditLogWriter auditLogWriter;
 
     @Transactional
     public ModerationPipelineRunEntity ensureRun(ModerationQueueEntity q) {
@@ -48,7 +51,6 @@ public class ModerationPipelineTraceService {
         run.setErrorCode(null);
         run.setErrorMessage(null);
         run.setLlmModel(null);
-        run.setLlmThreshold(null);
         run.setCreatedAt(now);
         return runRepository.save(run);
     }
@@ -58,8 +60,8 @@ public class ModerationPipelineTraceService {
         if (runId == null) throw new IllegalArgumentException("runId is null");
         if (stage == null) throw new IllegalArgumentException("stage is null");
 
-        // idempotent: one step per run+stage
-        ModerationPipelineStepEntity step = stepRepository.findByRunIdAndStage(runId, stage).orElseGet(ModerationPipelineStepEntity::new);
+        ModerationPipelineStepEntity step = stepRepository.findByRunIdAndStageAndStepOrder(runId, stage, stepOrder)
+                .orElseGet(ModerationPipelineStepEntity::new);
         if (step.getId() != null && step.getEndedAt() != null) {
             return step;
         }
@@ -141,6 +143,23 @@ public class ModerationPipelineTraceService {
         run.setEndedAt(now);
         run.setTotalMs(Duration.between(run.getStartedAt(), now).toMillis());
         runRepository.save(run);
+
+        try {
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("runId", run.getId());
+            details.put("finalDecision", finalDecision == null ? null : finalDecision.name());
+            details.put("totalMs", run.getTotalMs());
+            auditLogWriter.writeSystem(
+                    "QUEUE_DECISION",
+                    "MODERATION_QUEUE",
+                    run.getQueueId(),
+                    AuditResult.SUCCESS,
+                    "审核流程完成：" + (finalDecision == null ? "UNKNOWN" : finalDecision.name()),
+                    run.getTraceId(),
+                    details
+            );
+        } catch (Exception ignore) {
+        }
     }
 
     @Transactional
@@ -156,6 +175,24 @@ public class ModerationPipelineTraceService {
         run.setEndedAt(now);
         run.setTotalMs(Duration.between(run.getStartedAt(), now).toMillis());
         runRepository.save(run);
+
+        try {
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("runId", run.getId());
+            details.put("finalDecision", "HUMAN");
+            details.put("errorCode", errorCode);
+            details.put("totalMs", run.getTotalMs());
+            auditLogWriter.writeSystem(
+                    "QUEUE_DECISION",
+                    "MODERATION_QUEUE",
+                    run.getQueueId(),
+                    AuditResult.FAIL,
+                    safeMsg(errorMessage),
+                    run.getTraceId(),
+                    details
+            );
+        } catch (Exception ignore) {
+        }
     }
 
     private static String safeMsg(String s) {

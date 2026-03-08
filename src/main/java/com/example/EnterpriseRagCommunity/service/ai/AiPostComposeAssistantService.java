@@ -5,10 +5,12 @@ import com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostComposeAiSnapshotsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostComposeAiSnapshotStatus;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostComposeAiSnapshotsRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,6 +44,7 @@ public class AiPostComposeAssistantService {
     private final LlmModelRepository llmModelRepository;
     private final FileAssetsRepository fileAssetsRepository;
     private final PortalChatConfigService portalChatConfigService;
+    private final PromptsRepository promptsRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${app.upload.root:uploads}")
@@ -72,11 +75,14 @@ public class AiPostComposeAssistantService {
 
         PortalChatConfigDTO.PostComposeAssistantConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getPostComposeAssistant();
         boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        String baseSystemPrompt = deepThink ? portalCfg.getDeepThinkSystemPrompt() : portalCfg.getSystemPrompt();
+        
+        String baseSystemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
+        String baseSystemPrompt = resolvePromptText(baseSystemPromptCode);
 
         String userDefaultSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
 
-        String composeSystemPrompt = portalCfg.getComposeSystemPrompt();
+        String composeSystemPromptCode = portalCfg.getComposeSystemPromptCode();
+        String composeSystemPrompt = resolvePromptText(composeSystemPromptCode);
 
         String instruction = firstNonBlank(req.getInstruction(), snap.getInstruction());
         if (!StringUtils.hasText(instruction)) {
@@ -182,6 +188,13 @@ public class AiPostComposeAssistantService {
         out.flush();
     }
 
+    private String resolvePromptText(String code) {
+        if (code == null || code.isBlank()) return "";
+        return promptsRepository.findByPromptCode(code)
+                .map(PromptsEntity::getSystemPrompt)
+                .orElse("");
+    }
+
     private String loadUserDefaultSystemPrompt(Long userId) {
         UsersEntity u = usersRepository.findById(userId).orElse(null);
         if (u == null) return null;
@@ -213,7 +226,7 @@ public class AiPostComposeAssistantService {
                 }
             }
             if (effectiveProviderId == null) {
-                throw new IllegalArgumentException("未指定模型来源(providerId)，无法发送图片");
+                throw new IllegalArgumentException("未指定模型提供商(providerId)，无法发送图片");
             }
             if (!isEnabledImageChatModel(effectiveProviderId, mo)) {
                 throw new IllegalArgumentException("当前选择的模型不支持图片，请选择视觉模型（图片聊天）或切换为“自动(均衡负载)”");
@@ -235,7 +248,7 @@ public class AiPostComposeAssistantService {
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
-                throw new IllegalArgumentException("模型来源解析失败，无法发送图片");
+                throw new IllegalArgumentException("模型提供商解析失败，无法发送图片");
             }
             return;
         }
@@ -375,6 +388,21 @@ public class AiPostComposeAssistantService {
 
     private byte[] readLocalUploadBytes(Long fileAssetId, String url) {
         try {
+            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
+            String u = toNonBlank(url);
+            if (u != null && !prefix.isEmpty() && u.startsWith(prefix + "/")) {
+                int q = u.indexOf('?');
+                if (q >= 0) u = u.substring(0, q);
+                String rel = u.substring(prefix.length());
+                while (rel.startsWith("/")) rel = rel.substring(1);
+
+                Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
+                Path p = root.resolve(rel).normalize();
+                if (p.startsWith(root) && Files.exists(p) && Files.isRegularFile(p)) {
+                    return Files.readAllBytes(p);
+                }
+            }
+
             if (fileAssetId != null) {
                 var fa = fileAssetsRepository.findById(fileAssetId).orElse(null);
                 if (fa != null && fa.getPath() != null && !fa.getPath().isBlank()) {
@@ -385,21 +413,7 @@ public class AiPostComposeAssistantService {
                 }
             }
 
-            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
-            String u = toNonBlank(url);
-            if (u == null || prefix.isEmpty()) return null;
-            if (!u.startsWith(prefix + "/")) return null;
-
-            int q = u.indexOf('?');
-            if (q >= 0) u = u.substring(0, q);
-            String rel = u.substring(prefix.length());
-            while (rel.startsWith("/")) rel = rel.substring(1);
-
-            Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
-            Path p = root.resolve(rel).normalize();
-            if (!p.startsWith(root)) return null;
-            if (!Files.exists(p) || !Files.isRegularFile(p)) return null;
-            return Files.readAllBytes(p);
+            return null;
         } catch (Exception ignored) {
             return null;
         }
@@ -475,15 +489,15 @@ public class AiPostComposeAssistantService {
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\b' -> sb.append("\\b");
-                case '\f' -> sb.append("\\f");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
+                case '"' -> sb.append("\\\\\"");
+                case '\\' -> sb.append("\\\\\\\\");
+                case '\b' -> sb.append("\\\\b");
+                case '\f' -> sb.append("\\\\f");
+                case '\n' -> sb.append("\\\\n");
+                case '\r' -> sb.append("\\\\r");
+                case '\t' -> sb.append("\\\\t");
                 default -> {
-                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
+                    if (c < 0x20) sb.append(String.format("\\\\u%04x", (int) c));
                     else sb.append(c);
                 }
             }

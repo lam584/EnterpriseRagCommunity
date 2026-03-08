@@ -29,28 +29,13 @@ public class PostSummaryGenHistoryEntity {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "model", length = 128)
-    private String model;
-
-    @Column(name = "provider_id", length = 64)
-    private String providerId;
-
-    @Column(name = "temperature")
-    private Double temperature;
-
-    @Column(name = "top_p")
-    private Double topP;
-
     @Column(name = "applied_max_content_chars", nullable = false)
     private Integer appliedMaxContentChars;
-
-    @Column(name = "latency_ms")
-    private Long latencyMs;
-
-    @Column(name = "prompt_version")
-    private Integer promptVersion;
 
     @Lob
     @Column(name = "error_message")
     private String errorMessage;
+
+    @Column(name = "job_id")
+    private Long jobId;
 }

@@ -36,6 +36,18 @@ public class PostsEntity {
     @Column(name = "content", nullable = false)
     private String content;
 
+    @Column(name = "content_length", nullable = false)
+    private Integer contentLength = 0;
+
+    @Column(name = "is_chunked_review", nullable = false)
+    private Boolean isChunkedReview = false;
+
+    @Column(name = "chunk_threshold_chars")
+    private Integer chunkThresholdChars;
+
+    @Column(name = "chunking_strategy", length = 16)
+    private String chunkingStrategy;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "content_format", nullable = false, length = 16)
     private ContentFormat contentFormat;

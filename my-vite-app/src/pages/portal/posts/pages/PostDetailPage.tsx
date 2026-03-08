@@ -722,6 +722,40 @@ export default function PostDetailPage() {
     return clamped * 12;
   };
 
+  const handleBack = () => {
+    const state = (location.state ?? null) as unknown;
+    const from = state && typeof state === 'object' ? (state as { from?: unknown }).from : undefined;
+
+    if (typeof from === 'string') {
+      const current = `${location.pathname}${location.search}${location.hash}`;
+      if (from && from !== current) {
+        navigate(from);
+        return;
+      }
+    } else if (from && typeof from === 'object') {
+      const obj = from as { pathname?: unknown; search?: unknown; hash?: unknown };
+      const pathname = typeof obj.pathname === 'string' ? obj.pathname : '';
+      const search = typeof obj.search === 'string' ? obj.search : '';
+      const hash = typeof obj.hash === 'string' ? obj.hash : '';
+      if (pathname && (pathname !== location.pathname || search !== location.search || hash !== location.hash)) {
+        navigate({ pathname, search, hash });
+        return;
+      }
+    }
+
+    const idx =
+      typeof window !== 'undefined' && window.history.state && typeof window.history.state.idx === 'number'
+        ? window.history.state.idx
+        : 0;
+
+    if (idx > 0) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/portal/posts', { replace: true });
+  };
+
   const renderCommentCard = (node: CommentNode, mode: CommentSortMode, rootDepth: number, renderChildren = true) => {
     const c = node.comment;
     const displayName = getCommentDisplayName(c);
@@ -735,7 +769,7 @@ export default function PostDetailPage() {
     const children = sortNodes(node.children, mode);
     const rootReplyCount = commentNodes.byId.get(node.rootId)?.descendantCount ?? 0;
     const threadActive = threadModalOpen && threadModalRootId === node.rootId;
-    const shouldShowThreadToggle = node.rootId !== node.id && rootReplyCount >= 2;
+    const shouldShowThreadToggle = node.rootId !== node.id && rootReplyCount >= 2 && !threadActive;
     const parentNode = node.parentId == null ? null : commentNodes.byId.get(node.parentId) ?? null;
     const replyToName = relativeDepth >= 3 && parentNode ? getCommentDisplayName(parentNode.comment) : '';
     const highlighted = highlightCommentId === node.id;
@@ -796,12 +830,10 @@ export default function PostDetailPage() {
                   {shouldShowThreadToggle ? (
                     <button
                       type="button"
-                      className={`px-2 py-1 rounded border text-xs ${
-                        threadActive ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 bg-white hover:bg-gray-50'
-                      }`}
-                      onClick={() => (threadActive ? closeThreadModal() : openThreadModal(node.rootId))}
+                      className="px-2 py-1 rounded border text-xs border-gray-300 bg-white hover:bg-gray-50"
+                      onClick={() => openThreadModal(node.rootId)}
                     >
-                      {threadActive ? '收起对话' : '查看全部对话'}
+                      查看全部对话
                     </button>
                   ) : null}
                   {(shouldShowCommentTranslateButton(c) || !!commentTranslations[node.id]) ? (
@@ -915,7 +947,7 @@ export default function PostDetailPage() {
             <button
               type="button"
               className="px-3 py-2 rounded-md border border-gray-300 bg-white hover:bg-gray-50"
-              onClick={() => navigate(-1)}
+              onClick={handleBack}
             >
               返回
             </button>
@@ -978,7 +1010,7 @@ export default function PostDetailPage() {
                   {post.boardName ? <span className="ml-auto text-gray-400">#{post.boardName}</span> : null}
                 </div>
 
-                <h1 className="mt-2 text-xl font-semibold text-gray-900">{post.title}</h1>
+                {(post.title ?? '').trim() ? <h1 className="mt-2 text-xl font-semibold text-gray-900">{(post.title ?? '').trim()}</h1> : null}
 
                 {(post.tags ?? []).length ? (
                   <div className="mt-2 flex flex-wrap gap-2">

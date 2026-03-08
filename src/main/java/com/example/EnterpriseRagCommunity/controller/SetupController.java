@@ -41,6 +41,14 @@ public class SetupController {
 
     private static final Logger logger = LoggerFactory.getLogger(SetupController.class);
 
+    @FunctionalInterface
+    public interface RestClientFactory {
+        RestClient create(String uris, String apiKey);
+    }
+
+    @Autowired(required = false)
+    private RestClientFactory restClientFactory;
+
     @Autowired
     private AdministratorService administratorService;
 
@@ -52,6 +60,9 @@ public class SetupController {
 
     @Autowired
     private com.example.EnterpriseRagCommunity.config.DynamicElasticsearchConfig dynamicElasticsearchConfig;
+
+    @Autowired
+    private com.example.EnterpriseRagCommunity.config.ElasticsearchIndexStartupInitializer elasticsearchIndexStartupInitializer;
 
     @Autowired
     private AuthController authController;
@@ -75,7 +86,7 @@ public class SetupController {
     @GetMapping("/check-env")
     public ResponseEntity<?> checkEnvFile() {
         File envFile = findEnvFile();
-        if (envFile != null && envFile.exists() && envFile.isFile()) {
+        if (isExistingFile(envFile)) {
             try {
                 String content = Files.readString(envFile.toPath());
                 return ResponseEntity.ok(Map.of("exists", true, "content", content));
@@ -85,6 +96,33 @@ public class SetupController {
             }
         }
         return ResponseEntity.ok(Map.of("exists", false));
+    }
+
+    static boolean isExistingFile(File file) {
+        return file != null && file.exists() && file.isFile();
+    }
+
+    static String sanitizeCodeSourcePath(String path) {
+        String p = path;
+        if (p.startsWith("nested:")) {
+            p = p.substring(7);
+        } else if (p.startsWith("file:")) {
+            p = p.substring(5);
+        }
+
+        int bangIndex = p.indexOf("!");
+        if (bangIndex > 0) {
+            p = p.substring(0, bangIndex);
+        }
+        return p;
+    }
+
+    static File resolveStartDir(File jarFile) {
+        return jarFile.isDirectory() ? jarFile : jarFile.getParentFile();
+    }
+
+    static boolean shouldSearchFromStartDir(File startDir, String userDir) {
+        return startDir != null && !startDir.getAbsolutePath().equals(userDir);
     }
 
     private File findEnvFile() {
@@ -98,30 +136,15 @@ public class SetupController {
         try {
             String path = SetupController.class.getProtectionDomain().getCodeSource().getLocation().getPath();
             logger.info("Jar code source path: {}", path);
-            
-            // Handle nested: protocol (Tomcat/Jetty executable wars sometimes use this)
-            if (path.startsWith("nested:")) {
-                path = path.substring(7);
-            }
-            // Handle file: protocol if present
-            else if (path.startsWith("file:")) {
-                path = path.substring(5);
-            }
 
-            // Remove !/WEB-INF/classes!/ or !/BOOT-INF/classes!/ if running from fat jar
-            // We want the path to the JAR file itself
-            int bangIndex = path.indexOf("!");
-            if (bangIndex > 0) {
-                path = path.substring(0, bangIndex);
-            }
+            path = sanitizeCodeSourcePath(path);
             
             File jarFile = new File(java.net.URLDecoder.decode(path, java.nio.charset.StandardCharsets.UTF_8.name()));
             logger.info("Resolved Jar/Class file path: {}", jarFile.getAbsolutePath());
-            
-            // If it points to a file (jar), get parent. If dir (classes), use it.
-            File startDir = jarFile.isDirectory() ? jarFile : jarFile.getParentFile();
-            
-            if (startDir != null && !startDir.getAbsolutePath().equals(userDir)) { 
+
+            File startDir = resolveStartDir(jarFile);
+
+            if (shouldSearchFromStartDir(startDir, userDir)) {
                  logger.info("Searching for .env file starting from Jar location: {}", startDir.getAbsolutePath());
                  found = searchUpwards(startDir);
                  if (found != null) return found;
@@ -165,7 +188,7 @@ public class SetupController {
             }
 
             File envFile = new File(currentDir, ".env");
-            if (envFile.exists() && envFile.isFile()) {
+            if (isExistingFile(envFile)) {
                 logger.info("SUCCESS: Found .env file at: {}", envFile.getAbsolutePath());
                 return envFile;
             }
@@ -206,7 +229,7 @@ public class SetupController {
             return ResponseEntity.badRequest().body(Map.of("message", "Elasticsearch URI is required"));
         }
 
-        try (RestClient client = buildClient(uris, apiKey)) {
+        try (RestClient client = createClient(uris, apiKey)) {
             Request request = new Request("GET", "/");
             Response response = client.performRequest(request);
             int statusCode = response.getStatusLine().getStatusCode();
@@ -238,6 +261,13 @@ public class SetupController {
         
         return builder.build();
     }
+
+    private RestClient createClient(String uris, String apiKey) {
+        if (restClientFactory != null) {
+            return restClientFactory.create(uris, apiKey);
+        }
+        return buildClient(uris, apiKey);
+    }
     
     @PostMapping("/check-indices")
     public ResponseEntity<?> checkIndices(@RequestBody Map<String, Object> payload) {
@@ -259,7 +289,7 @@ public class SetupController {
 
         Map<String, String> results = new HashMap<>();
 
-        try (RestClient client = buildClient(uris, apiKey)) {
+        try (RestClient client = createClient(uris, apiKey)) {
             for (String index : indices) {
                 try {
                     // Check if index exists using HEAD request
@@ -297,6 +327,32 @@ public class SetupController {
                 String key = entry.getKey();
                 String value = entry.getValue();
                 
+                // Map IMAGE_STORAGE_* keys to image.storage.* database keys
+                if (key.startsWith("IMAGE_STORAGE_")) {
+                    String dbKey;
+                    boolean encrypt;
+                    switch (key) {
+                        case "IMAGE_STORAGE_MODE":
+                            dbKey = "image.storage.mode"; encrypt = false; break;
+                        case "IMAGE_STORAGE_OSS_ENDPOINT":
+                            dbKey = "image.storage.oss.endpoint"; encrypt = true; break;
+                        case "IMAGE_STORAGE_OSS_BUCKET":
+                            dbKey = "image.storage.oss.bucket"; encrypt = false; break;
+                        case "IMAGE_STORAGE_OSS_ACCESS_KEY_ID":
+                            dbKey = "image.storage.oss.access_key_id"; encrypt = true; break;
+                        case "IMAGE_STORAGE_OSS_ACCESS_KEY_SECRET":
+                            dbKey = "image.storage.oss.access_key_secret"; encrypt = true; break;
+                        case "IMAGE_STORAGE_OSS_REGION":
+                            dbKey = "image.storage.oss.region"; encrypt = false; break;
+                        default:
+                            continue;
+                    }
+                    if (value != null && !value.isEmpty()) {
+                        systemConfigurationService.saveConfig(dbKey, value, encrypt, "Initialized via Setup Wizard");
+                    }
+                    continue;
+                }
+
                 // 部分配置项不需要加密
                 boolean shouldEncrypt = true;
                 if (key.startsWith("spring.elasticsearch")
@@ -315,6 +371,13 @@ public class SetupController {
             systemConfigurationService.refreshCache();
             dynamicConfigurationLoader.refreshEnvironment();
             dynamicElasticsearchConfig.refresh();
+            
+            try {
+                elasticsearchIndexStartupInitializer.init();
+            } catch (Exception e) {
+                logger.warn("ES re-initialization warning: {}", e.getMessage());
+            }
+
             return ResponseEntity.ok(Map.of("success", true));
         } catch (Exception e) {
             logger.error("Failed to save config", e);

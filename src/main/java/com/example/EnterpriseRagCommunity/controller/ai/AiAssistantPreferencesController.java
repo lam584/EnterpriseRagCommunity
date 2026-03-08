@@ -2,8 +2,11 @@ package com.example.EnterpriseRagCommunity.controller.ai;
 
 import com.example.EnterpriseRagCommunity.dto.ai.AssistantPreferencesDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.UpdateAssistantPreferencesRequest;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -29,6 +32,8 @@ public class AiAssistantPreferencesController {
     private static final int DEFAULT_RAG_TOP_K = 6;
 
     private final UsersRepository usersRepository;
+    private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
 
     @GetMapping
     public ResponseEntity<?> getPreferences() {
@@ -58,6 +63,7 @@ public class AiAssistantPreferencesController {
         String email = auth.getName();
         UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
+        Map<String, Object> beforeAudit = summarizeAssistantPrefsForAudit(user.getMetadata());
 
         Map<String, Object> metadata0 = user.getMetadata();
         Map<String, Object> metadata = (metadata0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata0);
@@ -114,6 +120,17 @@ public class AiAssistantPreferencesController {
         user.setMetadata(metadata);
 
         UsersEntity saved = usersRepository.save(user);
+        auditLogWriter.write(
+                saved.getId(),
+                email,
+                "ASSISTANT_PREFERENCES_UPDATE",
+                "USER",
+                saved.getId(),
+                AuditResult.SUCCESS,
+                "更新 AI 助手偏好",
+                null,
+                auditDiffBuilder.build(beforeAudit, summarizeAssistantPrefsForAudit(saved.getMetadata()))
+        );
         return ResponseEntity.ok(toAssistantPreferencesDto(saved.getMetadata()));
     }
 
@@ -203,5 +220,33 @@ public class AiAssistantPreferencesController {
         dto.setTopP(topP);
         dto.setDefaultSystemPrompt(defaultSystemPrompt);
         return dto;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> summarizeAssistantPrefsForAudit(Map<String, Object> metadata) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        Map<String, Object> prefs = null;
+        if (metadata != null) {
+            Object p = metadata.get("preferences");
+            if (p instanceof Map) prefs = (Map<String, Object>) p;
+        }
+        Map<String, Object> assistant = null;
+        if (prefs != null) {
+            Object a = prefs.get("assistant");
+            if (a instanceof Map) assistant = (Map<String, Object>) a;
+        }
+        if (assistant == null) return m;
+        m.put("defaultProviderId", assistant.get("defaultProviderId"));
+        m.put("defaultModel", assistant.get("defaultModel"));
+        m.put("defaultDeepThink", assistant.get("defaultDeepThink"));
+        m.put("autoLoadLastSession", assistant.get("autoLoadLastSession"));
+        m.put("defaultUseRag", assistant.get("defaultUseRag"));
+        m.put("ragTopK", assistant.get("ragTopK"));
+        m.put("stream", assistant.get("stream"));
+        m.put("temperature", assistant.get("temperature"));
+        m.put("topP", assistant.get("topP"));
+        Object dsp = assistant.get("defaultSystemPrompt");
+        m.put("defaultSystemPromptLen", dsp == null ? 0 : String.valueOf(dsp).length());
+        return m;
     }
 }

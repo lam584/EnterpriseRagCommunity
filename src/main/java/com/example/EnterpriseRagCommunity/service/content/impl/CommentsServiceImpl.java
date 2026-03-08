@@ -17,6 +17,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.example.EnterpriseRagCommunity.dto.content.CommentCreateRequest;
 import com.example.EnterpriseRagCommunity.dto.content.CommentDTO;
@@ -26,19 +28,20 @@ import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionTargetType;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionType;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.ai.AiLanguageDetectService;
 import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 
 import jakarta.transaction.Transactional;
@@ -62,13 +65,10 @@ public class CommentsServiceImpl implements CommentsService {
     private AdminModerationQueueService adminModerationQueueService;
 
     @Autowired
-    private ModerationRuleAutoRunner moderationRuleAutoRunner;
+    private ModerationQueueRepository moderationQueueRepository;
 
     @Autowired
-    private ModerationVecAutoRunner moderationVecAutoRunner;
-
-    @Autowired
-    private ModerationLlmAutoRunner moderationLlmAutoRunner;
+    private ModerationAutoKickService moderationAutoKickService;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -220,13 +220,11 @@ public class CommentsServiceImpl implements CommentsService {
             CommentsEntity saved = commentsRepository.save(e);
 
             adminModerationQueueService.ensureEnqueuedComment(saved.getId());
-
-            try {
-                moderationRuleAutoRunner.runOnce();
-                moderationVecAutoRunner.runOnce();
-                moderationLlmAutoRunner.runOnce();
-            } catch (Exception ignore) {
-            }
+            Long queueId = moderationQueueRepository
+                    .findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.COMMENT, saved.getId())
+                    .map(q -> q.getId())
+                    .orElse(null);
+            scheduleModerationAutoRunAfterCommit(queueId);
 
             if (parentId == null) {
                 PostsEntity post = postsRepository.findById(postId).orElse(null);
@@ -241,6 +239,10 @@ public class CommentsServiceImpl implements CommentsService {
                 }
             }
 
+            Map<String, Object> successDetails = new HashMap<>();
+            successDetails.put("postId", postId);
+            successDetails.put("parentId", parentId);
+            successDetails.put("status", saved.getStatus() == null ? null : saved.getStatus().name());
             auditLogWriter.write(
                     me,
                     actorName,
@@ -250,15 +252,14 @@ public class CommentsServiceImpl implements CommentsService {
                     AuditResult.SUCCESS,
                     "发表评论",
                     null,
-                    Map.of(
-                            "postId", postId,
-                            "parentId", parentId,
-                            "status", saved.getStatus() == null ? null : saved.getStatus().name()
-                    )
+                    successDetails
             );
 
             return toDTO(saved);
         } catch (RuntimeException ex) {
+            Map<String, Object> failDetails = new HashMap<>();
+            failDetails.put("postId", postId);
+            failDetails.put("parentId", parentId);
             auditLogWriter.write(
                     me,
                     actorName,
@@ -268,10 +269,7 @@ public class CommentsServiceImpl implements CommentsService {
                     AuditResult.FAIL,
                     safeText(ex.getMessage(), 512),
                     null,
-                    Map.of(
-                            "postId", postId,
-                            "parentId", parentId
-                    )
+                    failDetails
             );
             throw ex;
         }
@@ -281,6 +279,26 @@ public class CommentsServiceImpl implements CommentsService {
     public long countByPostId(Long postId) {
         if (postId == null) return 0;
         return commentsRepository.countByPostIdAndStatusAndIsDeletedFalse(postId, CommentStatus.VISIBLE);
+    }
+
+    private void scheduleModerationAutoRunAfterCommit(Long queueId) {
+        if (queueId == null) return;
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        moderationAutoKickService.kickQueueId(queueId);
+                    } catch (Exception ignore) {
+                    }
+                }
+            });
+            return;
+        }
+        try {
+            moderationAutoKickService.kickQueueId(queueId);
+        } catch (Exception ignore) {
+        }
     }
 
     private static String currentUsernameOrNull() {

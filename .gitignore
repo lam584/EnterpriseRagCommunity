@@ -14,6 +14,7 @@ build/
 *.sublime-workspace
 .trae/
 .VSCodeCounter/
+.codebuddy/
 # Compiled class files
 *.class
 
@@ -52,10 +53,21 @@ uploads/
 tree.md
 temp.md
 HELP.md
-git操作指南.md
-功能清单.md
+docs/git操作指南.md
+docs/功能清单.md
 /*.txt
-评估报告.md
+docs/评估报告.md
 .env
 test-reports/
 my-vite-app/test-reports/
+logs
+docs/初稿.md
+perf/jmeter/results
+docs/temp.md
+src/test/resources/test-secrets.properties
+.trae-temp
+.VSCodeCounter
+docs/后端分支测试覆盖率.md
+docs/后端分支覆盖测试报告.lnk
+docs/前端分支覆盖测试报告.url
+.github

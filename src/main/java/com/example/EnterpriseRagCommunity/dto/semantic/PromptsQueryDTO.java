@@ -14,8 +14,20 @@ public class PromptsQueryDTO {
     @ApiModelProperty("名称")
     private String name;
 
-    @ApiModelProperty("模板内容包含")
-    private String templateContains;
+    @ApiModelProperty("Prompt编码")
+    private String promptCode;
+
+    @ApiModelProperty("系统Prompt包含")
+    private String systemPromptContains;
+
+    @ApiModelProperty("用户Prompt模板内容包含")
+    private String userPromptTemplateContains;
+
+    @ApiModelProperty("模型名称")
+    private String modelName;
+
+    @ApiModelProperty("供应商ID")
+    private String providerId;
 
     @ApiModelProperty("模板变量(JSON)")
     private Map<String, Object> variables;

@@ -1,9 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.ai.client;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
-import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,6 +12,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class OpenAiCompatClient {
 
@@ -34,6 +33,7 @@ public class OpenAiCompatClient {
             List<String> stop,
             Boolean enableThinking,
             Integer thinkingBudget,
+            Map<String, Object> extraBody,
             Map<String, String> extraHeaders,
             Integer connectTimeoutMs,
             Integer readTimeoutMs,
@@ -54,11 +54,11 @@ public class OpenAiCompatClient {
     ) {
     }
 
-    private final AiProperties props;
     private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final int DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
+    private static final int DEFAULT_READ_TIMEOUT_MS = 300_000;
 
-    public OpenAiCompatClient(AiProperties props) {
-        this.props = props;
+    public OpenAiCompatClient() {
     }
 
     public void chatCompletionsStream(ChatRequest req, SseLineConsumer consumer) throws IOException {
@@ -66,7 +66,9 @@ public class OpenAiCompatClient {
         HttpURLConnection conn = openJsonPost(endpoint, req, true);
 
         String model = req.model();
-        if (model == null || model.isBlank()) model = props.getModel();
+        if (model == null || model.isBlank()) {
+            throw new IllegalArgumentException("AI Model is not configured. Please configure 'app.ai.model' or check your LLM provider settings.");
+        }
         List<ChatMessage> messages = req.messages() == null ? List.of() : req.messages();
 
         String body = buildBodyJson(
@@ -78,6 +80,7 @@ public class OpenAiCompatClient {
                 req.stop(),
                 req.enableThinking(),
                 req.thinkingBudget(),
+                req.extraBody(),
                 true
         );
         try (OutputStream os = conn.getOutputStream()) {
@@ -106,7 +109,9 @@ public class OpenAiCompatClient {
         HttpURLConnection conn = openJsonPost(endpoint, req, false);
 
         String model = req.model();
-        if (model == null || model.isBlank()) model = props.getModel();
+        if (model == null || model.isBlank()) {
+            throw new IllegalArgumentException("AI Model is not configured. Please configure 'app.ai.model' or check your LLM provider settings.");
+        }
         List<ChatMessage> messages = req.messages() == null ? List.of() : req.messages();
 
         String body = buildBodyJson(
@@ -118,6 +123,7 @@ public class OpenAiCompatClient {
                 req.stop(),
                 req.enableThinking(),
                 req.thinkingBudget(),
+                req.extraBody(),
                 false
         );
         try (OutputStream os = conn.getOutputStream()) {
@@ -140,7 +146,9 @@ public class OpenAiCompatClient {
         HttpURLConnection conn = openJsonPost(endpoint, req.apiKey(), req.extraHeaders(), req.connectTimeoutMs(), req.readTimeoutMs(), false);
 
         String model = req.model();
-        if (model == null || model.isBlank()) model = props.getModel();
+        if (model == null || model.isBlank()) {
+            throw new IllegalArgumentException("AI Model is not configured. Please configure 'app.ai.model' or check your LLM provider settings.");
+        }
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
@@ -174,9 +182,9 @@ public class OpenAiCompatClient {
         conn.setDoOutput(true);
 
         Integer connectTimeoutMs = req.connectTimeoutMs();
-        if (connectTimeoutMs == null || connectTimeoutMs <= 0) connectTimeoutMs = props.getConnectTimeoutMs();
+        if (connectTimeoutMs == null || connectTimeoutMs <= 0) connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS;
         Integer readTimeoutMs = req.readTimeoutMs();
-        if (readTimeoutMs == null || readTimeoutMs <= 0) readTimeoutMs = props.getReadTimeoutMs();
+        if (readTimeoutMs == null || readTimeoutMs <= 0) readTimeoutMs = DEFAULT_READ_TIMEOUT_MS;
         conn.setConnectTimeout(connectTimeoutMs);
         conn.setReadTimeout(readTimeoutMs);
 
@@ -199,9 +207,9 @@ public class OpenAiCompatClient {
         conn.setDoOutput(true);
 
         Integer cto = connectTimeoutMs;
-        if (cto == null || cto <= 0) cto = props.getConnectTimeoutMs();
+        if (cto == null || cto <= 0) cto = DEFAULT_CONNECT_TIMEOUT_MS;
         Integer rto = readTimeoutMs;
-        if (rto == null || rto <= 0) rto = props.getReadTimeoutMs();
+        if (rto == null || rto <= 0) rto = DEFAULT_READ_TIMEOUT_MS;
         conn.setConnectTimeout(cto);
         conn.setReadTimeout(rto);
 
@@ -233,7 +241,9 @@ public class OpenAiCompatClient {
 
     private String buildEndpoint(String baseUrl, String path) {
         String endpoint = baseUrl;
-        if (endpoint == null || endpoint.isBlank()) endpoint = props.getBaseUrl();
+        if (endpoint == null || endpoint.isBlank()) {
+            throw new IllegalArgumentException("AI Base URL is not configured. Please configure 'app.ai.base-url' or check your LLM provider settings.");
+        }
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
         if (!path.startsWith("/")) path = "/" + path;
         return endpoint + path;
@@ -274,6 +284,7 @@ public class OpenAiCompatClient {
             List<String> stop,
             Boolean enableThinking,
             Integer thinkingBudget,
+            Map<String, Object> extraBody,
             boolean stream
     ) {
         StringBuilder sb = new StringBuilder();
@@ -305,6 +316,40 @@ public class OpenAiCompatClient {
         }
         if (thinkingBudget != null && thinkingBudget > 0) {
             sb.append(",\"thinking_budget\":").append(thinkingBudget);
+        }
+        if (extraBody != null && !extraBody.isEmpty()) {
+            for (Map.Entry<String, Object> e : extraBody.entrySet()) {
+                String k = e.getKey();
+                if (k == null || k.isBlank()) continue;
+                String kn = k.trim();
+                if (kn.equals("model")
+                        || kn.equals("stream")
+                        || kn.equals("stream_options")
+                        || kn.equals("temperature")
+                        || kn.equals("top_p")
+                        || kn.equals("max_tokens")
+                        || kn.equals("stop")
+                        || kn.equals("enable_thinking")
+                        || kn.equals("thinking_budget")
+                        || kn.equals("messages")) {
+                    continue;
+                }
+                sb.append(",\"").append(escapeJson(kn)).append("\":");
+                Object v = e.getValue();
+                if (v == null) {
+                    sb.append("null");
+                } else if (v instanceof String s) {
+                    sb.append('"').append(escapeJson(s)).append('"');
+                } else if (v instanceof Number || v instanceof Boolean) {
+                    sb.append(String.valueOf(v));
+                } else {
+                    try {
+                        sb.append(objectMapper.writeValueAsString(v));
+                    } catch (Exception ex) {
+                        sb.append('"').append(escapeJson(String.valueOf(v))).append('"');
+                    }
+                }
+            }
         }
         sb.append(",\"messages\":[");
         for (int i = 0; i < messages.size(); i++) {

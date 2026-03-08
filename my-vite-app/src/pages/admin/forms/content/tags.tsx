@@ -6,7 +6,7 @@ const MAX_NAME = 64;
 const MAX_DESC = 255;
 const MAX_SLUG = 96;
 
-const TYPES: TagType[] = ['TOPIC', 'LANGUAGE', 'RISK', 'SYSTEM'];
+const TYPES: TagType[] = ['TOPIC', 'LANGUAGE', 'SYSTEM'];
 
 const TagsForm: React.FC = () => {
   // 表单数据（参考 TagDTO）
@@ -43,7 +43,13 @@ const TagsForm: React.FC = () => {
             },
             { signal: ctrl.signal }
           );
-          setItems(page.content ?? []);
+          // Filter out RISK tags if backend returns them (though backend might not if type is specified)
+          // But since 'ALL' sends undefined, backend returns all. We must filter RISK out manually if backend doesn't support exclusion.
+          // Or better: relying on this page NOT to show RISK tags.
+          // Let's filter client-side just in case, or ensure backend query excludes RISK if possible.
+          // Assuming backend returns all types for undefined.
+          const content = page.content ?? [];
+          setItems(content.filter(t => t.type !== 'RISK'));
           setTotalPages(Math.max(1, page.totalPages ?? 1));
         } finally {
           setLoading(false);

@@ -1,16 +1,20 @@
 package com.example.EnterpriseRagCommunity.service.moderation.impl;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
+
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -19,8 +23,10 @@ import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueBackfillRequest;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueBackfillResponse;
+import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueBatchRequeueResponse;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueDetailDTO;
 import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueItemDTO;
+import com.example.EnterpriseRagCommunity.dto.moderation.AdminModerationQueueRiskTagItemDTO;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationQueueQueryDTO;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
@@ -33,6 +39,9 @@ import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReportStatus;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReportTargetType;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationActionsEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRunEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.enums.ActionType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
@@ -42,14 +51,19 @@ import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReportsRepository;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationActionsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
+import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.UsersService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkReviewService;
 import com.example.EnterpriseRagCommunity.service.moderation.RiskLabelingService;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
+
 import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexVisibilitySyncService;
 
@@ -68,7 +82,13 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     private PostAttachmentsRepository postAttachmentsRepository;
 
     @Autowired
+    private FileAssetExtractionsRepository fileAssetExtractionsRepository;
+
+    @Autowired
     private CommentsRepository commentsRepository;
+
+    @Autowired
+    private UsersRepository usersRepository;
 
     @Autowired
     private com.example.EnterpriseRagCommunity.service.AdministratorService administratorService;
@@ -83,13 +103,18 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     private ModerationPipelineRunRepository moderationPipelineRunRepository;
 
     @Autowired
-    private ModerationRuleAutoRunner moderationRuleAutoRunner;
+    private ModerationActionsRepository moderationActionsRepository;
 
     @Autowired
-    private ModerationVecAutoRunner moderationVecAutoRunner;
+    @Lazy
+    private ModerationAutoKickService moderationAutoKickService;
+
 
     @Autowired
     private RiskLabelingService riskLabelingService;
+
+    @Autowired
+    private ModerationChunkReviewService moderationChunkReviewService;
 
     @Autowired
     private RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
@@ -99,6 +124,9 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     @Autowired
     private AuditLogWriter auditLogWriter;
+
+    @Autowired
+    private UsersService usersService;
 
     @Override
     public Page<AdminModerationQueueItemDTO> list(ModerationQueueQueryDTO query) {
@@ -197,14 +225,19 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         // Batch load posts/comments for summaries
         Set<Long> postIds = new HashSet<>();
         Set<Long> commentIds = new HashSet<>();
+        Set<Long> profileUserIds = new HashSet<>();
+        Set<Long> queueIds = new HashSet<>();
         for (ModerationQueueEntity e : entityPage.getContent()) {
             if (e == null) continue;
+            if (e.getId() != null) queueIds.add(e.getId());
             if (e.getContentType() == ContentType.POST) postIds.add(e.getContentId());
             if (e.getContentType() == ContentType.COMMENT) commentIds.add(e.getContentId());
+            if (e.getContentType() == ContentType.PROFILE) profileUserIds.add(e.getContentId());
         }
 
         Map<Long, PostsEntity> postsById = loadPostsByIds(postIds);
         Map<Long, CommentsEntity> commentsById = loadCommentsByIds(commentIds);
+        Map<Long, UsersEntity> usersById = loadUsersByIds(profileUserIds);
 
         // For comments, also load their post titles
         Set<Long> commentPostIds = new HashSet<>();
@@ -213,14 +246,47 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         }
         Map<Long, PostsEntity> commentPostsById = loadPostsByIds(commentPostIds);
 
-        Map<Long, List<String>> postRiskTagsById = riskLabelingService.getRiskTagSlugsByTargets(ContentType.POST, postIds);
-        Map<Long, List<String>> commentRiskTagsById = riskLabelingService.getRiskTagSlugsByTargets(ContentType.COMMENT, commentIds);
+        Map<Long, List<RiskLabelingService.RiskTagItem>> postRiskTagItemsById = riskLabelingService.getRiskTagItemsByTargets(ContentType.POST, postIds);
+        Map<Long, List<RiskLabelingService.RiskTagItem>> commentRiskTagItemsById = riskLabelingService.getRiskTagItemsByTargets(ContentType.COMMENT, commentIds);
+        Map<Long, List<RiskLabelingService.RiskTagItem>> profileRiskTagItemsById = riskLabelingService.getRiskTagItemsByTargets(ContentType.PROFILE, profileUserIds);
+        Map<Long, ModerationChunkReviewService.ProgressSummary> chunkProgressByQueueId = moderationChunkReviewService.loadProgressSummaries(queueIds);
 
         return entityPage.map(e -> {
-            List<String> riskTags = e.getContentType() == ContentType.POST
-                    ? postRiskTagsById.getOrDefault(e.getContentId(), List.of())
-                    : commentRiskTagsById.getOrDefault(e.getContentId(), List.of());
-            return toItemDTO(e, postsById.get(e.getContentId()), commentsById.get(e.getContentId()), commentPostsById, riskTags);
+            List<RiskLabelingService.RiskTagItem> riskTagItems = switch (e.getContentType()) {
+                case POST -> postRiskTagItemsById.getOrDefault(e.getContentId(), List.of());
+                case COMMENT -> commentRiskTagItemsById.getOrDefault(e.getContentId(), List.of());
+                case PROFILE -> profileRiskTagItemsById.getOrDefault(e.getContentId(), List.of());
+            };
+            List<String> riskTags = new ArrayList<>();
+            List<AdminModerationQueueRiskTagItemDTO> riskTagItemDTOs = new ArrayList<>();
+            for (RiskLabelingService.RiskTagItem it : riskTagItems) {
+                if (it == null || it.slug() == null || it.slug().isBlank()) continue;
+                riskTags.add(it.slug());
+                AdminModerationQueueRiskTagItemDTO x = new AdminModerationQueueRiskTagItemDTO();
+                x.setSlug(it.slug());
+                x.setName(it.name());
+                riskTagItemDTOs.add(x);
+            }
+            AdminModerationQueueItemDTO dto = toItemDTO(
+                    e,
+                    postsById.get(e.getContentId()),
+                    commentsById.get(e.getContentId()),
+                    usersById.get(e.getContentId()),
+                    commentPostsById,
+                    riskTags
+            );
+            dto.setRiskTagItems(riskTagItemDTOs);
+            ModerationChunkReviewService.ProgressSummary ps = chunkProgressByQueueId.get(e.getId());
+            if (ps != null && ps.total > 0) {
+                AdminModerationQueueItemDTO.ChunkProgress cp = new AdminModerationQueueItemDTO.ChunkProgress();
+                cp.setStatus(ps.status);
+                cp.setTotalChunks(ps.total);
+                cp.setCompletedChunks(ps.completed);
+                cp.setFailedChunks(ps.failed);
+                cp.setUpdatedAt(ps.updatedAt);
+                dto.setChunkProgress(cp);
+            }
+            return dto;
         });
     }
 
@@ -231,7 +297,32 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + id));
 
         AdminModerationQueueDetailDTO dto = baseDetail(q);
-        dto.setRiskTags(riskLabelingService.getRiskTagSlugs(q.getContentType(), q.getContentId()));
+        List<RiskLabelingService.RiskTagItem> riskTagItems = riskLabelingService.getRiskTagItems(q.getContentType(), q.getContentId());
+        List<String> riskTags = new ArrayList<>();
+        List<AdminModerationQueueRiskTagItemDTO> riskTagItemDTOs = new ArrayList<>();
+        for (RiskLabelingService.RiskTagItem it : riskTagItems) {
+            if (it == null || it.slug() == null || it.slug().isBlank()) continue;
+            riskTags.add(it.slug());
+            AdminModerationQueueRiskTagItemDTO x = new AdminModerationQueueRiskTagItemDTO();
+            x.setSlug(it.slug());
+            x.setName(it.name());
+            riskTagItemDTOs.add(x);
+        }
+        dto.setRiskTags(riskTags);
+        dto.setRiskTagItems(riskTagItemDTOs);
+        try {
+            ModerationChunkReviewService.ProgressSummary ps = moderationChunkReviewService.loadProgressSummaries(List.of(q.getId())).get(q.getId());
+            if (ps != null && ps.total > 0) {
+                AdminModerationQueueItemDTO.ChunkProgress cp = new AdminModerationQueueItemDTO.ChunkProgress();
+                cp.setStatus(ps.status);
+                cp.setTotalChunks(ps.total);
+                cp.setCompletedChunks(ps.completed);
+                cp.setFailedChunks(ps.failed);
+                cp.setUpdatedAt(ps.updatedAt);
+                dto.setChunkProgress(cp);
+            }
+        } catch (Exception ignore) {
+        }
 
         if (q.getContentType() == ContentType.POST) {
             PostsEntity p = postsRepository.findById(q.getContentId()).orElse(null);
@@ -243,9 +334,24 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                     Page<PostAttachmentsEntity> page = postAttachmentsRepository.findByPostId(p.getId(), pageable);
                     List<AdminModerationQueueDetailDTO.Attachment> atts = new ArrayList<>();
                     if (page != null && page.getContent() != null) {
+                        Map<Long, com.example.EnterpriseRagCommunity.entity.monitor.FileAssetExtractionsEntity> exById = new HashMap<>();
+                        try {
+                            Set<Long> faIds = new HashSet<>();
+                            for (PostAttachmentsEntity a : page.getContent()) {
+                                if (a == null || a.getFileAssetId() == null) continue;
+                                faIds.add(a.getFileAssetId());
+                                if (faIds.size() >= 200) break;
+                            }
+                            if (!faIds.isEmpty()) {
+                                for (var ex : fileAssetExtractionsRepository.findAllById(faIds)) {
+                                    if (ex != null && ex.getFileAssetId() != null) exById.put(ex.getFileAssetId(), ex);
+                                }
+                            }
+                        } catch (Exception ignore) {
+                        }
                         for (PostAttachmentsEntity a : page.getContent()) {
                             if (a == null) continue;
-                            atts.add(toAttachment(a));
+                            atts.add(toAttachment(a, exById.get(a.getFileAssetId())));
                         }
                     }
                     pc.setAttachments(atts.isEmpty() ? List.of() : atts);
@@ -259,10 +365,14 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             PostsEntity post = (c == null || c.getPostId() == null) ? null : postsRepository.findById(c.getPostId()).orElse(null);
             dto.setSummary(buildCommentSummary(c, post));
             dto.setComment(toCommentContent(c));
+        } else if (q.getContentType() == ContentType.PROFILE) {
+            UsersEntity u = usersRepository.findById(q.getContentId()).orElse(null);
+            dto.setSummary(buildProfileSummary(u));
+            dto.setProfile(toProfileContent(u, q.getId()));
         }
 
         try {
-            ReportTargetType targetType = q.getContentType() == ContentType.POST ? ReportTargetType.POST : ReportTargetType.COMMENT;
+            ReportTargetType targetType = toReportTargetType(q.getContentType());
             Pageable pageable = PageRequest.of(0, 10, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
             Page<ReportsEntity> page = reportsRepository.findByTargetTypeAndTargetId(targetType, q.getContentId(), pageable);
             List<AdminModerationQueueDetailDTO.ReportInfo> infos = new ArrayList<>();
@@ -315,7 +425,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             Long actorId = actor == null ? null : actor.getId();
             Map<Long, Integer> reportCountByReporterId = new HashMap<>();
             try {
-                ReportTargetType t = q.getContentType() == ContentType.POST ? ReportTargetType.POST : ReportTargetType.COMMENT;
+                ReportTargetType t = toReportTargetType(q.getContentType());
                 List<ReportsEntity> pending = reportsRepository.findAllByTargetTypeAndTargetIdAndStatus(t, q.getContentId(), ReportStatus.PENDING);
                 if (pending != null) {
                     for (ReportsEntity r : pending) {
@@ -348,7 +458,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             }
             try {
                 if (!reportCountByReporterId.isEmpty()) {
-                    String targetLabel = q.getContentType() == ContentType.POST ? "帖子" : "评论";
+                    String targetLabel = labelFor(q.getContentType());
                     String resolution = reason == null ? "内容正常" : reason;
                     for (Map.Entry<Long, Integer> e : reportCountByReporterId.entrySet()) {
                         Long reporterId = e.getKey();
@@ -358,6 +468,10 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                         notificationsService.createNotification(reporterId, "REPORT", "举报结果通知", content);
                     }
                 }
+            } catch (Exception ignore) {
+            }
+            try {
+                notifyModerationResultToAuthor(q, true, reason);
             } catch (Exception ignore) {
             }
         } else {
@@ -377,6 +491,32 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 c.setUpdatedAt(LocalDateTime.now());
                 CommentsEntity saved = commentsRepository.save(c);
                 ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+            } else if (q.getContentType() == ContentType.PROFILE) {
+                UsersEntity u = usersRepository.findById(q.getContentId())
+                        .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + q.getContentId()));
+                if (Boolean.TRUE.equals(u.getIsDeleted())) throw new IllegalArgumentException("用户已删除: " + u.getId());
+                Map<String, Object> md0 = u.getMetadata();
+                Map<String, Object> md = md0 == null ? new HashMap<>() : new HashMap<>(md0);
+                Map<String, Object> pending = readMap(md, "profilePending");
+                String pendingUsername = strOrNull(pending.get("username"));
+                if (pendingUsername != null) u.setUsername(pendingUsername);
+
+                Map<String, Object> publicProfile0 = readMap(md, "profile");
+                Map<String, Object> publicProfile = new HashMap<>(publicProfile0);
+                if (pending.containsKey("avatarUrl")) publicProfile.put("avatarUrl", pending.get("avatarUrl"));
+                if (pending.containsKey("bio")) publicProfile.put("bio", pending.get("bio"));
+                if (pending.containsKey("location")) publicProfile.put("location", pending.get("location"));
+                if (pending.containsKey("website")) publicProfile.put("website", pending.get("website"));
+                md.put("profile", publicProfile);
+                md.remove("profilePending");
+                md.remove("profilePendingSubmittedAt");
+                md.remove("profileModeration");
+                u.setMetadata(md);
+                usersRepository.save(u);
+            }
+            try {
+                notifyModerationResultToAuthor(q, true, reason);
+            } catch (Exception ignore) {
             }
         }
 
@@ -465,11 +605,28 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 c.setUpdatedAt(LocalDateTime.now());
                 CommentsEntity saved = commentsRepository.save(c);
                 ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+            } else if (q.getContentType() == ContentType.PROFILE) {
+                UsersEntity u = usersRepository.findById(q.getContentId())
+                        .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + q.getContentId()));
+                if (Boolean.TRUE.equals(u.getIsDeleted())) throw new IllegalArgumentException("用户已删除: " + u.getId());
+                Map<String, Object> md0 = u.getMetadata();
+                Map<String, Object> md = md0 == null ? new HashMap<>() : new HashMap<>(md0);
+                Map<String, Object> publicProfile0 = readMap(md, "profile");
+                Map<String, Object> publicProfile = new HashMap<>(publicProfile0);
+                publicProfile.put("avatarUrl", null);
+                publicProfile.put("bio", null);
+                publicProfile.put("location", null);
+                publicProfile.put("website", null);
+                md.put("profile", publicProfile);
+                md.remove("profilePending");
+                md.remove("profilePendingSubmittedAt");
+                u.setMetadata(md);
+                usersRepository.save(u);
             }
 
             Long actorId = actor == null ? null : actor.getId();
             try {
-                ReportTargetType t = q.getContentType() == ContentType.POST ? ReportTargetType.POST : ReportTargetType.COMMENT;
+                ReportTargetType t = toReportTargetType(q.getContentType());
                 List<ReportsEntity> pending = reportsRepository.findAllByTargetTypeAndTargetIdAndStatus(t, q.getContentId(), ReportStatus.PENDING);
                 if (pending != null) {
                     for (ReportsEntity r : pending) {
@@ -482,7 +639,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             }
             try {
                 if (!reportCountByReporterId.isEmpty()) {
-                    String targetLabel = q.getContentType() == ContentType.POST ? "帖子" : "评论";
+                    String targetLabel = labelFor(q.getContentType());
                     String resolution = reason == null ? "已核实并已处理" : reason;
                     for (Map.Entry<Long, Integer> e : reportCountByReporterId.entrySet()) {
                         Long reporterId = e.getKey();
@@ -492,6 +649,10 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                         notificationsService.createNotification(reporterId, "REPORT", "举报结果通知", content);
                     }
                 }
+            } catch (Exception ignore) {
+            }
+            try {
+                notifyModerationResultToAuthor(q, false, reason);
             } catch (Exception ignore) {
             }
         } else {
@@ -510,6 +671,26 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 c.setUpdatedAt(LocalDateTime.now());
                 CommentsEntity saved = commentsRepository.save(c);
                 ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+            } else if (q.getContentType() == ContentType.PROFILE) {
+                UsersEntity u = usersRepository.findById(q.getContentId())
+                        .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + q.getContentId()));
+                if (Boolean.TRUE.equals(u.getIsDeleted())) throw new IllegalArgumentException("用户已删除: " + u.getId());
+                Map<String, Object> md0 = u.getMetadata();
+                Map<String, Object> md = md0 == null ? new HashMap<>() : new HashMap<>(md0);
+                md.remove("profilePending");
+                md.remove("profilePendingSubmittedAt");
+                Map<String, Object> pm = new HashMap<>();
+                pm.put("caseType", "CONTENT");
+                pm.put("status", "REJECTED");
+                pm.put("updatedAt", LocalDateTime.now().toString());
+                pm.put("reason", reason);
+                md.put("profileModeration", pm);
+                u.setMetadata(md);
+                usersRepository.save(u);
+            }
+            try {
+                notifyModerationResultToAuthor(q, false, reason);
+            } catch (Exception ignore) {
             }
         }
 
@@ -558,6 +739,45 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     @Override
     @Transactional
+    public AdminModerationQueueDetailDTO banUser(Long id, String reason) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        UsersEntity actor = currentUserOrThrow();
+        String checkedReason = requireReason(reason);
+
+        ModerationQueueEntity q = moderationQueueRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + id));
+
+        Long targetUserId = null;
+        if (q.getContentType() == ContentType.POST) {
+            PostsEntity p = postsRepository.findById(q.getContentId()).orElse(null);
+            if (p != null) targetUserId = p.getAuthorId();
+        } else if (q.getContentType() == ContentType.COMMENT) {
+            CommentsEntity c = commentsRepository.findById(q.getContentId()).orElse(null);
+            if (c != null) targetUserId = c.getAuthorId();
+        } else if (q.getContentType() == ContentType.PROFILE) {
+            targetUserId = q.getContentId();
+        }
+
+        if (targetUserId == null) {
+            throw new IllegalStateException("无法识别内容作者，不能封禁");
+        }
+
+        usersService.banUser(targetUserId, actor.getId(), actorName(actor), checkedReason, "MODERATION_QUEUE", id);
+
+        Map<String, Object> details = new HashMap<>();
+        details.put("queueId", q.getId());
+        details.put("caseType", q.getCaseType() == null ? null : q.getCaseType().name());
+        details.put("contentType", q.getContentType() == null ? null : q.getContentType().name());
+        details.put("contentId", q.getContentId());
+        details.put("bannedUserId", targetUserId);
+        details.put("reason", checkedReason);
+        auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_BAN_USER", "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, "人工操作：封禁用户", newTraceId(), details);
+
+        return getDetail(id);
+    }
+
+    @Override
+    @Transactional
     public void ensureEnqueuedPost(Long postId) {
         if (postId == null) return;
         moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.POST, postId)
@@ -589,6 +809,26 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                     e.setContentId(commentId);
                     e.setStatus(QueueStatus.PENDING);
                     // start pipeline at RULE stage
+                    e.setCurrentStage(QueueStage.RULE);
+                    e.setPriority(0);
+                    e.setAssignedToId(null);
+                    e.setCreatedAt(LocalDateTime.now());
+                    e.setUpdatedAt(LocalDateTime.now());
+                    return moderationQueueRepository.save(e);
+                });
+    }
+
+    @Override
+    @Transactional
+    public void ensureEnqueuedProfile(Long userId) {
+        if (userId == null) return;
+        moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.PROFILE, userId)
+                .orElseGet(() -> {
+                    ModerationQueueEntity e = new ModerationQueueEntity();
+                    e.setCaseType(ModerationCaseType.CONTENT);
+                    e.setContentType(ContentType.PROFILE);
+                    e.setContentId(userId);
+                    e.setStatus(QueueStatus.PENDING);
                     e.setCurrentStage(QueueStage.RULE);
                     e.setPriority(0);
                     e.setAssignedToId(null);
@@ -679,7 +919,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 spec = spec.and((root, q, cb) -> cb.lessThanOrEqualTo(root.get("createdAt"), createdTo));
             }
 
-            // 按创建时间升序扫描，更符合“先来先审”
+            // 按创建时间升序扫描，更符合"先来先审"
             Pageable pageable = PageRequest.of(0, Math.min(remaining, 1000), Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")));
             Page<CommentsEntity> page = commentsRepository.findAll(spec, pageable);
 
@@ -742,7 +982,14 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         return map;
     }
 
-    private AdminModerationQueueItemDTO toItemDTO(ModerationQueueEntity q, PostsEntity post, CommentsEntity comment, Map<Long, PostsEntity> commentPostsById, List<String> riskTags) {
+    private Map<Long, UsersEntity> loadUsersByIds(Set<Long> ids) {
+        Map<Long, UsersEntity> map = new HashMap<>();
+        if (ids == null || ids.isEmpty()) return map;
+        usersRepository.findAllById(ids).forEach(u -> map.put(u.getId(), u));
+        return map;
+    }
+
+    private AdminModerationQueueItemDTO toItemDTO(ModerationQueueEntity q, PostsEntity post, CommentsEntity comment, UsersEntity user, Map<Long, PostsEntity> commentPostsById, List<String> riskTags) {
         AdminModerationQueueItemDTO dto = new AdminModerationQueueItemDTO();
         dto.setId(q.getId());
         dto.setCaseType(q.getCaseType());
@@ -762,11 +1009,13 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             PostsEntity p = null;
             if (comment != null && comment.getPostId() != null) p = commentPostsById.get(comment.getPostId());
             dto.setSummary(buildCommentSummary(comment, p));
+        } else if (q.getContentType() == ContentType.PROFILE) {
+            dto.setSummary(buildProfileSummary(user));
         }
 
         if (q.getCaseType() == ModerationCaseType.REPORT) {
             try {
-                ReportTargetType t = q.getContentType() == ContentType.POST ? ReportTargetType.POST : ReportTargetType.COMMENT;
+                ReportTargetType t = toReportTargetType(q.getContentType());
                 Pageable pageable = PageRequest.of(0, 1, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
                 Page<ReportsEntity> page = reportsRepository.findByTargetTypeAndTargetId(t, q.getContentId(), pageable);
                 ReportsEntity latest = (page == null || page.getContent() == null || page.getContent().isEmpty()) ? null : page.getContent().get(0);
@@ -818,6 +1067,87 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         return s;
     }
 
+    private AdminModerationQueueItemDTO.Summary buildProfileSummary(UsersEntity u) {
+        if (u == null) return null;
+        AdminModerationQueueItemDTO.Summary s = new AdminModerationQueueItemDTO.Summary();
+        s.setTitle(u.getUsername());
+        s.setSnippet(excerpt(readUserProfileString(u, "bio"), 120));
+        s.setAuthorId(u.getId());
+        s.setAuthorName(null);
+        return s;
+    }
+
+    private static ReportTargetType toReportTargetType(ContentType ct) {
+        if (ct == null) return ReportTargetType.POST;
+        return switch (ct) {
+            case POST -> ReportTargetType.POST;
+            case COMMENT -> ReportTargetType.COMMENT;
+            case PROFILE -> ReportTargetType.PROFILE;
+        };
+    }
+
+    private static String labelFor(ContentType ct) {
+        if (ct == null) return "内容";
+        return switch (ct) {
+            case POST -> "帖子";
+            case COMMENT -> "评论";
+            case PROFILE -> "资料";
+        };
+    }
+
+    private void notifyModerationResultToAuthor(ModerationQueueEntity q, boolean approved, String reason) {
+        if (q == null || q.getContentType() == null || q.getContentId() == null) return;
+        Long userId = null;
+        if (q.getContentType() == ContentType.POST) {
+            PostsEntity post = postsRepository.findById(q.getContentId()).orElse(null);
+            if (post != null) userId = post.getAuthorId();
+        } else if (q.getContentType() == ContentType.COMMENT) {
+            CommentsEntity c = commentsRepository.findById(q.getContentId()).orElse(null);
+            if (c != null) userId = c.getAuthorId();
+        } else if (q.getContentType() == ContentType.PROFILE) {
+            userId = q.getContentId();
+        }
+        if (userId == null) return;
+
+        String targetLabel = labelFor(q.getContentType());
+        boolean reported = q.getCaseType() == ModerationCaseType.REPORT;
+        String title = reported
+                ? (approved ? (targetLabel + "复审通过") : (targetLabel + "复审未通过"))
+                : (approved ? (targetLabel + "审核通过") : (targetLabel + "审核未通过"));
+
+        String r = reason == null ? "" : reason.trim();
+        if (r.length() > 200) r = r.substring(0, 200);
+
+        String content;
+        if (reported) {
+            content = approved
+                    ? ("你的" + targetLabel + "已完成复审：未发现违规。目标：" + targetLabel + " #" + q.getContentId()
+                    + (r.isEmpty() ? "" : ("；说明：" + r)))
+                    : ("你的" + targetLabel + "已完成复审：已确认违规并已处理。目标：" + targetLabel + " #" + q.getContentId()
+                    + (r.isEmpty() ? "" : ("；原因：" + r)));
+        } else {
+            content = approved
+                    ? ("你的" + targetLabel + "已通过审核。目标：" + targetLabel + " #" + q.getContentId()
+                    + (r.isEmpty() ? "" : ("；说明：" + r)))
+                    : ("你的" + targetLabel + "未通过审核。目标：" + targetLabel + " #" + q.getContentId()
+                    + (r.isEmpty() ? "" : ("；原因：" + r)));
+        }
+
+        notificationsService.createNotification(userId, "MODERATION", "审核通知", content);
+    }
+
+    private static String readUserProfileString(UsersEntity u, String key) {
+        if (u == null || key == null) return null;
+        Map<String, Object> md = u.getMetadata();
+        if (md == null) return null;
+        Object p0 = md.get("profile");
+        if (!(p0 instanceof Map<?, ?> p)) return null;
+        Object v = p.get(key);
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
     private static String excerpt(String text, int maxLen) {
         if (text == null) return null;
         String t = text.trim().replaceAll("\\s+", " ");
@@ -864,18 +1194,132 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         return cc;
     }
 
+    private AdminModerationQueueDetailDTO.ProfileContent toProfileContent(UsersEntity u, Long queueId) {
+        if (u == null) return null;
+        AdminModerationQueueDetailDTO.ProfileContent pc = new AdminModerationQueueDetailDTO.ProfileContent();
+        pc.setId(u.getId());
+        pc.setPublicUsername(u.getUsername());
+        pc.setPublicAvatarUrl(readUserProfileString(u, "avatarUrl"));
+        pc.setPublicBio(readUserProfileString(u, "bio"));
+        pc.setPublicLocation(readUserProfileString(u, "location"));
+        pc.setPublicWebsite(readUserProfileString(u, "website"));
+
+        Map<String, Object> md = u.getMetadata();
+        Map<String, Object> pending = readMap(md, "profilePending");
+        pc.setPendingUsername(strOrNull(pending.get("username")));
+        pc.setPendingAvatarUrl(strOrNull(pending.get("avatarUrl")));
+        pc.setPendingBio(strOrNull(pending.get("bio")));
+        pc.setPendingLocation(strOrNull(pending.get("location")));
+        pc.setPendingWebsite(strOrNull(pending.get("website")));
+        pc.setPendingSubmittedAt(strOrNull(md == null ? null : md.get("profilePendingSubmittedAt")));
+
+        boolean missingPending =
+                pc.getPendingUsername() == null
+                        && pc.getPendingAvatarUrl() == null
+                        && pc.getPendingBio() == null
+                        && pc.getPendingLocation() == null
+                        && pc.getPendingWebsite() == null
+                        && pc.getPendingSubmittedAt() == null;
+        if (missingPending && queueId != null) {
+            Map<String, Object> snap = readLatestProfilePendingSnapshot(queueId);
+            Map<String, Object> snapPending = readMap(snap, "pending_profile");
+            String snapSubmittedAt = strOrNull(snap.get("pending_submitted_at"));
+            pc.setPendingUsername(strOrNull(snapPending.get("username")));
+            pc.setPendingAvatarUrl(strOrNull(snapPending.get("avatarUrl")));
+            pc.setPendingBio(strOrNull(snapPending.get("bio")));
+            pc.setPendingLocation(strOrNull(snapPending.get("location")));
+            pc.setPendingWebsite(strOrNull(snapPending.get("website")));
+            pc.setPendingSubmittedAt(snapSubmittedAt);
+        }
+        return pc;
+    }
+
+    private Map<String, Object> readLatestProfilePendingSnapshot(Long queueId) {
+        if (queueId == null) return Map.of();
+        try {
+            List<ModerationActionsEntity> actions = moderationActionsRepository.findAllByQueueId(queueId);
+            if (actions == null || actions.isEmpty()) return Map.of();
+            ModerationActionsEntity best = null;
+            for (ModerationActionsEntity a : actions) {
+                if (a == null) continue;
+                if (a.getAction() != ActionType.NOTE) continue;
+                if (!"PROFILE_PENDING_SNAPSHOT".equals(a.getReason())) continue;
+                if (best == null) {
+                    best = a;
+                    continue;
+                }
+                LocalDateTime ac = a.getCreatedAt();
+                LocalDateTime bc = best.getCreatedAt();
+                if (ac != null && bc != null) {
+                    if (ac.isAfter(bc)) best = a;
+                } else if (ac != null) {
+                    best = a;
+                } else if (bc == null) {
+                    Long aid = a.getId();
+                    Long bid = best.getId();
+                    if (aid != null && bid != null && aid > bid) best = a;
+                }
+            }
+            Map<String, Object> snap = best == null ? null : best.getSnapshot();
+            return snap == null ? Map.of() : snap;
+        } catch (Exception ignore) {
+            return Map.of();
+        }
+    }
+
+    private static Map<String, Object> readMap(Map<String, Object> md, String key) {
+        if (md == null || key == null) return Map.of();
+        Object o = md.get(key);
+        if (!(o instanceof Map<?, ?> m)) return Map.of();
+        Map<String, Object> out = new HashMap<>();
+        for (var e : m.entrySet()) {
+            Object k = e.getKey();
+            if (k == null) continue;
+            out.put(String.valueOf(k), e.getValue());
+        }
+        return out;
+    }
+
+    private static String strOrNull(Object v) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
     private static AdminModerationQueueDetailDTO.Attachment toAttachment(PostAttachmentsEntity a) {
+        return toAttachment(a, null);
+    }
+
+    private static AdminModerationQueueDetailDTO.Attachment toAttachment(PostAttachmentsEntity a, com.example.EnterpriseRagCommunity.entity.monitor.FileAssetExtractionsEntity ex) {
         AdminModerationQueueDetailDTO.Attachment dto = new AdminModerationQueueDetailDTO.Attachment();
         dto.setId(a.getId());
         dto.setFileAssetId(a.getFileAssetId());
-        dto.setUrl(a.getUrl());
-        dto.setFileName(a.getFileName());
-        dto.setMimeType(a.getMimeType());
-        dto.setSizeBytes(a.getSizeBytes());
+        com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity fa = a.getFileAsset();
+        dto.setUrl(fa != null ? fa.getUrl() : null);
+        dto.setFileName(fa != null ? fa.getOriginalName() : null);
+        dto.setMimeType(fa != null ? fa.getMimeType() : null);
+        dto.setSizeBytes(fa != null ? fa.getSizeBytes() : null);
         dto.setWidth(a.getWidth());
         dto.setHeight(a.getHeight());
         dto.setCreatedAt(a.getCreatedAt());
+        if (ex != null) {
+            dto.setExtractStatus(ex.getExtractStatus() == null ? null : ex.getExtractStatus().name());
+            String text = ex.getExtractedText();
+            dto.setExtractedTextChars(text == null ? 0 : text.length());
+            dto.setExtractedTextSnippet(snippet(text, 2000));
+            dto.setExtractedMetadataJsonSnippet(snippet(ex.getExtractedMetadataJson(), 1000));
+            dto.setExtractionErrorMessage(snippet(ex.getErrorMessage(), 500));
+            dto.setExtractionUpdatedAt(ex.getUpdatedAt());
+        }
         return dto;
+    }
+
+    private static String snippet(String text, int max) {
+        if (text == null) return null;
+        String t = text.trim();
+        if (t.isEmpty()) return null;
+        if (t.length() <= max) return t;
+        return t.substring(0, max) + "...";
     }
 
     @Override
@@ -926,33 +1370,29 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     @Override
     @Transactional
-    public AdminModerationQueueDetailDTO requeueToAuto(Long id, String reason) {
+    public AdminModerationQueueDetailDTO requeueToAuto(Long id, String reason, String reviewStage) {
         if (id == null) throw new IllegalArgumentException("id 不能为空");
         UsersEntity actor = currentUserOrThrow();
         String checkedReason = requireReason(reason);
+        String normalizedReviewStage = normalizeReviewStageInput(reviewStage);
         // 允许任何有 action 权限的管理员执行；reason 目前仅保留参数位
-        int updated = moderationQueueRepository.requeueToAuto(id, QueueStatus.PENDING, QueueStage.RULE, LocalDateTime.now());
+        int updated = moderationQueueRepository.requeueToAutoWithReviewStage(id, QueueStatus.PENDING, QueueStage.RULE, normalizedReviewStage, LocalDateTime.now());
         if (updated <= 0) {
             throw new IllegalStateException("重新入队失败：任务不存在或状态不允许");
         }
 
-        // 清空该任务之前的审核/流水线信息：删除 pipeline run/step trace，让后续自动审核从 RULE 全新开始。
-        // best-effort：即便清理失败，也不影响 requeue 主流程。
         try {
-            moderationPipelineRunRepository.deleteAllByQueueId(id);
+            sealRunningPipelineRun(id);
         } catch (Exception ignore) {
         }
 
         // 关键：点击后要求立刻推进 RULE/VEC/LLM。
-        // 注意：各 runner 内部自带条件判断/锁/开关；这里 best-effort 串联触发一次。
+        // 注意：auto kick 内部按当前 stage best-effort 触发一次。
         try {
-            moderationRuleAutoRunner.runOnce();
+            moderationAutoKickService.kickQueueId(id);
         } catch (Exception ignore) {
         }
-        try {
-            moderationVecAutoRunner.runOnce();
-        } catch (Exception ignore) {
-        }
+
 
         AdminModerationQueueDetailDTO detail = getDetail(id);
         Map<String, Object> details = new HashMap<>();
@@ -961,11 +1401,111 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         details.put("contentType", detail.getContentType() == null ? null : detail.getContentType().name());
         details.put("contentId", detail.getContentId());
         details.put("reason", checkedReason);
+        details.put("reviewStage", normalizedReviewStage);
         details.put("status", detail.getStatus() == null ? null : detail.getStatus().name());
         details.put("stage", detail.getCurrentStage() == null ? null : detail.getCurrentStage().name());
         details.put("assignedToId", detail.getAssignedToId());
         auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_REQUEUE", "MODERATION_QUEUE", detail.getId(), AuditResult.SUCCESS, "人工操作：重新进入自动审核", newTraceId(), details);
         return detail;
+    }
+
+    @Override
+    @Transactional
+    public AdminModerationQueueBatchRequeueResponse batchRequeueToAuto(List<Long> ids, String reason, String reviewStage) {
+        UsersEntity actor = currentUserOrThrow();
+        String checkedReason = requireReason(reason);
+        String normalizedReviewStage = normalizeReviewStageInput(reviewStage);
+        LinkedHashSet<Long> uniq = new LinkedHashSet<>();
+        if (ids != null) {
+            for (Long id : ids) {
+                if (id == null || id <= 0) continue;
+                uniq.add(id);
+                if (uniq.size() >= 500) break;
+            }
+        }
+        if (uniq.isEmpty()) throw new IllegalArgumentException("ids 不能为空");
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Long> successIds = new ArrayList<>();
+        List<AdminModerationQueueBatchRequeueResponse.FailedItem> failedItems = new ArrayList<>();
+
+        for (Long id : uniq) {
+            try {
+                int updated = moderationQueueRepository.requeueToAutoWithReviewStage(id, QueueStatus.PENDING, QueueStage.RULE, normalizedReviewStage, now);
+                if (updated <= 0) throw new IllegalStateException("任务不存在或状态不允许");
+                try {
+                    sealRunningPipelineRun(id);
+                } catch (Exception ignore) {
+                }
+                successIds.add(id);
+            } catch (Exception e) {
+                AdminModerationQueueBatchRequeueResponse.FailedItem fi = new AdminModerationQueueBatchRequeueResponse.FailedItem();
+                fi.setId(id);
+                fi.setError(e.getMessage() == null ? "失败" : e.getMessage());
+                failedItems.add(fi);
+            }
+        }
+
+        if (!successIds.isEmpty()) {
+            for (Long queueId : successIds) {
+                try {
+                    moderationAutoKickService.kickQueueId(queueId);
+                } catch (Exception ignore) {
+                }
+            }
+        }
+
+
+        AdminModerationQueueBatchRequeueResponse resp = new AdminModerationQueueBatchRequeueResponse();
+        resp.setTotal(uniq.size());
+        resp.setSuccess(successIds.size());
+        resp.setFailed(failedItems.size());
+        resp.setSuccessIds(successIds);
+        resp.setFailedItems(failedItems);
+
+        Map<String, Object> details = new HashMap<>();
+        details.put("total", resp.getTotal());
+        details.put("success", resp.getSuccess());
+        details.put("failed", resp.getFailed());
+        details.put("reason", checkedReason);
+        details.put("reviewStage", normalizedReviewStage);
+        details.put("successIds", successIds);
+        if (!failedItems.isEmpty()) details.put("failedItems", failedItems);
+        auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_BATCH_REQUEUE", "MODERATION_QUEUE", null, AuditResult.SUCCESS, "人工操作：批量进入再次审核", newTraceId(), details);
+
+        return resp;
+    }
+
+    private void sealRunningPipelineRun(Long queueId) {
+        if (queueId == null) return;
+        ModerationPipelineRunEntity run = null;
+        try {
+            run = moderationPipelineRunRepository.findFirstByQueueIdOrderByCreatedAtDesc(queueId).orElse(null);
+        } catch (Exception ignore) {
+            run = null;
+        }
+        if (run == null || run.getStatus() != ModerationPipelineRunEntity.RunStatus.RUNNING) return;
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            run.setStatus(ModerationPipelineRunEntity.RunStatus.FAIL);
+            run.setFinalDecision(ModerationPipelineRunEntity.FinalDecision.HUMAN);
+            run.setErrorCode("REQUEUED");
+            run.setErrorMessage("Requeued to auto");
+            run.setEndedAt(now);
+            if (run.getStartedAt() != null) {
+                run.setTotalMs(Duration.between(run.getStartedAt(), now).toMillis());
+            }
+            moderationPipelineRunRepository.save(run);
+        } catch (Exception ignore) {
+        }
+    }
+
+    private static String normalizeReviewStageInput(String reviewStage) {
+        if (reviewStage == null) return null;
+        String s = reviewStage.trim().toLowerCase(java.util.Locale.ROOT);
+        if (s.isEmpty()) return null;
+        if ("default".equals(s) || "reported".equals(s) || "appeal".equals(s)) return s;
+        throw new IllegalArgumentException("reviewStage 仅支持 default/reported/appeal");
     }
 
     @Override

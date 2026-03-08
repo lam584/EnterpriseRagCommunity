@@ -10,6 +10,7 @@ export type RiskTagDTO = {
   description?: string;
   system: boolean;
   active: boolean;
+  threshold?: number;
   createdAt: string;
   usageCount: number;
 };
@@ -42,6 +43,7 @@ type BackendTagsDTO = {
   description?: string | null;
   isSystem: boolean;
   isActive: boolean;
+  threshold?: number | null;
   createdAt: string;
   usageCount?: number | null;
 };
@@ -55,6 +57,7 @@ function mapFromBackend(dto: BackendTagsDTO): RiskTagDTO {
     description: dto.description ?? undefined,
     system: dto.isSystem,
     active: dto.isActive,
+    threshold: typeof dto.threshold === 'number' ? dto.threshold : undefined,
     createdAt: dto.createdAt,
     usageCount: typeof dto.usageCount === 'number' ? dto.usageCount : 0,
   };
@@ -81,6 +84,7 @@ export type RiskTagCreatePayload = {
   slug?: string;
   description?: string;
   active?: boolean;
+  threshold?: number;
 };
 
 export async function createRiskTag(payload: RiskTagCreatePayload): Promise<RiskTagDTO> {
@@ -101,6 +105,7 @@ export async function createRiskTag(payload: RiskTagCreatePayload): Promise<Risk
       description: payload.description ?? null,
       isSystem: false,
       isActive: payload.active ?? true,
+      threshold: payload.threshold,
     }),
   });
   const data: unknown = await res.json().catch(() => ({}));
@@ -113,6 +118,7 @@ export type RiskTagUpdatePayload = {
   slug?: string;
   description?: string | null;
   active?: boolean;
+  threshold?: number;
 };
 
 export async function updateRiskTag(id: number, payload: RiskTagUpdatePayload): Promise<RiskTagDTO> {
@@ -129,6 +135,7 @@ export async function updateRiskTag(id: number, payload: RiskTagUpdatePayload): 
       ...(payload.slug != null ? { slug: payload.slug } : {}),
       ...(payload.description !== undefined ? { description: payload.description } : {}),
       ...(payload.active != null ? { isActive: payload.active } : {}),
+      ...(payload.threshold !== undefined ? { threshold: payload.threshold } : {}),
     }),
   });
   const data: unknown = await res.json().catch(() => ({}));

@@ -3,6 +3,9 @@ package com.example.EnterpriseRagCommunity.controller.retrieval.admin;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RagCommentsBuildResponse;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RagCommentsTestQueryRequest;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RagCommentsTestQueryResponse;
+import com.example.EnterpriseRagCommunity.dto.retrieval.RagFilesBuildResponse;
+import com.example.EnterpriseRagCommunity.dto.retrieval.RagFilesTestQueryRequest;
+import com.example.EnterpriseRagCommunity.dto.retrieval.RagFilesTestQueryResponse;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RagPostsBuildResponse;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RagPostsTestQueryRequest;
 import com.example.EnterpriseRagCommunity.dto.retrieval.RagPostsTestQueryResponse;
@@ -12,9 +15,12 @@ import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexStatus;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexBuildService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentTestQueryService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetIndexBuildService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetTestQueryService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexBuildService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostTestQueryService;
 import jakarta.validation.Valid;
@@ -41,7 +47,10 @@ public class AdminRetrievalVectorIndexController {
     private final RagPostTestQueryService testQueryService;
     private final RagCommentIndexBuildService commentBuildService;
     private final RagCommentTestQueryService commentTestQueryService;
+    private final RagFileAssetIndexBuildService fileBuildService;
+    private final RagFileAssetTestQueryService fileTestQueryService;
     private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
 
     @GetMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','access'))")
@@ -111,11 +120,8 @@ public class AdminRetrievalVectorIndexController {
         after.put("dim", saved.getDim());
         after.put("status", saved.getStatus() == null ? null : saved.getStatus().name());
 
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("before", before);
-        details.put("after", after);
         auditLogWriter.write(null, principal == null ? null : principal.getName(),
-                "RETRIEVAL_VECTOR_INDEX_UPDATE", "VECTOR_INDEX", saved.getId(), AuditResult.SUCCESS, null, null, details);
+                "RETRIEVAL_VECTOR_INDEX_UPDATE", "VECTOR_INDEX", saved.getId(), AuditResult.SUCCESS, null, null, auditDiffBuilder.build(before, after));
 
         return ResponseEntity.ok(saved);
     }
@@ -376,6 +382,142 @@ public class AdminRetrievalVectorIndexController {
         } catch (Exception e) {
             auditLogWriter.write(null, principal == null ? null : principal.getName(),
                     "RETRIEVAL_RAG_TEST_QUERY_COMMENTS", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
+            throw e;
+        }
+    }
+
+    @PostMapping("/{id}/build/files")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
+    public ResponseEntity<RagFilesBuildResponse> buildFiles(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "fromFileAssetId", required = false) Long fromFileAssetId,
+            @RequestParam(value = "fileBatchSize", required = false) Integer fileBatchSize,
+            @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
+            @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
+            @RequestParam(value = "clear", required = false) Boolean clear,
+            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
+            @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
+            @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
+            Principal principal
+    ) {
+        try {
+            RagFilesBuildResponse resp = fileBuildService.buildFiles(id, fromFileAssetId, fileBatchSize, chunkMaxChars, chunkOverlapChars, clear, embeddingModel, embeddingProviderId, embeddingDims);
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("fromFileAssetId", fromFileAssetId);
+            details.put("fileBatchSize", fileBatchSize);
+            details.put("chunkMaxChars", chunkMaxChars);
+            details.put("chunkOverlapChars", chunkOverlapChars);
+            details.put("clear", clear);
+            details.put("embeddingModel", embeddingModel);
+            details.put("embeddingProviderId", embeddingProviderId);
+            details.put("embeddingDims", embeddingDims);
+            details.put("totalFiles", resp.getTotalFiles());
+            details.put("totalChunks", resp.getTotalChunks());
+            details.put("failedChunks", resp.getFailedChunks());
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_BUILD_FILES", "VECTOR_INDEX", id, AuditResult.SUCCESS, null, null, details);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_BUILD_FILES", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
+            throw e;
+        }
+    }
+
+    @PostMapping("/{id}/rebuild/files")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
+    public ResponseEntity<RagFilesBuildResponse> rebuildFiles(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "fileBatchSize", required = false) Integer fileBatchSize,
+            @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
+            @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
+            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
+            @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
+            @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
+            Principal principal
+    ) {
+        try {
+            RagFilesBuildResponse resp = fileBuildService.rebuildFiles(id, fileBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("fileBatchSize", fileBatchSize);
+            details.put("chunkMaxChars", chunkMaxChars);
+            details.put("chunkOverlapChars", chunkOverlapChars);
+            details.put("embeddingModel", embeddingModel);
+            details.put("embeddingProviderId", embeddingProviderId);
+            details.put("embeddingDims", embeddingDims);
+            details.put("totalFiles", resp.getTotalFiles());
+            details.put("totalChunks", resp.getTotalChunks());
+            details.put("failedChunks", resp.getFailedChunks());
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_REBUILD_FILES", "VECTOR_INDEX", id, AuditResult.SUCCESS, null, null, details);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_REBUILD_FILES", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
+            throw e;
+        }
+    }
+
+    @PostMapping("/{id}/sync/files")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
+    public ResponseEntity<RagFilesBuildResponse> syncFiles(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "fileBatchSize", required = false) Integer fileBatchSize,
+            @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
+            @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
+            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
+            @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
+            @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
+            Principal principal
+    ) {
+        try {
+            RagFilesBuildResponse resp = fileBuildService.syncFilesIncremental(id, fileBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("fileBatchSize", fileBatchSize);
+            details.put("chunkMaxChars", chunkMaxChars);
+            details.put("chunkOverlapChars", chunkOverlapChars);
+            details.put("embeddingModel", embeddingModel);
+            details.put("embeddingProviderId", embeddingProviderId);
+            details.put("embeddingDims", embeddingDims);
+            details.put("totalFiles", resp.getTotalFiles());
+            details.put("totalChunks", resp.getTotalChunks());
+            details.put("failedChunks", resp.getFailedChunks());
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_INCREMENTAL_SYNC_FILES", "VECTOR_INDEX", id, AuditResult.SUCCESS, null, null, details);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_INCREMENTAL_SYNC_FILES", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
+            throw e;
+        }
+    }
+
+    @PostMapping("/{id}/test-query/files")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
+    public ResponseEntity<RagFilesTestQueryResponse> testQueryFiles(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) RagFilesTestQueryRequest req,
+            Principal principal
+    ) {
+        try {
+            RagFilesTestQueryResponse resp = fileTestQueryService.testQuery(id, req);
+            String qt = req == null ? null : req.getQueryText();
+            if (qt != null && qt.length() > 200) qt = qt.substring(0, 200) + "...";
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("fileAssetId", req == null ? null : req.getFileAssetId());
+            details.put("postId", req == null ? null : req.getPostId());
+            details.put("topK", req == null ? null : req.getTopK());
+            details.put("numCandidates", req == null ? null : req.getNumCandidates());
+            details.put("embeddingModel", req == null ? null : req.getEmbeddingModel());
+            details.put("embeddingProviderId", req == null ? null : req.getEmbeddingProviderId());
+            details.put("queryText", qt);
+            details.put("hitCount", resp.getHits() == null ? 0 : resp.getHits().size());
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_TEST_QUERY_FILES", "VECTOR_INDEX", id, AuditResult.SUCCESS, null, null, details);
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                    "RETRIEVAL_RAG_TEST_QUERY_FILES", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
             throw e;
         }
     }

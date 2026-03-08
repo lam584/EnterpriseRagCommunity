@@ -18,8 +18,8 @@ public class PortalChatConfigDTO {
         private Boolean defaultUseRag;
         private Integer ragTopK;
         private Boolean defaultStream;
-        private String systemPrompt;
-        private String deepThinkSystemPrompt;
+        private String systemPromptCode;
+        private String deepThinkSystemPromptCode;
     }
 
     @Data
@@ -30,9 +30,9 @@ public class PortalChatConfigDTO {
         private Double topP;
         private Integer chatHistoryLimit;
         private Boolean defaultDeepThink;
-        private String systemPrompt;
-        private String deepThinkSystemPrompt;
-        private String composeSystemPrompt;
+        private String systemPromptCode;
+        private String deepThinkSystemPromptCode;
+        private String composeSystemPromptCode;
     }
 }
 

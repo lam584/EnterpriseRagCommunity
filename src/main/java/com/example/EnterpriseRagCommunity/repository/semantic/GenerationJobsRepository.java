@@ -18,7 +18,7 @@ public interface GenerationJobsRepository extends JpaRepository<GenerationJobsEn
     List<GenerationJobsEntity> findByStatus(GenerationJobStatus status);
 
     // by prompt FK
-    List<GenerationJobsEntity> findByPromptId(Long promptId);
+    List<GenerationJobsEntity> findByPromptCode(String promptCode);
 
     // by time
     List<GenerationJobsEntity> findByCreatedAtBetween(LocalDateTime start, LocalDateTime end);

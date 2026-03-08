@@ -1,11 +1,17 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostTitleSuggestRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostTitleSuggestResponse;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenHistoryEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
+import com.example.EnterpriseRagCommunity.entity.semantic.GenerationJobsEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationJobStatus;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationJobType;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationTargetType;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
+import com.example.EnterpriseRagCommunity.repository.semantic.GenerationJobsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,9 +25,11 @@ import java.util.*;
 @RequiredArgsConstructor
 public class AiPostTitleService {
 
-    private final AiProperties aiProperties;
     private final PostTitleGenConfigService postTitleGenConfigService;
     private final LlmGateway llmGateway;
+    private final PromptsRepository promptsRepository;
+    private final GenerationJobsRepository generationJobsRepository;
+    private final PromptLlmParamResolver promptLlmParamResolver;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AiPostTitleSuggestResponse suggestTitles(AiPostTitleSuggestRequest req, Long actorUserId) {
@@ -37,21 +45,6 @@ public class AiPostTitleService {
         if (count <= 0) count = defaultCount;
         if (count > maxCount) count = maxCount;
 
-        String modelOverride = null;
-        if (req.getModel() != null && !req.getModel().isBlank()) {
-            modelOverride = req.getModel().trim();
-        } else if (cfg.getModel() != null && !cfg.getModel().isBlank()) {
-            modelOverride = cfg.getModel().trim();
-        }
-
-        Double temperature = req.getTemperature() != null ? req.getTemperature() : cfg.getTemperature();
-        if (temperature == null) temperature = 0.4;
-        if (temperature < 0 || temperature > 2) throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
-
-        Double topP = req.getTopP() != null ? req.getTopP() : cfg.getTopP();
-        if (topP == null) topP = 0.9;
-        if (topP < 0 || topP > 1) throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
-
         String content = req.getContent() == null ? "" : req.getContent();
         content = content.trim();
         int contentLen = content.length();
@@ -61,10 +54,42 @@ public class AiPostTitleService {
             content = content.substring(0, maxChars);
         }
 
-        String userPrompt = renderPrompt(cfg.getPromptTemplate(), count, req.getBoardName(), req.getTags(), content);
+        String promptCode = cfg.getPromptCode();
+        if (promptCode == null || promptCode.isBlank()) {
+            promptCode = PostTitleGenConfigService.DEFAULT_PROMPT_CODE;
+        }
+
+        PromptsEntity prompt = promptsRepository.findByPromptCode(promptCode)
+                .orElseThrow(() -> new IllegalStateException("Prompt code not found: " + cfg.getPromptCode()));
+
+        PromptLlmParams params = promptLlmParamResolver.resolveText(
+            prompt,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0.4,
+            0.9
+        );
+
+        String modelOverride = req.getModel() != null && !req.getModel().isBlank()
+            ? req.getModel().trim()
+            : params.model();
+
+        Double temperature = req.getTemperature() != null ? req.getTemperature() : params.temperature();
+        if (temperature == null) temperature = 0.4;
+        if (temperature < 0 || temperature > 2) throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
+
+        Double topP = req.getTopP() != null ? req.getTopP() : params.topP();
+        if (topP == null) topP = 0.9;
+        if (topP < 0 || topP > 1) throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
+
+        String userPrompt = renderPrompt(prompt.getUserPromptTemplate(), count, req.getBoardName(), req.getTags(), content);
 
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(cfg.getSystemPrompt()));
+        messages.add(ChatMessage.system(prompt.getSystemPrompt()));
         messages.add(ChatMessage.user(userPrompt));
 
         long started = System.currentTimeMillis();
@@ -74,14 +99,14 @@ public class AiPostTitleService {
         try {
             LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
                     LlmQueueTaskType.TITLE_GEN,
-                    cfg.getProviderId(),
+                    params.providerId(),
                     modelOverride,
                     messages,
                     temperature,
                     topP,
                     null,
                     null,
-                    cfg.getEnableThinking()
+                        params.enableThinking()
             );
             rawJson = routed == null ? null : routed.text();
             usedProviderId = routed == null ? null : routed.providerId();
@@ -96,6 +121,22 @@ public class AiPostTitleService {
         long latency = System.currentTimeMillis() - started;
 
         if (Boolean.TRUE.equals(cfg.getHistoryEnabled()) && actorUserId != null) {
+            GenerationJobsEntity job = new GenerationJobsEntity();
+            job.setJobType(GenerationJobType.SUGGESTION);
+            job.setTargetType(GenerationTargetType.POST);
+            job.setTargetId(0L);
+            job.setStatus(GenerationJobStatus.SUCCEEDED);
+            job.setPromptCode(promptCode);
+            job.setModel(usedModel);
+            job.setProviderId(usedProviderId);
+            job.setTemperature(temperature);
+            job.setTopP(topP);
+            job.setLatencyMs(latency);
+            job.setPromptVersion(cfg.getVersion());
+            job.setCreatedAt(LocalDateTime.now());
+            job.setUpdatedAt(job.getCreatedAt());
+            generationJobsRepository.save(job);
+
             PostSuggestionGenHistoryEntity h = new PostSuggestionGenHistoryEntity();
             h.setKind(SuggestionKind.TITLE);
             h.setUserId(actorUserId);
@@ -107,12 +148,7 @@ public class AiPostTitleService {
             h.setContentLen(contentLen);
             h.setContentExcerpt(buildExcerpt(req.getContent()));
             h.setOutputJson(new ArrayList<>(titles));
-            h.setModel(usedModel);
-            h.setProviderId(usedProviderId);
-            h.setTemperature(temperature);
-            h.setTopP(topP);
-            h.setLatencyMs(latency);
-            h.setPromptVersion(cfg.getVersion());
+            h.setJobId(job.getId());
             postTitleGenConfigService.recordHistory(h);
         }
 
@@ -176,7 +212,6 @@ public class AiPostTitleService {
         // normalize: dedup + limit
         LinkedHashSet<String> set = new LinkedHashSet<>();
         for (String t : titles) {
-            if (t.isBlank()) continue;
             set.add(t);
         }
 
@@ -207,7 +242,7 @@ public class AiPostTitleService {
 
     private static String renderPrompt(String template, int count, String boardName, List<String> tags, String content) {
         String safeTemplate = (template == null || template.isBlank())
-                ? PostTitleGenConfigService.DEFAULT_PROMPT_TEMPLATE
+                ? ""
                 : template;
 
         String bn = boardName == null ? "" : boardName.trim();
@@ -228,10 +263,10 @@ public class AiPostTitleService {
         out = out.replace("{{count}}", String.valueOf(count));
         out = out.replace("{{boardLine}}", boardLine);
         out = out.replace("{{tagsLine}}", tagsLine);
-        out = out.replace("{{content}}", content == null ? "" : content);
 
         out = out.replace("{{boardName}}", bn);
         out = out.replace("{{tags}}", (tagsLine.isBlank() ? "" : tagsLine.replace("标签：", "").trim()));
+        out = out.replace("{{content}}", content == null ? "" : content);
         return out;
     }
 

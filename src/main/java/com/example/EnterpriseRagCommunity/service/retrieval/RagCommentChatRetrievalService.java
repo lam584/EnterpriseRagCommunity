@@ -4,6 +4,8 @@ import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
+import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagCommentsIndexService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,7 +30,7 @@ public class RagCommentChatRetrievalService {
 
     private final RetrievalRagProperties ragProps;
     private final RagCommentsIndexService indexService;
-    private final AiEmbeddingService embeddingService;
+    private final LlmGateway llmGateway;
     private final ObjectMapper objectMapper;
     private final PostsRepository postsRepository;
     private final SystemConfigurationService systemConfigurationService;
@@ -39,7 +41,8 @@ public class RagCommentChatRetrievalService {
 
         AiEmbeddingService.EmbeddingResult er;
         try {
-            er = embeddingService.embedOnce(queryText, ragProps.getEs().getEmbeddingModel());
+            String mo = ragProps.getEs().getEmbeddingModel();
+            er = llmGateway.embedOnceRouted(LlmQueueTaskType.POST_EMBEDDING, null, mo, queryText);
         } catch (Exception e) {
             throw new IllegalStateException("Embedding failed: " + e.getMessage(), e);
         }
@@ -169,4 +172,3 @@ public class RagCommentChatRetrievalService {
         private String contentText;
     }
 }
-

@@ -43,8 +43,14 @@ public class AdminLlmLoadTestServiceModerationTokenTest {
 
         when(llmQueueMonitorService.query(any(), any(), any(), any())).thenReturn(null);
 
-        String systemPrompt = "你是一个严格的内容安全审核助手。";
+        String systemPrompt = "You are a content safety moderation assistant.";
         String userPrompt = "压测：这是一条中性内容，用于审核模型吞吐测试。 #1";
+
+        com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity mockPrompt = new com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity();
+        mockPrompt.setSystemPrompt(systemPrompt);
+        // We need to mock PromptsRepository later, but we can't do it before creating the mock object.
+        // Moving mock creation up.
+
 
         LlmModerationTestResponse resp = new LlmModerationTestResponse();
         resp.setLatencyMs(1L);
@@ -89,6 +95,8 @@ public class AdminLlmLoadTestServiceModerationTokenTest {
         when(llmPriceConfigRepository.findByNameIn(any())).thenReturn(List.of());
         LlmLoadTestRunDetailRepository llmLoadTestRunDetailRepository = mock(LlmLoadTestRunDetailRepository.class);
         LlmLoadTestRunHistoryRepository llmLoadTestRunHistoryRepository = mock(LlmLoadTestRunHistoryRepository.class);
+        com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository promptsRepository = mock(com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository.class);
+        when(promptsRepository.findByPromptCode("PORTAL_CHAT_ASSISTANT")).thenReturn(java.util.Optional.of(mockPrompt));
 
         AdminLlmLoadTestService svc = new AdminLlmLoadTestService(
                 llmGateway,
@@ -99,7 +107,8 @@ public class AdminLlmLoadTestServiceModerationTokenTest {
                 llmModelRepository,
                 llmPriceConfigRepository,
                 llmLoadTestRunDetailRepository,
-                llmLoadTestRunHistoryRepository
+                llmLoadTestRunHistoryRepository,
+                promptsRepository
         );
 
         try {

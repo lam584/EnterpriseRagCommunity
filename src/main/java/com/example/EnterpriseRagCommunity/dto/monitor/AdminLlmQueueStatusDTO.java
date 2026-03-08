@@ -6,6 +6,9 @@ import java.util.List;
 
 @Data
 public class AdminLlmQueueStatusDTO {
+    private Long snapshotAtMs;
+    private Boolean stale;
+    private Boolean truncated;
     private Integer maxConcurrent;
     private Integer runningCount;
     private Integer pendingCount;
@@ -14,4 +17,3 @@ public class AdminLlmQueueStatusDTO {
     private List<AdminLlmQueueTaskDTO> recentCompleted;
     private List<AdminLlmQueueSampleDTO> samples;
 }
-

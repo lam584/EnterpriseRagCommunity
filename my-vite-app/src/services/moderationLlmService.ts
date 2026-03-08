@@ -47,26 +47,10 @@ function createFetchSignal(args: { signal?: AbortSignal; timeoutMs?: number }): 
 export type LlmModerationDecision = 'APPROVE' | 'REJECT' | 'HUMAN';
 
 export type LlmModerationConfig = {
-  promptTemplate: string;
-  visionPromptTemplate?: string | null;
-  model?: string | null;
-  providerId?: string | null;
-  visionModel?: string | null;
-  visionProviderId?: string | null;
-  temperature?: number | null;
-  topP?: number | null;
-  visionTemperature?: number | null;
-  visionTopP?: number | null;
-  maxTokens?: number | null;
-  visionMaxTokens?: number | null;
-  enableThinking?: boolean | null;
-  visionEnableThinking?: boolean | null;
-  threshold?: number | null;
+  textPromptCode: string;
+  visionPromptCode?: string | null;
+  judgePromptCode?: string | null;
   autoRun?: boolean | null;
-  // auto runner throttling
-  maxConcurrent?: number | null;
-  minDelayMs?: number | null;
-  qps?: number | null;
 };
 
 export type LlmModerationConfigDTO = LlmModerationConfig & {
@@ -88,52 +72,43 @@ export type LlmModerationTestResponse = {
   score?: number | null;
   reasons?: string[] | null;
   riskTags?: string[] | null;
+  severity?: string | null;
+  uncertainty?: number | null;
+  evidence?: string[] | null;
   rawModelOutput?: string | null;
   model?: string | null;
   latencyMs?: number | null;
   promptMessages?: Array<{ role: string; content: string }> | null;
   images?: string[] | null;
   inputMode?: string | null;
-  stages?: {
-    text?: {
-      decision?: LlmModerationDecision | string | null;
-      score?: number | null;
-      reasons?: string[] | null;
-      riskTags?: string[] | null;
-      rawModelOutput?: string | null;
-      model?: string | null;
-      latencyMs?: number | null;
-      inputMode?: string | null;
-      description?: string | null;
-    } | null;
-    image?: {
-      decision?: LlmModerationDecision | string | null;
-      score?: number | null;
-      reasons?: string[] | null;
-      riskTags?: string[] | null;
-      rawModelOutput?: string | null;
-      model?: string | null;
-      latencyMs?: number | null;
-      inputMode?: string | null;
-      description?: string | null;
-    } | null;
-    cross?: {
-      decision?: LlmModerationDecision | string | null;
-      score?: number | null;
-      reasons?: string[] | null;
-      riskTags?: string[] | null;
-      rawModelOutput?: string | null;
-      model?: string | null;
-      latencyMs?: number | null;
-      inputMode?: string | null;
-      description?: string | null;
-    } | null;
-  } | null;
+  stages?: LlmModerationStages | null;
   usage?: {
     promptTokens?: number | null;
     completionTokens?: number | null;
     totalTokens?: number | null;
   } | null;
+};
+
+export type LlmModerationStage = {
+  decision?: LlmModerationDecision | string | null;
+  score?: number | null;
+  reasons?: string[] | null;
+  riskTags?: string[] | null;
+  severity?: string | null;
+  uncertainty?: number | null;
+  evidence?: string[] | null;
+  rawModelOutput?: string | null;
+  model?: string | null;
+  latencyMs?: number | null;
+  inputMode?: string | null;
+  description?: string | null;
+} | null;
+
+export type LlmModerationStages = {
+  text?: LlmModerationStage;
+  image?: LlmModerationStage;
+  judge?: LlmModerationStage;
+  upgrade?: LlmModerationStage;
 };
 
 export async function adminGetLlmModerationConfig(): Promise<LlmModerationConfigDTO> {
@@ -143,7 +118,7 @@ export async function adminGetLlmModerationConfig(): Promise<LlmModerationConfig
   });
 
   const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(getBackendMessage(data) || '获取 LLM 审核配置失败');
+  if (!res.ok) throw new Error(getBackendMessage(data) || 'Failed to load LLM moderation config');
   return data as LlmModerationConfigDTO;
 }
 
@@ -160,7 +135,7 @@ export async function adminUpsertLlmModerationConfig(payload: LlmModerationConfi
   });
 
   const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(getBackendMessage(data) || '保存 LLM 审核配置失败');
+  if (!res.ok) throw new Error(getBackendMessage(data) || 'Failed to save LLM moderation config');
   return data as LlmModerationConfigDTO;
 }
 
@@ -183,7 +158,7 @@ export async function adminTestLlmModeration(
     });
 
     const data: unknown = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(getBackendMessage(data) || 'LLM 试运行失败');
+    if (!res.ok) throw new Error(getBackendMessage(data) || 'Failed to run LLM moderation test');
     return data as LlmModerationTestResponse;
   } finally {
     cleanup();

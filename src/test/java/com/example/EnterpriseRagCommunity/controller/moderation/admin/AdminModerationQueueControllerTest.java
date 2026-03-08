@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.controller.moderation.admin;
 
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRunEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
@@ -11,6 +12,7 @@ import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
 import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -42,6 +44,9 @@ class AdminModerationQueueControllerTest {
     private ModerationQueueRepository moderationQueueRepository;
 
     @Autowired
+    private ModerationPipelineRunRepository moderationPipelineRunRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -63,6 +68,46 @@ class AdminModerationQueueControllerTest {
             u.setUpdatedAt(LocalDateTime.now());
             return usersRepository.save(u);
         });
+    }
+
+    @Test
+    @WithMockUser(username = "u", authorities = {"PERM_admin_moderation_queue:action"})
+    void requeue_shouldNotDeletePipelineRuns() throws Exception {
+        ensureUser("u");
+        LocalDateTime now = LocalDateTime.now();
+
+        ModerationQueueEntity q = new ModerationQueueEntity();
+        q.setCaseType(ModerationCaseType.CONTENT);
+        q.setContentType(ContentType.POST);
+        q.setContentId(Math.abs(System.nanoTime()));
+        q.setStatus(QueueStatus.APPROVED);
+        q.setCurrentStage(QueueStage.HUMAN);
+        q.setPriority(0);
+        q.setAssignedToId(null);
+        q.setFinishedAt(now.minusMinutes(1));
+        q.setCreatedAt(now.minusMinutes(3));
+        q.setUpdatedAt(now.minusMinutes(1));
+        q = moderationQueueRepository.save(q);
+
+        ModerationPipelineRunEntity run = new ModerationPipelineRunEntity();
+        run.setQueueId(q.getId());
+        run.setContentType(q.getContentType());
+        run.setContentId(q.getContentId());
+        run.setStatus(ModerationPipelineRunEntity.RunStatus.SUCCESS);
+        run.setFinalDecision(ModerationPipelineRunEntity.FinalDecision.APPROVE);
+        run.setTraceId("trace_" + q.getId());
+        run.setStartedAt(now.minusMinutes(2));
+        run.setEndedAt(now.minusMinutes(1));
+        run.setTotalMs(60_000L);
+        run.setCreatedAt(now.minusMinutes(2));
+        run = moderationPipelineRunRepository.save(run);
+
+        mockMvc.perform(post("/api/admin/moderation/queue/{id}/requeue", q.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"x\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(moderationPipelineRunRepository.findById(run.getId())).isPresent();
     }
 
     @Test

@@ -7,6 +7,7 @@ const TYPE_LABELS: Record<string, string> = {
   MENTION: '提及',
   REPORT: '举报',
   SECURITY: '安全',
+  MODERATION: '审核',
 };
 
 function typeLabel(type: string) {

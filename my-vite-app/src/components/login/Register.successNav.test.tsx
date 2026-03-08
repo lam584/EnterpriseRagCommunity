@@ -7,7 +7,12 @@ vi.mock('../../services/authService', async (importOriginal) => {
   return {
     ...actual,
     registerAndGetStatus: vi.fn(),
+    getRegistrationStatus: vi.fn(async () => ({ registrationEnabled: true })),
   };
+});
+
+vi.mock('./AuthFooter', () => {
+  return { default: () => null };
 });
 
 import Register from './Register';

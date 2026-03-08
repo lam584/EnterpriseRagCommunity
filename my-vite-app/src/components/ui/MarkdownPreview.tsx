@@ -26,6 +26,8 @@ function extractCodeTextFromPreChildren(children: ReactNode): string {
   return nodeText(children);
 }
 
+const INLINE_CODE_CLASSES = new Set(['px-1', 'py-0.5', 'bg-gray-100', 'rounded', 'border', 'border-gray-200']);
+
 function trimLeadingWhitespaceNodes(nodes: ReactNode[]): ReactNode[] {
   let i = 0;
   while (i < nodes.length) {
@@ -57,7 +59,7 @@ function parseAdmonitionFromBlockquoteChildren(
   const match = lineText.match(/^\[!(TIP|NOTE|IMPORTANT|WARNING|CAUTION)\](?:\s+(.*))?$/i);
   if (!match) return null;
 
-  const kind = String(match[1] ?? '').toUpperCase();
+  const kind = match[1].toUpperCase();
   const title = (match[2] ?? '').trim() || kind;
 
   const restParts = brIndex >= 0 ? trimLeadingWhitespaceNodes(firstParts.slice(brIndex + 1)) : [];
@@ -78,6 +80,16 @@ function CodeBlockPre(props: React.ComponentPropsWithoutRef<'pre'>) {
   const codeText = extractCodeTextFromPreChildren(children);
 
   const canCopy = codeText.trim().length > 0;
+
+  const normalizedChildren = useMemo(() => {
+    const maybeOnlyChild = Array.isArray(children) && children.length === 1 ? children[0] : children;
+    if (!isValidElement<{ className?: unknown }>(maybeOnlyChild) || maybeOnlyChild.type !== 'code') return children;
+    const cls = typeof maybeOnlyChild.props.className === 'string' ? maybeOnlyChild.props.className : '';
+    const parts = cls.split(/\s+/).filter(Boolean);
+    const filtered = parts.filter((x) => !INLINE_CODE_CLASSES.has(x));
+    if (filtered.length === parts.length) return children;
+    return cloneElement(maybeOnlyChild, { className: filtered.join(' ') });
+  }, [children]);
 
   const handleCopy = async () => {
     if (!canCopy) return;
@@ -102,7 +114,7 @@ function CodeBlockPre(props: React.ComponentPropsWithoutRef<'pre'>) {
         {copied ? <Check size={14} className="text-green-600" /> : <Copy size={14} />}
       </button>
       <pre {...p} className={`${className ?? ''} p-3 pr-12 overflow-auto bg-transparent`}>
-        {children}
+        {normalizedChildren}
       </pre>
     </div>
   );
@@ -111,7 +123,7 @@ function CodeBlockPre(props: React.ComponentPropsWithoutRef<'pre'>) {
 export default function MarkdownPreview(props: { markdown: string; className?: string; components?: Components }) {
   const { markdown, className, components } = props;
 
-  const normalizedMarkdown = useMemo(() => normalizeMarkdownForPreview(markdown || ''), [markdown]);
+  const normalizedMarkdown = useMemo(() => normalizeMarkdownForPreview(markdown), [markdown]);
 
   const sanitizeSchema = useMemo(() => {
     // Align with MarkdownEditor preview rules.
@@ -254,16 +266,20 @@ export default function MarkdownPreview(props: { markdown: string; className?: s
           className="max-w-full rounded border border-gray-200"
         />
       ),
-      code: (props: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean }) => {
-        const { className: c, children, inline, ...p } = props;
-        const hasBlockClass = typeof c === 'string' && (c.includes('language-') || c.includes('hljs'));
-        const isInline = typeof inline === 'boolean' ? inline : !hasBlockClass;
+      code: (props: React.ComponentPropsWithoutRef<'code'> & { inline?: boolean; node?: unknown }) => {
+        const { className: c, children, inline, node, ...p } = props;
+        const className = Array.isArray(c) ? c.join(' ') : typeof c === 'string' ? c : '';
+        const hasBlockClass = className.includes('language-') || className.includes('hljs');
+        const hasNewline = nodeText(children).includes('\n');
+        const nodeType = (node as { type?: unknown } | undefined)?.type;
+        const isInline =
+          nodeType === 'inlineCode' ? true : nodeType === 'code' ? false : typeof inline === 'boolean' ? inline : !(hasBlockClass || hasNewline);
         return isInline ? (
           <code {...p} className="px-1 py-0.5 bg-gray-100 rounded border border-gray-200">
             {children}
           </code>
         ) : (
-          <code {...p} className={c ?? ''}>
+          <code {...p} className={className}>
             {children}
           </code>
         );
@@ -288,7 +304,7 @@ export default function MarkdownPreview(props: { markdown: string; className?: s
         ]}
         components={mergedComponents}
       >
-        {normalizedMarkdown || ''}
+        {normalizedMarkdown}
       </ReactMarkdown>
     </div>
   );

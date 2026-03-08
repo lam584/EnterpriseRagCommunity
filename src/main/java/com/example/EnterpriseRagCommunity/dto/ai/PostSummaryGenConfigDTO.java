@@ -16,7 +16,7 @@ public class PostSummaryGenConfigDTO {
     private Double topP;
     private Boolean enableThinking;
     private Integer maxContentChars;
-    private String promptTemplate;
+    private String promptCode;
 
     private LocalDateTime updatedAt;
     private String updatedBy;

@@ -1,7 +1,7 @@
 export function normalizeLangBase(lang: string | null | undefined): string {
   const raw = String(lang ?? '').trim().toLowerCase();
   if (!raw) return '';
-  const base = raw.split(/[-_]/)[0] ?? raw;
+  const base = raw.split(/[-_]/)[0];
   if (base === 'zh') return 'zh';
   return base;
 }

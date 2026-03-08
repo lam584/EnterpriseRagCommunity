@@ -10,6 +10,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -20,6 +22,8 @@ public interface ModerationPipelineRunRepository extends JpaRepository<Moderatio
     Page<ModerationPipelineRunEntity> findAllByQueueIdOrderByCreatedAtDesc(Long queueId, Pageable pageable);
 
     Page<ModerationPipelineRunEntity> findAllByContentTypeAndContentIdOrderByCreatedAtDesc(ContentType contentType, Long contentId, Pageable pageable);
+
+    List<ModerationPipelineRunEntity> findAllByQueueIdInOrderByCreatedAtDesc(Collection<Long> queueIds);
 
     @Modifying
     @Query("delete from ModerationPipelineRunEntity r where r.queueId = :queueId")

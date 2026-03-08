@@ -1,6 +1,8 @@
 package com.example.EnterpriseRagCommunity.controller.content;
 
 import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
+import com.example.EnterpriseRagCommunity.entity.access.RolesEntity;
+import com.example.EnterpriseRagCommunity.repository.access.RolesRepository;
 import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +29,9 @@ class AdminBoardsAccessControlControllerTest {
     @Autowired
     private BoardsRepository boardsRepository;
 
+    @Autowired
+    private RolesRepository rolesRepository;
+
     private BoardsEntity createBoard() {
         BoardsEntity b = new BoardsEntity();
         b.setTenantId(null);
@@ -40,10 +45,29 @@ class AdminBoardsAccessControlControllerTest {
         return boardsRepository.save(b);
     }
 
+    private void ensureRoleExists(long roleId) {
+        if (rolesRepository.existsById(roleId)) {
+            return;
+        }
+        RolesEntity r = new RolesEntity();
+        r.setRoleId(roleId);
+        r.setRoleName("role-" + roleId);
+        r.setDescription(null);
+        r.setRiskLevel("LOW");
+        r.setBuiltin(false);
+        r.setImmutable(false);
+        r.setCreatedAt(LocalDateTime.now());
+        r.setUpdatedAt(LocalDateTime.now());
+        rolesRepository.save(r);
+    }
+
     @Test
     @WithMockUser(username = "admin", authorities = {"PERM_admin_boards:read", "PERM_admin_boards:write"})
     void accessControl_shouldKeepDtoShape_afterReplace() throws Exception {
         BoardsEntity b = createBoard();
+        ensureRoleExists(1);
+        ensureRoleExists(2);
+        ensureRoleExists(3);
 
         mockMvc.perform(put("/api/admin/boards/{id}/access-control", b.getId())
                         .contentType(MediaType.APPLICATION_JSON)

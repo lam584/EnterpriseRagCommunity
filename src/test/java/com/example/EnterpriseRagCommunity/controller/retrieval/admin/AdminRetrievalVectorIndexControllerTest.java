@@ -15,6 +15,7 @@ import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,7 +24,7 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
 import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.data.elasticsearch.core.document.Document;
@@ -31,6 +32,7 @@ import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -44,6 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class AdminRetrievalVectorIndexControllerTest {
 
     @Autowired
@@ -61,19 +64,23 @@ class AdminRetrievalVectorIndexControllerTest {
     @Autowired
     VectorIndicesRepository vectorIndicesRepository;
 
-    @MockBean
+    @MockitoBean
     AiEmbeddingService embeddingService;
 
-    @MockBean
+    @MockitoBean
     RagPostsIndexService indexService;
 
-    @MockBean
+    @MockitoBean
     ElasticsearchTemplate esTemplate;
+
+    @MockitoBean
+    SystemConfigurationService systemConfigurationService;
 
     private String createdIndexName;
 
     @BeforeEach
     void setUp() {
+        when(systemConfigurationService.getConfig("APP_ES_API_KEY")).thenReturn("test-key");
         IndexOperations indexOperations = Mockito.mock(IndexOperations.class);
         when(esTemplate.indexOps(ArgumentMatchers.any(IndexCoordinates.class))).thenReturn(indexOperations);
         when(indexOperations.delete()).thenReturn(true);
@@ -123,7 +130,7 @@ class AdminRetrievalVectorIndexControllerTest {
         p.setStatus(PostStatus.PUBLISHED);
         p.setPublishedAt(now);
         p.setIsDeleted(false);
-        postsRepository.save(p);
+        p = postsRepository.save(p);
 
         VectorIndicesEntity vi = new VectorIndicesEntity();
         vi.setProvider(VectorIndexProvider.OTHER);

@@ -1,13 +1,28 @@
+import org.gradle.internal.os.OperatingSystem
+import groovy.xml.XmlSlurper
+
+buildscript {
+    repositories {
+        mavenCentral()
+        maven { url = uri('https://maven.aliyun.com/repository/public/') }
+    }
+    dependencies {
+        classpath 'com.mysql:mysql-connector-j:9.4.0'
+        classpath 'org.flywaydb:flyway-mysql:12.0.2'
+    }
+}
 plugins {
     id 'java'
     id 'war'
     id 'jacoco'
     id 'org.owasp.dependencycheck' version '12.2.0'
     id 'org.sonarqube' version '7.2.2.6593'
-    id 'org.springframework.boot' version '3.5.7'
+    id 'org.springframework.boot' version '3.5.11'
     id 'io.spring.dependency-management' version '1.1.7'
-    id 'org.flywaydb.flyway' version '11.15.0'
+    id 'org.flywaydb.flyway' version '12.0.2'
 }
+
+defaultTasks 'test', 'jacocoTestReport'
 
 bootWar {
     archiveFileName = 'EnterpriseRagCommunity.war'
@@ -21,31 +36,54 @@ ext['log4j2.version'] = '2.25.3'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        def toolchainVersion = providers.gradleProperty('javaToolchainVersion')
+                .orElse('21')
+                .map { Integer.parseInt(it) }
+                .get()
+        languageVersion = JavaLanguageVersion.of(toolchainVersion)
     }
 }
 
-def java25Launcher = javaToolchains.launcherFor {
-    languageVersion = JavaLanguageVersion.of(25)
+def projectJavaLauncher = javaToolchains.launcherFor {
+    def toolchainVersion = providers.gradleProperty('javaToolchainVersion')
+            .orElse('21')
+            .map { Integer.parseInt(it) }
+            .get()
+    languageVersion = JavaLanguageVersion.of(toolchainVersion)
 }
 
 tasks.withType(Test).configureEach {
-    javaLauncher = java25Launcher
+    javaLauncher = projectJavaLauncher
+    maxHeapSize = '4g'
+    maxParallelForks = 1
+    forkEvery = 100
+    jvmArgs(
+            '-XX:MaxMetaspaceSize=512m',
+            '--enable-native-access=ALL-UNNAMED'
+    )
+    systemProperty 'spring.test.context.cache.maxSize', '1'
+    binaryResultsDirectory.set(layout.buildDirectory.dir("test-results/${name}/binary-${System.currentTimeMillis()}"))
 }
 
 tasks.withType(JavaExec).configureEach {
-    javaLauncher = java25Launcher
+    javaLauncher = projectJavaLauncher
 }
 
 tasks.withType(JavaCompile).configureEach {
+    def releaseVersion = providers.gradleProperty('javaReleaseVersion')
+            .orElse('21')
+            .map { Integer.parseInt(it) }
+            .get()
+    options.release.set(releaseVersion)
     options.compilerArgs.addAll(['-parameters'])
 }
 
 repositories {
+    mavenCentral()
     // 使用阿里云Maven仓库镜像
-    maven { url 'https://maven.aliyun.com/repository/public/' }
-    maven { url 'https://maven.aliyun.com/repository/spring/' }
-    maven { url 'https://maven.aliyun.com/repository/gradle-plugin/' }
+    maven { url = uri('https://maven.aliyun.com/repository/public/') }
+    maven { url = uri('https://maven.aliyun.com/repository/spring/') }
+    maven { url = uri('https://maven.aliyun.com/repository/gradle-plugin/') }
     // 备用仓库
     mavenCentral()
 }
@@ -57,44 +95,107 @@ tasks.named('bootRun') {
     jvmArgs(
             '-Dfile.encoding=UTF-8',
             '-Dsun.stdout.encoding=UTF-8',
-            '-Dsun.stderr.encoding=UTF-8'
+            '-Dsun.stderr.encoding=UTF-8',
+            '--enable-native-access=ALL-UNNAMED'
     )
 }
 dependencies {
     // 核心 Web + 内嵌 Tomcat
-    implementation 'org.springframework.boot:spring-boot-starter-web:3.5.7'
-    implementation 'org.springframework.boot:spring-boot-starter-validation:3.5.7'
-    implementation 'org.springframework.boot:spring-boot-starter-freemarker:3.5.7'
-    implementation 'org.springframework.boot:spring-boot-starter-mail:3.5.7'
-    implementation 'org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.3'
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa:3.5.7'
-    implementation 'org.springframework.boot:spring-boot-starter-security:3.5.7'
-    implementation 'org.springframework.security:spring-security-taglibs:6.5.6'
-    implementation 'org.springframework.boot:spring-boot-starter-actuator:3.5.7'
+    implementation 'org.springframework.boot:spring-boot-starter-web:3.5.11'
+    implementation 'org.springframework.boot:spring-boot-starter-validation:3.5.11'
+    implementation 'org.springframework.boot:spring-boot-starter-mail:3.5.11'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa:3.5.11'
+    implementation 'org.springframework.boot:spring-boot-starter-security:3.5.11'
+    implementation 'org.springframework.security:spring-security-taglibs:6.5.8'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator:3.5.11'
     implementation 'io.micrometer:micrometer-registry-prometheus'
     runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-jasper:10.1.48'              // JSP 引擎
     runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-el:10.1.48'                 // EL 引擎
     runtimeOnly 'jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api:3.0.2'
     runtimeOnly 'org.glassfish.web:jakarta.servlet.jsp.jstl:3.0.1'
-    implementation 'org.flywaydb:flyway-mysql:11.7.2'
-    implementation 'org.flywaydb:flyway-core:11.7.2'
+    implementation 'org.flywaydb:flyway-mysql:12.0.2'
+    implementation 'org.flywaydb:flyway-core:12.0.2'
     runtimeOnly 'com.mysql:mysql-connector-j:9.4.0'
-    developmentOnly 'org.springframework.boot:spring-boot-devtools:3.5.7'
+    developmentOnly 'org.springframework.boot:spring-boot-devtools:3.5.11'
     compileOnly 'org.projectlombok:lombok:1.18.42'
     annotationProcessor 'org.projectlombok:lombok:1.18.42'
-    testImplementation 'org.springframework.boot:spring-boot-starter-test:3.5.7'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test:3.5.11'
     testImplementation 'org.springframework.security:spring-security-test'
-    testImplementation 'ch.vorburger.mariaDB4j:mariaDB4j:3.1.0'
+    testImplementation 'org.mockito:mockito-core:5.2.0'
     testImplementation platform('org.testcontainers:testcontainers-bom:1.20.4')
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:mysql'
     testImplementation 'org.testcontainers:jdbc'
     compileOnly 'io.swagger:swagger-annotations:1.6.14'
-    implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch:3.5.7'
+    implementation 'org.springframework.boot:spring-boot-starter-data-elasticsearch:3.5.11'
+    implementation 'org.apache.poi:poi-ooxml:5.5.1'
+    implementation 'org.apache.poi:poi-scratchpad:5.5.1'
+    implementation 'org.apache.pdfbox:pdfbox:3.0.2'
+    implementation 'org.apache.commons:commons-compress:1.26.2'
+    implementation 'org.apache.commons:commons-lang3:3.18.0'
+    implementation 'org.apache.tika:tika-core:3.2.2'
+    implementation 'org.apache.tika:tika-parsers-standard-package:3.2.2'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed", "standardOut", "standardError"
+        showStandardStreams = true
+    }
+}
+
+def focusTestSource = providers.gradleProperty('focusTestSource')
+        .map { it == null ? '' : it.trim() }
+        .orElse('')
+        .get()
+
+def focusTestSourceLooksLikePath = !focusTestSource.isEmpty() && (focusTestSource.contains('/') || focusTestSource.contains('\\') || focusTestSource.endsWith('.java'))
+
+def focusTestClass = providers.gradleProperty('focusTestClass')
+        .map { it == null ? '' : it.trim() }
+        .orElse('')
+        .get()
+
+def extraFocusTestClass = providers.gradleProperty('extraFocusTestClass')
+        .map { it == null ? '' : it.trim() }
+        .orElse('')
+        .get()
+
+def focusTestEnabled = providers.gradleProperty('focusTestEnabled')
+        .map { Boolean.parseBoolean(it == null ? 'false' : it.trim()) }
+        .orElse(false)
+        .get()
+
+tasks.named('test', Test) {
+    filter {
+        def patterns = new java.util.ArrayList()
+        if (focusTestEnabled) {
+            if (!focusTestSource.isEmpty() && !focusTestSourceLooksLikePath) patterns.add("*" + focusTestSource + "*");
+            if (!focusTestClass.isEmpty()) patterns.add(focusTestClass);
+            if (!extraFocusTestClass.isEmpty()) patterns.add(extraFocusTestClass);
+            if (!patterns.isEmpty()) setIncludePatterns(patterns.toArray(new String[0]))
+        }
+    }
+}
+
+tasks.named('compileTestJava', JavaCompile) {
+    if (focusTestEnabled) {
+        def includes = new java.util.ArrayList()
+        includes.add('com/example/EnterpriseRagCommunity/testsupport/**/*.java')
+        includes.add('com/example/EnterpriseRagCommunity/testutil/**/*.java')
+        if (focusTestSourceLooksLikePath) {
+            String p = focusTestSource.replace('\\', '/')
+            if (p.startsWith('src/test/java/')) p = p.substring('src/test/java/'.length())
+            if (!p.endsWith('.java')) p = p + '.java'
+            includes.add(p)
+        }
+        if (!focusTestClass.isEmpty()) includes.add(focusTestClass.replace('.', '/') + '.java')
+        if (!extraFocusTestClass.isEmpty()) includes.add(extraFocusTestClass.replace('.', '/') + '.java')
+        if (!includes.isEmpty()) {
+            source = sourceSets.test.java.matching { include includes }
+        }
+    }
 }
 
 sourceSets {
@@ -129,12 +230,17 @@ jacoco {
     toolVersion = '0.8.13'
 }
 
-tasks.named('test') {
+tasks.named('test', Test) {
     finalizedBy tasks.named('jacocoTestReport')
+    jacoco {
+        destinationFile = layout.buildDirectory.file('jacoco/test.exec').get().asFile
+    }
 }
 
-tasks.withType(Test).configureEach {
+tasks.withType(Test).configureEach { t ->
     jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file("jacoco/${t.name}.exec").get().asFile
         excludes = [
                 'java/**',
                 'javax/**',
@@ -146,12 +252,1801 @@ tasks.withType(Test).configureEach {
     }
 }
 
-tasks.named('jacocoTestReport') {
+tasks.named('jacocoTestReport', JacocoReport) {
     dependsOn tasks.named('test')
+    executionData(layout.buildDirectory.file('jacoco/test.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(sourceSets.main.output)
     reports {
         xml.required = true
         html.required = true
         csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/test/jacocoTestReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/test/html')
+    }
+}
+
+tasks.register('ragContextPromptServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs RagContextPromptService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.RagContextPromptService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/ragContextPromptService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoRagContextPromptServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('ragContextPromptServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/ragContextPromptService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/RagContextPromptService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/RagContextPromptService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/ragContextPromptService/jacocoRagContextPromptServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/ragContextPromptService/html')
+    }
+}
+
+tasks.register('ragPostIndexBuildServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs RagPostIndexBuildService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexBuildService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/ragPostIndexBuildService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoRagPostIndexBuildServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('ragPostIndexBuildServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/ragPostIndexBuildService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagPostIndexBuildService.class'
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagPostIndexBuildService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/ragPostIndexBuildService/jacocoRagPostIndexBuildServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/ragPostIndexBuildService/html')
+    }
+}
+
+tasks.register('ragPostChatRetrievalServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs RagPostChatRetrievalService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.retrieval.RagPostChatRetrievalService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/ragPostChatRetrievalService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoRagPostChatRetrievalServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('ragPostChatRetrievalServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/ragPostChatRetrievalService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagPostChatRetrievalService.class'
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagPostChatRetrievalService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/ragPostChatRetrievalService/jacocoRagPostChatRetrievalServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/ragPostChatRetrievalService/html')
+    }
+}
+
+tasks.register('verifyRagPostChatRetrievalServiceCoverage100') {
+    group = 'verification'
+    description = 'Runs RagPostChatRetrievalService focused tests and verifies 100% coverage.'
+    dependsOn tasks.named('jacocoRagPostChatRetrievalServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/ragPostChatRetrievalService/jacocoRagPostChatRetrievalServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval/RagPostChatRetrievalService'
+        }
+        if (!cls) {
+            throw new GradleException('RagPostChatRetrievalService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("RagPostChatRetrievalService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/ragPostChatRetrievalService/html/com.example.EnterpriseRagCommunity.service.retrieval/RagPostChatRetrievalService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'RagPostChatRetrievalService Branches: 100%'
+        println 'RagPostChatRetrievalService Instructions: 100%'
+        println 'RagPostChatRetrievalService Lines: 100%'
+        println 'RagPostChatRetrievalService Methods: 100%'
+    }
+}
+
+tasks.register('ragCommentChatRetrievalServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs RagCommentChatRetrievalService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.retrieval.RagCommentChatRetrievalService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/ragCommentChatRetrievalService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoRagCommentChatRetrievalServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('ragCommentChatRetrievalServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/ragCommentChatRetrievalService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagCommentChatRetrievalService.class'
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagCommentChatRetrievalService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/ragCommentChatRetrievalService/jacocoRagCommentChatRetrievalServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/ragCommentChatRetrievalService/html')
+    }
+}
+
+tasks.register('verifyRagCommentChatRetrievalServiceCoverage100') {
+    group = 'verification'
+    description = 'Runs RagCommentChatRetrievalService focused tests and verifies 100% coverage.'
+    dependsOn tasks.named('jacocoRagCommentChatRetrievalServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/ragCommentChatRetrievalService/jacocoRagCommentChatRetrievalServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval/RagCommentChatRetrievalService'
+        }
+        if (!cls) {
+            throw new GradleException('RagCommentChatRetrievalService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("RagCommentChatRetrievalService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/ragCommentChatRetrievalService/html/com.example.EnterpriseRagCommunity.service.retrieval/RagCommentChatRetrievalService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'RagCommentChatRetrievalService Branches: 100%'
+        println 'RagCommentChatRetrievalService Instructions: 100%'
+        println 'RagCommentChatRetrievalService Lines: 100%'
+        println 'RagCommentChatRetrievalService Methods: 100%'
+    }
+}
+
+tasks.register('verifyRagPostIndexBuildServiceCoverage100') {
+    group = 'verification'
+    description = 'Runs RagPostIndexBuildService focused tests and verifies 100% coverage.'
+    dependsOn tasks.named('jacocoRagPostIndexBuildServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/ragPostIndexBuildService/jacocoRagPostIndexBuildServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval/RagPostIndexBuildService'
+        }
+        if (!cls) {
+            throw new GradleException('RagPostIndexBuildService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("RagPostIndexBuildService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/ragPostIndexBuildService/html/com.example.EnterpriseRagCommunity.service.retrieval/RagPostIndexBuildService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'RagPostIndexBuildService Branches: 100%'
+        println 'RagPostIndexBuildService Instructions: 100%'
+        println 'RagPostIndexBuildService Lines: 100%'
+        println 'RagPostIndexBuildService Methods: 100%'
+    }
+}
+
+tasks.register('ragFileAssetIndexBuildServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs RagFileAssetIndexBuildService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetIndexBuildService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/ragFileAssetIndexBuildService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoRagFileAssetIndexBuildServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('ragFileAssetIndexBuildServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/ragFileAssetIndexBuildService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagFileAssetIndexBuildService.class'
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagFileAssetIndexBuildService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/ragFileAssetIndexBuildService/jacocoRagFileAssetIndexBuildServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/ragFileAssetIndexBuildService/html')
+    }
+}
+
+tasks.register('verifyRagFileAssetIndexBuildServiceCoverage100') {
+    group = 'verification'
+    description = 'Runs RagFileAssetIndexBuildService focused tests and verifies 100% coverage.'
+    dependsOn tasks.named('jacocoRagFileAssetIndexBuildServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/ragFileAssetIndexBuildService/jacocoRagFileAssetIndexBuildServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval/RagFileAssetIndexBuildService'
+        }
+        if (!cls) {
+            throw new GradleException('RagFileAssetIndexBuildService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("RagFileAssetIndexBuildService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/ragFileAssetIndexBuildService/html/com.example.EnterpriseRagCommunity.service.retrieval/RagFileAssetIndexBuildService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'RagFileAssetIndexBuildService Branches: 100%'
+        println 'RagFileAssetIndexBuildService Instructions: 100%'
+        println 'RagFileAssetIndexBuildService Lines: 100%'
+        println 'RagFileAssetIndexBuildService Methods: 100%'
+    }
+}
+
+tasks.register('ragFileAssetTestQueryServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs RagFileAssetTestQueryService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetTestQueryServiceTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/ragFileAssetTestQueryService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoRagFileAssetTestQueryServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('ragFileAssetTestQueryServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/ragFileAssetTestQueryService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagFileAssetTestQueryService.class'
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagFileAssetTestQueryService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/ragFileAssetTestQueryService/jacocoRagFileAssetTestQueryServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/ragFileAssetTestQueryService/html')
+    }
+}
+
+tasks.register('verifyRagFileAssetTestQueryServiceCoverage100') {
+    group = 'verification'
+    description = 'Runs RagFileAssetTestQueryService focused tests and verifies 100% coverage.'
+    dependsOn tasks.named('jacocoRagFileAssetTestQueryServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/ragFileAssetTestQueryService/jacocoRagFileAssetTestQueryServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval/RagFileAssetTestQueryService'
+        }
+        if (!cls) {
+            throw new GradleException('RagFileAssetTestQueryService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("RagFileAssetTestQueryService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/ragFileAssetTestQueryService/html/com.example.EnterpriseRagCommunity.service.retrieval/RagFileAssetTestQueryService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'RagFileAssetTestQueryService Branches: 100%'
+        println 'RagFileAssetTestQueryService Instructions: 100%'
+        println 'RagFileAssetTestQueryService Lines: 100%'
+        println 'RagFileAssetTestQueryService Methods: 100%'
+    }
+}
+
+tasks.register('ragCommentIndexBuildServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs RagCommentIndexBuildService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexBuildServiceBuildCommentsBranchTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexBuildServiceSyncAndHelpersBranchTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/ragCommentIndexBuildService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoRagCommentIndexBuildServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('ragCommentIndexBuildServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/ragCommentIndexBuildService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagCommentIndexBuildService.class'
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagCommentIndexBuildService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/ragCommentIndexBuildService/jacocoRagCommentIndexBuildServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/ragCommentIndexBuildService/html')
+    }
+}
+
+tasks.register('verifyRagCommentIndexBuildServiceCoverage100') {
+    group = 'verification'
+    description = 'Runs RagCommentIndexBuildService focused tests and verifies 100% coverage.'
+    dependsOn tasks.named('jacocoRagCommentIndexBuildServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/ragCommentIndexBuildService/jacocoRagCommentIndexBuildServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval/RagCommentIndexBuildService'
+        }
+        if (!cls) {
+            throw new GradleException('RagCommentIndexBuildService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("RagCommentIndexBuildService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/ragCommentIndexBuildService/html/com.example.EnterpriseRagCommunity.service.retrieval/RagCommentIndexBuildService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'RagCommentIndexBuildService Branches: 100%'
+        println 'RagCommentIndexBuildService Instructions: 100%'
+        println 'RagCommentIndexBuildService Lines: 100%'
+        println 'RagCommentIndexBuildService Methods: 100%'
+    }
+}
+
+tasks.register('ragContextPromptServiceCoverageVerify') {
+    group = 'verification'
+    description = 'Runs RagContextPromptService focused tests and verifies branch coverage reaches 100%.'
+    dependsOn tasks.named('jacocoRagContextPromptServiceReport')
+    doLast {
+        def reportPath = layout.buildDirectory.file('reports/jacoco/ragContextPromptService/jacocoRagContextPromptServiceReport.xml').get().asFile
+        if (!reportPath.exists()) {
+            throw new GradleException("Coverage report not found: ${reportPath}")
+        }
+        def report = new XmlSlurper().parse(reportPath)
+        def pkg = report.package.find { it.@name.text() == 'com/example/EnterpriseRagCommunity/service/ai' }
+        if (!pkg) {
+            throw new GradleException('Target package missing in coverage report: com/example/EnterpriseRagCommunity/service/ai')
+        }
+        def cls = pkg.class.find { it.@name.text() == 'com/example/EnterpriseRagCommunity/service/ai/RagContextPromptService' }
+        if (!cls) {
+            throw new GradleException('Target class missing in coverage report: RagContextPromptService')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing BRANCH/INSTRUCTION/LINE/METHOD counter')
+        }
+
+        int branchCovered = branch.@covered.text().toInteger()
+        int branchMissed = branch.@missed.text().toInteger()
+        int instructionCovered = instruction.@covered.text().toInteger()
+        int instructionMissed = instruction.@missed.text().toInteger()
+        int lineCovered = line.@covered.text().toInteger()
+        int lineMissed = line.@missed.text().toInteger()
+        int methodCovered = method.@covered.text().toInteger()
+        int methodMissed = method.@missed.text().toInteger()
+
+        int branchTotal = branchCovered + branchMissed
+        int instructionTotal = instructionCovered + instructionMissed
+        int lineTotal = lineCovered + lineMissed
+        int methodTotal = methodCovered + methodMissed
+        if (branchTotal <= 0 || instructionTotal <= 0 || lineTotal <= 0 || methodTotal <= 0) {
+            throw new GradleException('Coverage denominator is 0, cannot verify')
+        }
+
+        BigDecimal branchPct = ((branchCovered * 100.0) / branchTotal).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+        BigDecimal instructionPct = ((instructionCovered * 100.0) / instructionTotal).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+        BigDecimal linePct = ((lineCovered * 100.0) / lineTotal).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+        BigDecimal methodPct = ((methodCovered * 100.0) / methodTotal).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+
+        println "RagContextPromptService Branches: ${branchPct}% (${branchCovered}/${branchTotal})"
+        println "RagContextPromptService Instructions: ${instructionPct}% (${instructionCovered}/${instructionTotal})"
+        println "RagContextPromptService Lines: ${linePct}% (${lineCovered}/${lineTotal})"
+        println "RagContextPromptService Methods: ${methodPct}% (${methodCovered}/${methodTotal})"
+
+        def classHtml = layout.buildDirectory.file('reports/jacoco/ragContextPromptService/html/com.example.EnterpriseRagCommunity.service.ai/RagContextPromptService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        if (branchPct < 100.00) {
+            throw new GradleException("RagContextPromptService branch coverage is below 100%: ${branchPct}%")
+        }
+    }
+}
+
+tasks.register('imageStorageConfigServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs ImageStorageConfigService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.ImageStorageConfigService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/imageStorageConfigService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoImageStorageConfigServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('imageStorageConfigServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/imageStorageConfigService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/ImageStorageConfigService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/ImageStorageConfigService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/imageStorageConfigService/jacocoImageStorageConfigServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/imageStorageConfigService/html')
+    }
+}
+
+tasks.register('aiSemanticTranslateServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AiSemanticTranslateService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiSemanticTranslateService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/aiSemanticTranslateServiceCoverageTest.exec').get().asFile
+    }
+    finalizedBy tasks.named('jacocoAiSemanticTranslateServiceReport')
+}
+
+tasks.register('jacocoAiSemanticTranslateServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('aiSemanticTranslateServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/aiSemanticTranslateServiceCoverageTest.exec'))
+    onlyIf {
+        layout.buildDirectory.file('jacoco/aiSemanticTranslateServiceCoverageTest.exec').get().asFile.exists()
+    }
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiSemanticTranslateService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiSemanticTranslateService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/aiSemanticTranslateService/jacocoAiSemanticTranslateServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/aiSemanticTranslateService/html')
+    }
+}
+
+tasks.register('aiPostLangLabelServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AiPostLangLabelService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiPostLangLabelServiceTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/aiPostLangLabelService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAiPostLangLabelServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('aiPostLangLabelServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/aiPostLangLabelService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiPostLangLabelService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiPostLangLabelService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/aiPostLangLabelService/jacocoAiPostLangLabelServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/aiPostLangLabelService/html')
+    }
+}
+
+tasks.register('aiPostTitleServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AiPostTitleService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiPostTitleServiceTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/aiPostTitleService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAiPostTitleServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('aiPostTitleServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/aiPostTitleService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiPostTitleService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiPostTitleService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/aiPostTitleService/jacocoAiPostTitleServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/aiPostTitleService/html')
+    }
+}
+
+tasks.register('aiLanguageDetectServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AiLanguageDetectService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiLanguageDetectServiceTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/aiLanguageDetectService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAiLanguageDetectServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('aiLanguageDetectServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/aiLanguageDetectService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiLanguageDetectService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiLanguageDetectService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/aiLanguageDetectService/jacocoAiLanguageDetectServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/aiLanguageDetectService/html')
+    }
+}
+
+tasks.register('llmRoutingServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs LlmRoutingService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.LlmRoutingService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/llmRoutingServiceCoverageTest.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoLlmRoutingServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('llmRoutingServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/llmRoutingServiceCoverageTest.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/LlmRoutingService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/LlmRoutingService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/llmRoutingService/jacocoLlmRoutingServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/llmRoutingService/html')
+    }
+}
+
+tasks.register('llmGatewayThinkStripperCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs LlmGateway ThinkStripper focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.LlmGatewayThinkStripperBranchTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/llmGatewayThinkStripper.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoLlmGatewayThinkStripperReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('llmGatewayThinkStripperCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/llmGatewayThinkStripper.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/LlmGateway$ThinkStripper.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/LlmGateway$ThinkStripper$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/llmGatewayThinkStripper/jacocoLlmGatewayThinkStripperReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/llmGatewayThinkStripper/html')
+    }
+}
+
+tasks.register('aiPostComposeAssistantServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AiPostComposeAssistantService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiPostComposeAssistantServiceTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/aiPostComposeAssistantService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAiPostComposeAssistantServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('aiPostComposeAssistantServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/aiPostComposeAssistantService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiPostComposeAssistantService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiPostComposeAssistantService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/aiPostComposeAssistantService/jacocoAiPostComposeAssistantServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/aiPostComposeAssistantService/html')
+    }
+}
+
+tasks.register('aiProvidersConfigServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AiProvidersConfigService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiProvidersConfigService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/aiProvidersConfigService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAiProvidersConfigServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('aiProvidersConfigServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/aiProvidersConfigService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiProvidersConfigService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiProvidersConfigService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/aiProvidersConfigService/jacocoAiProvidersConfigServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/aiProvidersConfigService/html')
+    }
+}
+
+tasks.register('aiRerankServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AiRerankService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiRerankServiceRerankOnceBranchTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiRerankServiceBranchCoverageTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiRerankServiceParseTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.AiRerankServiceUtilityBranchTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/aiRerankService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAiRerankServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('aiRerankServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/aiRerankService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiRerankService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/AiRerankService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/aiRerankService/jacocoAiRerankServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/aiRerankService/html')
+    }
+}
+
+tasks.register('aiRerankServiceCoverageVerify') {
+    group = 'verification'
+    description = 'Runs AiRerankService focused tests and verifies branch coverage reaches 100%.'
+    dependsOn tasks.named('jacocoAiRerankServiceReport')
+    doLast {
+        def reportPath = layout.buildDirectory.file('reports/jacoco/aiRerankService/jacocoAiRerankServiceReport.xml').get().asFile
+        if (!reportPath.exists()) {
+            throw new GradleException("Coverage report not found: ${reportPath}")
+        }
+        def report = new XmlSlurper().parse(reportPath)
+        def pkg = report.package.find { it.@name.text() == 'com/example/EnterpriseRagCommunity/service/ai' }
+        if (!pkg) {
+            throw new GradleException('Target package missing in coverage report: com/example/EnterpriseRagCommunity/service/ai')
+        }
+        def cls = pkg.class.find { it.@name.text() == 'com/example/EnterpriseRagCommunity/service/ai/AiRerankService' }
+        if (!cls) {
+            throw new GradleException('Target class missing in coverage report: AiRerankService')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        if (!branch || !instruction) {
+            throw new GradleException('Coverage report missing BRANCH or INSTRUCTION counter')
+        }
+
+        int branchCovered = branch.@covered.text().toInteger()
+        int branchMissed = branch.@missed.text().toInteger()
+        int instructionCovered = instruction.@covered.text().toInteger()
+        int instructionMissed = instruction.@missed.text().toInteger()
+
+        int branchTotal = branchCovered + branchMissed
+        int instructionTotal = instructionCovered + instructionMissed
+        if (branchTotal <= 0 || instructionTotal <= 0) {
+            throw new GradleException('Coverage denominator is 0, cannot verify')
+        }
+
+        BigDecimal branchPct = ((branchCovered * 100.0) / branchTotal).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+        BigDecimal instructionPct = ((instructionCovered * 100.0) / instructionTotal).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+
+        println "AiRerankService Branches: ${branchPct}% (${branchCovered}/${branchTotal})"
+        println "AiRerankService Instructions: ${instructionPct}% (${instructionCovered}/${instructionTotal})"
+
+        def classHtml = layout.buildDirectory.file('reports/jacoco/aiRerankService/html/com.example.EnterpriseRagCommunity.service.ai/AiRerankService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        if (branchPct < 100.00) {
+            throw new GradleException("AiRerankService branch coverage is below 100%: ${branchPct}%")
+        }
+    }
+}
+
+tasks.register('qaHistoryServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs QaHistoryService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.QaHistoryService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/qaHistoryService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoQaHistoryServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('qaHistoryServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/qaHistoryService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/QaHistoryService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/QaHistoryService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/qaHistoryService/jacocoQaHistoryServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/qaHistoryService/html')
+    }
+}
+
+tasks.register('llmRoutingAdminConfigServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs LlmRoutingAdminConfigService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.LlmRoutingAdminConfigServiceTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.LlmRoutingAdminConfigServiceClearTargetsTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/llmRoutingAdminConfigService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoLlmRoutingAdminConfigServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('llmRoutingAdminConfigServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/llmRoutingAdminConfigService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/LlmRoutingAdminConfigService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/LlmRoutingAdminConfigService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/llmRoutingAdminConfigService/jacocoLlmRoutingAdminConfigServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/llmRoutingAdminConfigService/html')
+    }
+}
+
+tasks.register('llmCallQueueServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs LlmCallQueueService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.ai.LlmCallQueueServiceTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/llmCallQueueServiceCoverageTest.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoLlmCallQueueServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('llmCallQueueServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/llmCallQueueServiceCoverageTest.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/ai/LlmCallQueueService.class'
+        include 'com/example/EnterpriseRagCommunity/service/ai/LlmCallQueueService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/llmCallQueueService/jacocoLlmCallQueueServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/llmCallQueueService/html')
+    }
+}
+
+tasks.register('adminModerationFallbackServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AdminModerationFallbackService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationFallbackService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/adminModerationFallbackService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAdminModerationFallbackServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('adminModerationFallbackServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/adminModerationFallbackService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationFallbackService.class'
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationFallbackService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/adminModerationFallbackService/jacocoAdminModerationFallbackServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/adminModerationFallbackService/html')
+    }
+}
+
+tasks.register('adminModerationLlmContextBuilderCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AdminModerationLlmContextBuilder focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmContextBuilderBranchCoverageTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmContextBuilderProfileTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/adminModerationLlmContextBuilder.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAdminModerationLlmContextBuilderReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('adminModerationLlmContextBuilderCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/adminModerationLlmContextBuilder.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationLlmContextBuilder.class'
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationLlmContextBuilder$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/adminModerationLlmContextBuilder/jacocoAdminModerationLlmContextBuilderReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/adminModerationLlmContextBuilder/html')
+    }
+}
+
+tasks.register('verifyAdminModerationLlmContextBuilderCoverage100') {
+    group = 'verification'
+    dependsOn tasks.named('jacocoAdminModerationLlmContextBuilderReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/adminModerationLlmContextBuilder/jacocoAdminModerationLlmContextBuilderReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationLlmContextBuilder'
+        }
+        if (!cls) {
+            throw new GradleException('AdminModerationLlmContextBuilder coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [
+                [name: 'Branches', counter: branch],
+                [name: 'Instructions', counter: instruction],
+                [name: 'Lines', counter: line],
+                [name: 'Methods', counter: method]
+        ]
+        counters.each { item ->
+            def c = item.counter
+            int missed = c.@missed.text().toInteger()
+            int covered = c.@covered.text().toInteger()
+            int total = missed + covered
+            if (total <= 0) {
+                throw new GradleException("AdminModerationLlmContextBuilder ${item.name} coverage denominator is 0")
+            }
+            if (missed != 0) {
+                throw new GradleException("AdminModerationLlmContextBuilder ${item.name} coverage is below 100%, missed=${missed}")
+            }
+            println "AdminModerationLlmContextBuilder ${item.name}: 100% (${covered}/${total})"
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/adminModerationLlmContextBuilder/html/com.example.EnterpriseRagCommunity.service.moderation.admin/AdminModerationLlmContextBuilder.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+    }
+}
+
+tasks.register('adminModerationLlmImageSupportCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AdminModerationLlmImageSupport focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmImageSupportTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmServiceImageBytesTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/adminModerationLlmImageSupport.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAdminModerationLlmImageSupportReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('adminModerationLlmImageSupportCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/adminModerationLlmImageSupport.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationLlmImageSupport.class'
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationLlmImageSupport$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/adminModerationLlmImageSupport/jacocoAdminModerationLlmImageSupportReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/adminModerationLlmImageSupport/html')
+    }
+}
+
+tasks.register('verifyAdminModerationLlmImageSupportCoverage100') {
+    group = 'verification'
+    dependsOn tasks.named('jacocoAdminModerationLlmImageSupportReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/adminModerationLlmImageSupport/jacocoAdminModerationLlmImageSupportReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationLlmImageSupport'
+        }
+        if (!cls) {
+            throw new GradleException('AdminModerationLlmImageSupport coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [
+                [name: 'Branches', counter: branch],
+                [name: 'Instructions', counter: instruction],
+                [name: 'Lines', counter: line],
+                [name: 'Methods', counter: method]
+        ]
+        counters.each { item ->
+            def c = item.counter
+            int missed = c.@missed.text().toInteger()
+            int covered = c.@covered.text().toInteger()
+            int total = missed + covered
+            if (total <= 0) {
+                throw new GradleException("AdminModerationLlmImageSupport ${item.name} coverage denominator is 0")
+            }
+            if (missed != 0) {
+                throw new GradleException("AdminModerationLlmImageSupport ${item.name} coverage is below 100%, missed=${missed}")
+            }
+            println "AdminModerationLlmImageSupport ${item.name}: 100% (${covered}/${total})"
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/adminModerationLlmImageSupport/html/com.example.EnterpriseRagCommunity.service.moderation.admin/AdminModerationLlmImageSupport.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+    }
+}
+
+tasks.register('verifyAdminModerationFallbackServiceCoverage100') {
+    group = 'verification'
+    dependsOn tasks.named('jacocoAdminModerationFallbackServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/adminModerationFallbackService/jacocoAdminModerationFallbackServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationFallbackService'
+        }
+        if (!cls) {
+            throw new GradleException('AdminModerationFallbackService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("AdminModerationFallbackService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/adminModerationFallbackService/html/com.example.EnterpriseRagCommunity.service.moderation.admin/AdminModerationFallbackService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'AdminModerationFallbackService Branches: 100%'
+        println 'AdminModerationFallbackService Instructions: 100%'
+        println 'AdminModerationFallbackService Lines: 100%'
+        println 'AdminModerationFallbackService Methods: 100%'
+    }
+}
+
+tasks.register('moderationRuleAutoRunnerCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs ModerationRuleAutoRunner focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunnerAntiSpamTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunnerUnlockTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunnerBranchUnitTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/moderationRuleAutoRunner.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoModerationRuleAutoRunnerReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('moderationRuleAutoRunnerCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/moderationRuleAutoRunner.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/moderation/jobs/ModerationRuleAutoRunner.class'
+        include 'com/example/EnterpriseRagCommunity/service/moderation/jobs/ModerationRuleAutoRunner$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/moderationRuleAutoRunner/jacocoModerationRuleAutoRunnerReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/moderationRuleAutoRunner/html')
+    }
+}
+
+tasks.register('verifyModerationRuleAutoRunnerCoverage100') {
+    group = 'verification'
+    dependsOn tasks.named('jacocoModerationRuleAutoRunnerReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/moderationRuleAutoRunner/jacocoModerationRuleAutoRunnerReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/jobs'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/jobs/ModerationRuleAutoRunner'
+        }
+        if (!cls) {
+            throw new GradleException('ModerationRuleAutoRunner coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [
+                [name: 'Branches', counter: branch],
+                [name: 'Instructions', counter: instruction],
+                [name: 'Lines', counter: line],
+                [name: 'Methods', counter: method]
+        ]
+        counters.each { item ->
+            def c = item.counter
+            int missed = c.@missed.text().toInteger()
+            int covered = c.@covered.text().toInteger()
+            int total = missed + covered
+            if (total <= 0) {
+                throw new GradleException("ModerationRuleAutoRunner ${item.name} coverage denominator is 0")
+            }
+            if (missed != 0) {
+                throw new GradleException("ModerationRuleAutoRunner ${item.name} coverage is below 100%, missed=${missed}")
+            }
+            println "ModerationRuleAutoRunner ${item.name}: 100% (${covered}/${total})"
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/moderationRuleAutoRunner/html/com.example.EnterpriseRagCommunity.service.moderation.jobs/ModerationRuleAutoRunner.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+    }
+}
+
+tasks.register('moderationSamplesAutoSyncJobCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs ModerationSamplesAutoSyncJob focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationSamplesAutoSyncJobTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/moderationSamplesAutoSyncJob.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoModerationSamplesAutoSyncJobReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('moderationSamplesAutoSyncJobCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/moderationSamplesAutoSyncJob.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/moderation/jobs/ModerationSamplesAutoSyncJob.class'
+        include 'com/example/EnterpriseRagCommunity/service/moderation/jobs/ModerationSamplesAutoSyncJob$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/moderationSamplesAutoSyncJob/jacocoModerationSamplesAutoSyncJobReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/moderationSamplesAutoSyncJob/html')
+    }
+}
+
+tasks.register('verifyModerationSamplesAutoSyncJobCoverage100') {
+    group = 'verification'
+    dependsOn tasks.named('jacocoModerationSamplesAutoSyncJobReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/moderationSamplesAutoSyncJob/jacocoModerationSamplesAutoSyncJobReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def testXml = layout.buildDirectory.file('test-results/moderationSamplesAutoSyncJobCoverageTest/TEST-com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationSamplesAutoSyncJobTest.xml').get().asFile
+        if (!testXml.exists()) {
+            throw new GradleException("Test XML not found: ${testXml}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/jobs'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/jobs/ModerationSamplesAutoSyncJob'
+        }
+        if (!cls) {
+            throw new GradleException('ModerationSamplesAutoSyncJob coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("ModerationSamplesAutoSyncJob ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/moderationSamplesAutoSyncJob/html/com.example.EnterpriseRagCommunity.service.moderation.jobs/ModerationSamplesAutoSyncJob.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'ModerationSamplesAutoSyncJob Branches: 100%'
+        println 'ModerationSamplesAutoSyncJob Instructions: 100%'
+        println 'ModerationSamplesAutoSyncJob Lines: 100%'
+        println 'ModerationSamplesAutoSyncJob Methods: 100%'
+    }
+}
+
+tasks.register('moderationVecAutoRunnerCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs ModerationVecAutoRunner focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunnerTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/moderationVecAutoRunner.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoModerationVecAutoRunnerReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('moderationVecAutoRunnerCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/moderationVecAutoRunner.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/moderation/jobs/ModerationVecAutoRunner.class'
+        include 'com/example/EnterpriseRagCommunity/service/moderation/jobs/ModerationVecAutoRunner$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/moderationVecAutoRunner/jacocoModerationVecAutoRunnerReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/moderationVecAutoRunner/html')
+    }
+}
+
+tasks.register('adminModerationRulesServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AdminModerationRulesService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationRulesServiceAuditTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationRulesServiceBranchCoverageTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/adminModerationRulesService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAdminModerationRulesServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('adminModerationRulesServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/adminModerationRulesService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationRulesService.class'
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationRulesService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/adminModerationRulesService/jacocoAdminModerationRulesServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/adminModerationRulesService/html')
+    }
+}
+
+tasks.register('verifyAdminModerationRulesServiceCoverage100') {
+    group = 'verification'
+    dependsOn tasks.named('jacocoAdminModerationRulesServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/adminModerationRulesService/jacocoAdminModerationRulesServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationRulesService'
+        }
+        if (!cls) {
+            throw new GradleException('AdminModerationRulesService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("AdminModerationRulesService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/adminModerationRulesService/html/com.example.EnterpriseRagCommunity.service.moderation.admin/AdminModerationRulesService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'AdminModerationRulesService Branches: 100%'
+        println 'AdminModerationRulesService Instructions: 100%'
+        println 'AdminModerationRulesService Lines: 100%'
+        println 'AdminModerationRulesService Methods: 100%'
+    }
+}
+
+tasks.register('adminModerationPolicyServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AdminModerationPolicyService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationPolicyServiceBranchCoverageTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/adminModerationPolicyService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAdminModerationPolicyServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('adminModerationPolicyServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/adminModerationPolicyService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationPolicyService.class'
+        include 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationPolicyService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/adminModerationPolicyService/jacocoAdminModerationPolicyServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/adminModerationPolicyService/html')
+    }
+}
+
+tasks.register('verifyAdminModerationPolicyServiceCoverage100') {
+    group = 'verification'
+    dependsOn tasks.named('jacocoAdminModerationPolicyServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/adminModerationPolicyService/jacocoAdminModerationPolicyServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/admin/AdminModerationPolicyService'
+        }
+        if (!cls) {
+            throw new GradleException('AdminModerationPolicyService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("AdminModerationPolicyService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/adminModerationPolicyService/html/com.example.EnterpriseRagCommunity.service.moderation.admin/AdminModerationPolicyService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'AdminModerationPolicyService Branches: 100%'
+        println 'AdminModerationPolicyService Instructions: 100%'
+        println 'AdminModerationPolicyService Lines: 100%'
+        println 'AdminModerationPolicyService Methods: 100%'
+    }
+}
+
+tasks.register('hybridRagRetrievalServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs HybridRagRetrievalService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/hybridRagRetrievalService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoHybridRagRetrievalServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('hybridRagRetrievalServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/hybridRagRetrievalService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/HybridRagRetrievalService.class'
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/HybridRagRetrievalService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/hybridRagRetrievalService/jacocoHybridRagRetrievalServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/hybridRagRetrievalService/html')
+    }
+}
+
+tasks.register('verifyHybridRagRetrievalServiceCoverage100') {
+    group = 'verification'
+    description = 'Runs HybridRagRetrievalService focused tests and verifies 100% coverage.'
+    dependsOn tasks.named('jacocoHybridRagRetrievalServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/hybridRagRetrievalService/jacocoHybridRagRetrievalServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval/HybridRagRetrievalService'
+        }
+        if (!cls) {
+            throw new GradleException('HybridRagRetrievalService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("HybridRagRetrievalService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/hybridRagRetrievalService/html/com.example.EnterpriseRagCommunity.service.retrieval/HybridRagRetrievalService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'HybridRagRetrievalService Branches: 100%'
+        println 'HybridRagRetrievalService Instructions: 100%'
+        println 'HybridRagRetrievalService Lines: 100%'
+        println 'HybridRagRetrievalService Methods: 100%'
+    }
+}
+
+tasks.register('ragFileAssetChatRetrievalServiceCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs RagFileAssetChatRetrievalService focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetChatRetrievalService*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/ragFileAssetChatRetrievalService.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoRagFileAssetChatRetrievalServiceReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('ragFileAssetChatRetrievalServiceCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/ragFileAssetChatRetrievalService.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagFileAssetChatRetrievalService.class'
+        include 'com/example/EnterpriseRagCommunity/service/retrieval/RagFileAssetChatRetrievalService$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/ragFileAssetChatRetrievalService/jacocoRagFileAssetChatRetrievalServiceReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/ragFileAssetChatRetrievalService/html')
+    }
+}
+
+tasks.register('verifyRagFileAssetChatRetrievalServiceCoverage100') {
+    group = 'verification'
+    description = 'Runs RagFileAssetChatRetrievalService focused tests and verifies 100% coverage.'
+    dependsOn tasks.named('jacocoRagFileAssetChatRetrievalServiceReport')
+    doLast {
+        def report = layout.buildDirectory.file('reports/jacoco/ragFileAssetChatRetrievalService/jacocoRagFileAssetChatRetrievalServiceReport.xml').get().asFile
+        if (!report.exists()) {
+            throw new GradleException("Coverage report not found: ${report}")
+        }
+        def xml = new XmlSlurper().parse(report)
+        def cls = xml.package.find { p ->
+            p.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval'
+        }?.class?.find { c ->
+            c.@name.text() == 'com/example/EnterpriseRagCommunity/service/retrieval/RagFileAssetChatRetrievalService'
+        }
+        if (!cls) {
+            throw new GradleException('RagFileAssetChatRetrievalService coverage entry not found')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        def instruction = cls.counter.find { it.@type.text() == 'INSTRUCTION' }
+        def line = cls.counter.find { it.@type.text() == 'LINE' }
+        def method = cls.counter.find { it.@type.text() == 'METHOD' }
+        if (!branch || !instruction || !line || !method) {
+            throw new GradleException('Coverage report missing required counters')
+        }
+        def counters = [branch: branch, instruction: instruction, line: line, method: method]
+        counters.each { name, c ->
+            int missed = c.@missed.text().toInteger()
+            if (missed != 0) {
+                throw new GradleException("RagFileAssetChatRetrievalService ${name} coverage is below 100%, missed=${missed}")
+            }
+        }
+        def classHtml = layout.buildDirectory.file('reports/jacoco/ragFileAssetChatRetrievalService/html/com.example.EnterpriseRagCommunity.service.retrieval/RagFileAssetChatRetrievalService.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        println 'RagFileAssetChatRetrievalService Branches: 100%'
+        println 'RagFileAssetChatRetrievalService Instructions: 100%'
+        println 'RagFileAssetChatRetrievalService Lines: 100%'
+        println 'RagFileAssetChatRetrievalService Methods: 100%'
     }
 }
 
@@ -167,12 +2062,235 @@ tasks.register('jacocoIntegrationTestReport', JacocoReport) {
     }
 }
 
+tasks.named('integrationTest') {
+    finalizedBy tasks.named('jacocoIntegrationTestReport')
+}
+
+tasks.register('jacocoMergedReport', JacocoReport) {
+    dependsOn tasks.named('test')
+    dependsOn tasks.named('integrationTest')
+    executionData(tasks.named('test').get(), tasks.named('integrationTest').get())
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(sourceSets.main.output)
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/merged/jacocoMergedReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/merged/html')
+    }
+}
+
+tasks.named('jacocoMergedReport') {
+    mustRunAfter tasks.named('jacocoTestReport')
+    mustRunAfter tasks.named('jacocoIntegrationTestReport')
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('jacocoMergedReport')
+}
+
+def coverageGateEnabled = providers.gradleProperty('coverageGate')
+        .map { Boolean.parseBoolean(it) }
+        .orElse(false)
+        .get()
+
+def coverageStage = providers.gradleProperty('coverageStage')
+        .map { Integer.parseInt(it) }
+        .orElse(1)
+        .get()
+
+def coverageGateMode = providers.gradleProperty('coverageGateMode')
+        .orElse('unit')
+        .map { it == null ? 'unit' : it.toLowerCase().trim() }
+        .get()
+
+def coverageStageDefaults = coverageStage >= 2
+        ? [overallLines: 0.55, overallBranches: 0.40, keyLines: 0.40]
+        : [overallLines: 0.40, overallBranches: 0.30, keyLines: 0.25]
+
+def overallLinesMin = providers.gradleProperty('coverage.threshold.overall.lines')
+        .orElse(String.valueOf(coverageStageDefaults.overallLines))
+        .map { it.toBigDecimal() }
+        .get()
+
+def overallBranchesMin = providers.gradleProperty('coverage.threshold.overall.branches')
+        .orElse(String.valueOf(coverageStageDefaults.overallBranches))
+        .map { it.toBigDecimal() }
+        .get()
+
+def keyLinesMin = providers.gradleProperty('coverage.threshold.key.lines')
+        .orElse(String.valueOf(coverageStageDefaults.keyLines))
+        .map { it.toBigDecimal() }
+        .get()
+
+def splitCsvGlobs = { String raw ->
+    if (raw == null) {
+        return []
+    }
+    def v = raw.trim()
+    if (!v) {
+        return []
+    }
+    return v.split(',')
+            .collect { it.trim() }
+            .findAll { it }
+}
+
+def defaultCoverageKeyIncludes = [
+        'com/example/EnterpriseRagCommunity/service/retrieval/**',
+        'com/example/EnterpriseRagCommunity/service/moderation/**',
+        'com/example/EnterpriseRagCommunity/service/ai/**',
+        'com/example/EnterpriseRagCommunity/security/**',
+        'com/example/EnterpriseRagCommunity/controller/**'
+]
+
+def defaultCoverageKeyExcludes = [
+        '**/dto/**',
+        '**/dtos/**',
+        '**/enums/**',
+        '**/*DTO.class',
+        '**/*Dto.class',
+        '**/*Request.class',
+        '**/*Response.class',
+        '**/*Config.class',
+        '**/*Configuration.class',
+        '**/*Properties.class',
+        '**/*Constants.class',
+        '**/config/**',
+        '**/constant/**',
+        '**/constants/**'
+]
+
+def configuredCoverageKeyIncludes = splitCsvGlobs(
+        providers.gradleProperty('coverage.key.includes').orElse('').get()
+)
+def coverageKeyIncludes = configuredCoverageKeyIncludes ? configuredCoverageKeyIncludes : defaultCoverageKeyIncludes
+
+def configuredCoverageKeyExcludes = splitCsvGlobs(
+        providers.gradleProperty('coverage.key.excludes').orElse('').get()
+)
+def coverageKeyExcludes = configuredCoverageKeyExcludes ? configuredCoverageKeyExcludes : defaultCoverageKeyExcludes
+
+def mainClassDirectories = sourceSets.main.output.classesDirs
+def coverageKeyClassTree = files(mainClassDirectories).asFileTree.matching {
+    include coverageKeyIncludes
+    exclude coverageKeyExcludes
+}
+
+tasks.register('jacocoUnitCoverageVerificationOverall', JacocoCoverageVerification) {
+    group = 'verification'
+    dependsOn tasks.named('test')
+    executionData(tasks.named('test').get())
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(mainClassDirectories)
+    violationRules {
+        rule {
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = overallLinesMin
+            }
+            limit {
+                counter = 'BRANCH'
+                value = 'COVEREDRATIO'
+                minimum = overallBranchesMin
+            }
+        }
+    }
+}
+
+tasks.register('jacocoUnitCoverageVerificationKeyPackages', JacocoCoverageVerification) {
+    group = 'verification'
+    dependsOn tasks.named('test')
+    executionData(tasks.named('test').get())
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(coverageKeyClassTree)
+    violationRules {
+        rule {
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = keyLinesMin
+            }
+        }
+    }
+}
+
+tasks.register('jacocoIntegrationCoverageVerificationOverall', JacocoCoverageVerification) {
+    group = 'verification'
+    dependsOn tasks.named('integrationTest')
+    executionData(tasks.named('integrationTest').get())
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(mainClassDirectories)
+    violationRules {
+        rule {
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = overallLinesMin
+            }
+            limit {
+                counter = 'BRANCH'
+                value = 'COVEREDRATIO'
+                minimum = overallBranchesMin
+            }
+        }
+    }
+}
+
+tasks.register('jacocoIntegrationCoverageVerificationKeyPackages', JacocoCoverageVerification) {
+    group = 'verification'
+    dependsOn tasks.named('integrationTest')
+    executionData(tasks.named('integrationTest').get())
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(coverageKeyClassTree)
+    violationRules {
+        rule {
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = keyLinesMin
+            }
+        }
+    }
+}
+
+def normalizedCoverageGateMode = (coverageGateMode == 'both' || coverageGateMode == 'unit' || coverageGateMode == 'integration')
+        ? coverageGateMode
+        : 'unit'
+
+tasks.register('coverageGate') {
+    group = 'verification'
+    onlyIf { coverageGateEnabled }
+    if (normalizedCoverageGateMode == 'unit' || normalizedCoverageGateMode == 'both') {
+        dependsOn tasks.named('jacocoUnitCoverageVerificationOverall')
+        dependsOn tasks.named('jacocoUnitCoverageVerificationKeyPackages')
+    }
+    if (normalizedCoverageGateMode == 'integration' || normalizedCoverageGateMode == 'both') {
+        dependsOn tasks.named('jacocoIntegrationCoverageVerificationOverall')
+        dependsOn tasks.named('jacocoIntegrationCoverageVerificationKeyPackages')
+    }
+}
+
+tasks.named('check') {
+    if (coverageGateEnabled) {
+        dependsOn tasks.named('coverageGate')
+    }
+}
+
 dependencyCheck {
     formats = ['HTML', 'JSON']
     outputDirectory = layout.buildDirectory.dir('reports/dependency-check').get().asFile.absolutePath
     failBuildOnCVSS = 9.0
+    def nvdApiKey = providers.environmentVariable('NVD_API_KEY')
+    autoUpdate = nvdApiKey.isPresent()
     analyzers {
         assemblyEnabled = false
+    }
+    nvd {
+        apiKey = nvdApiKey.orNull // 推荐从环境变量读取
+        // 或者硬编码（不推荐）：apiKey = '你的_API_KEY'
     }
 }
 
@@ -218,16 +2336,13 @@ tasks.register('buildVite', Exec) {
     )
     outputs.dir('my-vite-app/dist')
 
-    // 捕获标准输出/错误
-    def stdoutBuffer = new ByteArrayOutputStream()
-    def stderrBuffer = new ByteArrayOutputStream()
-    standardOutput = stdoutBuffer
-    errorOutput = stderrBuffer
-    // 让任务本身不要立刻失败，我们在 doLast 中抛出并打印完整日志
-    ignoreExitValue = true
+    // 捕获标准输出/错误 - 移除自定义捕获，直接输出到控制台以避免 Native 绑定问题
+    // standardOutput = stdoutBuffer
+    // errorOutput = stderrBuffer
+    // ignoreExitValue = true
 
     // 选择 npm 命令（通过 shell 启动，确保即使命令不存在也能拿到 9009/127 等错误码与 stderr）
-    def isWin = org.gradle.internal.os.OperatingSystem.current().isWindows()
+    def isWin = OperatingSystem.current().isWindows()
     def fixedNpm = isWin ? file('E:/NodeJS/npm.cmd') : null
     if (isWin && fixedNpm != null && fixedNpm.exists()) {
         commandLine 'cmd', '/c', fixedNpm.absolutePath, 'run', 'build'
@@ -238,39 +2353,61 @@ tasks.register('buildVite', Exec) {
         commandLine 'bash', '-lc', 'npm run build'
     }
 
+    /*
     doLast {
-        // 用平台默认编码解码，避免 Windows 控制台出现乱码
-        def cs = java.nio.charset.Charset.defaultCharset().name()
-        def outTxt = stdoutBuffer.toString(cs)
-        def errTxt = stderrBuffer.toString(cs)
+        // ... 移除手动日志打印，使用 Gradle 默认行为
+    }
+    */
+}
 
-        // Exec 任务在 Gradle 8+ 暴露 executionResult(Provider<ExecResult>)
-        def exitCode = executionResult.present ? executionResult.get().exitValue : 0
+def frontendCoverageEnabled = providers.gradleProperty('frontendCoverage')
+        .map { Boolean.parseBoolean(it) }
+        .orElse(false)
+        .get()
 
-        if (exitCode != 0) {
-            if (outTxt) {
-                logger.error('\n----- Vite stdout -----\n' + outTxt)
-            }
-            if (errTxt) {
-                logger.error('\n----- Vite stderr -----\n' + errTxt)
-            }
-            // 使用 ASCII 文本避免乱码
-             throw new GradleException("Vite build failed (exit ${exitCode}). See logs above.")
-        } else {
-            // 成功也打印，便于排查
-            if (outTxt) {
-                logger.lifecycle('\n----- Vite stdout -----\n' + outTxt)
-            }
-            if (errTxt) {
-                logger.lifecycle('\n----- Vite stderr -----\n' + errTxt)
-            }
-        }
+tasks.register('vitestCoverage', Exec) {
+    group = 'verification'
+    description = 'Runs Vitest with coverage enabled.'
+    workingDir 'my-vite-app'
+
+    inputs.dir('my-vite-app/src')
+    inputs.dir('my-vite-app/public')
+    inputs.files(
+            'my-vite-app/package.json',
+            'my-vite-app/package-lock.json',
+            'my-vite-app/vitest.config.ts',
+            'my-vite-app/vite.config.ts',
+            'my-vite-app/tsconfig.json',
+            'my-vite-app/tsconfig.app.json',
+            'my-vite-app/tsconfig.node.json'
+    )
+    outputs.file('my-vite-app/test-reports/vitest-junit.xml')
+    outputs.dir('my-vite-app/test-reports/vitest-coverage')
+
+    def isWin = OperatingSystem.current().isWindows()
+    def fixedNpm = isWin ? file('E:/NodeJS/npm.cmd') : null
+    if (isWin && fixedNpm != null && fixedNpm.exists()) {
+        commandLine 'cmd', '/c', fixedNpm.absolutePath, 'run', 'test:ci'
+    } else if (isWin) {
+        commandLine 'cmd', '/c', 'npm.cmd', 'run', 'test:ci'
+    } else {
+        commandLine 'bash', '-lc', 'npm run test:ci'
+    }
+}
+
+tasks.named('check') {
+    if (frontendCoverageEnabled) {
+        dependsOn tasks.named('vitestCoverage')
     }
 }
 
 // 2. 处理资源，把 my-vite-app/dist 下的文件复制到 Spring Boot 的 static 目录
 processResources {
-    if (!gradle.startParameter.taskNames.any { it.toLowerCase().contains('test') }) {
+    def taskNames = gradle.startParameter.taskNames.collect { it == null ? '' : it.toLowerCase() }
+    def skipViteBuild = taskNames.any { n ->
+        n.contains('test') || n.contains('jacoco') || n.contains('coverage') || n == 'check'
+    }
+    if (!skipViteBuild) {
         dependsOn buildVite
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE

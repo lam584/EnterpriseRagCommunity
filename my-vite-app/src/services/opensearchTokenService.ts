@@ -29,13 +29,16 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    try {
-      const obj = text ? (JSON.parse(text) as Record<string, unknown>) : null;
-      const msg = obj && typeof obj.message === 'string' ? obj.message : '';
-      throw new Error(msg || text || `请求失败: ${res.status}`);
-    } catch {
-      throw new Error(text || `请求失败: ${res.status}`);
+    let msg = '';
+    if (text) {
+      try {
+        const obj = JSON.parse(text) as Record<string, unknown>;
+        msg = typeof obj?.message === 'string' ? obj.message : '';
+      } catch {
+        msg = '';
+      }
     }
+    throw new Error(msg || text || `请求失败: ${res.status}`);
   }
 
   return (await res.json()) as T;

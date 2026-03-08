@@ -1,12 +1,12 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.service.ai.client.DashscopeCompatRerankClient;
 import com.example.EnterpriseRagCommunity.service.ai.client.DashscopeRerankClient;
 import com.example.EnterpriseRagCommunity.service.ai.client.LocalRerankClient;
 import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
 import com.example.EnterpriseRagCommunity.service.ai.client.ResponsesStyleRerankClient;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -30,9 +30,9 @@ public class AiRerankService {
     public record RerankResult(List<RerankHit> results, Integer totalTokens, String providerId, String model) {
     }
 
-    private final AiProperties aiProperties;
     private final AiProvidersConfigService aiProvidersConfigService;
     private final LlmCallQueueService llmCallQueueService;
+    private final PromptsRepository promptsRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public RerankResult rerankOnce(
@@ -51,10 +51,7 @@ public class AiRerankService {
         String usedProviderId = provider == null ? (providerId == null ? null : providerId.trim()) : provider.id();
 
         String apiKeyResolved = provider == null ? null : provider.apiKey();
-        if (apiKeyResolved == null || apiKeyResolved.isBlank()) apiKeyResolved = aiProperties.getApiKey();
-
         String baseUrlResolved = provider == null ? null : provider.baseUrl();
-        if (baseUrlResolved == null || baseUrlResolved.isBlank()) baseUrlResolved = aiProperties.getBaseUrl();
 
         Map<String, String> extraHeadersResolved = provider == null ? Map.of() : provider.extraHeaders();
         Integer connectTimeoutMsResolved = provider == null ? null : provider.connectTimeoutMs();
@@ -75,11 +72,11 @@ public class AiRerankService {
         record RerankCallResult(String rawForParse, String rawUpstream, LlmCallQueueService.UsageMetrics usage) {
         }
 
-        DashscopeRerankClient dashscopeClient = new DashscopeRerankClient(aiProperties);
-        DashscopeCompatRerankClient dashscopeCompatClient = new DashscopeCompatRerankClient(aiProperties);
-        OpenAiCompatClient openAiCompatClient = new OpenAiCompatClient(aiProperties);
-        LocalRerankClient localRerankClient = new LocalRerankClient(aiProperties);
-        ResponsesStyleRerankClient responsesStyleRerankClient = new ResponsesStyleRerankClient(aiProperties);
+        DashscopeRerankClient dashscopeClient = new DashscopeRerankClient();
+        DashscopeCompatRerankClient dashscopeCompatClient = new DashscopeCompatRerankClient();
+        OpenAiCompatClient openAiCompatClient = new OpenAiCompatClient();
+        LocalRerankClient localRerankClient = new LocalRerankClient();
+        ResponsesStyleRerankClient responsesStyleRerankClient = new ResponsesStyleRerankClient();
         try {
             RerankCallResult call = llmCallQueueService.call(
                     LlmQueueTaskType.RERANK,
@@ -281,7 +278,7 @@ public class AiRerankService {
             );
 
             String raw = call == null ? null : call.rawForParse();
-            List<RerankHit> hits = parseResults(raw);
+            List<RerankHit> hits = new ArrayList<>(parseResults(raw));
             hits.sort(Comparator.comparingDouble(RerankHit::relevanceScore).reversed());
             Integer totalTokens = call == null || call.usage() == null ? null : call.usage().totalTokens();
             return new RerankResult(hits, totalTokens, usedProviderId, modelFinal);
@@ -301,6 +298,12 @@ public class AiRerankService {
         return u.contains("dashscope.aliyuncs.com");
     }
 
+    private String getRerankSystemPrompt() {
+        return promptsRepository.findByPromptCode("RERANK_DEFAULT")
+                .map(com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity::getSystemPrompt)
+                .orElseThrow(() -> new IllegalStateException("Prompt RERANK_DEFAULT not found"));
+    }
+
     private String rerankViaChatPromptOnce(
             OpenAiCompatClient openAiCompatClient,
             String providerId,
@@ -315,15 +318,7 @@ public class AiRerankService {
             Integer connectTimeoutMs,
             Integer readTimeoutMs
     ) throws IOException {
-        String sys = """
-你是一个 rerank（重排）引擎。输入为 query 与 documents。你的任务是输出严格 JSON（不要包裹 ```），格式：
-{"results":[{"index":0,"relevance_score":0.98},{"index":1,"relevance_score":0.12}]}
-要求：
-1) index 为 documents 的下标（从 0 开始）
-2) relevance_score 为 0~1 的小数，越大越相关
-3) 如提供 topN，只输出相关性最高的 topN 条
-4) 不要输出任何解释或额外字段
-""";
+        String sys = getRerankSystemPrompt();
         if (instruct != null && !instruct.isBlank()) {
             sys = sys + "\n附加说明（可选）：\n" + instruct.trim() + "\n";
         }
@@ -345,6 +340,7 @@ public class AiRerankService {
                 null,
                 false,
                 null,
+                null,
                 extraHeaders,
                 connectTimeoutMs,
                 readTimeoutMs,
@@ -365,15 +361,7 @@ public class AiRerankService {
             Integer connectTimeoutMs,
             Integer readTimeoutMs
     ) throws IOException {
-        String sys = """
-你是一个 rerank（重排）引擎。输入为 query 与 documents。你的任务是输出严格 JSON（不要包裹 ```），格式：
-{"results":[{"index":0,"relevance_score":0.98},{"index":1,"relevance_score":0.12}]}
-要求：
-1) index 为 documents 的下标（从 0 开始）
-2) relevance_score 为 0~1 的小数，越大越相关
-3) 如提供 topN，只输出相关性最高的 topN 条
-4) 不要输出任何解释或额外字段
-""";
+        String sys = getRerankSystemPrompt();
         if (instruct != null && !instruct.isBlank()) {
             sys = sys + "\n附加说明（可选）：\n" + instruct.trim() + "\n";
         }
@@ -491,12 +479,20 @@ public class AiRerankService {
 
         t = stripCodeFences(t);
 
+        int lArr = t.indexOf('[');
         int lObj = t.indexOf('{');
+        if (lArr >= 0 && (lObj < 0 || lArr < lObj)) {
+            int rArr = t.lastIndexOf(']');
+            if (rArr > lArr) {
+                String arr = t.substring(lArr, rArr + 1);
+                return "{\"results\":" + arr + "}";
+            }
+        }
+
         int rObj = t.lastIndexOf('}');
         if (lObj >= 0 && rObj > lObj) {
             return t.substring(lObj, rObj + 1);
         }
-        int lArr = t.indexOf('[');
         int rArr = t.lastIndexOf(']');
         if (lArr >= 0 && rArr > lArr) {
             String arr = t.substring(lArr, rArr + 1);
@@ -512,12 +508,20 @@ public class AiRerankService {
 
         t = stripCodeFences(t);
 
+        int lArr = t.indexOf('[');
         int lObj = t.indexOf('{');
+        if (lArr >= 0 && (lObj < 0 || lArr < lObj)) {
+            int rArr = t.lastIndexOf(']');
+            if (rArr > lArr) {
+                String arr = t.substring(lArr, rArr + 1);
+                return "{\"results\":" + arr + "}";
+            }
+        }
+
         int rObj = t.lastIndexOf('}');
         if (lObj >= 0 && rObj > lObj) {
             return t.substring(lObj, rObj + 1);
         }
-        int lArr = t.indexOf('[');
         int rArr = t.lastIndexOf(']');
         if (lArr >= 0 && rArr > lArr) {
             String arr = t.substring(lArr, rArr + 1);

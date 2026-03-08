@@ -25,5 +25,7 @@ public interface LlmModelRepository extends JpaRepository<LlmModelEntity, Long> 
 
     List<LlmModelEntity> findByEnvOrderByPurposeAscSortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(String env);
 
+    boolean existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue(String env, String purpose, String providerId, String modelName);
+
     void deleteByEnvAndProviderId(String env, String providerId);
 }

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -18,11 +19,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.mock.web.MockHttpServletResponse;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatStreamRequest;
+import com.example.EnterpriseRagCommunity.dto.ai.ChatContextGovernanceConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ChatRagAugmentConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
+import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
 import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.ContextStrategy;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.MessageRole;
@@ -35,6 +37,7 @@ import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.ContextWindowsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalEventsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalHitsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
 import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagChatPostCommentAggregationService;
@@ -44,34 +47,20 @@ import com.example.EnterpriseRagCommunity.service.retrieval.admin.ChatRagAugment
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.CitationConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextClipConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalConfigService;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
+import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
 
 class AiChatServiceStreamChatHistoryTest {
 
     @Test
     void streamChat_should_not_fail_when_history_page_content_is_unmodifiable_list() throws Exception {
-        AiProperties props = new AiProperties();
-        props.setApiKey(null);
-
         LlmGateway llmGateway = mock(LlmGateway.class);
-        when(llmGateway.resolve(any())).thenReturn(new AiProvidersConfigService.ResolvedProvider(
-                "test",
-                "OPENAI_COMPAT",
-                "http://127.0.0.1:1",
-                null,
-                "test-model",
-                "test-emb",
-                Map.<String, Object>of(),
-                Map.<String, String>of(),
-                1000,
-                1000,
-                null
-        ));
         doAnswer(inv -> {
-            com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(4);
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
             consumer.onLine("data: {\"content\":\"hi\"}");
             consumer.onLine("data: [DONE]");
-            return null;
-        }).when(llmGateway).chatStream(any(), any(), any(), any(), any());
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
 
         QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
         QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
@@ -95,11 +84,15 @@ class AiChatServiceStreamChatHistoryTest {
         TokenCountService tokenCountService = new TokenCountService(openSearchTokenizeService);
         UsersRepository usersRepository = mock(UsersRepository.class);
         FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+        FileAssetExtractionsRepository fileAssetExtractionsRepository = mock(FileAssetExtractionsRepository.class);
         PortalChatConfigService portalChatConfigService = mock(PortalChatConfigService.class);
+        PromptsRepository promptsRepository = mock(PromptsRepository.class);
+        ChatContextGovernanceConfigService chatContextGovernanceConfigService = mock(ChatContextGovernanceConfigService.class);
+        ChatContextGovernanceService chatContextGovernanceService = mock(ChatContextGovernanceService.class);
         com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO portalCfg = new com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO();
         com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO.AssistantChatConfigDTO assistantCfg = new com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO.AssistantChatConfigDTO();
-        assistantCfg.setSystemPrompt("s");
-        assistantCfg.setDeepThinkSystemPrompt("s2");
+        assistantCfg.setSystemPromptCode("s");
+        assistantCfg.setDeepThinkSystemPromptCode("s2");
         assistantCfg.setHistoryLimit(20);
         assistantCfg.setRagTopK(6);
         assistantCfg.setDefaultUseRag(true);
@@ -107,15 +100,30 @@ class AiChatServiceStreamChatHistoryTest {
         assistantCfg.setDefaultStream(true);
         portalCfg.setAssistantChat(assistantCfg);
         com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO.PostComposeAssistantConfigDTO postComposeCfg = new com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO.PostComposeAssistantConfigDTO();
-        postComposeCfg.setSystemPrompt("s");
-        postComposeCfg.setDeepThinkSystemPrompt("s2");
-        postComposeCfg.setComposeSystemPrompt("c");
+        postComposeCfg.setSystemPromptCode("s");
+        postComposeCfg.setDeepThinkSystemPromptCode("s2");
+        postComposeCfg.setComposeSystemPromptCode("c");
         postComposeCfg.setChatHistoryLimit(20);
         portalCfg.setPostComposeAssistant(postComposeCfg);
         when(portalChatConfigService.getConfigOrDefault()).thenReturn(portalCfg);
+        PromptsEntity p = new PromptsEntity();
+        p.setSystemPrompt("sys");
+        when(promptsRepository.findByPromptCode(any())).thenReturn(Optional.of(p));
+        when(chatContextGovernanceConfigService.getConfigOrDefault()).thenReturn(new ChatContextGovernanceConfigDTO());
+        when(chatContextGovernanceService.apply(any(), any(), any(), any())).thenAnswer(inv -> {
+            ChatContextGovernanceService.ApplyResult r = new ChatContextGovernanceService.ApplyResult();
+            r.setMessages(inv.getArgument(3));
+            r.setChanged(false);
+            r.setReason("nochange");
+            r.setBeforeTokens(0);
+            r.setAfterTokens(0);
+            r.setBeforeChars(0);
+            r.setAfterChars(0);
+            r.setDetail(Map.of());
+            return r;
+        });
 
         AiChatService service = new AiChatService(
-                props,
                 llmGateway,
                 llmModelRepository,
                 qaSessionsRepository,
@@ -138,7 +146,11 @@ class AiChatServiceStreamChatHistoryTest {
                 tokenCountService,
                 usersRepository,
                 fileAssetsRepository,
-                portalChatConfigService
+                fileAssetExtractionsRepository,
+                portalChatConfigService,
+                promptsRepository,
+                chatContextGovernanceConfigService,
+                chatContextGovernanceService
         );
 
         QaSessionsEntity session = new QaSessionsEntity();
@@ -199,7 +211,9 @@ class AiChatServiceStreamChatHistoryTest {
         req.setSessionId(3L);
         req.setMessage("第二次对话");
         req.setHistoryLimit(20);
-        req.setDryRun(true);
+        req.setDryRun(false);
+        req.setUseRag(false);
+        req.setDeepThink(false);
 
         MockHttpServletResponse resp = new MockHttpServletResponse();
 

@@ -37,6 +37,9 @@ public class TagsCreateDTO {
     @ApiModelProperty(value = "是否启用", required = true, example = "true")
     private Boolean isActive;
 
+    @ApiModelProperty(value = "风险阈值", example = "0.5")
+    private Double threshold;
+
     // 显式映射审计字段（由系统填写），前端可不传
     @ApiModelProperty(value = "创建时间(系统填充)", example = "2025-01-01T00:00:00")
     private LocalDateTime createdAt;

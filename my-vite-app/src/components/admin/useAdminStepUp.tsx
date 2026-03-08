@@ -23,8 +23,8 @@ export function useAdminStepUp() {
 
   useEffect(() => {
     if (emailCountdown <= 0) return;
-    const t = window.setInterval(() => setEmailCountdown((v) => Math.max(0, v - 1)), 1000);
-    return () => window.clearInterval(t);
+    const t = setInterval(() => setEmailCountdown((v) => Math.max(0, v - 1)), 1000);
+    return () => clearInterval(t);
   }, [emailCountdown]);
 
   const close = useCallback((result: EnsureResult) => {
@@ -135,7 +135,7 @@ export function useAdminStepUp() {
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="min-w-28"
+                className="min-w-28 border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
                 disabled={sending || verifying || emailCountdown > 0}
                 onClick={sendEmail}
               >

@@ -10,8 +10,7 @@ public class PostTitleGenConfigDTO {
     private Integer version;
 
     private Boolean enabled;
-    private String systemPrompt;
-    private String promptTemplate;
+    private String promptCode;
 
     private String model;
     private String providerId;

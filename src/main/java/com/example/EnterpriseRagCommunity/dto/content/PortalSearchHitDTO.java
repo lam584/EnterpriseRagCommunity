@@ -10,6 +10,7 @@ public class PortalSearchHitDTO {
 
     private Long postId;
     private Long commentId;
+    private Long fileAssetId;
 
     private String title;
     private String snippet;

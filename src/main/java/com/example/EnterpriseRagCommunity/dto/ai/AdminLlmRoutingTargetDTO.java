@@ -11,8 +11,6 @@ public class AdminLlmRoutingTargetDTO {
     private Integer weight;
     private Integer priority;
     private Integer sortIndex;
-    private Integer maxConcurrent;
-    private Integer minDelayMs;
     private Double qps;
     private Long priceConfigId;
 }

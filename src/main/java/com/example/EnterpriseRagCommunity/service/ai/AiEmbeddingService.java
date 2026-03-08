@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -21,13 +20,12 @@ import java.util.Map;
  *
  * Upstream:
  * POST {baseUrl}/embeddings
- * Body: {"model":"text-embedding-v4","input":"..."}
+ * Body: {"model":"<embedding-model>","input":"..."}
  */
 @Service
 @RequiredArgsConstructor
 public class AiEmbeddingService {
 
-    private final AiProperties props;
     private final AiProvidersConfigService aiProvidersConfigService;
     private final LlmCallQueueService llmCallQueueService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -48,14 +46,12 @@ public class AiEmbeddingService {
                 ? aiProvidersConfigService.resolveActiveProvider()
                 : aiProvidersConfigService.resolveProvider(providerId.trim());
         String baseUrl = provider == null ? null : provider.baseUrl();
-        if (baseUrl == null || baseUrl.isBlank()) baseUrl = props.getBaseUrl();
         String apiKey = provider == null ? null : provider.apiKey();
-        if (apiKey == null || apiKey.isBlank()) apiKey = props.getApiKey();
         Map<String, String> extraHeaders = provider == null ? Map.of() : provider.extraHeaders();
-        String model = (modelOverride == null || modelOverride.isBlank())
-                ? (provider == null ? null : provider.defaultEmbeddingModel())
-                : modelOverride;
-        if (model == null || model.isBlank()) model = "text-embedding-v4";
+        String model = modelOverride == null ? null : modelOverride.trim();
+        if (model == null || model.isBlank()) {
+            throw new IOException("Embedding model is required (please configure routing model pool or pass modelOverride)");
+        }
 
         String providerKey = provider == null ? (providerId == null ? null : providerId.trim()) : provider.id();
         String inputFinal = input;
@@ -88,9 +84,9 @@ public class AiEmbeddingService {
                         HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
                         conn.setRequestMethod("POST");
                         Integer connectTimeoutMs = connectTimeoutMsFinal;
-                        if (connectTimeoutMs == null || connectTimeoutMs <= 0) connectTimeoutMs = props.getConnectTimeoutMs();
+                        if (connectTimeoutMs == null || connectTimeoutMs <= 0) connectTimeoutMs = 10_000;
                         Integer readTimeoutMs = readTimeoutMsFinal;
-                        if (readTimeoutMs == null || readTimeoutMs <= 0) readTimeoutMs = props.getReadTimeoutMs();
+                        if (readTimeoutMs == null || readTimeoutMs <= 0) readTimeoutMs = 300_000;
                         conn.setConnectTimeout(connectTimeoutMs);
                         conn.setReadTimeout(readTimeoutMs);
                         conn.setDoOutput(true);

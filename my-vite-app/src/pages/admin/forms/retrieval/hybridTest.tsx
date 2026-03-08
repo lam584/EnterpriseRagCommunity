@@ -4,6 +4,7 @@ import type {
   HybridRetrievalConfigDTO,
   HybridRetrievalTestResponse,
 } from '../../../../services/retrievalHybridService';
+import Modal from '../../../../components/common/Modal';
 
 type UiClasses = {
   inputClass: string;
@@ -80,115 +81,150 @@ const HybridTestSection: React.FC<Props> = ({
   setTestResult,
   onTest,
 }) => {
+  const [rerankModalOpen, setRerankModalOpen] = React.useState(false);
+
   return (
     <div className="bg-white rounded-lg shadow p-4 space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded border border-gray-200 p-3 space-y-3">
           <div className="font-medium">重排模型测试（仅重排，不依赖数据库）</div>
           <div className="text-xs text-gray-500">使用当前配置的重排模型：{(config.rerankModel ?? '—').toString()}</div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <div className="md:col-span-2">
-              <div className="text-xs text-gray-500 mb-1">测试集合</div>
-              <select className={ui.inputClass} value={rerankDatasetKey} onChange={e => setRerankDatasetKey(e.target.value)}>
-                {rerankDatasets.map(d => (
-                  <option key={d.key} value={d.key}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Top N</div>
-              <input
-                className={ui.inputClass}
-                value={rerankTopN}
-                onChange={e => setRerankTopN(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="例如 10"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-            <div className="md:col-span-2">
-              <div className="text-xs text-gray-500 mb-1">查询</div>
-              <input className={ui.inputClass} value={rerankQuery} onChange={e => setRerankQuery(e.target.value)} placeholder="输入重排 query…" />
-            </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-1">发送文档数</div>
-              <input
-                className={ui.inputClass}
-                value={rerankDocLimit}
-                onChange={e => setRerankDocLimit(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="例如 12"
-              />
-            </div>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={rerankDebug} onChange={e => setRerankDebug(e.target.checked)} />
-            返回 调试信息（候选数量/预算截断）
-          </label>
-
-          <div>
-            <div className="text-xs text-gray-500 mb-1">documents（JSON 数组，支持 docId/title/text）</div>
-            <textarea className={`${ui.inputClass} font-mono h-60`} value={rerankDocsJson} onChange={e => setRerankDocsJson(e.target.value)} spellCheck={false} />
-            {rerankJsonError && <div className="text-red-600 text-sm mt-1">JSON 错误：{rerankJsonError}</div>}
-          </div>
-
           <div className="flex items-center gap-2">
-            <button className={ui.btnPrimaryClass} onClick={onTestRerank} disabled={loading || !rerankQuery.trim()}>
-              开始重排测试
-            </button>
-            <button className={ui.btnSecondaryClass} onClick={() => setRerankResult(null)} disabled={loading}>
-              清空结果
-            </button>
-            <button className={ui.btnSecondaryClass} onClick={onRestoreRerankDataset} disabled={loading}>
-              还原测试数据
+            <button className={ui.btnPrimaryClass} onClick={() => setRerankModalOpen(true)} disabled={loading}>
+              测试重排模型
             </button>
           </div>
 
-          {rerankResult && (
-            <div className="space-y-2 text-sm">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="rounded bg-gray-50 border px-2 py-1">耗时: {rerankResult.latencyMs ?? '—'} 毫秒</div>
-                <div className="rounded bg-gray-50 border px-2 py-1">Provider: {rerankResult.usedProviderId ?? '—'}</div>
-                <div className="rounded bg-gray-50 border px-2 py-1">Model: {rerankResult.usedModel ?? '—'}</div>
-                <div className="rounded bg-gray-50 border px-2 py-1">Tokens: {rerankResult.totalTokens ?? '—'}</div>
+          <Modal
+            isOpen={rerankModalOpen}
+            onClose={() => setRerankModalOpen(false)}
+            title="重排模型测试（仅重排，不依赖数据库）"
+            showFooterClose={false}
+            containerClassName="max-w-5xl"
+            bodyClassName="max-h-[80vh] overflow-y-auto"
+          >
+            <div className="space-y-3">
+              <div className="text-xs text-gray-500">
+                使用当前配置的重排模型：{(config.rerankModel ?? '—').toString()}
               </div>
-              {rerankResult.errorMessage && <div className="text-red-600">错误：{rerankResult.errorMessage}</div>}
 
-              <details className="rounded border border-gray-200 p-2" open>
-                <summary className="cursor-pointer font-medium">重排结果（按相关性）</summary>
-                <div className="mt-2 space-y-2">
-                  {(rerankResult.results ?? []).map((h, idx) => (
-                    <div key={`${h.docId ?? h.index ?? idx}`} className="rounded border border-gray-100 p-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-medium">#{idx + 1}</div>
-                        <div className="text-gray-600">docId: {h.docId ?? '—'}</div>
-                        <div className="text-gray-600">index: {h.index ?? '—'}</div>
-                        <div className="text-gray-600">score: {h.relevanceScore ?? '—'}</div>
-                      </div>
-                      {h.title && <div className="mt-1">{h.title}</div>}
-                      {h.text && <div className="mt-1 text-xs text-gray-600 line-clamp-4">{h.text}</div>}
-                    </div>
-                  ))}
-                  {(rerankResult.results ?? []).length === 0 && <div className="text-gray-500">无结果</div>}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div className="md:col-span-2">
+                  <div className="text-xs text-gray-500 mb-1">测试集合</div>
+                  <select className={ui.inputClass} value={rerankDatasetKey} onChange={e => setRerankDatasetKey(e.target.value)}>
+                    {rerankDatasets.map(d => (
+                      <option key={d.key} value={d.key}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </details>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Top N</div>
+                  <input
+                    className={ui.inputClass}
+                    value={rerankTopN}
+                    onChange={e => setRerankTopN(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="例如 10"
+                  />
+                </div>
+              </div>
 
-              <details className="rounded border border-gray-200 p-2">
-                <summary className="cursor-pointer font-medium">原始输出（JSON）</summary>
-                <pre className="mt-2 whitespace-pre-wrap text-xs">{JSON.stringify(rerankResult ?? {}, null, 2)}</pre>
-              </details>
-              {rerankResult.debugInfo && (
-                <details className="rounded border border-gray-200 p-2">
-                  <summary className="cursor-pointer font-medium">调试信息</summary>
-                  <pre className="mt-2 whitespace-pre-wrap text-xs">{JSON.stringify(rerankResult.debugInfo ?? {}, null, 2)}</pre>
-                </details>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div className="md:col-span-2">
+                  <div className="text-xs text-gray-500 mb-1">查询</div>
+                  <input
+                    className={ui.inputClass}
+                    value={rerankQuery}
+                    onChange={e => setRerankQuery(e.target.value)}
+                    placeholder="输入重排 query…"
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">发送文档数</div>
+                  <input
+                    className={ui.inputClass}
+                    value={rerankDocLimit}
+                    onChange={e => setRerankDocLimit(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="例如 12"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={rerankDebug} onChange={e => setRerankDebug(e.target.checked)} />
+                返回 调试信息（候选数量/预算截断）
+              </label>
+
+              <div>
+                <div className="text-xs text-gray-500 mb-1">documents（JSON 数组，支持 docId/title/text）</div>
+                <textarea
+                  className={`${ui.inputClass} font-mono h-60`}
+                  value={rerankDocsJson}
+                  onChange={e => setRerankDocsJson(e.target.value)}
+                  spellCheck={false}
+                />
+                {rerankJsonError && <div className="text-red-600 text-sm mt-1">JSON 错误：{rerankJsonError}</div>}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button className={ui.btnPrimaryClass} onClick={onTestRerank} disabled={loading || !rerankQuery.trim()}>
+                  开始重排测试
+                </button>
+                <button className={ui.btnSecondaryClass} onClick={() => setRerankResult(null)} disabled={loading}>
+                  清空结果
+                </button>
+                <button className={ui.btnSecondaryClass} onClick={onRestoreRerankDataset} disabled={loading}>
+                  还原测试数据
+                </button>
+                <button className={ui.btnSecondaryClass} onClick={() => setRerankModalOpen(false)} disabled={loading}>
+                  关闭
+                </button>
+              </div>
+
+              {rerankResult && (
+                <div className="space-y-2 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className="rounded bg-gray-50 border px-2 py-1">耗时: {rerankResult.latencyMs ?? '—'} 毫秒</div>
+                    <div className="rounded bg-gray-50 border px-2 py-1">Provider: {rerankResult.usedProviderId ?? '—'}</div>
+                    <div className="rounded bg-gray-50 border px-2 py-1">Model: {rerankResult.usedModel ?? '—'}</div>
+                    <div className="rounded bg-gray-50 border px-2 py-1">Tokens: {rerankResult.totalTokens ?? '—'}</div>
+                  </div>
+                  {rerankResult.errorMessage && <div className="text-red-600">错误：{rerankResult.errorMessage}</div>}
+
+                  <details className="rounded border border-gray-200 p-2" open>
+                    <summary className="cursor-pointer font-medium">重排结果（按相关性）</summary>
+                    <div className="mt-2 space-y-2">
+                      {(rerankResult.results ?? []).map((h, idx) => (
+                        <div key={`${h.docId ?? h.index ?? idx}`} className="rounded border border-gray-100 p-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="font-medium">#{idx + 1}</div>
+                            <div className="text-gray-600">docId: {h.docId ?? '—'}</div>
+                            <div className="text-gray-600">index: {h.index ?? '—'}</div>
+                            <div className="text-gray-600">score: {h.relevanceScore ?? '—'}</div>
+                          </div>
+                          {h.title && <div className="mt-1">{h.title}</div>}
+                          {h.text && <div className="mt-1 text-xs text-gray-600 line-clamp-4">{h.text}</div>}
+                        </div>
+                      ))}
+                      {(rerankResult.results ?? []).length === 0 && <div className="text-gray-500">无结果</div>}
+                    </div>
+                  </details>
+
+                  <details className="rounded border border-gray-200 p-2">
+                    <summary className="cursor-pointer font-medium">Raw Output (JSON)</summary>
+                    <pre className="mt-2 whitespace-pre-wrap text-xs">{JSON.stringify(rerankResult ?? {}, null, 2)}</pre>
+                  </details>
+                  {rerankResult.debugInfo && (
+                    <details className="rounded border border-gray-200 p-2">
+                      <summary className="cursor-pointer font-medium">调试信息</summary>
+                      <pre className="mt-2 whitespace-pre-wrap text-xs">{JSON.stringify(rerankResult.debugInfo ?? {}, null, 2)}</pre>
+                    </details>
+                  )}
+                </div>
               )}
             </div>
-          )}
+          </Modal>
         </div>
 
         <div className="rounded border border-gray-200 p-3 space-y-3">
@@ -284,4 +320,3 @@ const HybridTestSection: React.FC<Props> = ({
 };
 
 export default HybridTestSection;
-

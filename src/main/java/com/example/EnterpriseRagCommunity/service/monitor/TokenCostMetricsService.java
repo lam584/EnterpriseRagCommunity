@@ -86,7 +86,7 @@ public class TokenCostMetricsService {
         Set<String> models = new HashSet<>();
         for (UsageRow r : rows) {
             String m = normalizeModel(r.model());
-            if (m != null) models.add(m);
+            models.add(m);
         }
 
         Map<String, PriceInfo> priceByModel = resolvePrices(models);
@@ -98,7 +98,6 @@ public class TokenCostMetricsService {
 
         for (UsageRow r : rows) {
             String model = normalizeModel(r.model());
-            if (model == null) continue;
             long in = r.tokensIn() == null ? 0L : Math.max(0, r.tokensIn());
             long out = r.tokensOut() == null ? 0L : Math.max(0, r.tokensOut());
 
@@ -142,9 +141,9 @@ public class TokenCostMetricsService {
         }
 
         items.sort(Comparator
-                .comparing((AdminTokenMetricsModelItemDTO it) -> it.getCost() == null ? BigDecimal.ZERO : it.getCost()).reversed()
-                .thenComparing(it -> it.getTotalTokens() == null ? 0L : it.getTotalTokens(), Comparator.reverseOrder())
-                .thenComparing(it -> it.getModel() == null ? "" : it.getModel()));
+                .comparing(AdminTokenMetricsModelItemDTO::getCost).reversed()
+                .thenComparing(AdminTokenMetricsModelItemDTO::getTotalTokens, Comparator.reverseOrder())
+                .thenComparing(AdminTokenMetricsModelItemDTO::getModel));
 
         AdminTokenMetricsResponseDTO resp = new AdminTokenMetricsResponseDTO();
         resp.setStart(s);
@@ -194,7 +193,7 @@ public class TokenCostMetricsService {
 
         Map<LocalDateTime, TimelineAgg> byTime = new HashMap<>();
         for (TimelineRow r : rows) {
-            if (r == null || r.time() == null) continue;
+            if (r.time() == null) continue;
             LocalDateTime t = truncateToBucket(r.time(), buck);
             TimelineAgg a = byTime.computeIfAbsent(t, k -> new TimelineAgg());
             long in = r.tokensIn() == null ? 0L : Math.max(0, r.tokensIn());
@@ -235,12 +234,12 @@ public class TokenCostMetricsService {
         List<Object[]> raw;
         if (taskType != null) {
             raw = entityManager.createNativeQuery("""
-                            SELECT h.model, h.tokens_in, h.tokens_out
+                            SELECT h.model,
+                                   IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0)) AS tokens_in,
+                                   IFNULL(h.tokens_out, 0) AS tokens_out
                             FROM llm_queue_task_history h
-                            JOIN llm_routing_policies p ON p.env = 'default' AND p.task_type = h.type
                             WHERE h.finished_at BETWEEN :start AND :end
                               AND h.status = 'DONE'
-                              AND h.model IS NOT NULL
                               AND h.type = :taskType
                             """)
                     .setParameter("start", start)
@@ -249,12 +248,12 @@ public class TokenCostMetricsService {
                     .getResultList();
         } else {
             raw = entityManager.createNativeQuery("""
-                            SELECT h.model, h.tokens_in, h.tokens_out
+                            SELECT h.model,
+                                   IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0)) AS tokens_in,
+                                   IFNULL(h.tokens_out, 0) AS tokens_out
                             FROM llm_queue_task_history h
-                            JOIN llm_routing_policies p ON p.env = 'default' AND p.task_type = h.type
                             WHERE h.finished_at BETWEEN :start AND :end
                               AND h.status = 'DONE'
-                              AND h.model IS NOT NULL
                             """)
                     .setParameter("start", start)
                     .setParameter("end", end)
@@ -278,12 +277,12 @@ public class TokenCostMetricsService {
         List<Object[]> raw;
         if (taskType != null) {
             raw = entityManager.createNativeQuery("""
-                            SELECT %s AS t, SUM(IFNULL(h.tokens_in, 0)) AS tokens_in, SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
+                            SELECT %s AS t,
+                                   SUM(IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0))) AS tokens_in,
+                                   SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                             FROM llm_queue_task_history h
-                            JOIN llm_routing_policies p ON p.env = 'default' AND p.task_type = h.type
                             WHERE h.finished_at BETWEEN :start AND :end
                               AND h.status = 'DONE'
-                              AND h.model IS NOT NULL
                               AND h.type = :taskType
                             GROUP BY t
                             ORDER BY t
@@ -294,12 +293,12 @@ public class TokenCostMetricsService {
                     .getResultList();
         } else {
             raw = entityManager.createNativeQuery("""
-                            SELECT %s AS t, SUM(IFNULL(h.tokens_in, 0)) AS tokens_in, SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
+                            SELECT %s AS t,
+                                   SUM(IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0))) AS tokens_in,
+                                   SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                             FROM llm_queue_task_history h
-                            JOIN llm_routing_policies p ON p.env = 'default' AND p.task_type = h.type
                             WHERE h.finished_at BETWEEN :start AND :end
                               AND h.status = 'DONE'
-                              AND h.model IS NOT NULL
                             GROUP BY t
                             ORDER BY t
                             """.formatted(tcol))
@@ -322,12 +321,13 @@ public class TokenCostMetricsService {
     private List<UsageRow> loadLegacyChatRows(LocalDateTime start, LocalDateTime end) {
         @SuppressWarnings("unchecked")
         List<Object[]> raw = entityManager.createNativeQuery("""
-                        SELECT h.model, h.tokens_in, h.tokens_out
+                        SELECT h.model,
+                               IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0)) AS tokens_in,
+                               IFNULL(h.tokens_out, 0) AS tokens_out
                         FROM llm_queue_task_history h
                         WHERE h.finished_at BETWEEN :start AND :end
                           AND h.status = 'DONE'
                           AND h.type IN ('TEXT_CHAT', 'IMAGE_CHAT')
-                          AND h.model IS NOT NULL
                         """)
                 .setParameter("start", start)
                 .setParameter("end", end)
@@ -348,12 +348,13 @@ public class TokenCostMetricsService {
         String tcol = bucketExpr("h.finished_at", bucket);
         @SuppressWarnings("unchecked")
         List<Object[]> raw = entityManager.createNativeQuery("""
-                        SELECT %s AS t, SUM(IFNULL(h.tokens_in, 0)) AS tokens_in, SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
+                        SELECT %s AS t,
+                               SUM(IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0))) AS tokens_in,
+                               SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                         FROM llm_queue_task_history h
                         WHERE h.finished_at BETWEEN :start AND :end
                           AND h.status = 'DONE'
                           AND h.type IN ('TEXT_CHAT', 'IMAGE_CHAT')
-                          AND h.model IS NOT NULL
                         GROUP BY t
                         ORDER BY t
                         """.formatted(tcol))
@@ -375,12 +376,13 @@ public class TokenCostMetricsService {
     private List<UsageRow> loadModerationRows(LocalDateTime start, LocalDateTime end) {
         @SuppressWarnings("unchecked")
         List<Object[]> raw = entityManager.createNativeQuery("""
-                        SELECT h.model, h.tokens_in, h.tokens_out
+                        SELECT h.model,
+                               IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0)) AS tokens_in,
+                               IFNULL(h.tokens_out, 0) AS tokens_out
                         FROM llm_queue_task_history h
                         WHERE h.finished_at BETWEEN :start AND :end
                           AND h.status = 'DONE'
-                          AND h.type IN ('TEXT_MODERATION', 'IMAGE_MODERATION', 'SIMILARITY_EMBEDDING')
-                          AND h.model IS NOT NULL
+                          AND h.type IN ('TEXT_MODERATION', 'IMAGE_MODERATION', 'MODERATION_CHUNK', 'SIMILARITY_EMBEDDING')
                         """)
                 .setParameter("start", start)
                 .setParameter("end", end)
@@ -401,12 +403,13 @@ public class TokenCostMetricsService {
         String tcol = bucketExpr("h.finished_at", bucket);
         @SuppressWarnings("unchecked")
         List<Object[]> raw = entityManager.createNativeQuery("""
-                        SELECT %s AS t, SUM(IFNULL(h.tokens_in, 0)) AS tokens_in, SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
+                        SELECT %s AS t,
+                               SUM(IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0))) AS tokens_in,
+                               SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                         FROM llm_queue_task_history h
                         WHERE h.finished_at BETWEEN :start AND :end
                           AND h.status = 'DONE'
-                          AND h.type IN ('TEXT_MODERATION', 'IMAGE_MODERATION', 'SIMILARITY_EMBEDDING')
-                          AND h.model IS NOT NULL
+                          AND h.type IN ('TEXT_MODERATION', 'IMAGE_MODERATION', 'MODERATION_CHUNK', 'SIMILARITY_EMBEDDING')
                         GROUP BY t
                         ORDER BY t
                         """.formatted(tcol))
@@ -431,7 +434,6 @@ public class TokenCostMetricsService {
                         SELECT j.model, j.tokens_in, j.tokens_out
                         FROM generation_jobs j
                         WHERE j.created_at BETWEEN :start AND :end
-                          AND j.model IS NOT NULL
                         """)
                 .setParameter("start", start)
                 .setParameter("end", end)
@@ -455,7 +457,6 @@ public class TokenCostMetricsService {
                         SELECT %s AS t, SUM(IFNULL(j.tokens_in, 0)) AS tokens_in, SUM(IFNULL(j.tokens_out, 0)) AS tokens_out
                         FROM generation_jobs j
                         WHERE j.created_at BETWEEN :start AND :end
-                          AND j.model IS NOT NULL
                         GROUP BY t
                         ORDER BY t
                         """.formatted(tcol))
@@ -488,7 +489,6 @@ public class TokenCostMetricsService {
         for (LlmModelEntity m : modelRows) {
             if (m == null) continue;
             String name = normalizeModel(m.getModelName());
-            if (name == null) continue;
             if (modelToPriceId.containsKey(name)) continue;
             Long pid = m.getPriceConfigId();
             if (pid == null) continue;
@@ -516,7 +516,6 @@ public class TokenCostMetricsService {
         Set<String> missing = new HashSet<>();
         for (String m : modelNames) {
             String name = normalizeModel(m);
-            if (name == null) continue;
             if (!out.containsKey(name)) missing.add(name);
         }
 
@@ -525,7 +524,6 @@ public class TokenCostMetricsService {
             for (LlmPriceConfigEntity pc : pcs) {
                 if (pc == null) continue;
                 String name = normalizeModel(pc.getName());
-                if (name == null) continue;
                 out.putIfAbsent(name, new PriceInfo(
                         normalizeCurrency(pc.getCurrency()),
                         resolvePricing(pc)
@@ -549,9 +547,9 @@ public class TokenCostMetricsService {
     }
 
     private static String normalizeModel(String model) {
-        if (model == null) return null;
+        if (model == null) return "UNKNOWN";
         String s = model.trim();
-        return s.isBlank() ? null : s;
+        return s.isBlank() ? "UNKNOWN" : s;
     }
 
     private static String normalizeCurrency(String currency) {

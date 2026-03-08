@@ -7,6 +7,13 @@ type CategorizedModelRow = {
   enabledScenarios: Set<string>;
 };
 
+type ProviderModelSets = {
+  TEXT_CHAT: Set<string>;
+  IMAGE_CHAT: Set<string>;
+  EMBEDDING: Set<string>;
+  RERANK: Set<string>;
+};
+
 type CategorizedModelRows = {
   TEXT_GEN: CategorizedModelRow[];
   EMBEDDING: CategorizedModelRow[];
@@ -66,6 +73,7 @@ export const AvailableModelsCard: React.FC<{
   setIsEditingModelList: React.Dispatch<React.SetStateAction<boolean>>;
   cancelEdits: () => void;
   save: () => void;
+  ok: boolean;
   draft: unknown | null;
   canEdit: boolean;
   availabilityChecking: boolean;
@@ -76,6 +84,7 @@ export const AvailableModelsCard: React.FC<{
   categorizedModelRows: CategorizedModelRows;
   categorizedScenarios: CategorizedScenarios;
   scenarioMetadata: Map<string, { label: string; category: string }>;
+  providerModelsMap: Record<string, ProviderModelSets>;
   healthByKey: Record<string, LlmHealthSummary>;
   ignoredHealthKeys: Record<string, true>;
   setHealthModalKey: React.Dispatch<React.SetStateAction<string | null>>;
@@ -91,6 +100,7 @@ export const AvailableModelsCard: React.FC<{
   setIsEditingModelList,
   cancelEdits,
   save,
+  ok,
   draft,
   canEdit,
   availabilityChecking,
@@ -101,6 +111,7 @@ export const AvailableModelsCard: React.FC<{
   categorizedModelRows,
   categorizedScenarios,
   scenarioMetadata,
+  providerModelsMap,
   healthByKey,
   ignoredHealthKeys,
   setHealthModalKey,
@@ -108,6 +119,15 @@ export const AvailableModelsCard: React.FC<{
   severityToUi,
   formatMmddHms,
 }) => {
+  const modelSupportsVision = (providerId: string, modelName: string): boolean => {
+    return providerModelsMap[providerId]?.IMAGE_CHAT?.has(modelName) ?? false;
+  };
+
+  const isVisionRequiredScenario = (tt: string): boolean => {
+    const up = tt.trim().toUpperCase();
+    return up === 'IMAGE_CHAT' || up === 'IMAGE_MODERATION';
+  };
+
   return (
     <div className="rounded border p-3 space-y-3 bg-white">
       <div className="flex items-start justify-between gap-3">
@@ -170,13 +190,24 @@ export const AvailableModelsCard: React.FC<{
         </div>
       </div>
 
+      {ok && <div className="rounded border border-green-300 bg-green-50 text-green-700 px-3 py-2 text-sm">已保存</div>}
+
       {[
-        { title: '文本生成类模型', rows: categorizedModelRows.TEXT_GEN, scenarios: categorizedScenarios.TEXT_GEN },
-        { title: '嵌入向量化模型', rows: categorizedModelRows.EMBEDDING, scenarios: categorizedScenarios.EMBEDDING },
-        { title: '重排模型', rows: categorizedModelRows.RERANK, scenarios: categorizedScenarios.RERANK },
+        { key: 'TEXT_GEN', title: '文本生成类模型', rows: categorizedModelRows.TEXT_GEN, scenarios: categorizedScenarios.TEXT_GEN },
+        { key: 'EMBEDDING', title: '嵌入向量化模型', rows: categorizedModelRows.EMBEDDING, scenarios: categorizedScenarios.EMBEDDING },
+        { key: 'RERANK', title: '重排模型', rows: categorizedModelRows.RERANK, scenarios: categorizedScenarios.RERANK },
       ].map((cat) => {
-        const totalToggles = cat.rows.length * cat.scenarios.length;
-        const enabledToggles = cat.rows.reduce((acc, m) => acc + cat.scenarios.filter((s) => m.enabledScenarios.has(s)).length, 0);
+        const showEnabledTotal = cat.key === 'TEXT_GEN';
+        const totalToggles = cat.rows.reduce((acc, m) => {
+          if (cat.key !== 'TEXT_GEN') return acc + cat.scenarios.length;
+          const supportsVision = modelSupportsVision(m.providerId, m.modelName);
+          return acc + cat.scenarios.filter((s) => !isVisionRequiredScenario(s) || supportsVision).length;
+        }, 0);
+        const enabledToggles = cat.rows.reduce((acc, m) => {
+          if (cat.key !== 'TEXT_GEN') return acc + cat.scenarios.filter((s) => m.enabledScenarios.has(s)).length;
+          const supportsVision = modelSupportsVision(m.providerId, m.modelName);
+          return acc + cat.scenarios.filter((s) => m.enabledScenarios.has(s) && (!isVisionRequiredScenario(s) || supportsVision)).length;
+        }, 0);
         const allEnabledInCat = totalToggles > 0 && enabledToggles === totalToggles;
         const bulkButtonText = allEnabledInCat ? '全不选' : '全选';
         const bulkButtonTitle = totalToggles ? `本类已启用 ${enabledToggles}/${totalToggles}` : '暂无模型数据';
@@ -191,7 +222,9 @@ export const AvailableModelsCard: React.FC<{
                 onClick={() => {
                   const nextEnabled = !allEnabledInCat;
                   cat.rows.forEach((m) => {
+                    const supportsVision = cat.key === 'TEXT_GEN' ? modelSupportsVision(m.providerId, m.modelName) : false;
                     cat.scenarios.forEach((tt) => {
+                      if (cat.key === 'TEXT_GEN' && nextEnabled && isVisionRequiredScenario(tt) && !supportsVision) return;
                       if (m.enabledScenarios.has(tt) === nextEnabled) return;
                       toggleModelForScenario(m.providerId, m.modelName, tt, nextEnabled);
                     });
@@ -216,19 +249,20 @@ export const AvailableModelsCard: React.FC<{
                         {scenarioMetadata.get(tt)?.label || tt}
                       </th>
                     ))}
-                    <th className="px-2 py-1.5 text-center font-semibold min-w-[64px]">启用总数</th>
+                    {showEnabledTotal ? <th className="px-2 py-1.5 text-center font-semibold min-w-[64px]">启用总数</th> : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y bg-white">
                   {cat.rows.length === 0 ? (
                     <tr>
-                      <td colSpan={cat.scenarios.length + 3} className="p-4 text-center text-gray-400 italic">
+                      <td colSpan={cat.scenarios.length + (showEnabledTotal ? 3 : 2)} className="p-4 text-center text-gray-400 italic">
                         暂无模型数据
                       </td>
                     </tr>
                   ) : (
                     cat.rows.map((m) => {
                       const enabledCountInCat = Array.from(m.enabledScenarios).filter((s) => cat.scenarios.includes(s)).length;
+                      const supportsVision = cat.key === 'TEXT_GEN' ? modelSupportsVision(m.providerId, m.modelName) : false;
                       const modelKey = `${m.providerId}|${m.modelName}`;
                       const summary = healthByKey[modelKey];
                       const ignored = !!ignoredHealthKeys[modelKey];
@@ -276,24 +310,42 @@ export const AvailableModelsCard: React.FC<{
                           <td className="px-3 py-1.5 border-r">
                             <div className="font-medium text-gray-900">
                               {m.providerName}：{m.modelName}
+                              {cat.key === 'TEXT_GEN' ? (
+                                <span
+                                  className={[
+                                    'ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold',
+                                    supportsVision ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600',
+                                  ].join(' ')}
+                                  title={supportsVision ? '支持视觉' : '不支持视觉'}
+                                >
+                                  {supportsVision ? '视觉' : '仅文本'}
+                                </span>
+                              ) : null}
                             </div>
                           </td>
                           {cat.scenarios.map((tt) => {
                             const isEnabled = m.enabledScenarios.has(tt);
+                            const requiresVision = cat.key === 'TEXT_GEN' && isVisionRequiredScenario(tt);
+                            const enableBlocked = requiresVision && !supportsVision && !isEnabled;
+                            const disableHint = enableBlocked ? '该模型不支持视觉，不能用于图片聊天/图片审核' : '';
                             return (
                               <td key={tt} className="px-2 py-1 border-r text-center">
                                 <input
                                   type="checkbox"
                                   className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                   checked={isEnabled}
-                                  onChange={(e) => toggleModelForScenario(m.providerId, m.modelName, tt, e.target.checked)}
+                                  onChange={(e) => {
+                                    if (enableBlocked && e.target.checked) return;
+                                    toggleModelForScenario(m.providerId, m.modelName, tt, e.target.checked);
+                                  }}
                                   onClick={(e) => e.stopPropagation()}
-                                  disabled={!canEdit}
+                                  disabled={!canEdit || enableBlocked}
+                                  title={disableHint || undefined}
                                 />
                               </td>
                             );
                           })}
-                          <td className="px-2 py-1.5 text-center font-medium text-gray-700">{enabledCountInCat}</td>
+                          {showEnabledTotal ? <td className="px-2 py-1.5 text-center font-medium text-gray-700">{enabledCountInCat}</td> : null}
                         </tr>
                       );
                     })

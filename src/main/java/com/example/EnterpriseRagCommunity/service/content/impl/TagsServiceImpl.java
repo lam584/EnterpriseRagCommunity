@@ -122,6 +122,7 @@ public class TagsServiceImpl implements TagsService {
         entity.setDescription(StringUtils.hasText(createDTO.getDescription()) ? createDTO.getDescription().trim() : null);
         entity.setIsSystem(Boolean.TRUE.equals(createDTO.getIsSystem()));
         entity.setIsActive(Boolean.TRUE.equals(createDTO.getIsActive()));
+        entity.setThreshold(createDTO.getThreshold());
 
         // created_at 系统填写；SQL 默认 CURRENT_TIMESTAMP(3)，这里同样在应用层填充以便立即返回。
         entity.setCreatedAt(LocalDateTime.now());
@@ -162,6 +163,9 @@ public class TagsServiceImpl implements TagsService {
         }
         if (updateDTO.getIsActive() != null && updateDTO.getIsActive().isPresent()) {
             entity.setIsActive(updateDTO.getIsActive().get());
+        }
+        if (updateDTO.getThreshold() != null && updateDTO.getThreshold().isPresent()) {
+            entity.setThreshold(updateDTO.getThreshold().get());
         }
 
         // createdAt 只读：即使前端传入也忽略（DTO 已标注只读）

@@ -7,6 +7,14 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Checkbox } from '../ui/checkbox';
+import {
+    getConfigInputType,
+    getConfigInputValue,
+    getConfigLabel,
+    getHelpText,
+    getReadOnlyInputClass,
+    VisibilityToggleButton,
+} from './ImportConfigurationForm.utils';
 import { 
     Check, 
     Upload, 
@@ -22,42 +30,9 @@ import {
     ArrowRight,
     ArrowLeft,
     Wand2,
-    Eye,
-    EyeOff
+    Image,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
-
-const helpContent: Record<string, string> = {
-    APP_AI_API_KEY: 'AI 服务的 API 密钥。如果是 阿里云，获取方式详情见：https://bailian.console.aliyun.com/cn-beijing/?tab=api#/api ；如果是其他服务商，请参考对应文档。',
-    APP_TOTP_MASTER_KEY: '用于生成两步验证码的主密钥。点击“生成”按钮可以自动生成一个安全的随机密钥。如果你有保存之前的主密钥，这里可以输入。可以避免已绑定TOTP的用户需要重新绑定的问题。',
-    APP_ES_API_KEY: 'Elasticsearch 的 API Key。您可以在 Kibana 或使用 Elasticsearch API 生成。获取方式详情见：https://www.elastic.co/docs/deploy-manage/api-keys/elasticsearch-api-keys',
-    APP_AI_TOKENIZER_API_KEY: '用于计算 Token 数量的 阿里云 API Key,获取方式详情见：https://help.aliyun.com/zh/open-search/search-platform/user-guide/api-keys-management',
-    APP_SITE_BEIAN: '站点备案号（ICP 备案号），例如：桂ICP备2026*******号。不填写则登录页底部不展示备案信息。',
-    'spring.elasticsearch.uris': 'Elasticsearch 的连接地址，例如 http://localhost:9200。默认端口号为9200',
-    APP_MAIL_USERNAME: '认证用户名，通常是您的完整邮箱地址。用于登录，建议和 APP_MAIL_FROM_ADDRESS 保持一致。',
-    APP_MAIL_PASSWORD: '邮件服务器的密码或应用专用密码。',
-    APP_MAIL_FROM_ADDRESS: '用于发送邮件的邮箱账号。用于展示，建议和 APP_MAIL_USERNAME 保持一致。',
-    APP_MAIL_HOST: 'SMTP 发件服务器地址，例如 smtp.qiye.aliyun.com。',
-    APP_MAIL_PORT: 'SMTP 发件服务器端口，通常 SSL 为 465（加密）。',
-    APP_MAIL_INBOX_HOST: 'IMAP/POP3 收件服务器地址，例如 imap.qiye.aliyun.com。',
-    APP_MAIL_INBOX_PORT: 'IMAP/POP3 收件服务器端口，通常 IMAP SSL 为 993（加密）。'
-};
-
-const configLabels: Record<string, string> = {
-    APP_AI_API_KEY: 'AI API 密钥',  
-    APP_TOTP_MASTER_KEY: 'TOTP 主密钥',
-    APP_ES_API_KEY: 'Elasticsearch API 密钥',
-    APP_AI_TOKENIZER_API_KEY: 'Tokenizer API 密钥',
-    APP_SITE_BEIAN: '备案号（ICP）',
-    'spring.elasticsearch.uris': 'Elasticsearch 连接地址',
-    APP_MAIL_USERNAME: '邮箱用户名（建议与邮箱账号一致）',
-    APP_MAIL_PASSWORD: '邮箱密码',
-    APP_MAIL_FROM_ADDRESS: '邮箱账号',
-    APP_MAIL_HOST: '发件服务器地址',
-    APP_MAIL_PORT: '发件端口',
-    APP_MAIL_INBOX_HOST: '收件服务器地址',
-    APP_MAIL_INBOX_PORT: '收件端口'
-};
 
 const getFriendlyErrorMessage = (errorMessage: string): string => {
     if (!errorMessage) return '未知错误';
@@ -86,18 +61,15 @@ const ImportConfigurationForm: React.FC = () => {
         const willBeVisible = !visibleFields[key];
         
         if (willBeVisible) {
-             const isSensitive = key.includes('KEY') || key.includes('PASSWORD');
-             if (isSensitive) {
-                 if (!encryptedValues[key] && configs[key]) {
-                     try {
-                         const encrypted = await encryptValue(configs[key]);
-                         setEncryptedValues(prev => ({ ...prev, [key]: encrypted }));
-                     } catch (e) {
-                         toast.error('加密失败');
-                         return;
-                     }
-                 }
-             }
+            if (!encryptedValues[key] && configs[key]) {
+                try {
+                    const encrypted = await encryptValue(configs[key]);
+                    setEncryptedValues(prev => ({ ...prev, [key]: encrypted }));
+                } catch (_e) {
+                    toast.error('加密失败');
+                    return;
+                }
+            }
         }
         setVisibleFields(prev => ({ ...prev, [key]: willBeVisible }));
     };
@@ -124,12 +96,18 @@ const ImportConfigurationForm: React.FC = () => {
         APP_MAIL_INBOX_PORT: '993',
         APP_MAIL_FROM_ADDRESS: '',
         APP_MAIL_USERNAME: '',
-        APP_MAIL_PASSWORD: ''
+        APP_MAIL_PASSWORD: '',
+        IMAGE_STORAGE_MODE: 'DASHSCOPE_TEMP',
+        IMAGE_STORAGE_OSS_ENDPOINT: '',
+        IMAGE_STORAGE_OSS_BUCKET: '',
+        IMAGE_STORAGE_OSS_ACCESS_KEY_ID: '',
+        IMAGE_STORAGE_OSS_ACCESS_KEY_SECRET: '',
+        IMAGE_STORAGE_OSS_REGION: '',
     });
 
     // Step 2: ES
     const [esConnected, setEsConnected] = useState(false);
-    const indices = ['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_post_chunks_v1'];
+    const indices = ['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_post_chunks_v1', 'rag_file_assets_v1'];
     const [selectedIndices, setSelectedIndices] = useState<string[]>(indices);
     const [indicesCreated, setIndicesCreated] = useState(false);
     const [indicesStatus, setIndicesStatus] = useState<Record<string, string>>({});
@@ -150,7 +128,7 @@ const ImportConfigurationForm: React.FC = () => {
         try {
             const key = await generateTotpKey();
             handleConfigChange('APP_TOTP_MASTER_KEY', key);
-        } catch (e) {
+        } catch (_e) {
             setError('生成密钥失败');
         }
     };
@@ -164,9 +142,16 @@ const ImportConfigurationForm: React.FC = () => {
             const [k, v] = line.split('=');
             if (k && v) {
                 let key = k.trim();
-                const value = v.trim();
+                let value = v.trim();
 
                 if (key === 'APP_MAIL_FROM') key = 'APP_MAIL_FROM_ADDRESS';
+                if (key === 'image.storage.mode') key = 'IMAGE_STORAGE_MODE';
+                if (key === 'IMAGE_STORAGE_MODE') {
+                    const normalizedValue = value.toUpperCase();
+                    if (['LOCAL', 'DASHSCOPE_TEMP', 'ALIYUN_OSS'].includes(normalizedValue)) {
+                        value = normalizedValue;
+                    }
+                }
                 
                 if (Object.keys(configs).includes(key)) {
                     newConfigs[key] = value;
@@ -349,13 +334,14 @@ const ImportConfigurationForm: React.FC = () => {
     };
 
     const renderConfigField = (fieldKey: string, nextFieldKey?: string, action?: 'generate') => {
-        const isSensitive = (key: string) => key.includes('KEY') || key.includes('PASSWORD');
+        const visible = !!visibleFields[fieldKey];
+        const nextVisible = nextFieldKey ? !!visibleFields[nextFieldKey] : false;
 
         return (
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label className="text-gray-700 flex items-center">
-                        {configLabels[fieldKey] || fieldKey}
+                        {getConfigLabel(fieldKey)}
                         <span className="ml-2 text-xs text-gray-400 font-normal">({fieldKey})</span>
                     </Label>
                     <button
@@ -369,23 +355,18 @@ const ImportConfigurationForm: React.FC = () => {
                 <div className="flex space-x-2">
                     <div className="relative flex-1">
                         <Input
-                            type={isSensitive(fieldKey) && !visibleFields[fieldKey] ? "password" : "text"}
-                            value={visibleFields[fieldKey] ? (encryptedValues[fieldKey] || configs[fieldKey]) : configs[fieldKey]}
-                            readOnly={visibleFields[fieldKey]}
-                            onChange={e => !visibleFields[fieldKey] && handleConfigChange(fieldKey, e.target.value)}
-                            className={cn("pr-10", visibleFields[fieldKey] && "bg-gray-50 text-gray-500")}
+                            type={getConfigInputType(fieldKey, visible)}
+                            value={getConfigInputValue(fieldKey, visible, encryptedValues, configs)}
+                            readOnly={visible}
+                            onChange={e => !visible && handleConfigChange(fieldKey, e.target.value)}
+                            className={cn("pr-10", getReadOnlyInputClass(visible))}
                         />
-                        {isSensitive(fieldKey) && (
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => toggleVisibility(fieldKey)}
-                                className="absolute right-0 top-0 h-full px-3 text-gray-400 hover:text-blue-500 hover:bg-transparent"
-                            >
-                                {visibleFields[fieldKey] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </Button>
-                        )}
+                        <VisibilityToggleButton
+                            fieldKey={fieldKey}
+                            visible={visible}
+                            onToggle={() => toggleVisibility(fieldKey)}
+                            className="absolute right-0 top-0 h-full px-3 text-gray-400 hover:text-blue-500 hover:bg-transparent"
+                        />
                     </div>
                     {action === 'generate' && (
                         <Button
@@ -403,7 +384,7 @@ const ImportConfigurationForm: React.FC = () => {
                     <div className="mt-4 pt-2 border-t border-dashed border-gray-200">
                          <div className="flex items-center justify-between mb-2">
                             <Label className="text-gray-700 flex items-center">
-                                {configLabels[nextFieldKey] || nextFieldKey}
+                                {getConfigLabel(nextFieldKey)}
                                 <span className="ml-2 text-xs text-gray-400 font-normal">({nextFieldKey})</span>
                             </Label>
                             <button
@@ -417,23 +398,18 @@ const ImportConfigurationForm: React.FC = () => {
                         <div className="flex space-x-2">
                             <div className="relative flex-1">
                                 <Input
-                                    type={isSensitive(nextFieldKey) && !visibleFields[nextFieldKey] ? "password" : "text"}
-                                    value={visibleFields[nextFieldKey] ? (encryptedValues[nextFieldKey] || configs[nextFieldKey]) : configs[nextFieldKey]}
-                                    readOnly={visibleFields[nextFieldKey]}
-                                    onChange={e => !visibleFields[nextFieldKey] && handleConfigChange(nextFieldKey, e.target.value)}
-                                    className={cn("pr-10", visibleFields[nextFieldKey] && "bg-gray-50 text-gray-500")}
+                                    type={getConfigInputType(nextFieldKey, nextVisible)}
+                                    value={getConfigInputValue(nextFieldKey, nextVisible, encryptedValues, configs)}
+                                    readOnly={nextVisible}
+                                    onChange={e => !nextVisible && handleConfigChange(nextFieldKey, e.target.value)}
+                                    className={cn("pr-10", getReadOnlyInputClass(nextVisible))}
                                 />
-                                {isSensitive(nextFieldKey) && (
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => toggleVisibility(nextFieldKey)}
-                                        className="absolute right-0 top-0 h-full px-3 text-gray-400 hover:text-blue-500 hover:bg-transparent"
-                                    >
-                                        {visibleFields[nextFieldKey] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                    </Button>
-                                )}
+                                <VisibilityToggleButton
+                                    fieldKey={nextFieldKey}
+                                    visible={nextVisible}
+                                    onToggle={() => toggleVisibility(nextFieldKey)}
+                                    className="absolute right-0 top-0 h-full px-3 text-gray-400 hover:text-blue-500 hover:bg-transparent"
+                                />
                             </div>
                         </div>
                     </div>
@@ -442,18 +418,8 @@ const ImportConfigurationForm: React.FC = () => {
         );
     };
 
-    if (loading) {
         return (
-            <div className="fixed inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-50">
-                <div className="text-center">
-                    <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-                    <p className="text-lg font-medium text-gray-700">正在处理中，请稍候...</p>
-                </div>
-            </div>
-        );
-    }
-
-        return (
+            <>
             <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-4xl w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
                     {/* Header */}
@@ -520,6 +486,41 @@ const ImportConfigurationForm: React.FC = () => {
                                             站点信息
                                         </div>
                                         {renderConfigField('APP_SITE_BEIAN')}
+                                    </div>
+
+                                    <div className="pt-2 space-y-6">
+                                        <div className="flex items-center gap-2 text-lg font-semibold text-gray-800 border-b pb-2">
+                                            <Image className="w-5 h-5 text-blue-600" />
+                                            图片存储配置
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="text-gray-700 flex items-center">
+                                                    {getConfigLabel('IMAGE_STORAGE_MODE')}
+                                                    <span className="ml-2 text-xs text-gray-400 font-normal">(IMAGE_STORAGE_MODE)</span>
+                                                </Label>
+                                                <button type="button" onClick={() => setHelpKey('IMAGE_STORAGE_MODE')} className="text-gray-400 hover:text-blue-500 transition-colors">
+                                                    <HelpCircle className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            <select
+                                                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                value={configs.IMAGE_STORAGE_MODE || 'DASHSCOPE_TEMP'}
+                                                onChange={e => handleConfigChange('IMAGE_STORAGE_MODE', e.target.value)}
+                                            >
+                                                <option value="LOCAL">本地 URL（需公网 IP）</option>
+                                                <option value="DASHSCOPE_TEMP">百炼临时存储（48h 有效期）</option>
+                                                <option value="ALIYUN_OSS">阿里云 OSS</option>
+                                            </select>
+                                        </div>
+                                        {configs.IMAGE_STORAGE_MODE === 'ALIYUN_OSS' && (
+                                            <>
+                                                {renderConfigField('IMAGE_STORAGE_OSS_ENDPOINT', 'IMAGE_STORAGE_OSS_REGION')}
+                                                {renderConfigField('IMAGE_STORAGE_OSS_BUCKET')}
+                                                {renderConfigField('IMAGE_STORAGE_OSS_ACCESS_KEY_ID')}
+                                                {renderConfigField('IMAGE_STORAGE_OSS_ACCESS_KEY_SECRET')}
+                                            </>
+                                        )}
                                     </div>
                                 </div>
 
@@ -689,7 +690,7 @@ const ImportConfigurationForm: React.FC = () => {
                 >
                     <div className="p-4">
                         <p className="text-gray-600 leading-relaxed">
-                            {helpKey ? (helpContent[helpKey] || "暂无该配置项的详细说明，请参考系统部署文档。") : ''}
+                            {helpKey ? getHelpText(helpKey) : ''}
                         </p>
                     </div>
                 </Modal>
@@ -728,6 +729,17 @@ const ImportConfigurationForm: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {loading && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+                    <div className="relative bg-white rounded-2xl shadow-xl border border-gray-100 px-10 py-8 w-[90%] max-w-sm text-center">
+                        <Loader2 className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+                        <p className="text-lg font-medium text-gray-700">正在处理中，请稍候...</p>
+                    </div>
+                </div>
+            )}
+            </>
         );
     };
 

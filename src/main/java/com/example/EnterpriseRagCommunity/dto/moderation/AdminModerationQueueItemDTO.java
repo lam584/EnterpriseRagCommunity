@@ -28,6 +28,9 @@ public class AdminModerationQueueItemDTO {
     private LocalDateTime updatedAt;
 
     private List<String> riskTags;
+    private List<AdminModerationQueueRiskTagItemDTO> riskTagItems;
+
+    private ChunkProgress chunkProgress;
 
     /** 统一的展示用摘要 */
     private Summary summary;
@@ -43,5 +46,14 @@ public class AdminModerationQueueItemDTO {
 
         /** COMMENT 专用：所属帖子ID */
         private Long postId;
+    }
+
+    @Data
+    public static class ChunkProgress {
+        private String status;
+        private Integer totalChunks;
+        private Integer completedChunks;
+        private Integer failedChunks;
+        private LocalDateTime updatedAt;
     }
 }

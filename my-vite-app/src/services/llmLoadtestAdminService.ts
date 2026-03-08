@@ -185,7 +185,7 @@ export async function adminStopLlmLoadTest(runId: string): Promise<void> {
 
 export async function adminListLlmLoadTestHistory(params: { limit?: number } = {}): Promise<AdminLlmLoadTestHistoryRecord[]> {
   const qs = buildQuery({ limit: params.limit });
-  const res = await fetch(apiUrl(`/api/admin/metrics/llm-loadtest/history${qs}`), {
+  const res = await fetch(apiUrl(`api/admin/metrics/llm-loadtest/history${qs}`), {
     method: 'GET',
     credentials: 'include',
   });

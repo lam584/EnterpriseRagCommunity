@@ -1,7 +1,8 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.entity.ai.SemanticTranslateConfigEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,25 +15,13 @@ import java.util.*;
 @RequiredArgsConstructor
 public class AiLanguageDetectService {
 
-    public static final String DEFAULT_SYSTEM_PROMPT = """
-你是一个语言识别助手。
-任务：根据输入文本，判断文本包含的自然语言。
-输出要求：
-1. 只输出 JSON（不要包裹 ```），格式：{"languages":["zh-CN","en-US"]}
-2. languages 使用 BCP-47 风格语言标签（例如 zh-CN、en-US、ja-JP）。如果无法确定地区，可用基础语言码（zh/en/ja/...）。
-3. 如果文本明显由多种语言混合组成，请输出多个语言标签（最多 3 个）。
-4. 不要输出解释、不要输出多余字段。
-""";
-
-    public static final String DEFAULT_USER_PROMPT_TEMPLATE = """
-文本：
-{{content}}
-""";
-
-    private final AiProperties aiProperties;
     private final SemanticTranslateConfigService semanticTranslateConfigService;
     private final LlmGateway llmGateway;
+    private final PromptsRepository promptsRepository;
+    private final PromptLlmParamResolver promptLlmParamResolver;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final String PROMPT_CODE = "LANG_DETECT";
 
     public List<String> detectLanguages(String content) {
         SemanticTranslateConfigEntity cfg = semanticTranslateConfigService.getConfigEntityOrDefault();
@@ -46,27 +35,38 @@ public class AiLanguageDetectService {
             normalizedContent = normalizedContent.substring(0, maxChars);
         }
 
-        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
-        Double temperature = cfg.getTemperature();
-        if (temperature == null) temperature = 0.0;
+        PromptsEntity prompt = promptsRepository.findByPromptCode(PROMPT_CODE)
+                .orElseThrow(() -> new IllegalStateException("Prompt code not found: " + PROMPT_CODE));
 
-        String userPrompt = renderPrompt(DEFAULT_USER_PROMPT_TEMPLATE, normalizedContent);
+        PromptLlmParams params = promptLlmParamResolver.resolveText(
+            prompt,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0.0,
+            null
+        );
+
+        String userPrompt = renderPrompt(prompt.getUserPromptTemplate(), normalizedContent);
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(DEFAULT_SYSTEM_PROMPT));
+        messages.add(ChatMessage.system(prompt.getSystemPrompt()));
         messages.add(ChatMessage.user(userPrompt));
 
         String rawJson;
         try {
             LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
                     LlmQueueTaskType.UNKNOWN,
-                    cfg.getProviderId(),
-                    modelOverride,
+                        params.providerId(),
+                        params.model(),
                     messages,
-                    temperature,
+                        params.temperature(),
+                        params.topP(),
                     null,
                     null,
-                    null,
-                    cfg.getEnableThinking()
+                        params.enableThinking()
             );
             rawJson = routed == null ? null : routed.text();
         } catch (Exception e) {
@@ -140,7 +140,7 @@ public class AiLanguageDetectService {
 
     private static String renderPrompt(String template, String content) {
         String safeTemplate = (template == null || template.isBlank())
-                ? DEFAULT_USER_PROMPT_TEMPLATE
+                ? "{{content}}"
                 : template;
         return safeTemplate.replace("{{content}}", content == null ? "" : content.trim());
     }

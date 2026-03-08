@@ -7,10 +7,14 @@ import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
+import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
 import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentChatRetrievalService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetChatRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalConfigService;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
+import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -28,8 +32,11 @@ public class PortalSearchService {
     private final HybridRagRetrievalService hybridRagRetrievalService;
     private final HybridRetrievalConfigService hybridRetrievalConfigService;
     private final RagCommentChatRetrievalService ragCommentChatRetrievalService;
+    private final RagFileAssetChatRetrievalService ragFileAssetChatRetrievalService;
     private final PostsRepository postsRepository;
     private final CommentsRepository commentsRepository;
+    private final FileAssetsRepository fileAssetsRepository;
+    private final BoardAccessControlService boardAccessControlService;
 
     public Page<PortalSearchHitDTO> search(String queryText, Long boardId, int page, int pageSize) {
         String q = queryText == null ? "" : queryText.trim();
@@ -58,6 +65,7 @@ public class PortalSearchService {
             if (bestPostHitById.size() >= fetchLimit) break;
         }
 
+        List<String> queryTerms = buildQueryTerms(q);
         int commentTopK = Math.min(200, Math.max(50, fetchLimit));
         List<RagCommentChatRetrievalService.Hit> commentHits = ragCommentChatRetrievalService.retrieve(q, commentTopK);
 
@@ -75,6 +83,23 @@ public class PortalSearchService {
             postIds.add(h.getPostId());
         }
 
+        int fileTopK = Math.min(200, Math.max(50, fetchLimit));
+        List<RagFileAssetChatRetrievalService.Hit> fileHits = ragFileAssetChatRetrievalService.retrieve(q, fileTopK);
+        LinkedHashMap<Long, RagFileAssetChatRetrievalService.Hit> bestFileHitById = new LinkedHashMap<>();
+        for (RagFileAssetChatRetrievalService.Hit h : fileHits) {
+            if (h == null || h.getFileAssetId() == null) continue;
+            bestFileHitById.putIfAbsent(h.getFileAssetId(), h);
+            if (bestFileHitById.size() >= fetchLimit) break;
+        }
+
+        Set<Long> fileAssetIds = new LinkedHashSet<>(bestFileHitById.keySet());
+        for (RagFileAssetChatRetrievalService.Hit h : bestFileHitById.values()) {
+            if (h == null || h.getPostIds() == null) continue;
+            for (Long pid : h.getPostIds()) {
+                if (pid != null) postIds.add(pid);
+            }
+        }
+
         Map<Long, PostsEntity> postById = new HashMap<>();
         if (!postIds.isEmpty()) {
             postsRepository.findByIdInAndIsDeletedFalseAndStatus(new ArrayList<>(postIds), PostStatus.PUBLISHED)
@@ -82,12 +107,27 @@ public class PortalSearchService {
                         if (p != null && p.getId() != null) postById.put(p.getId(), p);
                     });
         }
+        Set<Long> roleIds = boardAccessControlService.currentUserRoleIds();
+        postById.entrySet().removeIf(e -> {
+            PostsEntity p = e.getValue();
+            if (p == null) return true;
+            if (boardId != null && !Objects.equals(boardId, p.getBoardId())) return true;
+            Long bid = p.getBoardId();
+            return bid != null && !boardAccessControlService.canViewBoard(bid, roleIds);
+        });
 
         Map<Long, CommentsEntity> commentById = new HashMap<>();
         if (!bestCommentHitById.isEmpty()) {
             List<Long> commentIds = new ArrayList<>(bestCommentHitById.keySet());
             for (CommentsEntity c : commentsRepository.findByIdInAndIsDeletedFalseAndStatus(commentIds, CommentStatus.VISIBLE)) {
                 if (c != null && c.getId() != null) commentById.put(c.getId(), c);
+            }
+        }
+
+        Map<Long, FileAssetsEntity> fileAssetById = new HashMap<>();
+        if (!fileAssetIds.isEmpty()) {
+            for (FileAssetsEntity fa : fileAssetsRepository.findAllById(new ArrayList<>(fileAssetIds))) {
+                if (fa != null && fa.getId() != null) fileAssetById.put(fa.getId(), fa);
             }
         }
 
@@ -114,6 +154,7 @@ public class PortalSearchService {
             scored.add(new ScoredHit(dto, sim, createdAt, now));
         }
 
+        double maxCommentScore = findMaxScore(bestCommentHitById.values().stream().map(x -> x == null ? null : x.getScore()).toList());
         for (Map.Entry<Long, RagCommentChatRetrievalService.Hit> e : bestCommentHitById.entrySet()) {
             Long commentId = e.getKey();
             CommentsEntity c = commentById.get(commentId);
@@ -121,6 +162,7 @@ public class PortalSearchService {
             PostsEntity p = postById.get(c.getPostId());
             if (p == null) continue;
             RagCommentChatRetrievalService.Hit h = e.getValue();
+            if (!isRelevantByTextOrScore(queryTerms, maxCommentScore, h == null ? null : h.getScore(), h == null ? null : h.getContentText(), c.getContent())) continue;
 
             double sim = safeDouble(h == null ? null : h.getScore());
             LocalDateTime createdAt = c.getCreatedAt();
@@ -134,6 +176,44 @@ public class PortalSearchService {
             dto.setSnippet(snippet);
             dto.setCreatedAt(createdAt);
             dto.setUrl("/portal/posts/detail/" + c.getPostId() + "?commentId=" + commentId + "#comment-" + commentId);
+            scored.add(new ScoredHit(dto, sim, createdAt, now));
+        }
+
+        double maxFileScore = findMaxScore(bestFileHitById.values().stream().map(x -> x == null ? null : x.getScore()).toList());
+        for (Map.Entry<Long, RagFileAssetChatRetrievalService.Hit> e : bestFileHitById.entrySet()) {
+            Long fileAssetId = e.getKey();
+            FileAssetsEntity fa = fileAssetById.get(fileAssetId);
+            if (fa == null) continue;
+
+            RagFileAssetChatRetrievalService.Hit h = e.getValue();
+            double sim = safeDouble(h == null ? null : h.getScore());
+            LocalDateTime createdAt = fa.getCreatedAt();
+            String snippet = pickSnippet(h == null ? null : h.getContentText(), null, 180);
+
+            String title = fa.getOriginalName();
+            if (title == null || title.isBlank()) title = h == null ? null : h.getFileName();
+            if (title == null || title.isBlank()) title = "文件";
+            if (!isRelevantByTextOrScore(queryTerms, maxFileScore, h == null ? null : h.getScore(), title, h == null ? null : h.getFileName(), h == null ? null : h.getContentText())) continue;
+
+            Long postId = null;
+            if (h != null && h.getPostIds() != null && !h.getPostIds().isEmpty()) {
+                for (Long pid : h.getPostIds()) {
+                    if (pid != null && postById.containsKey(pid)) {
+                        postId = pid;
+                        break;
+                    }
+                }
+            }
+            String url = postId == null ? null : ("/portal/posts/detail/" + postId);
+
+            PortalSearchHitDTO dto = new PortalSearchHitDTO();
+            dto.setType("FILE");
+            dto.setFileAssetId(fileAssetId);
+            dto.setPostId(postId);
+            dto.setTitle(title);
+            dto.setSnippet(snippet);
+            dto.setCreatedAt(createdAt);
+            dto.setUrl(url);
             scored.add(new ScoredHit(dto, sim, createdAt, now));
         }
 
@@ -226,6 +306,56 @@ public class PortalSearchService {
         s = s.replaceAll("[\\r\\n\\t]+", " ").trim();
         if (s.length() <= maxChars) return s;
         return s.substring(0, maxChars) + "...";
+    }
+
+    private static List<String> buildQueryTerms(String queryText) {
+        String q = queryText == null ? "" : queryText.trim().toLowerCase(Locale.ROOT);
+        if (q.isBlank()) return List.of();
+        LinkedHashSet<String> terms = new LinkedHashSet<>();
+        terms.add(q);
+        String[] parts = q.split("[\\s,，。！？!?:：;；、/\\\\|]+");
+        for (String part : parts) {
+            if (part == null) continue;
+            String t = part.trim();
+            if (t.length() >= 2) terms.add(t);
+        }
+        return new ArrayList<>(terms);
+    }
+
+    private static boolean isRelevantByTextOrScore(List<String> queryTerms, double maxScore, Double score, String... texts) {
+        if (containsAnyTerm(queryTerms, texts)) return true;
+        double s = safeDouble(score);
+        if (maxScore <= 0.0) return s > 0.0;
+        double ratio = s / maxScore;
+        return ratio >= 0.92;
+    }
+
+    private static boolean containsAnyTerm(List<String> queryTerms, String... texts) {
+        if (queryTerms == null || queryTerms.isEmpty()) return false;
+        if (texts == null || texts.length == 0) return false;
+        StringBuilder sb = new StringBuilder();
+        for (String t : texts) {
+            if (t == null || t.isBlank()) continue;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(t.toLowerCase(Locale.ROOT));
+        }
+        if (sb.length() == 0) return false;
+        String haystack = sb.toString();
+        for (String term : queryTerms) {
+            if (term == null || term.isBlank()) continue;
+            if (haystack.contains(term)) return true;
+        }
+        return false;
+    }
+
+    private static double findMaxScore(List<Double> scores) {
+        double max = 0.0;
+        if (scores == null || scores.isEmpty()) return max;
+        for (Double x : scores) {
+            double v = safeDouble(x);
+            if (v > max) max = v;
+        }
+        return max;
     }
 
     private static class ScoredHit {

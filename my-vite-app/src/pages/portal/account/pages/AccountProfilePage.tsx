@@ -221,7 +221,7 @@ export default function AccountProfilePage() {
       setBaseProfile(updated);
       resetDraftFrom(updated);
       setIsEditing(false);
-      setSaveOk('已保存');
+      setSaveOk('已提交审核');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : undefined;
       setSaveErr(msg || '保存失败');
@@ -257,6 +257,23 @@ export default function AccountProfilePage() {
     <div className="space-y-5">
       <div>
         <h3 className="text-lg font-semibold">个人资料</h3>
+        {profile.profileModeration?.status ? (
+          <div className="text-sm text-gray-600">
+            审核状态：
+            {profile.profileModeration.status === 'PENDING'
+              ? '待审核'
+              : profile.profileModeration.status === 'REVIEWING'
+                ? '审核中'
+                : profile.profileModeration.status === 'HUMAN'
+                  ? '待人工审核'
+                  : profile.profileModeration.status === 'REJECTED'
+                    ? '已驳回'
+                    : profile.profileModeration.status === 'APPROVED'
+                      ? '已通过'
+                      : profile.profileModeration.status}
+            {profile.profileModeration.reason ? `（${profile.profileModeration.reason}）` : null}
+          </div>
+        ) : null}
       </div>
 
       {loadErr ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{loadErr}</div> : null}

@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.content.PortalReportsService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 
@@ -33,6 +35,9 @@ public class PostReportsController {
     @Autowired
     private AdministratorService administratorService;
 
+    @Autowired
+    private AuditLogWriter auditLogWriter;
+
     @Data
     public static class PostReportRequest {
         @NotBlank(message = "reasonCode 不能为空")
@@ -46,8 +51,30 @@ public class PostReportsController {
     @PostMapping("/{postId}/report")
     public Map<String, Object> reportPost(@PathVariable("postId") Long postId, @Valid @RequestBody PostReportRequest req) {
         Long userId = currentUserIdOrNull();
+        String actorName = currentUsernameOrNull();
         try {
             PortalReportsService.ReportSubmitResult r = portalReportsService.reportPost(postId, req.getReasonCode(), req.getReasonText());
+            if (userId != null) {
+                java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
+                details.put("targetType", "POST");
+                details.put("targetId", postId);
+                details.put("reasonCode", req.getReasonCode());
+                details.put("reasonTextLen", req.getReasonText() == null ? 0 : req.getReasonText().length());
+                if (r != null) {
+                    details.put("queueId", r.getQueueId());
+                }
+                auditLogWriter.write(
+                        userId,
+                        actorName,
+                        "REPORT_POST_CREATE",
+                        "REPORT",
+                        r == null ? null : r.getReportId(),
+                        AuditResult.SUCCESS,
+                        "举报帖子",
+                        null,
+                        details
+                );
+            }
             if (userId != null) {
                 try {
                     String title = "举报提交成功";
@@ -60,6 +87,31 @@ public class PostReportsController {
             }
             return Map.of("reportId", r.getReportId(), "queueId", r.getQueueId());
         } catch (RuntimeException ex) {
+            if (userId != null) {
+                try {
+                    java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
+                    details.put("targetType", "POST");
+                    details.put("targetId", postId);
+                    if (req != null) {
+                        details.put("reasonCode", req.getReasonCode());
+                        details.put("reasonTextLen", req.getReasonText() == null ? 0 : req.getReasonText().length());
+                    }
+                    details.put("error", ex.getClass().getName());
+                    details.put("message", safeMsg(ex.getMessage()));
+                    auditLogWriter.write(
+                            userId,
+                            actorName,
+                            "REPORT_POST_CREATE",
+                            "REPORT",
+                            null,
+                            AuditResult.FAIL,
+                            "举报帖子失败",
+                            null,
+                            details
+                    );
+                } catch (Exception ignore) {
+                }
+            }
             if (userId != null) {
                 try {
                     String title = "举报提交失败";
@@ -77,5 +129,19 @@ public class PostReportsController {
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
         String email = auth.getName();
         return administratorService.findByUsername(email).map(u -> (Long) u.getId()).orElse(null);
+    }
+
+    private static String currentUsernameOrNull() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+        String name = auth.getName();
+        return name == null || name.isBlank() ? null : name.trim();
+    }
+
+    private static String safeMsg(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (t.length() <= 256) return t;
+        return t.substring(0, 256);
     }
 }

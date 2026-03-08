@@ -42,6 +42,7 @@ export const portalSections: PortalSection[] = [
       { id: 'mentions', label: '提及', path: 'mentions', description: '有人 @ 我' },
       { id: 'reports', label: '举报', path: 'reports', description: '我的举报记录' },
       { id: 'security', label: '安全', path: 'security', description: '账号安全通知' },
+      { id: 'moderation', label: '审核', path: 'moderation', description: '审核通知' },
     ],
   },
   {

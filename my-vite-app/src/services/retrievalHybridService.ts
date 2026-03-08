@@ -23,11 +23,14 @@ export type HybridRetrievalConfigDTO = {
   bm25ContentBoost?: number | null;
 
   vecK?: number | null;
+  fileVecEnabled?: boolean | null;
+  fileVecK?: number | null;
 
   hybridK?: number | null;
   fusionMode?: 'RRF' | 'LINEAR' | string | null;
   bm25Weight?: number | null;
   vecWeight?: number | null;
+  fileVecWeight?: number | null;
   rrfK?: number | null;
 
   rerankEnabled?: boolean | null;
@@ -53,12 +56,16 @@ export type HybridDocHit = {
   docId?: string | null;
   score?: number | null;
   postId?: number | null;
+  postIds?: number[] | null;
+  fileAssetId?: number | null;
   chunkIndex?: number | null;
   boardId?: number | null;
+  sourceType?: string | null;
   title?: string | null;
   contentText?: string | null;
   bm25Score?: number | null;
   vecScore?: number | null;
+  fileVecScore?: number | null;
   fusedScore?: number | null;
   rerankRank?: number | null;
   rerankScore?: number | null;
@@ -71,15 +78,18 @@ export type HybridRetrievalTestResponse = {
 
   bm25LatencyMs?: number | null;
   vecLatencyMs?: number | null;
+  fileVecLatencyMs?: number | null;
   fuseLatencyMs?: number | null;
   rerankLatencyMs?: number | null;
 
   bm25Error?: string | null;
   vecError?: string | null;
+  fileVecError?: string | null;
   rerankError?: string | null;
 
   bm25Hits?: HybridDocHit[] | null;
   vecHits?: HybridDocHit[] | null;
+  fileVecHits?: HybridDocHit[] | null;
   fusedHits?: HybridDocHit[] | null;
   rerankHits?: HybridDocHit[] | null;
   finalHits?: HybridDocHit[] | null;
@@ -140,13 +150,13 @@ export type RetrievalHitLogDTO = {
   eventId: number;
   rank?: number | null;
   hitType?: 'BM25' | 'VEC' | 'RERANK' | string | null;
-  documentId?: number | null;
+  postId?: number | null;
   chunkId?: number | null;
   score?: number | null;
 };
 
 export async function adminGetHybridRetrievalConfig(): Promise<HybridRetrievalConfigDTO> {
-  const res = await fetch(apiUrl('/api/admin/retrieval/hybrid/config'), {
+  const res = await fetch(apiUrl('api/admin/retrieval/hybrid/config'), {
     method: 'GET',
     credentials: 'include',
   });

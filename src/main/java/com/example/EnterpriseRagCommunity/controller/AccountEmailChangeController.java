@@ -22,9 +22,11 @@ import com.example.EnterpriseRagCommunity.dto.access.request.VerifyOldEmailReque
 import com.example.EnterpriseRagCommunity.dto.access.request.VerifyPasswordRequest;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.EmailVerificationPurpose;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.AccountSecurityService;
 import com.example.EnterpriseRagCommunity.service.AccountTotpService;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.access.EmailVerificationService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import com.example.EnterpriseRagCommunity.service.notify.AccountEmailChangeNotificationMailer;
@@ -51,6 +53,7 @@ public class AccountEmailChangeController {
     private final AccountSecurityService accountSecurityService;
     private final AccountEmailChangeNotificationMailer accountEmailChangeNotificationMailer;
     private final NotificationsService notificationsService;
+    private final AuditLogWriter auditLogWriter;
 
     @PostMapping("/verify-password")
     public ResponseEntity<?> verifyPassword(@RequestBody @Valid VerifyPasswordRequest req, HttpServletRequest servletRequest) {
@@ -63,15 +66,26 @@ public class AccountEmailChangeController {
             HttpSession session = servletRequest.getSession(true);
             session.setAttribute(SESSION_PASSWORD_VERIFIED_AT, LocalDateTime.now());
             session.removeAttribute(SESSION_OLD_VERIFIED_AT);
+            UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(currentEmail)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            writeAuditSafely(user.getId(), currentEmail, "ACCOUNT_EMAIL_CHANGE_VERIFY_PASSWORD", AuditResult.SUCCESS, "验证密码（用于修改邮箱）", Map.of("success", true));
             try {
-                UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(currentEmail)
-                        .orElseThrow(() -> new IllegalArgumentException("User not found"));
                 notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在进入修改邮箱流程。");
             } catch (Exception ignore) {
             }
             return ResponseEntity.ok(Map.of("message", "密码验证通过"));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            try {
+                UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(currentEmail).orElse(null);
+                if (user != null) {
+                    Map<String, Object> details = new HashMap<>();
+                    details.put("success", false);
+                    details.put("message", safeMsg(e.getMessage()));
+                    writeAuditSafely(user.getId(), currentEmail, "ACCOUNT_EMAIL_CHANGE_VERIFY_PASSWORD", AuditResult.FAIL, "验证密码失败（用于修改邮箱）", details);
+                }
+            } catch (Exception ignore) {
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", safeRespMsg(e.getMessage(), "密码验证失败")));
         }
     }
 
@@ -97,7 +111,7 @@ public class AccountEmailChangeController {
                     "codeTtlSeconds", emailVerificationService.getDefaultTtlSeconds()
             ));
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", safeRespMsg(e.getMessage(), "请求失败")));
         }
     }
 
@@ -142,7 +156,7 @@ public class AccountEmailChangeController {
             session.setAttribute(SESSION_OLD_VERIFIED_AT, LocalDateTime.now());
             return ResponseEntity.ok(Map.of("message", "验证通过"));
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", safeRespMsg(e.getMessage(), "请求失败")));
         }
     }
 
@@ -177,7 +191,7 @@ public class AccountEmailChangeController {
                     "codeTtlSeconds", emailVerificationService.getDefaultTtlSeconds()
             ));
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", safeRespMsg(e.getMessage(), "请求失败")));
         }
     }
 
@@ -215,6 +229,10 @@ public class AccountEmailChangeController {
             user.setEmail(newEmail);
             user.setSessionInvalidatedAt(LocalDateTime.now());
             usersRepository.save(user);
+            Map<String, Object> details = new HashMap<>();
+            details.put("success", true);
+            details.put("newEmailMasked", maskEmail(newEmail));
+            writeAuditSafely(user.getId(), oldEmail, "ACCOUNT_EMAIL_CHANGE_CONFIRM", AuditResult.SUCCESS, "更换邮箱", details);
 
             try {
                 accountEmailChangeNotificationMailer.sendChangeEmailSuccessNotifications(oldEmail, newEmail);
@@ -233,7 +251,18 @@ public class AccountEmailChangeController {
 
             return ResponseEntity.ok(Map.of("message", "邮箱更换成功，请重新登录"));
         } catch (IllegalArgumentException | IllegalStateException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            try {
+                UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(currentEmail).orElse(null);
+                if (user != null) {
+                    Map<String, Object> details = new HashMap<>();
+                    details.put("success", false);
+                    details.put("newEmailMasked", maskEmail(newEmail));
+                    details.put("message", safeMsg(e.getMessage()));
+                    writeAuditSafely(user.getId(), currentEmail, "ACCOUNT_EMAIL_CHANGE_CONFIRM", AuditResult.FAIL, "更换邮箱失败", details);
+                }
+            } catch (Exception ignore) {
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", safeRespMsg(e.getMessage(), "更换邮箱失败")));
         }
     }
 
@@ -288,5 +317,45 @@ public class AccountEmailChangeController {
         if (at == null || at.isBefore(LocalDateTime.now().minus(FLOW_TTL))) {
             throw new IllegalArgumentException("请先验证旧邮箱或动态验证码");
         }
+    }
+
+    private void writeAuditSafely(Long userId, String actorName, String action, AuditResult result, String message, Map<String, Object> details) {
+        try {
+            auditLogWriter.write(
+                    userId,
+                    actorName,
+                    action,
+                    "USER",
+                    userId,
+                    result,
+                    message,
+                    null,
+                    details == null ? Map.of() : details
+            );
+        } catch (Exception ignore) {
+        }
+    }
+
+    private static String safeMsg(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (t.length() <= 256) return t;
+        return t.substring(0, 256);
+    }
+
+    private static String safeRespMsg(String s, String fallback) {
+        String t = safeMsg(s);
+        if (t == null || t.isBlank()) return fallback;
+        return t;
+    }
+
+    private static String maskEmail(String email) {
+        if (email == null) return null;
+        String e = email.trim();
+        int at = e.indexOf('@');
+        if (at <= 1) return "***" + (at >= 0 ? e.substring(at) : "");
+        String head = e.substring(0, 1);
+        String domain = e.substring(at);
+        return head + "***" + domain;
     }
 }

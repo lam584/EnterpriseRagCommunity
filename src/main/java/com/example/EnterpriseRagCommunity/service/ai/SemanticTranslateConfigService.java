@@ -16,8 +16,10 @@ import com.example.EnterpriseRagCommunity.dto.ai.SemanticTranslateHistoryDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.SemanticTranslatePublicConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.SemanticTranslateConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.SemanticTranslateHistoryEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.SemanticTranslateConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.SemanticTranslateHistoryRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -30,30 +32,11 @@ public class SemanticTranslateConfigService {
     public static final int DEFAULT_MAX_CONTENT_CHARS = 8000;
     private static final String GROUP_CODE = "SEMANTIC_TRANSLATE";
     private static final String SUB_TYPE = "DEFAULT";
-
-    public static final String DEFAULT_SYSTEM_PROMPT = """
-你是一个专业的翻译助手。
-要求：
-1. 把用户提供的标题与正文翻译成目标语言；
-2. 正文输出必须为 Markdown，尽量保留原文的结构（标题层级/列表/引用/代码块/表格等）；
-3. 不要添加与原文无关的内容，不要进行总结，不要输出额外解释；
-4. 输出严格为 JSON（不要包裹 ```），字段如下：
-   - title: 翻译后的标题（纯文本）
-   - markdown: 翻译后的正文 Markdown
-""";
-
-    public static final String DEFAULT_PROMPT_TEMPLATE = """
-目标语言：{{targetLang}}
-
-标题：
-{{title}}
-
-正文（Markdown）：
-{{content}}
-""";
+    public static final String DEFAULT_PROMPT_CODE = "TRANSLATE_GEN";
 
     private final SemanticTranslateConfigRepository configRepository;
     private final SemanticTranslateHistoryRepository historyRepository;
+    private final PromptsRepository promptsRepository;
     private final ObjectMapper objectMapper;
     private final SupportedLanguageService supportedLanguageService;
 
@@ -137,13 +120,7 @@ public class SemanticTranslateConfigService {
         e.setGroupCode(GROUP_CODE);
         e.setSubType(SUB_TYPE);
         e.setEnabled(Boolean.TRUE);
-        e.setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
-        e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
-        e.setModel(null);
-        e.setProviderId(null);
-        e.setTemperature(0.2);
-        e.setTopP(0.4);
-        e.setEnableThinking(Boolean.FALSE);
+        e.setPromptCode(DEFAULT_PROMPT_CODE);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
         e.setHistoryEnabled(Boolean.TRUE);
         e.setHistoryKeepDays(30);
@@ -158,25 +135,17 @@ public class SemanticTranslateConfigService {
     private SemanticTranslateConfigEntity mergeAndValidate(SemanticTranslateConfigEntity base, SemanticTranslateConfigDTO payload) {
         if (payload == null) throw new IllegalArgumentException("payload 不能为空");
 
-        String systemPrompt = payload.getSystemPrompt() == null ? "" : payload.getSystemPrompt().trim();
-        String promptTemplate = payload.getPromptTemplate() == null ? "" : payload.getPromptTemplate().trim();
-        if (systemPrompt.isBlank()) throw new IllegalArgumentException("systemPrompt 不能为空");
-        if (promptTemplate.isBlank()) throw new IllegalArgumentException("promptTemplate 不能为空");
-        if (promptTemplate.length() > 20000) throw new IllegalArgumentException("promptTemplate 过长（>20000），请精简");
+        String promptCode = payload.getPromptCode();
+        if (promptCode == null || promptCode.isBlank()) {
+            throw new IllegalArgumentException("promptCode 不能为空");
+        }
+        if (promptCode.length() > 64) {
+             throw new IllegalArgumentException("promptCode 长度不能超过 64");
+        }
 
         Integer maxContentChars = payload.getMaxContentChars();
         if (maxContentChars == null) maxContentChars = DEFAULT_MAX_CONTENT_CHARS;
         if (maxContentChars < 200 || maxContentChars > 100000) throw new IllegalArgumentException("maxContentChars 需在 [200,100000] 范围内");
-
-        Double temperature = payload.getTemperature();
-        if (temperature != null && (temperature < 0 || temperature > 2)) {
-            throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
-        }
-
-        Double topP = payload.getTopP();
-        if (topP != null && (topP < 0 || topP > 1)) {
-            throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
-        }
 
         Integer historyKeepDays = payload.getHistoryKeepDays();
         if (historyKeepDays != null && historyKeepDays < 1) throw new IllegalArgumentException("historyKeepDays 必须为正数");
@@ -192,17 +161,11 @@ public class SemanticTranslateConfigService {
         }
 
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
-        base.setSystemPrompt(systemPrompt);
-        base.setPromptTemplate(promptTemplate);
-
-        String model = payload.getModel();
-        base.setModel(model == null || model.isBlank() ? null : model.trim());
-        String providerId = payload.getProviderId();
-        base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
-        base.setTemperature(temperature);
-        base.setTopP(topP);
-        base.setEnableThinking(Boolean.TRUE.equals(payload.getEnableThinking()));
+        base.setPromptCode(promptCode);
         base.setMaxContentChars(maxContentChars);
+
+        promptsRepository.findByPromptCode(promptCode)
+            .orElseThrow(() -> new IllegalArgumentException("promptCode 不存在: " + promptCode));
 
         base.setHistoryEnabled(Boolean.TRUE.equals(payload.getHistoryEnabled()));
         base.setHistoryKeepDays(historyKeepDays);
@@ -218,13 +181,15 @@ public class SemanticTranslateConfigService {
         dto.setId(e.getId());
         dto.setVersion(e.getVersion());
         dto.setEnabled(e.getEnabled());
-        dto.setSystemPrompt(e.getSystemPrompt());
-        dto.setPromptTemplate(e.getPromptTemplate());
-        dto.setModel(e.getModel());
-        dto.setProviderId(e.getProviderId());
-        dto.setTemperature(e.getTemperature());
-        dto.setTopP(e.getTopP());
-        dto.setEnableThinking(e.getEnableThinking());
+        dto.setPromptCode(e.getPromptCode());
+        PromptsEntity prompt = (e.getPromptCode() == null || e.getPromptCode().isBlank())
+            ? null
+            : promptsRepository.findByPromptCode(e.getPromptCode()).orElse(null);
+        dto.setModel(prompt != null ? prompt.getModelName() : null);
+        dto.setProviderId(prompt != null ? prompt.getProviderId() : null);
+        dto.setTemperature(prompt != null ? prompt.getTemperature() : null);
+        dto.setTopP(prompt != null ? prompt.getTopP() : null);
+        dto.setEnableThinking(prompt != null ? prompt.getEnableDeepThinking() : null);
         dto.setMaxContentChars(e.getMaxContentChars());
         dto.setHistoryEnabled(e.getHistoryEnabled());
         dto.setHistoryKeepDays(e.getHistoryKeepDays());
@@ -248,11 +213,6 @@ public class SemanticTranslateConfigService {
         dto.setSourceContentExcerpt(e.getSourceContentExcerpt());
         dto.setTranslatedTitle(e.getTranslatedTitle());
         dto.setTranslatedMarkdown(e.getTranslatedMarkdown());
-        dto.setModel(e.getModel());
-        dto.setTemperature(e.getTemperature());
-        dto.setTopP(e.getTopP());
-        dto.setLatencyMs(e.getLatencyMs());
-        dto.setPromptVersion(e.getPromptVersion());
         return dto;
     }
 

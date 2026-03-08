@@ -1,9 +1,14 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+function getApiBase(): string {
+  const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: string }).__VITE_API_BASE_URL__;
+  if (typeof globalBase === 'string') return globalBase;
+  return (((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '') || '';
+}
 function apiUrl(path: string): string {
   if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
+  const base = getApiBase();
+  return base ? `${base}${path}` : path;
 }
 
 function getBackendMessage(data: unknown): string | undefined {
@@ -13,16 +18,18 @@ function getBackendMessage(data: unknown): string | undefined {
   return undefined;
 }
 
-export type PipelineStepStage = 'RULE' | 'VEC' | 'LLM' | string;
+export type PipelineStepStage = 'RULE' | 'VEC' | 'TEXT' | 'VISION' | 'JUDGE' | 'UPGRADE' | 'LLM' | string;
 
 export type AdminModerationPipelineRunDTO = {
   id: number;
   queueId: number;
-  contentType: 'POST' | 'COMMENT' | string;
+  contentType: 'POST' | 'COMMENT' | 'PROFILE' | string;
   contentId: number;
   status?: string | null;
   finalDecision?: string | null;
   traceId?: string | null;
+  policyVersion?: string | null;
+  inputMode?: string | null;
   startedAt?: string | null;
   endedAt?: string | null;
   totalMs?: number | null;
@@ -41,12 +48,22 @@ export type AdminModerationPipelineStepDTO = {
   decision?: string | null;
   score?: number | null;
   threshold?: number | null;
-  details?: Record<string, unknown> | null;
+  details?: AdminModerationPipelineStepDetails | null;
   startedAt?: string | null;
   endedAt?: string | null;
   costMs?: number | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+};
+
+export type AdminModerationPipelineStepDetails = Record<string, unknown> & {
+  antiSpamHit?: boolean;
+  antiSpamType?: string;
+  reason?: string;
+  actualCount?: number;
+  threshold?: number;
+  windowSeconds?: number;
+  windowMinutes?: number;
 };
 
 export type AdminModerationPipelineRunDetailDTO = {
@@ -89,7 +106,7 @@ export async function adminListPipelineHistory(query: AdminModerationPipelineHis
 }
 
 export async function adminGetLatestPipelineByQueueId(queueId: number): Promise<AdminModerationPipelineRunDetailDTO> {
-  const res = await fetch(apiUrl(`/api/admin/moderation/pipeline/latest?queueId=${encodeURIComponent(queueId)}`), {
+  const res = await fetch(apiUrl(`api/admin/moderation/pipeline/latest?queueId=${encodeURIComponent(queueId)}`), {
     method: 'GET',
     credentials: 'include',
   });

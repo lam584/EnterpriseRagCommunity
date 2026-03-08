@@ -1,12 +1,18 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import com.example.EnterpriseRagCommunity.config.AiProperties;
 import com.example.EnterpriseRagCommunity.entity.ai.PostAiSummaryEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSummaryGenConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSummaryGenHistoryEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.GenerationJobsEntity;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationJobStatus;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationJobType;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationTargetType;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.PostAiSummaryRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.GenerationJobsRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,11 +34,13 @@ public class AiPostSummaryService {
     private static final String STATUS_FAILED = "FAILED";
     private static final String STATUS_PENDING = "PENDING";
 
-    private final AiProperties aiProperties;
     private final PostSummaryGenConfigService postSummaryGenConfigService;
     private final PostsRepository postsRepository;
     private final PostAiSummaryRepository postAiSummaryRepository;
     private final LlmGateway llmGateway;
+    private final PromptsRepository promptsRepository;
+    private final GenerationJobsRepository generationJobsRepository;
+    private final PromptLlmParamResolver promptLlmParamResolver;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -49,11 +57,6 @@ public class AiPostSummaryService {
         int maxChars = cfg.getMaxContentChars() == null ? PostSummaryGenConfigService.DEFAULT_MAX_CONTENT_CHARS : cfg.getMaxContentChars();
         if (maxChars <= 0) maxChars = PostSummaryGenConfigService.DEFAULT_MAX_CONTENT_CHARS;
 
-        String modelOverride = (cfg.getModel() != null && !cfg.getModel().isBlank()) ? cfg.getModel() : null;
-        Double temperature = cfg.getTemperature();
-        Double topP = cfg.getTopP();
-        if (topP == null) topP = 0.7;
-
         String rawTitle = post.getTitle() == null ? "" : post.getTitle();
         String rawContent = post.getContent() == null ? "" : post.getContent();
 
@@ -62,10 +65,34 @@ public class AiPostSummaryService {
             clippedContent = clippedContent.substring(0, maxChars);
         }
 
-        String userPrompt = renderPrompt(cfg.getPromptTemplate(), rawTitle, clippedContent, extractTagsLine(post.getMetadata()));
+        String promptCode = cfg.getPromptCode();
+        if (promptCode == null || promptCode.isBlank()) {
+            promptCode = PostSummaryGenConfigService.DEFAULT_PROMPT_CODE;
+        }
+
+        PromptsEntity prompt = promptsRepository.findByPromptCode(promptCode)
+                .orElseThrow(() -> new IllegalStateException("Prompt code not found: " + cfg.getPromptCode()));
+
+        PromptLlmParams params = promptLlmParamResolver.resolveText(
+            prompt,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0.7
+        );
+
+        String modelOverride = params.model();
+        Double temperature = params.temperature();
+        Double topP = params.topP();
+
+        String userPrompt = renderPrompt(prompt.getUserPromptTemplate(), rawTitle, clippedContent, extractTagsLine(post.getMetadata()));
 
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system("你是专业的中文社区内容摘要助手。只输出严格 JSON，不要输出解释文字。"));
+        messages.add(ChatMessage.system(prompt.getSystemPrompt()));
         messages.add(ChatMessage.user(userPrompt));
 
         long started = System.currentTimeMillis();
@@ -75,20 +102,20 @@ public class AiPostSummaryService {
         try {
             LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
                     LlmQueueTaskType.SUMMARY_GEN,
-                    cfg.getProviderId(),
+                    params.providerId(),
                     modelOverride,
                     messages,
                     temperature,
                     topP,
                     null,
                     null,
-                    cfg.getEnableThinking()
+                        params.enableThinking()
             );
             rawJson = routed == null ? null : routed.text();
             usedProviderId = routed == null ? null : routed.providerId();
             usedModel = routed == null ? null : routed.model();
         } catch (Exception e) {
-            recordFailure(postId, actorUserId, cfg.getProviderId(), modelOverride, temperature, topP, maxChars, cfg.getVersion(), System.currentTimeMillis() - started, e);
+            recordFailure(postId, actorUserId, params.providerId(), modelOverride, temperature, topP, maxChars, cfg.getVersion(), System.currentTimeMillis() - started, e);
             return;
         }
 
@@ -116,19 +143,30 @@ public class AiPostSummaryService {
     ) {
         LocalDateTime now = LocalDateTime.now();
 
+        GenerationJobsEntity job = new GenerationJobsEntity();
+        job.setJobType(GenerationJobType.SUMMARY);
+        job.setTargetType(GenerationTargetType.POST);
+        job.setTargetId(postId);
+        job.setStatus(GenerationJobStatus.SUCCEEDED);
+        job.setModel(model);
+        job.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
+        job.setTemperature(temperature);
+        job.setTopP(topP);
+        job.setLatencyMs(latency);
+        job.setPromptVersion(promptVersion);
+        job.setCreatedAt(now);
+        job.setUpdatedAt(now);
+        generationJobsRepository.save(job);
+
         PostAiSummaryEntity s = postAiSummaryRepository.findByPostId(postId).orElseGet(PostAiSummaryEntity::new);
         s.setPostId(postId);
         s.setStatus(STATUS_SUCCESS);
         s.setSummaryTitle(cleanTitle(parsed.title));
         s.setSummaryText(cleanSummary(parsed.summary));
-        s.setModel(model);
-        s.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
-        s.setTemperature(temperature);
-        s.setTopP(topP);
         s.setAppliedMaxContentChars(maxChars);
-        s.setLatencyMs(latency);
         s.setGeneratedAt(now);
         s.setErrorMessage(null);
+        s.setJobId(job.getId());
         s.setUpdatedAt(now);
         postAiSummaryRepository.save(s);
 
@@ -137,14 +175,9 @@ public class AiPostSummaryService {
         h.setPostId(postId);
         h.setStatus(STATUS_SUCCESS);
         h.setCreatedAt(now);
-        h.setModel(model);
-        h.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
-        h.setTemperature(temperature);
-        h.setTopP(topP);
         h.setAppliedMaxContentChars(maxChars);
-        h.setLatencyMs(latency);
-        h.setPromptVersion(promptVersion);
         h.setErrorMessage(null);
+        h.setJobId(job.getId());
         postSummaryGenConfigService.recordHistory(h);
     }
 
@@ -165,19 +198,31 @@ public class AiPostSummaryService {
         String err = stackTraceToString(e);
         if (err.length() > 12000) err = err.substring(0, 12000);
 
+        GenerationJobsEntity job = new GenerationJobsEntity();
+        job.setJobType(GenerationJobType.SUMMARY);
+        job.setTargetType(GenerationTargetType.POST);
+        job.setTargetId(postId);
+        job.setStatus(GenerationJobStatus.FAILED);
+        job.setModel(model);
+        job.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
+        job.setTemperature(temperature);
+        job.setTopP(topP);
+        job.setLatencyMs(latency);
+        job.setPromptVersion(promptVersion);
+        job.setErrorMessage(err.length() > 255 ? err.substring(0, 255) : err);
+        job.setCreatedAt(now);
+        job.setUpdatedAt(now);
+        generationJobsRepository.save(job);
+
         PostAiSummaryEntity s = postAiSummaryRepository.findByPostId(postId).orElseGet(PostAiSummaryEntity::new);
         s.setPostId(postId);
         s.setStatus(STATUS_FAILED);
         s.setSummaryTitle(null);
         s.setSummaryText(null);
-        s.setModel(model);
-        s.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
-        s.setTemperature(temperature);
-        s.setTopP(topP);
         s.setAppliedMaxContentChars(maxChars);
-        s.setLatencyMs(latency);
         s.setGeneratedAt(now);
         s.setErrorMessage(err);
+        s.setJobId(job.getId());
         s.setUpdatedAt(now);
         postAiSummaryRepository.save(s);
 
@@ -186,14 +231,9 @@ public class AiPostSummaryService {
         h.setPostId(postId);
         h.setStatus(STATUS_FAILED);
         h.setCreatedAt(now);
-        h.setModel(model);
-        h.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
-        h.setTemperature(temperature);
-        h.setTopP(topP);
         h.setAppliedMaxContentChars(maxChars);
-        h.setLatencyMs(latency);
-        h.setPromptVersion(promptVersion);
         h.setErrorMessage(err);
+        h.setJobId(job.getId());
         postSummaryGenConfigService.recordHistory(h);
     }
 
@@ -214,7 +254,47 @@ public class AiPostSummaryService {
             }
         } catch (Exception ignore) {
         }
+        String content = extractJsonStringFieldOnePass(rawJson, "content");
+        if (content != null && !content.isBlank()) return content;
+        String text = extractJsonStringFieldOnePass(rawJson, "text");
+        if (text != null && !text.isBlank()) return text;
         return rawJson;
+    }
+
+    private String extractJsonStringFieldOnePass(String json, String field) {
+        if (json == null || field == null || field.isBlank()) return null;
+        int idx = json.indexOf("\"" + field + "\"");
+        if (idx < 0) return null;
+        int colon = json.indexOf(':', idx);
+        if (colon < 0) return null;
+
+        int i = colon + 1;
+        while (i < json.length() && Character.isWhitespace(json.charAt(i))) i++;
+        if (i >= json.length() || json.charAt(i) != '"') return null;
+
+        int start = i + 1;
+        int j = start;
+        while (j < json.length()) {
+            char c = json.charAt(j);
+            if (c == '"') {
+                int slashCount = 0;
+                int k = j - 1;
+                while (k >= start && json.charAt(k) == '\\') {
+                    slashCount++;
+                    k--;
+                }
+                if ((slashCount & 1) == 0) break;
+            }
+            j++;
+        }
+        if (j >= json.length()) return null;
+
+        String rawValue = json.substring(start, j);
+        try {
+            return objectMapper.readValue("\"" + rawValue + "\"", String.class);
+        } catch (Exception ignore) {
+            return rawValue;
+        }
     }
 
     ParsedSummary parseSummaryFromAssistantText(String assistantText) {
@@ -233,21 +313,126 @@ public class AiPostSummaryService {
             return new ParsedSummary(null, raw);
         }
 
-        try {
-            JsonNode root = objectMapper.readTree(t);
-            String title = root.path("title").isTextual() ? root.path("title").asText() : null;
-            String summary = root.path("summary").isTextual() ? root.path("summary").asText() : null;
-            if (summary == null || summary.trim().isBlank()) {
-                return new ParsedSummary(title, raw);
+        JsonNode root = parseJsonObjectLenient(t);
+        if (root == null) {
+            String relaxedTitle = decodeEscapedContent(extractBetween(t, "\"title\":\"", "\",\"summary\""));
+            String relaxedSummary = decodeEscapedContent(extractBetween(t, "\"summary\":\"", "\"}"));
+            if (relaxedSummary == null || relaxedSummary.trim().isBlank()) {
+                return new ParsedSummary(null, raw);
             }
-            return new ParsedSummary(title, summary);
-        } catch (Exception ignore) {
-            return new ParsedSummary(null, raw);
+            return new ParsedSummary(relaxedTitle, relaxedSummary);
         }
+
+        String title = root.path("title").isTextual() ? root.path("title").asText() : null;
+        String summary = root.path("summary").isTextual() ? root.path("summary").asText() : null;
+        if (summary == null || summary.trim().isBlank()) {
+            return new ParsedSummary(title, raw);
+        }
+        return new ParsedSummary(title, summary);
+    }
+
+    private JsonNode parseJsonObjectLenient(String text) {
+        if (text == null || text.isBlank()) return null;
+        List<String> candidates = List.of(text, decodeEscapedContent(text));
+        for (String candidate : candidates) {
+            if (candidate == null || candidate.isBlank()) continue;
+            try {
+                JsonNode node = objectMapper.readTree(candidate);
+                if (node != null && node.isTextual()) {
+                    node = objectMapper.readTree(node.asText());
+                }
+                if (node != null && node.isObject()) return node;
+            } catch (Exception ignore) {
+            }
+        }
+        return null;
+    }
+
+    private static String decodeEscapedContent(String text) {
+        if (text == null || text.isEmpty()) return text;
+        StringBuilder out = new StringBuilder(text.length());
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == '\\' && i + 1 < text.length()) {
+                char n = text.charAt(i + 1);
+                switch (n) {
+                    case '"' -> {
+                        out.append('"');
+                        i += 2;
+                        continue;
+                    }
+                    case '\\' -> {
+                        out.append('\\');
+                        i += 2;
+                        continue;
+                    }
+                    case '/' -> {
+                        out.append('/');
+                        i += 2;
+                        continue;
+                    }
+                    case 'b' -> {
+                        out.append('\b');
+                        i += 2;
+                        continue;
+                    }
+                    case 'f' -> {
+                        out.append('\f');
+                        i += 2;
+                        continue;
+                    }
+                    case 'n' -> {
+                        out.append('\n');
+                        i += 2;
+                        continue;
+                    }
+                    case 'r' -> {
+                        out.append('\r');
+                        i += 2;
+                        continue;
+                    }
+                    case 't' -> {
+                        out.append('\t');
+                        i += 2;
+                        continue;
+                    }
+                    case 'u' -> {
+                        if (i + 5 < text.length()) {
+                            String hex = text.substring(i + 2, i + 6);
+                            try {
+                                out.append((char) Integer.parseInt(hex, 16));
+                            } catch (Exception ignore) {
+                            }
+                            i += 6;
+                            continue;
+                        }
+                    }
+                    default -> {
+                        out.append(n);
+                        i += 2;
+                        continue;
+                    }
+                }
+            }
+            out.append(c);
+            i++;
+        }
+        return out.toString();
+    }
+
+    private static String extractBetween(String text, String startToken, String endToken) {
+        if (text == null || startToken == null || endToken == null) return null;
+        int start = text.indexOf(startToken);
+        if (start < 0) return null;
+        start += startToken.length();
+        int end = text.indexOf(endToken, start);
+        if (end < 0 || end < start) return null;
+        return text.substring(start, end);
     }
 
     private static String renderPrompt(String template, String title, String content, String tagsLine) {
-        String safeTemplate = (template == null || template.isBlank()) ? PostSummaryGenConfigService.DEFAULT_PROMPT_TEMPLATE : template;
+        String safeTemplate = (template == null || template.isBlank()) ? "" : template;
         String out = safeTemplate;
         out = out.replace("{{title}}", title == null ? "" : title);
         out = out.replace("{{content}}", content == null ? "" : content);

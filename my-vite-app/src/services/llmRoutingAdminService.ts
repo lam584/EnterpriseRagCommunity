@@ -1,9 +1,14 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+function getApiBase(): string {
+  const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: string }).__VITE_API_BASE_URL__;
+  if (typeof globalBase === 'string') return globalBase;
+  return (((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '') || '';
+}
 function apiUrl(path: string): string {
   if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
+  const base = getApiBase();
+  return base ? `${base}${path}` : path;
 }
 
 function getBackendMessage(data: unknown): string | undefined {
@@ -36,7 +41,6 @@ export type AdminLlmRoutingTargetDTO = {
   weight?: number | null;
   priority?: number | null;
   sortIndex?: number | null;
-  maxConcurrent?: number | null;
   minDelayMs?: number | null;
   qps?: number | null;
   priceConfigId?: number | null;
@@ -49,7 +53,7 @@ export type AdminLlmRoutingConfigDTO = {
 };
 
 export async function adminGetLlmRoutingConfig(): Promise<AdminLlmRoutingConfigDTO> {
-  const res = await fetch(apiUrl('/api/admin/ai/routing/config'), {
+  const res = await fetch(apiUrl('api/admin/ai/routing/config'), {
     method: 'GET',
     credentials: 'include',
   });

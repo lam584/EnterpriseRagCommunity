@@ -2,6 +2,7 @@ import { getCsrfToken } from '../utils/csrfUtils';
 
 export type RegistrationSettingsDTO = {
   defaultRegisterRoleId: number;
+  registrationEnabled?: boolean;
 };
 
 const API_BASE_URL = '/api/admin/settings';
@@ -41,4 +42,3 @@ export async function updateRegistrationSettings(dto: RegistrationSettingsDTO): 
 
   return res.json();
 }
-

@@ -30,6 +30,13 @@ public class LlmQueueMonitorService {
     private record Sample(long tsMs, int queueLen, int running, double tokensPerSec) {
     }
 
+    private static final int MAX_LIMIT_RUNNING = 500;
+    private static final int MAX_LIMIT_PENDING = 2000;
+    private static final int MAX_LIMIT_COMPLETED = 2000;
+    private static final long SNAPSHOT_TRYLOCK_MS = 25L;
+    private static final long DB_RECENT_COMPLETED_CACHE_TTL_MS = 10_000L;
+    private static final int MAX_DB_COMPLETED_FETCH = 500;
+
     private final LlmCallQueueService llmCallQueueService;
     private final LlmQueueTaskHistoryRepository llmQueueTaskHistoryRepository;
     private final LlmQueueProperties llmQueueProperties;
@@ -42,9 +49,16 @@ public class LlmQueueMonitorService {
     private long lastRunningTokensOutSum = 0L;
     private long lastRunningTokensOutAtMs = 0L;
 
+    private record DbRecentCompletedCache(long atMs, int limit, List<AdminLlmQueueTaskDTO> list) {
+    }
+
+    private volatile DbRecentCompletedCache dbRecentCompletedCache;
+
     @Scheduled(fixedDelay = 1000)
     public void tick() {
-        LlmCallQueueService.QueueSnapshot snap = llmCallQueueService.snapshot(200, 0, 200);
+        LlmCallQueueService.QueueSnapshot snap = llmCallQueueService.trySnapshot(200, 0, 200, 5L);
+        if (snap == null) snap = llmCallQueueService.cachedSnapshot().snapshot();
+        if (snap == null) return;
         int queueLen = snap.pendingCount();
         int running = snap.runningCount();
 
@@ -137,22 +151,53 @@ public class LlmQueueMonitorService {
 
     public AdminLlmQueueStatusDTO query(Integer windowSec, Integer limitRunning, Integer limitPending, Integer limitCompleted) {
         int win = windowSec == null ? 300 : Math.max(10, Math.min(3600, windowSec));
-        int runLim = limitRunning == null ? 50 : Math.max(0, Math.min(20000, limitRunning));
-        int pendLim = limitPending == null ? 200 : Math.max(0, Math.min(200000, limitPending));
+        Integer runIn = limitRunning == null ? 50 : limitRunning;
+        Integer pendIn = limitPending == null ? 200 : limitPending;
+        Integer doneIn = limitCompleted;
+
+        int runLim = Math.max(0, Math.min(MAX_LIMIT_RUNNING, Math.max(0, runIn)));
+        int pendLim = Math.max(0, Math.min(MAX_LIMIT_PENDING, Math.max(0, pendIn)));
         int defaultDoneLim = llmQueueProperties.getKeepCompleted();
         if (defaultDoneLim <= 0) defaultDoneLim = 200;
-        int doneLim = limitCompleted == null ? defaultDoneLim : limitCompleted;
-        doneLim = Math.max(1, Math.min(20000, doneLim));
+        int doneLim = doneIn == null ? defaultDoneLim : doneIn;
+        doneLim = Math.max(1, Math.min(MAX_LIMIT_COMPLETED, doneLim));
 
-        LlmCallQueueService.QueueSnapshot snap = llmCallQueueService.snapshot(runLim, pendLim, doneLim);
+        boolean stale = false;
+        long snapshotAtMs = 0L;
+        LlmCallQueueService.QueueSnapshot snap = llmCallQueueService.trySnapshot(runLim, pendLim, doneLim, SNAPSHOT_TRYLOCK_MS);
+        if (snap != null) {
+            snapshotAtMs = System.currentTimeMillis();
+        } else {
+            LlmCallQueueService.CachedQueueSnapshot cached = llmCallQueueService.cachedSnapshot();
+            snap = cached == null ? null : cached.snapshot();
+            snapshotAtMs = cached == null ? 0L : cached.snapshotAtMs();
+            stale = true;
+        }
+        if (snap == null) {
+            snap = llmCallQueueService.snapshot(0, 0, 0);
+            snapshotAtMs = System.currentTimeMillis();
+            stale = false;
+        }
 
         AdminLlmQueueStatusDTO out = new AdminLlmQueueStatusDTO();
+        out.setSnapshotAtMs(snapshotAtMs > 0 ? snapshotAtMs : null);
+        out.setStale(stale);
+        boolean truncated = false;
+        if (runIn != null && runIn > MAX_LIMIT_RUNNING) truncated = true;
+        if (pendIn != null && pendIn > MAX_LIMIT_PENDING) truncated = true;
+        if (doneIn != null && doneIn > MAX_LIMIT_COMPLETED) truncated = true;
         out.setMaxConcurrent(snap.maxConcurrent());
         out.setRunningCount(snap.runningCount());
         out.setPendingCount(snap.pendingCount());
         out.setRunning(mapTasks(snap.running()));
         out.setPending(mapTasks(snap.pending()));
-        out.setRecentCompleted(mergeRecentCompleted(snap.recentCompleted(), doneLim));
+        List<AdminLlmQueueTaskDTO> recentCompleted = stale
+                ? mapTasks(snap.recentCompleted())
+                : mergeRecentCompleted(snap.recentCompleted(), doneLim);
+        out.setRecentCompleted(recentCompleted);
+        if (runLim > 0 && runLim < snap.runningCount()) truncated = true;
+        if (pendLim > 0 && pendLim < snap.pendingCount()) truncated = true;
+        out.setTruncated(truncated);
         out.setSamples(readSamples(win));
         return out;
     }
@@ -176,6 +221,7 @@ public class LlmQueueMonitorService {
             d.setSeq(t.getSeq());
             d.setPriority(t.getPriority());
             d.setType(t.getType());
+            d.setLabel(t.getLabel());
             d.setStatus(t.getStatus());
             d.setProviderId(t.getProviderId());
             d.setModel(t.getModel());
@@ -205,24 +251,53 @@ public class LlmQueueMonitorService {
 
         int remaining = lim - byId.size();
         if (remaining > 0) {
-            List<LlmQueueTaskHistoryEntity> db = llmQueueTaskHistoryRepository.findByFinishedAtIsNotNullOrderByFinishedAtDesc(
-                    PageRequest.of(0, remaining)
-            );
-            for (LlmQueueTaskHistoryEntity e : db) {
-                if (e == null || e.getTaskId() == null) continue;
-                byId.putIfAbsent(e.getTaskId(), mapTask(e));
+            List<AdminLlmQueueTaskDTO> cached = loadDbRecentCompletedCached(Math.min(remaining, MAX_DB_COMPLETED_FETCH));
+            for (AdminLlmQueueTaskDTO d : cached) {
+                if (d == null || d.getId() == null) continue;
+                byId.putIfAbsent(d.getId(), d);
                 if (byId.size() >= lim) break;
             }
         }
 
         List<AdminLlmQueueTaskDTO> out = new ArrayList<>(byId.values());
         Comparator<AdminLlmQueueTaskDTO> order = Comparator
-                .comparing((AdminLlmQueueTaskDTO x) -> x.getFinishedAt(), Comparator.nullsLast(Comparator.naturalOrder()))
-                .reversed()
-                .thenComparing(Comparator.comparing((AdminLlmQueueTaskDTO x) -> x.getSeq(), Comparator.nullsLast(Comparator.naturalOrder())).reversed());
+                .comparing((AdminLlmQueueTaskDTO x) -> x.getFinishedAt(), Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing((AdminLlmQueueTaskDTO x) -> x.getSeq(), Comparator.nullsLast(Comparator.reverseOrder()));
         out.sort(order);
         if (out.size() > lim) return out.subList(0, lim);
         return out;
+    }
+
+    private List<AdminLlmQueueTaskDTO> loadDbRecentCompletedCached(int limit) {
+        int lim = Math.max(1, limit);
+        long now = System.currentTimeMillis();
+        DbRecentCompletedCache cached = dbRecentCompletedCache;
+        if (cached != null && cached.limit >= lim) {
+            long age = now - cached.atMs;
+            if (age >= 0 && age < DB_RECENT_COMPLETED_CACHE_TTL_MS) {
+                if (cached.list == null || cached.list.isEmpty()) return List.of();
+                if (cached.list.size() <= lim) return cached.list;
+                return cached.list.subList(0, lim);
+            }
+        }
+
+        int pageSize = Math.max(1, Math.min(MAX_DB_COMPLETED_FETCH, lim));
+        List<LlmQueueTaskHistoryEntity> db = llmQueueTaskHistoryRepository.findByFinishedAtIsNotNullOrderByFinishedAtDesc(
+                PageRequest.of(0, pageSize)
+        );
+        if (db == null || db.isEmpty()) {
+            dbRecentCompletedCache = new DbRecentCompletedCache(now, pageSize, List.of());
+            return List.of();
+        }
+        List<AdminLlmQueueTaskDTO> list = new ArrayList<>(db.size());
+        for (LlmQueueTaskHistoryEntity e : db) {
+            if (e == null || e.getTaskId() == null) continue;
+            AdminLlmQueueTaskDTO d = mapTask(e);
+            if (d != null && d.getId() != null) list.add(d);
+        }
+        dbRecentCompletedCache = new DbRecentCompletedCache(now, pageSize, list);
+        if (list.size() <= lim) return list;
+        return list.subList(0, lim);
     }
 
     private AdminLlmQueueTaskDTO mapTask(LlmQueueTaskHistoryEntity e) {
@@ -254,6 +329,7 @@ public class LlmQueueMonitorService {
         d.setSeq(t.seq());
         d.setPriority(t.priority());
         d.setType(t.type());
+        d.setLabel(t.label());
         d.setStatus(t.status());
         d.setProviderId(t.providerId());
         d.setModel(t.model());
@@ -278,6 +354,7 @@ public class LlmQueueMonitorService {
         d.setSeq(e.getSeq());
         d.setPriority(e.getPriority());
         d.setType(e.getType());
+        d.setLabel(null);
         d.setStatus(e.getStatus());
         d.setProviderId(e.getProviderId());
         d.setModel(e.getModel());

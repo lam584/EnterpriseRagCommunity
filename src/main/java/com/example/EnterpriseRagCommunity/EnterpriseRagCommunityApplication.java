@@ -1,20 +1,26 @@
 package com.example.EnterpriseRagCommunity;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration;
+import org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.view.InternalResourceViewResolver;
+import org.springframework.data.web.config.EnableSpringDataWebSupport;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.servlet.view.InternalResourceViewResolver;
 
-import java.util.concurrent.atomic.AtomicInteger;
+import static org.springframework.data.web.config.EnableSpringDataWebSupport.PageSerializationMode.VIA_DTO;
 
-@SpringBootApplication
+@SpringBootApplication(exclude = {FlywayAutoConfiguration.class, ElasticsearchRepositoriesAutoConfiguration.class})
 @Controller
 @EnableAsync
+@EnableSpringDataWebSupport(pageSerializationMode = VIA_DTO)
 public class EnterpriseRagCommunityApplication extends SpringBootServletInitializer {
 
     private final AtomicInteger visitCounter = new AtomicInteger(0);

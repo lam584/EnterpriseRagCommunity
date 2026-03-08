@@ -105,7 +105,7 @@ public class UserService {
             specs.add((root, query, cb) -> cb.lessThanOrEqualTo(root.get("createdAt"), end)); // 对齐: SQL users.created_at → Entity.createdAt
         }
 
-        Specification<UsersEntity> where = specs.stream().reduce(Specification.where(null), Specification::and);
+        Specification<UsersEntity> where = Specification.allOf(specs);
         return userRepository.findAll(where);
     }
 

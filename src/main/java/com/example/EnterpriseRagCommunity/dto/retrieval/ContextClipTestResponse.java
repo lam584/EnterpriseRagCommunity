@@ -20,6 +20,7 @@ public class ContextClipTestResponse {
 
     private List<Item> selected;
     private List<Item> dropped;
+    private List<Comparison> comparisons;
 
     @Data
     public static class Item {
@@ -27,9 +28,28 @@ public class ContextClipTestResponse {
         private Long postId;
         private Integer chunkIndex;
         private Double score;
+        private Double relScore;
+        private Double impScore;
+        private Double redScore;
+        private Double finalScore;
+        private String source;
         private String title;
         private Integer tokens;
         private String reason;
     }
-}
 
+    @Data
+    public static class Comparison {
+        private String mode;
+        private ContextClipConfigDTO config;
+        private Integer budgetTokens;
+        private Integer usedTokens;
+        private Integer usedTokensDiff;
+        private Integer budgetTokensDiff;
+        private Integer itemsSelected;
+        private Integer itemsDropped;
+        private String contextPrompt;
+        private List<Item> selected;
+        private List<Item> dropped;
+    }
+}

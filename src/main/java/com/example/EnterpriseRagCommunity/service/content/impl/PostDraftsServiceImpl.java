@@ -3,9 +3,12 @@ package com.example.EnterpriseRagCommunity.service.content.impl;
 import com.example.EnterpriseRagCommunity.dto.content.PostDraftsCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.content.PostDraftsDTO;
 import com.example.EnterpriseRagCommunity.dto.content.PostDraftsUpdateDTO;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.content.PostDraftsEntity;
 import com.example.EnterpriseRagCommunity.repository.content.PostDraftsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.content.PostDraftsService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +18,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 @Service
 public class PostDraftsServiceImpl implements PostDraftsService {
 
@@ -23,6 +29,12 @@ public class PostDraftsServiceImpl implements PostDraftsService {
 
     @Autowired
     private AdministratorService administratorService;
+
+    @Autowired
+    private AuditLogWriter auditLogWriter;
+
+    @Autowired
+    private AuditDiffBuilder auditDiffBuilder;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -77,6 +89,17 @@ public class PostDraftsServiceImpl implements PostDraftsService {
         e.setContentFormat(dto.getContentFormat());
         e.setMetadata(dto.getMetadata());
         e = postDraftsRepository.save(e);
+        auditLogWriter.write(
+                me,
+                currentUsernameOrNull(),
+                "POST_DRAFT_CREATE",
+                "POST_DRAFT",
+                e.getId(),
+                AuditResult.SUCCESS,
+                "创建草稿",
+                null,
+                auditDiffBuilder.build(Map.of(), summarizeForAudit(e))
+        );
         return toDTO(e);
     }
 
@@ -86,12 +109,24 @@ public class PostDraftsServiceImpl implements PostDraftsService {
         Long me = currentUserIdOrThrow();
         PostDraftsEntity e = postDraftsRepository.findByIdAndAuthorId(id, me)
                 .orElseThrow(() -> new IllegalArgumentException("草稿不存在或无权访问"));
+        Map<String, Object> before = summarizeForAudit(e);
         e.setBoardId(dto.getBoardId());
         e.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
         e.setContent(dto.getContent() == null ? "" : dto.getContent());
         e.setContentFormat(dto.getContentFormat());
         e.setMetadata(dto.getMetadata());
         e = postDraftsRepository.save(e);
+        auditLogWriter.write(
+                me,
+                currentUsernameOrNull(),
+                "POST_DRAFT_UPDATE",
+                "POST_DRAFT",
+                e.getId(),
+                AuditResult.SUCCESS,
+                "更新草稿",
+                null,
+                auditDiffBuilder.build(before, summarizeForAudit(e))
+        );
         return toDTO(e);
     }
 
@@ -101,7 +136,51 @@ public class PostDraftsServiceImpl implements PostDraftsService {
         Long me = currentUserIdOrThrow();
         PostDraftsEntity e = postDraftsRepository.findByIdAndAuthorId(id, me)
                 .orElseThrow(() -> new IllegalArgumentException("草稿不存在或无权访问"));
+        Map<String, Object> before = summarizeForAudit(e);
         postDraftsRepository.delete(e);
+        auditLogWriter.write(
+                me,
+                currentUsernameOrNull(),
+                "POST_DRAFT_DELETE",
+                "POST_DRAFT",
+                id,
+                AuditResult.SUCCESS,
+                "删除草稿",
+                null,
+                auditDiffBuilder.build(before, Map.of())
+        );
+    }
+
+    private static Map<String, Object> summarizeForAudit(PostDraftsEntity e) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        if (e == null) return m;
+        m.put("id", e.getId());
+        m.put("tenantId", e.getTenantId());
+        m.put("boardId", e.getBoardId());
+        m.put("authorId", e.getAuthorId());
+        m.put("titleLen", e.getTitle() == null ? 0 : e.getTitle().length());
+        m.put("contentLen", e.getContent() == null ? 0 : e.getContent().length());
+        m.put("contentFormat", e.getContentFormat());
+        Object meta = e.getMetadata();
+        if (meta instanceof Map<?, ?> mm) {
+            m.put("metadataKeys", mm.keySet().stream().filter(k -> k != null).map(String::valueOf).limit(20).toList());
+            m.put("metadataKeyCount", mm.size());
+        } else {
+            m.put("metadataKeys", null);
+            m.put("metadataKeyCount", 0);
+        }
+        return m;
+    }
+
+    private static String currentUsernameOrNull() {
+        try {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
+            String name = auth.getName();
+            return name == null || name.isBlank() ? null : name.trim();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
 

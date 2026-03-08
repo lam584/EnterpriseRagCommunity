@@ -52,9 +52,6 @@ public class LlmProviderEntity {
     @Column(name = "read_timeout_ms")
     private Integer readTimeoutMs;
 
-    @Column(name = "max_concurrent")
-    private Integer maxConcurrent;
-
     @Column(name = "enabled", nullable = false)
     private Boolean enabled;
 

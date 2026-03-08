@@ -24,6 +24,9 @@ public class ModerationQueueEntity {
     @Column(name = "case_type", nullable = false, length = 16)
     private ModerationCaseType caseType;
 
+    @Column(name = "review_stage", length = 16)
+    private String reviewStage;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "content_type", nullable = false, length = 16)
     private ContentType contentType;

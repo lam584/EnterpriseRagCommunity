@@ -22,7 +22,7 @@ public class PostSuggestionGenHistoryEntity {
     @Column(name = "kind", nullable = false, length = 32)
     private SuggestionKind kind;
 
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "user_id")
     private Long userId;
 
     @Column(name = "created_at", nullable = false)
@@ -54,21 +54,6 @@ public class PostSuggestionGenHistoryEntity {
     @Column(name = "output_json", columnDefinition = "json", nullable = false)
     private Object outputJson;
 
-    @Column(name = "model", length = 128)
-    private String model;
-
-    @Column(name = "provider_id", length = 64)
-    private String providerId;
-
-    @Column(name = "temperature")
-    private Double temperature;
-
-    @Column(name = "top_p")
-    private Double topP;
-
-    @Column(name = "latency_ms")
-    private Long latencyMs;
-
-    @Column(name = "prompt_version")
-    private Integer promptVersion;
+    @Column(name = "job_id")
+    private Long jobId;
 }

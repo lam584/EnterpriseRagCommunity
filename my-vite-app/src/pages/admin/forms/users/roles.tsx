@@ -1,6 +1,8 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {Button} from '../../../../components/ui/button';
 import {Input} from '../../../../components/ui/input';
+import {Checkbox} from '../../../../components/ui/checkbox';
+import {Label} from '../../../../components/ui/label';
 import {PermissionsUpdateDTO, queryPermissions} from '../../../../services/permissionsService';
 import {
     createRoleWithMatrix,
@@ -203,6 +205,7 @@ const RolesManagement: React.FC = () => {
     const [registrationLoading, setRegistrationLoading] = useState(false);
     const [registrationSaving, setRegistrationSaving] = useState(false);
     const [defaultRegisterRoleId, setDefaultRegisterRoleId] = useState<number>(1);
+    const [registrationEnabled, setRegistrationEnabled] = useState<boolean>(true);
     const [roleSummaries, setRoleSummaries] = useState<RoleSummaryDTO[]>([]);
     const rolePermMap = useMemo(() => {
         const map = new Map<number, RolePermissionViewDTO>();
@@ -429,6 +432,7 @@ const RolesManagement: React.FC = () => {
                 listRoleSummaries(),
             ]);
             setDefaultRegisterRoleId(Number(settings.defaultRegisterRoleId) || 1);
+            setRegistrationEnabled(settings.registrationEnabled !== false);
             setRoleSummaries(summaries ?? []);
         } catch (e) {
             console.error(e);
@@ -441,11 +445,11 @@ const RolesManagement: React.FC = () => {
         setRegistrationSaving(true);
         try {
             const roleId = Number(defaultRegisterRoleId) || 1;
-            await updateRegistrationSettings({defaultRegisterRoleId: roleId});
-            setFeedback({type: 'success', message: '注册默认角色已保存'});
+            await updateRegistrationSettings({defaultRegisterRoleId: roleId, registrationEnabled});
+            setFeedback({type: 'success', message: '注册配置已保存'});
         } catch (e) {
             console.error(e);
-            setFeedback({type: 'error', message: '保存注册默认角色失败'});
+            setFeedback({type: 'error', message: '保存注册配置失败'});
         } finally {
             setRegistrationSaving(false);
         }
@@ -641,7 +645,7 @@ const RolesManagement: React.FC = () => {
 
         <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
             <div className="flex items-center justify-between">
-                <div className="font-medium">用户注册默认角色</div>
+                <div className="font-medium">用户注册配置</div>
                 <div className="flex gap-2">
                     <Button
                         variant="secondary"
@@ -658,6 +662,22 @@ const RolesManagement: React.FC = () => {
                     >
                         保存
                     </Button>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-center">
+                <div className="flex items-center gap-2">
+                    <Checkbox
+                        id="registration-enabled"
+                        checked={registrationEnabled}
+                        onCheckedChange={() => setRegistrationEnabled(v => !v)}
+                        disabled={registrationLoading || registrationSaving}
+                    />
+                    <Label htmlFor="registration-enabled" className="cursor-pointer">
+                        允许用户注册
+                    </Label>
+                </div>
+                <div className="text-sm text-gray-500">
+                    关闭后 /register 将返回 403，前端注册页入口同步隐藏
                 </div>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_auto] md:items-center">

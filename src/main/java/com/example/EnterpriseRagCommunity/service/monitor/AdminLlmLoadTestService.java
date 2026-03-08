@@ -56,6 +56,7 @@ import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmPriceConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.LlmLoadTestRunDetailRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.LlmLoadTestRunHistoryRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.ai.TokenCountService;
@@ -87,6 +88,7 @@ public class AdminLlmLoadTestService {
     private final LlmPriceConfigRepository llmPriceConfigRepository;
     private final LlmLoadTestRunDetailRepository llmLoadTestRunDetailRepository;
     private final LlmLoadTestRunHistoryRepository llmLoadTestRunHistoryRepository;
+    private final PromptsRepository promptsRepository;
 
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ExecutorService tokenExecutor = Executors.newFixedThreadPool(8);
@@ -332,12 +334,6 @@ public class AdminLlmLoadTestService {
         long startedAt = System.currentTimeMillis();
         LlmModerationTestRequest req = new LlmModerationTestRequest();
         req.setText(prepared.moderationText);
-        if ((st.cfg.providerId != null && !st.cfg.providerId.isBlank()) || (st.cfg.model != null && !st.cfg.model.isBlank())) {
-            var override = new LlmModerationTestRequest.LlmModerationConfigOverrideDTO();
-            if (st.cfg.providerId != null && !st.cfg.providerId.isBlank()) override.setProviderId(st.cfg.providerId);
-            if (st.cfg.model != null && !st.cfg.model.isBlank()) override.setModel(st.cfg.model);
-            req.setConfigOverride(override);
-        }
 
         LlmModerationTestResponse resp = runWithTimeout(() -> adminModerationLlmService.test(req), st.cfg.timeoutMs);
         Long latencyMs = resp == null || resp.getLatencyMs() == null ? null : resp.getLatencyMs().longValue();
@@ -1029,8 +1025,11 @@ public class AdminLlmLoadTestService {
         String modelNameForDirective = resolveModelNameForThinkDirective(st.cfg.providerId, st.cfg.model);
         String msg = st.cfg.chatMessage + " #" + (idx + 1);
         msg = applyThinkingDirective(msg, st.cfg.enableThinking, modelNameForDirective);
+        String sysPrompt = promptsRepository.findByPromptCode("PORTAL_CHAT_ASSISTANT")
+                .map(com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity::getSystemPrompt)
+                .orElse("You are a helpful assistant.");
         List<ChatMessage> messages = List.of(
-                ChatMessage.system("你是一个严谨、专业的中文助手。"),
+                ChatMessage.system(sysPrompt),
                 ChatMessage.user(msg)
         );
         Map<String, Object> reqJson = new HashMap<>();

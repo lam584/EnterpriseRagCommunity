@@ -13,7 +13,8 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class HybridRetrievalConfigService {
 
-    public static final String KEY_CONFIG_JSON = "retrieval.hybrid.config.json";
+    public static final String KEY_CONFIG_JSON = "retrieval_hybrid_config";
+    public static final String KEY_CONFIG_JSON_LEGACY = "retrieval.hybrid.config.json";
 
     private final AppSettingsService appSettingsService;
     private final ObjectMapper objectMapper;
@@ -21,6 +22,9 @@ public class HybridRetrievalConfigService {
     @Transactional(readOnly = true)
     public HybridRetrievalConfigDTO getConfig() {
         String json = appSettingsService.getString(KEY_CONFIG_JSON).orElse(null);
+        if (json == null || json.isBlank()) {
+            json = appSettingsService.getString(KEY_CONFIG_JSON_LEGACY).orElse(null);
+        }
         if (json == null || json.isBlank()) return defaultConfig();
         try {
             HybridRetrievalConfigDTO cfg = objectMapper.readValue(json, HybridRetrievalConfigDTO.class);
@@ -42,6 +46,7 @@ public class HybridRetrievalConfigService {
         try {
             String json = objectMapper.writeValueAsString(cfg);
             appSettingsService.upsertString(KEY_CONFIG_JSON, json);
+            appSettingsService.upsertString(KEY_CONFIG_JSON_LEGACY, json);
         } catch (Exception e) {
             throw new IllegalStateException("保存配置失败: " + e.getMessage(), e);
         }
@@ -62,11 +67,14 @@ public class HybridRetrievalConfigService {
         dto.setBm25ContentBoost(1.0);
 
         dto.setVecK(50);
+        dto.setFileVecEnabled(true);
+        dto.setFileVecK(30);
 
         dto.setHybridK(30);
         dto.setFusionMode("RRF");
         dto.setBm25Weight(1.0);
         dto.setVecWeight(1.0);
+        dto.setFileVecWeight(1.0);
         dto.setRrfK(60);
 
         dto.setRerankEnabled(true);
@@ -88,10 +96,15 @@ public class HybridRetrievalConfigService {
 
         int bm25K = clampInt(dto.getBm25K(), 0, 1000, 50);
         int vecK = clampInt(dto.getVecK(), 0, 1000, 50);
+        boolean fileVecEnabled = dto.getFileVecEnabled() == null || Boolean.TRUE.equals(dto.getFileVecEnabled());
+        int fileVecK = clampInt(dto.getFileVecK(), 0, 1000, 30);
+        if (!fileVecEnabled) fileVecK = 0;
         int hybridK = clampInt(dto.getHybridK(), 1, 1000, 30);
 
         dto.setBm25K(bm25K);
         dto.setVecK(vecK);
+        dto.setFileVecEnabled(fileVecEnabled);
+        dto.setFileVecK(fileVecK);
         dto.setHybridK(hybridK);
 
         dto.setBm25TitleBoost(clampDouble(dto.getBm25TitleBoost(), 0.1, 10.0, 2.0));
@@ -103,6 +116,7 @@ public class HybridRetrievalConfigService {
 
         dto.setBm25Weight(clampDouble(dto.getBm25Weight(), 0.0, 100.0, 1.0));
         dto.setVecWeight(clampDouble(dto.getVecWeight(), 0.0, 100.0, 1.0));
+        dto.setFileVecWeight(clampDouble(dto.getFileVecWeight(), 0.0, 100.0, 1.0));
         dto.setRrfK(clampInt(dto.getRrfK(), 1, 1000, 60));
 
         dto.setRerankEnabled(Boolean.TRUE.equals(dto.getRerankEnabled()));

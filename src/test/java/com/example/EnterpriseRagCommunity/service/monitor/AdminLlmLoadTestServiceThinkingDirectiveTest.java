@@ -7,6 +7,7 @@ import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmPriceConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.LlmLoadTestRunDetailRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.LlmLoadTestRunHistoryRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.OpenSearchTokenizeService;
 import com.example.EnterpriseRagCommunity.service.ai.TokenCountService;
@@ -69,7 +70,8 @@ public class AdminLlmLoadTestServiceThinkingDirectiveTest {
                 llmModelRepository,
                 llmPriceConfigRepository,
                 llmLoadTestRunDetailRepository,
-                llmLoadTestRunHistoryRepository
+                llmLoadTestRunHistoryRepository,
+                mock(PromptsRepository.class)
         );
 
         try {
@@ -138,7 +140,8 @@ public class AdminLlmLoadTestServiceThinkingDirectiveTest {
                 llmModelRepository,
                 llmPriceConfigRepository,
                 llmLoadTestRunDetailRepository,
-                llmLoadTestRunHistoryRepository
+                llmLoadTestRunHistoryRepository,
+                mock(PromptsRepository.class)
         );
 
         try {

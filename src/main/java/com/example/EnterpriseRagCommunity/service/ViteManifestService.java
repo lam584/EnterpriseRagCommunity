@@ -37,8 +37,7 @@ public class ViteManifestService {
             logger.debug("manifest.json解析完成，开始提取入口信息");
             
             int count = 0;
-            for (Iterator<Map.Entry<String, JsonNode>> it = root.fields(); it.hasNext(); ) {
-                Map.Entry<String, JsonNode> entry = it.next();
+            for (Map.Entry<String, JsonNode> entry : root.properties()) {
                 String key = entry.getKey();
                 JsonNode value = entry.getValue();
                 manifest.put(key, value);

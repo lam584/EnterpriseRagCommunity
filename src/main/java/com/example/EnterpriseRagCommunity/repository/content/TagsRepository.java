@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -17,4 +19,6 @@ public interface TagsRepository extends JpaRepository<TagsEntity, Long>, JpaSpec
     Page<TagsEntity> findByIsActiveTrue(Pageable pageable);
     Page<TagsEntity> findByIsSystemFalseAndIsActiveTrue(Pageable pageable);
     Optional<TagsEntity> findByTenantIdAndTypeAndSlug(Long tenantId, TagType type, String slug);
+    List<TagsEntity> findByTypeAndIsActiveTrue(TagType type);
+    List<TagsEntity> findAllByTenantIdAndTypeAndSlugIn(Long tenantId, TagType type, Collection<String> slugs);
 }

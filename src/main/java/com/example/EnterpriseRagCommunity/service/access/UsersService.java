@@ -5,10 +5,15 @@ import com.example.EnterpriseRagCommunity.dto.access.UsersQueryDTO;
 import com.example.EnterpriseRagCommunity.dto.access.UsersUpdateDTO;
 import com.example.EnterpriseRagCommunity.entity.access.UserRoleLinksEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.entity.access.RolesEntity;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
+import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
+import com.example.EnterpriseRagCommunity.repository.access.RolesRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UserRoleLinksRepository;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -23,8 +28,12 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,7 +42,9 @@ public class UsersService {
 
     private final UsersRepository usersRepository;
     private final UserRoleLinksRepository userRoleLinksRepository;
+    private final RolesRepository rolesRepository;
     private final RbacAuditService rbacAuditService;
+    private final AuditLogWriter auditLogWriter;
     private final PasswordEncoder passwordEncoder;
     private final CommentsRepository commentsRepository;
     private final PostsRepository postsRepository;
@@ -180,6 +191,78 @@ public class UsersService {
     }
 
     @Transactional
+    public UsersEntity banUser(Long userId, Long actorUserId, String actorName, String reason, String sourceType, Long sourceId) {
+        if (userId == null) throw new IllegalArgumentException("userId 不能为空");
+        String r = reason == null ? "" : reason.trim();
+        if (r.isEmpty()) throw new IllegalArgumentException("reason 不能为空");
+
+        UsersEntity entity = usersRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        if (Boolean.TRUE.equals(entity.getIsDeleted()) || entity.getStatus() == AccountStatus.DELETED) {
+            throw new IllegalStateException("用户已删除，不能封禁");
+        }
+
+        entity.setStatus(AccountStatus.DISABLED);
+        entity.setSessionInvalidatedAt(LocalDateTime.now());
+        bumpAccessVersion(entity);
+        entity.setMetadata(upsertBanMetadata(entity.getMetadata(), true, actorUserId, actorName, r, sourceType, sourceId));
+        entity.setUpdatedAt(LocalDateTime.now());
+        UsersEntity saved = usersRepository.save(entity);
+
+        auditLogWriter.write(
+                actorUserId,
+                actorName,
+                "USER_BAN",
+                "USERS",
+                userId,
+                AuditResult.SUCCESS,
+                "封禁用户",
+                "ban-" + UUID.randomUUID(),
+                Map.of(
+                        "reason", r,
+                        "sourceType", sourceType,
+                        "sourceId", sourceId
+                )
+        );
+        return saved;
+    }
+
+    @Transactional
+    public UsersEntity unbanUser(Long userId, Long actorUserId, String actorName, String reason) {
+        if (userId == null) throw new IllegalArgumentException("userId 不能为空");
+        String r = reason == null ? "" : reason.trim();
+        if (r.isEmpty()) throw new IllegalArgumentException("reason 不能为空");
+
+        UsersEntity entity = usersRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        if (Boolean.TRUE.equals(entity.getIsDeleted()) || entity.getStatus() == AccountStatus.DELETED) {
+            throw new IllegalStateException("用户已删除，不能解封");
+        }
+
+        if (entity.getStatus() == AccountStatus.DISABLED) {
+            entity.setStatus(AccountStatus.ACTIVE);
+        }
+        entity.setSessionInvalidatedAt(LocalDateTime.now());
+        bumpAccessVersion(entity);
+        entity.setMetadata(upsertBanMetadata(entity.getMetadata(), false, actorUserId, actorName, r, null, null));
+        entity.setUpdatedAt(LocalDateTime.now());
+        UsersEntity saved = usersRepository.save(entity);
+
+        auditLogWriter.write(
+                actorUserId,
+                actorName,
+                "USER_UNBAN",
+                "USERS",
+                userId,
+                AuditResult.SUCCESS,
+                "解封用户",
+                "unban-" + UUID.randomUUID(),
+                Map.of("reason", r)
+        );
+        return saved;
+    }
+
+    @Transactional
     public void assignRoles(Long userId, List<Long> roleIds) {
         // Verify user exists
         if (userId == null || !usersRepository.existsById(userId)) {
@@ -195,6 +278,15 @@ public class UsersService {
 
         // De-duplicate to avoid redundant inserts
         List<Long> normalizedRoleIds = roleIds.stream().distinct().collect(Collectors.toList());
+
+        if (!normalizedRoleIds.isEmpty()) {
+            List<RolesEntity> found = rolesRepository.findAllById(normalizedRoleIds);
+            Set<Long> foundIds = found.stream().map(RolesEntity::getRoleId).collect(Collectors.toSet());
+            List<Long> missing = normalizedRoleIds.stream().filter(id -> !foundIds.contains(id)).toList();
+            if (!missing.isEmpty()) {
+                throw new IllegalArgumentException("roleIds 包含不存在的角色ID: " + missing);
+            }
+        }
 
         // Remove existing roles first (empty list means clear all roles)
         List<UserRoleLinksEntity> existingLinks = userRoleLinksRepository.findByUserId(userId);
@@ -227,12 +319,52 @@ public class UsersService {
         try {
             UsersEntity u = usersRepository.findById(userId).orElse(null);
             if (u == null) return;
-            long v = u.getAccessVersion() == null ? 0L : u.getAccessVersion();
-            u.setAccessVersion(v + 1L);
+            bumpAccessVersion(u);
             u.setUpdatedAt(LocalDateTime.now());
             usersRepository.save(u);
         } catch (Exception ignored) {
         }
+    }
+
+    private static void bumpAccessVersion(UsersEntity u) {
+        long v = u.getAccessVersion() == null ? 0L : u.getAccessVersion();
+        u.setAccessVersion(v + 1L);
+    }
+
+    private static Map<String, Object> upsertBanMetadata(
+            Map<String, Object> input,
+            boolean active,
+            Long actorUserId,
+            String actorName,
+            String reason,
+            String sourceType,
+            Long sourceId
+    ) {
+        Map<String, Object> meta = input == null ? new LinkedHashMap<>() : new LinkedHashMap<>(input);
+        Map<String, Object> ban = new LinkedHashMap<>();
+        Object existing = meta.get("ban");
+        if (existing instanceof Map<?, ?> m) {
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                if (e.getKey() == null) continue;
+                ban.put(String.valueOf(e.getKey()), e.getValue());
+            }
+        }
+        ban.put("active", active);
+        if (active) {
+            ban.put("bannedAt", LocalDateTime.now().toString());
+            ban.put("bannedById", actorUserId);
+            ban.put("bannedBy", actorName);
+            ban.put("reason", reason);
+            if (sourceType != null && !sourceType.isBlank()) ban.put("sourceType", sourceType.trim());
+            if (sourceId != null) ban.put("sourceId", sourceId);
+        } else {
+            ban.put("unbannedAt", LocalDateTime.now().toString());
+            ban.put("unbannedById", actorUserId);
+            ban.put("unbannedBy", actorName);
+            ban.put("unbanReason", reason);
+        }
+        meta.put("ban", ban);
+        return meta;
     }
 
     public List<UserRoleLinksEntity> getUserRoles(Long userId) {

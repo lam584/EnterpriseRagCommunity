@@ -9,4 +9,6 @@ import java.util.List;
 @Repository
 public interface QaMessageSourcesRepository extends JpaRepository<QaMessageSourcesEntity, Long> {
     List<QaMessageSourcesEntity> findByMessageIdInOrderByMessageIdAscSourceIndexAsc(List<Long> messageIds);
+
+    void deleteByMessageIdIn(List<Long> messageIds);
 }

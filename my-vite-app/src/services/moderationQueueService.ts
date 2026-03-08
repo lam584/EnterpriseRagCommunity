@@ -1,7 +1,7 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 import type { SpringPage } from '../types/page';
 
-export type ContentType = 'POST' | 'COMMENT';
+export type ContentType = 'POST' | 'COMMENT' | 'PROFILE';
 export type ModerationCaseType = 'CONTENT' | 'REPORT';
 export type QueueStatus = 'PENDING' | 'REVIEWING' | 'HUMAN' | 'APPROVED' | 'REJECTED';
 export type QueueStage = 'RULE' | 'VEC' | 'LLM' | 'HUMAN';
@@ -26,6 +26,14 @@ export type ModerationQueueItem = {
   createdAt: string;
   updatedAt: string;
   riskTags?: string[];
+  riskTagItems?: Array<{ slug: string; name: string }>;
+  chunkProgress?: {
+    status?: string | null;
+    totalChunks?: number | null;
+    completedChunks?: number | null;
+    failedChunks?: number | null;
+    updatedAt?: string | null;
+  } | null;
   summary?: ModerationQueueSummary | null;
 };
 
@@ -46,6 +54,12 @@ export type ModerationQueueDetail = ModerationQueueItem & {
       width?: number | null;
       height?: number | null;
       createdAt?: string | null;
+      extractStatus?: string | null;
+      extractedTextChars?: number | null;
+      extractedTextSnippet?: string | null;
+      extractedMetadataJsonSnippet?: string | null;
+      extractionErrorMessage?: string | null;
+      extractionUpdatedAt?: string | null;
     }> | null;
     status?: string | null;
     createdAt?: string | null;
@@ -59,6 +73,20 @@ export type ModerationQueueDetail = ModerationQueueItem & {
     status?: string | null;
     createdAt?: string | null;
   } | null;
+  profile?: {
+    id: number;
+    publicUsername?: string | null;
+    publicAvatarUrl?: string | null;
+    publicBio?: string | null;
+    publicLocation?: string | null;
+    publicWebsite?: string | null;
+    pendingUsername?: string | null;
+    pendingAvatarUrl?: string | null;
+    pendingBio?: string | null;
+    pendingLocation?: string | null;
+    pendingWebsite?: string | null;
+    pendingSubmittedAt?: string | null;
+  } | null;
   reports?: Array<{
     id: number;
     reporterId?: number | null;
@@ -67,6 +95,41 @@ export type ModerationQueueDetail = ModerationQueueItem & {
     status?: string | null;
     createdAt?: string | null;
   }>;
+};
+
+export type ModerationChunkProgress = {
+  queueId: number;
+  status?: string | null;
+  totalChunks?: number | null;
+  completedChunks?: number | null;
+  failedChunks?: number | null;
+  runningChunks?: number | null;
+  updatedAt?: string | null;
+  chunks?: Array<{
+    id: number;
+    sourceType?: string | null;
+    fileAssetId?: number | null;
+    fileName?: string | null;
+    chunkIndex?: number | null;
+    startOffset?: number | null;
+    endOffset?: number | null;
+    status?: string | null;
+    verdict?: string | null;
+    confidence?: number | null;
+    score?: number | null;
+    attempts?: number | null;
+    lastError?: string | null;
+    decidedAt?: string | null;
+    elapsedMs?: number | null;
+  }>;
+};
+
+export type ModerationQueueBatchRequeueResponse = {
+  total?: number | null;
+  success?: number | null;
+  failed?: number | null;
+  successIds?: number[];
+  failedItems?: Array<{ id?: number | null; error?: string | null }>;
 };
 
 export type ModerationQueueListQuery = {
@@ -146,7 +209,7 @@ export async function adminListModerationQueue(query: ModerationQueueListQuery =
 }
 
 export async function adminGetModerationQueueDetail(id: number): Promise<ModerationQueueDetail> {
-  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}`), {
+  const res = await fetch(apiUrl(`api/admin/moderation/queue/${id}`), {
     method: 'GET',
     credentials: 'include',
   });
@@ -154,6 +217,39 @@ export async function adminGetModerationQueueDetail(id: number): Promise<Moderat
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '获取审核任务详情失败');
   return data as ModerationQueueDetail;
+}
+
+export async function adminGetModerationQueueChunkProgress(
+  id: number,
+  opts: { includeChunks?: boolean; limit?: number } = {},
+): Promise<ModerationChunkProgress> {
+  const qs = buildQuery({
+    includeChunks: opts.includeChunks ? 1 : 0,
+    limit: opts.limit ?? 80,
+  });
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/chunk-progress${qs}`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取分片进度失败');
+  return data as ModerationChunkProgress;
+}
+
+export async function adminBatchRequeueModerationQueue(ids: number[], reason: string): Promise<ModerationQueueBatchRequeueResponse> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/batch/requeue`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({ ids: ids ?? [], reason }),
+  });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '批量进入再次审核失败');
+  return data as ModerationQueueBatchRequeueResponse;
 }
 
 export async function adminGetModerationQueueRiskTags(id: number): Promise<string[]> {
@@ -247,6 +343,23 @@ export async function adminOverrideRejectModerationQueue(id: number, reason: str
 
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '覆核驳回失败');
+  return data as ModerationQueueDetail;
+}
+
+export async function adminBanModerationQueueUser(id: number, reason: string): Promise<ModerationQueueDetail> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/admin/moderation/queue/${id}/ban-user`), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+    body: JSON.stringify({ reason }),
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '封禁用户失败');
   return data as ModerationQueueDetail;
 }
 

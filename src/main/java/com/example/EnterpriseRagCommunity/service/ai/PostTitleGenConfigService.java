@@ -6,8 +6,10 @@ import com.example.EnterpriseRagCommunity.dto.ai.PostTitleGenPublicConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenHistoryEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
+import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenHistoryRepository;
+import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -28,26 +30,14 @@ public class PostTitleGenConfigService {
     public static final int DEFAULT_DEFAULT_COUNT = 5;
     public static final int DEFAULT_MAX_COUNT = 10;
     public static final int DEFAULT_MAX_CONTENT_CHARS = 4000;
-
-    public static final String DEFAULT_SYSTEM_PROMPT = "你是专业的中文社区运营编辑，擅长给帖子拟标题。";
-    public static final String DEFAULT_PROMPT_TEMPLATE = """
-请为下面这段社区帖子内容生成 {{count}} 个中文标题候选。
-要求：
-- 每个标题不超过 30 个汉字
-- 风格适度多样（提问式/总结式/爆点式），但不要低俗
-- 标题之间不要重复
-- 只输出严格 JSON，不要输出任何解释文字
-- JSON 格式：{"titles":["...", "..."]}
-
-{{boardLine}}{{tagsLine}}帖子内容：
-{{content}}
-""";
+    public static final String DEFAULT_PROMPT_CODE = "TITLE_GEN";
 
     private static final SuggestionKind KIND = SuggestionKind.TITLE;
     private static final String GROUP_CODE = "POST_SUGGESTION";
 
     private final PostSuggestionGenConfigRepository configRepository;
     private final PostSuggestionGenHistoryRepository historyRepository;
+    private final PromptsRepository promptsRepository;
 
     @Transactional(readOnly = true)
     public PostTitleGenConfigDTO getAdminConfig() {
@@ -116,13 +106,7 @@ public class PostTitleGenConfigService {
         e.setGroupCode(GROUP_CODE);
         e.setKind(KIND);
         e.setEnabled(Boolean.TRUE);
-        e.setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
-        e.setPromptTemplate(DEFAULT_PROMPT_TEMPLATE);
-        e.setModel(null);
-        e.setProviderId(null);
-        e.setTemperature(0.4);
-        e.setTopP(0.9);
-        e.setEnableThinking(Boolean.FALSE);
+        e.setPromptCode(DEFAULT_PROMPT_CODE);
         e.setDefaultCount(DEFAULT_DEFAULT_COUNT);
         e.setMaxCount(DEFAULT_MAX_COUNT);
         e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
@@ -138,11 +122,13 @@ public class PostTitleGenConfigService {
     private PostSuggestionGenConfigEntity mergeAndValidate(PostSuggestionGenConfigEntity base, PostTitleGenConfigDTO payload) {
         if (payload == null) throw new IllegalArgumentException("payload 不能为空");
 
-        String systemPrompt = payload.getSystemPrompt() == null ? "" : payload.getSystemPrompt().trim();
-        String promptTemplate = payload.getPromptTemplate() == null ? "" : payload.getPromptTemplate().trim();
-        if (systemPrompt.isBlank()) throw new IllegalArgumentException("systemPrompt 不能为空");
-        if (promptTemplate.isBlank()) throw new IllegalArgumentException("promptTemplate 不能为空");
-        if (promptTemplate.length() > 20000) throw new IllegalArgumentException("promptTemplate 过长（>20000），请精简");
+        String promptCode = payload.getPromptCode();
+        if (promptCode == null || promptCode.isBlank()) {
+            throw new IllegalArgumentException("promptCode 不能为空");
+        }
+        if (promptCode.length() > 64) {
+             throw new IllegalArgumentException("promptCode 长度不能超过 64");
+        }
 
         Integer defaultCount = payload.getDefaultCount();
         Integer maxCount = payload.getMaxCount();
@@ -156,32 +142,16 @@ public class PostTitleGenConfigService {
         if (maxContentChars == null) maxContentChars = DEFAULT_MAX_CONTENT_CHARS;
         if (maxContentChars < 200 || maxContentChars > 50000) throw new IllegalArgumentException("maxContentChars 需在 [200,50000] 范围内");
 
-        Double temperature = payload.getTemperature();
-        if (temperature != null && (temperature < 0 || temperature > 2)) {
-            throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
-        }
-
-        Double topP = payload.getTopP();
-        if (topP != null && (topP < 0 || topP > 1)) {
-            throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
-        }
-
         Integer historyKeepDays = payload.getHistoryKeepDays();
         if (historyKeepDays != null && historyKeepDays < 1) throw new IllegalArgumentException("historyKeepDays 必须为正数");
         Integer historyKeepRows = payload.getHistoryKeepRows();
         if (historyKeepRows != null && historyKeepRows < 1) throw new IllegalArgumentException("historyKeepRows 必须为正数");
 
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
-        base.setSystemPrompt(systemPrompt);
-        base.setPromptTemplate(promptTemplate);
+        base.setPromptCode(promptCode);
 
-        String model = payload.getModel();
-        base.setModel(model == null || model.isBlank() ? null : model.trim());
-        String providerId = payload.getProviderId();
-        base.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
-        base.setTemperature(temperature);
-        base.setTopP(topP);
-        base.setEnableThinking(Boolean.TRUE.equals(payload.getEnableThinking()));
+        promptsRepository.findByPromptCode(promptCode)
+            .orElseThrow(() -> new IllegalArgumentException("promptCode 不存在: " + promptCode));
 
         base.setDefaultCount(defaultCount);
         base.setMaxCount(maxCount);
@@ -198,13 +168,15 @@ public class PostTitleGenConfigService {
         dto.setId(e.getId());
         dto.setVersion(e.getVersion());
         dto.setEnabled(e.getEnabled());
-        dto.setSystemPrompt(e.getSystemPrompt());
-        dto.setPromptTemplate(e.getPromptTemplate());
-        dto.setModel(e.getModel());
-        dto.setProviderId(e.getProviderId());
-        dto.setTemperature(e.getTemperature());
-        dto.setTopP(e.getTopP());
-        dto.setEnableThinking(e.getEnableThinking());
+        dto.setPromptCode(e.getPromptCode());
+        PromptsEntity prompt = (e.getPromptCode() == null || e.getPromptCode().isBlank())
+            ? null
+            : promptsRepository.findByPromptCode(e.getPromptCode()).orElse(null);
+        dto.setModel(prompt != null ? prompt.getModelName() : null);
+        dto.setProviderId(prompt != null ? prompt.getProviderId() : null);
+        dto.setTemperature(prompt != null ? prompt.getTemperature() : null);
+        dto.setTopP(prompt != null ? prompt.getTopP() : null);
+        dto.setEnableThinking(prompt != null ? prompt.getEnableDeepThinking() : null);
         dto.setDefaultCount(e.getDefaultCount());
         dto.setMaxCount(e.getMaxCount());
         dto.setMaxContentChars(e.getMaxContentChars());
@@ -228,12 +200,6 @@ public class PostTitleGenConfigService {
         dto.setAppliedMaxContentChars(e.getAppliedMaxContentChars());
         dto.setContentLen(e.getContentLen());
         dto.setContentExcerpt(e.getContentExcerpt());
-
-        dto.setModel(e.getModel());
-        dto.setTemperature(e.getTemperature());
-        dto.setTopP(e.getTopP());
-        dto.setLatencyMs(e.getLatencyMs());
-        dto.setPromptVersion(e.getPromptVersion());
 
         dto.setTags(toStringList(e.getInputTagsJson()));
         dto.setTitles(toStringList(e.getOutputJson()));

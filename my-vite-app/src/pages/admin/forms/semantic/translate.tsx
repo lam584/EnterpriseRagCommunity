@@ -7,6 +7,7 @@ import {
   type SemanticTranslateConfigDTO,
   type SemanticTranslateHistoryDTO,
 } from '../../../../services/translateAdminService';
+import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
 import {
   adminDeleteSupportedLanguage,
   adminUpdateSupportedLanguage,
@@ -17,11 +18,11 @@ import {
 import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
 import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
+import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
 
 type FormState = {
   enabled: boolean;
-  systemPrompt: string;
-  promptTemplate: string;
+  promptCode: string;
   model: string;
   providerId: string;
   temperature: string;
@@ -44,9 +45,7 @@ function parseOptionalNumber(raw: string): number | undefined {
 function defaultConfig(): SemanticTranslateConfigDTO {
   return {
     enabled: true,
-    systemPrompt:
-      '你是一个专业的翻译助手。\n要求：\n1. 把用户提供的标题与正文翻译成目标语言；\n2. 正文输出必须为 Markdown，尽量保留原文的结构（标题层级/列表/引用/代码块/表格等）；\n3. 不要添加与原文无关的内容，不要进行总结，不要输出额外解释；\n4. 输出严格为 JSON（不要包裹 ```），字段如下：\n   - title: 翻译后的标题（纯文本）\n   - markdown: 翻译后的正文 Markdown\n',
-    promptTemplate: '目标语言：{{targetLang}}\n\n标题：\n{{title}}\n\n正文（Markdown）：\n{{content}}\n',
+    promptCode: 'TRANSLATE_GEN',
     temperature: 0.2,
     topP: 0.4,
     enableThinking: false,
@@ -58,12 +57,19 @@ function defaultConfig(): SemanticTranslateConfigDTO {
   };
 }
 
+function toPromptDraft(dto?: PromptContentDTO | null): PromptContentDraft {
+  return {
+    name: dto?.name ?? '',
+    systemPrompt: dto?.systemPrompt ?? '',
+    userPromptTemplate: dto?.userPromptTemplate ?? '',
+  };
+}
+
 function toFormState(cfg?: SemanticTranslateConfigDTO | null): FormState {
   const codes = (cfg?.allowedTargetLanguages?.length ? cfg.allowedTargetLanguages : []).filter(Boolean);
   return {
     enabled: Boolean(cfg?.enabled),
-    systemPrompt: cfg?.systemPrompt ?? '',
-    promptTemplate: cfg?.promptTemplate ?? '',
+    promptCode: cfg?.promptCode ?? 'TRANSLATE_GEN',
     model: cfg?.model ?? '',
     providerId: cfg?.providerId ?? '',
     temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
@@ -79,10 +85,7 @@ function toFormState(cfg?: SemanticTranslateConfigDTO | null): FormState {
 
 function validateForm(s: FormState): string[] {
   const errors: string[] = [];
-  if (!s.systemPrompt.trim()) errors.push('systemPrompt 不能为空');
-  if (!s.promptTemplate.trim()) errors.push('promptTemplate 不能为空');
-  if (s.promptTemplate.trim().length < 50) errors.push('promptTemplate 建议不少于 50 个字符（避免过短导致输出不稳定）');
-  if (s.promptTemplate.length > 20000) errors.push('promptTemplate 过长（> 20000），请精简');
+  if (!s.promptCode.trim()) errors.push('promptCode 不能为空');
 
   const temp = parseOptionalNumber(s.temperature);
   if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
@@ -101,8 +104,6 @@ function validateForm(s: FormState): string[] {
 }
 
 function buildPayload(s: FormState) {
-  const temperature = parseOptionalNumber(s.temperature);
-  const topP = parseOptionalNumber(s.topP);
   const maxContentChars = parseOptionalNumber(s.maxContentChars);
   const historyKeepDays = parseOptionalNumber(s.historyKeepDays);
   const historyKeepRows = parseOptionalNumber(s.historyKeepRows);
@@ -111,13 +112,7 @@ function buildPayload(s: FormState) {
 
   return {
     enabled: s.enabled,
-    systemPrompt: s.systemPrompt,
-    promptTemplate: s.promptTemplate,
-    model: s.model.trim() ? s.model.trim() : null,
-    providerId: s.providerId.trim() ? s.providerId.trim() : null,
-    temperature: temperature === undefined ? null : temperature,
-    topP: topP === undefined ? null : topP,
-    enableThinking: s.enableThinking,
+    promptCode: s.promptCode,
     maxContentChars: maxContentChars === undefined ? 8000 : Math.trunc(maxContentChars),
     historyEnabled: s.historyEnabled,
     historyKeepDays: historyKeepDays === undefined ? null : Math.trunc(historyKeepDays),
@@ -135,6 +130,10 @@ const TranslateForm: React.FC = () => {
   const [providers, setProviders] = useState<AiProviderDTO[]>([]);
   const [activeProviderId, setActiveProviderId] = useState<string>('');
   const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
+
+  const [promptLoadError, setPromptLoadError] = useState<string | null>(null);
+  const [committedPromptDraft, setCommittedPromptDraft] = useState<PromptContentDraft | null>(null);
+  const [promptDraft, setPromptDraft] = useState<PromptContentDraft | null>(null);
 
   const [editing, setEditing] = useState(false);
   const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(defaultConfig()));
@@ -156,7 +155,12 @@ const TranslateForm: React.FC = () => {
 
   const formErrors = useMemo(() => validateForm(form), [form]);
   const canSave = formErrors.length === 0;
-  const hasUnsavedChanges = useMemo(() => JSON.stringify(form) !== JSON.stringify(committedForm), [form, committedForm]);
+  const formHasUnsavedChanges = useMemo(() => JSON.stringify(form) !== JSON.stringify(committedForm), [form, committedForm]);
+  const promptHasUnsavedChanges = useMemo(
+    () => JSON.stringify(promptDraft) !== JSON.stringify(committedPromptDraft),
+    [promptDraft, committedPromptDraft],
+  );
+  const hasUnsavedChanges = formHasUnsavedChanges || promptHasUnsavedChanges;
 
   useEffect(() => {
     let cancelled = false;
@@ -216,13 +220,31 @@ const TranslateForm: React.FC = () => {
     setLoading(true);
     setError(null);
     setSavedHint(null);
+    setPromptLoadError(null);
     try {
       const cfg = await adminGetTranslateConfig();
-      const merged = { ...defaultConfig(), ...cfg };
+      const merged = cfg.promptCode ? { ...defaultConfig(), ...cfg } : { ...defaultConfig(), ...cfg, promptCode: defaultConfig().promptCode };
       const next = toFormState(merged);
       setCommittedForm(next);
       setForm(next);
       setEditing(false);
+
+      try {
+        const resp = await adminBatchGetPrompts([next.promptCode]);
+        const dto = resp.prompts?.[0];
+        if (!dto || (resp.missingCodes ?? []).length) {
+          setCommittedPromptDraft(null);
+          setPromptDraft(null);
+        } else {
+          const draft = toPromptDraft(dto);
+          setCommittedPromptDraft(draft);
+          setPromptDraft(draft);
+        }
+      } catch (e: unknown) {
+        setPromptLoadError(e instanceof Error ? e.message : String(e));
+        setCommittedPromptDraft(null);
+        setPromptDraft(null);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -358,18 +380,36 @@ const TranslateForm: React.FC = () => {
     try {
       const payload = buildPayload(form);
       const saved = await adminUpsertTranslateConfig(payload);
+
+      let promptUpdateErr: string | null = null;
+      if (promptDraft && promptHasUnsavedChanges) {
+        try {
+          await adminUpdatePromptContent(form.promptCode, {
+            systemPrompt: promptDraft.systemPrompt,
+            userPromptTemplate: promptDraft.userPromptTemplate,
+          });
+          setCommittedPromptDraft(promptDraft);
+        } catch (e: unknown) {
+          promptUpdateErr = e instanceof Error ? e.message : String(e);
+        }
+      }
+
       const merged = { ...defaultConfig(), ...saved };
       const next = toFormState(merged);
       setCommittedForm(next);
       setForm(next);
       setEditing(false);
-      setSavedHint('保存成功');
+      if (promptUpdateErr) {
+        setError(`配置已保存，但提示词保存失败：${promptUpdateErr}`);
+      } else {
+        setSavedHint('保存成功');
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
-  }, [saving, canSave, hasUnsavedChanges, form]);
+  }, [saving, canSave, hasUnsavedChanges, form, promptDraft, promptHasUnsavedChanges]);
 
   const totalPages = useMemo(() => {
     const total = historyPage?.totalElements ?? 0;
@@ -447,6 +487,7 @@ const TranslateForm: React.FC = () => {
                   className="rounded border px-3 py-1.5 text-sm"
                   onClick={() => {
                     setForm(committedForm);
+                    setPromptDraft(committedPromptDraft);
                     setEditing(false);
                     setError(null);
                     setSavedHint(null);
@@ -554,24 +595,16 @@ const TranslateForm: React.FC = () => {
             </div>
           </div>
           <div className="space-y-3 xl:-ml-[100px]">
-            <div>
-              <div className="text-sm font-medium text-gray-700 mb-1">系统提示词</div>
-              <textarea
-                className="w-full rounded border px-3 py-2 border-gray-300 min-h-[240px]"
-                value={form.systemPrompt}
-                disabled={!editing}
-                onChange={(e) => setForm((p) => ({ ...p, systemPrompt: e.target.value }))}
-              />
-            </div>
-            <div>
-              <div className="text-sm font-medium text-gray-700 mb-1">提示词模板</div>
-              <textarea
-                className="w-full rounded border px-3 py-2 border-gray-300 min-h-[140px] font-mono text-xs"
-                value={form.promptTemplate}
-                disabled={!editing}
-                onChange={(e) => setForm((p) => ({ ...p, promptTemplate: e.target.value }))}
-              />
-            </div>
+            <PromptContentCard
+              title="翻译提示词"
+              draft={promptDraft}
+              editing={editing}
+              onChange={(next) => {
+                setPromptDraft(next);
+                setSavedHint(null);
+              }}
+              hint={promptLoadError ?? '引用 prompts 表中的 prompt_code'}
+            />
           </div>
 
           <div className="space-y-3">

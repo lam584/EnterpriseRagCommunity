@@ -41,6 +41,14 @@ export type QaSearchHitDTO = {
   createdAt: string;
 };
 
+export type QaCompressContextResultDTO = {
+  sessionId: number;
+  summaryMessageId?: number | null;
+  compressedDeletedCount?: number | null;
+  keptLast?: number | null;
+  summary?: string | null;
+};
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(path), {
@@ -73,50 +81,56 @@ export async function listQaSessions(page = 0, size = 20) {
 }
 
 export async function getQaSessionMessages(sessionId: number) {
-  return apiFetch<QaMessageDTO[]>(`/api/ai/qa/sessions/${sessionId}/messages`);
+  return apiFetch<QaMessageDTO[]>(`api/ai/qa/sessions/${sessionId}/messages`);
 }
 
 export async function searchQaHistory(q: string, page = 0, size = 20) {
   const qs = new URLSearchParams({ q, page: String(page), size: String(size) });
   return apiFetch<{ content: QaSearchHitDTO[]; totalElements: number; number: number; size: number }>(
-    `/api/ai/qa/search?${qs.toString()}`
+    `api/ai/qa/search?${qs.toString()}`
   );
 }
 
 export async function updateQaSession(sessionId: number, payload: { title?: string; isActive?: boolean }) {
-  return apiFetch<QaSessionDTO>(`/api/ai/qa/sessions/${sessionId}`, {
+  return apiFetch<QaSessionDTO>(`api/ai/qa/sessions/${sessionId}`, {
     method: 'PATCH',
     body: JSON.stringify(payload)
   });
 }
 
+export async function compressQaSessionContext(sessionId: number) {
+  return apiFetch<QaCompressContextResultDTO>(`api/ai/qa/sessions/${sessionId}/compress-context`, {
+    method: 'POST'
+  });
+}
+
 export async function deleteQaSession(sessionId: number) {
-  return apiFetch<void>(`/api/ai/qa/sessions/${sessionId}`, {
+  return apiFetch<void>(`api/ai/qa/sessions/${sessionId}`, {
     method: 'DELETE'
   });
 }
 
 export async function updateQaMessage(messageId: number, payload: { content: string }) {
-  return apiFetch<void>(`/api/ai/qa/messages/${messageId}`, {
+  return apiFetch<void>(`api/ai/qa/messages/${messageId}`, {
     method: 'PATCH',
     body: JSON.stringify(payload)
   });
 }
 
 export async function deleteQaMessage(messageId: number) {
-  return apiFetch<void>(`/api/ai/qa/messages/${messageId}`, {
+  return apiFetch<void>(`api/ai/qa/messages/${messageId}`, {
     method: 'DELETE'
   });
 }
 
 export async function toggleQaMessageFavorite(messageId: number) {
-  return apiFetch<boolean>(`/api/ai/qa/messages/${messageId}/favorite`, {
+  return apiFetch<boolean>(`api/ai/qa/messages/${messageId}/favorite`, {
     method: 'PATCH'
   });
 }
 
 export async function listFavoriteQaMessages(page = 0, size = 20) {
   return apiFetch<{ content: QaMessageDTO[]; totalElements: number; number: number; size: number }>(
-    `/api/ai/qa/favorites?page=${page}&size=${size}`
+    `api/ai/qa/favorites?page=${page}&size=${size}`
   );
 }

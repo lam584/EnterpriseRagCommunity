@@ -157,9 +157,11 @@ export default function PostsMinePage() {
         <div className="bg-white rounded-lg shadow-lg w-full max-w-4xl max-h-[85vh] flex flex-col">
           <div className="px-5 py-4 border-b flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="text-lg font-semibold truncate" title={post.title}>
-                {post.title}
-              </h3>
+              {(post.title ?? '').trim() ? (
+                <h3 className="text-lg font-semibold truncate" title={post.title}>
+                  {(post.title ?? '').trim()}
+                </h3>
+              ) : null}
               <div className="mt-1 text-xs text-gray-500 space-x-2">
                 <span>#{post.id}</span>
                 <span>{post.boardName ?? (post.boardId ? `板块#${post.boardId}` : '')}</span>

@@ -1,7 +1,7 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import { useNavigate } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/1.png';
-import { registerAndGetStatus, verifyRegister } from '../../services/authService';
+import { getRegistrationStatus, registerAndGetStatus, verifyRegister } from '../../services/authService';
 import AuthFooter from './AuthFooter';
 interface RegisterFormData {
     username: string;
@@ -42,6 +42,21 @@ const Register: React.FC = () => {
     const [registeredEmail, setRegisteredEmail] = useState<string>('');
     const [step, setStep] = useState<'form' | 'verify' | 'done'>('form');
     const [verifyCode, setVerifyCode] = useState('');
+    const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        (async () => {
+            try {
+                const s = await getRegistrationStatus();
+                setRegistrationEnabled(s.registrationEnabled);
+                if (!s.registrationEnabled) {
+                    setMessage({ type: 'error', text: '当前站点已关闭用户注册' });
+                }
+            } catch {
+                setRegistrationEnabled(true);
+            }
+        })();
+    }, []);
 
     // 表单验证
     const validateForm = () => {
@@ -86,6 +101,10 @@ const Register: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        if (registrationEnabled === false) {
+            setMessage({ type: 'error', text: '当前站点已关闭用户注册' });
+            return;
+        }
         if (!validateForm()) return;
 
         setLoading(true);
@@ -182,6 +201,20 @@ const Register: React.FC = () => {
                     )}
 
                     {step === 'form' ? (
+                        registrationEnabled === false ? (
+                            <div className="space-y-4">
+                                <div className="text-sm text-gray-700">
+                                    注册入口已关闭。如需开通，请联系管理员在后台开启“允许用户注册”。
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/login')}
+                                    className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                                >
+                                    返回登录
+                                </button>
+                            </div>
+                        ) : (
                     <form className="space-y-6" onSubmit={handleSubmit}>
                         {/* 用户名 */}
                         <div>
@@ -291,6 +324,7 @@ const Register: React.FC = () => {
                             </button>
                         </div>
                     </form>
+                        )
                     ) : null}
 
                     {step === 'verify' ? (

@@ -20,7 +20,6 @@ public record AdminModerationPipelineRunDTO(
         String errorCode,
         String errorMessage,
         String llmModel,
-        BigDecimal llmThreshold,
         LocalDateTime createdAt
 ) {
     public static AdminModerationPipelineRunDTO fromEntity(ModerationPipelineRunEntity e) {
@@ -39,7 +38,6 @@ public record AdminModerationPipelineRunDTO(
                 e.getErrorCode(),
                 e.getErrorMessage(),
                 e.getLlmModel(),
-                e.getLlmThreshold(),
                 e.getCreatedAt()
         );
     }

@@ -35,8 +35,11 @@ import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
 import com.example.EnterpriseRagCommunity.security.AccessChangedFilter;
 import com.example.EnterpriseRagCommunity.security.AccessLogsFilter;
+import com.example.EnterpriseRagCommunity.security.ContentSafetyCircuitBreakerFilter;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
+import com.example.EnterpriseRagCommunity.service.safety.ContentSafetyCircuitBreakerService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Configuration
 @EnableWebSecurity
@@ -56,25 +59,47 @@ public class SecurityConfig {
     @Autowired
     private AccessControlService accessControlService;
 
-    @Autowired
+    @Autowired(required = false)
     private AccessChangedFilter accessChangedFilter;
 
     @Autowired(required = false)
     private AccessLogsFilter accessLogsFilter;
+
+    @Autowired
+    private ContentSafetyCircuitBreakerService contentSafetyCircuitBreakerService;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Bean
     @Order(1) // API 链优先级更高，只拦截 /api/**
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         logger.debug("配置统一的安全过滤链...");
 
-        http
-                .securityMatcher("/api/**") // 仅匹配 API 请求，避免与 Web 链重叠
-                // Make RBAC changes effective immediately for session-based auth.
-                // Must run after SecurityContext is loaded from session.
-                .addFilterAfter(accessChangedFilter, SecurityContextHolderFilter.class);
+        http.securityMatcher("/api/**"); // 仅匹配 API 请求，避免与 Web 链重叠
+
+        // Make RBAC changes effective immediately for session-based auth.
+        // Must run after SecurityContext is loaded from session.
+        if (accessChangedFilter != null) {
+            http.addFilterAfter(accessChangedFilter, SecurityContextHolderFilter.class);
+        }
 
         if (accessLogsFilter != null) {
-            http.addFilterAfter(accessLogsFilter, AccessChangedFilter.class);
+            if (accessChangedFilter != null) {
+                http.addFilterAfter(accessLogsFilter, AccessChangedFilter.class);
+            } else {
+                http.addFilterAfter(accessLogsFilter, SecurityContextHolderFilter.class);
+            }
+        }
+
+        if (accessLogsFilter != null) {
+            http.addFilterAfter(contentSafetyCircuitBreakerFilter(), AccessLogsFilter.class);
+        } else {
+            if (accessChangedFilter != null) {
+                http.addFilterAfter(contentSafetyCircuitBreakerFilter(), AccessChangedFilter.class);
+            } else {
+                http.addFilterAfter(contentSafetyCircuitBreakerFilter(), SecurityContextHolderFilter.class);
+            }
         }
 
         http
@@ -175,6 +200,7 @@ public class SecurityConfig {
         logger.debug("配置 Web 安全过滤链开始...");
         http
                 .securityMatcher("/**") // 匹配所有其他请求
+                .addFilterAfter(contentSafetyCircuitBreakerFilter(), SecurityContextHolderFilter.class)
                 .cors(cors -> {
                     logger.debug("配置 CORS 开始...");
                     cors.configurationSource(corsConfigurationSource());
@@ -207,6 +233,11 @@ public class SecurityConfig {
                 });
         logger.debug("配置 Web 安全过滤链完成。");
         return http.build();
+    }
+
+    @Bean
+    public ContentSafetyCircuitBreakerFilter contentSafetyCircuitBreakerFilter() {
+        return new ContentSafetyCircuitBreakerFilter(contentSafetyCircuitBreakerService, objectMapper);
     }
 
     @Bean

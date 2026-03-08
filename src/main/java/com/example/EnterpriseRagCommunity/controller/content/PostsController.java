@@ -95,6 +95,11 @@ public class PostsController {
         return postsService.update(id, dto);
     }
 
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable("id") Long id) {
+        postsService.delete(id);
+    }
+
     @GetMapping("/bookmarks")
     public Page<PostDetailDTO> listMyBookmarks(@RequestParam(value = "page", defaultValue = "1") int page,
                                                @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {

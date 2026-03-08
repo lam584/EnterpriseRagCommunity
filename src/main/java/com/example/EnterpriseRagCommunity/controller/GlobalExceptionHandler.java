@@ -16,6 +16,10 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.exception.UpstreamRequestException;
+import org.apache.catalina.connector.ClientAbortException;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -130,6 +134,32 @@ public class GlobalExceptionHandler {
         Map<String, String> response = new HashMap<>();
         response.put("message", ex.getMessage());
         return new ResponseEntity<>(response, status);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, String>> handleResponseStatusException(ResponseStatusException ex) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        logger.warn("请求被拒绝: {} {}", status.value(), ex.getReason());
+        Map<String, String> response = new HashMap<>();
+        response.put("message", ex.getReason() == null || ex.getReason().isBlank() ? status.getReasonPhrase() : ex.getReason());
+        return new ResponseEntity<>(response, status);
+    }
+
+    @ExceptionHandler({AsyncRequestNotUsableException.class, ClientAbortException.class})
+    public ResponseEntity<Void> handleClientAbort(Exception ex) {
+        logger.debug("客户端已断开连接: {}", ex.getMessage());
+        return ResponseEntity.noContent().build();
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, String>> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+        logger.warn("上传大小超过限制: {}", ex.getMessage());
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "上传失败：文件或请求体大小超过服务器限制");
+        return new ResponseEntity<>(response, HttpStatus.PAYLOAD_TOO_LARGE);
     }
 
     @ExceptionHandler(Exception.class)

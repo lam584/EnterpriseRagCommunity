@@ -26,18 +26,54 @@ CREATE TABLE users (
                        created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
                        updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
                        session_invalidated_at DATETIME(3) NULL COMMENT '强制所有会话重新登录时间点',
+                       access_version BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'RBAC 权限版本号',
                        UNIQUE KEY uk_users_email_tenant (tenant_id, email),
                        UNIQUE KEY uk_users_username_tenant (tenant_id, username),
+                       KEY idx_users_access_version (access_version),
                        CONSTRAINT fk_users_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
+-- 角色元数据（前移至此，因被 user_role_links / role_permissions / board_role_permissions 引用）
+CREATE TABLE roles (
+    role_id BIGINT UNSIGNED PRIMARY KEY COMMENT '角色ID',
+    role_name VARCHAR(128) NOT NULL COMMENT '角色名',
+    description VARCHAR(255) NULL COMMENT '角色说明',
+    risk_level ENUM('LOW','MEDIUM','HIGH') NOT NULL DEFAULT 'LOW' COMMENT '风险级别',
+    builtin TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否内置角色',
+    immutable TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否不可变更(防止锁死/夺权)',
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+    UNIQUE KEY uk_roles_name (role_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色元数据';
+
+INSERT INTO roles (role_id, role_name, description, risk_level, builtin, immutable)
+VALUES
+    (1, 'USER', '默认普通用户', 'LOW', 1, 1),
+    (2, 'ADMIN', '系统管理员', 'HIGH', 1, 1) AS new
+ON DUPLICATE KEY UPDATE
+    role_name = new.role_name,
+    description = new.description,
+    risk_level = new.risk_level,
+    builtin = new.builtin,
+    immutable = new.immutable;
+
 -- 用户-角色关联
 CREATE TABLE user_role_links (
-                                 user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
-                                 role_id BIGINT UNSIGNED NOT NULL COMMENT '角色ID',
-                                 PRIMARY KEY (user_id, role_id),
-                                 CONSTRAINT fk_url_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户与角色关联表';
+    user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
+    role_id BIGINT UNSIGNED NOT NULL COMMENT '角色ID',
+    scope_type ENUM('GLOBAL','TENANT','BOARD') NOT NULL DEFAULT 'GLOBAL' COMMENT '作用域类型',
+    scope_id BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '作用域ID（GLOBAL 固定为 0）',
+    expires_at DATETIME(3) NULL COMMENT '到期时间（NULL 表示永久）',
+    assigned_by BIGINT UNSIGNED NULL COMMENT '授予人用户ID',
+    assigned_reason VARCHAR(255) NULL COMMENT '授予原因/工单号',
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+    PRIMARY KEY (user_id, role_id, scope_type, scope_id),
+    KEY idx_url_role_id (role_id),
+    CONSTRAINT fk_url_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_url_role FOREIGN KEY (role_id) REFERENCES roles(role_id) ON DELETE CASCADE,
+    CONSTRAINT fk_url_assigned_by FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户与角色关联表（含作用域/有效期）';
 
 -- 可选：细粒度权限
 CREATE TABLE permissions (
@@ -54,6 +90,7 @@ CREATE TABLE role_permissions (
                                   permission_id BIGINT UNSIGNED NOT NULL COMMENT '权限ID',
                                   allow TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否允许',
                                   PRIMARY KEY (role_id, permission_id),
+                                  CONSTRAINT fk_rp_role FOREIGN KEY (role_id) REFERENCES roles(role_id) ON DELETE CASCADE,
                                   CONSTRAINT fk_rp_perm FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色-权限矩阵表';
 
@@ -77,7 +114,7 @@ CREATE TABLE email_verifications (
                                      user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
                                      target_email VARCHAR(191) NULL COMMENT '目标邮箱',
                                      code VARCHAR(64) NOT NULL COMMENT '验证码',
-                                     purpose ENUM('VERIFY_EMAIL','PASSWORD_RESET','REGISTER','LOGIN_2FA','LOGIN_2FA_PREFERENCE','CHANGE_PASSWORD','CHANGE_EMAIL','CHANGE_EMAIL_OLD','TOTP_ENABLE','TOTP_DISABLE') NOT NULL COMMENT '用途',
+                                     purpose ENUM('VERIFY_EMAIL','PASSWORD_RESET','REGISTER','LOGIN_2FA','LOGIN_2FA_PREFERENCE','CHANGE_PASSWORD','CHANGE_EMAIL','CHANGE_EMAIL_OLD','TOTP_ENABLE','TOTP_DISABLE','ADMIN_STEP_UP') NOT NULL COMMENT '用途',
                                      expires_at DATETIME(3) NOT NULL COMMENT '过期时间',
                                      consumed_at DATETIME(3) NULL COMMENT '使用时间',
                                      created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
@@ -133,8 +170,10 @@ CREATE TABLE audit_logs (
                             result ENUM('SUCCESS','FAIL') NOT NULL COMMENT '结果',
                             details JSON NULL COMMENT '详情（JSON）',
                             created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+                            archived_at DATETIME(3) NULL COMMENT '归档时间',
                             KEY idx_audit_entity (entity_type, entity_id),
                             KEY idx_audit_actor (actor_user_id),
+                            KEY idx_audit_archived_at (archived_at),
                             CONSTRAINT fk_audit_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
                             CONSTRAINT fk_audit_actor FOREIGN KEY (actor_user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审计日志表';
@@ -162,6 +201,10 @@ CREATE TABLE posts (
                        title VARCHAR(191) NOT NULL COMMENT '帖子标题',
                        content LONGTEXT NOT NULL COMMENT '帖子内容',
                        content_format ENUM('PLAIN','MARKDOWN','HTML') NOT NULL DEFAULT 'MARKDOWN' COMMENT '内容格式',
+                       content_length INT NOT NULL DEFAULT 0 COMMENT '内容长度',
+                       is_chunked_review TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否分片审核',
+                       chunk_threshold_chars INT NULL COMMENT '分片阈值',
+                       chunking_strategy VARCHAR(16) NULL COMMENT '分片策略',
                        status ENUM('DRAFT','PENDING','PUBLISHED','REJECTED','ARCHIVED') NOT NULL DEFAULT 'DRAFT' COMMENT '帖子状态',
                        published_at DATETIME(3) NULL COMMENT '发布时间',
                        is_deleted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '软删除标记',
@@ -194,8 +237,9 @@ CREATE TABLE file_assets (
                              owner_user_id BIGINT UNSIGNED NULL COMMENT '所有者用户ID',
                              path VARCHAR(512) NOT NULL COMMENT '存储路径',
                              url VARCHAR(512) NOT NULL COMMENT '访问URL',
+                             original_name VARCHAR(255) NULL COMMENT '原始文件名',
                              size_bytes BIGINT UNSIGNED NOT NULL COMMENT '文件大小（字节）',
-                             mime_type VARCHAR(64) NOT NULL COMMENT 'MIME 类型',
+                             mime_type VARCHAR(255) NOT NULL COMMENT 'MIME 类型',
                              sha256 CHAR(64) NOT NULL COMMENT '文件SHA256',
                              status ENUM('READY','UPLOADING','DELETED') NOT NULL DEFAULT 'READY' COMMENT '状态',
                              created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
@@ -206,11 +250,7 @@ CREATE TABLE file_assets (
 CREATE TABLE post_attachments (
                                   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
                                   post_id BIGINT UNSIGNED NOT NULL COMMENT '帖子ID',
-                                  file_asset_id BIGINT UNSIGNED NULL COMMENT '来源 file_assets.id',
-                                  url VARCHAR(512) NOT NULL COMMENT '附件访问URL',
-                                  file_name VARCHAR(512) NOT NULL COMMENT '原始文件名',
-                                  mime_type VARCHAR(64) NOT NULL COMMENT 'MIME 类型',
-                                  size_bytes BIGINT UNSIGNED NOT NULL COMMENT '文件大小（字节）',
+                                  file_asset_id BIGINT UNSIGNED NOT NULL COMMENT '来源 file_assets.id（必须关联）',
                                   width INT NULL COMMENT '图片宽（像素）',
                                   height INT NULL COMMENT '图片高（像素）',
                                   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
@@ -218,7 +258,7 @@ CREATE TABLE post_attachments (
                                   KEY idx_pa_file_asset (file_asset_id),
                                   CONSTRAINT fk_pa_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
                                   CONSTRAINT fk_pa_file_asset FOREIGN KEY (file_asset_id) REFERENCES file_assets(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='帖子附件表（仅图片）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='帖子附件表（仅图片，元数据从 file_assets 获取）';
 
 CREATE TABLE comments (
                           id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -270,7 +310,7 @@ CREATE TABLE reactions (
 CREATE TABLE reports (
                          id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
                          reporter_id BIGINT UNSIGNED NOT NULL COMMENT '举报人用户ID',
-                         target_type ENUM('POST','COMMENT') NOT NULL COMMENT '被举报对象类型',
+                         target_type ENUM('POST','COMMENT','PROFILE') NOT NULL COMMENT '被举报对象类型',
                          target_id BIGINT UNSIGNED NOT NULL COMMENT '被举报对象ID',
                          reason_code VARCHAR(64) NOT NULL COMMENT '举报原因编码',
                          reason_text VARCHAR(255) NULL COMMENT '举报详细原因',
@@ -293,6 +333,7 @@ CREATE TABLE tags (
                       description VARCHAR(255) NULL COMMENT '标签描述',
                       is_system TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否系统标签',
                       is_active TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否可用',
+                      threshold DOUBLE NULL COMMENT '风险阈值',
                       created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
                       UNIQUE KEY uk_tag (tenant_id, type, slug),
                       CONSTRAINT fk_tags_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id)
@@ -316,7 +357,8 @@ CREATE TABLE hot_scores (
                             score_all DOUBLE NOT NULL DEFAULT 0 COMMENT '累计热度分',
                             decay_base DOUBLE NOT NULL DEFAULT 0.85 COMMENT '衰减基数',
                             last_recalculated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '最后重算时间',
-                            CONSTRAINT fk_hot_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+                            CONSTRAINT fk_hot_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                            CONSTRAINT chk_hs_decay CHECK (decay_base >= 0 AND decay_base <= 1)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='热度分缓存表';
 
 -- 语义与 RAG
@@ -365,23 +407,50 @@ CREATE TABLE vector_indices (
 
 CREATE TABLE prompts (
                          id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-                         name VARCHAR(96) NOT NULL COMMENT '模板名称',
-                         template MEDIUMTEXT NOT NULL COMMENT '提示词模板内容',
-                         variables JSON NULL COMMENT '模板变量定义（JSON）',
-                         version INT NOT NULL DEFAULT 1 COMMENT '版本号',
+                         prompt_code VARCHAR(128) NOT NULL COMMENT '提示词编码',
+                         name VARCHAR(128) NOT NULL COMMENT '提示词名称',
+                         system_prompt TEXT NULL COMMENT '系统提示词',
+                         user_prompt_template TEXT NULL COMMENT '用户提示词模板',
+                         model_name VARCHAR(128) NULL COMMENT '模型名称',
+                         provider_id VARCHAR(64) NULL COMMENT 'ProviderId',
+                         temperature DECIMAL(4,3) NULL COMMENT '温度',
+                         top_p DECIMAL(4,3) NULL COMMENT 'Top-P',
+                         max_tokens INT NULL COMMENT '最大输出Token',
+                         enable_deep_thinking TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用深度思考',
+                         vision_model VARCHAR(128) NULL COMMENT '视觉模型名称',
+                         vision_provider_id VARCHAR(64) NULL COMMENT '视觉ProviderId',
+                         vision_temperature DECIMAL(4,3) NULL COMMENT '视觉温度',
+                         vision_top_p DECIMAL(4,3) NULL COMMENT '视觉Top-P',
+                         vision_max_tokens INT NULL COMMENT '视觉最大输出Token',
+                         vision_enable_deep_thinking TINYINT(1) NOT NULL DEFAULT 0 COMMENT '视觉深度思考',
+                         wait_files_seconds INT NULL DEFAULT 60 COMMENT '等待文件上传秒数',
+                         vision_image_token_budget INT NULL DEFAULT 50000 COMMENT '视觉图像token预算',
+                         vision_max_images_per_request INT NULL DEFAULT 10 COMMENT '单请求最大图片数',
+                         vision_high_resolution_images TINYINT(1) NULL DEFAULT 0 COMMENT '是否启用高分辨率图像',
+                         vision_max_pixels INT NULL DEFAULT 2621440 COMMENT '单图最大像素',
                          is_active TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+                         version INT NOT NULL DEFAULT 1 COMMENT '版本号',
+                         updated_by BIGINT UNSIGNED NULL COMMENT '更新人',
+                         variables JSON NULL COMMENT '模板变量定义',
                          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
-                         UNIQUE KEY uk_prompt_name_ver (name, version)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提示词模板表';
+                         updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+                         UNIQUE KEY uk_prompts_code (prompt_code),
+                         CONSTRAINT fk_prompts_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提示词配置表';
 
 CREATE TABLE generation_jobs (
                                  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-                                 job_type ENUM('TITLE','TAGS','SUMMARY','TRANSLATE') NOT NULL COMMENT '生成任务类型',
+                                 job_type ENUM('TITLE','TAGS','SUMMARY','TRANSLATE','SUGGESTION','POST_COMPOSE') NOT NULL COMMENT '生成任务类型',
                                  target_type ENUM('POST','COMMENT') NOT NULL COMMENT '目标类型',
                                  target_id BIGINT UNSIGNED NOT NULL COMMENT '目标ID',
                                  status ENUM('PENDING','RUNNING','SUCCEEDED','FAILED') NOT NULL DEFAULT 'PENDING' COMMENT '任务状态',
-                                 prompt_id BIGINT UNSIGNED NULL COMMENT '使用的提示词模板ID',
-                                 model VARCHAR(64) NULL COMMENT '使用的模型名称',
+                                 prompt_code VARCHAR(128) NULL COMMENT '使用的提示词编码',
+                                 model VARCHAR(128) NULL COMMENT '使用的模型名称',
+                                 provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
+                                 temperature DECIMAL(4,3) NULL COMMENT '温度',
+                                 top_p DECIMAL(4,3) NULL COMMENT 'Top-P',
+                                 latency_ms BIGINT NULL COMMENT '延迟(ms)',
+                                 prompt_version INT NULL COMMENT '提示词版本',
                                  params JSON NULL COMMENT '任务参数（JSON）',
                                  result_json JSON NULL COMMENT '生成结果（JSON）',
                                  tokens_in INT NULL COMMENT '输入Token数',
@@ -391,7 +460,8 @@ CREATE TABLE generation_jobs (
                                  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
                                  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
                                  KEY idx_gj_target (target_type, target_id),
-                                 CONSTRAINT fk_gj_prompt FOREIGN KEY (prompt_id) REFERENCES prompts(id)
+                                 KEY idx_gj_created_at (created_at),
+                                 CONSTRAINT fk_gj_prompt FOREIGN KEY (prompt_code) REFERENCES prompts(prompt_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='生成任务记录表';
 
 CREATE TABLE qa_sessions (
@@ -428,14 +498,13 @@ CREATE TABLE retrieval_hits (
                                 event_id BIGINT UNSIGNED NOT NULL COMMENT '检索事件ID',
                                 `rank` INT NOT NULL COMMENT '排序名次',
                                 hit_type ENUM('BM25','VEC','RERANK') NOT NULL COMMENT '命中类型',
-                                document_id BIGINT UNSIGNED NULL COMMENT '文档ID',
+                                post_id BIGINT UNSIGNED NULL COMMENT '帖子ID（关联 posts.id）',
                                 chunk_id BIGINT UNSIGNED NULL COMMENT '分片ID',
                                 score DOUBLE NOT NULL COMMENT '得分',
                                 CONSTRAINT fk_rh_event FOREIGN KEY (event_id) REFERENCES retrieval_events(id) ON DELETE CASCADE,
-                                CONSTRAINT fk_rh_post FOREIGN KEY (document_id) REFERENCES posts(id) ON DELETE SET NULL,
+                                CONSTRAINT fk_rh_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL,
                                 CONSTRAINT fk_rh_chunk FOREIGN KEY (chunk_id) REFERENCES document_chunks(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='检索命中明细表';
-
 
 CREATE TABLE context_windows (
                                  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -461,7 +530,7 @@ CREATE TABLE moderation_rules (
 
 CREATE TABLE moderation_rule_hits (
                                       id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-                                      content_type ENUM('POST','COMMENT') NOT NULL COMMENT '内容类型',
+                                      content_type ENUM('POST','COMMENT','PROFILE') NOT NULL COMMENT '内容类型',
                                       content_id BIGINT UNSIGNED NOT NULL COMMENT '内容ID',
                                       rule_id BIGINT UNSIGNED NOT NULL COMMENT '命中规则ID',
                                       snippet VARCHAR(255) NULL COMMENT '命中文本片段',
@@ -472,7 +541,7 @@ CREATE TABLE moderation_rule_hits (
 
 CREATE TABLE moderation_similar_hits (
                                          id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-                                         content_type ENUM('POST','COMMENT') NOT NULL COMMENT '内容类型',
+                                         content_type ENUM('POST','COMMENT','PROFILE') NOT NULL COMMENT '内容类型',
                                          content_id BIGINT UNSIGNED NOT NULL COMMENT '内容ID',
                                          candidate_id BIGINT UNSIGNED NULL COMMENT '相似样本ID/参考ID',
                                          distance DOUBLE NOT NULL COMMENT '相似距离',
@@ -480,29 +549,15 @@ CREATE TABLE moderation_similar_hits (
                                          matched_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '命中时间',
                                          KEY idx_msh_target (content_type, content_id),
                                          KEY idx_msh_matched_at (matched_at),
-                                         KEY idx_msh_candidate (candidate_id, matched_at)
+                                         KEY idx_msh_candidate (candidate_id, matched_at),
+                                         CONSTRAINT fk_msh_candidate FOREIGN KEY (candidate_id) REFERENCES moderation_samples(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='相似度命中日志表';
-
-CREATE TABLE moderation_llm_decisions (
-                                          id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-                                          content_type ENUM('POST','COMMENT') NOT NULL COMMENT '内容类型',
-                                          content_id BIGINT UNSIGNED NOT NULL COMMENT '内容ID',
-                                          model VARCHAR(64) NOT NULL COMMENT '判定模型',
-                                          labels JSON NOT NULL COMMENT '标签集合（JSON）',
-                                          confidence DECIMAL(5,4) NOT NULL COMMENT '综合置信度',
-                                          verdict ENUM('APPROVE','REJECT','REVIEW') NOT NULL COMMENT '裁决结果',
-                                          prompt_id BIGINT UNSIGNED NULL COMMENT '提示词模板ID',
-                                          tokens_in INT NULL COMMENT '输入Token',
-                                          tokens_out INT NULL COMMENT '输出Token',
-                                          decided_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '判定时间',
-                                          KEY idx_mld_target (content_type, content_id),
-                                          CONSTRAINT fk_mld_prompt FOREIGN KEY (prompt_id) REFERENCES prompts(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM 审核判定表';
 
 CREATE TABLE moderation_queue (
                                   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
                                   case_type ENUM('CONTENT','REPORT') NOT NULL DEFAULT 'CONTENT' COMMENT '案件类型',
-                                  content_type ENUM('POST','COMMENT') NOT NULL COMMENT '内容类型',
+                                  review_stage VARCHAR(16) NULL COMMENT '复审场景：default|reported|appeal',
+                                  content_type ENUM('POST','COMMENT','PROFILE') NOT NULL COMMENT '内容类型',
                                   content_id BIGINT UNSIGNED NOT NULL COMMENT '内容ID',
                                   status ENUM('PENDING','REVIEWING','HUMAN','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING' COMMENT '队列状态',
                                   current_stage ENUM('RULE','VEC','LLM','HUMAN') NOT NULL DEFAULT 'RULE' COMMENT '当前阶段',
@@ -511,7 +566,7 @@ CREATE TABLE moderation_queue (
                                   locked_by VARCHAR(64) NULL COMMENT '自动审核锁持有者（实例ID）',
                                   locked_at DATETIME(3) NULL COMMENT '自动审核锁时间（租约开始）',
                                   finished_at DATETIME(3) NULL COMMENT '到达终态/转人工的时间',
-                                  version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+  version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
                                   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
                                   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
                                   UNIQUE KEY uk_mq_case_target (case_type, content_type, content_id),
@@ -535,7 +590,7 @@ CREATE TABLE moderation_actions (
 
 CREATE TABLE risk_labeling (
                                id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-                               target_type ENUM('POST','COMMENT') NOT NULL COMMENT '目标类型',
+                               target_type ENUM('POST','COMMENT','PROFILE') NOT NULL COMMENT '目标类型',
                                target_id BIGINT UNSIGNED NOT NULL COMMENT '目标ID',
                                tag_id BIGINT UNSIGNED NOT NULL COMMENT '风险标签ID',
                                source ENUM('LLM','RULE','HUMAN') NOT NULL COMMENT '来源',
@@ -715,6 +770,10 @@ CREATE TABLE post_drafts (
     title VARCHAR(191) NOT NULL DEFAULT '' COMMENT '草稿标题',
     content LONGTEXT NOT NULL COMMENT '草稿内容',
     content_format ENUM('PLAIN','MARKDOWN','HTML') NOT NULL DEFAULT 'MARKDOWN' COMMENT '内容格式',
+                       content_length INT NOT NULL DEFAULT 0 COMMENT '内容长度',
+                       is_chunked_review TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否分片审核',
+                       chunk_threshold_chars INT NULL COMMENT '分片阈值',
+                       chunking_strategy VARCHAR(16) NULL COMMENT '分片策略',
     metadata JSON NULL COMMENT '扩展元数据(JSON)，可存 tags/attachmentIds 等',
     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
     updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
@@ -739,30 +798,116 @@ CREATE TABLE post_views_daily (
     CONSTRAINT fk_pvd_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='帖子浏览量-按天聚合表';
 
+CREATE TABLE moderation_policy_config (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+  content_type VARCHAR(16) NOT NULL COMMENT '内容类型',
+  policy_version VARCHAR(64) NOT NULL COMMENT '策略版本',
+  config_json JSON NOT NULL COMMENT '策略配置(JSON)',
+  version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
+  UNIQUE KEY uk_moderation_policy_config_content_type (content_type),
+  CONSTRAINT fk_mpc_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审核策略配置';
+
+INSERT INTO moderation_policy_config (content_type, policy_version, config_json) VALUES
+('POST', 'v1', '{
+  "precheck": {
+    "rule": {"enabled": true, "high_action": "HUMAN", "medium_action": "LLM", "low_action": "LLM"},
+    "vec": {"enabled": true, "threshold": 0.2, "hit_action": "HUMAN", "miss_action": "LLM"}
+  },
+  "thresholds": {
+    "default": {"T_allow": 0.2, "T_reject": 0.8},
+    "by_review_stage": {
+      "reported": {"T_allow": 0.15, "T_reject": 0.75},
+      "appeal": {"T_allow": 0.25, "T_reject": 0.85}
+    },
+    "by_label": {}
+  },
+  "escalate_rules": {
+    "require_evidence": true
+  },
+  "review_trigger": {
+    "window_minutes": 10,
+    "light": {"unique_reporters_min": 3, "total_reports_min": 5},
+    "standard": {"unique_reporters_min": 5, "total_reports_min": 10, "velocity_min_per_window": 5, "trust_min": 0.7},
+    "urgent": {"unique_reporters_min": 20, "total_reports_min": 20, "velocity_min_per_window": 20, "trust_min": 0.85}
+  },
+  "anti_spam": {
+    "comment": {"window_seconds": 60, "max_per_author_per_window": 8, "similarity_threshold": 0.9, "max_similar_count_per_10min": 3},
+    "profile": {"window_minutes": 60, "max_updates_per_window": 3, "max_updates_per_day": 5, "similarity_threshold": 0.9}
+  }
+}'),
+('COMMENT', 'v1', '{
+  "precheck": {
+    "rule": {"enabled": true, "high_action": "HUMAN", "medium_action": "LLM", "low_action": "LLM"},
+    "vec": {"enabled": true, "threshold": 0.2, "hit_action": "HUMAN", "miss_action": "LLM"}
+  },
+  "thresholds": {
+    "default": {"T_allow": 0.2, "T_reject": 0.8},
+    "by_review_stage": {
+      "reported": {"T_allow": 0.15, "T_reject": 0.75},
+      "appeal": {"T_allow": 0.25, "T_reject": 0.85}
+    },
+    "by_label": {}
+  },
+  "escalate_rules": {
+    "require_evidence": true
+  },
+  "review_trigger": {
+    "window_minutes": 10,
+    "light": {"unique_reporters_min": 3, "total_reports_min": 5},
+    "standard": {"unique_reporters_min": 5, "total_reports_min": 10, "velocity_min_per_window": 5, "trust_min": 0.7},
+    "urgent": {"unique_reporters_min": 20, "total_reports_min": 20, "velocity_min_per_window": 20, "trust_min": 0.85}
+  },
+  "anti_spam": {
+    "comment": {"window_seconds": 60, "max_per_author_per_window": 8, "similarity_threshold": 0.9, "max_similar_count_per_10min": 3},
+    "profile": {"window_minutes": 60, "max_updates_per_window": 3, "max_updates_per_day": 5, "similarity_threshold": 0.9}
+  }
+}'),
+('PROFILE', 'v1', '{
+  "precheck": {
+    "rule": {"enabled": true, "high_action": "HUMAN", "medium_action": "LLM", "low_action": "LLM"},
+    "vec": {"enabled": true, "threshold": 0.2, "hit_action": "HUMAN", "miss_action": "LLM"}
+  },
+  "thresholds": {
+    "default": {"T_allow": 0.2, "T_reject": 0.8},
+    "by_review_stage": {
+      "reported": {"T_allow": 0.15, "T_reject": 0.75},
+      "appeal": {"T_allow": 0.25, "T_reject": 0.85}
+    },
+    "by_label": {}
+  },
+  "escalate_rules": {
+    "require_evidence": true
+  },
+  "review_trigger": {
+    "window_minutes": 10,
+    "light": {"unique_reporters_min": 3, "total_reports_min": 5},
+    "standard": {"unique_reporters_min": 5, "total_reports_min": 10, "velocity_min_per_window": 5, "trust_min": 0.7},
+    "urgent": {"unique_reporters_min": 20, "total_reports_min": 20, "velocity_min_per_window": 20, "trust_min": 0.85}
+  },
+  "anti_spam": {
+    "comment": {"window_seconds": 60, "max_per_author_per_window": 8, "similarity_threshold": 0.9, "max_similar_count_per_10min": 3},
+    "profile": {"window_minutes": 60, "max_updates_per_window": 3, "max_updates_per_day": 5, "similarity_threshold": 0.9}
+  }
+}');
+
 -- LLM moderation config (single-row upsert style)
 
 CREATE TABLE moderation_llm_config (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  prompt_template LONGTEXT NOT NULL COMMENT '文本审核提示词模板',
-  vision_prompt_template LONGTEXT NULL COMMENT '视觉审核提示词模板',
-  model VARCHAR(128) NULL COMMENT '文本审核模型名称',
-  provider_id VARCHAR(64) NULL COMMENT '文本审核ProviderId',
-  vision_model VARCHAR(128) NULL COMMENT '视觉审核模型名称',
-  vision_provider_id VARCHAR(64) NULL COMMENT '视觉审核ProviderId',
-  temperature DECIMAL(4,3) NULL COMMENT '文本审核温度',
-  vision_temperature DECIMAL(4,3) NULL COMMENT '视觉审核温度',
-  max_tokens INT NULL COMMENT '文本审核最大输出Token',
-  enable_thinking TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用深度思考(文本审核)',
-  vision_max_tokens INT NULL COMMENT '视觉审核最大输出Token',
-  vision_enable_thinking TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用深度思考(图片审核)',
-  threshold DECIMAL(6,4) NULL COMMENT '风险阈值',
+  text_prompt_code VARCHAR(128) NULL COMMENT '文本审核提示词编码',
+  vision_prompt_code VARCHAR(128) NULL COMMENT '视觉审核提示词编码',
+  judge_prompt_code VARCHAR(128) NULL COMMENT '判决提示词编码',
+  judge_upgrade_prompt_code VARCHAR(128) NULL COMMENT '判决升级提示词编码',
+  
   auto_run TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否自动运行',
-  max_concurrent INT NULL COMMENT '自动审核最大并发请求数',
-  min_delay_ms INT NULL COMMENT '自动审核请求最小间隔(ms)',
-  qps DOUBLE NULL COMMENT '全局QPS限制(0/NULL为不限)',
+  
   version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
-  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID'
+  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
+  CONSTRAINT fk_mlc_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM 审核配置（单行）';
 
 CREATE INDEX idx_moderation_llm_config_updated_at ON moderation_llm_config(updated_at);
@@ -772,30 +917,18 @@ CREATE INDEX idx_moderation_llm_config_updated_at ON moderation_llm_config(updat
 
 CREATE TABLE moderation_samples (
     id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-
     category ENUM('AD_SAMPLE','HISTORY_VIOLATION') NOT NULL COMMENT '样本类别',
-
-    -- Optional back reference to existing content
-    ref_content_type ENUM('POST','COMMENT') NULL COMMENT '关联内容类型(可选)',
+    ref_content_type ENUM('POST','COMMENT','PROFILE') NULL COMMENT '关联内容类型(可选)',
     ref_content_id BIGINT UNSIGNED NULL COMMENT '关联内容ID(可选)',
-
-    -- Raw and normalized text
     raw_text LONGTEXT NOT NULL COMMENT '原始文本(回显/溯源)',
     normalized_text LONGTEXT NOT NULL COMMENT '规范化文本(去噪/截断后,用于embedding与检索)',
-
-    -- Hash for dedup / caching (SHA-256 hex recommended)
     text_hash VARCHAR(64) NOT NULL COMMENT '规范化文本hash(建议SHA-256 hex,用于去重/缓存)',
-
-    -- Risk/metadata
     risk_level INT NOT NULL DEFAULT 0 COMMENT '风险/违规则等级(0表示未知)',
     labels JSON NULL COMMENT '风险标签(JSON数组)',
     source ENUM('HUMAN','RULE','LLM','IMPORT') NOT NULL DEFAULT 'HUMAN' COMMENT '样本来源',
-
     enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
-
     created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
     updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
-
     UNIQUE KEY uk_ms_text_hash (text_hash),
     KEY idx_ms_enabled (enabled, id),
     KEY idx_ms_category (category, enabled, id),
@@ -815,7 +948,8 @@ CREATE TABLE moderation_similarity_config (
   default_num_candidates INT NOT NULL DEFAULT 0 COMMENT '默认候选数',
   version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
-  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID'
+  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
+  CONSTRAINT fk_msc_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审核相似检测配置（单行）';
 
 CREATE INDEX idx_moderation_similarity_config_updated_at ON moderation_similarity_config(updated_at);
@@ -832,7 +966,8 @@ CREATE TABLE moderation_samples_index_config (
   default_threshold DOUBLE NOT NULL DEFAULT 0.15 COMMENT '默认阈值',
   version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
-  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID'
+  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
+  CONSTRAINT fk_msic_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='相似检测样本库ES索引默认配置(单行)';
 
 CREATE INDEX idx_moderation_samples_index_config_updated_at ON moderation_samples_index_config(updated_at);
@@ -841,40 +976,31 @@ CREATE INDEX idx_moderation_samples_index_config_updated_at ON moderation_sample
 
 CREATE TABLE moderation_confidence_fallback_config (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-
-  -- Rule layer
   rule_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '规则层是否启用',
-  -- action when rule layer is triggered with at least this severity
   rule_high_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'HUMAN' COMMENT '规则层高风险动作',
   rule_medium_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'LLM' COMMENT '规则层中风险动作',
   rule_low_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'LLM' COMMENT '规则层低风险动作',
-
-  -- Embedding similarity layer
   vec_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '向量相似层是否启用',
-  -- distance <= threshold => hit
   vec_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.2000 COMMENT '向量距离阈值(<=阈值视为命中)',
   vec_hit_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'HUMAN' COMMENT '向量命中动作',
   vec_miss_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'LLM' COMMENT '向量未命中动作',
-
-  -- LLM layer
   llm_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'LLM层是否启用',
-  -- LLM returns risk score [0..1]. If score >= reject_threshold -> REJECT.
   llm_reject_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.7500 COMMENT 'LLM拒绝阈值(>=则拒绝)',
-  -- If score between [human_threshold, reject_threshold) -> HUMAN.
   llm_human_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.5000 COMMENT 'LLM人工阈值(介于人工与拒绝之间则转人工)',
-  -- If score < human_threshold -> APPROVE.
-
   report_human_threshold INT NOT NULL DEFAULT 5 COMMENT '举报触发人工阈值',
-
   llm_text_risk_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.8000 COMMENT '文本风险阈值',
   llm_image_risk_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.3000 COMMENT '图片风险阈值',
   llm_strong_reject_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.9500 COMMENT '强拒绝阈值',
   llm_strong_pass_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.1000 COMMENT '强通过阈值',
   llm_cross_modal_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.7500 COMMENT '跨模态一致性阈值',
-
+  chunk_threshold_chars INT NOT NULL DEFAULT 20000,
+  chunk_llm_reject_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.7500,
+  chunk_llm_human_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.5000,
+  thresholds_json JSON NULL,
   version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
-  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID'
+  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
+  CONSTRAINT fk_mcfc_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审核置信回退配置（单行）';
 
 CREATE INDEX idx_moderation_confidence_fallback_updated_at ON moderation_confidence_fallback_config(updated_at);
@@ -900,14 +1026,14 @@ CREATE TABLE moderation_pipeline_run (
   error_message VARCHAR(512) NULL COMMENT '错误信息',
 
   llm_model VARCHAR(128) NULL COMMENT '使用的LLM模型',
-  llm_threshold DECIMAL(6,4) NULL COMMENT 'LLM阈值',
 
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
 
   UNIQUE KEY uk_moderation_pipeline_run_trace_id (trace_id),
   KEY idx_moderation_pipeline_run_queue_id (queue_id),
   KEY idx_moderation_pipeline_run_content (content_type, content_id),
-  KEY idx_moderation_pipeline_run_created_at (created_at)
+  KEY idx_moderation_pipeline_run_created_at (created_at),
+  CONSTRAINT fk_mpr_queue FOREIGN KEY (queue_id) REFERENCES moderation_queue(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审核流水线运行记录';
 
 CREATE TABLE moderation_pipeline_step (
@@ -959,12 +1085,7 @@ CREATE TABLE ai_gen_task_config (
   sub_type VARCHAR(32) NOT NULL DEFAULT 'DEFAULT' COMMENT '子类型(如 TITLE/TOPIC_TAG)',
 
   enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
-  system_prompt VARCHAR(512) NOT NULL DEFAULT '' COMMENT '系统提示词',
-  prompt_template LONGTEXT NOT NULL COMMENT '提示词模板',
-  model VARCHAR(128) NULL COMMENT '模型名称',
-  provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
-  temperature DECIMAL(4,3) NULL COMMENT '温度',
-  enable_thinking TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否启用深度思考',
+  prompt_code VARCHAR(128) NOT NULL COMMENT '提示词模板',
 
   default_count INT NOT NULL DEFAULT 5 COMMENT '默认生成数量(可选)',
   max_count INT NOT NULL DEFAULT 10 COMMENT '最大生成数量(可选)',
@@ -978,16 +1099,20 @@ CREATE TABLE ai_gen_task_config (
   version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
   updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
+  label VARCHAR(128) NULL COMMENT '显示名称',
+  category VARCHAR(32) NULL COMMENT '类别(TEXT_GEN/EMBEDDING/RERANK)',
+  sort_index INT NOT NULL DEFAULT 0 COMMENT '排序索引',
 
   UNIQUE KEY uk_ai_gen_task_config_group_sub (group_code, sub_type),
   KEY idx_ai_gen_task_config_group_enabled (group_code, enabled),
-  KEY idx_ai_gen_task_config_updated_at (updated_at)
+  KEY idx_ai_gen_task_config_updated_at (updated_at),
+  CONSTRAINT fk_agtc_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='生成/翻译/摘要/标签等通用配置';
 
 CREATE TABLE post_suggestion_gen_history (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
   kind ENUM('TITLE','TOPIC_TAG') NOT NULL COMMENT '历史类型',
-  user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
+  user_id BIGINT UNSIGNED NULL COMMENT '用户ID',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
   board_name VARCHAR(128) NULL COMMENT '板块名称',
   title_excerpt VARCHAR(256) NULL COMMENT '标题摘要',
@@ -997,14 +1122,12 @@ CREATE TABLE post_suggestion_gen_history (
   content_len INT NOT NULL COMMENT '内容长度',
   content_excerpt VARCHAR(512) NULL COMMENT '内容摘要',
   output_json JSON NOT NULL COMMENT '生成结果(JSON)',
-  model VARCHAR(128) NULL COMMENT '模型名称',
-  provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
-  temperature DECIMAL(4,3) NULL COMMENT '温度',
-  latency_ms BIGINT NULL COMMENT '延迟(ms)',
-  prompt_version INT NULL COMMENT '提示词版本',
+  job_id BIGINT UNSIGNED NULL COMMENT '关联 generation_jobs.id',
   KEY idx_post_suggestion_gen_history_created_at (created_at),
   KEY idx_post_suggestion_gen_history_user_id_created_at (user_id, created_at),
-  KEY idx_post_suggestion_gen_history_kind_created_at (kind, created_at)
+  KEY idx_post_suggestion_gen_history_kind_created_at (kind, created_at),
+  CONSTRAINT fk_psugh_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_psugh_job FOREIGN KEY (job_id) REFERENCES generation_jobs(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='帖子建议生成历史记录（标题/主题标签）';
 
 CREATE TABLE qa_message_sources (
@@ -1018,12 +1141,13 @@ CREATE TABLE qa_message_sources (
     url VARCHAR(512) NULL COMMENT '来源URL（可选）',
     UNIQUE KEY uk_qms_msg_idx (message_id, source_index),
     KEY idx_qms_msg (message_id),
-    CONSTRAINT fk_qms_msg FOREIGN KEY (message_id) REFERENCES qa_messages(id) ON DELETE CASCADE
+    CONSTRAINT fk_qms_msg FOREIGN KEY (message_id) REFERENCES qa_messages(id) ON DELETE CASCADE,
+    CONSTRAINT fk_qms_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='问答答案来源（RAG 溯源）表';
 
 CREATE TABLE semantic_translate_history (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  user_id BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
+  user_id BIGINT UNSIGNED NULL COMMENT '用户ID',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
 
   source_type VARCHAR(16) NOT NULL COMMENT '源类型(POST/COMMENT)',
@@ -1039,12 +1163,9 @@ CREATE TABLE semantic_translate_history (
   translated_title VARCHAR(512) NULL COMMENT '翻译后标题',
   translated_markdown LONGTEXT NOT NULL COMMENT '翻译后正文(Markdown)',
 
-  model VARCHAR(128) NULL COMMENT '模型名称',
-  provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
-  temperature DECIMAL(4,3) NULL COMMENT '温度',
-  top_p DECIMAL(4,3) NULL COMMENT 'TOP-P（0~1）',
-  latency_ms BIGINT NULL COMMENT '延迟(ms)',
-  prompt_version INT NULL COMMENT '提示词版本'
+  job_id BIGINT UNSIGNED NULL COMMENT '关联 generation_jobs.id',
+  CONSTRAINT fk_sth_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_sth_job FOREIGN KEY (job_id) REFERENCES generation_jobs(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='翻译历史记录（带缓存键）';
 
 CREATE UNIQUE INDEX uq_translate_cache_key
@@ -1075,14 +1196,12 @@ CREATE TABLE post_summary_gen_history (
   post_id BIGINT UNSIGNED NOT NULL COMMENT '帖子ID',
   status VARCHAR(16) NOT NULL COMMENT '状态(SUCCESS/FAILED)',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
-  model VARCHAR(128) NULL COMMENT '模型名称',
-  provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
-  temperature DECIMAL(4,3) NULL COMMENT '温度',
-  top_p DECIMAL(4,3) NULL COMMENT 'TOP-P（0~1）',
   applied_max_content_chars INT NOT NULL COMMENT '实际使用的最大字符数',
-  latency_ms BIGINT NULL COMMENT '延迟(ms)',
-  prompt_version INT NULL COMMENT '提示词版本',
-  error_message LONGTEXT NULL COMMENT '错误信息'
+  error_message LONGTEXT NULL COMMENT '错误信息',
+  job_id BIGINT UNSIGNED NULL COMMENT '关联 generation_jobs.id',
+  CONSTRAINT fk_psgh_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_psgh_actor FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_psgh_job FOREIGN KEY (job_id) REFERENCES generation_jobs(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='帖子摘要生成日志';
 
 CREATE INDEX idx_post_summary_gen_history_created_at ON post_summary_gen_history(created_at);
@@ -1094,15 +1213,13 @@ CREATE TABLE post_ai_summary (
   status VARCHAR(16) NOT NULL COMMENT '状态(SUCCESS/FAILED/PENDING)',
   summary_title VARCHAR(512) NULL COMMENT '摘要标题',
   summary_text LONGTEXT NULL COMMENT '摘要正文',
-  model VARCHAR(128) NULL COMMENT '模型名称',
-  provider_id VARCHAR(64) NULL COMMENT 'ProviderId（提供方ID）',
-  temperature DECIMAL(4,3) NULL COMMENT '温度',
-  top_p DECIMAL(4,3) NULL COMMENT 'TOP-P（0~1）',
   applied_max_content_chars INT NULL COMMENT '实际使用的最大字符数',
-  latency_ms BIGINT NULL COMMENT '延迟(ms)',
   generated_at DATETIME(3) NULL COMMENT '生成时间',
   error_message LONGTEXT NULL COMMENT '错误信息',
-  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间'
+  job_id BIGINT UNSIGNED NULL COMMENT '关联 generation_jobs.id',
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+  CONSTRAINT fk_pas_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_pas_job FOREIGN KEY (job_id) REFERENCES generation_jobs(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='帖子当前AI摘要状态';
 
 CREATE UNIQUE INDEX uq_post_ai_summary_post_id ON post_ai_summary(post_id);
@@ -1115,8 +1232,9 @@ CREATE TABLE llm_provider_settings (
   active_provider_id VARCHAR(64) NULL COMMENT '当前启用的ProviderId',
   version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
-  updated_by BIGINT NULL COMMENT '更新人用户ID',
-  PRIMARY KEY (env)
+  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
+  PRIMARY KEY (env),
+  CONSTRAINT fk_lps_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM Provider 设置（如 activeProviderId）';
 
 CREATE TABLE llm_providers (
@@ -1130,17 +1248,19 @@ CREATE TABLE llm_providers (
   extra_headers_encrypted LONGBLOB NULL COMMENT '额外请求头密文',
   connect_timeout_ms INT NULL COMMENT '连接超时(ms)',
   read_timeout_ms INT NULL COMMENT '读取超时(ms)',
-  max_concurrent INT NULL COMMENT '最大并发',
+  
   enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
   priority INT NOT NULL DEFAULT 0 COMMENT '优先级',
   default_chat_model VARCHAR(128) NULL COMMENT '默认对话模型',
   default_embedding_model VARCHAR(128) NULL COMMENT '默认向量模型',
   metadata JSON NULL COMMENT '扩展元数据(JSON)',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
-  created_by BIGINT NULL COMMENT '创建人用户ID',
+  created_by BIGINT UNSIGNED NULL COMMENT '创建人用户ID',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
-  updated_by BIGINT NULL COMMENT '更新人用户ID',
-  UNIQUE KEY uk_llm_providers_env_provider (env, provider_id)
+  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
+  UNIQUE KEY uk_llm_providers_env_provider (env, provider_id),
+  CONSTRAINT fk_llm_prov_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_llm_prov_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM Provider 配置（含密钥密文）';
 
 CREATE INDEX idx_llm_providers_env_enabled_priority ON llm_providers(env, enabled, priority);
@@ -1153,10 +1273,12 @@ CREATE TABLE llm_price_configs (
   output_cost_per_1k DECIMAL(18,8) NULL COMMENT '每1K输出Token成本',
   metadata JSON NULL COMMENT '扩展元数据(JSON)',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
-  created_by BIGINT NULL COMMENT '创建人用户ID',
+  created_by BIGINT UNSIGNED NULL COMMENT '创建人用户ID',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
-  updated_by BIGINT NULL COMMENT '更新人用户ID',
-  UNIQUE KEY uk_llm_price_configs_name (name)
+  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
+  UNIQUE KEY uk_llm_price_configs_name (name),
+  CONSTRAINT fk_lpc_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_lpc_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM 价格配置';
 
 CREATE TABLE llm_models (
@@ -1170,18 +1292,19 @@ CREATE TABLE llm_models (
   weight INT NOT NULL DEFAULT 0 COMMENT '权重',
   priority INT NOT NULL DEFAULT 0 COMMENT '优先级',
   sort_index INT NOT NULL DEFAULT 0 COMMENT '排序索引',
-  max_concurrent INT NULL COMMENT '最大并发',
-  min_delay_ms INT NULL COMMENT '最小请求间隔(ms)',
+  
   qps DECIMAL(10,3) NULL COMMENT 'QPS限制(可选)',
   price_config_id BIGINT NULL COMMENT '价格配置ID',
   metadata JSON NULL COMMENT '扩展元数据(JSON)',
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
-  created_by BIGINT NULL COMMENT '创建人用户ID',
+  created_by BIGINT UNSIGNED NULL COMMENT '创建人用户ID',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
-  updated_by BIGINT NULL COMMENT '更新人用户ID',
+  updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
   UNIQUE KEY uk_llm_models_env_provider_purpose_name (env, provider_id, purpose, model_name),
   CONSTRAINT fk_llm_models_provider FOREIGN KEY (env, provider_id) REFERENCES llm_providers(env, provider_id),
-  CONSTRAINT fk_llm_models_price FOREIGN KEY (price_config_id) REFERENCES llm_price_configs(id)
+  CONSTRAINT fk_llm_models_price FOREIGN KEY (price_config_id) REFERENCES llm_price_configs(id),
+  CONSTRAINT fk_llm_mod_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_llm_mod_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM 模型配置（按 provider/purpose）';
 
 CREATE INDEX idx_llm_models_select ON llm_models(env, provider_id, purpose, enabled, is_default, weight);
@@ -1203,18 +1326,14 @@ CREATE TABLE llm_routing_policies (
   version INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本',
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
   updated_by BIGINT UNSIGNED NULL COMMENT '更新人用户ID',
-  PRIMARY KEY (env, task_type)
+  label VARCHAR(128) NULL COMMENT '显示名称',
+  category VARCHAR(32) NULL COMMENT '类别(TEXT_GEN/EMBEDDING/RERANK)',
+  sort_index INT NOT NULL DEFAULT 0 COMMENT '排序索引',
+  PRIMARY KEY (env, task_type),
+  CONSTRAINT fk_lrp_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM 场景/能力路由策略（权重/优先级/健康检查）';
 
 -- LLM routing scenarios (scenes/capabilities) metadata
-
-CREATE TABLE llm_routing_scenarios (
-  task_type VARCHAR(64) NOT NULL PRIMARY KEY COMMENT '任务类型/场景',
-  label VARCHAR(128) NOT NULL COMMENT '显示名称',
-  category VARCHAR(32) NOT NULL COMMENT '类别(TEXT_GEN/EMBEDDING/RERANK)',
-  sort_index INT NOT NULL DEFAULT 0 COMMENT '排序索引',
-  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间'
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM 路由场景/能力元数据';
 
 CREATE TABLE post_compose_ai_snapshots (
     id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
@@ -1253,7 +1372,8 @@ CREATE TABLE board_role_permissions (
   PRIMARY KEY (board_id, role_id, perm),
   KEY idx_board_role_permissions_role (role_id),
   KEY idx_board_role_permissions_perm_role (perm, role_id),
-  CONSTRAINT fk_board_role_permissions_board FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+  CONSTRAINT fk_board_role_permissions_board FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE,
+  CONSTRAINT fk_brp_role FOREIGN KEY (role_id) REFERENCES roles(role_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='板块权限角色关联表';
 
 CREATE TABLE board_moderators (
@@ -1266,7 +1386,7 @@ CREATE TABLE board_moderators (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='板块版主关联表';
 
 -- Persist completed LLM queue task history for admin metrics (idempotent)
-
+ 
 CREATE TABLE llm_queue_task_history (
   task_id VARCHAR(64) PRIMARY KEY COMMENT '任务ID (UUID)',
   seq BIGINT NOT NULL COMMENT '队列序号(递增)',
@@ -1362,5 +1482,179 @@ CREATE TABLE llm_loadtest_run_detail (
   KEY idx_llm_loadtest_run_detail_run_kind (run_id, kind),
   KEY idx_llm_loadtest_run_detail_run_ok (run_id, ok)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='LLM 压测每次调用明细';
+
+CREATE TABLE rbac_audit_logs (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    actor_user_id BIGINT UNSIGNED NULL COMMENT '操作者用户ID',
+    action VARCHAR(64) NOT NULL COMMENT '动作(例如 PERMISSION_CREATE/ROLE_MATRIX_REPLACE/USER_ROLES_ASSIGN)',
+    target_type VARCHAR(64) NOT NULL COMMENT '目标类型(permissions/role_permissions/user_role_links 等)',
+    target_id VARCHAR(191) NULL COMMENT '目标标识(可为 id 或复合键字符串)',
+    reason VARCHAR(255) NULL COMMENT '变更原因(建议必填)',
+    diff_json LONGTEXT NULL COMMENT '变更摘要(JSON)',
+    request_ip VARCHAR(64) NULL COMMENT '请求IP',
+    user_agent VARCHAR(255) NULL COMMENT 'UA 信息',
+    request_id VARCHAR(128) NULL COMMENT '请求ID(可选)',
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+    KEY idx_rbac_audit_actor_time (actor_user_id, created_at),
+    KEY idx_rbac_audit_target_time (target_type, target_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='RBAC 变更审计日志';
+
+CREATE TABLE access_logs (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    tenant_id BIGINT UNSIGNED NULL COMMENT '租户ID',
+    user_id BIGINT UNSIGNED NULL COMMENT '用户ID（若可识别）',
+    username VARCHAR(191) NULL COMMENT '用户账号（邮箱/用户名）',
+    method VARCHAR(16) NOT NULL COMMENT 'HTTP方法',
+    path VARCHAR(512) NOT NULL COMMENT '请求路径（不含域名）',
+    query_string VARCHAR(1024) NULL COMMENT '查询串（已脱敏/裁剪）',
+    status_code INT NULL COMMENT '响应状态码',
+    latency_ms INT NULL COMMENT '耗时（毫秒）',
+    client_ip VARCHAR(64) NULL COMMENT '网络源地址（解析 Forwarded/XFF）',
+    client_port INT NULL COMMENT '网络源端口',
+    server_ip VARCHAR(64) NULL COMMENT '网络目标地址（本机）',
+    server_port INT NULL COMMENT '网络目标端口（本机）',
+    scheme VARCHAR(16) NULL COMMENT 'scheme（http/https）',
+    host VARCHAR(255) NULL COMMENT 'Host',
+    request_id VARCHAR(64) NULL COMMENT '请求ID（关联）',
+    trace_id VARCHAR(64) NULL COMMENT '链路ID（关联）',
+    user_agent VARCHAR(512) NULL COMMENT 'User-Agent（裁剪）',
+    referer VARCHAR(512) NULL COMMENT 'Referer（裁剪）',
+    details JSON NULL COMMENT '扩展详情（JSON）',
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+    archived_at DATETIME(3) NULL COMMENT '归档时间',
+    KEY idx_access_created (created_at),
+    KEY idx_access_user (user_id),
+    KEY idx_access_client_ip (client_ip),
+    KEY idx_access_request_id (request_id),
+    KEY idx_access_trace_id (trace_id),
+    KEY idx_access_path (path(191)),
+    KEY idx_access_archived_at (archived_at),
+    CONSTRAINT fk_access_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+    CONSTRAINT fk_access_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='HTTP访问日志（安全取证）';
+
+-- access_logs_archive 和 audit_logs_archive 已合并到各自主表（通过 archived_at 列区分）
+
+CREATE TABLE file_asset_extractions (
+    file_asset_id BIGINT UNSIGNED NOT NULL COMMENT 'file_assets.id',
+    extract_status ENUM('PENDING','READY','FAILED') NOT NULL DEFAULT 'PENDING' COMMENT '解析状态',
+    extracted_text LONGTEXT NULL COMMENT '抽取文本',
+    extracted_metadata_json LONGTEXT NULL COMMENT '抽取元数据(JSON字符串)',
+    error_message VARCHAR(1024) NULL COMMENT '错误信息',
+    created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
+    updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间',
+    PRIMARY KEY (file_asset_id),
+    CONSTRAINT fk_fae_file_asset FOREIGN KEY (file_asset_id) REFERENCES file_assets(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='文件解析产物表';
+
+CREATE TABLE image_upload_logs (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    local_path VARCHAR(500) NOT NULL COMMENT '本地文件路径',
+    remote_url VARCHAR(2000) NOT NULL COMMENT '远程 URL (oss:// 或 https://)',
+    storage_mode VARCHAR(30) NOT NULL COMMENT '存储模式: LOCAL / DASHSCOPE_TEMP / ALIYUN_OSS',
+    model_name VARCHAR(100) NULL COMMENT '绑定模型名 (百炼临时存储)',
+    file_size_bytes BIGINT NULL COMMENT '文件大小 (字节)',
+    upload_duration_ms INT NULL COMMENT '上传耗时 (毫秒)',
+    uploaded_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '上传时间',
+    expires_at DATETIME(3) NULL COMMENT '过期时间 (百炼 48h, OSS 为 NULL)',
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态: ACTIVE / EXPIRED / FAILED',
+    KEY idx_upload_logs_local_path (local_path(191)),
+    KEY idx_upload_logs_status_expires (status, expires_at),
+    KEY idx_upload_logs_uploaded_at (uploaded_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='图片上传日志';
+
+CREATE TABLE moderation_chunk_sets (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    queue_id BIGINT UNSIGNED NOT NULL,
+    case_type VARCHAR(16) NOT NULL,
+    content_type VARCHAR(16) NOT NULL,
+    content_id BIGINT UNSIGNED NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    chunk_threshold_chars INT NULL,
+    chunk_size_chars INT NULL,
+    overlap_chars INT NULL,
+    total_chunks INT NOT NULL DEFAULT 0,
+    completed_chunks INT NOT NULL DEFAULT 0,
+    failed_chunks INT NOT NULL DEFAULT 0,
+    memory_json LONGTEXT NULL,
+    config_json LONGTEXT NULL,
+    cancelled_at DATETIME NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    version INT NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_moderation_chunk_sets_queue_id (queue_id),
+    KEY idx_moderation_chunk_sets_content (content_type, content_id),
+    CONSTRAINT fk_moderation_chunk_sets_queue FOREIGN KEY (queue_id) REFERENCES moderation_queue(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审核分片集合';
+
+CREATE TABLE moderation_chunks (
+    id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+    chunk_set_id BIGINT UNSIGNED NOT NULL,
+    source_type VARCHAR(16) NOT NULL,
+    source_key VARCHAR(64) NOT NULL,
+    file_asset_id BIGINT UNSIGNED NULL,
+    file_name VARCHAR(191) NULL,
+    chunk_index INT NOT NULL,
+    start_offset INT NOT NULL,
+    end_offset INT NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    last_error VARCHAR(1000) NULL,
+    model VARCHAR(64) NULL,
+    verdict VARCHAR(16) NULL,
+    confidence DECIMAL(5,4) NULL,
+    labels LONGTEXT NULL,
+    tokens_in INT NULL,
+    tokens_out INT NULL,
+    decided_at DATETIME NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    version INT NOT NULL DEFAULT 0,
+    UNIQUE KEY uk_moderation_chunks_set_source_idx (chunk_set_id, source_key, chunk_index),
+    KEY idx_moderation_chunks_set_status_idx (chunk_set_id, status, chunk_index),
+    KEY idx_moderation_chunks_file_asset (file_asset_id),
+    CONSTRAINT fk_moderation_chunks_set FOREIGN KEY (chunk_set_id) REFERENCES moderation_chunk_sets(id) ON DELETE CASCADE,
+    CONSTRAINT fk_mc_file_asset FOREIGN KEY (file_asset_id) REFERENCES file_assets(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审核分片明细';
+
+CREATE TABLE ai_chat_context_events (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NULL,
+    session_id BIGINT UNSIGNED NULL,
+    question_message_id BIGINT UNSIGNED NULL,
+    kind VARCHAR(32) NOT NULL,
+    reason VARCHAR(64) NOT NULL,
+    target_prompt_tokens INT NULL,
+    reserve_answer_tokens INT NULL,
+    before_tokens INT NOT NULL,
+    after_tokens INT NOT NULL,
+    before_chars INT NOT NULL,
+    after_chars INT NOT NULL,
+    latency_ms INT NULL,
+    detail_json LONGTEXT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    INDEX idx_ai_chat_ctx_events_created_at (created_at),
+    INDEX idx_ai_chat_ctx_events_session_id (session_id),
+    CONSTRAINT fk_acce_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_acce_session FOREIGN KEY (session_id) REFERENCES qa_sessions(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI对话上下文治理事件';
+
+
+-- Initial prompt data insertion
+INSERT INTO prompts (prompt_code, name, created_at, updated_at) VALUES
+('MODERATION_TEXT', '文本审核', NOW(), NOW()),
+('MODERATION_VISION', '图片审核', NOW(), NOW()),
+('MODERATION_JUDGE', '审核裁决', NOW(), NOW()),
+('SUMMARY_GEN', '摘要生成', NOW(), NOW()),
+('TITLE_GEN', '标题生成', NOW(), NOW()),
+('TAG_GEN', '标签生成', NOW(), NOW()),
+('LANG_DETECT', '语言检测', NOW(), NOW()),
+('TRANSLATE_GEN', '翻译生成', NOW(), NOW()),
+('PORTAL_CHAT_ASSISTANT', '门户对话助手', NOW(), NOW()),
+('PORTAL_CHAT_ASSISTANT_DEEP_THINK', '门户对话助手(深度思考)', NOW(), NOW()),
+('PORTAL_POST_COMPOSE', '帖子润色', NOW(), NOW()),
+('PORTAL_POST_COMPOSE_DEEP_THINK', '帖子润色(深度思考)', NOW(), NOW()),
+('PORTAL_POST_COMPOSE_PROTOCOL', '帖子润色协议', NOW(), NOW());
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -27,9 +27,9 @@ function startsWithIgnoreCase(text: string, prefix: string, at: number): boolean
 
 function readTagName(text: string, startAt: number): { name: TagName; next: number } | null {
   let j = startAt;
-  while (j < text.length && /\s/.test(text[j] ?? '')) j += 1;
+  while (j < text.length && /\s/.test(text.charAt(j))) j += 1;
   let k = j;
-  while (k < text.length && /[A-Za-z]/.test(text[k] ?? '')) k += 1;
+  while (k < text.length && /[A-Za-z]/.test(text.charAt(k))) k += 1;
   if (k <= j) return null;
   const name = text.slice(j, k).toLowerCase();
   if (!isTagName(name)) return null;
@@ -43,7 +43,7 @@ function tryParseTagAt(text: string, idx: number): TagMatch | null {
   if (startsWithIgnoreCase(t, '&lt;', idx)) {
     let j = idx + 4;
     let close = false;
-    if ((t[j] ?? '') === '/') {
+    if (t.charAt(j) === '/') {
       close = true;
       j += 1;
     }
@@ -54,11 +54,11 @@ function tryParseTagAt(text: string, idx: number): TagMatch | null {
     return { idx, len: end + 4 - idx, name: nameRes.name, close };
   }
 
-  const ch = t[idx] ?? '';
+  const ch = t.charAt(idx);
   if (ch === '＜') {
     let j = idx + 1;
     let close = false;
-    if ((t[j] ?? '') === '/') {
+    if (t.charAt(j) === '/') {
       close = true;
       j += 1;
     }
@@ -72,7 +72,7 @@ function tryParseTagAt(text: string, idx: number): TagMatch | null {
   if (ch === '<') {
     let j = idx + 1;
     let close = false;
-    if ((t[j] ?? '') === '/') {
+    if (t.charAt(j) === '/') {
       close = true;
       j += 1;
     }
@@ -90,7 +90,7 @@ function findNextTag(text: string, opts: { close?: boolean; name?: TagName }): T
   const t = String(text ?? '');
   if (!t) return null;
   for (let i = 0; i < t.length; i += 1) {
-    const c = t[i] ?? '';
+    const c = t.charAt(i);
     if (c !== '<' && c !== '＜' && c !== '&') continue;
     const m = tryParseTagAt(t, i);
     if (!m) continue;
@@ -180,14 +180,8 @@ export function routeAiComposeDelta(
         remainder = remainder.slice(openTag.idx);
       }
 
-      const m = tryParseTagAt(remainder, 0);
-      if (m && !m.close) {
-        mode = m.name === 'chat' ? 'chat' : 'post';
-        remainder = remainder.slice(m.len);
-        continue;
-      }
-      appendTo('chat', remainder.slice(0, 1));
-      remainder = remainder.slice(1);
+      mode = openTag.name === 'chat' ? 'chat' : 'post';
+      remainder = remainder.slice(openTag.len);
       continue;
     }
 

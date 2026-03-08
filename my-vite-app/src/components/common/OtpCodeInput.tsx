@@ -115,7 +115,7 @@ export default function OtpCodeInput(props: OtpCodeInputProps) {
           placeholder={idx === 0 ? placeholder : undefined}
           disabled={disabled}
           onChange={(e) => {
-            const raw = e.target.value ?? '';
+              const raw = e.target.value;
             const digitsOnly = raw.replace(/\D/g, '');
             if (!digitsOnly) {
               updateAt(idx, '');

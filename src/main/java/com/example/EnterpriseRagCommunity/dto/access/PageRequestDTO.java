@@ -11,9 +11,9 @@ public class PageRequestDTO {
     @Min(1)
     private Integer pageNum = 1;
 
-    @ApiModelProperty("每页大小，默认20，最大200")
+    @ApiModelProperty("每页大小，默认20，最大20000")
     @Min(1)
-    @Max(200)
+    @Max(20000)
     private Integer pageSize = 20;
 
     @ApiModelProperty("排序字段，如 createdAt")

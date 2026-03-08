@@ -1,4 +1,3 @@
-// llm.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -6,346 +5,331 @@ import {
   adminTestLlmModeration,
   adminUpsertLlmModerationConfig,
   type LlmModerationConfig,
+  type LlmModerationStages,
   type LlmModerationTestResponse,
 } from '../../../../services/moderationLlmService';
-import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
-import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
 import { ModerationPipelineHistoryPanel } from '../../../../components/admin/ModerationPipelineHistoryPanel';
-import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
+import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
 
-function clampNumber(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return Math.min(max, Math.max(min, v));
-}
-
-function parseOptionalNumber(raw: string): number | undefined {
-  const t = raw.trim();
-  if (!t) return undefined;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : undefined;
-}
-
+type TabKey = 'config' | 'test' | 'history';
 
 type FormState = {
-  promptTemplate: string;
-  visionPromptTemplate: string;
-  model: string;
-  providerId: string;
-  visionModel: string;
-  visionProviderId: string;
-  temperature: string;
-  topP: string;
-  visionTemperature: string;
-  visionTopP: string;
-  maxTokens: string;
-  visionMaxTokens: string;
-  enableThinking: boolean;
-  visionEnableThinking: boolean;
-  threshold: string;
+  textPromptCode: string;
+  visionPromptCode: string;
+  judgePromptCode: string;
   autoRun: boolean;
 };
 
-function defaultConfig(): LlmModerationConfig {
-  return {
-    promptTemplate: '',
-    temperature: 0.2,
-    topP: 0.2,
-    enableThinking: false,
-    visionTopP: 0.2,
-    visionEnableThinking: false,
-    threshold: 0.75,
-    autoRun: true,
-  };
-}
-
 function toFormState(cfg?: LlmModerationConfig | null): FormState {
   return {
-    promptTemplate: cfg?.promptTemplate ?? '',
-    visionPromptTemplate: cfg?.visionPromptTemplate ?? '',
-    model: cfg?.model ?? '',
-    providerId: cfg?.providerId ?? '',
-    visionModel: cfg?.visionModel ?? '',
-    visionProviderId: cfg?.visionProviderId ?? '',
-    temperature: cfg?.temperature === null || cfg?.temperature === undefined ? '' : String(cfg.temperature),
-    topP: cfg?.topP === null || cfg?.topP === undefined ? '' : String(cfg.topP),
-    visionTemperature: cfg?.visionTemperature === null || cfg?.visionTemperature === undefined ? '' : String(cfg.visionTemperature),
-    visionTopP: cfg?.visionTopP === null || cfg?.visionTopP === undefined ? '' : String(cfg.visionTopP),
-    maxTokens: cfg?.maxTokens === null || cfg?.maxTokens === undefined ? '' : String(cfg.maxTokens),
-    visionMaxTokens: cfg?.visionMaxTokens === null || cfg?.visionMaxTokens === undefined ? '' : String(cfg.visionMaxTokens),
-    enableThinking: Boolean(cfg?.enableThinking),
-    visionEnableThinking: Boolean(cfg?.visionEnableThinking),
-    threshold: cfg?.threshold === null || cfg?.threshold === undefined ? '' : String(cfg.threshold),
-    autoRun: Boolean(cfg?.autoRun),
+    textPromptCode: cfg?.textPromptCode ?? 'MODERATION_TEXT',
+    visionPromptCode: cfg?.visionPromptCode ?? 'MODERATION_VISION',
+    judgePromptCode: cfg?.judgePromptCode ?? 'MODERATION_JUDGE',
+    autoRun: cfg?.autoRun == null ? true : Boolean(cfg.autoRun),
   };
 }
 
-function validateForm(s: FormState): string[] {
+function buildConfigPayload(form: FormState): LlmModerationConfig {
+  return {
+    textPromptCode: form.textPromptCode.trim(),
+    visionPromptCode: form.visionPromptCode.trim(),
+    judgePromptCode: form.judgePromptCode.trim(),
+    autoRun: form.autoRun,
+  };
+}
+
+function toPromptDraft(dto?: PromptContentDTO | null): PromptContentDraft {
+  return {
+    name: dto?.name ?? '',
+    systemPrompt: dto?.systemPrompt ?? '',
+    userPromptTemplate: dto?.userPromptTemplate ?? '',
+    temperature: dto?.temperature ?? null,
+    topP: dto?.topP ?? null,
+    maxTokens: dto?.maxTokens ?? null,
+    enableDeepThinking: dto?.enableDeepThinking ?? null,
+  };
+}
+
+function listPromptCodes(form: FormState): string[] {
+  return Array.from(
+    new Set([
+      form.textPromptCode.trim(),
+      form.visionPromptCode.trim(),
+      form.judgePromptCode.trim(),
+    ].filter((s) => s.length > 0))
+  );
+}
+
+function validateForm(form: FormState): string[] {
   const errors: string[] = [];
-  const prompt = s.promptTemplate.trim();
-  if (!prompt) errors.push('提示词不能为空');
-  if (prompt && prompt.length < 20) errors.push('提示词建议不少于 20 个字符（避免过短导致输出不稳定）');
-  if (prompt.length > 8000) errors.push('提示词过长（> 8000），请精简或拆分');
-
-  const visionPrompt = s.visionPromptTemplate.trim();
-  if (!visionPrompt) errors.push('视觉提示词不能为空');
-  if (visionPrompt && visionPrompt.length < 20) errors.push('视觉提示词建议不少于 20 个字符（避免过短导致输出不稳定）');
-  if (visionPrompt.length > 8000) errors.push('视觉提示词过长（> 8000），请精简或拆分');
-
-  const temp = parseOptionalNumber(s.temperature);
-  if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
-
-  const topP = parseOptionalNumber(s.topP);
-  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('topP 需在 [0, 1] 范围内');
-
-  const vtemp = parseOptionalNumber(s.visionTemperature);
-  if (vtemp !== undefined && (vtemp < 0 || vtemp > 2)) errors.push('visionTemperature 需在 [0, 2] 范围内');
-
-  const vtopP = parseOptionalNumber(s.visionTopP);
-  if (vtopP !== undefined && (vtopP < 0 || vtopP > 1)) errors.push('visionTopP 需在 [0, 1] 范围内');
-
-  const mt = parseOptionalNumber(s.maxTokens);
-  if (mt !== undefined && (!Number.isInteger(mt) || mt < 1 || mt > 32768)) errors.push('maxTokens 需为 1~32768 的整数');
-
-  const vmt = parseOptionalNumber(s.visionMaxTokens);
-  if (vmt !== undefined && (!Number.isInteger(vmt) || vmt < 1 || vmt > 32768)) errors.push('visionMaxTokens 需为 1~32768 的整数');
-
-  const th = parseOptionalNumber(s.threshold);
-  if (th !== undefined && (th < 0 || th > 1)) errors.push('threshold 需在 [0, 1] 范围内');
-  if (s.autoRun && th === undefined) errors.push('开启自动运行时，必须设置 threshold');
-
+  if (!form.textPromptCode.trim()) errors.push('必须填写文本提示词编码');
+  if (!form.visionPromptCode.trim()) errors.push('必须填写视觉提示词编码');
+  if (!form.judgePromptCode.trim()) errors.push('必须填写裁决提示词编码');
   return errors;
 }
 
-function buildConfigPayload(s: FormState): LlmModerationConfig {
-  const temperature = parseOptionalNumber(s.temperature);
-  const topP = parseOptionalNumber(s.topP);
-  const visionTemperature = parseOptionalNumber(s.visionTemperature);
-  const visionTopP = parseOptionalNumber(s.visionTopP);
-  const maxTokens = parseOptionalNumber(s.maxTokens);
-  const visionMaxTokens = parseOptionalNumber(s.visionMaxTokens);
-  const threshold = parseOptionalNumber(s.threshold);
+function parseQueueId(raw: string): number | undefined {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return Math.trunc(n);
+}
 
-  return {
-    promptTemplate: s.promptTemplate,
-    visionPromptTemplate: s.visionPromptTemplate,
-    model: s.model.trim() ? s.model.trim() : undefined,
-    providerId: s.providerId.trim() ? s.providerId.trim() : undefined,
-    visionModel: s.visionModel.trim() ? s.visionModel.trim() : undefined,
-    visionProviderId: s.visionProviderId.trim() ? s.visionProviderId.trim() : undefined,
-    temperature: temperature === undefined ? undefined : clampNumber(temperature, 0, 2),
-    topP: topP === undefined ? undefined : clampNumber(topP, 0, 1),
-    visionTemperature: visionTemperature === undefined ? undefined : clampNumber(visionTemperature, 0, 2),
-    visionTopP: visionTopP === undefined ? undefined : clampNumber(visionTopP, 0, 1),
-    maxTokens: maxTokens === undefined ? undefined : Math.trunc(maxTokens),
-    visionMaxTokens: visionMaxTokens === undefined ? undefined : Math.trunc(visionMaxTokens),
-    enableThinking: s.enableThinking,
-    visionEnableThinking: s.visionEnableThinking,
-    threshold: threshold === undefined ? undefined : clampNumber(threshold, 0, 1),
-    autoRun: s.autoRun,
-  };
+function parseImageLines(raw: string): Array<{ url: string }> {
+  return raw
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .slice(0, 5)
+    .map((url) => ({ url }));
+}
+
+function formatEvidenceItem(raw: string): string {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+  if (!text.startsWith('{') && !text.startsWith('[')) return text;
+  try {
+    const value: unknown = JSON.parse(text);
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const obj = value as Record<string, unknown>;
+      const before = typeof obj.before_context === 'string' ? obj.before_context.trim() : '';
+      const after = typeof obj.after_context === 'string' ? obj.after_context.trim() : '';
+      if (before || after) return `锚点 前文="${before}" 后文="${after}"`;
+      const quote = typeof obj.quote === 'string' ? obj.quote.trim() : '';
+      if (quote) return `引文：${quote}`;
+    }
+  } catch {
+    return text;
+  }
+  return text;
+}
+
+function renderStageCards(stages?: LlmModerationStages | null) {
+  if (!stages) return null;
+  const items: Array<{ key: keyof LlmModerationStages; title: string }> = [
+    { key: 'text', title: '文本' },
+    { key: 'image', title: '图像' },
+    { key: 'judge', title: '裁决' },
+    { key: 'upgrade', title: '升级' },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+      {items.map((item) => {
+        const stage = stages[item.key];
+        if (!stage) return null;
+        return (
+          <div key={item.key} className="rounded-lg border border-gray-200 bg-white p-3">
+            <div className="text-xs font-semibold text-gray-700">{item.title}</div>
+            <div className="mt-2 text-xs text-gray-600">决策：<span className="font-semibold">{stage.decision ?? '-'}</span></div>
+            <div className="text-xs text-gray-600">分数：<span className="font-semibold">{stage.score ?? '-'}</span></div>
+            <div className="text-xs text-gray-600">不确定性：<span className="font-semibold">{stage.uncertainty ?? '-'}</span></div>
+            {stage.model ? <div className="mt-1 text-[11px] text-gray-500 break-all">模型：{stage.model}</div> : null}
+            {stage.description ? (
+              <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap rounded border border-gray-200 bg-gray-50 p-2 text-[11px]">
+                {stage.description}
+              </pre>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 const LlmForm: React.FC = () => {
   const [searchParams] = useSearchParams();
   const initialQueueId = useMemo(() => {
     const raw = searchParams.get('queueId');
-    const n = raw ? Number(raw) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : undefined;
+    if (!raw) return undefined;
+    return parseQueueId(raw);
   }, [searchParams]);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedHint, setSavedHint] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
 
-  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState<string>('');
-  const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
-  const visionProviders = useMemo(() => {
-    const list = providers.filter((p) => p.supportsVision === true);
-    return list.length > 0 ? list : providers;
-  }, [providers]);
-
-  const [form, setForm] = useState<FormState>(() => toFormState(defaultConfig()));
-  const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(defaultConfig()));
+  const [form, setForm] = useState<FormState>(() => toFormState(null));
+  const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(null));
   const [isEditing, setIsEditing] = useState(false);
 
-  // 试运行
+  const [promptLoadError, setPromptLoadError] = useState<string | null>(null);
+  const [promptDrafts, setPromptDrafts] = useState<Record<string, PromptContentDraft | null>>({});
+  const [committedPromptDrafts, setCommittedPromptDrafts] = useState<Record<string, PromptContentDraft | null>>({});
+
+  const [tab, setTab] = useState<TabKey>('config');
+
   const [queueId, setQueueId] = useState<string>(initialQueueId ? String(initialQueueId) : '');
-
-  // If URL queueId changes (navigate to same page with another queueId), keep state in sync
-  useEffect(() => {
-    if (!initialQueueId) return;
-    setQueueId(String(initialQueueId));
-  }, [initialQueueId]);
-
-  const [testText, setTestText] = useState<string>('');
-  const [testImagesRaw, setTestImagesRaw] = useState<string>('');
+  const [testText, setTestText] = useState('');
+  const [testImagesRaw, setTestImagesRaw] = useState('');
   const [testResult, setTestResult] = useState<LlmModerationTestResponse | null>(null);
 
-  const formErrors = useMemo(() => validateForm(form), [form]);
-  const canSave = formErrors.length === 0 && !saving && !loading;
+  useEffect(() => {
+    if (initialQueueId) setQueueId(String(initialQueueId));
+  }, [initialQueueId]);
 
   const hasUnsavedChanges = useMemo(() => {
-    // 简单可靠：按字段对比（避免 JSON.stringify 因 key 顺序/空格等问题导致假阳性）
-    return (
-      form.promptTemplate !== committedForm.promptTemplate ||
-      form.visionPromptTemplate !== committedForm.visionPromptTemplate ||
-      form.model !== committedForm.model ||
-      form.providerId !== committedForm.providerId ||
-      form.visionModel !== committedForm.visionModel ||
-      form.visionProviderId !== committedForm.visionProviderId ||
-      form.temperature !== committedForm.temperature ||
-      form.topP !== committedForm.topP ||
-      form.visionTemperature !== committedForm.visionTemperature ||
-      form.visionTopP !== committedForm.visionTopP ||
-      form.maxTokens !== committedForm.maxTokens ||
-      form.visionMaxTokens !== committedForm.visionMaxTokens ||
-      form.enableThinking !== committedForm.enableThinking ||
-      form.visionEnableThinking !== committedForm.visionEnableThinking ||
-      form.threshold !== committedForm.threshold ||
-      form.autoRun !== committedForm.autoRun
-    );
-  }, [form, committedForm]);
+    const formChanged =
+      form.textPromptCode !== committedForm.textPromptCode ||
+      form.visionPromptCode !== committedForm.visionPromptCode ||
+      form.judgePromptCode !== committedForm.judgePromptCode ||
+      form.autoRun !== committedForm.autoRun;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const cfg = await adminGetAiProvidersConfig();
-        if (cancelled) return;
-        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
-        setActiveProviderId(cfg.activeProviderId ?? '');
-      } catch {
-        if (cancelled) return;
-        setProviders([]);
-        setActiveProviderId('');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const codes = listPromptCodes(form).sort();
+    const promptChanged =
+      JSON.stringify(codes.map((code) => promptDrafts[code] ?? null)) !==
+      JSON.stringify(codes.map((code) => committedPromptDrafts[code] ?? null));
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const opts = await getAiChatOptions();
-        if (cancelled) return;
-        setChatProviders((opts.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[]);
-      } catch {
-        if (cancelled) return;
-        setChatProviders([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    return formChanged || promptChanged;
+  }, [form, committedForm, promptDrafts, committedPromptDrafts]);
+
+  const loadPromptDrafts = useCallback(async (nextForm: FormState) => {
+    const codes = listPromptCodes(nextForm);
+    const response = await adminBatchGetPrompts(codes);
+    const map: Record<string, PromptContentDraft | null> = {};
+    for (const code of codes) map[code] = null;
+    for (const dto of response.prompts ?? []) {
+      if (!dto?.promptCode) continue;
+      map[dto.promptCode] = toPromptDraft(dto);
+    }
+    setPromptDrafts(map);
+    setCommittedPromptDrafts(map);
   }, []);
 
   const loadConfig = useCallback(async () => {
     setLoading(true);
     setError(null);
-    setSavedHint(null);
+    setHint(null);
+    setPromptLoadError(null);
     try {
       const cfg = await adminGetLlmModerationConfig();
-      const prompt = cfg?.promptTemplate?.trim();
-      if (!prompt) {
-        const next = toFormState({ ...defaultConfig(), ...cfg });
-        setForm(next);
-        setCommittedForm(next);
-        setIsEditing(false);
-        setSavedHint('后端配置为空，请点击「编辑配置」并保存提示词写入数据库');
-      } else {
-        const next = toFormState(cfg);
-        setForm(next);
-        setCommittedForm(next);
-        setIsEditing(false);
+      const next = toFormState(cfg);
+      setForm(next);
+      setCommittedForm(next);
+      setIsEditing(false);
+
+      try {
+        await loadPromptDrafts(next);
+      } catch (e) {
+        setPromptLoadError(e instanceof Error ? e.message : String(e));
+        setPromptDrafts({});
+        setCommittedPromptDrafts({});
       }
     } catch (e) {
-      const next = toFormState(defaultConfig());
+      const next = toFormState(null);
       setForm(next);
       setCommittedForm(next);
       setIsEditing(false);
       setError(e instanceof Error ? e.message : String(e));
+      setPromptDrafts({});
+      setCommittedPromptDrafts({});
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadPromptDrafts]);
 
   useEffect(() => {
     void loadConfig();
   }, [loadConfig]);
 
-  const cancelEdit = useCallback(() => {
-    setForm(committedForm);
-    setIsEditing(false);
-    setError(null);
-    setSavedHint('已放弃修改');
-  }, [committedForm]);
-
   const save = useCallback(async () => {
-    const errs = validateForm(form);
-    if (errs.length > 0) {
-      setError(errs.join('；'));
+    const validationErrors = validateForm(form);
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join('; '));
       return;
     }
 
     setSaving(true);
     setError(null);
-    setSavedHint(null);
+    setHint(null);
+
     try {
-      const payload = buildConfigPayload(form);
-      const saved = await adminUpsertLlmModerationConfig(payload);
-      const next = toFormState(saved);
-      setForm(next);
-      setCommittedForm(next);
+      const savedConfig = await adminUpsertLlmModerationConfig(buildConfigPayload(form));
+
+      const codes = listPromptCodes(form).sort();
+      const changedCodes = codes.filter((code) => {
+        return JSON.stringify(promptDrafts[code] ?? null) !== JSON.stringify(committedPromptDrafts[code] ?? null);
+      });
+
+      const promptErrors: string[] = [];
+      for (const code of changedCodes) {
+        const draft = promptDrafts[code];
+        if (!draft) continue;
+        try {
+          await adminUpdatePromptContent(code, {
+            systemPrompt: draft.systemPrompt,
+            userPromptTemplate: draft.userPromptTemplate,
+            temperature: draft.temperature ?? null,
+            topP: draft.topP ?? null,
+            maxTokens: draft.maxTokens ?? null,
+            enableDeepThinking: draft.enableDeepThinking ?? null,
+          });
+        } catch (e) {
+          promptErrors.push(e instanceof Error ? e.message : String(e));
+        }
+      }
+
+      const nextForm = toFormState(savedConfig);
+      setForm(nextForm);
+      setCommittedForm(nextForm);
       setIsEditing(false);
-      setSavedHint('已保存并生效');
+      if (promptErrors.length > 0) {
+        setError(`配置已保存，但提示词内容更新失败：${promptErrors[0]}`);
+      } else {
+        try {
+          await loadPromptDrafts(nextForm);
+        } catch (e) {
+          setPromptLoadError(e instanceof Error ? e.message : String(e));
+        }
+        setHint('保存成功');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
-  }, [form]);
+  }, [form, promptDrafts, committedPromptDrafts, loadPromptDrafts]);
+
+  const cancelEdit = useCallback(() => {
+    setForm(committedForm);
+    setPromptDrafts(committedPromptDrafts);
+    setIsEditing(false);
+    setError(null);
+    setHint('已丢弃未保存更改');
+  }, [committedForm, committedPromptDrafts]);
 
   const runTest = useCallback(async () => {
-    const errs = validateForm(form);
-    if (errs.length > 0) {
-      setError(errs.join('；'));
+    const validationErrors = validateForm(form);
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join('; '));
       return;
     }
 
-    const qid = parseOptionalNumber(queueId);
+    const qid = parseQueueId(queueId.trim());
     const text = testText.trim();
-    const images = testImagesRaw
-      .split('\n')
-      .map((x) => x.trim())
-      .filter(Boolean)
-      .slice(0, 5)
-      .map((url) => ({ url }));
+    const images = parseImageLines(testImagesRaw);
 
     if (!qid && !text && images.length === 0) {
-      setError('请填写 queueId、测试文本或图片 URL');
+      setError('请提供 queueId、测试文本或图片 URL');
       return;
     }
 
     setTesting(true);
     setError(null);
+    setHint(null);
     setTestResult(null);
 
     try {
-      const payload = {
+      const res = await adminTestLlmModeration({
         queueId: qid,
         text: text || undefined,
         images: images.length ? images : undefined,
-        // 允许试运行使用当前表单配置（避免必须先保存）
         configOverride: buildConfigPayload(form),
-      };
-      const res = await adminTestLlmModeration(payload);
+      });
       setTestResult(res);
+      setHint('测试完成');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -353,566 +337,214 @@ const LlmForm: React.FC = () => {
     }
   }, [form, queueId, testText, testImagesRaw]);
 
-  const qidForHistory = useMemo(() => {
-    const n = Number(queueId);
-    return Number.isFinite(n) && n > 0 ? Math.trunc(n) : undefined;
-  }, [queueId]);
+  const historyQueueId = useMemo(() => parseQueueId(queueId.trim()), [queueId]);
 
   return (
-    <div className="space-y-3">
-      <div className="bg-white rounded-lg shadow p-3 space-y-3">
-        <div className="flex items-center justify-between gap-3">
+    <div className="space-y-4 w-full">
+      <div className="bg-white rounded-lg shadow p-4 space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h3 className="text-lg font-semibold">LLM 审核层</h3>
-            <div className="text-sm text-gray-500">
-              这里配置“让大模型怎么审、怎么输出结果”的提示词与推理参数，并支持对指定内容试运行。
-              分数如何映射为通过/拒绝/转人工，通常在「置信回退机制」里配置（本页更偏模型与提示词本身）。
-            </div>
+            <h3 className="text-xl font-semibold text-gray-900">LLM 审核</h3>
+            <p className="text-sm text-gray-600 mt-1">
+              统一为 3 个提示词：文本、视觉、裁决。升级/终审复用裁决提示词。
+            </p>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-700">LLM自动审核：</span>
-              <select
-                value={form.autoRun ? 'true' : 'false'}
-                disabled={!isEditing}
-                onChange={(e) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, autoRun: e.target.value === 'true' }));
-                  setSavedHint(null);
-                }}
-                className={`rounded border px-3 py-1 text-sm font-semibold focus:outline-none ${
-                  form.autoRun ? 'text-green-600 border-green-200 bg-white' : 'text-red-600 border-red-200 bg-white'
-                } disabled:opacity-60 disabled:bg-gray-100`}
-              >
-                <option value="true" className="text-green-600">
-                  开启
-                </option>
-                <option value="false" className="text-red-600">
-                  关闭
-                </option>
-              </select>
-            </div>
-            <div className="text-xs text-gray-500 w-full">
-              开启后，后台会定时从待审队列中取任务交给 LLM 自动审核并落库结果；关闭则只在需要时手动试运行/人工触发。
-            </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                void loadConfig();
-                setError(null);
-              }}
-              className="rounded border px-3 py-1.5 disabled:opacity-60"
-              disabled={loading || saving || testing}
-              title="从后端重新加载配置（会覆盖未保存的修改）"
-            >
+          <div className="flex items-center gap-2">
+            <button type="button" className="border rounded px-3 py-1.5 text-sm" onClick={() => void loadConfig()} disabled={loading}>
               刷新
             </button>
 
             {!isEditing ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditing(true);
-                  setSavedHint(null);
-                  setError(null);
-                }}
-                className="rounded bg-blue-600 text-white px-3 py-1.5 disabled:opacity-60"
-                disabled={loading || saving || testing}
-                title="进入编辑模式"
-              >
-                编辑配置
+              <button type="button" className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm" onClick={() => setIsEditing(true)} disabled={loading}>
+                编辑
               </button>
             ) : (
               <>
                 <button
                   type="button"
+                  className="rounded border px-3 py-1.5 text-sm"
                   onClick={cancelEdit}
-                  className="rounded border px-3 py-1.5 disabled:opacity-60"
-                  disabled={loading || saving || testing}
-                  title="放弃未保存的修改，并恢复到最近一次加载/保存的配置"
+                  disabled={saving}
                 >
-                  放弃修改
+                  取消
                 </button>
                 <button
                   type="button"
+                  className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm disabled:opacity-60"
                   onClick={save}
-                  className="rounded bg-blue-600 text-white px-3 py-1.5 disabled:opacity-60"
-                  disabled={!canSave}
-                  title={formErrors.length ? formErrors.join('\n') : '保存并生效'}
+                  disabled={saving || !hasUnsavedChanges}
                 >
-                  {saving ? '保存中…' : '保存配置'}
+                  {saving ? '保存中...' : '保存'}
                 </button>
               </>
             )}
           </div>
         </div>
 
-        {savedHint ? (
-          <div className="rounded border border-green-200 bg-green-50 text-green-700 px-3 py-2 text-sm">{savedHint}</div>
-        ) : null}
+        {error ? <div className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">{error}</div> : null}
+        {hint ? <div className="rounded border border-green-200 bg-green-50 p-2 text-sm text-green-700">{hint}</div> : null}
 
-        {error ? (
-          <div className="rounded border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-sm">{error}</div>
-        ) : null}
-
-        {!isEditing && hasUnsavedChanges ? (
-          <div className="rounded border border-yellow-200 bg-yellow-50 text-yellow-800 px-3 py-2 text-sm">
-            当前表单与已生效配置不一致（可能来自自动填充/接口回退）。如需修改请点击「编辑配置」。
-          </div>
-        ) : null}
-
-        {/* 配置表单 */}
-        <div className="space-y-2">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[360px_1fr]">
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-gray-700">文本审核模型</div>
-              <ProviderModelSelect
-                providers={providers}
-                activeProviderId={activeProviderId}
-                chatProviders={chatProviders}
-                mode="chat"
-                providerId={form.providerId}
-                autoOptionLabel="自动（均衡负载）"
-                model={form.model}
-                disabled={!isEditing}
-                onChange={(next) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, providerId: next.providerId, model: next.model }));
-                  setSavedHint(null);
-                }}
-              />
-              <div className="text-xs text-gray-500">选择用于“审核文本内容”的模型与提供方；不确定时用“自动（均衡负载）”。</div>
-
-              <div>
-                <div className="text-sm font-medium mb-1">温度</div>
-                <input
-                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
-                  placeholder="例如：0.2"
-                  value={form.temperature}
-                  readOnly={!isEditing}
-                  onChange={(e) => {
-                    if (!isEditing) return;
-                    setForm((p) => ({ ...p, temperature: e.target.value }));
-                    setSavedHint(null);
-                  }}
-                />
-                <div className="text-xs text-gray-500 mt-1">影响输出随机性：越低越稳定、越可复现；越高越发散。一般建议 0~0.5。</div>
-              </div>
-
-              <div>
-                <div className="text-sm font-medium mb-1">TOP-P</div>
-                <input
-                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
-                  placeholder="例如：0.2"
-                  value={form.topP}
-                  readOnly={!isEditing}
-                  onChange={(e) => {
-                    if (!isEditing) return;
-                    setForm((p) => ({ ...p, topP: e.target.value }));
-                    setSavedHint(null);
-                  }}
-                />
-                <div className="text-xs text-gray-500 mt-1">影响采样范围：越低越保守、越稳定。一般建议 0.1~0.5。</div>
-              </div>
-
-              <div>
-                <div className="text-sm font-medium mb-1">最大输出 tokens（maxTokens）</div>
-                <input
-                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
-                  placeholder="例如：1024"
-                  value={form.maxTokens}
-                  readOnly={!isEditing}
-                  onChange={(e) => {
-                    if (!isEditing) return;
-                    setForm((p) => ({ ...p, maxTokens: e.target.value }));
-                    setSavedHint(null);
-                  }}
-                />
-                <div className="text-xs text-gray-500 mt-1">限制模型本次回答的最长长度，避免输出过长导致耗时/费用增加。</div>
-              </div>
-
-              <div>
-                <div className="text-sm font-medium mb-1">兜底阈值（threshold，0~1）</div>
-                <input
-                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
-                  placeholder="例如：0.75"
-                  value={form.threshold}
-                  readOnly={!isEditing}
-                  onChange={(e) => {
-                    if (!isEditing) return;
-                    setForm((p) => ({ ...p, threshold: e.target.value }));
-                    setSavedHint(null);
-                  }}
-                />
-                <div className="text-xs text-gray-500 mt-1">
-                  当模型只返回 score、没有返回明确 decision 时的兜底：score ≥ threshold 判定 REJECT，否则 APPROVE。阈值越低越容易拒绝。
-                </div>
-              </div>
-
-              <div>
-                <div className="text-sm font-medium mb-1">启用深度思考</div>
-                <select
-                  value={form.enableThinking ? 'true' : 'false'}
-                  disabled={!isEditing}
-                  onChange={(e) => {
-                    if (!isEditing) return;
-                    setForm((p) => ({ ...p, enableThinking: e.target.value === 'true' }));
-                    setSavedHint(null);
-                  }}
-                  className={`w-full rounded border px-3 py-1.5 text-sm font-semibold focus:outline-none ${
-                    form.enableThinking ? 'text-purple-700 border-purple-200 bg-white' : 'text-gray-700 border-gray-200 bg-white'
-                  } disabled:opacity-60 disabled:bg-gray-100`}
-                >
-                  <option value="false" className="text-gray-700">
-                    关闭
-                  </option>
-                  <option value="true" className="text-purple-700">
-                    开启
-                  </option>
-                </select>
-                <div className="text-xs text-gray-500 mt-1">部分模型的“思考模式”会更慢/更贵；只有在确实需要更强推理时再开启。</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-sm font-medium mb-1">
-                提示词（Prompt Template）
-                {!isEditing ? <span className="text-xs text-gray-500 ml-2">（只读，点击右上角「编辑配置」修改）</span> : null}
-              </div>
-              <textarea
-                className="w-full rounded border px-3 py-1.5 font-mono text-sm disabled:bg-gray-50"
-                rows={8}
-                placeholder="请输入审核提示词。建议要求模型输出严格 JSON，例如：{decision, score, reasons, riskTags}（decision=APPROVE/REJECT/HUMAN，score=0~1）"
-                value={form.promptTemplate}
-                readOnly={!isEditing}
-                onChange={(e) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, promptTemplate: e.target.value }));
-                  setSavedHint(null);
-                }}
-              />
-              <div className="text-xs text-gray-500 mt-1">当前长度：{form.promptTemplate.length}（建议 20~8000）</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-[360px_1fr]">
-            <div className="space-y-2">
-              <div className="text-sm font-semibold text-gray-700">图片审核模型</div>
-
-              <ProviderModelSelect
-                providers={visionProviders}
-                activeProviderId={activeProviderId}
-                chatProviders={chatProviders}
-                mode="chat"
-                providerId={form.visionProviderId}
-                model={form.visionModel}
-                disabled={!isEditing}
-                label="视觉模型:"
-                autoOptionLabel="自动（均衡负载）"
-                includeProviderOnlyOptions
-                onChange={(next) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, visionProviderId: next.providerId, visionModel: next.model }));
-                  setSavedHint(null);
-                }}
-              />
-              <div className="text-xs text-gray-500">选择用于“看图并判断风险”的视觉模型；不确定时用“自动（均衡负载）”。</div>
-
-              <div>
-                <div className="text-sm font-medium mb-1">温度</div>
-                <input
-                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
-                  placeholder="例如：0.2"
-                  value={form.visionTemperature}
-                  readOnly={!isEditing}
-                  onChange={(e) => {
-                    if (!isEditing) return;
-                    setForm((p) => ({ ...p, visionTemperature: e.target.value }));
-                    setSavedHint(null);
-                  }}
-                />
-                <div className="text-xs text-gray-500 mt-1">越低越稳定；建议与文本审核保持一致或更低。</div>
-              </div>
-
-              <div>
-                <div className="text-sm font-medium mb-1">TOP-P</div>
-                <input
-                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
-                  placeholder="例如：0.2"
-                  value={form.visionTopP}
-                  readOnly={!isEditing}
-                  onChange={(e) => {
-                    if (!isEditing) return;
-                    setForm((p) => ({ ...p, visionTopP: e.target.value }));
-                    setSavedHint(null);
-                  }}
-                />
-                <div className="text-xs text-gray-500 mt-1">越低越保守、越稳定；不确定时保持默认即可。</div>
-              </div>
-
-              <div>
-                <div className="text-sm font-medium mb-1">最大输出 tokens（visionMaxTokens）</div>
-                <input
-                  className="w-full rounded border px-3 py-1.5 disabled:bg-gray-50"
-                  placeholder="例如：1024"
-                  value={form.visionMaxTokens}
-                  readOnly={!isEditing}
-                  onChange={(e) => {
-                    if (!isEditing) return;
-                    setForm((p) => ({ ...p, visionMaxTokens: e.target.value }));
-                    setSavedHint(null);
-                  }}
-                />
-                <div className="text-xs text-gray-500 mt-1">限制视觉模型输出长度，避免生成过长描述/理由。</div>
-              </div>
-
-              <div>
-                <div className="text-sm font-medium mb-1">启用深度思考</div>
-                <select
-                  value={form.visionEnableThinking ? 'true' : 'false'}
-                  disabled={!isEditing}
-                  onChange={(e) => {
-                    if (!isEditing) return;
-                    setForm((p) => ({ ...p, visionEnableThinking: e.target.value === 'true' }));
-                    setSavedHint(null);
-                  }}
-                  className={`w-full rounded border px-3 py-1.5 text-sm font-semibold focus:outline-none ${
-                    form.visionEnableThinking ? 'text-purple-700 border-purple-200 bg-white' : 'text-gray-700 border-gray-200 bg-white'
-                  } disabled:opacity-60 disabled:bg-gray-100`}
-                >
-                  <option value="false" className="text-gray-700">
-                    关闭
-                  </option>
-                  <option value="true" className="text-purple-700">
-                    开启
-                  </option>
-                </select>
-                <div className="text-xs text-gray-500 mt-1">开启可能提升复杂图片判断能力，但会增加耗时与费用。</div>
-              </div>
-            </div>
-
-            <div>
-              <div className="text-sm font-medium mb-1">
-                视觉提示词（Prompt Template）
-                {!isEditing ? <span className="text-xs text-gray-500 ml-2">（只读，点击右上角「编辑配置」修改）</span> : null}
-              </div>
-              <textarea
-                className="w-full rounded border px-3 py-1.5 font-mono text-sm disabled:bg-gray-50"
-                rows={8}
-                placeholder="请输入视觉审核提示词。建议要求模型输出严格 JSON，例如：{decision, score, reasons, riskTags, description}（description=图片内容文字描述）"
-                value={form.visionPromptTemplate}
-                readOnly={!isEditing}
-                onChange={(e) => {
-                  if (!isEditing) return;
-                  setForm((p) => ({ ...p, visionPromptTemplate: e.target.value }));
-                  setSavedHint(null);
-                }}
-              />
-              <div className="text-xs text-gray-500 mt-1">当前长度：{form.visionPromptTemplate.length}（建议 20~8000）</div>
-            </div>
-          </div>
-
-          {formErrors.length ? (
-            <div className="rounded border border-yellow-200 bg-yellow-50 text-yellow-800 px-3 py-2 text-sm">
-              <div className="font-medium mb-1">配置校验提示：</div>
-              <ul className="list-disc ml-5">
-                {formErrors.map((x) => (
-                  <li key={x}>{x}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+        <div className="flex gap-2 border-b border-gray-200 pb-2">
+          {([
+            { key: 'config', label: '配置' },
+            { key: 'test', label: '测试运行' },
+            { key: 'history', label: '历史' },
+          ] as const).map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={`rounded px-3 py-1.5 text-sm ${tab === item.key ? 'bg-blue-600 text-white' : 'border text-gray-700'}`}
+              onClick={() => setTab(item.key)}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow p-3 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-lg font-semibold">LLM 试运行</div>
-            <div className="text-sm text-gray-500">
-              用于快速验证“提示词 + 参数”的效果：可以用 queueId 拉取真实待审内容，也可以手动粘贴文本/图片 URL。
-              试运行默认使用当前表单配置（即使还没保存），方便边调边看结果。
+      {tab === 'config' ? (
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg shadow p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-3">
+              <label className="text-sm">
+                <div className="text-gray-700 mb-1">自动运行</div>
+                <select
+                  className="w-full rounded border px-3 py-2"
+                  value={String(form.autoRun)}
+                  disabled={!isEditing}
+                  onChange={(e) => setForm((s) => ({ ...s, autoRun: e.target.value === 'true' }))}
+                >
+                  <option value="true">启用</option>
+                  <option value="false">禁用</option>
+                </select>
+              </label>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={runTest}
-            className="rounded bg-blue-600 text-white px-3 py-1.5 disabled:opacity-60"
-            disabled={testing}
-          >
-            {testing ? '运行中…' : '运行试审核'}
-          </button>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <div>
-            <div className="text-sm font-medium mb-1">queueId（可选）</div>
-            <input
-              className="w-full md:max-w-[240px] rounded border px-3 py-1.5"
-              placeholder="例如：123"
-              value={queueId}
-              onChange={(e) => setQueueId(e.target.value)}
+          <div className="grid grid-cols-1 gap-4">
+            <PromptContentCard
+              title="文本提示词"
+              draft={promptDrafts[form.textPromptCode] ?? null}
+              editing={isEditing}
+              onChange={(next) => setPromptDrafts((s) => ({ ...s, [form.textPromptCode]: next }))}
+              hint={promptLoadError ?? undefined}
+              showRuntimeParams
             />
-            {initialQueueId ? <div className="text-xs text-gray-500 mt-1">已从 URL 读取 queueId={initialQueueId}</div> : null}
-            <div className="text-xs text-gray-500 mt-1">填写后会从待审队列加载对应内容；如果同时填写了测试文本/图片，将优先使用你手动输入的内容。</div>
-          </div>
 
-          <div className="md:col-span-2">
-            <div className="text-sm font-medium mb-1">测试文本（可选）</div>
-            <textarea
-              className="w-full rounded border px-3 py-1.5 text-sm"
-              rows={4}
-              placeholder="粘贴要审核的文本（建议包含标题/正文/关键信息）…"
-              value={testText}
-              onChange={(e) => setTestText(e.target.value)}
+            <PromptContentCard
+              title="裁决提示词"
+              draft={promptDrafts[form.judgePromptCode] ?? null}
+              editing={isEditing}
+              onChange={(next) => setPromptDrafts((s) => ({ ...s, [form.judgePromptCode]: next }))}
+              hint={promptLoadError ?? undefined}
+              showRuntimeParams
             />
-            <div className="text-xs text-gray-500 mt-1">不涉及图片时，主要看 decision/score/reasons 是否符合预期。</div>
-          </div>
 
-          <div className="md:col-span-2">
-            <div className="text-sm font-medium mb-1">图片 URL（可选，每行一个，最多 5 个）</div>
-            <textarea
-              className="w-full rounded border px-3 py-1.5 text-sm"
-              rows={3}
-              placeholder="https://example.com/a.png"
-              value={testImagesRaw}
-              onChange={(e) => setTestImagesRaw(e.target.value)}
+            <PromptContentCard
+              title="视觉提示词"
+              draft={promptDrafts[form.visionPromptCode] ?? null}
+              editing={isEditing}
+              onChange={(next) => setPromptDrafts((s) => ({ ...s, [form.visionPromptCode]: next }))}
+              hint={promptLoadError ?? undefined}
+              showRuntimeParams
             />
-            <div className="text-xs text-gray-500 mt-1">不填写时，后端会在 queueId 指向帖子且存在图片附件时自动带入。</div>
           </div>
         </div>
+      ) : null}
 
-        {testResult ? (
-          <div className="border rounded p-3 space-y-2">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-              <div>
-                <span className="text-gray-500">Decision：</span>
-                <span className="font-semibold">{testResult.decision}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">Score：</span>
-                <span className="font-semibold">{testResult.score ?? '—'}</span>
-              </div>
-              <div>
-                <span className="text-gray-500">Model：</span>
-                <span className="font-semibold">{testResult.model ?? (form.model.trim() ? form.model : '—')}</span>
-              </div>
-            </div>
-            {testResult.inputMode ? <div className="text-sm text-gray-600">inputMode：{testResult.inputMode}</div> : null}
+      {tab === 'test' ? (
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg shadow p-4 space-y-3">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <label className="text-sm">
+                <div className="text-gray-700 mb-1">queueId（可选）</div>
+                <input className="w-full rounded border px-3 py-2" value={queueId} onChange={(e) => setQueueId(e.target.value)} />
+              </label>
 
-            {testResult.stages ? (
-              <div className="text-sm">
-                <div className="font-medium mb-1">Stages</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                  {(['text', 'image', 'cross'] as const).map((k) => {
-                    const s = testResult.stages?.[k];
-                    if (!s) return null;
-                    const title = k === 'text' ? 'Text' : k === 'image' ? 'Image' : 'Cross';
-                    const desc = s.description ? String(s.description) : '';
-                    return (
-                      <div key={k} className="rounded border bg-gray-50 p-2 space-y-1">
-                        <div className="text-xs font-semibold text-gray-700">{title}</div>
-                        <div className="text-xs text-gray-600">
-                          <span className="text-gray-500">Decision：</span>
-                          <span className="font-semibold">{s.decision ?? '—'}</span>
-                        </div>
-                        <div className="text-xs text-gray-600">
-                          <span className="text-gray-500">Score：</span>
-                          <span className="font-semibold">{s.score ?? '—'}</span>
-                        </div>
-                        {s.model ? <div className="text-[11px] text-gray-500 break-all">Model：{s.model}</div> : null}
-                        {k === 'image' && desc ? (
-                          <div className="pt-1">
-                            <div className="text-[11px] text-gray-500 mb-1">Description</div>
-                            <pre className="whitespace-pre-wrap text-[11px] bg-white rounded border p-2 max-h-[160px] overflow-auto">{desc}</pre>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            {testResult.reasons?.length ? (
-              <div className="text-sm">
-                <div className="font-medium mb-1">Reasons</div>
-                <ul className="list-disc ml-5 text-gray-700">
-                  {testResult.reasons.map((r, idx) => (
-                    <li key={idx}>{r}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {testResult.riskTags?.length ? (
-              <div className="text-sm">
-                <div className="font-medium mb-1">Risk Tags</div>
-                <div className="flex flex-wrap gap-2">
-                  {testResult.riskTags.map((t) => (
-                    <span key={t} className="inline-flex px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {testResult.images?.length ? (
-              <div className="text-sm">
-                <div className="font-medium mb-1">Images</div>
-                <div className="space-y-1">
-                  {testResult.images.slice(0, 5).map((u, idx) => (
-                    <a key={`${u}-${idx}`} href={u} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">
-                      {u}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm text-gray-600">
-              <div>latencyMs：{testResult.latencyMs ?? '—'}</div>
-              <div>promptTokens：{testResult.usage?.promptTokens ?? '—'}</div>
-              <div>totalTokens：{testResult.usage?.totalTokens ?? '—'}</div>
+              <label className="text-sm lg:col-span-2">
+                <div className="text-gray-700 mb-1">文本（可选）</div>
+                <textarea className="w-full rounded border px-3 py-2 min-h-[110px]" value={testText} onChange={(e) => setTestText(e.target.value)} />
+              </label>
             </div>
 
-            {testResult.promptMessages?.length ? (
-              <div>
-                <div className="text-sm font-medium mb-1">Prompt Messages</div>
-                <div className="space-y-2">
-                  {testResult.promptMessages.map((m, idx) => (
-                    <div key={idx} className="rounded border bg-white p-2">
-                      <div className="text-[11px] font-semibold text-gray-600 mb-1">{m.role}</div>
-                      <pre className="whitespace-pre-wrap text-xs bg-gray-50 rounded p-2 overflow-auto max-h-[240px]">{m.content}</pre>
+            <label className="text-sm block">
+              <div className="text-gray-700 mb-1">图片 URL（可选，每行一个，最多 5 个）</div>
+              <textarea className="w-full rounded border px-3 py-2 min-h-[90px]" value={testImagesRaw} onChange={(e) => setTestImagesRaw(e.target.value)} />
+            </label>
+
+            <button type="button" className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm" onClick={runTest} disabled={testing}>
+              {testing ? '运行中...' : '执行测试'}
+            </button>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-4 space-y-3">
+            <div className="text-base font-semibold text-gray-900">结果</div>
+
+            {testResult ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3 text-sm">
+                  <div className="rounded border border-gray-200 bg-gray-50 p-3">决策：<span className="font-semibold">{testResult.decision}</span></div>
+                  <div className="rounded border border-gray-200 bg-gray-50 p-3">分数：<span className="font-semibold">{testResult.score ?? '-'}</span></div>
+                  <div className="rounded border border-gray-200 bg-gray-50 p-3">严重度：<span className="font-semibold">{testResult.severity ?? '-'}</span></div>
+                  <div className="rounded border border-gray-200 bg-gray-50 p-3">不确定性：<span className="font-semibold">{testResult.uncertainty ?? '-'}</span></div>
+                  <div className="rounded border border-gray-200 bg-gray-50 p-3">模型：<span className="font-semibold">{testResult.model ?? '-'}</span></div>
+                </div>
+
+                {renderStageCards(testResult.stages)}
+
+                {testResult.evidence?.length ? (
+                  <div>
+                    <div className="text-sm font-medium text-gray-900 mb-2">证据</div>
+                    <ul className="list-disc ml-5 text-sm text-gray-700 space-y-1">
+                      {testResult.evidence.map((item, idx) => <li key={idx}>{formatEvidenceItem(item)}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {testResult.reasons?.length ? (
+                  <div>
+                    <div className="text-sm font-medium text-gray-900 mb-2">原因</div>
+                    <ul className="list-disc ml-5 text-sm text-gray-700 space-y-1">
+                      {testResult.reasons.map((item, idx) => <li key={idx}>{item}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {testResult.riskTags?.length ? (
+                  <div>
+                    <div className="text-sm font-medium text-gray-900 mb-2">风险标签</div>
+                    <div className="flex flex-wrap gap-2">
+                      {testResult.riskTags.map((tag) => (
+                        <span key={tag} className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-800">
+                          {tag}
+                        </span>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+                  </div>
+                ) : null}
 
-            {testResult.rawModelOutput ? (
-              <div>
-                <div className="text-sm font-medium mb-1">Raw Output</div>
-                <pre className="whitespace-pre-wrap text-xs bg-gray-50 rounded p-2 overflow-auto max-h-[360px]">
-                  {testResult.rawModelOutput}
-                </pre>
+                <details className="rounded border border-gray-200 bg-white p-3" open>
+                  <summary className="cursor-pointer text-sm font-medium text-gray-900">原始输出</summary>
+                  <pre className="mt-3 max-h-[420px] overflow-auto whitespace-pre-wrap rounded border border-gray-200 bg-gray-50 p-2 text-xs">
+                    {testResult.rawModelOutput ?? '（空）'}
+                  </pre>
+                </details>
               </div>
             ) : (
-              <div className="text-xs text-gray-500">无 rawModelOutput（后端若不返回可忽略）</div>
+              <div className="text-sm text-gray-500">暂无测试结果。</div>
             )}
           </div>
-        ) : (
-          <div className="text-sm text-gray-500">还没有结果。填写 queueId 或测试文本后点击「运行试审核」。</div>
-        )}
-      </div>
+        </div>
+      ) : null}
 
-      <ModerationPipelineHistoryPanel
-        title="LLM 审核层 · 历史记录"
-        initialMode={qidForHistory ? { kind: 'queue', queueId: qidForHistory } : undefined}
-        stageFilter={['LLM']}
-      />
+      {tab === 'history' ? (
+        <ModerationPipelineHistoryPanel
+          title="LLM 审核历史"
+          initialMode={historyQueueId ? { kind: 'queue', queueId: historyQueueId } : undefined}
+          stageFilter={['LLM']}
+        />
+      ) : null}
     </div>
   );
 };
