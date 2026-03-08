@@ -20,7 +20,7 @@ import org.springframework.stereotype.Service;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -205,8 +205,8 @@ public class ModerationSimilarityService {
             if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
             if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
 
-            URL url = new URL(endpoint + "/" + indexService.getIndexName() + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            URI uri = URI.create(endpoint + "/" + indexService.getIndexName() + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
+            HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);
             conn.setReadTimeout(10_000);
