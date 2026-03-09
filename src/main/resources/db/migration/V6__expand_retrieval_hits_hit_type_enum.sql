@@ -1,0 +1,2 @@
+ALTER TABLE retrieval_hits
+    MODIFY COLUMN hit_type ENUM('BM25','VEC','RERANK','COMMENT_VEC','AGG','POST') NOT NULL COMMENT '命中类型';

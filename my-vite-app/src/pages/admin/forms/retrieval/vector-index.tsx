@@ -46,6 +46,21 @@ function sourceTypeOfIndex(it?: VectorIndexDTO): string {
   return raw || 'POST';
 }
 
+function sourceCountOfIndex(it?: VectorIndexDTO): number | undefined {
+  const sourceType = sourceTypeOfIndex(it).toUpperCase();
+  const keys =
+    sourceType === 'FILE_ASSET'
+      ? ['lastRebuildTotalFiles', 'lastBuildTotalFiles', 'lastSyncTotalFiles']
+      : sourceType === 'COMMENT'
+        ? ['lastBuildTotalComments']
+        : ['lastRebuildTotalPosts', 'lastBuildTotalPosts', 'lastSyncTotalPosts'];
+  for (const key of keys) {
+    const value = safeNumber(metaStr(it?.metadata, key));
+    if (value !== undefined) return Math.max(0, Math.trunc(value));
+  }
+  return undefined;
+}
+
 type PostTestHit = NonNullable<RagPostsTestQueryResponse['hits']>[number];
 type FileTestHit = NonNullable<RagFilesTestQueryResponse['hits']>[number];
 
@@ -536,6 +551,7 @@ const VectorIndexForm: React.FC = () => {
                     <th className="py-2 px-3">ID</th>
                     <th className="py-2 px-3">集合名</th>
                     <th className="py-2 px-3">来源</th>
+                    <th className="py-2 px-3">数量</th>
                     <th className="py-2 px-3">引擎</th>
                     <th className="py-2 px-3">维度</th>
                     <th className="py-2 px-3">度量</th>
@@ -548,6 +564,7 @@ const VectorIndexForm: React.FC = () => {
                   {indices.map(it => {
                     const lastBuildAt = metaStr(it.metadata, 'lastBuildAt');
                     const sourceType = sourceTypeOfIndex(it).toUpperCase();
+                    const sourceCount = sourceCountOfIndex(it);
                     return (
                       <tr
                         key={it.id}
@@ -557,6 +574,7 @@ const VectorIndexForm: React.FC = () => {
                         <td className="py-2 px-3 text-gray-500 text-sm">{it.id}</td>
                         <td className="py-2 px-3 font-mono text-gray-900 break-all text-sm font-medium">{it.collectionName}</td>
                         <td className="py-2 px-3 text-gray-500 text-sm">{sourceType}</td>
+                        <td className="py-2 px-3 text-gray-500 text-sm">{sourceCount === undefined ? '—' : sourceCount.toLocaleString()}</td>
                         <td className="py-2 px-3 text-gray-500 text-sm">{PROVIDER_LABEL[it.provider] ?? it.provider}</td>
                         <td className="py-2 px-3 text-gray-500 text-sm">{it.dim}</td>
                         <td className="py-2 px-3 text-gray-500 text-sm">{it.metric}</td>

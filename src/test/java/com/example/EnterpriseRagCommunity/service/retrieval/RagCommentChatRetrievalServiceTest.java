@@ -106,6 +106,8 @@ class RagCommentChatRetrievalServiceTest {
         assertTrue(body1.contains("\"k\":1"));
         assertTrue(body1.contains("\"num_candidates\":100"));
         assertTrue(body1.contains("\"query_vector\":[1.0,2.0,3.0]"));
+        assertTrue(body1.contains("\"highlight\""));
+        assertTrue(body1.contains("\"pre_tags\":[\"<em>\"]"));
         assertTrue(body2.contains("\"size\":50"));
         assertTrue(body2.contains("\"k\":50"));
         assertTrue(body2.contains("\"num_candidates\":500"));
@@ -220,7 +222,7 @@ class RagCommentChatRetrievalServiceTest {
         MockHttpUrl.reset();
         MockHttpUrl.enqueue(200, """
                 {"hits":{"hits":[
-                  {"_id":"d1","_score":1.2,"_source":{"comment_id":10,"post_id":100,"chunk_index":3,"content_text":"alpha"}},
+                  {"_id":"d1","_score":1.2,"highlight":{"content_text":["<em>alpha</em> beta"]},"_source":{"comment_id":10,"post_id":100,"chunk_index":3,"content_text":"alpha"}},
                   {"_id":"d2","_source":{"post_id":101}},
                   {"_id":"d3","_score":0.4,"_source":{"comment_id":12,"chunk_index":9,"content_text":"no-post"}}
                 ]}}
@@ -260,6 +262,7 @@ class RagCommentChatRetrievalServiceTest {
         assertEquals(100L, h.getPostId());
         assertEquals(3, h.getChunkIndex());
         assertEquals("alpha", h.getContentText());
+        assertEquals("<em>alpha</em> beta", h.getContentHighlight());
     }
 
     @Test

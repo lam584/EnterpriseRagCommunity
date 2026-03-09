@@ -501,6 +501,7 @@ CREATE TABLE retrieval_hits (
                                 post_id BIGINT UNSIGNED NULL COMMENT '帖子ID（关联 posts.id）',
                                 chunk_id BIGINT UNSIGNED NULL COMMENT '分片ID',
                                 score DOUBLE NOT NULL COMMENT '得分',
+                                created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间',
                                 CONSTRAINT fk_rh_event FOREIGN KEY (event_id) REFERENCES retrieval_events(id) ON DELETE CASCADE,
                                 CONSTRAINT fk_rh_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL,
                                 CONSTRAINT fk_rh_chunk FOREIGN KEY (chunk_id) REFERENCES document_chunks(id) ON DELETE SET NULL

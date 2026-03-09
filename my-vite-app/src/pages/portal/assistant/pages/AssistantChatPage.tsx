@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { splitThinkText, stripThinkBlocks } from '../../../../utils/thinkTags';
+import {
+  buildCitationExactQuoteTerms,
+  buildCitationFallbackTerms,
+  buildHighlightedParts,
+  highlightExactCitationQuotes,
+  pickCitationHighlightTerms
+} from '../../../../utils/citationHighlight';
 import { RefreshCw, Pencil, Trash2, Bot, Send, Square, Copy, Check, Languages, X, ChevronDown, Heart } from 'lucide-react';
 
 import { chatOnce, chatStream, regenerateOnce, type AiCitationSource, type AiStreamEvent } from '../../../../services/aiChatService';
@@ -175,100 +182,6 @@ function extractCitationIndexes(md: string): Set<number> {
   }
   extractFromText(md.slice(lastIndex));
   return out;
-}
-
-function normalizeCitationContext(text: string): string {
-  return String(text ?? '')
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`[^`]*`/g, ' ')
-    .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/[#>*_~]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function extractHighlightTerms(text: string): string[] {
-  const src = normalizeCitationContext(text);
-  if (!src) return [];
-  const matches = src.match(/[\u4e00-\u9fa5]{2,}|[a-zA-Z][a-zA-Z0-9_-]{2,}|[0-9]{2,}/g) ?? [];
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of matches) {
-    const t = raw.trim();
-    if (!t) continue;
-    if (t.length > 28) continue;
-    const k = t.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(t);
-    if (out.length >= 12) break;
-  }
-  return out;
-}
-
-function buildCitationHighlightTerms(md: string): Map<number, string[]> {
-  const out = new Map<number, string[]>();
-  if (!md) return out;
-  const reCode = /```[\s\S]*?```/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  const collect = (txt: string) => {
-    for (const m of txt.matchAll(/\[(\d{1,3})\](?!\()/g)) {
-      const idx = Number(m[1]);
-      if (!Number.isFinite(idx) || idx <= 0) continue;
-      const pos = m.index ?? 0;
-      const before = txt.slice(Math.max(0, pos - 180), pos);
-      const cleaned = normalizeCitationContext(before);
-      if (!cleaned) continue;
-      const segments = cleaned.split(/[。！？!?；;\n]/).map((s) => s.trim()).filter(Boolean);
-      const context = segments.length > 0 ? segments[segments.length - 1] : cleaned;
-      const terms = extractHighlightTerms(context);
-      if (terms.length === 0) continue;
-      const merged = [...(out.get(idx) ?? [])];
-      const seen = new Set(merged.map((x) => x.toLowerCase()));
-      for (const t of terms) {
-        const key = t.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        merged.push(t);
-        if (merged.length >= 12) break;
-      }
-      out.set(idx, merged);
-    }
-  };
-  while ((match = reCode.exec(md)) !== null) {
-    collect(md.slice(lastIndex, match.index));
-    lastIndex = match.index + match[0].length;
-  }
-  collect(md.slice(lastIndex));
-  return out;
-}
-
-function buildHighlightedParts(text: string, terms: string[]): Array<{ text: string; hit: boolean }> {
-  const src = String(text ?? '');
-  if (!src) return [{ text: '', hit: false }];
-  const picked = terms
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 2)
-    .sort((a, b) => b.length - a.length)
-    .slice(0, 8);
-  if (picked.length === 0) return [{ text: src, hit: false }];
-  const re = new RegExp(`(${picked.map((x) => escapeRegExp(x)).join('|')})`, 'ig');
-  const out: Array<{ text: string; hit: boolean }> = [];
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(src)) !== null) {
-    if (m.index > last) out.push({ text: src.slice(last, m.index), hit: false });
-    out.push({ text: m[0], hit: true });
-    last = m.index + m[0].length;
-  }
-  if (last < src.length) out.push({ text: src.slice(last), hit: false });
-  return out.length > 0 ? out : [{ text: src, hit: false }];
 }
 
 function isThinkingOnlyModel(model: string): boolean {
@@ -1762,6 +1675,7 @@ export default function AssistantChatPage() {
                           const isThisStreaming = isStreaming && streamingAssistantId === m.id;
                           const thinkingNow = Boolean(isThisStreaming && parsed.hasThink && !parsed.thinkClosed);
                           const thinkPerf = thinkPerfByMsgId[m.id];
+                          const citationSources = sourcesByMsgId[m.id] ?? [];
                           const thinkLabel = (() => {
                             if (!allowThink) return null;
                             if (!thinkPerf?.startedAtMs) return null;
@@ -1854,7 +1768,7 @@ export default function AssistantChatPage() {
                                 </div>
                               ) : null}
 
-                              {renderMd(mainMd)}
+                              {renderMd(highlightExactCitationQuotes(mainMd, citationSources))}
                             </div>
                           );
                         })()
@@ -1994,7 +1908,8 @@ export default function AssistantChatPage() {
                       if (m.role !== 'assistant') return null;
                       if (!useRag) return null;
                       const cited = extractCitationIndexes(m.content || '');
-                      const citationTerms = buildCitationHighlightTerms(m.content || '');
+                      const exactCitationTerms = buildCitationExactQuoteTerms(m.content || '');
+                      const fallbackCitationTerms = buildCitationFallbackTerms(m.content || '');
                       const focusedCitation = focusedCitationByMsgId[m.id];
                       if (cited.size === 0) return null;
                       const shownSources = (sourcesByMsgId[m.id] ?? []).filter((s) => cited.has(Number(s.index))).slice(0, 20);
@@ -2008,8 +1923,8 @@ export default function AssistantChatPage() {
                             const idx = Number(s.index);
                             const cls = colorClassForCitationIndex(idx);
                             const sourceAnchorId = Number.isFinite(idx) ? `${citationAnchorPrefix}${idx}` : undefined;
-                            const highlightTerms = citationTerms.get(idx) ?? [];
                             const snippet = String(s.snippet ?? '').trim();
+                            const highlightTerms = pickCitationHighlightTerms(idx, snippet, exactCitationTerms, fallbackCitationTerms).terms;
                             const snippetParts = buildHighlightedParts(snippet, highlightTerms);
                             const highlighted = snippetParts.some((p) => p.hit);
                             const isFocused = Number.isFinite(idx) && focusedCitation === idx;

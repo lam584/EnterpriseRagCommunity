@@ -79,5 +79,35 @@ public class RagChatPostCommentAggregationServiceTest {
         assertTrue(out.get(0).getContentText().contains("命中评论片段"));
         assertTrue(!out.get(0).getContentText().contains("帖子正文："));
     }
+
+    @Test
+    void keepsFileAssetHitContentWhenChatAugmentIsEnabled() {
+        PostsRepository postsRepository = mock(PostsRepository.class);
+        RagChatPostCommentAggregationService svc = new RagChatPostCommentAggregationService(postsRepository);
+
+        when(postsRepository.findByIdInAndIsDeletedFalseAndStatus(anyList(), eq(PostStatus.PUBLISHED)))
+                .thenReturn(List.of());
+
+        RagPostChatRetrievalService.Hit fileHit = new RagPostChatRetrievalService.Hit();
+        fileHit.setDocId("file_asset_12_chunk_0");
+        fileHit.setSourceType("FILE_ASSET");
+        fileHit.setFileAssetId(12L);
+        fileHit.setPostId(1L);
+        fileHit.setChunkIndex(0);
+        fileHit.setScore(0.93);
+        fileHit.setTitle("操作手册.pdf");
+        fileHit.setContentText("这是文件抽取出的关键内容，用于回答用户问题。");
+
+        RagChatPostCommentAggregationService.Config cfg = new RagChatPostCommentAggregationService.Config();
+        cfg.setIncludePostContentPolicy(RagChatPostCommentAggregationService.IncludePostContentPolicy.ON_COMMENT_HIT);
+        cfg.setPerPostMaxCommentChunks(2);
+
+        List<RagPostChatRetrievalService.Hit> out = svc.aggregate("query", List.of(fileHit), List.of(), cfg);
+        assertEquals(1, out.size());
+        assertEquals("FILE_ASSET", out.get(0).getSourceType());
+        assertEquals(12L, out.get(0).getFileAssetId());
+        assertTrue(out.get(0).getContentText().contains("帖子正文："));
+        assertTrue(out.get(0).getContentText().contains("这是文件抽取出的关键内容"));
+    }
 }
 

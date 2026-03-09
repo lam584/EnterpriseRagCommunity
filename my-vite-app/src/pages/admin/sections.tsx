@@ -416,10 +416,10 @@ export const MetricsMonitorPage: React.FC = () => (
       { id: 'llm-routing-monitor', label: '负载均衡与路由状态' },
       { id: 'global-logs', label: '全局日志中心' },
       { id: 'cost', label: '审核成本分析' },
-      { id: 'metrics', label: '指标采集层' },
+      // { id: 'metrics', label: '指标采集层' },
       { id: 'circuit-breaker', label: '内容安全熔断' },
-      { id: 'abtest', label: '实验对比脚本' },
-      { id: 'label-quality', label: '标签质量评估工具' },
+      // { id: 'abtest', label: '实验对比脚本' },
+      // { id: 'label-quality', label: '标签质量评估工具' },
     ]}
   />
 );

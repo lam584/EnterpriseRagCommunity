@@ -70,7 +70,7 @@ public class HybridRetrievalConfigService {
         dto.setFileVecEnabled(true);
         dto.setFileVecK(30);
 
-        dto.setHybridK(30);
+        dto.setHybridK(12);
         dto.setFusionMode("RRF");
         dto.setBm25Weight(1.0);
         dto.setVecWeight(1.0);
@@ -81,11 +81,13 @@ public class HybridRetrievalConfigService {
         dto.setRerankModel(null);
         dto.setRerankTemperature(0.0);
         dto.setRerankTopP(0.2);
-        dto.setRerankK(30);
+        dto.setRerankK(8);
+        dto.setRerankTimeoutMs(12000);
+        dto.setRerankSlowThresholdMs(6000);
 
         dto.setMaxDocs(500);
-        dto.setPerDocMaxTokens(4000);
-        dto.setMaxInputTokens(30000);
+        dto.setPerDocMaxTokens(800);
+        dto.setMaxInputTokens(8000);
         return dto;
     }
 
@@ -124,11 +126,13 @@ public class HybridRetrievalConfigService {
         dto.setRerankModel(rm == null || rm.isBlank() ? null : rm.trim());
         dto.setRerankTemperature(clampDouble(dto.getRerankTemperature(), 0.0, 2.0, 0.0));
         dto.setRerankTopP(clampDouble(dto.getRerankTopP(), 0.0, 1.0, 0.2));
-        dto.setRerankK(clampInt(dto.getRerankK(), 0, 500, 30));
+        dto.setRerankK(clampInt(dto.getRerankK(), 0, 500, 8));
+        dto.setRerankTimeoutMs(clampInt(dto.getRerankTimeoutMs(), 1000, 120_000, 12_000));
+        dto.setRerankSlowThresholdMs(clampInt(dto.getRerankSlowThresholdMs(), 100, 120_000, 6_000));
 
         dto.setMaxDocs(clampInt(dto.getMaxDocs(), 1, 5000, 500));
-        dto.setPerDocMaxTokens(clampInt(dto.getPerDocMaxTokens(), 100, 100_000, 4000));
-        dto.setMaxInputTokens(clampInt(dto.getMaxInputTokens(), 1000, 1_000_000, 30000));
+        dto.setPerDocMaxTokens(clampInt(dto.getPerDocMaxTokens(), 100, 100_000, 800));
+        dto.setMaxInputTokens(clampInt(dto.getMaxInputTokens(), 1000, 1_000_000, 8000));
 
         if (dto.getRerankEnabled() && dto.getRerankK() > dto.getMaxDocs()) {
             dto.setRerankK(dto.getMaxDocs());

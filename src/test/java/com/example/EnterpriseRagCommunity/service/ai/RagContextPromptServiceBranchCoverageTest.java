@@ -220,7 +220,8 @@ class RagContextPromptServiceBranchCoverageTest {
 
         String prompt = r.getContextPrompt();
         assertTrue(prompt.contains("EXTRA"));
-        assertTrue(prompt.endsWith("CITE"));
+        assertTrue(prompt.contains("CITE"));
+        assertTrue(prompt.contains("逐字一致"));
         assertTrue(prompt.indexOf("EXTRA") < prompt.indexOf("CITE"));
     }
 

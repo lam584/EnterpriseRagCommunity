@@ -260,72 +260,25 @@ ON DUPLICATE KEY UPDATE
   default_embedding_model = new.default_embedding_model,
   updated_at = new.updated_at;
 
-INSERT INTO llm_providers (
-  env, provider_id, name, type, base_url,
-  enabled, priority,
-  default_chat_model, default_embedding_model,
-  metadata,
-  created_at, updated_at
-)
-VALUES (
-  'default', 'local', '本地 LLM', 'LOCAL_OPENAI_COMPAT', 'http://127.0.0.1:20768/v1',
-  1, 15,
-  NULL, NULL,
-  JSON_OBJECT('rerankEndpointPath', '/compatible-api/v1/reranks'),
-  NOW(), NOW()
-) AS new
-ON DUPLICATE KEY UPDATE
-  name = new.name,
-  type = new.type,
-  base_url = new.base_url,
-  enabled = new.enabled,
-  priority = new.priority,
-  default_chat_model = new.default_chat_model,
-  default_embedding_model = new.default_embedding_model,
-  metadata = new.metadata,
-  updated_at = new.updated_at;
-
-INSERT INTO llm_providers (
-  env, provider_id, name, type, base_url,
-  enabled, priority,
-  default_chat_model, default_embedding_model,
-  created_at, updated_at
-)
-VALUES (
-  'default', 'llm-stdio', 'LLM-Stdio', 'LOCAL_OPENAI_COMPAT', 'http://127.0.0.1:1234/v1',
-  1, 20,
-  NULL, 'text-embedding-qwen3-embedding-0.6b',
-  NOW(), NOW()
-) AS new
-ON DUPLICATE KEY UPDATE
-  name = new.name,
-  type = new.type,
-  base_url = new.base_url,
-  enabled = new.enabled,
-  priority = new.priority,
-  default_chat_model = new.default_chat_model,
-  default_embedding_model = new.default_embedding_model,
-  updated_at = new.updated_at;
-
 
 -- 5) 初始化：LLM Models
 DELETE FROM llm_models
 WHERE env = 'default'
-  AND provider_id IN ('llm-stdio', 'local')
+  AND provider_id IN ('aliyun', 'aliyun')
   AND model_name = 'qwen3.5-35b-a3b';
 
 DELETE FROM llm_models
 WHERE env = 'default'
   AND purpose = 'RERANK'
-  AND NOT (provider_id = 'local' AND model_name = 'Qwen3-Reranker-0.6B');
+  AND NOT (provider_id = 'aliyun' AND model_name = 'qwen3-rerank');
 
 INSERT INTO llm_models (env, provider_id, purpose, model_name, enabled, is_default, weight, created_at, updated_at)
 VALUES
 ('default', 'aliyun', 'TEXT_CHAT', 'qwen3.5-35b-a3b', 1, 0, 10, NOW(), NOW()),
 ('default', 'aliyun', 'IMAGE_CHAT', 'qwen3.5-35b-a3b', 1, 0, 10, NOW(), NOW()),
-('default', 'local', 'RERANK', 'Qwen3-Reranker-0.6B', 1, 1, 10, NOW(), NOW()),
-('default', 'llm-stdio', 'POST_EMBEDDING', 'text-embedding-qwen3-embedding-0.6b', 1, 1, 10, NOW(), NOW()),
-('default', 'llm-stdio', 'SIMILARITY_EMBEDDING', 'text-embedding-qwen3-embedding-0.6b', 1, 1, 10, NOW(), NOW()),
+('default', 'aliyun', 'RERANK', 'qwen3-rerank', 1, 1, 10, NOW(), NOW()),
+('default', 'aliyun', 'POST_EMBEDDING', 'text-embedding-v4', 1, 1, 10, NOW(), NOW()),
+('default', 'aliyun', 'SIMILARITY_EMBEDDING', 'text-embedding-v4', 1, 1, 10, NOW(), NOW()),
 ('default', 'aliyun', 'LANGUAGE_TAG_GEN', 'qwen3.5-35b-a3b', 1, 0, 10, NOW(), NOW()),
 ('default', 'aliyun', 'SUMMARY_GEN', 'qwen3.5-35b-a3b', 1, 0, 10, NOW(), NOW()),
 ('default', 'aliyun', 'TITLE_GEN', 'qwen3.5-35b-a3b', 1, 0, 10, NOW(), NOW()),

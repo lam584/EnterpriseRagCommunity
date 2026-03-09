@@ -98,6 +98,8 @@ class PortalSearchServiceTest {
         post1Hit.setPostId(1L);
         post1Hit.setFusedScore(10.0);
         post1Hit.setContentText("hit snippet");
+        post1Hit.setTitleHighlight("<em>t1</em>");
+        post1Hit.setContentHighlight("from <em>hit</em> snippet");
 
         HybridRagRetrievalService.DocHit post2Missing = new HybridRagRetrievalService.DocHit();
         post2Missing.setPostId(2L);
@@ -113,6 +115,7 @@ class PortalSearchServiceTest {
         c1.setPostId(1L);
         c1.setScore(0.2);
         c1.setContentText("");
+        c1.setContentHighlight("comment <em>hit</em>");
 
         RagCommentChatRetrievalService.Hit cBad = new RagCommentChatRetrievalService.Hit();
         cBad.setCommentId(null);
@@ -126,6 +129,7 @@ class PortalSearchServiceTest {
         f1.setFileName("fallback.txt");
         f1.setPostIds(Arrays.asList(null, 2L, 1L));
         f1.setContentText("file content");
+        f1.setContentHighlight("file <em>content</em>");
         when(ragFileAssetChatRetrievalService.retrieve(eq("hello"), anyInt())).thenReturn(List.of(f1));
 
         PostsEntity post1 = new PostsEntity();
@@ -163,6 +167,8 @@ class PortalSearchServiceTest {
         for (PortalSearchHitDTO x : out.getContent()) {
             assertNotNull(x.getType());
         }
+        assertTrue(out.getContent().stream().anyMatch(x -> "<em>t1</em>".equals(x.getHighlightedTitle())));
+        assertTrue(out.getContent().stream().anyMatch(x -> x.getHighlightedSnippet() != null && x.getHighlightedSnippet().contains("<em>")));
 
         Page<PortalSearchHitDTO> emptyPage = svc.search(" hello ", null, 10, 2);
         assertNotNull(emptyPage);

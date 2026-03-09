@@ -204,4 +204,85 @@ public class HybridRagRetrievalServiceRetrieveBranchTest {
         assertNull(out.getDebugInfo().get("bm25Error"));
         assertNull(out.getDebugInfo().get("vecError"));
     }
+
+    @Test
+    void retrieve_rerankTimeout_fallbacksToFused() throws Exception {
+        MockHttpUrl.installOnce();
+        MockHttpUrl.reset();
+        MockHttpUrl.enqueue(200, """
+                {"hits":{"hits":[
+                  {"_id":"D1","_score":10.0,"_source":{"post_id":101,"chunk_index":0,"board_id":1,"title":"T1","content_text":"C1"}},
+                  {"_id":"D2","_score":5.0,"_source":{"post_id":102,"chunk_index":1,"board_id":1,"title":"T2","content_text":"C2"}}
+                ]}}
+                """);
+
+        RetrievalRagProperties ragProps = new RetrievalRagProperties();
+        ragProps.getEs().setIndex("idx_posts");
+
+        RagPostsIndexService indexService = mock(RagPostsIndexService.class);
+        AiEmbeddingService embeddingService = mock(AiEmbeddingService.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        PostsRepository postsRepository = mock(PostsRepository.class);
+        SystemConfigurationService systemConfigurationService = mock(SystemConfigurationService.class);
+        DependencyIsolationGuard dependencyIsolationGuard = mock(DependencyIsolationGuard.class);
+        DependencyCircuitBreakerService dependencyCircuitBreakerService = mock(DependencyCircuitBreakerService.class);
+
+        when(systemConfigurationService.getConfig(eq("spring.elasticsearch.uris"))).thenReturn("mockhttp://es");
+        when(systemConfigurationService.getConfig(eq("APP_ES_API_KEY"))).thenReturn(" ");
+        doNothing().when(dependencyIsolationGuard).requireElasticsearchAllowed();
+        when(dependencyCircuitBreakerService.run(eq("ES"), any())).thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
+
+        PostsEntity p1 = new PostsEntity();
+        p1.setId(101L);
+        PostsEntity p2 = new PostsEntity();
+        p2.setId(102L);
+        when(postsRepository.findByIdInAndIsDeletedFalseAndStatus(anyList(), eq(PostStatus.PUBLISHED))).thenReturn(List.of(p1, p2));
+
+        when(llmGateway.rerankOnceRouted(any(), any(), any(), any(), anyList(), anyInt(), any(), anyBoolean(), any()))
+                .thenAnswer(inv -> {
+                    Thread.sleep(1300);
+                    return new AiRerankService.RerankResult(
+                            List.of(new AiRerankService.RerankHit(1, 0.9)),
+                            10,
+                            "local",
+                            "qwen3-rerank"
+                    );
+                });
+
+        HybridRagRetrievalService svc = new HybridRagRetrievalService(
+                ragProps,
+                indexService,
+                embeddingService,
+                objectMapper,
+                aiRerankService,
+                llmGateway,
+                postsRepository,
+                systemConfigurationService,
+                dependencyIsolationGuard,
+                dependencyCircuitBreakerService
+        );
+
+        HybridRetrievalConfigDTO cfg = new HybridRetrievalConfigDTO();
+        cfg.setBm25K(2);
+        cfg.setVecK(0);
+        cfg.setHybridK(2);
+        cfg.setMaxDocs(10);
+        cfg.setRerankEnabled(true);
+        cfg.setRerankK(2);
+        cfg.setRerankTimeoutMs(10);
+        cfg.setPerDocMaxTokens(200);
+        cfg.setMaxInputTokens(2000);
+
+        HybridRagRetrievalService.RetrieveResult out = svc.retrieve("q", 1L, cfg, true);
+        assertNotNull(out);
+        assertNotNull(out.getFinalHits());
+        assertEquals(2, out.getFinalHits().size());
+        assertEquals("D1", out.getFinalHits().get(0).getDocId());
+        assertEquals("D2", out.getFinalHits().get(1).getDocId());
+        assertTrue(out.getRerankError().contains("timeout"));
+        assertTrue(Boolean.TRUE.equals(out.getRerankDegraded()));
+        assertTrue(out.getRerankDegradeReason().contains("timeout"));
+    }
 }

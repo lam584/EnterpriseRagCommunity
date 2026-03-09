@@ -272,40 +272,59 @@ cd EnterpriseRagCommunity
    ```
 
 3. **粘贴以下内容**：
-   > 请将下面的 `/home/ubuntu/EnterpriseRagCommunity` 替换为您实际的项目路径。如果您使用的是 ubuntu 默认用户，通常路径就是这个。如果不确定，可以用 `pwd` 命令查看当前路径。
+   > 请将下面的 `/home/ubuntu/EnterpriseRagCommunity` 替换为您实际的项目路径。如果您使用的是 ubuntu 默认用户，通常路径就是这个。如果不确定，可以用 `pwd` 命令查看当前路径。  
+   > 该配置已对大文件上传与长连接反向代理做增强：`upstream + keepalive + HTTP/1.1 + 关闭请求缓冲`。
 
    ```nginx
+   upstream erc_backend {
+       server 127.0.0.1:8099;
+       keepalive 64;
+   }
+
    server {
        listen 80 default_server;
-       server_name _;  # 这里可以填域名，没有域名就填 _
+       server_name _;
 
-       # 前端静态文件
+       client_max_body_size 2048g;
+
        location / {
-           # 注意：确保这个路径指向您项目下的 my-vite-app/dist 目录
            root /home/ubuntu/EnterpriseRagCommunity/my-vite-app/dist;
            index index.html;
            try_files $uri $uri/ /index.html;
        }
 
-       # 后端 API 代理
-       location /api {
-           proxy_pass http://localhost:8099;
+       location /api/ {
+           proxy_pass http://erc_backend/api/;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
            proxy_set_header X-Forwarded-Proto $scheme;
            proxy_set_header X-Forwarded-Host $host;
            proxy_set_header X-Forwarded-Port $server_port;
+           proxy_http_version 1.1;
+           proxy_set_header Connection "";
+           proxy_connect_timeout 60s;
+           proxy_buffering off;
+           proxy_request_buffering off;
+           proxy_send_timeout 3600s;
+           proxy_read_timeout 3600s;
        }
 
-       # 上传文件路径代理
-       location /uploads {
-           proxy_pass http://localhost:8099;
+       location /uploads/ {
+           proxy_pass http://erc_backend/uploads/;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
            proxy_set_header X-Forwarded-Proto $scheme;
            proxy_set_header X-Forwarded-Host $host;
            proxy_set_header X-Forwarded-Port $server_port;
+           proxy_http_version 1.1;
+           proxy_set_header Connection "";
+           proxy_connect_timeout 60s;
+           proxy_buffering off;
+           proxy_request_buffering off;
+           proxy_send_timeout 3600s;
+           proxy_read_timeout 3600s;
        }
    }
    ```
@@ -358,6 +377,11 @@ cd EnterpriseRagCommunity
 
    将内容替换为以下示例（把 `server_name` 与证书路径改成您的实际值）：
    ```nginx
+   upstream erc_backend {
+       server 127.0.0.1:8099;
+       keepalive 64;
+   }
+
    server {
        listen 80 default_server;
        server_name example.com;
@@ -374,6 +398,7 @@ cd EnterpriseRagCommunity
        ssl_protocols TLSv1.2 TLSv1.3;
        ssl_ciphers HIGH:!aNULL:!MD5;
        ssl_prefer_server_ciphers off;
+       client_max_body_size 2048g;
 
        location / {
            root /home/ubuntu/EnterpriseRagCommunity/my-vite-app/dist;
@@ -381,28 +406,41 @@ cd EnterpriseRagCommunity
            try_files $uri $uri/ /index.html;
        }
 
-       location /api {
-           proxy_pass http://localhost:8099;
+       location /api/ {
+           proxy_pass http://erc_backend/api/;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
            proxy_set_header X-Forwarded-Proto $scheme;
            proxy_set_header X-Forwarded-Host $host;
            proxy_set_header X-Forwarded-Port $server_port;
+           proxy_http_version 1.1;
+           proxy_set_header Connection "";
+           proxy_connect_timeout 60s;
+           proxy_buffering off;
+           proxy_request_buffering off;
+           proxy_send_timeout 3600s;
+           proxy_read_timeout 3600s;
        }
 
-       location /uploads {
-           proxy_pass http://localhost:8099;
+       location /uploads/ {
+           proxy_pass http://erc_backend/uploads/;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
            proxy_set_header X-Forwarded-Proto $scheme;
            proxy_set_header X-Forwarded-Host $host;
            proxy_set_header X-Forwarded-Port $server_port;
+           proxy_http_version 1.1;
+           proxy_set_header Connection "";
+           proxy_connect_timeout 60s;
+           proxy_buffering off;
+           proxy_request_buffering off;
+           proxy_send_timeout 3600s;
+           proxy_read_timeout 3600s;
        }
    }
    ```
-
-   > 如果您的 80 端口因备案原因无法对外访问，但 443 可用：可以保留 443 的 `server`，同时删除/忽略 80 的跳转块；用户直接访问 `https://example.com` 即可。
 
    **5.3 验证 HTTPS 与重启**
    ```bash

@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.lang.reflect.Method;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -325,5 +326,38 @@ class UploadFormatsConfigServiceBranchCoverageTest {
         assertEquals(2, m.size());
         assertSame(keep, m.get("pdf"));
         assertSame(keep, m.get("docx"));
+    }
+
+    @Test
+    void normalizeRule_shouldCoverNullFormatAndOptionalFields_viaReflection() throws Exception {
+        Method method = UploadFormatsConfigService.class.getDeclaredMethod(
+                "normalizeRule",
+                UploadFormatsConfigDTO.UploadFormatRuleDTO.class
+        );
+        method.setAccessible(true);
+
+        UploadFormatsConfigDTO.UploadFormatRuleDTO nullFormat = new UploadFormatsConfigDTO.UploadFormatRuleDTO();
+        nullFormat.setFormat(null);
+        nullFormat.setEnabled(Boolean.TRUE);
+        nullFormat.setMaxFileSizeBytes(null);
+        nullFormat.setExtensions(null);
+        Object nullResult = method.invoke(null, nullFormat);
+        assertNull(nullResult);
+
+        UploadFormatsConfigDTO.UploadFormatRuleDTO minimal = new UploadFormatsConfigDTO.UploadFormatRuleDTO();
+        minimal.setFormat(" txt ");
+        minimal.setEnabled(Boolean.TRUE);
+        minimal.setParseEnabled(null);
+        minimal.setMaxFileSizeBytes(null);
+        minimal.setExtensions(null);
+        UploadFormatsConfigDTO.UploadFormatRuleDTO normalized =
+                (UploadFormatsConfigDTO.UploadFormatRuleDTO) method.invoke(null, minimal);
+
+        assertNotNull(normalized);
+        assertEquals("TXT", normalized.getFormat());
+        assertEquals(Boolean.TRUE, normalized.getEnabled());
+        assertEquals(Boolean.FALSE, normalized.getParseEnabled());
+        assertNull(normalized.getMaxFileSizeBytes());
+        assertEquals(List.of(), normalized.getExtensions());
     }
 }

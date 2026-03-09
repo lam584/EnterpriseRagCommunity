@@ -69,5 +69,7 @@ src/test/resources/test-secrets.properties
 .VSCodeCounter
 docs/后端分支测试覆盖率.md
 docs/后端分支覆盖测试报告.lnk
-docs/前端分支覆盖测试报告.url
 .github
+docs/Failed_tests.lnk
+docs/前端分支覆盖测试报告.url
+testdata/

@@ -72,10 +72,13 @@ public class RagChatPostCommentAggregationService {
             RagPostChatRetrievalService.Hit bestPostHit = bestPostHitById.get(postId);
             List<RagCommentChatRetrievalService.Hit> comms = commentsByPostId.get(postId);
             boolean hasComment = comms != null && !comms.isEmpty();
+            boolean hasFileAssetContent = bestPostHit != null
+                    && (bestPostHit.getFileAssetId() != null
+                    || "FILE_ASSET".equalsIgnoreCase(trimOrNull(bestPostHit.getSourceType())));
             boolean needPostContent = switch (postPolicy) {
                 case ALWAYS -> true;
-                case NEVER -> false;
-                default -> hasComment;
+                case NEVER -> hasFileAssetContent;
+                default -> hasComment || hasFileAssetContent;
             };
 
             PostsEntity pe = postEntityById.get(postId);
@@ -143,6 +146,9 @@ public class RagChatPostCommentAggregationService {
             a.chunkIndex = bestPostHit != null ? bestPostHit.getChunkIndex() : null;
             a.score = score;
             a.contentText = combinedText;
+            a.sourceType = bestPostHit == null ? null : bestPostHit.getSourceType();
+            a.fileAssetId = bestPostHit == null ? null : bestPostHit.getFileAssetId();
+            a.type = bestPostHit == null ? null : bestPostHit.getType();
             aggs.add(a);
         }
 
@@ -160,6 +166,9 @@ public class RagChatPostCommentAggregationService {
             h.setScore(a.score);
             h.setTitle(a.title);
             h.setContentText(a.contentText);
+            h.setSourceType(a.sourceType);
+            h.setFileAssetId(a.fileAssetId);
+            h.setType(a.type);
             out.add(h);
         }
         return out;
@@ -240,6 +249,9 @@ public class RagChatPostCommentAggregationService {
         private double score;
         private String title;
         private String contentText;
+        private String sourceType;
+        private Long fileAssetId;
+        private com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType type;
     }
 
     @Data

@@ -10,13 +10,12 @@ import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.ai.AiLanguageDetectService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -52,9 +51,8 @@ class CommentsServiceImplListByPostIdTest {
             PostsRepository postsRepository,
             NotificationsService notificationsService,
             AdminModerationQueueService adminModerationQueueService,
-            ModerationRuleAutoRunner moderationRuleAutoRunner,
-            ModerationVecAutoRunner moderationVecAutoRunner,
-            ModerationLlmAutoRunner moderationLlmAutoRunner,
+            ModerationQueueRepository moderationQueueRepository,
+            ModerationAutoKickService moderationAutoKickService,
             UsersRepository usersRepository,
             ReactionsRepository reactionsRepository,
             AiLanguageDetectService aiLanguageDetectService,
@@ -66,9 +64,8 @@ class CommentsServiceImplListByPostIdTest {
         ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
         ReflectionTestUtils.setField(svc, "notificationsService", notificationsService);
         ReflectionTestUtils.setField(svc, "adminModerationQueueService", adminModerationQueueService);
-        ReflectionTestUtils.setField(svc, "moderationRuleAutoRunner", moderationRuleAutoRunner);
-        ReflectionTestUtils.setField(svc, "moderationVecAutoRunner", moderationVecAutoRunner);
-        ReflectionTestUtils.setField(svc, "moderationLlmAutoRunner", moderationLlmAutoRunner);
+        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
+        ReflectionTestUtils.setField(svc, "moderationAutoKickService", moderationAutoKickService);
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
         ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
         ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
@@ -98,9 +95,8 @@ class CommentsServiceImplListByPostIdTest {
                 mock(PostsRepository.class),
                 mock(NotificationsService.class),
                 mock(AdminModerationQueueService.class),
-                mock(ModerationRuleAutoRunner.class),
-                mock(ModerationVecAutoRunner.class),
-                mock(ModerationLlmAutoRunner.class),
+                mock(ModerationQueueRepository.class),
+                mock(ModerationAutoKickService.class),
                 mock(UsersRepository.class),
                 mock(ReactionsRepository.class),
                 mock(AiLanguageDetectService.class),
@@ -117,9 +113,6 @@ class CommentsServiceImplListByPostIdTest {
         PostsRepository postsRepository = mock(PostsRepository.class);
         NotificationsService notificationsService = mock(NotificationsService.class);
         AdminModerationQueueService adminModerationQueueService = mock(AdminModerationQueueService.class);
-        ModerationRuleAutoRunner moderationRuleAutoRunner = mock(ModerationRuleAutoRunner.class);
-        ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
-        ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
         UsersRepository usersRepository = mock(UsersRepository.class);
         ReactionsRepository reactionsRepository = mock(ReactionsRepository.class);
         AiLanguageDetectService aiLanguageDetectService = mock(AiLanguageDetectService.class);
@@ -162,9 +155,8 @@ class CommentsServiceImplListByPostIdTest {
                 postsRepository,
                 notificationsService,
                 adminModerationQueueService,
-                moderationRuleAutoRunner,
-                moderationVecAutoRunner,
-                moderationLlmAutoRunner,
+                mock(ModerationQueueRepository.class),
+                mock(ModerationAutoKickService.class),
                 usersRepository,
                 reactionsRepository,
                 aiLanguageDetectService,
@@ -224,9 +216,8 @@ class CommentsServiceImplListByPostIdTest {
                 mock(PostsRepository.class),
                 mock(NotificationsService.class),
                 mock(AdminModerationQueueService.class),
-                mock(ModerationRuleAutoRunner.class),
-                mock(ModerationVecAutoRunner.class),
-                mock(ModerationLlmAutoRunner.class),
+                mock(ModerationQueueRepository.class),
+                mock(ModerationAutoKickService.class),
                 usersRepository,
                 reactionsRepository,
                 mock(AiLanguageDetectService.class),
@@ -264,9 +255,8 @@ class CommentsServiceImplListByPostIdTest {
                 mock(PostsRepository.class),
                 mock(NotificationsService.class),
                 mock(AdminModerationQueueService.class),
-                mock(ModerationRuleAutoRunner.class),
-                mock(ModerationVecAutoRunner.class),
-                mock(ModerationLlmAutoRunner.class),
+                mock(ModerationQueueRepository.class),
+                mock(ModerationAutoKickService.class),
                 usersRepository,
                 mock(ReactionsRepository.class),
                 mock(AiLanguageDetectService.class),
@@ -294,9 +284,8 @@ class CommentsServiceImplListByPostIdTest {
                 mock(PostsRepository.class),
                 mock(NotificationsService.class),
                 mock(AdminModerationQueueService.class),
-                mock(ModerationRuleAutoRunner.class),
-                mock(ModerationVecAutoRunner.class),
-                mock(ModerationLlmAutoRunner.class),
+                mock(ModerationQueueRepository.class),
+                mock(ModerationAutoKickService.class),
                 usersRepository,
                 mock(ReactionsRepository.class),
                 mock(AiLanguageDetectService.class),
@@ -331,9 +320,8 @@ class CommentsServiceImplListByPostIdTest {
                 mock(PostsRepository.class),
                 mock(NotificationsService.class),
                 mock(AdminModerationQueueService.class),
-                mock(ModerationRuleAutoRunner.class),
-                mock(ModerationVecAutoRunner.class),
-                mock(ModerationLlmAutoRunner.class),
+                mock(ModerationQueueRepository.class),
+                mock(ModerationAutoKickService.class),
                 usersRepository,
                 reactionsRepository,
                 mock(AiLanguageDetectService.class),

@@ -14,6 +14,8 @@ public class PortalSearchHitDTO {
 
     private String title;
     private String snippet;
+    private String highlightedTitle;
+    private String highlightedSnippet;
 
     private Double score;
     private LocalDateTime createdAt;

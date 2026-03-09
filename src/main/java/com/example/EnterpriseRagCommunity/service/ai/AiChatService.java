@@ -487,6 +487,11 @@ public class AiChatService {
             }
 
             if (contextAssembled != null) {
+                String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
+                if (!normalized.equals(assistantAccum.toString())) {
+                    assistantAccum.setLength(0);
+                    assistantAccum.append(normalized);
+                }
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
                 List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
                         sources,
@@ -915,6 +920,11 @@ public class AiChatService {
             }
 
             if (contextAssembled != null) {
+                String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
+                if (!normalized.equals(assistantAccum.toString())) {
+                    assistantAccum.setLength(0);
+                    assistantAccum.append(normalized);
+                }
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
                 citedSourcesForDto = filterSourcesByCitations(sources, assistantAccum.toString());
 
@@ -1279,6 +1289,11 @@ public class AiChatService {
             }
 
             if (contextAssembled != null) {
+                String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
+                if (!normalized.equals(assistantAccum.toString())) {
+                    assistantAccum.setLength(0);
+                    assistantAccum.append(normalized);
+                }
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
                 citedSourcesForDto = filterSourcesByCitations(sources, assistantAccum.toString());
 
@@ -1691,6 +1706,11 @@ public class AiChatService {
             }
 
             if (contextAssembled != null) {
+                String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
+                if (!normalized.equals(assistantAccum.toString())) {
+                    assistantAccum.setLength(0);
+                    assistantAccum.append(normalized);
+                }
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
                 List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
                         sources,
@@ -1857,6 +1877,78 @@ public class AiChatService {
         }
 
         return out;
+    }
+
+    private static String normalizeCitationQuoteFormatting(String text) {
+        if (text == null || text.isBlank()) return text;
+        StringBuilder out = new StringBuilder(text.length());
+        boolean inFence = false;
+        boolean inInlineCode = false;
+        int n = text.length();
+        for (int i = 0; i < n; i++) {
+            char c = text.charAt(i);
+            if (c == '`') {
+                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
+                    inFence = !inFence;
+                    out.append("```");
+                    i += 2;
+                    continue;
+                }
+                if (!inFence) inInlineCode = !inInlineCode;
+                out.append(c);
+                continue;
+            }
+            if (inFence || inInlineCode) {
+                out.append(c);
+                continue;
+            }
+            if (c == '\\' && i + 1 < n && isCitationQuote(text.charAt(i + 1))) {
+                continue;
+            }
+            if (!isCitationOpenQuote(c)) {
+                out.append(c);
+                continue;
+            }
+
+            int closeIndex = findCitationQuoteClose(text, i + 1);
+            if (closeIndex < 0) {
+                out.append(c);
+                continue;
+            }
+            int tailIndex = closeIndex + 1;
+            if (tailIndex >= n || text.charAt(tailIndex) != '[') {
+                out.append(c);
+                continue;
+            }
+            out.append('“');
+            out.append(text, i + 1, closeIndex);
+            out.append('”');
+            i = closeIndex;
+        }
+        return out.toString();
+    }
+
+    private static boolean isCitationQuote(char c) {
+        return c == '"' || c == '“' || c == '”' || c == '「' || c == '」' || c == '『' || c == '』';
+    }
+
+    private static boolean isCitationOpenQuote(char c) {
+        return c == '"' || c == '“' || c == '「' || c == '『';
+    }
+
+    private static int findCitationQuoteClose(String text, int start) {
+        int n = text.length();
+        for (int i = start; i < n; i++) {
+            char c = text.charAt(i);
+            if (c == '\n' || c == '\r') return -1;
+            if (c == '\\' && i + 1 < n && isCitationQuote(text.charAt(i + 1))) {
+                return i + 1;
+            }
+            if (c == '"' || c == '”' || c == '」' || c == '』') {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private void persistAssistantSources(Long answerMessageId, List<RagContextPromptService.CitationSource> sources) {
@@ -2515,6 +2607,8 @@ public class AiChatService {
             if (h == null) continue;
             RagPostChatRetrievalService.Hit rr = new RagPostChatRetrievalService.Hit();
             rr.setDocId(h.getDocId());
+            rr.setSourceType(h.getSourceType());
+            rr.setFileAssetId(h.getFileAssetId());
             Double s = h.getRerankScore();
             if (s == null) s = h.getFusedScore();
             if (s == null) s = h.getScore();

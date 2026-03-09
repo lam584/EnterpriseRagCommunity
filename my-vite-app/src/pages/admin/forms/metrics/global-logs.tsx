@@ -80,6 +80,12 @@ function parsePositiveInt(s: string | null): number | undefined {
   return Math.floor(n);
 }
 
+function toNonNegativeNumber(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
 type LogBodyInfo = {
   contentType?: string;
   captured?: boolean;
@@ -234,6 +240,7 @@ const GlobalLogsForm: React.FC = () => {
   const [accessItems, setAccessItems] = useState<AccessLogDTO[]>([]);
   const [totalPages, setTotalPages] = useState(1);
   const [totalElements, setTotalElements] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
 
   const [exportOpen, setExportOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -327,10 +334,20 @@ const GlobalLogsForm: React.FC = () => {
         });
 
         if (!mountedRef.current) return;
+        const nextTotalPages = Math.max(1, toNonNegativeNumber(res.totalPages) ?? 1);
+        const nextTotalElements = Math.max(0, toNonNegativeNumber(res.totalElements) ?? 0);
+        const rawNumber = toNonNegativeNumber(res.number);
+        const backendPageIndex =
+          rawNumber == null ? Math.max(0, page - 1) : rawNumber >= 1 && rawNumber <= nextTotalPages ? Math.max(0, rawNumber - 1) : Math.max(0, rawNumber);
+        const hasMoreByFlag = res.last === false;
+        const hasMoreByPageCount = backendPageIndex + 1 < nextTotalPages;
+        const hasMoreByTotal = nextTotalElements > (backendPageIndex + 1) * pageSize;
+        const hasMoreByContent = res.last !== true && (res.content ?? []).length >= pageSize;
         setAuditItems(res.content ?? []);
         setAccessItems([]);
-        setTotalPages(res.totalPages ?? 1);
-        setTotalElements(res.totalElements ?? 0);
+        setTotalPages(nextTotalPages);
+        setTotalElements(nextTotalElements);
+        setHasNextPage(hasMoreByFlag || hasMoreByPageCount || hasMoreByTotal || hasMoreByContent);
         syncToUrl(tab, page, pageSize, auditQuery, accessQuery);
       } else {
         const res = await adminListAccessLogs({
@@ -351,14 +368,25 @@ const GlobalLogsForm: React.FC = () => {
         });
 
         if (!mountedRef.current) return;
+        const nextTotalPages = Math.max(1, toNonNegativeNumber(res.totalPages) ?? 1);
+        const nextTotalElements = Math.max(0, toNonNegativeNumber(res.totalElements) ?? 0);
+        const rawNumber = toNonNegativeNumber(res.number);
+        const backendPageIndex =
+          rawNumber == null ? Math.max(0, page - 1) : rawNumber >= 1 && rawNumber <= nextTotalPages ? Math.max(0, rawNumber - 1) : Math.max(0, rawNumber);
+        const hasMoreByFlag = res.last === false;
+        const hasMoreByPageCount = backendPageIndex + 1 < nextTotalPages;
+        const hasMoreByTotal = nextTotalElements > (backendPageIndex + 1) * pageSize;
+        const hasMoreByContent = res.last !== true && (res.content ?? []).length >= pageSize;
         setAccessItems(res.content ?? []);
         setAuditItems([]);
-        setTotalPages(res.totalPages ?? 1);
-        setTotalElements(res.totalElements ?? 0);
+        setTotalPages(nextTotalPages);
+        setTotalElements(nextTotalElements);
+        setHasNextPage(hasMoreByFlag || hasMoreByPageCount || hasMoreByTotal || hasMoreByContent);
         syncToUrl(tab, page, pageSize, auditQuery, accessQuery);
       }
     } catch (e) {
       if (!mountedRef.current) return;
+      setHasNextPage(false);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -451,9 +479,11 @@ const GlobalLogsForm: React.FC = () => {
     };
   }, [accessQuery, auditQuery, tab]);
 
+  const resolvedTotalPages = useMemo(() => Math.max(totalPages, Math.ceil(totalElements / pageSize) || 1), [pageSize, totalElements, totalPages]);
+
   const paginationText = useMemo(() => {
-    return `第 ${page} 页 / 共 ${totalPages} 页（${totalElements} 条）`;
-  }, [page, totalElements, totalPages]);
+    return `第 ${page} 页 / 共 ${resolvedTotalPages} 页（${totalElements} 条）`;
+  }, [page, resolvedTotalPages, totalElements]);
 
   const currentList = tab === 'audit' ? auditItems : accessItems;
 
@@ -940,9 +970,9 @@ const GlobalLogsForm: React.FC = () => {
           </button>
           <button
             className="rounded border px-3 py-2 text-sm bg-white disabled:opacity-50"
-            disabled={loading || page >= totalPages}
+            disabled={loading || !hasNextPage}
             onClick={() => {
-              const next = Math.min(totalPages, page + 1);
+              const next = Math.min(resolvedTotalPages, page + 1);
               setPage(next);
               syncToUrl(tab, next, pageSize, auditQuery, accessQuery);
             }}

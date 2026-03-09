@@ -237,6 +237,40 @@ describe('ModerationPipelineHistoryPanel', () => {
     expect(screen.queryByText('LLM')).toBeNull();
   });
 
+  it('存在 TEXT/VISION/JUDGE 时默认隐藏 LLM 阶段', async () => {
+    mockAdminListPipelineHistory.mockResolvedValueOnce({
+      content: [{ id: 302, queueId: 7, contentType: 'POST', contentId: 9, createdAt: '2026-01-01T00:00:00Z' }],
+      totalPages: 1,
+      totalElements: 1,
+    });
+
+    mockAdminGetPipelineByRunId.mockResolvedValueOnce({
+      run: { id: 302, queueId: 7, contentType: 'POST', contentId: 9 },
+      steps: [
+        { id: 31, runId: 302, stage: 'TEXT', stepOrder: 1, decision: 'SKIP', costMs: 10, details: { reason: 'no_text_stage' } },
+        { id: 32, runId: 302, stage: 'VISION', stepOrder: 2, decision: 'SKIP', costMs: 11, details: { reason: 'no_vision_stage' } },
+        { id: 33, runId: 302, stage: 'JUDGE', stepOrder: 3, decision: 'SKIP', costMs: 12, details: { reason: 'no_judge_stage' } },
+        { id: 34, runId: 302, stage: 'LLM', stepOrder: 4, decision: 'PASS', costMs: 20, details: { model: 'm-hidden' } },
+      ],
+    });
+
+    renderWithRoute(
+      <ModerationPipelineHistoryPanel autoLoadDetails={false} initialMode={{ kind: 'queue', queueId: 7 }} />,
+    );
+
+    expect(await screen.findByText('运行ID=302')).not.toBeNull();
+    const runCard = screen.getByText('运行ID=302').closest('[role="button"]') as HTMLElement | null;
+    expect(runCard).not.toBeNull();
+
+    fireEvent.click(within(runCard as HTMLElement).getByRole('button', { name: '展开' }));
+
+    expect(await screen.findByText('TEXT')).not.toBeNull();
+    expect(await screen.findByText('VISION')).not.toBeNull();
+    expect(await screen.findByText('JUDGE')).not.toBeNull();
+    expect(screen.queryByText('LLM')).toBeNull();
+    expect(screen.queryByText(/"model":\s*"m-hidden"/)).toBeNull();
+  });
+
   it('在当前 stageFilter 下无 steps 时显示空提示', async () => {
     mockAdminListPipelineHistory.mockResolvedValueOnce({
       content: [{ id: 701, queueId: 7, contentType: 'POST', contentId: 8, createdAt: '2026-01-01T00:00:00Z' }],
