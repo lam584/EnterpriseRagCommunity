@@ -185,6 +185,13 @@ const asSteps = (detail?: AdminModerationPipelineRunDetailDTO): StepLike[] => {
   return out;
 };
 
+const shouldHideLlmStep = (steps: StepLike[]): boolean => {
+  return steps.some((s) => {
+    const stage = String(s.stage ?? '').toUpperCase();
+    return stage === 'TEXT' || stage === 'VISION' || stage === 'JUDGE';
+  });
+};
+
 export const ModerationPipelineHistoryPanel: React.FC<{
   title?: string;
   titleClassName?: string;
@@ -503,8 +510,11 @@ export const ModerationPipelineHistoryPanel: React.FC<{
             const isExpanded = Boolean(expandedRunIds[runKey]);
             const detail = detailMap[runKey];
 
-            const filteredSteps = asSteps(detail)
+            const steps = asSteps(detail);
+            const hideLlmStep = shouldHideLlmStep(steps);
+            const filteredSteps = steps
               .slice()
+              .filter((s) => !hideLlmStep || String(s.stage ?? '').toUpperCase() !== 'LLM')
               .filter((s) => {
                 if (!stageFilterSet) return true;
                 return stageFilterSet.has(String(s.stage));

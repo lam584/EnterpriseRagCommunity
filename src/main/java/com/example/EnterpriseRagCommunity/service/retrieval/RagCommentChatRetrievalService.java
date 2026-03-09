@@ -63,7 +63,7 @@ public class RagCommentChatRetrievalService {
             throw new IllegalStateException("Ensure ES index failed: " + e.getMessage(), e);
         }
 
-        String body = buildKnnSearchBody(k, Math.max(100, k * 10), vec);
+        String body = buildKnnSearchBody(k, Math.max(100, k * 10), vec, queryText);
         JsonNode root = postSearch(indexName, body);
 
         List<Hit> hits = new ArrayList<>();
@@ -74,10 +74,12 @@ public class RagCommentChatRetrievalService {
                 out.setDocId(h.path("_id").asText(null));
                 if (h.hasNonNull("_score")) out.setScore(h.path("_score").asDouble());
                 JsonNode src = h.path("_source");
+                JsonNode hl = h.path("highlight");
                 if (src.hasNonNull("comment_id")) out.setCommentId(src.path("comment_id").asLong());
                 if (src.hasNonNull("post_id")) out.setPostId(src.path("post_id").asLong());
                 if (src.hasNonNull("chunk_index")) out.setChunkIndex(src.path("chunk_index").asInt());
                 out.setContentText(src.path("content_text").asText(null));
+                out.setContentHighlight(firstHighlightFragment(hl, "content_text"));
                 hits.add(out);
             }
         }
@@ -116,7 +118,7 @@ public class RagCommentChatRetrievalService {
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
 
         try {
-            URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
+            URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source,hits.hits.highlight");
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);
@@ -144,6 +146,10 @@ public class RagCommentChatRetrievalService {
     }
 
     private static String buildKnnSearchBody(int size, int numCandidates, float[] vec) {
+        return buildKnnSearchBody(size, numCandidates, vec, null);
+    }
+
+    private static String buildKnnSearchBody(int size, int numCandidates, float[] vec, String queryText) {
         StringBuilder sb = new StringBuilder();
         sb.append('{');
         sb.append("\"size\":").append(size);
@@ -158,8 +164,48 @@ public class RagCommentChatRetrievalService {
         sb.append(",\"k\":").append(size);
         sb.append(",\"num_candidates\":").append(numCandidates);
         sb.append('}');
+        appendHighlightClause(sb, queryText);
         sb.append('}');
         return sb.toString();
+    }
+
+    private static void appendHighlightClause(StringBuilder sb, String queryText) {
+        sb.append(",\"highlight\":{");
+        sb.append("\"pre_tags\":[\"<em>\"],\"post_tags\":[\"</em>\"],");
+        sb.append("\"fields\":{\"content_text\":{\"number_of_fragments\":1,\"fragment_size\":220}}");
+        appendHighlightQuery(sb, queryText);
+        sb.append('}');
+    }
+
+    private static void appendHighlightQuery(StringBuilder sb, String queryText) {
+        String q = queryText == null ? "" : queryText.trim();
+        if (q.isBlank()) return;
+        sb.append(",\"highlight_query\":{");
+        sb.append("\"simple_query_string\":{");
+        sb.append("\"query\":\"").append(escapeJson(q)).append("\",");
+        sb.append("\"fields\":[\"content_text\"],\"default_operator\":\"or\"}}");
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        return s
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+
+    private static String firstHighlightFragment(JsonNode highlightNode, String field) {
+        if (highlightNode == null || field == null || field.isBlank()) return null;
+        JsonNode arr = highlightNode.path(field);
+        if (!arr.isArray() || arr.isEmpty()) return null;
+        for (JsonNode x : arr) {
+            if (x == null || !x.isTextual()) continue;
+            String t = x.asText(null);
+            if (t != null && !t.isBlank()) return t;
+        }
+        return null;
     }
 
     @Data
@@ -170,5 +216,6 @@ public class RagCommentChatRetrievalService {
         private Long postId;
         private Integer chunkIndex;
         private String contentText;
+        private String contentHighlight;
     }
 }

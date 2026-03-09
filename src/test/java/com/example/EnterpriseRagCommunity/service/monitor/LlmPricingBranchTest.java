@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -120,5 +121,48 @@ public class LlmPricingBranchTest {
         assertEquals(new BigDecimal("30"), LlmPricing.resolveOutputCostPerUnit(flat, LlmPricing.Mode.THINKING));
 
         assertTrue(LlmPricing.isConfiguredForMode(flat, LlmPricing.Mode.THINKING));
+    }
+
+    @Test
+    void fromLegacy_and_tieredEmpty_shouldCoverFallbackBranches() {
+        assertNull(LlmPricing.fromLegacy(null, null));
+
+        LlmPricing.Config legacy = LlmPricing.fromLegacy(new BigDecimal("0.3"), null);
+        assertNotNull(legacy);
+        assertEquals(LlmPricing.Strategy.FLAT, legacy.strategy());
+        assertEquals(LlmPricing.Unit.PER_1K, legacy.unit());
+        assertEquals(new BigDecimal("0.3"), legacy.defaultInputCostPerUnit());
+        assertNull(legacy.defaultOutputCostPerUnit());
+
+        LlmPricing.Config emptyTiered = new LlmPricing.Config(
+                LlmPricing.Strategy.TIERED,
+                LlmPricing.Unit.PER_1K,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(new LlmPricing.Tier(100, null, null))
+        );
+        assertFalse(LlmPricing.isConfiguredForMode(emptyTiered, LlmPricing.Mode.DEFAULT));
+        assertNull(LlmPricing.resolveInputCostPerUnit(null, LlmPricing.Mode.DEFAULT));
+        assertNull(LlmPricing.resolveOutputCostPerUnit(null, LlmPricing.Mode.DEFAULT));
+    }
+
+    @Test
+    void resolveOutputCostPerUnit_shouldFallbackToDefault_whenThinkingOverrideMissing() {
+        LlmPricing.Config cfg = new LlmPricing.Config(
+                LlmPricing.Strategy.FLAT,
+                LlmPricing.Unit.PER_1K,
+                null,
+                new BigDecimal("0.12"),
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        assertEquals(new BigDecimal("0.12"), LlmPricing.resolveOutputCostPerUnit(cfg, LlmPricing.Mode.THINKING));
     }
 }

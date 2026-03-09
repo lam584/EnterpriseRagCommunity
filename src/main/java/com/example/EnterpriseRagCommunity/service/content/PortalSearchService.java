@@ -143,12 +143,16 @@ public class PortalSearchService {
             double sim = safeDouble(h == null ? null : (h.getRerankScore() != null ? h.getRerankScore() : (h.getFusedScore() != null ? h.getFusedScore() : (h.getVecScore() != null ? h.getVecScore() : h.getScore()))));
             LocalDateTime createdAt = p.getPublishedAt() != null ? p.getPublishedAt() : p.getCreatedAt();
             String snippet = pickSnippet(h == null ? null : h.getContentText(), p.getContent(), 180);
+            String highlightedSnippet = normalizeHighlighted(h == null ? null : h.getContentHighlight());
+            String highlightedTitle = normalizeHighlighted(h == null ? null : h.getTitleHighlight());
 
             PortalSearchHitDTO dto = new PortalSearchHitDTO();
             dto.setType("POST");
             dto.setPostId(postId);
             dto.setTitle(p.getTitle());
             dto.setSnippet(snippet);
+            dto.setHighlightedTitle(highlightedTitle);
+            dto.setHighlightedSnippet(highlightedSnippet);
             dto.setCreatedAt(createdAt);
             dto.setUrl("/portal/posts/detail/" + postId);
             scored.add(new ScoredHit(dto, sim, createdAt, now));
@@ -167,6 +171,7 @@ public class PortalSearchService {
             double sim = safeDouble(h == null ? null : h.getScore());
             LocalDateTime createdAt = c.getCreatedAt();
             String snippet = pickSnippet(h == null ? null : h.getContentText(), c.getContent(), 180);
+            String highlightedSnippet = normalizeHighlighted(h == null ? null : h.getContentHighlight());
 
             PortalSearchHitDTO dto = new PortalSearchHitDTO();
             dto.setType("COMMENT");
@@ -174,6 +179,7 @@ public class PortalSearchService {
             dto.setCommentId(commentId);
             dto.setTitle(p.getTitle());
             dto.setSnippet(snippet);
+            dto.setHighlightedSnippet(highlightedSnippet);
             dto.setCreatedAt(createdAt);
             dto.setUrl("/portal/posts/detail/" + c.getPostId() + "?commentId=" + commentId + "#comment-" + commentId);
             scored.add(new ScoredHit(dto, sim, createdAt, now));
@@ -189,6 +195,7 @@ public class PortalSearchService {
             double sim = safeDouble(h == null ? null : h.getScore());
             LocalDateTime createdAt = fa.getCreatedAt();
             String snippet = pickSnippet(h == null ? null : h.getContentText(), null, 180);
+            String highlightedSnippet = normalizeHighlighted(h == null ? null : h.getContentHighlight());
 
             String title = fa.getOriginalName();
             if (title == null || title.isBlank()) title = h == null ? null : h.getFileName();
@@ -212,6 +219,7 @@ public class PortalSearchService {
             dto.setPostId(postId);
             dto.setTitle(title);
             dto.setSnippet(snippet);
+            dto.setHighlightedSnippet(highlightedSnippet);
             dto.setCreatedAt(createdAt);
             dto.setUrl(url);
             scored.add(new ScoredHit(dto, sim, createdAt, now));
@@ -306,6 +314,11 @@ public class PortalSearchService {
         s = s.replaceAll("[\\r\\n\\t]+", " ").trim();
         if (s.length() <= maxChars) return s;
         return s.substring(0, maxChars) + "...";
+    }
+
+    private static String normalizeHighlighted(String highlighted) {
+        if (highlighted == null || highlighted.isBlank()) return null;
+        return highlighted.replaceAll("[\\r\\n\\t]+", " ").trim();
     }
 
     private static List<String> buildQueryTerms(String queryText) {

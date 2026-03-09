@@ -126,6 +126,66 @@ describe('ModerationPipelineTracePanel', () => {
     expect(screen.getByText(/"model":\s*"m2"/)).not.toBeNull();
   });
 
+  it('存在 TEXT/VISION/JUDGE 时隐藏 LLM 阶段展示', async () => {
+    mockAdminGetLatestPipelineByQueueId.mockResolvedValueOnce({
+      run: {
+        id: 100,
+        queueId: 6,
+        contentType: 'POST',
+        contentId: 200,
+        traceId: 'trace-hide-llm',
+      },
+      steps: [
+        {
+          id: 1,
+          runId: 100,
+          stage: 'TEXT',
+          stepOrder: 1,
+          decision: 'SKIP',
+          costMs: 9,
+          details: { reason: 'no_text_stage' },
+        },
+        {
+          id: 2,
+          runId: 100,
+          stage: 'VISION',
+          stepOrder: 2,
+          decision: 'SKIP',
+          costMs: 9,
+          details: { reason: 'no_vision_stage' },
+        },
+        {
+          id: 3,
+          runId: 100,
+          stage: 'JUDGE',
+          stepOrder: 3,
+          decision: 'SKIP',
+          costMs: 9,
+          details: { reason: 'no_judge_stage' },
+        },
+        {
+          id: 4,
+          runId: 100,
+          stage: 'LLM',
+          stepOrder: 4,
+          decision: 'PASS',
+          costMs: 20,
+          details: { model: 'hidden-llm' },
+        },
+      ],
+    });
+
+    render(<ModerationPipelineTracePanel queueId={6} />);
+
+    await screen.findByText('runId：');
+    const summaryText = Array.from(document.querySelectorAll('summary')).map((x) => x.textContent || '').join(' ');
+    expect(summaryText).toContain('TEXT');
+    expect(summaryText).toContain('VISION');
+    expect(summaryText).toContain('JUDGE');
+    expect(summaryText).not.toContain('LLM');
+    expect(screen.queryByText(/"model":\s*"hidden-llm"/)).toBeNull();
+  });
+
   it('RULE anti_spam 命中时展示结构化命中信息', async () => {
     mockAdminGetLatestPipelineByQueueId.mockResolvedValueOnce({
       run: {

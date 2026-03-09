@@ -11,6 +11,7 @@ import {
   type ModerationQueueItem,
   type QueueStatus,
 } from '../../../../services/moderationQueueService';
+import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
 
 const statusOptions: Array<{ value: QueueStatus | ''; label: string }> = [
   { value: '', label: '全部' },
@@ -70,6 +71,7 @@ export default function ModerationQueuePage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detail, setDetail] = useState<ModerationQueueDetail | null>(null);
+  const [markdownPreviewEnabled, setMarkdownPreviewEnabled] = useState(true);
 
   const [reason, setReason] = useState('');
   const [actionLoading, setActionLoading] = useState<'approve' | 'reject' | 'toHuman' | null>(null);
@@ -140,6 +142,7 @@ export default function ModerationQueuePage() {
     setDetail(null);
     setReason('');
     setActionLoading(null);
+    setMarkdownPreviewEnabled(true);
     try {
       const d = await adminGetModerationQueueDetail(id);
       setDetail(d);
@@ -156,6 +159,7 @@ export default function ModerationQueuePage() {
     setDetailError(null);
     setReason('');
     setActionLoading(null);
+    setMarkdownPreviewEnabled(true);
   }, []);
 
   const approve = useCallback(async () => {
@@ -507,8 +511,23 @@ export default function ModerationQueuePage() {
                     </div>
                   </div>
                   {detail.post?.content ? (
-                    <div className="rounded border border-gray-200 p-3 text-sm text-gray-700 whitespace-pre-wrap max-h-[280px] overflow-auto">
-                      {detail.post.content}
+                    <div className="space-y-2">
+                      <label className="inline-flex items-center gap-2 text-xs text-gray-700 select-none">
+                        <input
+                          type="checkbox"
+                          checked={markdownPreviewEnabled}
+                          onChange={(e) => setMarkdownPreviewEnabled(e.target.checked)}
+                          disabled={actionLoading !== null}
+                        />
+                        <span>Markdown预览</span>
+                      </label>
+                      <div className="rounded border border-gray-200 max-h-[280px] overflow-auto">
+                        {markdownPreviewEnabled ? (
+                          <MarkdownPreview markdown={detail.post.content} className="p-3" />
+                        ) : (
+                          <div className="p-3 text-sm text-gray-700 whitespace-pre-wrap">{detail.post.content}</div>
+                        )}
+                      </div>
                     </div>
                   ) : null}
                   <div className="space-y-1">

@@ -14,9 +14,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
@@ -38,6 +43,8 @@ import lombok.Data;
 
 @Service
 public class HybridRagRetrievalService {
+
+    private static final Logger log = LoggerFactory.getLogger(HybridRagRetrievalService.class);
 
     private final RetrievalRagProperties ragProps;
     private final RagPostsIndexService indexService;
@@ -179,6 +186,9 @@ public class HybridRagRetrievalService {
             } catch (Exception e) {
                 out.setRerankError(e.getMessage());
                 out.setRerankHits(List.of());
+                out.setRerankDegraded(true);
+                out.setRerankDegradeReason(e.getMessage());
+                log.warn("HybridRag rerank degraded, fallback to fused ranking: reason={}", e.getMessage());
                 finalHits = fused;
             } finally {
                 out.setRerankLatencyMs((int) (System.currentTimeMillis() - t3));
@@ -379,14 +389,17 @@ public class HybridRagRetrievalService {
     private List<DocHit> rerank(String queryText, List<DocHit> fused, int rerankK, HybridRetrievalConfigDTO cfg) {
         String modelOverride = cfg == null || cfg.getRerankModel() == null || cfg.getRerankModel().isBlank() ? null : cfg.getRerankModel().trim();
 
-        int perDocMaxTokens = cfg == null || cfg.getPerDocMaxTokens() == null ? 4000 : cfg.getPerDocMaxTokens();
-        int maxInputTokens = cfg == null || cfg.getMaxInputTokens() == null ? 30000 : cfg.getMaxInputTokens();
+        int perDocMaxTokens = cfg == null || cfg.getPerDocMaxTokens() == null ? 800 : cfg.getPerDocMaxTokens();
+        int maxInputTokens = cfg == null || cfg.getMaxInputTokens() == null ? 8000 : cfg.getMaxInputTokens();
+        int rerankTimeoutMs = cfg == null || cfg.getRerankTimeoutMs() == null ? 12000 : cfg.getRerankTimeoutMs();
+        int rerankSlowThresholdMs = cfg == null || cfg.getRerankSlowThresholdMs() == null ? 6000 : cfg.getRerankSlowThresholdMs();
 
         List<DocHit> candidates = fused.subList(0, Math.min(rerankK, fused.size()));
         List<DocHit> candidatesUsed = new ArrayList<>();
         List<String> docTexts = new ArrayList<>();
         int budgetLeft = Math.max(500, maxInputTokens);
         int queryTokens = approxTokens(queryText == null ? "" : queryText);
+        int estimatedInputTokens = queryTokens;
 
         for (DocHit h : candidates) {
             if (h == null || h.getDocId() == null) continue;
@@ -399,25 +412,72 @@ public class HybridRagRetrievalService {
             budgetLeft -= cost;
             candidatesUsed.add(h);
             docTexts.add(t);
+            estimatedInputTokens += tokens;
         }
 
         if (docTexts.isEmpty()) return fused;
 
+        log.info(
+                "HybridRag rerank start: queryTokens={}, candidateCount={}, usedCount={}, estimatedInputTokens={}, perDocMaxTokens={}, maxInputTokens={}, timeoutMs={}",
+                queryTokens,
+                candidates.size(),
+                candidatesUsed.size(),
+                estimatedInputTokens,
+                perDocMaxTokens,
+                maxInputTokens,
+                rerankTimeoutMs
+        );
+
+        long started = System.currentTimeMillis();
         AiRerankService.RerankResult rr;
         try {
-            rr = llmGateway.rerankOnceRouted(
-                    LlmQueueTaskType.RERANK,
-                    null,
-                    modelOverride,
-                    queryText,
-                    docTexts,
-                    docTexts.size(),
-                    "Given a web search query, retrieve relevant passages that answer the query.",
-                    false,
-                    null
+            CompletableFuture<AiRerankService.RerankResult> future = CompletableFuture.supplyAsync(() -> {
+                try {
+                    return llmGateway.rerankOnceRouted(
+                            LlmQueueTaskType.RERANK,
+                            null,
+                            modelOverride,
+                            queryText,
+                            docTexts,
+                            docTexts.size(),
+                            "Given a web search query, retrieve relevant passages that answer the query.",
+                            false,
+                            null
+                    );
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            rr = future.get(Math.max(1000, rerankTimeoutMs), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            throw new IllegalStateException("Rerank timeout after " + Math.max(1000, rerankTimeoutMs) + "ms", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Rerank interrupted", e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException re && re.getCause() instanceof IOException ioe) {
+                throw new IllegalStateException("Rerank upstream failed: " + ioe.getMessage(), ioe);
+            }
+            String msg = cause == null ? e.getMessage() : cause.getMessage();
+            throw new IllegalStateException("Rerank upstream failed: " + msg, e);
+        }
+        int latencyMs = (int) (System.currentTimeMillis() - started);
+        if (latencyMs > rerankSlowThresholdMs) {
+            log.warn(
+                    "HybridRag rerank slow: latencyMs={}, thresholdMs={}, usedCount={}, estimatedInputTokens={}",
+                    latencyMs,
+                    rerankSlowThresholdMs,
+                    candidatesUsed.size(),
+                    estimatedInputTokens
             );
-        } catch (IOException e) {
-            throw new IllegalStateException("Rerank upstream failed: " + e.getMessage(), e);
+        } else {
+            log.info(
+                    "HybridRag rerank done: latencyMs={}, usedCount={}, estimatedInputTokens={}",
+                    latencyMs,
+                    candidatesUsed.size(),
+                    estimatedInputTokens
+            );
         }
         if (rr == null || rr.results() == null || rr.results().isEmpty()) return fused;
 
@@ -538,7 +598,7 @@ public class HybridRagRetrievalService {
             if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
 
             try {
-                URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
+                URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source,hits.hits.highlight");
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setConnectTimeout(2000);
@@ -575,12 +635,15 @@ public class HybridRagRetrievalService {
                 out.setDocId(h.path("_id").asText(null));
                 if (h.hasNonNull("_score")) out.setScore(h.path("_score").asDouble());
                 JsonNode src = h.path("_source");
+                JsonNode hl = h.path("highlight");
                 if (src.hasNonNull("post_id")) out.setPostId(src.path("post_id").asLong());
                 if (src.hasNonNull("chunk_index")) out.setChunkIndex(src.path("chunk_index").asInt());
                 if (src.hasNonNull("board_id")) out.setBoardId(src.path("board_id").asLong());
                 out.setSourceType("POST");
                 out.setTitle(src.path("title").asText(null));
                 out.setContentText(src.path("content_text").asText(null));
+                out.setTitleHighlight(firstHighlightFragment(hl, "title"));
+                out.setContentHighlight(firstHighlightFragment(hl, "content_text"));
                 hits.add(out);
             }
         }
@@ -605,6 +668,7 @@ public class HybridRagRetrievalService {
             sb.append("{\"term\":{\"board_id\":").append(boardId).append("}}");
         }
         sb.append("]}}");
+        appendHighlightClause(sb);
         sb.append('}');
         return sb.toString();
     }
@@ -629,8 +693,30 @@ public class HybridRagRetrievalService {
         sb.append(",\"k\":").append(size);
         sb.append(",\"num_candidates\":").append(numCandidates);
         sb.append('}');
+        appendHighlightClause(sb);
         sb.append('}');
         return sb.toString();
+    }
+
+    private static void appendHighlightClause(StringBuilder sb) {
+        sb.append(",\"highlight\":{");
+        sb.append("\"pre_tags\":[\"<em>\"],\"post_tags\":[\"</em>\"],");
+        sb.append("\"fields\":{");
+        sb.append("\"content_text\":{\"number_of_fragments\":1,\"fragment_size\":220},");
+        sb.append("\"title\":{\"number_of_fragments\":1,\"fragment_size\":120}");
+        sb.append("}}");
+    }
+
+    private static String firstHighlightFragment(JsonNode highlightNode, String field) {
+        if (highlightNode == null || field == null || field.isBlank()) return null;
+        JsonNode arr = highlightNode.path(field);
+        if (!arr.isArray() || arr.isEmpty()) return null;
+        for (JsonNode x : arr) {
+            if (x == null || !x.isTextual()) continue;
+            String t = x.asText(null);
+            if (t != null && !t.isBlank()) return t;
+        }
+        return null;
     }
 
     private static String escapeJson(String s) {
@@ -708,6 +794,8 @@ public class HybridRagRetrievalService {
         m.put("vecError", r.getVecError());
         m.put("fileVecError", r.getFileVecError());
         m.put("rerankError", r.getRerankError());
+        m.put("rerankDegraded", r.getRerankDegraded());
+        m.put("rerankDegradeReason", r.getRerankDegradeReason());
         return m;
     }
 
@@ -727,6 +815,8 @@ public class HybridRagRetrievalService {
         private String vecError;
         private String fileVecError;
         private String rerankError;
+        private Boolean rerankDegraded;
+        private String rerankDegradeReason;
 
         private List<DocHit> bm25Hits;
         private List<DocHit> vecHits;
@@ -750,6 +840,8 @@ public class HybridRagRetrievalService {
         private String sourceType;
         private String title;
         private String contentText;
+        private String titleHighlight;
+        private String contentHighlight;
 
         private Double bm25Score;
         private Double vecScore;
@@ -771,6 +863,8 @@ public class HybridRagRetrievalService {
             h.sourceType = this.sourceType;
             h.title = this.title;
             h.contentText = this.contentText;
+            h.titleHighlight = this.titleHighlight;
+            h.contentHighlight = this.contentHighlight;
             h.bm25Score = this.bm25Score;
             h.vecScore = this.vecScore;
             h.fileVecScore = this.fileVecScore;

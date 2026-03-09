@@ -337,7 +337,7 @@ public class RagContextPromptService {
             }
         }
         if (citationInstruction != null && !citationInstruction.isBlank()) {
-            prompt = (prompt.isBlank() ? "" : prompt + "\n\n") + citationInstruction.trim();
+            prompt = (prompt.isBlank() ? "" : prompt + "\n\n") + appendExactCitationRule(citationInstruction);
         }
 
         List<CitationSource> sources = buildSources(citationCfg, selected);
@@ -730,6 +730,14 @@ public class RagContextPromptService {
             out = out.replace(e.getKey(), e.getValue());
         }
         return out;
+    }
+
+    private static String appendExactCitationRule(String citationInstruction) {
+        String base = citationInstruction == null ? "" : citationInstruction.trim();
+        if (base.isBlank()) return base;
+        String extra = "引用来源时请尽量使用短引文并保持与来源原文逐字一致；每条引文必须使用成对中文引号“”包裹，不要混用半角双引号或转义反斜杠，再在引文后紧跟对应编号（例如：“原文片段”[1]）。";
+        if (base.contains("逐字一致") && base.contains("中文引号“”")) return base;
+        return base + "\n" + extra;
     }
 
     private static List<CitationSource> buildSources(CitationConfigDTO cfg, List<Item> selected) {

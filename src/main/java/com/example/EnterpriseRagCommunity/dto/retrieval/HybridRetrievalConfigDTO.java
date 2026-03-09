@@ -26,6 +26,8 @@ public class HybridRetrievalConfigDTO {
     private Double rerankTemperature;
     private Double rerankTopP;
     private Integer rerankK;
+    private Integer rerankTimeoutMs;
+    private Integer rerankSlowThresholdMs;
 
     private Integer maxDocs;
     private Integer perDocMaxTokens;

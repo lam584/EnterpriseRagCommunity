@@ -10,6 +10,12 @@ function isValidSlug(s: string): boolean {
   return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s);
 }
 
+function toNonNegativeNumber(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
 const RiskTagsForm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -67,17 +73,20 @@ const RiskTagsForm: React.FC = () => {
             keyword: keyword.trim() ? keyword.trim() : undefined,
           });
           const content = page.content ?? [];
-          const nextTotalPages = typeof page.totalPages === 'number' ? Math.max(1, page.totalPages) : 1;
-          const nextTotalElements = typeof page.totalElements === 'number' ? page.totalElements : 0;
-          const backendPageIndex = typeof page.number === 'number' ? Math.max(0, page.number) : Math.max(0, pageNo - 1);
+          const nextTotalPages = Math.max(1, toNonNegativeNumber(page.totalPages) ?? 1);
+          const nextTotalElements = Math.max(0, toNonNegativeNumber(page.totalElements) ?? 0);
+          const rawNumber = toNonNegativeNumber(page.number);
+          const backendPageIndex =
+            rawNumber == null ? Math.max(0, pageNo - 1) : rawNumber >= 1 && rawNumber <= nextTotalPages ? Math.max(0, rawNumber - 1) : Math.max(0, rawNumber);
           const hasMoreByFlag = page.last === false;
           const hasMoreByPageCount = backendPageIndex + 1 < nextTotalPages;
           const hasMoreByTotal = nextTotalElements > (backendPageIndex + 1) * pageSize;
+          const hasMoreByContent = page.last !== true && content.length >= pageSize;
 
           setItems(content);
           setTotalPages(nextTotalPages);
           setTotalElements(Math.max(0, nextTotalElements));
-          setHasNextPage(hasMoreByFlag || hasMoreByPageCount || hasMoreByTotal);
+          setHasNextPage(hasMoreByFlag || hasMoreByPageCount || hasMoreByTotal || hasMoreByContent);
         } catch (e: unknown) {
           setHasNextPage(false);
           setMessage(e instanceof Error ? e.message : String(e));
@@ -527,26 +536,22 @@ const RiskTagsForm: React.FC = () => {
         <div className="flex items-center justify-between text-sm">
           <div className="text-gray-600">共 {items.length} 条（本页）</div>
           <div className="flex items-center gap-2">
-            {canPrev ? (
-              <button
-                type="button"
-                className="rounded border px-3 py-1 disabled:opacity-60"
-                disabled={loading}
-                onClick={() => setPageNo((p) => Math.max(1, p - 1))}
-              >
-                上一页
-              </button>
-            ) : null}
-            {canNext ? (
-              <button
-                type="button"
-                className="rounded border px-3 py-1 disabled:opacity-60"
-                disabled={loading}
-                onClick={() => setPageNo((p) => p + 1)}
-              >
-                下一页
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="rounded border px-3 py-1 disabled:opacity-60"
+              disabled={loading || !canPrev}
+              onClick={() => setPageNo((p) => Math.max(1, p - 1))}
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              className="rounded border px-3 py-1 disabled:opacity-60"
+              disabled={loading || !canNext}
+              onClick={() => setPageNo((p) => p + 1)}
+            >
+              下一页
+            </button>
           </div>
         </div>
       </div>

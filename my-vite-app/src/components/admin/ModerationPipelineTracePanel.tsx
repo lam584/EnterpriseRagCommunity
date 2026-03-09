@@ -28,6 +28,14 @@ function isAntiSpamHit(v: unknown): boolean {
   return typeof v === 'string' && v.toLowerCase() === 'true';
 }
 
+function shouldHideLlmStep(steps: Array<{ stage?: string | null }>): boolean {
+  const hasPromptStages = steps.some((it) => {
+    const stage = String(it.stage ?? '').toUpperCase();
+    return stage === 'TEXT' || stage === 'VISION' || stage === 'JUDGE';
+  });
+  return hasPromptStages;
+}
+
 type ModerationPipelineTracePanelDensity = 'normal' | 'compact';
 
 type ModerationPipelineTracePanelProps = {
@@ -139,8 +147,9 @@ export const ModerationPipelineTracePanel: React.FC<ModerationPipelineTracePanel
 
       {data?.steps?.length ? (
         <div className={dense ? 'space-y-1' : 'space-y-2'}>
-          {data.steps
+          {(data.steps ?? [])
             .slice()
+            .filter((s) => !shouldHideLlmStep(data.steps ?? []) || String(s.stage ?? '').toUpperCase() !== 'LLM')
             .sort((a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0))
             .map((s) => {
               const model = typeof s.details?.model === 'string' ? s.details.model : null;

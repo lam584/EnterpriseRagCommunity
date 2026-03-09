@@ -231,6 +231,13 @@ describe('MarkdownPreview', () => {
     expect(a.getAttribute('rel')).toBe('noreferrer');
   });
 
+  it('keeps span className from sanitized raw HTML', () => {
+    const { container } = render(<MarkdownPreview markdown={'<span class="rounded bg-yellow-200 px-0.5">原文片段</span>'} />);
+    const span = within(container).getByText('原文片段').closest('span');
+    expect(span).not.toBeNull();
+    expect(span?.className).toContain('bg-yellow-200');
+  });
+
   it('keeps empty link href and still applies external link target/rel', () => {
     render(<MarkdownPreview markdown={'[Empty]()'} />);
     const a = screen.getByText('Empty').closest('a');

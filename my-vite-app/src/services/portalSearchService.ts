@@ -9,6 +9,8 @@ export type PortalSearchHitDTO = {
   fileAssetId?: number | null;
   title?: string | null;
   snippet?: string | null;
+  highlightedTitle?: string | null;
+  highlightedSnippet?: string | null;
   score?: number | null;
   createdAt?: string | null;
   url?: string | null;

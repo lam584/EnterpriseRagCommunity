@@ -1898,6 +1898,80 @@ tasks.register('verifyAdminModerationPolicyServiceCoverage100') {
     }
 }
 
+tasks.register('adminModerationQueueServiceImplCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs AdminModerationQueueServiceImpl focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.moderation.impl.AdminModerationQueueServiceImplBranchCoverageTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/adminModerationQueueServiceImpl.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoAdminModerationQueueServiceImplReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('adminModerationQueueServiceImplCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/adminModerationQueueServiceImpl.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/moderation/impl/AdminModerationQueueServiceImpl.class'
+        include 'com/example/EnterpriseRagCommunity/service/moderation/impl/AdminModerationQueueServiceImpl$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/adminModerationQueueServiceImpl/jacocoAdminModerationQueueServiceImplReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/adminModerationQueueServiceImpl/html')
+    }
+}
+
+tasks.register('adminModerationQueueServiceImplCoverageVerify') {
+    group = 'verification'
+    description = 'Runs AdminModerationQueueServiceImpl focused tests and verifies branch coverage reaches at least 95%.'
+    dependsOn tasks.named('jacocoAdminModerationQueueServiceImplReport')
+    doLast {
+        def reportPath = layout.buildDirectory.file('reports/jacoco/adminModerationQueueServiceImpl/jacocoAdminModerationQueueServiceImplReport.xml').get().asFile
+        if (!reportPath.exists()) {
+            throw new GradleException("Coverage report not found: ${reportPath}")
+        }
+        def xmlText = reportPath.getText('UTF-8').replaceFirst(/<!DOCTYPE[^>]*>/, '')
+        def report = new XmlSlurper().parseText(xmlText)
+        def pkg = report.package.find { it.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/impl' }
+        if (!pkg) {
+            throw new GradleException('Target package missing in coverage report: com/example/EnterpriseRagCommunity/service/moderation/impl')
+        }
+        def cls = pkg.class.find { it.@name.text() == 'com/example/EnterpriseRagCommunity/service/moderation/impl/AdminModerationQueueServiceImpl' }
+        if (!cls) {
+            throw new GradleException('Target class missing in coverage report: AdminModerationQueueServiceImpl')
+        }
+        def branch = cls.counter.find { it.@type.text() == 'BRANCH' }
+        if (!branch) {
+            throw new GradleException('Coverage report missing BRANCH counter')
+        }
+        int covered = branch.@covered.text().toInteger()
+        int missed = branch.@missed.text().toInteger()
+        int total = covered + missed
+        if (total <= 0) {
+            throw new GradleException('Coverage denominator is 0, cannot verify')
+        }
+        BigDecimal branchPct = ((covered * 100.0) / total).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+        println "AdminModerationQueueServiceImpl Branches: ${branchPct}% (${covered}/${total})"
+        def classHtml = layout.buildDirectory.file('reports/jacoco/adminModerationQueueServiceImpl/html/com.example.EnterpriseRagCommunity.service.moderation.impl/AdminModerationQueueServiceImpl.html').get().asFile
+        if (!classHtml.exists()) {
+            throw new GradleException("Readable class page missing: ${classHtml}")
+        }
+        if (branchPct < 95.00) {
+            throw new GradleException("AdminModerationQueueServiceImpl branch coverage is below 95%: ${branchPct}%")
+        }
+    }
+}
+
 tasks.register('hybridRagRetrievalServiceCoverageTest', Test) {
     group = 'verification'
     description = 'Runs HybridRagRetrievalService focused tests.'
@@ -2047,6 +2121,169 @@ tasks.register('verifyRagFileAssetChatRetrievalServiceCoverage100') {
         println 'RagFileAssetChatRetrievalService Instructions: 100%'
         println 'RagFileAssetChatRetrievalService Lines: 100%'
         println 'RagFileAssetChatRetrievalService Methods: 100%'
+    }
+}
+
+tasks.register('serviceMonitorCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs service.monitor focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.monitor.LlmPricingTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.monitor.LlmPricingBranchTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.monitor.UploadFormatsConfigServiceBranchCoverageTest'
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.monitor.TokenCostCalculatorTest'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/serviceMonitor.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoServiceMonitorReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('serviceMonitorCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/serviceMonitor.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/monitor/LlmPricing.class'
+        include 'com/example/EnterpriseRagCommunity/service/monitor/LlmPricing$*.class'
+        include 'com/example/EnterpriseRagCommunity/service/monitor/UploadFormatsConfigService.class'
+        include 'com/example/EnterpriseRagCommunity/service/monitor/UploadFormatsConfigService$*.class'
+        include 'com/example/EnterpriseRagCommunity/service/monitor/TokenCostCalculator.class'
+        include 'com/example/EnterpriseRagCommunity/service/monitor/TokenCostCalculator$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/serviceMonitor/jacocoServiceMonitorReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/serviceMonitor/html')
+    }
+}
+
+tasks.register('serviceMonitorCoverageVerify') {
+    group = 'verification'
+    description = 'Runs service.monitor focused tests and verifies branch coverage reaches at least 95%.'
+    dependsOn tasks.named('jacocoServiceMonitorReport')
+    doLast {
+        def reportPath = layout.buildDirectory.file('reports/jacoco/serviceMonitor/jacocoServiceMonitorReport.xml').get().asFile
+        if (!reportPath.exists()) {
+            throw new GradleException("Coverage report not found: ${reportPath}")
+        }
+        def xmlText = reportPath.getText('UTF-8').replaceFirst(/<!DOCTYPE[^>]*>/, '')
+        def report = new XmlSlurper().parseText(xmlText)
+        def pkg = report.package.find { it.@name.text() == 'com/example/EnterpriseRagCommunity/service/monitor' }
+        if (!pkg) {
+            throw new GradleException('Target package missing in coverage report: com/example/EnterpriseRagCommunity/service/monitor')
+        }
+        def branch = pkg.counter.find { it.@type.text() == 'BRANCH' }
+        if (!branch) {
+            throw new GradleException('Coverage report missing BRANCH counter')
+        }
+        int covered = branch.@covered.text().toInteger()
+        int missed = branch.@missed.text().toInteger()
+        int total = covered + missed
+        if (total <= 0) {
+            throw new GradleException('Coverage denominator is 0, cannot verify')
+        }
+        BigDecimal branchPct = ((covered * 100.0) / total).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+        println "service.monitor Branches: ${branchPct}% (${covered}/${total})"
+        if (branchPct < 95.00) {
+            throw new GradleException("service.monitor branch coverage is below 95%: ${branchPct}%")
+        }
+    }
+}
+
+tasks.register('serviceAccessCoverageTest', Test) {
+    group = 'verification'
+    description = 'Runs service.access focused tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform()
+    filter {
+        includeTestsMatching 'com.example.EnterpriseRagCommunity.service.access.*'
+    }
+    jacoco {
+        enabled = true
+        destinationFile = layout.buildDirectory.file('jacoco/serviceAccess.exec').get().asFile
+    }
+}
+
+tasks.register('jacocoServiceAccessReport', JacocoReport) {
+    group = 'verification'
+    dependsOn tasks.named('serviceAccessCoverageTest')
+    executionData(layout.buildDirectory.file('jacoco/serviceAccess.exec'))
+    sourceDirectories.from(sourceSets.main.allSource.srcDirs)
+    classDirectories.from(files(sourceSets.main.output.classesDirs).asFileTree.matching {
+        include 'com/example/EnterpriseRagCommunity/service/access/*.class'
+        include 'com/example/EnterpriseRagCommunity/service/access/*$*.class'
+    })
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/serviceAccess/jacocoServiceAccessReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/serviceAccess/html')
+    }
+}
+
+tasks.register('serviceAccessCoverageVerify') {
+    group = 'verification'
+    description = 'Runs service.access focused tests and verifies branch coverage reaches at least 95%.'
+    dependsOn tasks.named('jacocoServiceAccessReport')
+    doLast {
+        def reportPath = layout.buildDirectory.file('reports/jacoco/serviceAccess/jacocoServiceAccessReport.xml').get().asFile
+        if (!reportPath.exists()) {
+            throw new GradleException("Coverage report not found: ${reportPath}")
+        }
+        def xmlText = reportPath.getText('UTF-8').replaceFirst(/<!DOCTYPE[^>]*>/, '')
+        def report = new XmlSlurper().parseText(xmlText)
+        def pkg = report.package.find { it.@name.text() == 'com/example/EnterpriseRagCommunity/service/access' }
+        if (!pkg) {
+            throw new GradleException('Target package missing in coverage report: com/example/EnterpriseRagCommunity/service/access')
+        }
+        def branch = pkg.counter.find { it.@type.text() == 'BRANCH' }
+        if (!branch) {
+            throw new GradleException('Coverage report missing BRANCH counter')
+        }
+        int covered = branch.@covered.text().toInteger()
+        int missed = branch.@missed.text().toInteger()
+        int total = covered + missed
+        if (total <= 0) {
+            throw new GradleException('Coverage denominator is 0, cannot verify')
+        }
+        BigDecimal branchPct = ((covered * 100.0) / total).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+
+        def classRows = pkg.class.collect { cls ->
+            def b = cls.counter.find { it.@type.text() == 'BRANCH' }
+            if (!b) return null
+            int c = b.@covered.text().toInteger()
+            int m = b.@missed.text().toInteger()
+            int t = c + m
+            if (t <= 0 || m <= 0) return null
+            BigDecimal p = ((c * 100.0) / t).toBigDecimal().setScale(2, BigDecimal.ROUND_HALF_UP)
+            [name: cls.@name.text().tokenize('/').last(), pct: p, covered: c, missed: m, total: t]
+        }.findAll { it != null }.sort { a, b ->
+            (b.missed <=> a.missed) ?: (a.pct <=> b.pct) ?: (b.total <=> a.total)
+        }
+
+        def summaryPath = layout.buildDirectory.file('reports/jacoco/serviceAccess/summary.txt').get().asFile
+        summaryPath.parentFile.mkdirs()
+        summaryPath.text = buildString {
+            append("service.access Branches: ${branchPct}% (${covered}/${total})\n")
+            append("TopGapClasses:\n")
+            classRows.take(10).eachWithIndex { row, i ->
+                append("${i + 1}. ${row.name} pct=${row.pct}% missed=${row.missed} covered=${row.covered} total=${row.total}\n")
+            }
+        }
+
+        println "service.access Branches: ${branchPct}% (${covered}/${total})"
+        if (branchPct < 95.00) {
+            throw new GradleException("service.access branch coverage is below 95%: ${branchPct}%")
+        }
     }
 }
 

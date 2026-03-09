@@ -103,7 +103,8 @@ class RagContextPromptServiceBranchCoverageMoreTest {
 
         RagContextPromptService.AssembleResult r = svc.assemble("q", null, cfg, cite);
         assertNotNull(r);
-        assertEquals("CITE", r.getContextPrompt());
+        assertTrue(r.getContextPrompt().startsWith("CITE"));
+        assertTrue(r.getContextPrompt().contains("逐字一致"));
     }
 
     @Test
