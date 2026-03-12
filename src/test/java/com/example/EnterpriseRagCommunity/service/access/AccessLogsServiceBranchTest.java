@@ -10,6 +10,7 @@ import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.Page;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -101,6 +102,30 @@ class AccessLogsServiceBranchTest {
         assertFalse(dto.details().isEmpty());
 
         assertThrows(NoSuchElementException.class, () -> svc.getById(8L));
+    }
+
+    @Test
+    void query_should_not_include_details_but_getById_should() {
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogsService svc = new AccessLogsService(repo);
+
+        AccessLogsEntity entity = new AccessLogsEntity();
+        entity.setId(11L);
+        entity.setCreatedAt(LocalDateTime.now());
+        entity.setMethod("GET");
+        entity.setPath("/api/demo");
+        entity.setDetails(Map.of("reqBody", Map.of("body", "payload")));
+
+        when(repo.findAll(any(Specification.class), any(Pageable.class))).thenReturn(new PageImpl<>(List.of(entity)));
+        when(repo.findById(11L)).thenReturn(Optional.of(entity));
+
+        Page<AccessLogsViewDTO> page = svc.query(1, 20, null, null, null, null, null, null, null, null, null, null, null, null);
+        AccessLogsViewDTO listItem = page.getContent().get(0);
+        assertEquals(null, listItem.details());
+
+        AccessLogsViewDTO detailItem = svc.getById(11L);
+        assertNotNull(detailItem.details());
+        assertFalse(detailItem.details().isEmpty());
     }
 
     private static final class CriteriaEnv {

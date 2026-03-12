@@ -95,18 +95,18 @@ public class AccessLogsService {
             return cb.and(ps.toArray(new Predicate[0]));
         };
 
-        return accessLogsRepository.findAll(spec, pageable).map(this::toViewDto);
+        return accessLogsRepository.findAll(spec, pageable).map(entity -> toViewDto(entity, false));
     }
 
     @Transactional(readOnly = true)
     public AccessLogsViewDTO getById(Long id) {
         AccessLogsEntity e = accessLogsRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Access log not found: " + id));
-        return toViewDto(e);
+        return toViewDto(e, true);
     }
 
-    private AccessLogsViewDTO toViewDto(AccessLogsEntity e) {
-        Map<String, Object> details = e.getDetails();
+    private AccessLogsViewDTO toViewDto(AccessLogsEntity e, boolean includeDetails) {
+        Map<String, Object> details = includeDetails ? e.getDetails() : null;
         return new AccessLogsViewDTO(
                 e.getId(),
                 e.getCreatedAt(),

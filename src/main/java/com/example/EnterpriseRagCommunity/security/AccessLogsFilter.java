@@ -43,6 +43,12 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class AccessLogsFilter extends OncePerRequestFilter {
 
+    private static final String[] EXCLUDED_PATH_PREFIXES = {
+            "/api/admin/access-logs",
+            "/api/admin/audit-logs",
+            "/api/admin/log-retention"
+    };
+
     private final AccessLogWriter accessLogWriter;
     private final AdministratorService administratorService;
 
@@ -61,6 +67,17 @@ public class AccessLogsFilter extends OncePerRequestFilter {
     private static final long USER_ID_CACHE_TTL_MS = 5 * 60 * 1000L;
 
     private record UserIdCacheEntry(Long userId, long expiresAtMs) {
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        if (request == null) return false;
+        String path = request.getRequestURI();
+        if (path == null || path.isBlank()) return false;
+        for (String prefix : EXCLUDED_PATH_PREFIXES) {
+            if (path.startsWith(prefix)) return true;
+        }
+        return false;
     }
 
     @Override

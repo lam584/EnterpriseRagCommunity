@@ -18,8 +18,49 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
 
 public class AccessLogsFilterBodyCaptureTest {
+
+    @Test
+    void skipsLoggingForGlobalLogCenterEndpoints() throws Exception {
+        AccessLogWriter accessLogWriter = Mockito.mock(AccessLogWriter.class);
+        AdministratorService administratorService = Mockito.mock(AdministratorService.class);
+
+        AccessLogsFilter filter = new AccessLogsFilter(accessLogWriter, administratorService);
+
+        MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/admin/access-logs");
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+
+        FilterChain chain = (ServletRequest request, ServletResponse response) -> {
+            ((jakarta.servlet.http.HttpServletResponse) response).setStatus(200);
+        };
+
+        filter.doFilter(req, resp, chain);
+
+        Mockito.verify(accessLogWriter, never()).write(Mockito.any(com.example.EnterpriseRagCommunity.entity.access.AccessLogsEntity.class));
+        Mockito.verify(accessLogWriter, never()).write(
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any(),
+                Mockito.any()
+        );
+    }
 
     @Test
     @SuppressWarnings("unchecked")
