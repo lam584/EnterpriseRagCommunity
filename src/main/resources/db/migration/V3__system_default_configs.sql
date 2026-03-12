@@ -218,11 +218,29 @@ WHERE NOT EXISTS (
 INSERT IGNORE INTO roles(role_id, role_name, builtin, immutable)
 VALUES (1, 'USER', 1, 1);
 
--- 6) 初始化：基线 USER 角色（role_id=1）并授予所有 portal_* 权限
+INSERT IGNORE INTO app_settings(k, v)
+SELECT
+  'default_register_role_id',
+  CAST(r.role_id AS CHAR)
+FROM roles r
+WHERE r.role_name = 'USER';
+
+-- 6) 初始化：基线 USER 角色并授予所有 portal_* 权限
 -- 说明：
 -- - 本项目通过 role_permissions 推断角色（无单独 roles 表）
 -- - 前台路由由 RBAC 权限控制
 -- 幂等：INSERT IGNORE 依赖主键 (role_id, permission_id)
+
+INSERT IGNORE INTO role_permissions(role_id, role_name, permission_id, allow)
+SELECT
+  r.role_id,
+  r.role_name,
+  p.id,
+  1
+FROM roles r
+JOIN permissions p
+  ON p.resource LIKE 'portal\_%'
+WHERE r.role_name = 'USER';
 
 -- 9) 默认配置：moderation_samples 增量同步（MySQL -> ES）
 -- 说明：默认关闭，避免后台自动向量化带来不可预期成本
