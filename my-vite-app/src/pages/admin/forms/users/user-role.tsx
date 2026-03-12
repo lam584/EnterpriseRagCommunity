@@ -11,12 +11,14 @@ import { listRoleSummaries, RoleSummaryDTO } from '../../../../services/rolePerm
 import { getRegistrationSettings } from '../../../../services/adminSettingsService';
 import { useAdminStepUp } from '../../../../components/admin/useAdminStepUp';
 import { isAdminStepUpRequired } from '../../../../services/apiError';
+import { useAuth } from '../../../../contexts/AuthContext';
 
 export default function UserManagementPage() {
     const [users, setUsers] = useState<UserDTO[]>([]);
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(0);
+    const [availableUserCount, setAvailableUserCount] = useState(0);
 
     // Search (split fields)
     const [usernameQuery, setUsernameQuery] = useState('');
@@ -60,6 +62,7 @@ export default function UserManagementPage() {
     const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
     const [targetUserId, setTargetUserId] = useState<number | null>(null);
     const { ensureAdminStepUp, adminStepUpModal } = useAdminStepUp();
+    const { currentUser: authCurrentUser } = useAuth();
 
     useEffect(() => {
         fetchUsers();
@@ -72,21 +75,31 @@ export default function UserManagementPage() {
             const username = usernameQuery.trim();
             const email = emailQuery.trim();
 
-            const res = await userAccessService.queryUsers({
-                pageNum: page,
-                pageSize: 10,
-                // 分开传递：后端可按 LIKE / contains 做模糊搜索；不做长度限制
-                username: username.length > 0 ? username : undefined,
-                email: email.length > 0 ? email : undefined,
-                status: filters.status ? [filters.status] : undefined,
-                createdAfter: filters.createdAfter || undefined,
-                createdBefore: filters.createdBefore || undefined,
-                lastLoginFrom: filters.lastLoginFrom || undefined,
-                lastLoginTo: filters.lastLoginTo || undefined,
-                includeDeleted: filters.includeDeleted
-            });
+            const [res, availableUsersRes] = await Promise.all([
+                userAccessService.queryUsers({
+                    pageNum: page,
+                    pageSize: 10,
+                    // 分开传递：后端可按 LIKE / contains 做模糊搜索；不做长度限制
+                    username: username.length > 0 ? username : undefined,
+                    email: email.length > 0 ? email : undefined,
+                    status: filters.status ? [filters.status] : undefined,
+                    createdAfter: filters.createdAfter || undefined,
+                    createdBefore: filters.createdBefore || undefined,
+                    lastLoginFrom: filters.lastLoginFrom || undefined,
+                    lastLoginTo: filters.lastLoginTo || undefined,
+                    includeDeleted: filters.includeDeleted
+                }),
+                userAccessService.queryUsers({
+                    pageNum: 1,
+                    pageSize: 1,
+                    includeDeleted: false
+                }).catch(() => null)
+            ]);
             setUsers(res.content);
             setTotalPages(res.totalPages);
+            if (availableUsersRes) {
+                setAvailableUserCount(availableUsersRes.totalElements);
+            }
         } catch (error) {
             console.error(error);
             alert('获取用户列表失败');
@@ -160,6 +173,10 @@ export default function UserManagementPage() {
 
     const handleUpdate = async () => {
         if (!currentUser.id) return;
+        if (isProtectedSelf(currentUser) && willMakeUserUnavailable(currentUser)) {
+            alert('系统仅剩最后一个未软删除账号，不能删除、禁用或封禁当前账号');
+            return;
+        }
         try {
             await userAccessService.updateUser({
                 id: currentUser.id,
@@ -173,13 +190,17 @@ export default function UserManagementPage() {
             alert('用户更新成功');
         } catch (error) {
             console.error(error);
-            alert('更新用户失败');
+            alert(`更新用户失败：${error instanceof Error ? error.message : String(error)}`);
         }
     };
 
     const handleDelete = async (user: UserDTO) => {
         if (!user?.id) return;
         if (deletingIds.has(user.id)) return;
+        if (isProtectedSelf(user)) {
+            alert('系统仅剩最后一个未软删除账号，不能删除、禁用或封禁当前账号');
+            return;
+        }
 
         const isSoftDeleted = user.isDeleted === true;
 
@@ -340,6 +361,10 @@ export default function UserManagementPage() {
     const handleBan = async (user: UserDTO) => {
         if (!user?.id) return;
         if (banLoadingIds.has(user.id)) return;
+        if (isProtectedSelf(user)) {
+            alert('系统仅剩最后一个未软删除账号，不能删除、禁用或封禁当前账号');
+            return;
+        }
         const reason = window.prompt('请输入封禁原因（必填）：');
         if (reason === null) return;
         const reasonTrim = reason.trim();
@@ -403,6 +428,14 @@ export default function UserManagementPage() {
                 return next;
             });
         }
+    };
+
+    const isProtectedSelf = (user?: Pick<UserDTO, 'id'> | Partial<UserDTO> | null) => {
+        return Boolean(user?.id) && user?.id === authCurrentUser?.id && availableUserCount <= 1;
+    };
+
+    const willMakeUserUnavailable = (user: Partial<UserDTO>) => {
+        return user.isDeleted === true || user.status === 'DISABLED' || user.status === 'DELETED';
     };
 
     return (
@@ -545,6 +578,7 @@ export default function UserManagementPage() {
                         (() => {
                             const ban = banInfoOf(user);
                             const banActive = ban.active || user.status === 'DISABLED';
+                            const protectedSelf = isProtectedSelf(user);
                             const banText = banActive
                                 ? `${ban.at ? formatDateTimeZhCn(ban.at) : '—'}${ban.reason ? ` · ${ban.reason}` : ''}`
                                 : '—';
@@ -598,8 +632,8 @@ export default function UserManagementPage() {
                                         size="sm"
                                         variant="outline"
                                         onClick={() => handleBan(user)}
-                                        disabled={banLoadingIds.has(user.id)}
-                                        title="封禁用户"
+                                        disabled={banLoadingIds.has(user.id) || protectedSelf}
+                                        title={protectedSelf ? '系统仅剩最后一个未软删除账号，不能封禁自己' : '封禁用户'}
                                     >
                                         <FaBan className="h-4 w-4" />
                                     </Button>
@@ -614,8 +648,8 @@ export default function UserManagementPage() {
                                     size="sm"
                                     className="bg-red-600 hover:bg-red-700 text-white"
                                     onClick={() => handleDelete(user)}
-                                    disabled={deletingIds.has(user.id)}
-                                    title={user.isDeleted === true ? '永久删除' : '软删除'}
+                                    disabled={deletingIds.has(user.id) || protectedSelf}
+                                    title={protectedSelf ? '系统仅剩最后一个未软删除账号，不能删除自己' : (user.isDeleted === true ? '永久删除' : '软删除')}
                                 >
                                     <FaTrash className="h-4 w-4" />
                                 </Button>

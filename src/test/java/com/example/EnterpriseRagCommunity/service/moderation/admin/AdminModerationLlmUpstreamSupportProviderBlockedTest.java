@@ -24,7 +24,7 @@ class AdminModerationLlmUpstreamSupportProviderBlockedTest {
         LlmGateway llmGateway = mock(LlmGateway.class);
         String errBody = "{\"error\":{\"message\":\"Output data may contain inappropriate content. For details, see: `https://help.aliyun.com/zh/model-studio/error-code#inappropriate-content` \",\"type\":\"data_inspection_failed\",\"param\":null,\"code\":\"data_inspection_failed\"},\"id\":\"chatcmpl-xx\",\"request_id\":\"rid-123\"}";
         when(llmGateway.chatOnceRoutedNoQueue(
-                eq(LlmQueueTaskType.TEXT_MODERATION),
+            eq(LlmQueueTaskType.MULTIMODAL_MODERATION),
                 nullable(String.class),
                 nullable(String.class),
                 anyList(),

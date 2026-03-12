@@ -66,6 +66,25 @@ describe('buildEvidenceImageUrlMap', () => {
     expect(map.img_1).toBe('resolved:/uploads/derived-images/1.png');
     expect(map['[[IMAGE_1]]']).toBe('resolved:/uploads/derived-images/1.png');
   });
+
+  it('recovers complete extracted image entries from a truncated metadata snippet', () => {
+    const map = buildEvidenceImageUrlMap({
+      attachments: [
+        {
+          id: 4,
+          url: '/uploads/source.docx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          extractedMetadataJsonSnippet:
+            '{"extractedImages":[{"index":1,"placeholder":"[[IMAGE_1]]","url":"/uploads/derived-images/1.png"},{"index":2,"placeholder":"[[IMAGE_2]]","url":"/uploads/derived-images/2.png"},{"index":3,"placeholder":"[[IMAGE_3]]","url":"/uploads/derived-images/3.png"',
+        },
+      ],
+    });
+
+    expect(map.img_1).toBe('resolved:/uploads/derived-images/1.png');
+    expect(map.img_2).toBe('resolved:/uploads/derived-images/2.png');
+    expect(map['[[IMAGE_2]]']).toBe('resolved:/uploads/derived-images/2.png');
+    expect(map['[[IMAGE_3]]']).toBeUndefined();
+  });
 });
 
 describe('extractLatestRunImageUrls', () => {

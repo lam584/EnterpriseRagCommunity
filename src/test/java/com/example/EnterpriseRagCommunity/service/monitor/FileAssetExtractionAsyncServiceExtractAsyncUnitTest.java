@@ -24,6 +24,8 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -122,6 +124,19 @@ class FileAssetExtractionAsyncServiceExtractAsyncUnitTest {
             zos.putNextEntry(ze);
             zos.write(bytes);
             zos.closeEntry();
+            zos.finish();
+            return baos.toByteArray();
+        }
+    }
+
+    private static byte[] zipBytesMulti(List<Map.Entry<String, byte[]>> entries) throws Exception {
+        try (var baos = new java.io.ByteArrayOutputStream(); ZipOutputStream zos = new ZipOutputStream(baos, StandardCharsets.UTF_8)) {
+            for (Map.Entry<String, byte[]> it : entries) {
+                ZipEntry ze = new ZipEntry(it.getKey());
+                zos.putNextEntry(ze);
+                zos.write(it.getValue());
+                zos.closeEntry();
+            }
             zos.finish();
             return baos.toByteArray();
         }
@@ -341,6 +356,179 @@ class FileAssetExtractionAsyncServiceExtractAsyncUnitTest {
     }
 
     @Test
+    void extractAsync_whenRagIndexListNull_shouldSkipSync() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        FileAssetExtractionAsyncService s = newService(om);
+        when(derivedUploadStorageService.getMaxCount()).thenReturn(10);
+        when(derivedUploadStorageService.getMaxTotalBytes()).thenReturn(10 * 1024 * 1024L);
+        when(uploadFormatsConfigService.getConfig()).thenReturn(cfgWithParseMaxChars(200000L));
+        when(tokenCountService.countTextTokens(anyString())).thenReturn(1);
+        when(vectorIndicesRepository.findByCollectionName("rag_file_assets_v1")).thenReturn(null);
+
+        Path p = tempDir.resolve("sync-null-list.txt");
+        Files.writeString(p, "hello", StandardCharsets.UTF_8);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setId(1L);
+        fa.setPath(p.toString());
+        fa.setMimeType("text/plain");
+        fa.setOriginalName("sync-null-list.txt");
+        when(fileAssetsRepository.findById(1L)).thenReturn(Optional.of(fa));
+        when(fileAssetExtractionsRepository.findById(1L)).thenReturn(Optional.empty());
+
+        s.extractAsync(1L);
+
+        verify(fileAssetExtractionsRepository).save(extractionCaptor.capture());
+        assertEquals(FileAssetExtractionStatus.READY, extractionCaptor.getValue().getExtractStatus());
+        verify(ragFileAssetIndexAsyncService, never()).syncSingleFileAssetAsync(anyLong(), anyLong());
+    }
+
+    @Test
+    void extractAsync_whenRagIndexFirstNull_shouldSkipSync() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        FileAssetExtractionAsyncService s = newService(om);
+        when(derivedUploadStorageService.getMaxCount()).thenReturn(10);
+        when(derivedUploadStorageService.getMaxTotalBytes()).thenReturn(10 * 1024 * 1024L);
+        when(uploadFormatsConfigService.getConfig()).thenReturn(cfgWithParseMaxChars(200000L));
+        when(tokenCountService.countTextTokens(anyString())).thenReturn(1);
+        when(vectorIndicesRepository.findByCollectionName("rag_file_assets_v1")).thenReturn(Collections.singletonList(null));
+
+        Path p = tempDir.resolve("sync-null-first.txt");
+        Files.writeString(p, "hello", StandardCharsets.UTF_8);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setId(1L);
+        fa.setPath(p.toString());
+        fa.setMimeType("text/plain");
+        fa.setOriginalName("sync-null-first.txt");
+        when(fileAssetsRepository.findById(1L)).thenReturn(Optional.of(fa));
+        when(fileAssetExtractionsRepository.findById(1L)).thenReturn(Optional.empty());
+
+        s.extractAsync(1L);
+
+        verify(fileAssetExtractionsRepository).save(extractionCaptor.capture());
+        assertEquals(FileAssetExtractionStatus.READY, extractionCaptor.getValue().getExtractStatus());
+        verify(ragFileAssetIndexAsyncService, never()).syncSingleFileAssetAsync(anyLong(), anyLong());
+    }
+
+    @Test
+    void extractAsync_whenRagIndexIdNull_shouldSkipSync() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        FileAssetExtractionAsyncService s = newService(om);
+        when(derivedUploadStorageService.getMaxCount()).thenReturn(10);
+        when(derivedUploadStorageService.getMaxTotalBytes()).thenReturn(10 * 1024 * 1024L);
+        when(uploadFormatsConfigService.getConfig()).thenReturn(cfgWithParseMaxChars(200000L));
+        when(tokenCountService.countTextTokens(anyString())).thenReturn(1);
+        var vi = new com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity();
+        vi.setId(null);
+        when(vectorIndicesRepository.findByCollectionName("rag_file_assets_v1")).thenReturn(List.of(vi));
+
+        Path p = tempDir.resolve("sync-null-id.txt");
+        Files.writeString(p, "hello", StandardCharsets.UTF_8);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setId(1L);
+        fa.setPath(p.toString());
+        fa.setMimeType("text/plain");
+        fa.setOriginalName("sync-null-id.txt");
+        when(fileAssetsRepository.findById(1L)).thenReturn(Optional.of(fa));
+        when(fileAssetExtractionsRepository.findById(1L)).thenReturn(Optional.empty());
+
+        s.extractAsync(1L);
+
+        verify(fileAssetExtractionsRepository).save(extractionCaptor.capture());
+        assertEquals(FileAssetExtractionStatus.READY, extractionCaptor.getValue().getExtractStatus());
+        verify(ragFileAssetIndexAsyncService, never()).syncSingleFileAssetAsync(anyLong(), anyLong());
+    }
+
+    @Test
+    void extractAsync_whenRagRepositoryThrows_shouldKeepReadyAndSkipSync() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        FileAssetExtractionAsyncService s = newService(om);
+        when(derivedUploadStorageService.getMaxCount()).thenReturn(10);
+        when(derivedUploadStorageService.getMaxTotalBytes()).thenReturn(10 * 1024 * 1024L);
+        when(uploadFormatsConfigService.getConfig()).thenReturn(cfgWithParseMaxChars(200000L));
+        when(tokenCountService.countTextTokens(anyString())).thenReturn(1);
+        when(vectorIndicesRepository.findByCollectionName("rag_file_assets_v1")).thenThrow(new RuntimeException("vi-error"));
+
+        Path p = tempDir.resolve("sync-vi-ex.txt");
+        Files.writeString(p, "hello", StandardCharsets.UTF_8);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setId(1L);
+        fa.setPath(p.toString());
+        fa.setMimeType("text/plain");
+        fa.setOriginalName("sync-vi-ex.txt");
+        when(fileAssetsRepository.findById(1L)).thenReturn(Optional.of(fa));
+        when(fileAssetExtractionsRepository.findById(1L)).thenReturn(Optional.empty());
+
+        s.extractAsync(1L);
+
+        verify(fileAssetExtractionsRepository).save(extractionCaptor.capture());
+        assertEquals(FileAssetExtractionStatus.READY, extractionCaptor.getValue().getExtractStatus());
+        verify(ragFileAssetIndexAsyncService, never()).syncSingleFileAssetAsync(anyLong(), anyLong());
+    }
+
+    @Test
+    void extractAsync_whenUnexpectedException_shouldFailWithSafeMessage() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        FileAssetExtractionAsyncService s = newService(om);
+        when(uploadFormatsConfigService.getConfig()).thenReturn(cfgWithParseMaxChars(200000L));
+        when(derivedUploadStorageService.getMaxCount()).thenThrow(new IllegalStateException("budget down"));
+
+        Path p = tempDir.resolve("runtime-error.txt");
+        Files.writeString(p, "hello", StandardCharsets.UTF_8);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setId(1L);
+        fa.setPath(p.toString());
+        fa.setMimeType("text/plain");
+        fa.setOriginalName("runtime-error.txt");
+        when(fileAssetsRepository.findById(1L)).thenReturn(Optional.of(fa));
+        when(fileAssetExtractionsRepository.findById(1L)).thenReturn(Optional.empty());
+
+        s.extractAsync(1L);
+
+        verify(fileAssetExtractionsRepository).save(extractionCaptor.capture());
+        FileAssetExtractionsEntity e = extractionCaptor.getValue();
+        assertEquals(FileAssetExtractionStatus.FAILED, e.getExtractStatus());
+        assertEquals("budget down", e.getErrorMessage());
+        assertNotNull(e.getExtractedMetadataJson());
+    }
+
+    @Test
+    void extractAsync_whenDirectImage_shouldSetDirectImageMode() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        FileAssetExtractionAsyncService s = newService(om);
+        when(derivedUploadStorageService.getMaxCount()).thenReturn(10);
+        when(derivedUploadStorageService.getMaxTotalBytes()).thenReturn(10 * 1024 * 1024L);
+        when(uploadFormatsConfigService.getConfig()).thenReturn(cfgWithParseMaxChars(200000L));
+        when(tokenCountService.countTextTokens(anyString())).thenReturn(1);
+        when(vectorIndicesRepository.findByCollectionName(anyString())).thenReturn(List.of());
+
+        byte[] png = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=");
+        Path p = tempDir.resolve("a.png");
+        Files.write(p, png);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setId(1L);
+        fa.setPath(p.toString());
+        fa.setMimeType("image/png");
+        fa.setOriginalName("a.png");
+        when(fileAssetsRepository.findById(1L)).thenReturn(Optional.of(fa));
+        when(fileAssetExtractionsRepository.findById(1L)).thenReturn(Optional.empty());
+
+        s.extractAsync(1L);
+
+        verify(fileAssetExtractionsRepository).save(extractionCaptor.capture());
+        FileAssetExtractionsEntity e = extractionCaptor.getValue();
+        assertEquals(FileAssetExtractionStatus.READY, e.getExtractStatus());
+        Map<String, Object> meta = readMeta(om, e);
+        assertEquals("DIRECT_IMAGE", String.valueOf(meta.get("imagesExtractionMode")));
+        assertEquals(1L, ((Number) meta.get("imageCount")).longValue());
+    }
+
+    @Test
     void extractAsync_whenHardFailAndObjectMapperFails_shouldSetMetadataNull() throws Exception {
         ObjectMapper om = mock(ObjectMapper.class);
         FileAssetExtractionAsyncService s = newService(om);
@@ -370,5 +558,93 @@ class FileAssetExtractionAsyncServiceExtractAsyncUnitTest {
         assertEquals(FileAssetExtractionStatus.FAILED, e.getExtractStatus());
         assertEquals("ARCHIVE_NESTING_TOO_DEEP", e.getErrorMessage());
         assertNull(e.getExtractedMetadataJson());
+    }
+
+    @Test
+    void extractAsync_whenArchiveContainsMixedEntries_shouldRecordArchiveStatsAndStatuses() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        FileAssetExtractionAsyncService s = newService(om);
+        setField(s, "archiveMaxEntryBytes", 6L);
+        setField(s, "archiveMaxTotalBytes", 1024L);
+        when(derivedUploadStorageService.getMaxCount()).thenReturn(10);
+        when(derivedUploadStorageService.getMaxTotalBytes()).thenReturn(10 * 1024 * 1024L);
+        when(uploadFormatsConfigService.getConfig()).thenReturn(cfgWithParseMaxChars(500L));
+        when(tokenCountService.countTextTokens(anyString())).thenReturn(9);
+        when(vectorIndicesRepository.findByCollectionName(anyString())).thenReturn(List.of());
+
+        byte[] nested = zipBytes("inner.txt", "INNER_TEXT".getBytes(StandardCharsets.UTF_8));
+        byte[] outer = zipBytesMulti(List.of(
+                Map.entry("../evil.txt", "EVIL".getBytes(StandardCharsets.UTF_8)),
+                Map.entry("ok.txt", "OK_TEXT_LONG".getBytes(StandardCharsets.UTF_8)),
+                Map.entry("bad.pdf", "not-a-pdf".getBytes(StandardCharsets.UTF_8)),
+                Map.entry("nested.zip", nested),
+                Map.entry("skip.exe", "BIN".getBytes(StandardCharsets.UTF_8))
+        ));
+        Path zipPath = tempDir.resolve("mixed.zip");
+        Files.write(zipPath, outer);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setId(2L);
+        fa.setPath(zipPath.toString());
+        fa.setMimeType("application/zip");
+        fa.setOriginalName("mixed.zip");
+        when(fileAssetsRepository.findById(2L)).thenReturn(Optional.of(fa));
+        when(fileAssetExtractionsRepository.findById(2L)).thenReturn(Optional.empty());
+
+        s.extractAsync(2L);
+
+        verify(fileAssetExtractionsRepository).save(extractionCaptor.capture());
+        FileAssetExtractionsEntity e = extractionCaptor.getValue();
+        assertEquals(FileAssetExtractionStatus.READY, e.getExtractStatus());
+        Map<String, Object> meta = readMeta(om, e);
+        assertEquals("ARCHIVE_INNER_FILES", String.valueOf(meta.get("imagesExtractionMode")));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> arc = (Map<String, Object>) meta.get("archive");
+        assertNotNull(arc);
+        assertNotNull(arc.get("entriesSeen"));
+        assertNotNull(arc.get("filesParsed"));
+        assertNotNull(arc.get("filesSkipped"));
+        assertNotNull(arc.get("pathTraversalDroppedCount"));
+    }
+
+    @Test
+    void extractAsync_whenMobiZipWithBudgetLimit_shouldKeepReadyAndImageMode() throws Exception {
+        ObjectMapper om = new ObjectMapper();
+        FileAssetExtractionAsyncService s = newService(om);
+        when(uploadFormatsConfigService.getConfig()).thenReturn(cfgWithParseMaxChars(500L));
+        when(tokenCountService.countTextTokens(anyString())).thenReturn(5);
+        when(vectorIndicesRepository.findByCollectionName(anyString())).thenReturn(List.of());
+        when(derivedUploadStorageService.getMaxCount()).thenReturn(10);
+        when(derivedUploadStorageService.getMaxTotalBytes()).thenReturn(20L);
+        when(derivedUploadStorageService.getMaxImageBytes()).thenReturn(20L);
+        lenient().when(derivedUploadStorageService.saveDerivedImage(any(byte[].class), anyString(), any(), any()))
+                .thenReturn(Map.of("url", "x"));
+        lenient().when(derivedUploadStorageService.buildPlaceholder(anyInt(), anyMap()))
+                .thenAnswer(inv -> Map.of("placeholder", "[[IMAGE_" + inv.getArgument(0) + "]]"));
+
+        byte[] img = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5kN9sAAAAASUVORK5CYII=");
+        byte[] mobi = zipBytesMulti(List.of(
+                Map.entry("images/a.png", img),
+                Map.entry("images/b.png", img)
+        ));
+        Path p = tempDir.resolve("a.mobi");
+        Files.write(p, mobi);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setId(3L);
+        fa.setPath(p.toString());
+        fa.setMimeType("application/x-mobipocket-ebook");
+        fa.setOriginalName("a.mobi");
+        when(fileAssetsRepository.findById(3L)).thenReturn(Optional.of(fa));
+        when(fileAssetExtractionsRepository.findById(3L)).thenReturn(Optional.empty());
+
+        s.extractAsync(3L);
+
+        verify(fileAssetExtractionsRepository).save(extractionCaptor.capture());
+        FileAssetExtractionsEntity e = extractionCaptor.getValue();
+        assertEquals(FileAssetExtractionStatus.READY, e.getExtractStatus());
+        Map<String, Object> meta = readMeta(om, e);
+        String mode = String.valueOf(meta.get("imagesExtractionMode"));
+        assertTrue(mode.equals("MOBI_ZIP") || mode.equals("MOBI_TIKA_EMBEDDED") || mode.equals("EMBEDDED_NONE"));
     }
 }

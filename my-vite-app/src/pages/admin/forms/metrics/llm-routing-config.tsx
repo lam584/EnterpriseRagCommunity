@@ -183,8 +183,7 @@ function writeSeenModelKeys(keys: Set<string>): void {
 }
 
 type ProviderModelSets = {
-  TEXT_CHAT: Set<string>;
-  IMAGE_CHAT: Set<string>;
+  MULTIMODAL_CHAT: Set<string>;
   EMBEDDING: Set<string>;
   RERANK: Set<string>;
 };
@@ -194,7 +193,7 @@ const PROVIDER_MODELS_CACHE_TTL_MS = 10 * 60 * 1000;
 type ProviderModelsCache = {
   tsMs: number;
   providerIds: string[];
-  map: Record<string, { TEXT_CHAT: string[]; IMAGE_CHAT: string[]; EMBEDDING: string[]; RERANK: string[] }>;
+  map: Record<string, { MULTIMODAL_CHAT?: string[]; TEXT_CHAT?: string[]; IMAGE_CHAT?: string[]; EMBEDDING: string[]; RERANK: string[] }>;
 };
 
 function readProviderModelsCache(providerIds: string[]): ProviderModelsCache | null {
@@ -229,8 +228,7 @@ function writeProviderModelsCache(providerIds: string[], map: Record<string, Pro
         Object.entries(map).map(([pid, sets]) => [
           pid,
           {
-            TEXT_CHAT: Array.from(sets.TEXT_CHAT.values()),
-            IMAGE_CHAT: Array.from(sets.IMAGE_CHAT.values()),
+            MULTIMODAL_CHAT: Array.from(sets.MULTIMODAL_CHAT.values()),
             EMBEDDING: Array.from(sets.EMBEDDING.values()),
             RERANK: Array.from(sets.RERANK.values()),
           },
@@ -731,10 +729,10 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
     //   });
     // });
 
-    // 4. 从 providerModelsMap 中收集管理员已添加的模型（覆盖 TEXT_CHAT/IMAGE_CHAT/EMBEDDING/RERANK）
+    // 4. 从 providerModelsMap 中收集管理员已添加的模型（覆盖 MULTIMODAL_CHAT/EMBEDDING/RERANK）
     Object.entries(providerModelsMap).forEach(([pid, sets]) => {
       const providerName = providers.find((p) => String(p.id ?? '').trim() === pid)?.name || pid;
-      (['TEXT_CHAT', 'IMAGE_CHAT', 'EMBEDDING', 'RERANK'] as const).forEach((purpose) => {
+      (['MULTIMODAL_CHAT', 'EMBEDDING', 'RERANK'] as const).forEach((purpose) => {
         for (const mname of sets[purpose]) {
           const key = `${pid}|${mname}`;
           if (!modelMap.has(key)) {
@@ -764,8 +762,7 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
       const isTextGen = categorizedScenarios.TEXT_GEN.some(s => enabledScenarios.has(s)) ||
                         chatProviders.some(cp => cp.id === providerId && cp.chatModels?.some(m => m.name === modelName)) ||
                         providers.some(p => p.id === providerId && p.defaultChatModel === modelName) ||
-                        (providerModelsMap[providerId]?.TEXT_CHAT?.has(modelName) ?? false) ||
-                        (providerModelsMap[providerId]?.IMAGE_CHAT?.has(modelName) ?? false);
+                        (providerModelsMap[providerId]?.MULTIMODAL_CHAT?.has(modelName) ?? false);
       
       // 判断是否属于嵌入
       const isEmbedding = categorizedScenarios.EMBEDDING.some(s => enabledScenarios.has(s)) ||
@@ -1087,7 +1084,7 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
     return arr;
   }, [cfg, draft?.scenarios]);
 
-  const [selectedTaskType, setSelectedTaskType] = useState<string>('TEXT_CHAT');
+  const [selectedTaskType, setSelectedTaskType] = useState<string>('MULTIMODAL_CHAT');
 
   useEffect(() => {
     if (!taskTypes.length) return;
@@ -1217,11 +1214,14 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
 
       const cached = forceLoad ? null : readProviderModelsCache(providerIds);
       if (cached) {
-      const cachedMap: Record<string, ProviderModelSets> = {};
+        const cachedMap: Record<string, ProviderModelSets> = {};
         Object.entries(cached.map).forEach(([pid, v]) => {
           cachedMap[pid] = {
-          TEXT_CHAT: new Set<string>((v?.TEXT_CHAT ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
-          IMAGE_CHAT: new Set<string>((v?.IMAGE_CHAT ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
+            MULTIMODAL_CHAT: new Set<string>([
+              ...((v?.MULTIMODAL_CHAT ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
+              ...((v?.TEXT_CHAT ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
+              ...((v?.IMAGE_CHAT ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
+            ]),
             EMBEDDING: new Set<string>((v?.EMBEDDING ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
             RERANK: new Set<string>((v?.RERANK ?? []).map((x) => String(x ?? '').trim()).filter(Boolean)),
           };
@@ -1241,13 +1241,12 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
       const settled = await Promise.allSettled(
         providerIds.map(async (pid) => {
           const dto = await adminListProviderModels(pid);
-          const sets: ProviderModelSets = { TEXT_CHAT: new Set<string>(), IMAGE_CHAT: new Set<string>(), EMBEDDING: new Set<string>(), RERANK: new Set<string>() };
+          const sets: ProviderModelSets = { MULTIMODAL_CHAT: new Set<string>(), EMBEDDING: new Set<string>(), RERANK: new Set<string>() };
           for (const r of dto.models ?? []) {
             const purpose = String(r?.purpose ?? '').trim().toUpperCase();
             const name = String(r?.modelName ?? '').trim();
             if (!purpose || !name) continue;
-            if (purpose === 'IMAGE_CHAT') sets.IMAGE_CHAT.add(name);
-            else if (purpose === 'TEXT_CHAT' || purpose === 'CHAT') sets.TEXT_CHAT.add(name);
+            if (purpose === 'MULTIMODAL_CHAT' || purpose === 'IMAGE_CHAT' || purpose === 'TEXT_CHAT' || purpose === 'CHAT') sets.MULTIMODAL_CHAT.add(name);
             else if (purpose === 'EMBEDDING') sets.EMBEDDING.add(name);
             else if (purpose === 'RERANK') sets.RERANK.add(name);
           }
@@ -1527,10 +1526,9 @@ export const LlmRoutingConfigPanel: React.FC<{ providers: AiProviderDTO[]; activ
           const hasProviderModelsForProvider = providerModelsMap[pid] != null;
           const canValidate = hasChatOptsForProvider || hasProviderModelsForProvider || provider != null;
 
-          if (purpose === 'CHAT' || purpose === 'TEXT_CHAT' || purpose === 'IMAGE_CHAT') {
+          if (purpose === 'CHAT' || purpose === 'TEXT_CHAT' || purpose === 'IMAGE_CHAT' || purpose === 'MULTIMODAL_CHAT') {
             const existsInChatOpts = chatProviders.some((cp) => cp.id === pid && cp.chatModels?.some((m) => m.name === name));
-            const existsInProviderModels =
-              (providerModelsMap[pid]?.TEXT_CHAT?.has(name) ?? false) || (providerModelsMap[pid]?.IMAGE_CHAT?.has(name) ?? false);
+            const existsInProviderModels = providerModelsMap[pid]?.MULTIMODAL_CHAT?.has(name) ?? false;
             const existsAsDefault = String(provider?.defaultChatModel ?? '').trim() === name;
             const ok = existsInChatOpts || existsInProviderModels || existsAsDefault;
             if (ok) return true;

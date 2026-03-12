@@ -20,6 +20,7 @@ public interface UsersRepository extends JpaRepository<UsersEntity, Long>, JpaSp
     Optional<UsersEntity> findByUsernameAndIsDeletedFalse(String username);
     Optional<UsersEntity> findByIdAndIsDeletedFalse(Long id);
     List<UsersEntity> findByIdInAndIsDeletedFalse(Collection<Long> ids);
+    long countByIsDeletedFalse();
 
     List<UsersEntity> findByStatusAndIsDeletedFalse(AccountStatus status);
     List<UsersEntity> findByTenantId_IdAndIsDeletedFalse(Long tenantId); // 使用 tenantId.id 进行查询

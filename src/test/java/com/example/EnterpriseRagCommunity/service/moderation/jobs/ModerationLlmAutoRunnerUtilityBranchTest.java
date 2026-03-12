@@ -104,6 +104,42 @@ class ModerationLlmAutoRunnerUtilityBranchTest {
     }
 
     @Test
+    void normalizeChunkEvidenceForLabels_shouldConvertTextBackedImageEvidenceIntoAnchors() throws Exception {
+        Method m = ModerationLlmAutoRunner.class.getDeclaredMethod("normalizeImageEvidenceToTextAnchor", String.class, String.class);
+        m.setAccessible(true);
+
+        String normalized = (String) m.invoke(
+            null,
+            "{\"image_id\":\"img_27\",\"quote\":\"日你妈\"}",
+                "⬤ TERR - Displays relative terrain overlay on HSI. 日你妈 ⬤ WX - Displays weather overlay on HSI."
+        );
+
+        assertTrue(normalized.contains("\"text\":\"日你妈\""));
+        assertTrue(normalized.contains("\"before_context\""));
+        assertTrue(normalized.contains("\"after_context\""));
+        assertFalse(normalized.contains("img_27"));
+    }
+
+    @Test
+    void normalizeChunkImageEvidenceId_shouldRewriteRequestLocalOrdinalToActualPlaceholder() throws Exception {
+        Method m = ModerationLlmAutoRunner.class.getDeclaredMethod("normalizeChunkImageEvidenceId", String.class, List.class);
+        m.setAccessible(true);
+
+        String normalized = (String) m.invoke(
+            null,
+            "{\"image_id\":\"img_2\",\"quote\":\"步枪\"}",
+            List.of(
+                new ModerationLlmAutoRunner.ChunkImageRef(18, "[[IMAGE_18]]", "/uploads/18.jpg", "image/jpeg", 1L),
+                new ModerationLlmAutoRunner.ChunkImageRef(19, "[[IMAGE_19]]", "/uploads/19.jpg", "image/jpeg", 1L),
+                new ModerationLlmAutoRunner.ChunkImageRef(20, "[[IMAGE_20]]", "/uploads/20.jpg", "image/jpeg", 1L)
+            )
+        );
+
+        assertTrue(normalized.contains("\"image_id\":\"[[IMAGE_19]]\""));
+        assertFalse(normalized.contains("\"image_id\":\"img_2\""));
+    }
+
+    @Test
     void parseImageIndexFromPlaceholder_shouldHandleInvalidAndValid() throws Exception {
         Method m = ModerationLlmAutoRunner.class.getDeclaredMethod("parseImageIndexFromPlaceholder", String.class);
         m.setAccessible(true);

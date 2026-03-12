@@ -174,4 +174,36 @@ describe('EvidenceListView', () => {
     expect(preview.getAttribute('src')).toBe('https://example.com/evidence.png');
     expect(screen.queryByText('img_1')).toBeNull();
   });
+
+  it('falls back to chunk preview images when imageId is not in the global map', async () => {
+    chunkServiceMocks.adminGetModerationChunkLogContent.mockResolvedValueOnce({
+      text: 'x',
+      source: null,
+      images: [
+        { index: 18, placeholder: '[[IMAGE_18]]', url: 'https://example.com/chunk-18.png' },
+        { index: 19, placeholder: '[[IMAGE_19]]', url: 'https://example.com/chunk-19.png' },
+        { index: 20, placeholder: '[[IMAGE_20]]', url: 'https://example.com/chunk-20.png' },
+      ],
+    });
+
+    render(
+      <EvidenceListView
+        stepEvidenceGroups={[]}
+        chunkEvidenceByChunkIndex={{
+          '6': [JSON.stringify({ image_id: 'img_2', text: '命中证据' })],
+        }}
+        chunkIdByChunkIndex={{ '6': 18 }}
+        chunkIndexFilter={null}
+        imageUrlByImageId={{}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(chunkServiceMocks.adminGetModerationChunkLogContent).toHaveBeenCalledWith(18, expect.any(AbortSignal));
+    });
+
+    const preview = await screen.findByAltText('img_2');
+    expect(preview.getAttribute('src')).toBe('https://example.com/chunk-19.png');
+    expect(screen.queryByText('img_2')).toBeNull();
+  });
 });

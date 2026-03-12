@@ -479,13 +479,21 @@ const GlobalLogsForm: React.FC = () => {
     };
   }, [accessQuery, auditQuery, tab]);
 
-  const resolvedTotalPages = useMemo(() => Math.max(totalPages, Math.ceil(totalElements / pageSize) || 1), [pageSize, totalElements, totalPages]);
+  const currentList = tab === 'audit' ? auditItems : accessItems;
+
+  const resolvedTotalElements = useMemo(() => {
+    if (currentList.length === 0) return totalElements;
+    return Math.max(totalElements, (page - 1) * pageSize + currentList.length);
+  }, [currentList.length, page, pageSize, totalElements]);
+
+  const resolvedTotalPages = useMemo(
+    () => Math.max(totalPages, Math.ceil(resolvedTotalElements / pageSize) || 1, hasNextPage ? page + 1 : page),
+    [hasNextPage, page, pageSize, resolvedTotalElements, totalPages]
+  );
 
   const paginationText = useMemo(() => {
-    return `第 ${page} 页 / 共 ${resolvedTotalPages} 页（${totalElements} 条）`;
-  }, [page, resolvedTotalPages, totalElements]);
-
-  const currentList = tab === 'audit' ? auditItems : accessItems;
+    return `第 ${page} 页 / 共 ${resolvedTotalPages} 页（${resolvedTotalElements} 条）`;
+  }, [page, resolvedTotalElements, resolvedTotalPages]);
 
   const updateRetention = useCallback(async (patch: Partial<LogRetentionConfigDTO>) => {
     if (!retention) return;
@@ -972,7 +980,7 @@ const GlobalLogsForm: React.FC = () => {
             className="rounded border px-3 py-2 text-sm bg-white disabled:opacity-50"
             disabled={loading || !hasNextPage}
             onClick={() => {
-              const next = Math.min(resolvedTotalPages, page + 1);
+              const next = page + 1;
               setPage(next);
               syncToUrl(tab, next, pageSize, auditQuery, accessQuery);
             }}

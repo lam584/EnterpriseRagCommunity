@@ -88,7 +88,7 @@ public class AiChatOptionsService {
             String purpose = toNonBlank(e.getPurpose());
             if (purpose == null) continue;
             String up = purpose.trim().toUpperCase(Locale.ROOT);
-            if (!"TEXT_CHAT".equals(up) && !"IMAGE_CHAT".equals(up) && !"CHAT".equals(up)) continue;
+            if (!"MULTIMODAL_CHAT".equals(up) && !"TEXT_CHAT".equals(up) && !"IMAGE_CHAT".equals(up) && !"CHAT".equals(up)) continue;
             String name = toNonBlank(e.getModelName());
             if (name == null) continue;
             if (seen.contains(name)) continue;

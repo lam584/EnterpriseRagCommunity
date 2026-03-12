@@ -15,16 +15,14 @@ import PromptContentCard, { type PromptContentDraft } from '../../../../componen
 type TabKey = 'config' | 'test' | 'history';
 
 type FormState = {
-  textPromptCode: string;
-  visionPromptCode: string;
+  multimodalPromptCode: string;
   judgePromptCode: string;
   autoRun: boolean;
 };
 
 function toFormState(cfg?: LlmModerationConfig | null): FormState {
   return {
-    textPromptCode: cfg?.textPromptCode ?? 'MODERATION_TEXT',
-    visionPromptCode: cfg?.visionPromptCode ?? 'MODERATION_VISION',
+    multimodalPromptCode: cfg?.multimodalPromptCode ?? 'MODERATION_MULTIMODAL',
     judgePromptCode: cfg?.judgePromptCode ?? 'MODERATION_JUDGE',
     autoRun: cfg?.autoRun == null ? true : Boolean(cfg.autoRun),
   };
@@ -32,8 +30,7 @@ function toFormState(cfg?: LlmModerationConfig | null): FormState {
 
 function buildConfigPayload(form: FormState): LlmModerationConfig {
   return {
-    textPromptCode: form.textPromptCode.trim(),
-    visionPromptCode: form.visionPromptCode.trim(),
+    multimodalPromptCode: form.multimodalPromptCode.trim(),
     judgePromptCode: form.judgePromptCode.trim(),
     autoRun: form.autoRun,
   };
@@ -54,8 +51,7 @@ function toPromptDraft(dto?: PromptContentDTO | null): PromptContentDraft {
 function listPromptCodes(form: FormState): string[] {
   return Array.from(
     new Set([
-      form.textPromptCode.trim(),
-      form.visionPromptCode.trim(),
+      form.multimodalPromptCode.trim(),
       form.judgePromptCode.trim(),
     ].filter((s) => s.length > 0))
   );
@@ -63,8 +59,7 @@ function listPromptCodes(form: FormState): string[] {
 
 function validateForm(form: FormState): string[] {
   const errors: string[] = [];
-  if (!form.textPromptCode.trim()) errors.push('必须填写文本提示词编码');
-  if (!form.visionPromptCode.trim()) errors.push('必须填写视觉提示词编码');
+  if (!form.multimodalPromptCode.trim()) errors.push('必须填写多模态提示词编码');
   if (!form.judgePromptCode.trim()) errors.push('必须填写裁决提示词编码');
   return errors;
 }
@@ -107,8 +102,8 @@ function formatEvidenceItem(raw: string): string {
 function renderStageCards(stages?: LlmModerationStages | null) {
   if (!stages) return null;
   const items: Array<{ key: keyof LlmModerationStages; title: string }> = [
-    { key: 'text', title: '文本' },
-    { key: 'image', title: '图像' },
+    { key: 'text', title: '兼容文本' },
+    { key: 'image', title: '多模态' },
     { key: 'judge', title: '裁决' },
     { key: 'upgrade', title: '升级' },
   ];
@@ -172,8 +167,7 @@ const LlmForm: React.FC = () => {
 
   const hasUnsavedChanges = useMemo(() => {
     const formChanged =
-      form.textPromptCode !== committedForm.textPromptCode ||
-      form.visionPromptCode !== committedForm.visionPromptCode ||
+      form.multimodalPromptCode !== committedForm.multimodalPromptCode ||
       form.judgePromptCode !== committedForm.judgePromptCode ||
       form.autoRun !== committedForm.autoRun;
 
@@ -346,7 +340,7 @@ const LlmForm: React.FC = () => {
           <div>
             <h3 className="text-xl font-semibold text-gray-900">LLM 审核</h3>
             <p className="text-sm text-gray-600 mt-1">
-              统一为 3 个提示词：文本、视觉、裁决。升级/终审复用裁决提示词。
+              主审核统一使用多模态提示词；裁决提示词继续用于升级与终审。
             </p>
           </div>
 
@@ -424,10 +418,10 @@ const LlmForm: React.FC = () => {
 
           <div className="grid grid-cols-1 gap-4">
             <PromptContentCard
-              title="文本提示词"
-              draft={promptDrafts[form.textPromptCode] ?? null}
+              title="多模态提示词"
+              draft={promptDrafts[form.multimodalPromptCode] ?? null}
               editing={isEditing}
-              onChange={(next) => setPromptDrafts((s) => ({ ...s, [form.textPromptCode]: next }))}
+              onChange={(next) => setPromptDrafts((s) => ({ ...s, [form.multimodalPromptCode]: next }))}
               hint={promptLoadError ?? undefined}
               showRuntimeParams
             />
@@ -437,15 +431,6 @@ const LlmForm: React.FC = () => {
               draft={promptDrafts[form.judgePromptCode] ?? null}
               editing={isEditing}
               onChange={(next) => setPromptDrafts((s) => ({ ...s, [form.judgePromptCode]: next }))}
-              hint={promptLoadError ?? undefined}
-              showRuntimeParams
-            />
-
-            <PromptContentCard
-              title="视觉提示词"
-              draft={promptDrafts[form.visionPromptCode] ?? null}
-              editing={isEditing}
-              onChange={(next) => setPromptDrafts((s) => ({ ...s, [form.visionPromptCode]: next }))}
               hint={promptLoadError ?? undefined}
               showRuntimeParams
             />

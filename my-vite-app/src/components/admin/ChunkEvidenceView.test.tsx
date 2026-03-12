@@ -115,21 +115,21 @@ describe('ChunkEvidenceView', () => {
     });
   });
 
-  it('renders span snippet from fetched preview (with source offsets)', async () => {
+  it('prefers anchor snippet when evidence text is suspicious', async () => {
     mockAdminGetModerationChunkLogContent.mockResolvedValueOnce({
       text: 'abcdefghijklmnopqrstuvwxyz',
       source: { startOffset: 100, endOffset: 126 },
       images: [],
     });
 
-    const evidence = [JSON.stringify({ start: 110, end: 115, text: 'fallback-text' })];
+    const evidence = [JSON.stringify({ before_context: 'abcdefghij', after_context: 'pqrst', text: 'decision_suggestion' })];
     render(<ChunkEvidenceView chunkId={104} evidence={evidence} compact={false} />);
 
     await waitFor(() => {
-      expect(screen.getByText('span: 110-115')).toBeTruthy();
+      expect(screen.getByText('文本疑似污染，已优先显示复核片段')).toBeTruthy();
     });
     expect(screen.getByText('klmno')).toBeTruthy();
-    expect(screen.queryByText('fallback-text')).toBeNull();
+    expect(screen.queryByText('decision_suggestion')).toBeNull();
   });
 
   it('renders dash when evidence has no spans or image placeholders', () => {
@@ -153,51 +153,49 @@ describe('ChunkEvidenceView', () => {
     });
   });
 
-  it('renders span snippet using absolute offsets when preview.source is missing', async () => {
+  it('renders anchor snippet when preview.source is missing', async () => {
     mockAdminGetModerationChunkLogContent.mockResolvedValueOnce({
       text: '0123456789',
       source: null,
       images: [],
     });
 
-    const evidence = [JSON.stringify({ start: 3, end: 7 })];
+    const evidence = [JSON.stringify({ before_context: '012', after_context: '789' })];
     render(<ChunkEvidenceView chunkId={106} evidence={evidence} compact={false} />);
 
     await waitFor(() => {
-      expect(screen.getByText('span: 3-7')).toBeTruthy();
+      expect(screen.getByText('3456')).toBeTruthy();
     });
-    expect(screen.getByText('3456')).toBeTruthy();
   });
 
-  it('falls back to evidence text when snippet is out of range', async () => {
+  it('falls back to evidence text when anchor cannot match preview', async () => {
     mockAdminGetModerationChunkLogContent.mockResolvedValueOnce({
       text: 'short',
       source: null,
       images: [],
     });
 
-    const evidence = [JSON.stringify({ start: 99, end: 100, text: 'fallback-text' })];
+    const evidence = [JSON.stringify({ before_context: 'not-found', after_context: 'zzz', text: 'fallback-text' })];
     render(<ChunkEvidenceView chunkId={107} evidence={evidence} compact={false} />);
 
     await waitFor(() => {
-      expect(screen.getByText('span: 99-100')).toBeTruthy();
+      expect(screen.getByText('fallback-text')).toBeTruthy();
     });
-    expect(screen.getByText('fallback-text')).toBeTruthy();
   });
 
   it('clips long snippets to the max length', async () => {
-    const long = Array.from({ length: 520 }).map((_, i) => String(i % 10)).join('');
+    const long = `${'a'.repeat(300)}MIDDLE${'b'.repeat(300)}`;
     mockAdminGetModerationChunkLogContent.mockResolvedValueOnce({
       text: long,
       source: null,
       images: [],
     });
 
-    const evidence = [JSON.stringify({ start: 0, end: 500 })];
+    const evidence = [JSON.stringify({ before_context: 'aaaaa', after_context: 'bbbbb' })];
     render(<ChunkEvidenceView chunkId={108} evidence={evidence} compact={false} />);
 
     await waitFor(() => {
-      expect(screen.getByText('span: 0-500')).toBeTruthy();
+      expect(screen.getByText((t) => typeof t === 'string' && t.endsWith('…'))).toBeTruthy();
     });
     const clipped = screen.getByText((t) => typeof t === 'string' && t.endsWith('…'));
     expect(clipped).toBeTruthy();
@@ -265,18 +263,14 @@ describe('ChunkEvidenceView', () => {
       <ChunkEvidenceView
         chunkId={111}
         evidence={
-          [
-            null,
-            { start: 1, end: 3, text: 't', image: '[[IMAGE_9]]', placeholder: '[[IMAGE_9]]', images: ['[[IMAGE_9]]', '  ', '[[IMAGE_9]]'] },
-          ] as any
+          [null, { text: 't', image: '[[IMAGE_9]]', placeholder: '[[IMAGE_9]]', images: ['[[IMAGE_9]]', '  ', '[[IMAGE_9]]'] }] as any
         }
       />,
     );
 
     await waitFor(() => {
-      expect(screen.getByText('span: 1-3')).toBeTruthy();
+      expect(screen.getByText('t')).toBeTruthy();
     });
-    expect(screen.getByText('12')).toBeTruthy();
     expect(screen.getByRole('img', { name: '[[IMAGE_9]]' })).toBeTruthy();
   });
 
@@ -293,47 +287,45 @@ describe('ChunkEvidenceView', () => {
         images: [],
       });
 
-    const { rerender } = render(<ChunkEvidenceView chunkId={112} evidence={[JSON.stringify({ start: 0, end: 2, text: 'fallback-text' })]} compact={false} />);
+    const { rerender } = render(
+      <ChunkEvidenceView chunkId={112} evidence={[JSON.stringify({ before_context: 'aa', after_context: 'bb', text: 'fallback-text' })]} compact={false} />,
+    );
     await waitFor(() => {
-      expect(screen.getByText('span: 0-2')).toBeTruthy();
+      expect(screen.getByText('fallback-text')).toBeTruthy();
     });
-    expect(screen.getByText('fallback-text')).toBeTruthy();
 
-    rerender(<ChunkEvidenceView chunkId={113} evidence={[JSON.stringify({ start: 2, end: 5, text: 'fallback-2' })]} compact={false} />);
+    rerender(<ChunkEvidenceView chunkId={113} evidence={[JSON.stringify({ before_context: 'aa', after_context: 'bb', text: 'fallback-2' })]} compact={false} />);
     await waitFor(() => {
-      expect(screen.getByText('span: 2-5')).toBeTruthy();
+      expect(screen.getByText('fallback-2')).toBeTruthy();
     });
-    expect(screen.getByText('fallback-2')).toBeTruthy();
   });
 
-  it('uses absolute offsets when source offsets do not cover the span', async () => {
+  it('uses anchor snippet even when preview.source offsets do not align', async () => {
     mockAdminGetModerationChunkLogContent.mockResolvedValueOnce({
       text: 'abcdefghijklmnopqrstuvwxyz',
       source: { startOffset: 100, endOffset: 126 },
       images: [],
     });
 
-    render(<ChunkEvidenceView chunkId={114} evidence={[JSON.stringify({ start: 1, end: 4 })]} compact={false} />);
+    render(<ChunkEvidenceView chunkId={114} evidence={[JSON.stringify({ before_context: 'a', after_context: 'e' })]} compact={false} />);
 
     await waitFor(() => {
-      expect(screen.getByText('span: 1-4')).toBeTruthy();
+      expect(screen.getByText('bcd')).toBeTruthy();
     });
-    expect(screen.getByText('bcd')).toBeTruthy();
   });
 
-  it('parses legacy chunk-prefixed evidence JSON and renders snippet', async () => {
+  it('parses legacy chunk-prefixed evidence JSON and renders anchor snippet', async () => {
     mockAdminGetModerationChunkLogContent.mockResolvedValueOnce({
       text: '0123456789',
       source: null,
       images: [],
     });
 
-    render(<ChunkEvidenceView chunkId={116} evidence={['chunk-24: {"start":2,"end":6}']} compact={false} />);
+    render(<ChunkEvidenceView chunkId={116} evidence={['chunk-24: {"before_context":"01","after_context":"67"}']} compact={false} />);
 
     await waitFor(() => {
-      expect(screen.getByText('span: 2-6')).toBeTruthy();
+      expect(screen.getByText('2345')).toBeTruthy();
     });
-    expect(screen.getByText('2345')).toBeTruthy();
   });
 
   it('renders dash in compact mode when no evidence is usable', () => {

@@ -142,7 +142,7 @@ class ModerationChunkReviewServicePrepareChunksAndSizingDeepBranchTest {
     void resolveChunkSizingDecision_shouldKeepVisionClampValuesAtExactBounds() throws Exception {
         Fixture fx = new Fixture(cfg(true, null, 4000, null, null, null));
         ModerationLlmConfigEntity llm = new ModerationLlmConfigEntity();
-        llm.setVisionPromptCode("VP");
+        llm.setMultimodalPromptCode("VP");
         when(fx.llmConfigRepository.findAll()).thenReturn(List.of(llm));
 
         PromptsEntity prompt = new PromptsEntity();

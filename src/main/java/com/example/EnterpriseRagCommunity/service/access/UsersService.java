@@ -70,8 +70,15 @@ public class UsersService {
 
     @Transactional
     public UsersEntity update(UsersUpdateDTO dto) {
+        return update(dto, null);
+    }
+
+    @Transactional
+    public UsersEntity update(UsersUpdateDTO dto, Long actorUserId) {
         UsersEntity entity = usersRepository.findById(dto.getId())
                 .orElseThrow(() -> new RuntimeException("User not found"));
+
+        ensureSelfUnavailableActionAllowed(entity.getId(), actorUserId, willBecomeUnavailable(entity, dto));
 
         if (StringUtils.hasText(dto.getEmail())) {
             entity.setEmail(dto.getEmail());
@@ -97,6 +104,12 @@ public class UsersService {
 
     @Transactional
     public void delete(Long id) {
+        delete(id, null);
+    }
+
+    @Transactional
+    public void delete(Long id, Long actorUserId) {
+        ensureSelfUnavailableActionAllowed(id, actorUserId, true);
         UsersEntity entity = usersRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         entity.setIsDeleted(true);
@@ -113,9 +126,16 @@ public class UsersService {
      */
     @Transactional
     public void hardDelete(Long id) {
+        hardDelete(id, null);
+    }
+
+    @Transactional
+    public void hardDelete(Long id, Long actorUserId) {
         if (id == null) {
             throw new RuntimeException("User id is required");
         }
+
+        ensureSelfUnavailableActionAllowed(id, actorUserId, true);
 
         UsersEntity entity = usersRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -195,6 +215,8 @@ public class UsersService {
         if (userId == null) throw new IllegalArgumentException("userId 不能为空");
         String r = reason == null ? "" : reason.trim();
         if (r.isEmpty()) throw new IllegalArgumentException("reason 不能为空");
+
+        ensureSelfUnavailableActionAllowed(userId, actorUserId, true);
 
         UsersEntity entity = usersRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -369,5 +391,21 @@ public class UsersService {
 
     public List<UserRoleLinksEntity> getUserRoles(Long userId) {
         return userRoleLinksRepository.findByUserId(userId);
+    }
+
+    private void ensureSelfUnavailableActionAllowed(Long targetUserId, Long actorUserId, boolean makeUnavailable) {
+        if (!makeUnavailable || targetUserId == null || actorUserId == null || !Objects.equals(targetUserId, actorUserId)) {
+            return;
+        }
+        long availableUserCount = usersRepository.countByIsDeletedFalse();
+        if (availableUserCount <= 1) {
+            throw new IllegalStateException("系统仅剩最后一个未软删除账号，不能删除、禁用或封禁当前账号");
+        }
+    }
+
+    private boolean willBecomeUnavailable(UsersEntity entity, UsersUpdateDTO dto) {
+        boolean nextDeleted = dto.getIsDeleted() != null ? dto.getIsDeleted() : Boolean.TRUE.equals(entity.getIsDeleted());
+        AccountStatus nextStatus = dto.getStatus() != null ? dto.getStatus() : entity.getStatus();
+        return nextDeleted || nextStatus == AccountStatus.DISABLED || nextStatus == AccountStatus.DELETED;
     }
 }

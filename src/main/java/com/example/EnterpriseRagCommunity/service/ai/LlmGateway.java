@@ -57,7 +57,7 @@ public class LlmGateway {
             List<ChatMessage> messages,
             Double temperature
     ) {
-        return chatOnce(LlmQueueTaskType.TEXT_CHAT, providerId, modelOverride, messages, temperature);
+        return chatOnce(LlmQueueTaskType.MULTIMODAL_CHAT, providerId, modelOverride, messages, temperature);
     }
 
     public String chatOnce(
@@ -164,7 +164,7 @@ public class LlmGateway {
             Map<String, Object> extraBody,
             Map<String, String> extraRequestHeaders
     ) {
-        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.TEXT_CHAT : taskType;
+        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.MULTIMODAL_CHAT : taskType;
         String pid = providerId == null ? null : providerId.trim();
         String mo = modelOverride == null ? null : modelOverride.trim();
 
@@ -278,7 +278,7 @@ public class LlmGateway {
             }
         }
 
-        if (tt == LlmQueueTaskType.IMAGE_CHAT || tt == LlmQueueTaskType.IMAGE_MODERATION) {
+        if (tt == LlmQueueTaskType.MULTIMODAL_CHAT || tt == LlmQueueTaskType.MULTIMODAL_MODERATION) {
             if (last != null) {
                 throw new IllegalStateException("上游AI调用失败: " + last.getMessage(), last);
             }
@@ -358,7 +358,7 @@ public class LlmGateway {
             Map<String, Object> extraBody,
             Map<String, String> extraRequestHeaders
     ) {
-        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.TEXT_CHAT : taskType;
+        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.MULTIMODAL_CHAT : taskType;
         String pid = providerId == null ? null : providerId.trim();
         String mo = modelOverride == null ? null : modelOverride.trim();
 
@@ -476,7 +476,7 @@ public class LlmGateway {
             Double temperature,
             OpenAiCompatClient.SseLineConsumer consumer
     ) {
-        chatStream(LlmQueueTaskType.TEXT_CHAT, providerId, modelOverride, messages, temperature, null, null, consumer);
+        chatStream(LlmQueueTaskType.MULTIMODAL_CHAT, providerId, modelOverride, messages, temperature, null, null, consumer);
     }
 
     public void chatStream(
@@ -516,7 +516,7 @@ public class LlmGateway {
             Integer thinkingBudget,
             OpenAiCompatClient.SseLineConsumer consumer
     ) {
-        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.TEXT_CHAT : taskType;
+        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.MULTIMODAL_CHAT : taskType;
         String pid = providerId == null ? null : providerId.trim();
         String mo = modelOverride == null ? null : modelOverride.trim();
 
@@ -972,7 +972,7 @@ public class LlmGateway {
 
     private static boolean shouldPreferTokenizerIn(LlmQueueTaskType taskType) {
         if (taskType == null) return false;
-        return taskType == LlmQueueTaskType.TEXT_MODERATION || taskType == LlmQueueTaskType.MODERATION_CHUNK;
+        return taskType == LlmQueueTaskType.MULTIMODAL_MODERATION || taskType == LlmQueueTaskType.MODERATION_CHUNK;
     }
 
     private static boolean supportsThinkingDirectiveModel(String modelName) {

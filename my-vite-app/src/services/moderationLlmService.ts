@@ -47,8 +47,7 @@ function createFetchSignal(args: { signal?: AbortSignal; timeoutMs?: number }): 
 export type LlmModerationDecision = 'APPROVE' | 'REJECT' | 'HUMAN';
 
 export type LlmModerationConfig = {
-  textPromptCode: string;
-  visionPromptCode?: string | null;
+  multimodalPromptCode: string;
   judgePromptCode?: string | null;
   autoRun?: boolean | null;
 };

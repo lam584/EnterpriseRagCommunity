@@ -63,7 +63,7 @@ public class WebContentFetchService {
         out.put("dedupedCount", list.size());
 
         for (String u : list) {
-            if (u == null || u.isBlank()) continue;
+            if (u.isBlank()) continue;
             Map<String, Object> one = fetchOne(u);
             items.add(one);
         }
@@ -231,12 +231,9 @@ public class WebContentFetchService {
 
         try {
             InetAddress[] addrs = InetAddress.getAllByName(host);
-            if (addrs != null) {
-                for (InetAddress a : addrs) {
-                    if (a == null) continue;
-                    if (a.isAnyLocalAddress() || a.isLoopbackAddress() || a.isLinkLocalAddress() || a.isSiteLocalAddress() || a.isMulticastAddress()) {
-                        return "PRIVATE_IP";
-                    }
+            for (InetAddress a : addrs) {
+                if (a.isAnyLocalAddress() || a.isLoopbackAddress() || a.isLinkLocalAddress() || a.isSiteLocalAddress() || a.isMulticastAddress()) {
+                    return "PRIVATE_IP";
                 }
             }
         } catch (Exception e) {
@@ -250,7 +247,7 @@ public class WebContentFetchService {
         Set<Integer> allowed = new LinkedHashSet<>();
         String s = allowedPorts == null ? "" : allowedPorts.trim();
         for (String part : s.split(",")) {
-            String t = part == null ? "" : part.trim();
+            String t = part.trim();
             if (t.isBlank()) continue;
             try {
                 allowed.add(Integer.parseInt(t));
@@ -280,10 +277,8 @@ public class WebContentFetchService {
             int n = in.read(buf);
             if (n < 0) break;
             int can = Math.min(n, limitBytes - total);
-            if (can > 0) {
-                baos.write(buf, 0, can);
-                total += can;
-            }
+            baos.write(buf, 0, can);
+            total += can;
             if (total >= limitBytes) break;
         }
         return baos.toByteArray();
@@ -337,9 +332,7 @@ public class WebContentFetchService {
     private static String stringOrNull(Object o) {
         if (o == null) return null;
         String s = String.valueOf(o);
-        if (s == null) return null;
         String t = s.trim();
         return t.isBlank() ? null : t;
     }
 }
-

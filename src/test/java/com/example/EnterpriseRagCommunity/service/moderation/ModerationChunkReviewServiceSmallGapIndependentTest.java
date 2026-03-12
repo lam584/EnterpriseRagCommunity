@@ -182,7 +182,7 @@ class ModerationChunkReviewServiceSmallGapIndependentTest {
         cfg.setChunkSizeChars(100);
 
         ModerationLlmConfigEntity llm = new ModerationLlmConfigEntity();
-        llm.setVisionPromptCode(null);
+        llm.setMultimodalPromptCode(null);
         when(fx.llmConfigRepository.findAll()).thenReturn(List.of(llm));
 
         Object decision = invokeResolveChunkSizingDecision(fx.service, cfg);

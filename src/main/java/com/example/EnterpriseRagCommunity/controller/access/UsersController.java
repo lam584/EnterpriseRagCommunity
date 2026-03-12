@@ -38,14 +38,16 @@ public class UsersController {
     @PutMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public ResponseEntity<UsersUpdateDTO> update(@RequestBody @Valid UsersUpdateDTO dto) {
-        UsersEntity entity = usersService.update(dto);
+        UsersEntity actor = currentUserOrThrow();
+        UsersEntity entity = usersService.update(dto, actor.getId());
         return ResponseEntity.ok(convertToDTO(entity));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
-        usersService.delete(id);
+        UsersEntity actor = currentUserOrThrow();
+        usersService.delete(id, actor.getId());
         return ResponseEntity.ok().build();
     }
 
@@ -73,7 +75,8 @@ public class UsersController {
     @DeleteMapping("/{id}/hard")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public ResponseEntity<Void> hardDelete(@PathVariable("id") Long id) {
-        usersService.hardDelete(id);
+        UsersEntity actor = currentUserOrThrow();
+        usersService.hardDelete(id, actor.getId());
         return ResponseEntity.ok().build();
     }
 

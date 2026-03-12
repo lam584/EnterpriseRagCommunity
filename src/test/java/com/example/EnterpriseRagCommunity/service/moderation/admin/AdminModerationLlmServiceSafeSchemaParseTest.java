@@ -63,8 +63,7 @@ public class AdminModerationLlmServiceSafeSchemaParseTest {
         PromptsRepository promptsRepository = mock(PromptsRepository.class);
 
         ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
-        cfg.setTextPromptCode("MODERATION_TEXT");
-        cfg.setVisionPromptCode("MODERATION_VISION");
+        cfg.setMultimodalPromptCode("MODERATION_VISION");
         cfg.setJudgePromptCode("MODERATION_JUDGE");
         when(cfgRepo.findTopByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(cfg));
 
@@ -95,7 +94,7 @@ public class AdminModerationLlmServiceSafeSchemaParseTest {
 
         String assistant = "```json\\n{\\n  \\\"safe\\\": false,\\n  \\\"reason\\\": \\\"unsafe\\\",\\n  \\\"labels\\\": [\\\"porn\\\"]\\n}\\n```";
         String raw = "{\"choices\":[{\"message\":{\"content\":\"" + assistant + "\"}}]}";
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
+        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.MULTIMODAL_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(raw, "p1", "text-model", null));
 
         AdminModerationLlmService svc = AdminModerationLlmServiceTestFactory.newService(
@@ -124,7 +123,7 @@ public class AdminModerationLlmServiceSafeSchemaParseTest {
         LlmModerationTestResponse resp = svc.test(req);
         assertNotNull(resp);
         assertEquals("HUMAN", resp.getDecision());
-        assertNull(resp.getScore());
+        assertEquals(0.0, resp.getScore(), 1e-9);
         assertTrue(resp.getRiskTags() != null && resp.getRiskTags().contains("porn"));
     }
 }

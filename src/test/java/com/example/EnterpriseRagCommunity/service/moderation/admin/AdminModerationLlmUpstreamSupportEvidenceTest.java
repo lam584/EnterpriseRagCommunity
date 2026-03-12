@@ -5,10 +5,16 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.nullable;
 import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 
 public class AdminModerationLlmUpstreamSupportEvidenceTest {
 
@@ -151,5 +157,48 @@ public class AdminModerationLlmUpstreamSupportEvidenceTest {
         // LLM drops space before quote, original has space
         String inputText = "altitude \u201cbanana.\u201d \n  violation text here";
         assertTrue(s.hasVerifiableEvidence(inputText, List.of("{\"before_context\":\"altitude\\\"banana.\\\"\"}"))); 
+    }
+
+    @Test
+    void callOnce_usesShortContentAsFallbackEvidenceForReject() {
+        LlmGateway gateway = mock(LlmGateway.class);
+        when(gateway.chatOnceRouted(
+                any(LlmQueueTaskType.class),
+                nullable(String.class),
+                nullable(String.class),
+                anyList(),
+                any(),
+                any(),
+                nullable(Integer.class),
+                nullable(List.class),
+                any(),
+                nullable(Integer.class),
+                nullable(java.util.Map.class)
+        )).thenReturn(new LlmGateway.RoutedChatOnceResult(
+                "{\"choices\":[{\"message\":{\"content\":\"{\\\"decision\\\":\\\"REJECT\\\",\\\"score\\\":0.95,\\\"reasons\\\":[\\\"命中辱骂攻击\\\"],\\\"riskTags\\\":[\\\"辱骂攻击\\\"],\\\"evidence\\\":[] }\"}}]}",
+                "provider",
+                "model",
+                null
+        ));
+
+        AdminModerationLlmUpstreamSupport s = new AdminModerationLlmUpstreamSupport(gateway, mock(AdminModerationLlmImageSupport.class));
+        StageCallResult out = s.callOnce(
+                LlmQueueTaskType.MULTIMODAL_MODERATION,
+                null,
+                null,
+                List.of(ChatMessage.system("system"), ChatMessage.user("关联的原文（供你理解上下文，不代表一定要参考）：\n[POST]\n标题: \n内容: 操你妹")),
+                null,
+                null,
+                null,
+                Boolean.FALSE,
+                null,
+                "multimodal",
+                true,
+                null
+        );
+
+        assertEquals("REJECT", out.decision());
+        assertEquals(List.of("操你妹"), out.evidence());
+        assertTrue(s.hasVerifiableEvidence("[POST]\n内容: 操你妹", out.evidence()));
     }
 }

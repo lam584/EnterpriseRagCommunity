@@ -22,7 +22,8 @@ class AdminModerationLlmUpstreamSupportEvidenceGateTest {
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(out, "p1", "m1", null));
 
         AdminModerationLlmUpstreamSupport support = new AdminModerationLlmUpstreamSupport(gw, mock(AdminModerationLlmImageSupport.class));
-        StageCallResult r = support.callTextOnce("s", "hello", 0.2, 0.2, 200, null, null, null, false);
+        String noFallbackEvidenceText = "x".repeat(260);
+        StageCallResult r = support.callTextOnce("s", noFallbackEvidenceText, 0.2, 0.2, 200, null, null, null, false);
         assertThat(r.decisionSuggestion()).isEqualTo("ESCALATE");
         assertThat(r.decision()).isEqualTo("HUMAN");
         assertThat(r.reasons()).anyMatch(s -> s != null && s.contains("missing evidence"));

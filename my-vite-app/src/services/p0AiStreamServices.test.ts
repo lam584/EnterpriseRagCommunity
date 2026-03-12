@@ -158,7 +158,7 @@ describe('p0AiStreamServices', () => {
     expect(events).toEqual([
       { type: 'meta', sessionId: 3, userMessageId: 1, questionMessageId: 2 },
       { type: 'delta', content: 'H' },
-      { type: 'sources', sources: [{ index: 1, postId: 9, chunkIndex: 2, score: 0.9, title: 't', url: 'u' }] },
+      { type: 'sources', sources: [{ index: 1, postId: 9, chunkIndex: 2, score: 0.9, title: 't', url: 'u', snippet: null }] },
       { type: 'done', latencyMs: 5 },
     ]);
 

@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.access;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import com.example.EnterpriseRagCommunity.dto.access.UsersUpdateDTO;
 import com.example.EnterpriseRagCommunity.entity.access.RolesEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UserRoleLinksEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
@@ -91,6 +93,48 @@ class UsersServiceTest {
     }
 
     @Test
+    void update_delete_hardDelete_and_ban_should_block_self_when_last_available_account() {
+        UsersRepository usersRepository = mock(UsersRepository.class);
+        UserRoleLinksRepository userRoleLinksRepository = mock(UserRoleLinksRepository.class);
+        PostsRepository postsRepository = mock(PostsRepository.class);
+        CommentsRepository commentsRepository = mock(CommentsRepository.class);
+
+        UsersEntity u = new UsersEntity();
+        u.setId(7L);
+        u.setIsDeleted(false);
+        u.setStatus(AccountStatus.ACTIVE);
+        when(usersRepository.findById(7L)).thenReturn(Optional.of(u));
+        when(usersRepository.countByIsDeletedFalse()).thenReturn(1L, 1L, 1L, 1L, 2L);
+        when(usersRepository.save(any(UsersEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(postsRepository.countByAuthorId(7L)).thenReturn(0L);
+        when(commentsRepository.countByAuthorId(7L)).thenReturn(0L);
+
+        UsersService s = new UsersService(
+                usersRepository,
+                userRoleLinksRepository,
+                mock(RolesRepository.class),
+                mock(RbacAuditService.class),
+                mock(AuditLogWriter.class),
+                mock(PasswordEncoder.class),
+                commentsRepository,
+                postsRepository
+        );
+
+        UsersUpdateDTO disableSelf = new UsersUpdateDTO();
+        disableSelf.setId(7L);
+        disableSelf.setStatus(AccountStatus.DISABLED);
+        assertThrows(IllegalStateException.class, () -> s.update(disableSelf, 7L));
+        assertThrows(IllegalStateException.class, () -> s.delete(7L, 7L));
+        assertThrows(IllegalStateException.class, () -> s.hardDelete(7L, 7L));
+        assertThrows(IllegalStateException.class, () -> s.banUser(7L, 7L, "self", "reason", "ADMIN_USERS", null));
+
+        UsersUpdateDTO renameOnly = new UsersUpdateDTO();
+        renameOnly.setId(7L);
+        renameOnly.setUsername("new-name");
+        assertDoesNotThrow(() -> s.update(renameOnly, 7L));
+    }
+
+    @Test
     void banUser_should_update_status_and_metadata_and_write_audit() {
         UsersRepository usersRepository = mock(UsersRepository.class);
         UsersEntity u = new UsersEntity();
@@ -99,6 +143,7 @@ class UsersServiceTest {
         u.setStatus(AccountStatus.ACTIVE);
         u.setMetadata(Map.of());
         when(usersRepository.findById(2L)).thenReturn(Optional.of(u));
+        when(usersRepository.countByIsDeletedFalse()).thenReturn(2L);
         when(usersRepository.save(any(UsersEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
@@ -131,6 +176,7 @@ class UsersServiceTest {
         u.setStatus(AccountStatus.ACTIVE);
         u.setMetadata(Map.of());
         when(usersRepository.findById(2L)).thenReturn(Optional.of(u));
+        when(usersRepository.countByIsDeletedFalse()).thenReturn(2L);
         when(usersRepository.save(any(UsersEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
         UsersService s = new UsersService(

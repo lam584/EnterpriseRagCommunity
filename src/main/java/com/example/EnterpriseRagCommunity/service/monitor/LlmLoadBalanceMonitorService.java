@@ -63,7 +63,7 @@ public class LlmLoadBalanceMonitorService {
             models.add(m);
         }
 
-        models.sort((a, b) -> Double.compare(b.getQps() == null ? 0.0 : b.getQps(), a.getQps() == null ? 0.0 : a.getQps()));
+        models.sort((a, b) -> Double.compare(b.getQps(), a.getQps()));
 
         AdminLlmLoadBalanceResponseDTO out = new AdminLlmLoadBalanceResponseDTO();
         out.setRange(pr.label);
@@ -77,7 +77,6 @@ public class LlmLoadBalanceMonitorService {
     private static ParsedRange parseRange(String range, Integer hours) {
         if (hours != null && hours > 0) {
             long h = Math.min((long) hours, MAX_RANGE_MS / 3600_000L);
-            if (h <= 0) h = 1;
             return new ParsedRange(h * 3600_000L, h + "h");
         }
 

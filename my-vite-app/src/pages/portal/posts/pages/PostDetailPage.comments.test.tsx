@@ -136,9 +136,7 @@ describe('PostDetailPage (comments)', () => {
 
     fireEvent.click(within(c1Card).getByRole('button', { name: '查看全部对话' }));
     await screen.findByText('全部对话');
-    expect(within(c1Card).getByRole('button', { name: '收起对话' })).not.toBeNull();
-
-    fireEvent.click(within(c1Card).getByRole('button', { name: '收起对话' }));
+    fireEvent.click(screen.getByRole('button', { name: '关闭' }));
     expect(screen.queryByText('全部对话')).toBeNull();
   });
 

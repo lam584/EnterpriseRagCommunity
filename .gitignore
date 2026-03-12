@@ -61,7 +61,6 @@ docs/评估报告.md
 test-reports/
 my-vite-app/test-reports/
 logs
-docs/初稿.md
 perf/jmeter/results
 docs/temp.md
 src/test/resources/test-secrets.properties
@@ -73,3 +72,6 @@ docs/后端分支覆盖测试报告.lnk
 docs/Failed_tests.lnk
 docs/前端分支覆盖测试报告.url
 testdata/
+论文/
+tmp-list.java
+docs/待办事项.md

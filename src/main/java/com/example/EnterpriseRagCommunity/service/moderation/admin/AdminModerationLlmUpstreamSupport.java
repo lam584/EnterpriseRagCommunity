@@ -78,7 +78,7 @@ class AdminModerationLlmUpstreamSupport {
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(systemPrompt));
         messages.add(ChatMessage.user(userPrompt));
-        return callOnce(LlmQueueTaskType.TEXT_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, null, "text", useQueue, null);
+        return callOnce(LlmQueueTaskType.MULTIMODAL_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, null, "multimodal", useQueue, null);
     }
 
     StageCallResult callImageDescribeOnce(
@@ -129,7 +129,7 @@ class AdminModerationLlmUpstreamSupport {
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(ChatMessage.system(systemPrompt));
             messages.add(ChatMessage.userParts(parts));
-            return callOnce(LlmQueueTaskType.IMAGE_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, null, "multimodal", useQueue, null);
+            return callOnce(LlmQueueTaskType.MULTIMODAL_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, null, "multimodal", useQueue, null);
         }
 
         int maxImgs = (maxImagesPerRequest == null || maxImagesPerRequest < 1) ? Integer.MAX_VALUE : maxImagesPerRequest;
@@ -153,7 +153,7 @@ class AdminModerationLlmUpstreamSupport {
                 cur.add(in);
                 curTokens += t;
             }
-            if (!cur.isEmpty()) batches.add(cur);
+            batches.add(cur);
         }
 
         boolean sendMaxPixels = !Boolean.TRUE.equals(highResolutionImages) && maxPixels != null && maxPixels > 0;
@@ -180,6 +180,7 @@ class AdminModerationLlmUpstreamSupport {
         String lastRaw = null;
         String usedModel = null;
         String decision = "APPROVE";
+        List<LlmModerationTestResponse.Message> lastPromptMessages = null;
 
         for (int i = 0; i < batches.size(); i++) {
             List<Map<String, Object>> parts = new ArrayList<>();
@@ -199,7 +200,7 @@ class AdminModerationLlmUpstreamSupport {
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(ChatMessage.system(systemPrompt));
             messages.add(ChatMessage.userParts(parts));
-            StageCallResult r = callOnce(LlmQueueTaskType.IMAGE_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, extraBody, "multimodal", useQueue, extraHeaders);
+            StageCallResult r = callOnce(LlmQueueTaskType.MULTIMODAL_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, extraBody, "multimodal", useQueue, extraHeaders);
             results.add(r);
             if (r == null) {
                 return new StageCallResult(
@@ -222,6 +223,7 @@ class AdminModerationLlmUpstreamSupport {
                         "multimodal"
                 );
             }
+            lastPromptMessages = r.promptMessages();
             if ("HUMAN".equalsIgnoreCase(r.decision())) return r;
 
             latencySum += r.latencyMs() == null ? 0L : Math.max(0L, r.latencyMs());
@@ -289,7 +291,7 @@ class AdminModerationLlmUpstreamSupport {
                 usedModel,
                 latencySum,
                 usage,
-                results.isEmpty() ? null : results.get(results.size() - 1).promptMessages(),
+                lastPromptMessages,
                 desc.isEmpty() ? null : desc.toString(),
                 "multimodal"
         );
@@ -425,20 +427,30 @@ class AdminModerationLlmUpstreamSupport {
             String rawJson = routed == null ? null : routed.text();
             String assistantText = extractAssistantContent(rawJson);
             ParsedDecision parsed = parseDecisionFromAssistantText(assistantText);
+            String userText = extractUserTextForEvidence(messages);
+
+            if (parsed != null && parsed.evidence != null && !parsed.evidence.isEmpty()) {
+                parsed.evidence = enrichEvidenceWithText(parsed.evidence, userText);
+            }
 
             if (parsed != null && "REJECT".equalsIgnoreCase(parsed.decisionSuggestion)) {
-                if ((parsed.evidence == null || parsed.evidence.isEmpty()) && taskType == LlmQueueTaskType.IMAGE_MODERATION) {
-                    String userText = extractUserTextForEvidence(messages);
+                if ((parsed.evidence == null || parsed.evidence.isEmpty()) && taskType == LlmQueueTaskType.MULTIMODAL_MODERATION) {
                     List<String> ph = extractImagePlaceholders(userText);
-                    if (!ph.isEmpty()) parsed.evidence = List.of(String.join(" ", ph));
+                    if (!ph.isEmpty()) {
+                        parsed.evidence = List.of(String.join(" ", ph));
+                    } else {
+                        String fallbackEvidence = deriveFallbackEvidenceFromUserText(userText);
+                        if (fallbackEvidence != null && !fallbackEvidence.isBlank()) {
+                            parsed.evidence = List.of(fallbackEvidence);
+                        }
+                    }
                 }
                 if (parsed.evidence == null || parsed.evidence.isEmpty()) {
                     parsed.decisionSuggestion = "ESCALATE";
                     parsed.decision = suggestionToDecision(parsed.decisionSuggestion, parsed.score);
                     if (parsed.reasons == null) parsed.reasons = new ArrayList<>();
                     parsed.reasons.add("REJECT decision downgraded to ESCALATE due to missing evidence");
-                } else if (taskType == LlmQueueTaskType.TEXT_MODERATION) {
-                    String userText = extractUserTextForEvidence(messages);
+                } else if (taskType == LlmQueueTaskType.MULTIMODAL_MODERATION) {
                     if (!hasVerifiableEvidence(userText, parsed.evidence)) {
                         parsed.decisionSuggestion = "ESCALATE";
                         parsed.decision = suggestionToDecision(parsed.decisionSuggestion, parsed.score);
@@ -618,6 +630,57 @@ class AdminModerationLlmUpstreamSupport {
             }
         }
         return sb.toString();
+    }
+
+    private static String deriveFallbackEvidenceFromUserText(String userText) {
+        if (userText == null || userText.isBlank()) return null;
+
+        String fromContentField = firstMeaningfulLine(afterMarker(userText, "内容:"));
+        if (fromContentField != null) return clipEvidence(fromContentField);
+
+        String textSection = afterMarker(userText, "[TEXT]");
+        if (textSection != null && normalizeEvidenceText(textSection).length() <= 300) {
+            String fromTextSection = firstMeaningfulLine(textSection);
+            if (fromTextSection != null) return clipEvidence(fromTextSection);
+        }
+
+        String normalized = normalizeEvidenceText(userText);
+        if (!normalized.isBlank() && normalized.length() <= 200) {
+            return clipEvidence(normalized);
+        }
+        return null;
+    }
+
+    private static String afterMarker(String text, String marker) {
+        if (text == null || marker == null || marker.isBlank()) return null;
+        int idx = text.indexOf(marker);
+        if (idx < 0) return null;
+        return text.substring(idx + marker.length()).trim();
+    }
+
+    private static String firstMeaningfulLine(String text) {
+        if (text == null || text.isBlank()) return null;
+        String[] lines = text.split("\\R");
+        for (String line : lines) {
+            String normalized = normalizeEvidenceText(line);
+            if (normalized.isBlank()) continue;
+            if (normalized.startsWith("[")) continue;
+            return normalized;
+        }
+        return null;
+    }
+
+    private static String normalizeEvidenceText(String text) {
+        if (text == null) return "";
+        return text.replaceAll("\\s+", " ").trim();
+    }
+
+    private static String clipEvidence(String text) {
+        if (text == null) return null;
+        String normalized = normalizeEvidenceText(text);
+        if (normalized.isBlank()) return null;
+        if (normalized.length() < 2) return null;
+        return normalized.length() > 120 ? normalized.substring(0, 120) : normalized;
     }
 
     boolean hasVerifiableEvidence(String inputText, List<String> evidence) {

@@ -2,9 +2,11 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 public enum LlmQueueTaskType {
     CHAT,
+    MULTIMODAL_CHAT,
     TEXT_CHAT,
     IMAGE_CHAT,
     MODERATION,
+    MULTIMODAL_MODERATION,
     TEXT_MODERATION,
     IMAGE_MODERATION,
     MODERATION_CHUNK,

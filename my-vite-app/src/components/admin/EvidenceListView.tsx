@@ -3,6 +3,7 @@ import DetailDialog from '../common/DetailDialog';
 import ImageLightbox from '../ui/ImageLightbox';
 import { expandEvidenceContext } from '../../utils/evidence-context-display';
 import EvidenceContextCell from './EvidenceContextCell';
+import { useModerationChunkContentPreview } from '../../hooks/useModerationChunkContentPreview';
 
 type EvidenceRow = {
   sources: Array<{ kind: '阶段' | '分片'; stage?: string; title: string; order: number }>;
@@ -174,6 +175,83 @@ function imageIdLookupKeys(imageId: string): string[] {
   add(id0.replace(/[\s_]+/g, '-').toLowerCase());
 
   return Array.from(out.values());
+}
+
+function parseImageOrdinal(imageId: string | undefined): number | null {
+  const id = (imageId ?? '').trim();
+  if (!id) return null;
+  const match = /^img[\s_-]*(\d+)$/i.exec(id);
+  if (!match) return null;
+  return toInt(match[1]);
+}
+
+function resolveChunkPreviewImageUrl(preview: { images?: Array<Record<string, unknown>> | null } | null | undefined, imageId: string | undefined): string | null {
+  const ordinal = parseImageOrdinal(imageId);
+  const images = Array.isArray(preview?.images) ? preview.images : [];
+  if (!images.length) return null;
+
+  if (ordinal != null && ordinal >= 1 && ordinal <= images.length) {
+    const localMatch = images[ordinal - 1];
+    const localUrl = readNonEmptyString(localMatch?.url);
+    if (localUrl) return localUrl;
+  }
+
+  for (const image of images) {
+    const url = readNonEmptyString(image?.url);
+    if (!url) continue;
+    const placeholder = readNonEmptyString(image?.placeholder);
+    const index = toInt(image?.index);
+    if (ordinal != null && index === ordinal) return url;
+    if (placeholder) {
+      const normalizedPlaceholder = placeholder.trim();
+      if (imageIdLookupKeys(imageId ?? '').includes(normalizedPlaceholder)) return url;
+    }
+  }
+  return null;
+}
+
+function EvidenceImagePreviewCell({
+  imageId,
+  chunkId,
+  imageUrlByImageId,
+  onOpen,
+}: {
+  imageId?: string;
+  chunkId?: number;
+  imageUrlByImageId?: Record<string, string>;
+  onOpen: (src: string) => void;
+}) {
+  const dict = imageUrlByImageId ?? null;
+  const resolvedFromDict = useMemo(() => {
+    const id = (imageId ?? '').trim();
+    if (!dict || !id) return null;
+    for (const key of imageIdLookupKeys(id)) {
+      const value = dict[key];
+      const url = typeof value === 'string' ? value.trim() : '';
+      if (url) return url;
+    }
+    return null;
+  }, [dict, imageId]);
+
+  const { data: preview } = useModerationChunkContentPreview(chunkId ?? null, !resolvedFromDict && chunkId != null && Boolean(imageId));
+  const fallbackUrl = useMemo(() => resolveChunkPreviewImageUrl(preview as { images?: Array<Record<string, unknown>> | null } | null, imageId), [preview, imageId]);
+  const imageUrl = resolvedFromDict || fallbackUrl;
+  const label = imageId ?? '—';
+
+  if (!imageUrl) {
+    return <span className="font-mono text-xs">{label}</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      className="border rounded bg-white hover:bg-gray-50 p-1"
+      onClick={() => onOpen(imageUrl)}
+      title={label}
+    >
+      <img src={imageUrl} alt={label} className="w-[64px] h-[44px] object-cover rounded" loading="lazy" />
+    </button>
+  );
 }
 
 function normalizeEvidenceValue(v: unknown): { obj: Record<string, unknown> | null; rawText: string; chunkIndex?: number } {
@@ -460,19 +538,6 @@ export default function EvidenceListView({ stepEvidenceGroups, chunkEvidenceByCh
     return list.length ? Array.from(new Set(list)).join('\n') : '—';
   };
 
-  const resolveImageUrl = (imageId: string | undefined): string | null => {
-    const dict = imageUrlByImageId ?? null;
-    if (!dict) return null;
-    const id = (imageId ?? '').trim();
-    if (!id) return null;
-    for (const k of imageIdLookupKeys(id)) {
-      const url = dict[k];
-      const t = typeof url === 'string' ? url.trim() : '';
-      if (t) return t;
-    }
-    return null;
-  };
-
   return (
     <div className="overflow-auto">
       <table className="min-w-[1100px] w-full text-sm">
@@ -508,10 +573,8 @@ export default function EvidenceListView({ stepEvidenceGroups, chunkEvidenceByCh
             const chunkList = r.chunkIndexes && r.chunkIndexes.length ? r.chunkIndexes : (r.chunkIndex != null ? [r.chunkIndex] : []);
             const chunkLabel = chunkList.length ? chunkList.join(',') : '—';
             const stepTitle = stepTitles(r);
-            const imageId = r.imageId ?? '—';
             const type = r.type ?? '—';
             const chunkId = chunkList.length === 1 ? (chunkIdByChunkIndex ?? {})[String(chunkList[0])] : undefined;
-            const imageUrl = resolveImageUrl(r.imageId);
             const rowKey = `${stageLabel(r)}-${r.chunkIndex ?? 'x'}-${idx}`;
             return (
               <tr key={rowKey} className="border-t align-top">
@@ -521,21 +584,15 @@ export default function EvidenceListView({ stepEvidenceGroups, chunkEvidenceByCh
                 </td>
                 {hasChunkCol ? <td className="py-2 pr-3 whitespace-nowrap font-mono text-xs">{chunkLabel}</td> : null}
                 <td className="py-2 pr-3 whitespace-nowrap">
-                  {imageUrl ? (
-                    <button
-                      type="button"
-                      className="border rounded bg-white hover:bg-gray-50 p-1"
-                      onClick={() => {
-                        setLightboxSrc(imageUrl);
-                        setLightboxOpen(true);
-                      }}
-                      title={r.imageId ?? 'image'}
-                    >
-                      <img src={imageUrl} alt={r.imageId ?? 'image'} className="w-[64px] h-[44px] object-cover rounded" loading="lazy" />
-                    </button>
-                  ) : (
-                    <span className="font-mono text-xs">{imageId}</span>
-                  )}
+                  <EvidenceImagePreviewCell
+                    imageId={r.imageId}
+                    chunkId={chunkId}
+                    imageUrlByImageId={imageUrlByImageId}
+                    onOpen={(src) => {
+                      setLightboxSrc(src);
+                      setLightboxOpen(true);
+                    }}
+                  />
                 </td>
                 <td className="py-2 pr-3 whitespace-nowrap font-mono text-xs">{type}</td>
                 <td className="py-2 pr-3">

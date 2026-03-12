@@ -66,8 +66,7 @@ class AdminModerationLlmServiceVisionBatchingTest {
         Files.write(uploadRoot.resolve("2026/02/b.png"), b);
 
         ModerationLlmConfigEntity baseCfg = new ModerationLlmConfigEntity();
-        baseCfg.setTextPromptCode("MODERATION_TEXT");
-        baseCfg.setVisionPromptCode("MODERATION_VISION");
+        baseCfg.setMultimodalPromptCode("MODERATION_VISION");
         baseCfg.setJudgePromptCode("MODERATION_JUDGE");
         baseCfg.setJudgePromptCode("MODERATION_JUDGE");
         baseCfg.setAutoRun(Boolean.TRUE);
@@ -126,15 +125,7 @@ class AdminModerationLlmServiceVisionBatchingTest {
             if ("chatOnceRouted".equals(inv.getMethod().getName())) {
                 Object a0 = inv.getArgument(0);
                 LlmQueueTaskType taskType = a0 instanceof LlmQueueTaskType t ? t : null;
-                if (taskType == LlmQueueTaskType.TEXT_MODERATION) {
-                    return new LlmGateway.RoutedChatOnceResult(
-                            chatJson("{\"decision\":\"APPROVE\",\"score\":0.01,\"reasons\":[\"t\"],\"riskTags\":[]}"),
-                            "p",
-                            "m",
-                            new LlmCallQueueService.UsageMetrics(10, 5, 15, 5)
-                    );
-                }
-                if (taskType == LlmQueueTaskType.IMAGE_MODERATION) {
+                if (taskType == LlmQueueTaskType.MULTIMODAL_MODERATION) {
                     int n = imageCalls.incrementAndGet();
                     return new LlmGateway.RoutedChatOnceResult(
                             chatJson("{\"decision\":\"APPROVE\",\"score\":0.02,\"reasons\":[\"i" + n + "\"],\"riskTags\":[],\"description\":\"d" + n + "\"}"),
@@ -196,8 +187,8 @@ class AdminModerationLlmServiceVisionBatchingTest {
         assertTrue(resp.getStages().getImage().getDescription().contains("[BATCH 2/2]"));
 
         ArgumentCaptor<List<ChatMessage>> messagesCap = ArgumentCaptor.forClass(List.class);
-        verify(llmGateway, times(2)).chatOnceRouted(
-                eq(LlmQueueTaskType.IMAGE_MODERATION),
+        verify(llmGateway, times(3)).chatOnceRouted(
+            eq(LlmQueueTaskType.MULTIMODAL_MODERATION),
                 any(),
                 any(),
                 messagesCap.capture(),
@@ -209,12 +200,15 @@ class AdminModerationLlmServiceVisionBatchingTest {
                 any(),
                 any()
         );
+        int imageBatchCalls = 0;
         for (List<ChatMessage> callMessages : messagesCap.getAllValues()) {
             assertNotNull(callMessages);
             assertTrue(callMessages.size() >= 2);
             Object content = callMessages.get(1).content();
-            assertTrue(content instanceof List);
-            List<?> parts = (List<?>) content;
+            if (!(content instanceof List<?> parts)) {
+                continue;
+            }
+            imageBatchCalls += 1;
             boolean sawMaxPixels = false;
             for (Object p : parts) {
                 if (!(p instanceof Map<?, ?> m)) continue;
@@ -227,7 +221,8 @@ class AdminModerationLlmServiceVisionBatchingTest {
             }
             assertTrue(sawMaxPixels);
         }
-        assertEquals(2, imageCalls.get());
+        assertEquals(2, imageBatchCalls);
+        assertEquals(3, imageCalls.get());
     }
 
     @Test
@@ -241,8 +236,7 @@ class AdminModerationLlmServiceVisionBatchingTest {
         Files.write(uploadRoot.resolve("2026/02/b.png"), b);
 
         ModerationLlmConfigEntity baseCfg = new ModerationLlmConfigEntity();
-        baseCfg.setTextPromptCode("MODERATION_TEXT");
-        baseCfg.setVisionPromptCode("MODERATION_VISION");
+        baseCfg.setMultimodalPromptCode("MODERATION_VISION");
         baseCfg.setJudgePromptCode("MODERATION_JUDGE");
         baseCfg.setJudgePromptCode("MODERATION_JUDGE");
         baseCfg.setAutoRun(Boolean.TRUE);
@@ -311,15 +305,7 @@ class AdminModerationLlmServiceVisionBatchingTest {
                 any()
         )).thenAnswer(inv -> {
             LlmQueueTaskType taskType = inv.getArgument(0);
-            if (taskType == LlmQueueTaskType.TEXT_MODERATION) {
-                return new LlmGateway.RoutedChatOnceResult(
-                        chatJson("{\"decision\":\"APPROVE\",\"score\":0.01,\"reasons\":[\"t\"],\"riskTags\":[]}"),
-                        "p",
-                        "m",
-                        new LlmCallQueueService.UsageMetrics(10, 5, 15, 5)
-                );
-            }
-            if (taskType == LlmQueueTaskType.IMAGE_MODERATION) {
+            if (taskType == LlmQueueTaskType.MULTIMODAL_MODERATION) {
                 int n = imageCalls.incrementAndGet();
                 return new LlmGateway.RoutedChatOnceResult(
                         chatJson("{\"decision\":\"APPROVE\",\"score\":0.02,\"reasons\":[\"i" + n + "\"],\"riskTags\":[],\"description\":\"d" + n + "\"}"),
@@ -370,8 +356,8 @@ class AdminModerationLlmServiceVisionBatchingTest {
         assertEquals("APPROVE", resp.getDecision());
 
         ArgumentCaptor<Map<String, Object>> extraBodyCap = ArgumentCaptor.forClass(Map.class);
-        verify(llmGateway, times(2)).chatOnceRouted(
-                eq(LlmQueueTaskType.IMAGE_MODERATION),
+        verify(llmGateway, times(3)).chatOnceRouted(
+            eq(LlmQueueTaskType.MULTIMODAL_MODERATION),
                 any(),
                 any(),
                 any(),
@@ -383,11 +369,16 @@ class AdminModerationLlmServiceVisionBatchingTest {
                 any(),
                 extraBodyCap.capture()
         );
+        int imageBatchCalls = 0;
         for (Map<String, Object> body : extraBodyCap.getAllValues()) {
-            assertNotNull(body);
+            if (body == null) {
+                continue;
+            }
+            imageBatchCalls += 1;
             assertEquals(Boolean.TRUE, body.get("vl_high_resolution_images"));
         }
-        assertEquals(2, imageCalls.get());
+        assertEquals(2, imageBatchCalls);
+        assertEquals(3, imageCalls.get());
     }
 
     @Test
@@ -400,8 +391,7 @@ class AdminModerationLlmServiceVisionBatchingTest {
         }
 
         ModerationLlmConfigEntity baseCfg = new ModerationLlmConfigEntity();
-        baseCfg.setTextPromptCode("MODERATION_TEXT");
-        baseCfg.setVisionPromptCode("MODERATION_VISION");
+        baseCfg.setMultimodalPromptCode("MODERATION_VISION");
         baseCfg.setJudgePromptCode("MODERATION_JUDGE");
         baseCfg.setJudgePromptCode("MODERATION_JUDGE");
         baseCfg.setAutoRun(Boolean.TRUE);
@@ -459,15 +449,7 @@ class AdminModerationLlmServiceVisionBatchingTest {
             if ("chatOnceRouted".equals(inv.getMethod().getName())) {
                 Object a0 = inv.getArgument(0);
                 LlmQueueTaskType taskType = a0 instanceof LlmQueueTaskType t ? t : null;
-                if (taskType == LlmQueueTaskType.TEXT_MODERATION) {
-                    return new LlmGateway.RoutedChatOnceResult(
-                            chatJson("{\"decision\":\"APPROVE\",\"score\":0.01,\"reasons\":[\"t\"],\"riskTags\":[]}"),
-                            "p",
-                            "m",
-                            new LlmCallQueueService.UsageMetrics(10, 5, 15, 5)
-                    );
-                }
-                if (taskType == LlmQueueTaskType.IMAGE_MODERATION) {
+                if (taskType == LlmQueueTaskType.MULTIMODAL_MODERATION) {
                     return new LlmGateway.RoutedChatOnceResult(
                             chatJson("{\"decision\":\"APPROVE\",\"score\":0.02,\"reasons\":[\"i\"],\"riskTags\":[],\"description\":\"d\"}"),
                             "p",
@@ -531,8 +513,8 @@ class AdminModerationLlmServiceVisionBatchingTest {
         assertEquals("APPROVE", resp.getDecision());
 
         ArgumentCaptor<List<ChatMessage>> messagesCap = ArgumentCaptor.forClass(List.class);
-        verify(llmGateway, times(1)).chatOnceRouted(
-                eq(LlmQueueTaskType.IMAGE_MODERATION),
+        verify(llmGateway, times(2)).chatOnceRouted(
+            eq(LlmQueueTaskType.MULTIMODAL_MODERATION),
                 any(),
                 any(),
                 messagesCap.capture(),
@@ -544,7 +526,8 @@ class AdminModerationLlmServiceVisionBatchingTest {
                 any(),
                 any()
         );
-        List<ChatMessage> callMessages = messagesCap.getValue();
+        List<List<ChatMessage>> allCalls = messagesCap.getAllValues();
+        List<ChatMessage> callMessages = allCalls.get(allCalls.size() - 1);
         Object content = callMessages.get(1).content();
         assertTrue(content instanceof List);
         List<?> parts = (List<?>) content;

@@ -107,6 +107,83 @@ class FileAssetExtractionArchiveTest {
     }
 
     @Test
+    void zipWithUnsupportedInnerFile_shouldMarkSkippedUnsupported() throws Exception {
+        byte[] zip = zipBytes(List.of(
+                Map.entry("a.bin", "raw-binary")
+        ));
+
+        Path zipPath = tempDir.resolve("unsupported.zip");
+        Files.write(zipPath, zip);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setOwner(null);
+        fa.setPath(zipPath.toString());
+        fa.setUrl("/uploads/unsupported.zip");
+        fa.setOriginalName("unsupported.zip");
+        fa.setSizeBytes(Files.size(zipPath));
+        fa.setMimeType("application/zip");
+        fa.setSha256(randomSha256());
+        fa.setStatus(FileAssetStatus.READY);
+        fa = fileAssetsRepository.save(fa);
+
+        fileAssetExtractionAsyncService.extractAsync(fa.getId());
+
+        FileAssetExtractionsEntity e = waitExtraction(fa.getId(), FileAssetExtractionStatus.READY);
+        assertNotNull(e);
+        Map<String, Object> meta = objectMapper.readValue(e.getExtractedMetadataJson(), new TypeReference<Map<String, Object>>() {});
+        Object archiveObj = meta.get("archive");
+        assertTrue(archiveObj instanceof Map<?, ?>);
+        Map<?, ?> archive = (Map<?, ?>) archiveObj;
+        Object filesObj = archive.get("files");
+        assertTrue(filesObj instanceof List<?>);
+        List<?> files = (List<?>) filesObj;
+        assertFalse(files.isEmpty());
+        assertTrue(files.get(0) instanceof Map<?, ?>);
+        Map<?, ?> first = (Map<?, ?>) files.get(0);
+        assertEquals("SKIPPED_UNSUPPORTED", String.valueOf(first.get("parseStatus")));
+        assertEquals("false", String.valueOf(first.get("parseEligible")));
+    }
+
+    @Test
+    void zipWithTooLargeInnerFile_shouldMarkSkippedTruncated() throws Exception {
+        byte[] large = new byte[2 * 1024 * 1024 + 8192];
+        for (int i = 0; i < large.length; i++) large[i] = 'a';
+        byte[] zip = zipBytes(List.of(
+                Map.entry("big.txt", large)
+        ));
+
+        Path zipPath = tempDir.resolve("large.zip");
+        Files.write(zipPath, zip);
+
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setOwner(null);
+        fa.setPath(zipPath.toString());
+        fa.setUrl("/uploads/large.zip");
+        fa.setOriginalName("large.zip");
+        fa.setSizeBytes(Files.size(zipPath));
+        fa.setMimeType("application/zip");
+        fa.setSha256(randomSha256());
+        fa.setStatus(FileAssetStatus.READY);
+        fa = fileAssetsRepository.save(fa);
+
+        fileAssetExtractionAsyncService.extractAsync(fa.getId());
+
+        FileAssetExtractionsEntity e = waitExtraction(fa.getId(), FileAssetExtractionStatus.READY);
+        assertNotNull(e);
+        Map<String, Object> meta = objectMapper.readValue(e.getExtractedMetadataJson(), new TypeReference<Map<String, Object>>() {});
+        Object archiveObj = meta.get("archive");
+        assertTrue(archiveObj instanceof Map<?, ?>);
+        Map<?, ?> archive = (Map<?, ?>) archiveObj;
+        Object filesObj = archive.get("files");
+        assertTrue(filesObj instanceof List<?>);
+        List<?> files = (List<?>) filesObj;
+        assertFalse(files.isEmpty());
+        assertTrue(files.get(0) instanceof Map<?, ?>);
+        Map<?, ?> first = (Map<?, ?>) files.get(0);
+        assertEquals("SKIPPED_TRUNCATED", String.valueOf(first.get("parseStatus")));
+    }
+
+    @Test
     void nestedZipDepthShouldHardFail() throws Exception {
         byte[] inner = zipBytes(List.of(Map.entry("a.txt", "hello")));
         byte[] nested = inner;

@@ -535,7 +535,7 @@ describe('ImportConfigurationForm', () => {
 
     expect(setupServiceMocks.initIndices).toHaveBeenCalledTimes(1);
     const arg = setupServiceMocks.initIndices.mock.calls[0]?.[0] as string[];
-    expect(arg).toEqual(['ad_violation_samples_v1', 'rag_post_chunks_v1_comments']);
+    expect(arg).toEqual(['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_file_assets_v1']);
     expect(toastMocks.success).toHaveBeenCalledWith('索引初始化成功');
   });
 
@@ -556,7 +556,7 @@ describe('ImportConfigurationForm', () => {
     await screen.findByText('创建管理员账户');
 
     const arg = setupServiceMocks.initIndices.mock.calls[0]?.[0] as string[];
-    expect(arg).toEqual(['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_post_chunks_v1']);
+    expect(arg).toEqual(['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_file_assets_v1', 'rag_post_chunks_v1']);
   });
 
   it('shows friendly error and toast when final submit fails', async () => {

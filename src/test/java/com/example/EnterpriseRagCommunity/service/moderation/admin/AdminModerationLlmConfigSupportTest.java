@@ -97,22 +97,22 @@ class AdminModerationLlmConfigSupportTest {
     void upsertConfigEntity_shouldThrow_whenTextPromptCodeInvalid() {
         AdminModerationLlmConfigSupport support = new AdminModerationLlmConfigSupport(mock(ModerationLlmConfigRepository.class));
         LlmModerationConfigDTO payload = validPayload();
-        payload.setTextPromptCode("  ");
+        payload.setMultimodalPromptCode("  ");
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> support.upsertConfigEntity(payload, 1L));
 
-        assertTrue(ex.getMessage().contains("textPromptCode"));
+        assertTrue(ex.getMessage().contains("multimodalPromptCode"));
     }
 
     @Test
     void upsertConfigEntity_shouldThrow_whenVisionPromptCodeInvalid() {
         AdminModerationLlmConfigSupport support = new AdminModerationLlmConfigSupport(mock(ModerationLlmConfigRepository.class));
         LlmModerationConfigDTO payload = validPayload();
-        payload.setVisionPromptCode(null);
+        payload.setMultimodalPromptCode(null);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> support.upsertConfigEntity(payload, 1L));
 
-        assertTrue(ex.getMessage().contains("visionPromptCode"));
+        assertTrue(ex.getMessage().contains("multimodalPromptCode"));
     }
 
     @Test
@@ -137,16 +137,14 @@ class AdminModerationLlmConfigSupportTest {
         payload.setAutoRun(null);
         ConfigUpsertResult result = support.upsertConfigEntity(payload, 100L);
 
-        assertEquals("TEXT_NEW", result.saved().getTextPromptCode());
-        assertEquals("VISION_NEW", result.saved().getVisionPromptCode());
+        assertEquals("VISION_NEW", result.saved().getMultimodalPromptCode());
         assertEquals("JUDGE_NEW", result.saved().getJudgePromptCode());
         assertEquals(Boolean.TRUE, result.saved().getAutoRun());
         assertEquals(100L, result.saved().getUpdatedBy());
-        assertEquals(null, result.beforeSummary().get("textPromptCode"));
-        assertEquals(null, result.beforeSummary().get("visionPromptCode"));
+        assertEquals(null, result.beforeSummary().get("multimodalPromptCode"));
         assertEquals(null, result.beforeSummary().get("judgePromptCode"));
         assertEquals(null, result.beforeSummary().get("autoRun"));
-        assertEquals("TEXT_NEW", result.afterSummary().get("textPromptCode"));
+        assertEquals("VISION_NEW", result.afterSummary().get("multimodalPromptCode"));
         assertEquals(Boolean.TRUE, result.afterSummary().get("autoRun"));
     }
 
@@ -168,9 +166,9 @@ class AdminModerationLlmConfigSupportTest {
 
         assertSame(existing, result.saved());
         assertEquals(Boolean.FALSE, result.saved().getAutoRun());
-        assertEquals("TEXT_OLD", result.beforeSummary().get("textPromptCode"));
+        assertEquals("VISION_OLD", result.beforeSummary().get("multimodalPromptCode"));
         assertEquals(Boolean.TRUE, result.beforeSummary().get("autoRun"));
-        assertEquals("TEXT_NEW", result.afterSummary().get("textPromptCode"));
+        assertEquals("VISION_NEW", result.afterSummary().get("multimodalPromptCode"));
         assertEquals(Boolean.FALSE, result.afterSummary().get("autoRun"));
         assertNull(getField(support, "cachedBaseConfig"));
         assertEquals(0L, (Long) getField(support, "cachedBaseConfigAtMs"));
@@ -188,8 +186,7 @@ class AdminModerationLlmConfigSupportTest {
 
         assertEquals(1L, merged.getId());
         assertEquals(7, merged.getVersion());
-        assertEquals("TEXT_BASE", merged.getTextPromptCode());
-        assertEquals("VISION_BASE", merged.getVisionPromptCode());
+        assertEquals("VISION_BASE", merged.getMultimodalPromptCode());
         assertEquals("JUDGE_BASE", merged.getJudgePromptCode());
         assertEquals(Boolean.TRUE, merged.getAutoRun());
         assertEquals(10L, merged.getUpdatedBy());
@@ -232,22 +229,22 @@ class AdminModerationLlmConfigSupportTest {
     void normalizeBaseConfig_shouldThrow_whenTextPromptCodeInvalid() {
         AdminModerationLlmConfigSupport support = new AdminModerationLlmConfigSupport(mock(ModerationLlmConfigRepository.class));
         ModerationLlmConfigEntity base = validEntity("TEXT_A", "VISION_A", "JUDGE_A", true);
-        base.setTextPromptCode(" ");
+        base.setMultimodalPromptCode(" ");
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> support.normalizeBaseConfig(base));
 
-        assertTrue(ex.getMessage().contains("text_prompt_code"));
+        assertTrue(ex.getMessage().contains("multimodal_prompt_code"));
     }
 
     @Test
     void normalizeBaseConfig_shouldThrow_whenVisionPromptCodeInvalid() {
         AdminModerationLlmConfigSupport support = new AdminModerationLlmConfigSupport(mock(ModerationLlmConfigRepository.class));
         ModerationLlmConfigEntity base = validEntity("TEXT_A", "VISION_A", "JUDGE_A", true);
-        base.setVisionPromptCode(null);
+        base.setMultimodalPromptCode(null);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () -> support.normalizeBaseConfig(base));
 
-        assertTrue(ex.getMessage().contains("vision_prompt_code"));
+        assertTrue(ex.getMessage().contains("multimodal_prompt_code"));
     }
 
     @Test
@@ -268,8 +265,7 @@ class AdminModerationLlmConfigSupportTest {
 
         ModerationLlmConfigEntity cfg = validEntity("TEXT_SUM", "VISION_SUM", "JUDGE_SUM", false);
         Map<String, Object> mapped = AdminModerationLlmConfigSupport.summarizeConfig(cfg);
-        assertEquals("TEXT_SUM", mapped.get("textPromptCode"));
-        assertEquals("VISION_SUM", mapped.get("visionPromptCode"));
+        assertEquals("VISION_SUM", mapped.get("multimodalPromptCode"));
         assertEquals("JUDGE_SUM", mapped.get("judgePromptCode"));
         assertEquals(Boolean.FALSE, mapped.get("autoRun"));
     }
@@ -293,8 +289,7 @@ class AdminModerationLlmConfigSupportTest {
 
         assertEquals(99L, dto.getId());
         assertEquals(3, dto.getVersion());
-        assertEquals("TEXT_DTO", dto.getTextPromptCode());
-        assertEquals("VISION_DTO", dto.getVisionPromptCode());
+        assertEquals("VISION_DTO", dto.getMultimodalPromptCode());
         assertEquals("JUDGE_DTO", dto.getJudgePromptCode());
         assertEquals(Boolean.FALSE, dto.getAutoRun());
         assertEquals(LocalDateTime.of(2026, 3, 6, 10, 30), dto.getUpdatedAt());
@@ -303,8 +298,7 @@ class AdminModerationLlmConfigSupportTest {
 
     private static ModerationLlmConfigEntity validEntity(String text, String vision, String judge, Boolean autoRun) {
         ModerationLlmConfigEntity e = new ModerationLlmConfigEntity();
-        e.setTextPromptCode(text);
-        e.setVisionPromptCode(vision);
+        e.setMultimodalPromptCode(vision != null ? vision : text);
         e.setJudgePromptCode(judge);
         e.setAutoRun(autoRun);
         e.setVersion(1);
@@ -315,8 +309,7 @@ class AdminModerationLlmConfigSupportTest {
 
     private static LlmModerationConfigDTO validPayload() {
         LlmModerationConfigDTO dto = new LlmModerationConfigDTO();
-        dto.setTextPromptCode("TEXT_NEW");
-        dto.setVisionPromptCode("VISION_NEW");
+        dto.setMultimodalPromptCode("VISION_NEW");
         dto.setJudgePromptCode("JUDGE_NEW");
         dto.setAutoRun(Boolean.TRUE);
         return dto;

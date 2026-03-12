@@ -1062,6 +1062,9 @@ public class ModerationLlmAutoRunner {
                                     candidateChunkImageRefs = List.of();
                                 }
 
+                                Set<Integer> currentChunkImageIndices = parseUsedImageIndices(raw);
+                                List<ChunkImageRef> currentChunkImageRefs = filterChunkImageRefsByIndices(candidateChunkImageRefs, currentChunkImageIndices);
+
                                 boolean sendImagesOnlyWhenInEvidence = chunkCfg0 == null || !Boolean.FALSE.equals(chunkCfg0.getSendImagesOnlyWhenInEvidence());
                                 if (sendImagesOnlyWhenInEvidence) {
                                     EvidenceImageSelection selection = selectEvidenceDrivenChunkImages(mem, c.chunkIndex(), candidateChunkImageRefs);
@@ -1071,7 +1074,10 @@ public class ModerationLlmAutoRunner {
                                 } else {
                                     chunkImageRefs = candidateChunkImageRefs;
                                 }
-                                chunkImages = refsToImageInputs(chunkImageRefs, c.fileAssetId());
+                                List<ChunkImageRef> actualChunkImageRefs = sendImagesOnlyWhenInEvidence
+                                        ? mergeChunkImageRefs(chunkImageRefs, currentChunkImageRefs)
+                                        : chunkImageRefs;
+                                chunkImages = refsToImageInputs(actualChunkImageRefs, c.fileAssetId());
 
                                 // promptImageRefs: images listed as text URLs in the prompt (low token cost).
                                 // When sendImagesOnlyWhenInEvidence, also include current-chunk images
@@ -1083,24 +1089,8 @@ public class ModerationLlmAutoRunner {
                                 if (!includeImagesBlockOnlyForEvidenceMatches) {
                                     promptImageRefs = candidateChunkImageRefs;
                                 } else if (sendImagesOnlyWhenInEvidence) {
-                                    // Merge evidence-driven refs + current-chunk text refs for prompt listing
-                                    Set<Integer> currentChunkImageIndices = parseUsedImageIndices(raw);
-                                    if (currentChunkImageIndices.isEmpty()) {
-                                        promptImageRefs = chunkImageRefs;
-                                    } else {
-                                        promptImageRefs = new ArrayList<>(chunkImageRefs);
-                                        LinkedHashSet<String> already = new LinkedHashSet<>();
-                                        for (ChunkImageRef ref : chunkImageRefs) {
-                                            if (ref.placeholder != null) already.add(ref.placeholder.trim());
-                                        }
-                                        for (ChunkImageRef ref : candidateChunkImageRefs) {
-                                            if (ref != null && ref.index != null && currentChunkImageIndices.contains(ref.index)
-                                                    && ref.placeholder != null && !already.contains(ref.placeholder.trim())) {
-                                                promptImageRefs.add(ref);
-                                                already.add(ref.placeholder.trim());
-                                            }
-                                        }
-                                    }
+                                    // Keep evidence-driven prompt refs, but also list images explicitly referenced in the current chunk.
+                                    promptImageRefs = mergeChunkImageRefs(chunkImageRefs, currentChunkImageRefs);
                                 } else {
                                     promptImageRefs = chunkImageRefs;
                                 }
@@ -1162,7 +1152,7 @@ public class ModerationLlmAutoRunner {
                                         boolean keepEvidence = policyVerdict == Verdict.REJECT || policyVerdict == Verdict.REVIEW;
                                         List<String> evidenceBeforeNormalize = filterChunkEvidence(res == null ? null : res.getEvidence());
                                         List<String> evidence = keepEvidence
-                                            ? normalizeChunkEvidenceForLabels(res == null ? null : res.getEvidence(), raw)
+                                            ? normalizeChunkEvidenceForLabels(res == null ? null : res.getEvidence(), raw, actualChunkImageRefs)
                                             : List.of();
                                     if (evidence != null && !evidence.isEmpty()) {
                                         int take = Math.min(10, evidence.size());
@@ -1738,9 +1728,9 @@ public class ModerationLlmAutoRunner {
     }
 
     private int resolveWaitFilesSeconds(ModerationLlmConfigEntity cfg) {
-        if (cfg != null && cfg.getVisionPromptCode() != null) {
+        if (cfg != null && cfg.getMultimodalPromptCode() != null) {
             try {
-                var prompt = promptsRepository.findByPromptCode(cfg.getVisionPromptCode()).orElse(null);
+                var prompt = promptsRepository.findByPromptCode(cfg.getMultimodalPromptCode()).orElse(null);
                 if (prompt != null && prompt.getWaitFilesSeconds() != null) {
                     int n = prompt.getWaitFilesSeconds();
                     if (n < 0) n = 0;
@@ -2622,6 +2612,41 @@ public class ModerationLlmAutoRunner {
         return out.isEmpty() ? List.of() : new ArrayList<>(out);
     }
 
+    private static List<ChunkImageRef> filterChunkImageRefsByIndices(List<ChunkImageRef> refs, Set<Integer> indices) {
+        if (refs == null || refs.isEmpty() || indices == null || indices.isEmpty()) return List.of();
+        ArrayList<ChunkImageRef> out = new ArrayList<>();
+        for (ChunkImageRef ref : refs) {
+            if (ref == null || ref.index == null || !indices.contains(ref.index)) continue;
+            out.add(ref);
+        }
+        return out.isEmpty() ? List.of() : out;
+    }
+
+    private static List<ChunkImageRef> mergeChunkImageRefs(List<ChunkImageRef> primaryRefs, List<ChunkImageRef> secondaryRefs) {
+        if ((primaryRefs == null || primaryRefs.isEmpty()) && (secondaryRefs == null || secondaryRefs.isEmpty())) {
+            return List.of();
+        }
+        ArrayList<ChunkImageRef> out = new ArrayList<>();
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        for (ChunkImageRef ref : primaryRefs == null ? List.<ChunkImageRef>of() : primaryRefs) {
+            if (appendChunkImageRef(out, seen, ref)) continue;
+        }
+        for (ChunkImageRef ref : secondaryRefs == null ? List.<ChunkImageRef>of() : secondaryRefs) {
+            appendChunkImageRef(out, seen, ref);
+        }
+        return out.isEmpty() ? List.of() : out;
+    }
+
+    private static boolean appendChunkImageRef(List<ChunkImageRef> out, Set<String> seen, ChunkImageRef ref) {
+        if (ref == null) return false;
+        String placeholder = ref.placeholder == null ? "" : ref.placeholder.trim();
+        String url = ref.url == null ? "" : ref.url.trim();
+        String key = !placeholder.isEmpty() ? "ph|" + placeholder : (!url.isEmpty() ? "url|" + url : "");
+        if (key.isEmpty() || !seen.add(key)) return false;
+        out.add(ref);
+        return true;
+    }
+
     private static List<String> summarizeEvidenceMemory(Map<String, Object> mem, Integer chunkIndex, int maxLines) {
         if (mem == null || mem.isEmpty()) return List.of();
         Object raw = mem.get("llmEvidenceByChunk");
@@ -2863,7 +2888,7 @@ public class ModerationLlmAutoRunner {
         return out;
     }
 
-    private List<String> normalizeChunkEvidenceForLabels(List<String> evidence, String chunkText) {
+    private List<String> normalizeChunkEvidenceForLabels(List<String> evidence, String chunkText, List<ChunkImageRef> actualChunkImageRefs) {
         List<String> cleaned = filterChunkEvidence(evidence);
         if (cleaned.isEmpty()) return List.of();
         ArrayList<String> out = new ArrayList<>();
@@ -2871,13 +2896,109 @@ public class ModerationLlmAutoRunner {
         for (String item : cleaned) {
             String t = item == null ? "" : item.trim();
             if (t.isEmpty()) continue;
-            String normalized = ensureAnchorEvidenceContainsText(t, chunkText);
+            String normalized = normalizeChunkImageEvidenceId(t, actualChunkImageRefs);
+            normalized = normalizeImageEvidenceToTextAnchor(normalized, chunkText);
+            normalized = ensureAnchorEvidenceContainsText(normalized, chunkText);
             String key = evidenceFingerprint(normalized);
             if (key == null || key.isBlank()) key = "raw|" + normalized;
             if (!seen.add(key)) continue;
             out.add(normalized);
         }
         return out.isEmpty() ? List.of() : out;
+    }
+
+    private static String normalizeChunkImageEvidenceId(String evidenceItem, List<ChunkImageRef> actualChunkImageRefs) {
+        if (evidenceItem == null) return "";
+        String raw = evidenceItem.trim();
+        if (!raw.startsWith("{") || !raw.endsWith("}")) return raw;
+        if (actualChunkImageRefs == null || actualChunkImageRefs.isEmpty()) return raw;
+
+        Map<String, Object> node;
+        try {
+            node = EVIDENCE_MAPPER.readValue(raw, STRING_OBJECT_MAP_TYPE);
+        } catch (Exception e) {
+            return raw;
+        }
+        if (node == null) return raw;
+
+        String imageId = firstNonBlank(
+                toStr(node.get("image_id")),
+                toStr(node.get("imageId")),
+                toStr(node.get("image"))
+        );
+        Integer ordinal = parseChunkEvidenceImageOrdinal(imageId);
+        if (ordinal == null || ordinal <= 0 || ordinal > actualChunkImageRefs.size()) return raw;
+
+        ChunkImageRef target = actualChunkImageRefs.get(ordinal - 1);
+        if (target == null) return raw;
+        String placeholder = firstNonBlank(
+                target.placeholder,
+                target.index == null ? null : "[[IMAGE_" + target.index + "]]"
+        );
+        if (placeholder == null || placeholder.isBlank()) return raw;
+
+        node.put("image_id", placeholder);
+        node.remove("imageId");
+        node.remove("image");
+        try {
+            return EVIDENCE_MAPPER.writeValueAsString(node);
+        } catch (Exception e) {
+            return raw;
+        }
+    }
+
+    private static Integer parseChunkEvidenceImageOrdinal(String imageId) {
+        if (imageId == null || imageId.isBlank()) return null;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^img[\\s_-]*(\\d+)$", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(imageId.trim());
+        if (!matcher.matches()) return null;
+        return toInt(matcher.group(1));
+    }
+
+    private static String normalizeImageEvidenceToTextAnchor(String evidenceItem, String chunkText) {
+        if (evidenceItem == null) return "";
+        String raw = evidenceItem.trim();
+        if (!raw.startsWith("{") || !raw.endsWith("}")) return raw;
+
+        Map<String, Object> node;
+        try {
+            node = EVIDENCE_MAPPER.readValue(raw, STRING_OBJECT_MAP_TYPE);
+        } catch (Exception e) {
+            return raw;
+        }
+        if (node == null) return raw;
+
+        String imageId = toStr(node.get("image_id"));
+        if (imageId == null) imageId = toStr(node.get("imageId"));
+        if (imageId == null) return raw;
+
+        String snippet = firstNonBlank(
+                toStr(node.get("quote")),
+                toStr(node.get("text"))
+        );
+        if (snippet == null || snippet.isBlank()) return raw;
+        if (!containsNormalizedText(chunkText, snippet)) return raw;
+
+        AnchoredSnippet anchored = buildAnchoredSnippetFromChunk(chunkText, snippet, 15);
+        if (anchored == null || anchored.text == null || anchored.text.isBlank()) return raw;
+
+        node.remove("image_id");
+        node.remove("imageId");
+        node.remove("image");
+        node.put("text", clipTextForEvidenceJson(anchored.text, 240));
+        if (anchored.beforeContext != null && !anchored.beforeContext.isBlank()) {
+            node.put("before_context", anchored.beforeContext);
+        }
+        if (anchored.afterContext != null && !anchored.afterContext.isBlank()) {
+            node.put("after_context", anchored.afterContext);
+        }
+        if (containsNormalizedText(anchored.text, toStr(node.get("quote")))) {
+            node.remove("quote");
+        }
+        try {
+            return EVIDENCE_MAPPER.writeValueAsString(node);
+        } catch (Exception e) {
+            return raw;
+        }
     }
 
     private String ensureAnchorEvidenceContainsText(String evidenceItem, String chunkText) {
@@ -2958,6 +3079,33 @@ public class ModerationLlmAutoRunner {
         int max = Math.max(20, maxChars);
         if (t.length() <= max) return t;
         return t.substring(0, max);
+    }
+
+    private static AnchoredSnippet buildAnchoredSnippetFromChunk(String chunkText, String snippet, int anchorChars) {
+        String text = chunkText == null ? "" : chunkText;
+        String needle = snippet == null ? "" : snippet.trim();
+        if (text.isBlank() || needle.isBlank()) return null;
+        int idx = text.indexOf(needle);
+        if (idx < 0) return null;
+        int start = idx;
+        int end = idx + needle.length();
+        int around = Math.max(6, Math.min(40, anchorChars));
+        String before = text.substring(Math.max(0, start - around), start).trim();
+        String after = text.substring(end, Math.min(text.length(), end + around)).trim();
+        String cleanedText = cleanExtractedSnippet(needle);
+        String cleanedBefore = cleanExtractedSnippet(before);
+        String cleanedAfter = cleanExtractedSnippet(after);
+        if (cleanedText.isBlank()) return null;
+        return new AnchoredSnippet(cleanedBefore, cleanedText, cleanedAfter);
+    }
+
+    private static String firstNonBlank(String... values) {
+        if (values == null || values.length == 0) return null;
+        for (String value : values) {
+            String t = toStr(value);
+            if (t != null) return t;
+        }
+        return null;
     }
 
     private static String fallbackViolationSnippet(String text, int violationStart) {
@@ -3181,6 +3329,9 @@ public class ModerationLlmAutoRunner {
         if (s == null) return null;
         String t = s.trim();
         return t.isEmpty() ? null : t;
+    }
+
+    private record AnchoredSnippet(String beforeContext, String text, String afterContext) {
     }
 
     private static List<String> extractKeywords(String text, int limit) {

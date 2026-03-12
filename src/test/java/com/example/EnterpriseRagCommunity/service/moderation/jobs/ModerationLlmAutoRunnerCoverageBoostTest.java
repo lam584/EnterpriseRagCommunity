@@ -193,7 +193,7 @@ class ModerationLlmAutoRunnerCoverageBoostTest {
     @Test
     void evidenceMethods_shouldCoverNormalizationFingerprintAndAnchorFallback() throws Exception {
         Fixture f = fixture();
-        Method normalizeChunkEvidenceForLabels = method("normalizeChunkEvidenceForLabels", List.class, String.class);
+        Method normalizeChunkEvidenceForLabels = method("normalizeChunkEvidenceForLabels", List.class, String.class, List.class);
         Method ensureAnchorEvidenceContainsText = method("ensureAnchorEvidenceContainsText", String.class, String.class);
         Method evidenceFingerprint = method("evidenceFingerprint", String.class);
         Method fallbackViolationSnippet = method("fallbackViolationSnippet", String.class, int.class);
@@ -209,7 +209,8 @@ class ModerationLlmAutoRunnerCoverageBoostTest {
         List<String> out = (List<String>) normalizeChunkEvidenceForLabels.invoke(
                 f.runner,
                 List.of(" ", evidenceJson, evidenceJson, "raw evidence"),
-                chunkText
+            chunkText,
+            List.of()
         );
         assertEquals(2, out.size());
 
@@ -285,7 +286,7 @@ class ModerationLlmAutoRunnerCoverageBoostTest {
         verify(f.riskLabelingService).replaceRiskTags(eq(ContentType.POST), eq(9900L), any(), any(), eq(BigDecimal.valueOf(0.95)), eq(false));
 
         ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
-        cfg.setVisionPromptCode("VISION_PROMPT");
+        cfg.setMultimodalPromptCode("VISION_PROMPT");
         PromptsEntity prompt = new PromptsEntity();
         prompt.setWaitFilesSeconds(7200);
         when(f.promptsRepository.findByPromptCode("VISION_PROMPT")).thenReturn(Optional.of(prompt));
