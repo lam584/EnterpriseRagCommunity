@@ -50,8 +50,8 @@ export default function EvidenceContextCell({ description, beforeText, mainText,
           {beforeExtraText ? <div className="text-xs text-gray-500 whitespace-pre-wrap break-words">{beforeExtraText}</div> : null}
           {beforeAnchorText ? <div className="text-xs whitespace-pre-wrap break-words">{beforeAnchorText}</div> : null}
           {mainAnchorText ? (
-            <div className="rounded border border-amber-200 bg-amber-50 p-2 overflow-x-auto">
-              <div className="text-xs whitespace-nowrap">{mainAnchorText}</div>
+            <div className="rounded border border-amber-200 bg-amber-50 p-2 overflow-auto">
+              <div className="text-xs whitespace-pre-wrap break-words">{mainAnchorText}</div>
             </div>
           ) : null}
           {afterAnchorText ? <div className="text-xs whitespace-pre-wrap break-words">{afterAnchorText}</div> : null}

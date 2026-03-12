@@ -154,6 +154,17 @@ class AiPostComposeAssistantServiceTest {
         return repo;
     }
 
+        private static LlmModelRepository enabledMultimodalRepo() {
+                LlmModelRepository repo = mock(LlmModelRepository.class);
+                LlmModelEntity enabled = new LlmModelEntity();
+                enabled.setEnabled(true);
+                when(repo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
+                                .thenReturn(List.of(enabled));
+                when(repo.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), anyString(), eq("MULTIMODAL_CHAT"), anyString()))
+                                .thenReturn(Optional.of(enabled));
+                return repo;
+        }
+
     private static AiPostComposeStreamRequest req(long snapshotId) {
         AiPostComposeStreamRequest r = new AiPostComposeStreamRequest();
         r.setSnapshotId(snapshotId);
@@ -356,7 +367,7 @@ class AiPostComposeAssistantServiceTest {
                 snapshotsRepository,
                 usersRepoWithDefaultPrompt(userId, "u-prompt"),
                 llmGateway,
-                mock(LlmModelRepository.class),
+                enabledMultimodalRepo(),
                 mock(FileAssetsRepository.class),
                 portalCfg("p", "m", 0.6, 0.9, 20, false, "base", "deep", "compose"),
                 promptsRepo("base", "deep", "compose"),
@@ -409,7 +420,7 @@ class AiPostComposeAssistantServiceTest {
                 snapshotsRepository,
                 usersRepoWithDefaultPrompt(userId, null),
                 llmGateway,
-                mock(LlmModelRepository.class),
+                enabledMultimodalRepo(),
                 mock(FileAssetsRepository.class),
                 portalCfg("p", "m", null, 0.9, 20, true, "base", "deep", "compose"),
                 promptsRepo("base", "deep", "compose"),
@@ -455,7 +466,7 @@ class AiPostComposeAssistantServiceTest {
                 snapshotsRepository,
                 usersRepoWithDefaultPrompt(userId, null),
                 llmGateway,
-                mock(LlmModelRepository.class),
+                enabledMultimodalRepo(),
                 mock(FileAssetsRepository.class),
                 portalCfg("p", "m", 0.6, 0.9, 1, false, "base", "deep", "compose"),
                 promptsRepo("base", "deep", "compose"),
@@ -506,7 +517,7 @@ class AiPostComposeAssistantServiceTest {
                 snapshotsRepository,
                 usersRepoWithDefaultPrompt(userId, null),
                 llmGateway,
-                mock(LlmModelRepository.class),
+                enabledMultimodalRepo(),
                 mock(FileAssetsRepository.class),
                 portalCfg("p", "m", 0.6, 0.9, 20, false, "base", "deep", "compose"),
                 promptsRepo("base", "deep", "compose"),
@@ -627,7 +638,7 @@ class AiPostComposeAssistantServiceTest {
         when(snapshotsRepository.findByIdAndUserId(eq(1L), eq(userId))).thenReturn(Optional.of(snap));
 
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("IMAGE_CHAT"), eq("m1")))
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("m1")))
                 .thenReturn(Optional.empty());
 
         LlmGateway llmGateway = mock(LlmGateway.class);
@@ -652,7 +663,7 @@ class AiPostComposeAssistantServiceTest {
 
         String body = resp.getContentAsString(StandardCharsets.UTF_8);
         assertTrue(body.contains("event: error\n"));
-        assertTrue(body.contains("不支持图片"));
+        assertTrue(body.contains("多模态聊天模型池"));
         assertTrue(body.contains("event: done\n"));
         verify(llmGateway, never()).chatStreamRouted(
                 any(LlmQueueTaskType.class),
@@ -678,7 +689,7 @@ class AiPostComposeAssistantServiceTest {
         when(snapshotsRepository.findByIdAndUserId(eq(1L), eq(userId))).thenReturn(Optional.of(snap));
 
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("IMAGE_CHAT")))
+        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
                 .thenReturn(List.of());
 
         LlmGateway llmGateway = mock(LlmGateway.class);
@@ -705,7 +716,7 @@ class AiPostComposeAssistantServiceTest {
 
         String body = resp.getContentAsString(StandardCharsets.UTF_8);
         assertTrue(body.contains("event: error\n"));
-        assertTrue(body.contains("IMAGE_CHAT"));
+        assertTrue(body.contains("MULTIMODAL_CHAT"));
         assertTrue(body.contains("event: done\n"));
         verify(llmGateway, never()).chatStreamRouted(
                 any(LlmQueueTaskType.class),
@@ -737,7 +748,7 @@ class AiPostComposeAssistantServiceTest {
         LlmModelEntity enabled = new LlmModelEntity();
         enabled.setEnabled(true);
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("IMAGE_CHAT"), eq("m1")))
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("m1")))
                 .thenReturn(Optional.of(enabled));
 
         LlmGateway llmGateway = mock(LlmGateway.class);
@@ -783,7 +794,7 @@ class AiPostComposeAssistantServiceTest {
 
         s.streamComposeEdit(r, userId, newSseResponse());
 
-        assertEquals(LlmQueueTaskType.IMAGE_CHAT, capturedTaskType[0]);
+        assertEquals(LlmQueueTaskType.MULTIMODAL_CHAT, capturedTaskType[0]);
         assertNotNull(capturedMessages[0]);
         ChatMessage last = capturedMessages[0].get(capturedMessages[0].size() - 1);
         assertEquals("user", last.role());
@@ -1076,7 +1087,7 @@ class AiPostComposeAssistantServiceTest {
                 snapshotsRepository,
                 usersRepoWithDefaultPrompt(userId, null),
                 llmGateway,
-                mock(LlmModelRepository.class),
+                enabledMultimodalRepo(),
                 mock(FileAssetsRepository.class),
                 portalCfg("p", "m", 0.6, 0.9, 2, false, "base", "deep", "compose"),
                 promptsRepo("base", "deep", "compose"),
@@ -1118,15 +1129,15 @@ class AiPostComposeAssistantServiceTest {
 
         invokeInstance(
                 s,
-                "ensureVisionModelForRequest",
-                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                new Object[] { LlmQueueTaskType.IMAGE_CHAT, "p1", "m1", false }
+                "ensureMultimodalModelForRequest",
+                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                new Object[] { LlmQueueTaskType.IMAGE_CHAT, "p1", "m1" }
         );
         invokeInstance(
                 s,
-                "ensureVisionModelForRequest",
-                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                new Object[] { LlmQueueTaskType.TEXT_CHAT, "p1", "m1", true }
+                "ensureMultimodalModelForRequest",
+                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                new Object[] { LlmQueueTaskType.TEXT_CHAT, "p1", "m1" }
         );
 
         verify(llmGateway, never()).resolve(any());
@@ -1141,7 +1152,7 @@ class AiPostComposeAssistantServiceTest {
         LlmModelEntity enabled = new LlmModelEntity();
         enabled.setEnabled(true);
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("IMAGE_CHAT"), eq("m1")))
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("m1")))
                 .thenReturn(Optional.of(enabled));
 
         AiPostComposeAssistantService s = newService(
@@ -1158,9 +1169,9 @@ class AiPostComposeAssistantServiceTest {
 
         invokeInstance(
                 s,
-                "ensureVisionModelForRequest",
-                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                new Object[] { LlmQueueTaskType.IMAGE_CHAT, null, "m1", true }
+                "ensureMultimodalModelForRequest",
+                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, null, "m1" }
         );
     }
 
@@ -1188,9 +1199,9 @@ class AiPostComposeAssistantServiceTest {
                 RuntimeException.class,
                 () -> invokeInstance(
                         s,
-                        "ensureVisionModelForRequest",
-                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                        new Object[] { LlmQueueTaskType.IMAGE_CHAT, null, "m1", true }
+                        "ensureMultimodalModelForRequest",
+                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                        new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, null, "m1" }
                 )
         );
         Throwable t = unwrapInvoke(ex);
@@ -1206,7 +1217,7 @@ class AiPostComposeAssistantServiceTest {
         LlmModelEntity enabled = new LlmModelEntity();
         enabled.setEnabled(true);
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("IMAGE_CHAT"), eq("m1")))
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("m1")))
                 .thenReturn(Optional.of(enabled));
 
         AiPostComposeAssistantService s = newService(
@@ -1223,9 +1234,9 @@ class AiPostComposeAssistantServiceTest {
 
         invokeInstance(
                 s,
-                "ensureVisionModelForRequest",
-                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                new Object[] { LlmQueueTaskType.IMAGE_CHAT, "p1", null, true }
+                "ensureMultimodalModelForRequest",
+                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, "p1", null }
         );
     }
 
@@ -1250,9 +1261,9 @@ class AiPostComposeAssistantServiceTest {
                 RuntimeException.class,
                 () -> invokeInstance(
                         s,
-                        "ensureVisionModelForRequest",
-                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                        new Object[] { LlmQueueTaskType.IMAGE_CHAT, "p1", null, true }
+                        "ensureMultimodalModelForRequest",
+                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                        new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, "p1", null }
                 )
         );
         Throwable t1 = unwrapInvoke(ex1);
@@ -1264,9 +1275,9 @@ class AiPostComposeAssistantServiceTest {
                 RuntimeException.class,
                 () -> invokeInstance(
                         s,
-                        "ensureVisionModelForRequest",
-                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                        new Object[] { LlmQueueTaskType.IMAGE_CHAT, "p1", null, true }
+                        "ensureMultimodalModelForRequest",
+                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                        new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, "p1", null }
                 )
         );
         Throwable t2 = unwrapInvoke(ex2);
@@ -1278,9 +1289,9 @@ class AiPostComposeAssistantServiceTest {
                 RuntimeException.class,
                 () -> invokeInstance(
                         s,
-                        "ensureVisionModelForRequest",
-                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                        new Object[] { LlmQueueTaskType.IMAGE_CHAT, "p1", null, true }
+                        "ensureMultimodalModelForRequest",
+                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                        new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, "p1", null }
                 )
         );
         Throwable t3 = unwrapInvoke(ex3);
@@ -1288,7 +1299,7 @@ class AiPostComposeAssistantServiceTest {
         assertTrue(t3.getMessage().contains("默认模型"));
 
         LlmModelRepository llmModelRepository2 = mock(LlmModelRepository.class);
-        when(llmModelRepository2.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("IMAGE_CHAT"), eq("m1")))
+        when(llmModelRepository2.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("m1")))
                 .thenReturn(Optional.empty());
         AiPostComposeAssistantService s2 = newService(
                 mock(PostComposeAiSnapshotsRepository.class),
@@ -1306,14 +1317,14 @@ class AiPostComposeAssistantServiceTest {
                 RuntimeException.class,
                 () -> invokeInstance(
                         s2,
-                        "ensureVisionModelForRequest",
-                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                        new Object[] { LlmQueueTaskType.IMAGE_CHAT, "p1", null, true }
+                        "ensureMultimodalModelForRequest",
+                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                        new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, "p1", null }
                 )
         );
         Throwable t4 = unwrapInvoke(ex4);
         assertTrue(t4 instanceof IllegalArgumentException);
-        assertTrue(t4.getMessage().contains("不支持图片"));
+        assertTrue(t4.getMessage().contains("多模态聊天模型池"));
     }
 
     @Test
@@ -1337,9 +1348,9 @@ class AiPostComposeAssistantServiceTest {
                 RuntimeException.class,
                 () -> invokeInstance(
                         s,
-                        "ensureVisionModelForRequest",
-                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                        new Object[] { LlmQueueTaskType.IMAGE_CHAT, "p1", null, true }
+                        "ensureMultimodalModelForRequest",
+                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                        new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, "p1", null }
                 )
         );
         Throwable t = unwrapInvoke(ex);
@@ -1371,9 +1382,9 @@ class AiPostComposeAssistantServiceTest {
                 RuntimeException.class,
                 () -> invokeInstance(
                         s,
-                        "ensureVisionModelForRequest",
-                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                        new Object[] { LlmQueueTaskType.IMAGE_CHAT, "p1", null, true }
+                        "ensureMultimodalModelForRequest",
+                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                        new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, "p1", null }
                 )
         );
         Throwable t = unwrapInvoke(ex);
@@ -1384,7 +1395,7 @@ class AiPostComposeAssistantServiceTest {
     @Test
     void ensureVisionModelForRequest_should_pass_when_image_pool_not_empty_and_no_provider_or_model() {
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("IMAGE_CHAT")))
+        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
                 .thenReturn(List.of(new LlmModelEntity()));
 
         AiPostComposeAssistantService s = newService(
@@ -1401,16 +1412,16 @@ class AiPostComposeAssistantServiceTest {
 
         invokeInstance(
                 s,
-                "ensureVisionModelForRequest",
-                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                new Object[] { LlmQueueTaskType.IMAGE_CHAT, null, null, true }
+                "ensureMultimodalModelForRequest",
+                new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, null, null }
         );
     }
 
     @Test
     void ensureVisionModelForRequest_should_throw_when_image_pool_empty_and_no_provider_or_model() {
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("IMAGE_CHAT")))
+        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
                 .thenReturn(List.of());
 
         AiPostComposeAssistantService s = newService(
@@ -1429,14 +1440,14 @@ class AiPostComposeAssistantServiceTest {
                 RuntimeException.class,
                 () -> invokeInstance(
                         s,
-                        "ensureVisionModelForRequest",
-                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class, boolean.class },
-                        new Object[] { LlmQueueTaskType.IMAGE_CHAT, null, null, true }
+                        "ensureMultimodalModelForRequest",
+                        new Class<?>[] { LlmQueueTaskType.class, String.class, String.class },
+                        new Object[] { LlmQueueTaskType.MULTIMODAL_CHAT, null, null }
                 )
         );
         Throwable t = unwrapInvoke(ex);
         assertTrue(t instanceof IllegalArgumentException);
-        assertTrue(t.getMessage().contains("IMAGE_CHAT"));
+        assertTrue(t.getMessage().contains("MULTIMODAL_CHAT"));
     }
 
     @Test
@@ -1444,7 +1455,7 @@ class AiPostComposeAssistantServiceTest {
         LlmModelEntity disabled = new LlmModelEntity();
         disabled.setEnabled(false);
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("IMAGE_CHAT"), eq("m1")))
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("m1")))
                 .thenReturn(Optional.of(disabled));
 
         AiPostComposeAssistantService s = newService(
@@ -1461,19 +1472,19 @@ class AiPostComposeAssistantServiceTest {
 
         assertFalse((Boolean) invokeInstance(
                 s,
-                "isEnabledImageChatModel",
+                "isEnabledMultimodalChatModel",
                 new Class<?>[] { String.class, String.class },
                 new Object[] { "p1", "m1" }
         ));
         assertFalse((Boolean) invokeInstance(
                 s,
-                "isEnabledImageChatModel",
+                "isEnabledMultimodalChatModel",
                 new Class<?>[] { String.class, String.class },
                 new Object[] { " ", "m1" }
         ));
         assertFalse((Boolean) invokeInstance(
                 s,
-                "isEnabledImageChatModel",
+                "isEnabledMultimodalChatModel",
                 new Class<?>[] { String.class, String.class },
                 new Object[] { "p1", " " }
         ));
@@ -1484,7 +1495,7 @@ class AiPostComposeAssistantServiceTest {
         LlmModelEntity enabled = new LlmModelEntity();
         enabled.setEnabled(true);
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("IMAGE_CHAT"), eq("m1")))
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("m1")))
                 .thenReturn(Optional.of(enabled));
 
         AiPostComposeAssistantService s = newService(
@@ -1501,7 +1512,7 @@ class AiPostComposeAssistantServiceTest {
 
         assertTrue((Boolean) invokeInstance(
                 s,
-                "isEnabledImageChatModel",
+                "isEnabledMultimodalChatModel",
                 new Class<?>[] { String.class, String.class },
                 new Object[] { "p1", "m1" }
         ));
@@ -1639,7 +1650,7 @@ class AiPostComposeAssistantServiceTest {
         when(snapshotsRepository.findByIdAndUserId(eq(1L), eq(userId))).thenReturn(Optional.of(snap));
 
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("IMAGE_CHAT"), eq("m1")))
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("m1")))
                 .thenThrow(new IllegalArgumentException());
 
         AiPostComposeAssistantService s = newService(
@@ -1765,7 +1776,7 @@ class AiPostComposeAssistantServiceTest {
                 snapshotsRepository,
                 usersRepoWithDefaultPrompt(userId, null),
                 llmGateway,
-                mock(LlmModelRepository.class),
+                enabledMultimodalRepo(),
                 mock(FileAssetsRepository.class),
                 portalCfg("cfg-provider", "cfg-model", 0.22, 0.33, 500, false, "base", "deep", "compose"),
                 promptsRepo("base", "deep", "compose"),
@@ -1836,7 +1847,7 @@ class AiPostComposeAssistantServiceTest {
                 snapshotsRepository,
                 usersRepoWithDefaultPrompt(userId, null),
                 llmGateway,
-                mock(LlmModelRepository.class),
+                enabledMultimodalRepo(),
                 mock(FileAssetsRepository.class),
                 portalCfg("p", "m", 0.6, 0.9, null, false, "base", "deep", "compose"),
                 promptsRepo("base", "deep", "compose"),

@@ -327,7 +327,7 @@ public class TokenCostMetricsService {
                         FROM llm_queue_task_history h
                         WHERE h.finished_at BETWEEN :start AND :end
                           AND h.status = 'DONE'
-                          AND h.type IN ('TEXT_CHAT', 'IMAGE_CHAT')
+                                                    AND h.type IN ('MULTIMODAL_CHAT', 'TEXT_CHAT', 'IMAGE_CHAT')
                         """)
                 .setParameter("start", start)
                 .setParameter("end", end)
@@ -354,7 +354,7 @@ public class TokenCostMetricsService {
                         FROM llm_queue_task_history h
                         WHERE h.finished_at BETWEEN :start AND :end
                           AND h.status = 'DONE'
-                          AND h.type IN ('TEXT_CHAT', 'IMAGE_CHAT')
+                                                    AND h.type IN ('MULTIMODAL_CHAT', 'TEXT_CHAT', 'IMAGE_CHAT')
                         GROUP BY t
                         ORDER BY t
                         """.formatted(tcol))
@@ -382,7 +382,7 @@ public class TokenCostMetricsService {
                         FROM llm_queue_task_history h
                         WHERE h.finished_at BETWEEN :start AND :end
                           AND h.status = 'DONE'
-                          AND h.type IN ('TEXT_MODERATION', 'IMAGE_MODERATION', 'MODERATION_CHUNK', 'SIMILARITY_EMBEDDING')
+                                                    AND h.type IN ('MULTIMODAL_MODERATION', 'TEXT_MODERATION', 'IMAGE_MODERATION', 'MODERATION_CHUNK', 'SIMILARITY_EMBEDDING')
                         """)
                 .setParameter("start", start)
                 .setParameter("end", end)
@@ -409,7 +409,7 @@ public class TokenCostMetricsService {
                         FROM llm_queue_task_history h
                         WHERE h.finished_at BETWEEN :start AND :end
                           AND h.status = 'DONE'
-                          AND h.type IN ('TEXT_MODERATION', 'IMAGE_MODERATION', 'MODERATION_CHUNK', 'SIMILARITY_EMBEDDING')
+                                                    AND h.type IN ('MULTIMODAL_MODERATION', 'TEXT_MODERATION', 'IMAGE_MODERATION', 'MODERATION_CHUNK', 'SIMILARITY_EMBEDDING')
                         GROUP BY t
                         ORDER BY t
                         """.formatted(tcol))

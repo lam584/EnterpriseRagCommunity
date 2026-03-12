@@ -121,9 +121,9 @@ public class AiPostComposeAssistantService {
 
         List<AiPostComposeStreamRequest.ImageInput> images = resolveImages(req, snap);
         boolean hasImages = images != null && !images.isEmpty();
-        LlmQueueTaskType chatTaskType = hasImages ? LlmQueueTaskType.IMAGE_CHAT : LlmQueueTaskType.TEXT_CHAT;
+        LlmQueueTaskType chatTaskType = LlmQueueTaskType.MULTIMODAL_CHAT;
         try {
-            ensureVisionModelForRequest(chatTaskType, providerId, model, hasImages);
+            ensureMultimodalModelForRequest(chatTaskType, providerId, model);
         } catch (Exception e) {
             out.write("event: error\n");
             out.write("data: {\"message\":\"" + jsonEscape(String.valueOf(e.getMessage() == null ? "请求失败" : e.getMessage())) + "\"}\n\n");
@@ -210,9 +210,8 @@ public class AiPostComposeAssistantService {
         return s.isEmpty() ? null : s;
     }
 
-    private void ensureVisionModelForRequest(LlmQueueTaskType taskType, String providerId, String modelOverride, boolean hasImages) {
-        if (!hasImages) return;
-        if (taskType != LlmQueueTaskType.IMAGE_CHAT) return;
+    private void ensureMultimodalModelForRequest(LlmQueueTaskType taskType, String providerId, String modelOverride) {
+        if (taskType != LlmQueueTaskType.MULTIMODAL_CHAT) return;
 
         String mo = firstNonBlank(modelOverride, null);
         String pid = firstNonBlank(providerId, null);
@@ -226,10 +225,10 @@ public class AiPostComposeAssistantService {
                 }
             }
             if (effectiveProviderId == null) {
-                throw new IllegalArgumentException("未指定模型提供商(providerId)，无法发送图片");
+                throw new IllegalArgumentException("未指定模型提供商(providerId)，无法发送多模态请求");
             }
-            if (!isEnabledImageChatModel(effectiveProviderId, mo)) {
-                throw new IllegalArgumentException("当前选择的模型不支持图片，请选择视觉模型（图片聊天）或切换为“自动(均衡负载)”");
+            if (!isEnabledMultimodalChatModel(effectiveProviderId, mo)) {
+                throw new IllegalArgumentException("当前选择的模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
             }
             return;
         }
@@ -240,29 +239,29 @@ public class AiPostComposeAssistantService {
                 String effectiveProviderId = p == null ? null : firstNonBlank(p.id(), null);
                 String effectiveModel = p == null ? null : firstNonBlank(p.defaultChatModel(), null);
                 if (effectiveProviderId == null || effectiveModel == null) {
-                    throw new IllegalArgumentException("未配置可用的默认模型，无法发送图片");
+                    throw new IllegalArgumentException("未配置可用的默认模型，无法发送多模态请求");
                 }
-                if (!isEnabledImageChatModel(effectiveProviderId, effectiveModel)) {
-                    throw new IllegalArgumentException("当前选择的模型不支持图片，请选择视觉模型（图片聊天）或切换为“自动(均衡负载)”");
+                if (!isEnabledMultimodalChatModel(effectiveProviderId, effectiveModel)) {
+                    throw new IllegalArgumentException("当前选择的默认模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
                 }
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
-                throw new IllegalArgumentException("模型提供商解析失败，无法发送图片");
+                throw new IllegalArgumentException("模型提供商解析失败，无法发送多模态请求");
             }
             return;
         }
 
-        if (llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, "IMAGE_CHAT").isEmpty()) {
-            throw new IllegalArgumentException("未配置“图片聊天(IMAGE_CHAT)”模型池，请在管理端为图片聊天配置视觉模型");
+        if (llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, "MULTIMODAL_CHAT").isEmpty()) {
+            throw new IllegalArgumentException("未配置“多模态聊天(MULTIMODAL_CHAT)”模型池，请先在管理端配置场景模型");
         }
     }
 
-    private boolean isEnabledImageChatModel(String providerId, String modelName) {
+    private boolean isEnabledMultimodalChatModel(String providerId, String modelName) {
         String pid = firstNonBlank(providerId, null);
         String mn = firstNonBlank(modelName, null);
         if (pid == null || mn == null) return false;
-        return llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, "IMAGE_CHAT", mn)
+        return llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, "MULTIMODAL_CHAT", mn)
                 .filter((e) -> !Boolean.FALSE.equals(e.getEnabled()))
                 .isPresent();
     }

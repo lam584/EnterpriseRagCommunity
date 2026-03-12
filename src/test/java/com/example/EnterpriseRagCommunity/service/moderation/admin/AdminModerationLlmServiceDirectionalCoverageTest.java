@@ -48,7 +48,7 @@ class AdminModerationLlmServiceDirectionalCoverageTest {
         Fixture f = fixture();
         ModerationLlmConfigEntity cfg = baseConfig();
         LlmModerationConfigDTO dto = new LlmModerationConfigDTO();
-        dto.setTextPromptCode("T");
+        dto.setMultimodalPromptCode("T");
 
         when(f.configSupport.loadBaseConfigCached()).thenReturn(cfg);
         when(f.configSupport.toDto(cfg, null)).thenReturn(dto);
@@ -70,8 +70,7 @@ class AdminModerationLlmServiceDirectionalCoverageTest {
                 Map.of("after", "y")
         );
         LlmModerationConfigDTO payload = new LlmModerationConfigDTO();
-        payload.setTextPromptCode("T");
-        payload.setVisionPromptCode("V");
+        payload.setMultimodalPromptCode("V");
         payload.setJudgePromptCode("J");
         LlmModerationConfigDTO dto = new LlmModerationConfigDTO();
         dto.setId(88L);
@@ -103,11 +102,10 @@ class AdminModerationLlmServiceDirectionalCoverageTest {
         ModerationLlmConfigEntity saved = baseConfig();
         ConfigUpsertResult upsert = new ConfigUpsertResult(saved, Map.of(), Map.of());
         LlmModerationConfigDTO payload = new LlmModerationConfigDTO();
-        payload.setTextPromptCode("T");
-        payload.setVisionPromptCode("V");
+        payload.setMultimodalPromptCode("V");
         payload.setJudgePromptCode("J");
         LlmModerationConfigDTO dto = new LlmModerationConfigDTO();
-        dto.setTextPromptCode("T");
+        dto.setMultimodalPromptCode("T");
 
         when(f.configSupport.upsertConfigEntity(payload, 1L)).thenReturn(upsert);
         doThrow(new RuntimeException("audit")).when(f.auditDiffBuilder).build(any(), any());
@@ -186,7 +184,7 @@ class AdminModerationLlmServiceDirectionalCoverageTest {
         assertNotNull(out);
         assertEquals("HUMAN", out.getDecision());
         assertEquals(List.of("UPSTREAM_ERROR"), out.getRiskTags());
-        assertEquals("multistage", out.getInputMode());
+        assertEquals("multimodal", out.getInputMode());
         assertEquals(1, out.getImages().size());
         assertEquals("https://img/1.png", out.getImages().get(0));
     }
@@ -385,6 +383,542 @@ class AdminModerationLlmServiceDirectionalCoverageTest {
         assertSame(in, out);
     }
 
+    @Test
+    void test_shouldFallbackDecisionAndSuggestionInTextOnlyBranch() {
+        Fixture f = fixture();
+        ModerationLlmConfigEntity merged = baseConfig();
+        PromptsEntity multimodalPrompt = visionPrompt();
+        LlmModerationTestRequest req = new LlmModerationTestRequest();
+        req.setUseQueue(Boolean.TRUE);
+
+        when(f.configSupport.loadBaseConfigCached()).thenReturn(baseConfig());
+        when(f.configSupport.merge(any(), any())).thenReturn(merged);
+        when(f.contextBuilder.resolvePromptVarsSafe(req)).thenReturn(new PromptVars("t", "c", "hello"));
+        when(f.promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(java.util.Optional.of(multimodalPrompt));
+        when(f.imageSupport.clampVisionMaxImages(multimodalPrompt.getVisionMaxImagesPerRequest())).thenReturn(3);
+        when(f.imageSupport.resolveImages(req, 3)).thenReturn(List.of());
+        when(f.contextBuilder.buildQueueTraceLine(req)).thenReturn(" ");
+        when(f.contextBuilder.buildPolicyContextBlock(req, true)).thenReturn(" ");
+        when(f.contextBuilder.resolveQueueCtx(req, true)).thenReturn(null);
+        when(f.contextBuilder.buildVisionAuditInputJsonList(req, null, List.of())).thenReturn("[]");
+        when(f.fallbackRepository.findAll(any(Sort.class))).thenReturn(List.of(fallback()));
+        when(f.tagsRepository.findByTypeAndIsActiveTrue(TagType.RISK)).thenReturn(List.of());
+
+        StageCallResult textOnly = new StageCallResult(
+                null,
+                null,
+                null,
+                " ",
+                0.61,
+                null,
+                List.of("safe"),
+                null,
+                null,
+                List.of("ev"),
+                "{}",
+                "m",
+                10L,
+                null,
+                null,
+                "d",
+                "text"
+        );
+        when(f.upstreamSupport.callTextOnce(any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(textOnly);
+
+        LlmModerationTestResponse out = f.service.test(req);
+        assertNotNull(out);
+        assertEquals("HUMAN", out.getDecision());
+        assertEquals("ESCALATE", out.getDecisionSuggestion());
+        assertEquals(0.61, out.getRiskScore());
+        assertEquals(List.of(), out.getLabels());
+    }
+
+    @Test
+    void test_shouldReturnHumanWhenImageStageFailed() {
+        Fixture f = fixture();
+        ModerationLlmConfigEntity merged = baseConfig();
+        PromptsEntity multimodalPrompt = visionPrompt();
+        LlmModerationTestRequest req = new LlmModerationTestRequest();
+        req.setUseQueue(Boolean.FALSE);
+        req.setImages(List.of(image("https://img/fail.png")));
+
+        List<ImageRef> refs = List.of(new ImageRef(1L, "https://img/fail.png", "image/png"));
+        when(f.configSupport.loadBaseConfigCached()).thenReturn(baseConfig());
+        when(f.configSupport.merge(any(), any())).thenReturn(merged);
+        when(f.contextBuilder.resolvePromptVarsSafe(req)).thenReturn(new PromptVars("t", "c", "ok"));
+        when(f.promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(java.util.Optional.of(multimodalPrompt));
+        when(f.imageSupport.clampVisionMaxImages(multimodalPrompt.getVisionMaxImagesPerRequest())).thenReturn(3);
+        when(f.imageSupport.resolveImages(req, 3)).thenReturn(refs);
+        when(f.contextBuilder.buildQueueTraceLine(req)).thenReturn("trace");
+        when(f.contextBuilder.buildPolicyContextBlock(req, false)).thenReturn("policy");
+        when(f.contextBuilder.resolveQueueCtx(req, false)).thenReturn(null);
+        when(f.contextBuilder.buildVisionAuditInputJsonList(req, null, refs)).thenReturn("[]");
+        when(f.fallbackRepository.findAll(any(Sort.class))).thenReturn(List.of(fallback()));
+        when(f.tagsRepository.findByTypeAndIsActiveTrue(TagType.RISK)).thenReturn(List.of());
+
+        StageCallResult textStage = new StageCallResult(
+                "APPROVE",
+                0.2,
+                List.of(),
+                "APPROVE",
+                0.2,
+                List.of("text-ok"),
+                List.of("safe"),
+                null,
+                null,
+                List.of(),
+                "{}",
+                "m",
+                1L,
+                null,
+                null,
+                "text",
+                "text"
+        );
+        StageCallResult imageStage = new StageCallResult(
+                "ESCALATE",
+                0.9,
+                List.of(),
+                "",
+                0.9,
+                List.of("could not be parsed as json"),
+                List.of("PARSE_ERROR"),
+                null,
+                null,
+                List.of(),
+                "{}",
+                "m",
+                1L,
+                null,
+                null,
+                "image",
+                "image"
+        );
+        when(f.upstreamSupport.callTextOnce(any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(textStage);
+        when(f.upstreamSupport.callImageDescribeOnce(any(), any(), anyList(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(imageStage);
+
+        LlmModerationTestResponse out = f.service.test(req);
+        assertNotNull(out);
+        assertEquals("HUMAN", out.getDecision());
+        assertNotNull(out.getStages());
+        assertNotNull(out.getStages().getImage());
+    }
+
+    @Test
+    void test_shouldResolveImageDecisionWhenBlankAndDeduplicateReasons() {
+        Fixture f = fixture();
+        ModerationLlmConfigEntity merged = baseConfig();
+        PromptsEntity multimodalPrompt = visionPrompt();
+        LlmModerationTestRequest req = new LlmModerationTestRequest();
+        req.setUseQueue(Boolean.TRUE);
+        req.setImages(List.of(image("https://img/ok.png")));
+
+        List<ImageRef> refs = List.of(new ImageRef(2L, " https://img/ok.png ", "image/png"));
+        when(f.configSupport.loadBaseConfigCached()).thenReturn(baseConfig());
+        when(f.configSupport.merge(any(), any())).thenReturn(merged);
+        when(f.contextBuilder.resolvePromptVarsSafe(req)).thenReturn(new PromptVars("t", "c", "ok"));
+        when(f.promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(java.util.Optional.of(multimodalPrompt));
+        when(f.imageSupport.clampVisionMaxImages(multimodalPrompt.getVisionMaxImagesPerRequest())).thenReturn(5);
+        when(f.imageSupport.resolveImages(req, 5)).thenReturn(refs);
+        when(f.contextBuilder.buildQueueTraceLine(req)).thenReturn(null);
+        when(f.contextBuilder.buildPolicyContextBlock(req, true)).thenReturn(null);
+        when(f.contextBuilder.resolveQueueCtx(req, true)).thenReturn(null);
+        when(f.contextBuilder.buildVisionAuditInputJsonList(req, null, refs)).thenReturn("[]");
+        when(f.fallbackRepository.findAll(any(Sort.class))).thenReturn(List.of(fallback()));
+        when(f.tagsRepository.findByTypeAndIsActiveTrue(TagType.RISK)).thenReturn(List.of());
+
+        StageCallResult textStage = new StageCallResult(
+                "ALLOW",
+                0.3,
+                List.of("l1"),
+                "APPROVE",
+                0.3,
+                List.of("same", " "),
+                List.of("safe"),
+                null,
+                null,
+                List.of(),
+                "{}",
+                "m",
+                1L,
+                null,
+                null,
+                "text",
+                "text"
+        );
+        StageCallResult imageStage = new StageCallResult(
+                "ALLOW",
+                0.55,
+                List.of("l2"),
+                " ",
+                0.55,
+                List.of("same", "image-only"),
+                List.of("safe"),
+                null,
+                null,
+                List.of(),
+                "{}",
+                "m",
+                2L,
+                null,
+                null,
+                "image",
+                "image"
+        );
+        when(f.upstreamSupport.callTextOnce(any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(textStage);
+        when(f.upstreamSupport.callImageDescribeOnce(any(), any(), anyList(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(imageStage);
+
+        LlmModerationTestResponse out = f.service.test(req);
+        assertNotNull(out);
+        assertEquals("HUMAN", out.getDecision());
+        assertTrue(out.getReasons().contains("same"));
+        assertTrue(out.getReasons().contains("image-only"));
+        assertEquals(List.of("https://img/ok.png"), out.getImages());
+    }
+
+    @Test
+    void privateHelpers_shouldCoverRemainingBranches() throws Exception {
+        InvocationTargetException ex1 = assertThrows(InvocationTargetException.class,
+                () -> invokeStatic("resolveVisionPromptInvocation", new Class[]{PromptsEntity.class}, new Object[]{null}));
+        assertInstanceOf(IllegalStateException.class, ex1.getCause());
+
+        InvocationTargetException ex2 = assertThrows(InvocationTargetException.class,
+                () -> invokeStatic("asBooleanRequired", new Class[]{Object.class, String.class}, null, "k"));
+        assertInstanceOf(IllegalStateException.class, ex2.getCause());
+        assertTrue((boolean) invokeStatic("asBooleanRequired", new Class[]{Object.class, String.class}, Boolean.TRUE, "k"));
+
+        InvocationTargetException ex3 = assertThrows(InvocationTargetException.class,
+                () -> invokeStatic("asDoubleRequired", new Class[]{Object.class, String.class}, null, "k"));
+        assertInstanceOf(IllegalStateException.class, ex3.getCause());
+        assertEquals(2.0, (double) invokeStatic("asDoubleRequired", new Class[]{Object.class, String.class}, 2, "k"));
+
+        StageCallResult noDecisionHigh = new StageCallResult(null, 0.9, List.of(), " ", 0.9, List.of(), List.of(), null, null, List.of(), "{}", "m", 1L, null, null, null, "text");
+        String dec1 = (String) invokeStatic("resolveStageDecision", new Class[]{StageCallResult.class, double.class, double.class, boolean.class}, noDecisionHigh, 0.8, 0.5, false);
+        assertEquals("REJECT", dec1);
+        StageCallResult noDecisionMid = new StageCallResult(null, 0.6, List.of(), null, 0.6, List.of(), List.of(), null, null, List.of(), "{}", "m", 1L, null, null, null, "text");
+        String dec2 = (String) invokeStatic("resolveStageDecision", new Class[]{StageCallResult.class, double.class, double.class, boolean.class}, noDecisionMid, 0.8, 0.5, false);
+        assertEquals("HUMAN", dec2);
+        String dec3 = (String) invokeStatic("resolveStageDecision", new Class[]{StageCallResult.class, double.class, double.class, boolean.class}, noDecisionMid, 0.8, 0.5, true);
+        assertEquals("REJECT", dec3);
+
+        assertEquals("HUMAN", invokeStatic("combineStageDecision", new Class[]{String.class, String.class}, null, null));
+
+        StageCallResult ts = new StageCallResult("x", 0.1, List.of(), "REJECT", 0.1, List.of(), List.of(), null, null, List.of(), "{}", "m", 1L, null, null, null, "text");
+        StageCallResult is = new StageCallResult("x", 0.2, List.of(), "HUMAN", 0.2, List.of(), List.of(), null, null, List.of(), "{}", "m", 1L, null, null, null, "image");
+        assertSame(ts, invokeStatic("resolveDecisiveStage", new Class[]{String.class, String.class, String.class, StageCallResult.class, StageCallResult.class}, "REJECT", "REJECT", "APPROVE", ts, is));
+        assertSame(is, invokeStatic("resolveDecisiveStage", new Class[]{String.class, String.class, String.class, StageCallResult.class, StageCallResult.class}, "REJECT", "APPROVE", "REJECT", ts, is));
+        assertSame(is, invokeStatic("resolveDecisiveStage", new Class[]{String.class, String.class, String.class, StageCallResult.class, StageCallResult.class}, "HUMAN", "APPROVE", "HUMAN", ts, is));
+        assertSame(ts, invokeStatic("resolveDecisiveStage", new Class[]{String.class, String.class, String.class, StageCallResult.class, StageCallResult.class}, "APPROVE", "APPROVE", "APPROVE", ts, null));
+    }
+
+    @Test
+    void test_shouldThrowWhenVarsNullOrTextTooLongOrPromptMissing() {
+        Fixture f = fixture();
+        LlmModerationTestRequest req = new LlmModerationTestRequest();
+        ModerationLlmConfigEntity merged = baseConfig();
+        PromptsEntity prompt = visionPrompt();
+
+        when(f.configSupport.loadBaseConfigCached()).thenReturn(baseConfig());
+        when(f.configSupport.merge(any(), any())).thenReturn(merged);
+
+        when(f.contextBuilder.resolvePromptVarsSafe(req)).thenReturn(null);
+        assertThrows(IllegalArgumentException.class, () -> f.service.test(req));
+
+        when(f.contextBuilder.resolvePromptVarsSafe(req)).thenReturn(new PromptVars("t", "c", "x".repeat(7001)));
+        when(f.promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(java.util.Optional.of(prompt));
+        when(f.imageSupport.clampVisionMaxImages(prompt.getVisionMaxImagesPerRequest())).thenReturn(3);
+        when(f.imageSupport.resolveImages(req, 3)).thenReturn(List.of());
+        when(f.contextBuilder.buildQueueTraceLine(req)).thenReturn("trace");
+        when(f.contextBuilder.buildPolicyContextBlock(req, true)).thenReturn("policy");
+        when(f.contextBuilder.resolveQueueCtx(req, true)).thenReturn(null);
+        when(f.contextBuilder.buildVisionAuditInputJsonList(req, null, List.of())).thenReturn("[]");
+        ModerationConfidenceFallbackConfigEntity fb = fallback();
+        fb.setLlmRejectThreshold(0.6);
+        fb.setLlmHumanThreshold(0.9);
+        when(f.fallbackRepository.findAll(any(Sort.class))).thenReturn(List.of(fb));
+        when(f.tagsRepository.findByTypeAndIsActiveTrue(TagType.RISK)).thenReturn(List.of());
+        StageCallResult textStage = new StageCallResult(
+                "APPROVE", 0.1, List.of(), "APPROVE", 0.1, List.of("ok"), List.of(),
+                null, null, List.of(), "{}", "m", 1L, null, null, "d", "text"
+        );
+        when(f.upstreamSupport.callTextOnce(any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean())).thenReturn(textStage);
+        LlmModerationTestResponse out = f.service.test(req);
+        assertEquals("APPROVE", out.getDecision());
+
+        prompt.setUserPromptTemplate(" ");
+        req.setConfigOverride(null);
+        assertThrows(IllegalStateException.class, () -> f.service.test(req));
+    }
+
+    @Test
+    void test_shouldCoverImageDecisionApproveAndImageNullFailure() {
+        Fixture f = fixture();
+        ModerationLlmConfigEntity merged = baseConfig();
+        PromptsEntity prompt = visionPrompt();
+        LlmModerationTestRequest req = new LlmModerationTestRequest();
+        req.setUseQueue(Boolean.FALSE);
+        req.setImages(List.of(image("https://img/a.png")));
+        LlmModerationTestRequest.LlmModerationConfigOverrideDTO override = new LlmModerationTestRequest.LlmModerationConfigOverrideDTO();
+        override.setVisionPromptTemplate("override");
+        override.setVisionSystemPrompt(" ");
+        req.setConfigOverride(override);
+
+        List<ImageRef> refs = java.util.Arrays.asList(null, new ImageRef(1L, " ", "image/png"), new ImageRef(2L, " https://img/a.png ", "image/png"));
+        when(f.configSupport.loadBaseConfigCached()).thenReturn(baseConfig());
+        when(f.configSupport.merge(any(), any())).thenReturn(merged);
+        when(f.contextBuilder.resolvePromptVarsSafe(req)).thenReturn(new PromptVars("t", "c", "ok"));
+        when(f.promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(java.util.Optional.of(prompt));
+        when(f.imageSupport.clampVisionMaxImages(prompt.getVisionMaxImagesPerRequest())).thenReturn(5);
+        when(f.imageSupport.resolveImages(req, 5)).thenReturn(refs);
+        when(f.contextBuilder.buildQueueTraceLine(req)).thenReturn(" ");
+        when(f.contextBuilder.buildPolicyContextBlock(req, false)).thenReturn(" ");
+        when(f.contextBuilder.resolveQueueCtx(req, false)).thenReturn(null);
+        when(f.contextBuilder.buildVisionAuditInputJsonList(req, null, refs)).thenReturn("[]");
+        when(f.fallbackRepository.findAll(any(Sort.class))).thenReturn(List.of(fallback()));
+        when(f.tagsRepository.findByTypeAndIsActiveTrue(TagType.RISK)).thenReturn(List.of());
+        StageCallResult textStage = new StageCallResult(
+                "APPROVE", 0.2, List.of("a"), "APPROVE", 0.2, null, List.of(),
+                null, null, List.of(), "{}", "m", 1L, null, null, "d", "text"
+        );
+        StageCallResult imageStage = new StageCallResult(
+                "APPROVE", 0.1, List.of("b"), "", 0.1, java.util.Arrays.asList(null, " ", "r2"), List.of(),
+                null, null, List.of(), "{}", "m", 2L, null, null, "d", "image"
+        );
+        when(f.upstreamSupport.callTextOnce(any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean())).thenReturn(textStage);
+        when(f.upstreamSupport.callImageDescribeOnce(any(), any(), anyList(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(imageStage);
+        LlmModerationTestResponse out = f.service.test(req);
+        assertEquals("APPROVE", out.getDecision());
+        assertEquals(List.of("https://img/a.png"), out.getImages());
+
+        when(f.upstreamSupport.callImageDescribeOnce(any(), any(), anyList(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(null);
+        LlmModerationTestResponse fail = f.service.test(req);
+        assertEquals("HUMAN", fail.getDecision());
+    }
+
+    @Test
+    void testImageOnly_shouldCoverOverridesPromptExceptionAndBreak() {
+        Fixture f = fixture();
+        ModerationLlmConfigEntity merged = baseConfig();
+        PromptsEntity prompt = visionPrompt();
+        prompt.setSystemPrompt(null);
+        LlmModerationTestRequest req = new LlmModerationTestRequest();
+        req.setUseQueue(Boolean.TRUE);
+        req.setImages(java.util.stream.IntStream.range(0, 7).mapToObj(i -> image("https://img/" + i + ".png")).toList());
+        LlmModerationTestRequest.LlmModerationConfigOverrideDTO override = new LlmModerationTestRequest.LlmModerationConfigOverrideDTO();
+        override.setVisionPromptTemplate("override-template");
+        override.setVisionSystemPrompt(null);
+        req.setConfigOverride(override);
+
+        List<ImageRef> refs = new java.util.ArrayList<>();
+        refs.add(new ImageRef(0L, null, "image/png"));
+        refs.add(new ImageRef(1L, " ", "image/png"));
+        for (int i = 0; i < 7; i++) refs.add(new ImageRef((long) (10 + i), " https://img/" + i + ".png ", "image/png"));
+
+        when(f.configSupport.loadBaseConfigCached()).thenReturn(baseConfig());
+        when(f.configSupport.merge(any(), any())).thenReturn(merged);
+        when(f.contextBuilder.resolvePromptVarsSafe(req)).thenReturn(new PromptVars("t", "c", "x"));
+        when(f.promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(java.util.Optional.of(prompt));
+        when(f.imageSupport.clampVisionMaxImages(prompt.getVisionMaxImagesPerRequest())).thenReturn(9);
+        when(f.imageSupport.resolveImages(req, 9)).thenReturn(refs);
+        when(f.contextBuilder.buildQueueTraceLine(req)).thenReturn("trace");
+        when(f.contextBuilder.resolveQueueCtx(req, true)).thenReturn(null);
+        when(f.contextBuilder.buildVisionAuditInputJsonList(req, null, refs)).thenReturn("[]");
+        when(f.fallbackRepository.findAll(any(Sort.class))).thenReturn(List.of(fallback()));
+        when(f.tagsRepository.findByTypeAndIsActiveTrue(TagType.RISK)).thenReturn(List.of());
+        StageCallResult imageStage = new StageCallResult(
+                "APPROVE", 0.1, List.of(), "APPROVE", null, null, null,
+                null, null, List.of(), "{}", "m", 1L, null, null, "d", "image"
+        );
+        when(f.upstreamSupport.callImageDescribeOnce(any(), any(), anyList(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(imageStage);
+        LlmModerationTestResponse out = f.service.testImageOnly(req);
+        assertEquals("APPROVE", out.getDecision());
+        assertEquals(5, out.getImages().size());
+
+        req.setConfigOverride(null);
+        prompt.setUserPromptTemplate(" ");
+        assertThrows(IllegalStateException.class, () -> f.service.testImageOnly(req));
+    }
+
+    @Test
+    void privateHelpers_shouldCoverAdditionalMissingBranches() throws Exception {
+        assertEquals(false, invokeStatic("combineStageDecision", new Class[]{String.class, String.class}, "APPROVE", "APPROVE").equals("HUMAN"));
+        assertEquals("APPROVE", invokeStatic("resolveStageDecision", new Class[]{StageCallResult.class, double.class, double.class, boolean.class},
+                new StageCallResult(null, 0.2, List.of(), " ", 0.2, List.of(), List.of(), null, null, List.of(), "{}", "m", 1L, null, null, null, "text"), 0.8, 0.5, false));
+        assertTrue((boolean) invokeStatic("isStageCallFailed", new Class[]{StageCallResult.class}, new Object[]{null}));
+        StageCallResult blocked = new StageCallResult("x", 0.2, List.of(), "APPROVE", 0.2, List.of("ok"), List.of("PROVIDER_OUTPUT_BLOCKED"), null, null, List.of(), "{}", "m", 1L, null, null, null, "text");
+        assertTrue((boolean) invokeStatic("isStageCallFailed", new Class[]{StageCallResult.class}, blocked));
+        assertEquals(0.3, (double) invokeStatic("clamp01Strict", new Class[]{double.class}, 0.3));
+        InvocationTargetException ex = assertThrows(InvocationTargetException.class, () -> invokeStatic("require01", new Class[]{Double.class, String.class}, Double.NaN, "k"));
+        assertInstanceOf(IllegalStateException.class, ex.getCause());
+    }
+
+    @Test
+    void finalizeMultiStageOverloadAndTextFallback_shouldBeCovered() throws Exception {
+        Fixture f = fixture();
+        LlmModerationTestResponse.Stages stages = new LlmModerationTestResponse.Stages();
+        LlmModerationTestResponse.Stage text = new LlmModerationTestResponse.Stage();
+        text.setLabels(List.of("t"));
+        text.setSeverity("s");
+        text.setUncertainty(0.2);
+        text.setEvidence(List.of("e"));
+        text.setRawModelOutput("r");
+        text.setModel("m");
+        text.setLatencyMs(1L);
+        text.setUsage(new LlmModerationTestResponse.Usage());
+        stages.setText(text);
+        LlmModerationTestResponse out = (LlmModerationTestResponse) invokeInstance(
+                f.service,
+                "finalizeMultiStage",
+                new Class[]{String.class, Double.class, List.class, List.class, LlmModerationTestResponse.Stages.class, List.class},
+                "APPROVE", 0.1, List.of(), List.of(), stages, null
+        );
+        assertEquals("multistage", out.getInputMode());
+        assertEquals("m", out.getModel());
+    }
+
+    @Test
+    void testAndImageOnly_shouldThrowWhenPromptMissingAndBlankText() {
+        Fixture f = fixture();
+        LlmModerationTestRequest req = new LlmModerationTestRequest();
+        when(f.configSupport.loadBaseConfigCached()).thenReturn(baseConfig());
+        when(f.configSupport.merge(any(), any())).thenReturn(baseConfig());
+        when(f.contextBuilder.resolvePromptVarsSafe(req)).thenReturn(new PromptVars("t", "c", "   "));
+        assertThrows(IllegalArgumentException.class, () -> f.service.test(req));
+
+        when(f.contextBuilder.resolvePromptVarsSafe(req)).thenReturn(new PromptVars("t", "c", "ok"));
+        when(f.promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(java.util.Optional.empty());
+        assertThrows(IllegalStateException.class, () -> f.service.test(req));
+
+        req.setImages(List.of(image("https://img/a.png")));
+        assertThrows(IllegalStateException.class, () -> f.service.testImageOnly(req));
+    }
+
+    @Test
+    void enforceRiskTagsWhitelist_shouldCoverNullAndNonRejectBranches() {
+        LlmModerationTestResponse.LabelTaxonomy tax = new LlmModerationTestResponse.LabelTaxonomy();
+        tax.setAllowedLabels(java.util.Arrays.asList(null, " ", "A"));
+        LlmModerationTestResponse.LabelItem bad = new LlmModerationTestResponse.LabelItem();
+        bad.setSlug(" ");
+        bad.setName("B");
+        LlmModerationTestResponse.LabelItem map = new LlmModerationTestResponse.LabelItem();
+        map.setSlug("slug-x");
+        map.setName("MappedX");
+        LlmModerationTestResponse.LabelItem bad2 = new LlmModerationTestResponse.LabelItem();
+        bad2.setSlug("slug-y");
+        bad2.setName(" ");
+        tax.setLabelMap(java.util.Arrays.asList(null, bad, map, bad2));
+
+        StageCallResult in = new StageCallResult(
+                "ESCALATE",
+                0.2,
+                List.of("A"),
+                "APPROVE",
+                0.2,
+                null,
+                java.util.Arrays.asList(null, " ", "slug-x", "unknown"),
+                null,
+                null,
+                List.of(),
+                "{}",
+                "m",
+                1L,
+                null,
+                null,
+                "d",
+                "text"
+        );
+        StageCallResult out = AdminModerationLlmService.enforceRiskTagsWhitelist(in, tax);
+        assertNotNull(out);
+        assertEquals(List.of("MappedX"), out.riskTags());
+        assertEquals("ESCALATE", out.decisionSuggestion());
+        assertEquals("APPROVE", out.decision());
+        assertNotNull(out.reasons());
+    }
+
+    @Test
+    void enforceRiskTagsWhitelist_shouldCoverDirectReturnBranches() {
+        StageCallResult base = new StageCallResult(
+                "REJECT",
+                0.9,
+                List.of("x"),
+                "REJECT",
+                0.9,
+                List.of("r"),
+                null,
+                null,
+                null,
+                List.of(),
+                "{}",
+                "m",
+                1L,
+                null,
+                null,
+                "d",
+                "text"
+        );
+        assertSame(base, AdminModerationLlmService.enforceRiskTagsWhitelist(base, null));
+        LlmModerationTestResponse.LabelTaxonomy t1 = new LlmModerationTestResponse.LabelTaxonomy();
+        t1.setAllowedLabels(null);
+        assertSame(base, AdminModerationLlmService.enforceRiskTagsWhitelist(base, t1));
+        LlmModerationTestResponse.LabelTaxonomy t2 = new LlmModerationTestResponse.LabelTaxonomy();
+        t2.setAllowedLabels(List.of());
+        assertSame(base, AdminModerationLlmService.enforceRiskTagsWhitelist(base, t2));
+    }
+
+    @Test
+    void finalizeMultiStage_shouldCoverNullStagesAndUpgradeMode() throws Exception {
+        Fixture f = fixture();
+        LlmModerationTestResponse out1 = (LlmModerationTestResponse) invokeInstance(
+                f.service,
+                "finalizeMultiStage",
+                new Class[]{String.class, Double.class, List.class, List.class, LlmModerationTestResponse.Stages.class, List.class, LlmModerationTestResponse.LabelTaxonomy.class, StageCallResult.class},
+                "HUMAN", 0.5, List.of(), null, null, null, null, null
+        );
+        assertEquals("multimodal", out1.getInputMode());
+        assertEquals(List.of(), out1.getLabels());
+
+        LlmModerationTestResponse.Stages s = new LlmModerationTestResponse.Stages();
+        s.setUpgrade(new LlmModerationTestResponse.Stage());
+        LlmModerationTestResponse out2 = (LlmModerationTestResponse) invokeInstance(
+                f.service,
+                "finalizeMultiStage",
+                new Class[]{String.class, Double.class, List.class, List.class, LlmModerationTestResponse.Stages.class, List.class, LlmModerationTestResponse.LabelTaxonomy.class, StageCallResult.class},
+                "APPROVE", 0.1, List.of(), List.of(), s, List.of(), null, null
+        );
+        assertEquals("multistage", out2.getInputMode());
+    }
+
+    @Test
+    void privateThresholdHelpers_shouldCoverRemainingPrimitiveBranches() throws Exception {
+        InvocationTargetException ex1 = assertThrows(InvocationTargetException.class, () -> invokeStatic("require01", new Class[]{Double.class, String.class}, -0.1, "k"));
+        assertInstanceOf(IllegalStateException.class, ex1.getCause());
+        assertEquals(0.7, (double) invokeStatic("clamp01", new Class[]{Double.class, double.class}, null, 0.7));
+
+        assertTrue((boolean) invokeStatic("asBooleanRequired", new Class[]{Object.class, String.class}, "1", "k"));
+        assertTrue((boolean) invokeStatic("asBooleanRequired", new Class[]{Object.class, String.class}, "y", "k"));
+        assertFalse((boolean) invokeStatic("asBooleanRequired", new Class[]{Object.class, String.class}, "0", "k"));
+        assertFalse((boolean) invokeStatic("asBooleanRequired", new Class[]{Object.class, String.class}, "n", "k"));
+
+        Fixture f = fixture();
+        @SuppressWarnings("unchecked")
+        Boolean b1 = (Boolean) invokeInstance(f.service, "exceedsTagThreshold", new Class[]{Double.class, List.class, Map.class}, null, List.of("a"), Map.of("a", 0.3));
+        @SuppressWarnings("unchecked")
+        Boolean b2 = (Boolean) invokeInstance(f.service, "exceedsTagThreshold", new Class[]{Double.class, List.class, Map.class}, 0.4, java.util.Arrays.asList((String) null), Map.of("a", 0.3));
+        @SuppressWarnings("unchecked")
+        Boolean b3 = (Boolean) invokeInstance(f.service, "exceedsTagThreshold", new Class[]{Double.class, List.class, Map.class}, 0.2, List.of("a"), Map.of("a", 0.3));
+        assertFalse(b1);
+        assertFalse(b2);
+        assertFalse(b3);
+    }
+
     private static Fixture fixture() {
         ModerationConfidenceFallbackConfigRepository fallbackRepository = mock(ModerationConfidenceFallbackConfigRepository.class);
         TagsRepository tagsRepository = mock(TagsRepository.class);
@@ -422,8 +956,7 @@ class AdminModerationLlmServiceDirectionalCoverageTest {
 
     private static ModerationLlmConfigEntity baseConfig() {
         ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
-        cfg.setTextPromptCode("MODERATION_TEXT");
-        cfg.setVisionPromptCode("MODERATION_VISION");
+        cfg.setMultimodalPromptCode("MODERATION_VISION");
         cfg.setJudgePromptCode("MODERATION_JUDGE");
         cfg.setAutoRun(Boolean.TRUE);
         return cfg;

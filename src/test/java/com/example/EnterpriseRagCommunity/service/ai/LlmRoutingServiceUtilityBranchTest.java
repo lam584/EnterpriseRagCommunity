@@ -51,11 +51,11 @@ class LlmRoutingServiceUtilityBranchTest {
     @Test
     void listEnabledTargets_taskTypeOverload_shouldMapNullWeightAndPriorityToZero() {
         Fixture fixture = fixture();
-        LlmModelEntity model = model("default", "p1", "TEXT_CHAT", "m1", true, 1, 1);
+        LlmModelEntity model = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 1);
         model.setWeight(null);
         model.setPriority(null);
         model.setQps(null);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("TEXT_CHAT")))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
                 .thenReturn(List.of(model));
 
         List<LlmRoutingService.RouteTarget> out = fixture.service.listEnabledTargets(LlmQueueTaskType.TEXT_CHAT);
@@ -69,8 +69,8 @@ class LlmRoutingServiceUtilityBranchTest {
     void pickNext_whenAllRowsInvalid_shouldReturnNull() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity bad = model("default", " ", "TEXT_CHAT", " ", true, 1, 0);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        LlmModelEntity bad = model("default", " ", "MULTIMODAL_CHAT", " ", true, 1, 0);
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(Arrays.asList(null, bad));
 
         LlmRoutingService.RouteTarget target = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
@@ -81,8 +81,8 @@ class LlmRoutingServiceUtilityBranchTest {
     void snapshot_runningListContainingNull_shouldSkipNullAndCountValid() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+            .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmCallQueueService.TaskSnapshot valid = mock(LlmCallQueueService.TaskSnapshot.class);
         when(valid.getProviderId()).thenReturn("p1");
@@ -99,8 +99,8 @@ class LlmRoutingServiceUtilityBranchTest {
     void recordFailure_whenBelowThresholdAndNot429_shouldNotEnterCooldown() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 3, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+            .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmRoutingService.RouteTarget target = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
         assertNotNull(target);

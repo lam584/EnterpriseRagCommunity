@@ -62,7 +62,7 @@ describe('AiProvidersForm', () => {
     });
     mockAdminAddProviderModel.mockResolvedValue({
       providerId: 'p1',
-      models: [{ purpose: 'IMAGE_CHAT', modelName: 'text-only-model', enabled: true }],
+      models: [{ purpose: 'MULTIMODAL_CHAT', modelName: 'text-only-model', enabled: true }],
     });
   });
 
@@ -71,7 +71,7 @@ describe('AiProvidersForm', () => {
     cleanup();
   });
 
-  it('warns and still adds unsupported-looking models into image chat when user confirms', async () => {
+  it('warns and still adds unsupported-looking models into multimodal chat when user confirms', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     render(<AiProvidersForm />);
@@ -79,22 +79,39 @@ describe('AiProvidersForm', () => {
     await waitFor(() => expect(mockAdminListProviderModels).toHaveBeenCalledWith('p1'));
 
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    fireEvent.click(screen.getAllByRole('button', { name: '添加' })[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: '添加' })[0]);
 
     await waitFor(() => expect(mockAdminFetchUpstreamModels).toHaveBeenCalledWith('p1'));
 
     fireEvent.change(screen.getByPlaceholderText('例如 gpt-4o-mini'), { target: { value: 'text-only-model' } });
-    expect(screen.getByText('该模型名未识别出视觉能力，可能不支持图片输入。继续添加时，仍会加入视觉模型列表。')).not.toBeNull();
+    expect(screen.getByText('该模型名未识别出显式视觉能力；仍可加入多模态模型列表，但建议优先选择原生多模态模型。')).not.toBeNull();
 
     const addButtons = screen.getAllByRole('button', { name: '添加' });
     fireEvent.click(addButtons[addButtons.length - 1]);
 
     await waitFor(() => expect(confirmSpy).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(mockAdminAddProviderModel).toHaveBeenCalledWith('p1', 'IMAGE_CHAT', 'text-only-model'));
+    await waitFor(() => expect(mockAdminAddProviderModel).toHaveBeenCalledWith('p1', 'MULTIMODAL_CHAT', 'text-only-model'));
     expect(screen.queryByText(/已按能力归类为/)).toBeNull();
   });
 
-  it('does not add unsupported-looking image chat models when user cancels confirmation', async () => {
+  it('shows fetched upstream models in multimodal modal without applying an invalid default capability filter', async () => {
+    mockAdminFetchUpstreamModels.mockResolvedValueOnce({
+      providerId: 'p1',
+      models: ['qwen3.5-35b-a3b'],
+    });
+
+    render(<AiProvidersForm />);
+
+    await waitFor(() => expect(mockAdminListProviderModels).toHaveBeenCalledWith('p1'));
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '添加' })[0]);
+
+    await waitFor(() => expect(mockAdminFetchUpstreamModels).toHaveBeenCalledWith('p1'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'qwen3.5-35b-a3b' })).not.toBeNull());
+  });
+
+  it('does not add unsupported-looking multimodal chat models when user cancels confirmation', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
     render(<AiProvidersForm />);
@@ -102,7 +119,7 @@ describe('AiProvidersForm', () => {
     await waitFor(() => expect(mockAdminListProviderModels).toHaveBeenCalledWith('p1'));
 
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
-    fireEvent.click(screen.getAllByRole('button', { name: '添加' })[1]);
+    fireEvent.click(screen.getAllByRole('button', { name: '添加' })[0]);
 
     await waitFor(() => expect(mockAdminFetchUpstreamModels).toHaveBeenCalledWith('p1'));
 

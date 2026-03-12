@@ -1644,8 +1644,7 @@ CREATE TABLE ai_chat_context_events (
 
 -- Initial prompt data insertion
 INSERT INTO prompts (prompt_code, name, created_at, updated_at) VALUES
-('MODERATION_TEXT', '文本审核', NOW(), NOW()),
-('MODERATION_VISION', '图片审核', NOW(), NOW()),
+('MODERATION_MULTIMODAL', '多模态审核', NOW(), NOW()),
 ('MODERATION_JUDGE', '审核裁决', NOW(), NOW()),
 ('SUMMARY_GEN', '摘要生成', NOW(), NOW()),
 ('TITLE_GEN', '标题生成', NOW(), NOW()),

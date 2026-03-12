@@ -208,10 +208,12 @@ export const ScenarioPolicyPoolCard: React.FC<{
                 </button>
               ))}
             </div>
-            {selectedTaskType === 'IMAGE_CHAT' ? (
-              <div className="text-xs text-gray-500">图片聊天：用于包含图片的请求；请仅配置视觉模型，避免被路由到纯文本模型。</div>
-            ) : selectedTaskType === 'TEXT_CHAT' ? (
-              <div className="text-xs text-gray-500">文本聊天：用于纯文本请求；不包含图片的对话将路由到此场景。</div>
+            {selectedTaskType === 'MULTIMODAL_CHAT' ? (
+              <div className="text-xs text-gray-500">多模态聊天：统一承接纯文本、图片和图文混合请求。</div>
+            ) : selectedTaskType === 'MULTIMODAL_MODERATION' ? (
+              <div className="text-xs text-gray-500">多模态审核：统一承接文本、图片和图文混合审核。</div>
+            ) : selectedTaskType === 'IMAGE_CHAT' || selectedTaskType === 'TEXT_CHAT' ? (
+              <div className="text-xs text-gray-500">兼容旧聊天场景：当前已统一由多模态聊天承接。</div>
             ) : null}
 
             <label className="block text-xs text-gray-700">

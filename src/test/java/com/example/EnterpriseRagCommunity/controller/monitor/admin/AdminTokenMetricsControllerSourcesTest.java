@@ -32,8 +32,8 @@ class AdminTokenMetricsControllerSourcesTest {
         Query query = mock(Query.class);
 
         LlmRoutingPolicyEntity e = new LlmRoutingPolicyEntity();
-        e.setId(new LlmRoutingPolicyId("default", "TEXT_CHAT"));
-        e.setLabel("文本对话");
+        e.setId(new LlmRoutingPolicyId("default", "MULTIMODAL_CHAT"));
+        e.setLabel("多模态聊天");
         e.setCategory("TEXT_GEN");
         e.setSortIndex(10);
 
@@ -42,7 +42,7 @@ class AdminTokenMetricsControllerSourcesTest {
 
         when(entityManager.createNativeQuery(anyString())).thenReturn(query);
         when(query.setParameter(anyString(), any())).thenReturn(query);
-        when(query.getResultList()).thenReturn(List.of("embedding", "MODERATION_CHUNK", "text_chat"));
+        when(query.getResultList()).thenReturn(List.of("embedding", "MODERATION_CHUNK", "multimodal_chat", "multimodal_moderation"));
 
         AdminTokenMetricsController c = new AdminTokenMetricsController(tokenCostMetricsService, llmRoutingPolicyRepository);
         ReflectionTestUtils.setField(c, "entityManager", entityManager);
@@ -53,9 +53,13 @@ class AdminTokenMetricsControllerSourcesTest {
                 .filter(s -> s != null && s.getTaskType() != null)
                 .collect(Collectors.toMap(s -> s.getTaskType().toUpperCase(), s -> s, (a, b) -> a));
 
-        assertTrue(byTaskType.containsKey("TEXT_CHAT"));
-        assertEquals("文本对话", byTaskType.get("TEXT_CHAT").getLabel());
-        assertEquals("TEXT_GEN", byTaskType.get("TEXT_CHAT").getCategory());
+        assertTrue(byTaskType.containsKey("MULTIMODAL_CHAT"));
+        assertEquals("多模态聊天", byTaskType.get("MULTIMODAL_CHAT").getLabel());
+        assertEquals("TEXT_GEN", byTaskType.get("MULTIMODAL_CHAT").getCategory());
+
+        assertTrue(byTaskType.containsKey("MULTIMODAL_MODERATION"));
+        assertEquals("多模态审核", byTaskType.get("MULTIMODAL_MODERATION").getLabel());
+        assertEquals("TEXT_GEN", byTaskType.get("MULTIMODAL_MODERATION").getCategory());
 
         assertTrue(byTaskType.containsKey("EMBEDDING"));
         assertEquals("EMBEDDING", byTaskType.get("EMBEDDING").getCategory());

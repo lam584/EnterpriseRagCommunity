@@ -161,7 +161,7 @@ class ModerationLlmAutoRunnerFocusedBranchExpansionTest {
     @Test
     void normalizeChunkEvidenceForLabels_shouldNormalizeAndDeduplicateAnchors() throws Exception {
         Fixture f = fixture();
-        Method m = ModerationLlmAutoRunner.class.getDeclaredMethod("normalizeChunkEvidenceForLabels", List.class, String.class);
+        Method m = ModerationLlmAutoRunner.class.getDeclaredMethod("normalizeChunkEvidenceForLabels", List.class, String.class, List.class);
         m.setAccessible(true);
 
         String e1 = "{\"before_context\":\"违规词\",\"after_context\":\"结束后文\",\"text\":\"x\"}";
@@ -169,7 +169,7 @@ class ModerationLlmAutoRunnerFocusedBranchExpansionTest {
         String chunk = "前文 违规词 这里是命中的片段 结束后文";
 
         @SuppressWarnings("unchecked")
-        List<String> out = (List<String>) m.invoke(f.runner, List.of(e1, e2, "普通证据"), chunk);
+        List<String> out = (List<String>) m.invoke(f.runner, List.of(e1, e2, "普通证据"), chunk, List.of());
 
         assertEquals(2, out.size());
         assertTrue(out.getFirst().contains("text"));

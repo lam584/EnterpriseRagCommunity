@@ -14,7 +14,7 @@ import static org.mockito.Mockito.when;
 public class LlmRoutingServiceImageModerationFilterTest {
 
     @Test
-    void imageModeration_onlyAllowsModelsAlsoInImageChatPool() {
+    void imageModeration_should_use_multimodal_moderation_pool() {
         LlmModelRepository modelRepo = mock(LlmModelRepository.class);
         LlmRoutingPolicyRepository policyRepo = mock(LlmRoutingPolicyRepository.class);
         LlmCallQueueService queueService = mock(LlmCallQueueService.class);
@@ -23,7 +23,7 @@ public class LlmRoutingServiceImageModerationFilterTest {
 
         LlmModelEntity a = new LlmModelEntity();
         a.setEnv("default");
-        a.setPurpose("IMAGE_MODERATION");
+        a.setPurpose("MULTIMODAL_MODERATION");
         a.setProviderId("p1");
         a.setModelName("m1");
         a.setEnabled(true);
@@ -33,7 +33,7 @@ public class LlmRoutingServiceImageModerationFilterTest {
 
         LlmModelEntity b = new LlmModelEntity();
         b.setEnv("default");
-        b.setPurpose("IMAGE_MODERATION");
+        b.setPurpose("MULTIMODAL_MODERATION");
         b.setProviderId("p2");
         b.setModelName("m2");
         b.setEnabled(true);
@@ -41,23 +41,11 @@ public class LlmRoutingServiceImageModerationFilterTest {
         b.setPriority(0);
         b.setSortIndex(0);
 
-        LlmModelEntity imageChatOnly = new LlmModelEntity();
-        imageChatOnly.setEnv("default");
-        imageChatOnly.setPurpose("IMAGE_CHAT");
-        imageChatOnly.setProviderId("p1");
-        imageChatOnly.setModelName("m1");
-        imageChatOnly.setEnabled(true);
-        imageChatOnly.setWeight(1);
-        imageChatOnly.setPriority(0);
-        imageChatOnly.setSortIndex(0);
-
-        when(modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "IMAGE_MODERATION"))
+        when(modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_MODERATION"))
                 .thenReturn(List.of(a, b));
-        when(modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "IMAGE_CHAT"))
-                .thenReturn(List.of(imageChatOnly));
 
         List<LlmRoutingService.RouteTarget> out = svc.listEnabledTargets("IMAGE_MODERATION");
-        assertEquals(1, out.size());
+        assertEquals(2, out.size());
         assertEquals("p1", out.get(0).providerId());
         assertEquals("m1", out.get(0).modelName());
     }

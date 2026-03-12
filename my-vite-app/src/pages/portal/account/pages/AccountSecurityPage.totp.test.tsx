@@ -121,7 +121,7 @@ describe('AccountSecurityPage (TOTP)', () => {
     expect(screen.getByTestId('mock-qr').getAttribute('data-value')).toBe('EnterpriseRagCommunity:test-1');
   });
 
-  it('supports maxSkew greater than 2', async () => {
+  it('supports maxSkew greater than 2 when enrolling', async () => {
     mockGetTotpPolicy.mockResolvedValueOnce({
       issuer: 'EnterpriseRagCommunity',
       allowedAlgorithms: ['SHA1', 'SHA256', 'SHA512'],
@@ -146,10 +146,17 @@ describe('AccountSecurityPage (TOTP)', () => {
     fireEvent.change(await screen.findByPlaceholderText('先验证密码才能继续'), { target: { value: 'p' } });
     fireEvent.click(screen.getByRole('button', { name: '验证密码' }));
 
-    const selects = await screen.findAllByRole('combobox');
-    expect(selects.length).toBeGreaterThanOrEqual(4);
-    const skewSelect = selects[3];
-    expect(within(skewSelect).getByRole('option', { name: '6' })).not.toBeNull();
+    fireEvent.change(await screen.findByPlaceholderText('启用前必填'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: '验证验证码' }));
+
+    expect(mockEnrollTotp).toHaveBeenCalledTimes(1);
+    expect(mockEnrollTotp).toHaveBeenCalledWith({
+      emailCode: '123456',
+      algorithm: 'SHA1',
+      digits: 6,
+      periodSeconds: 30,
+      skew: 3,
+    });
   });
 
   it('shows backend error message when verify fails', async () => {

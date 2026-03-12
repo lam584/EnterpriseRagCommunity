@@ -45,24 +45,22 @@ public class ContentSafetyAutoTriggerJob {
             return;
         }
 
-        if (at == null || !Boolean.TRUE.equals(at.getEnabled())) return;
+        if (!Boolean.TRUE.equals(at.getEnabled())) return;
 
-        int cd = at.getCoolDownSeconds() == null ? 0 : Math.max(0, at.getCoolDownSeconds());
+        int cd = Math.max(0, at.getCoolDownSeconds());
         if (cd > 0 && lastAutoTriggeredAt.plusSeconds(cd).isAfter(now)) return;
 
-        int windowSeconds = at.getWindowSeconds() == null ? 60 : Math.max(5, at.getWindowSeconds());
-        int thresholdCount = at.getThresholdCount() == null ? 10 : Math.max(1, at.getThresholdCount());
-        double minConf = at.getMinConfidence() == null ? 0.90 : at.getMinConfidence();
+        int windowSeconds = Math.max(5, at.getWindowSeconds());
+        int thresholdCount = Math.max(1, at.getThresholdCount());
+        double minConf = at.getMinConfidence();
 
         List<Verdict> verdicts = parseVerdicts(at.getVerdicts());
         if (verdicts.isEmpty()) verdicts = List.of(Verdict.REJECT, Verdict.REVIEW);
         List<String> decisions = new ArrayList<>();
         for (Verdict v : verdicts) {
-            if (v == null) continue;
             if (v == Verdict.REVIEW) decisions.add("HUMAN");
             else decisions.add(v.name());
         }
-        if (decisions.isEmpty()) decisions = List.of("REJECT", "HUMAN");
 
         LocalDateTime since = LocalDateTime.ofInstant(now.minusSeconds(windowSeconds), ZoneId.systemDefault());
 
@@ -122,7 +120,6 @@ public class ContentSafetyAutoTriggerJob {
 
     private void maybeAutoRecover(ContentSafetyCircuitBreakerConfigDTO cfg, ContentSafetyCircuitBreakerConfigDTO.AutoTrigger at, Instant now) {
         if (cfg == null) return;
-        if (at == null) return;
         Integer ar0 = at.getAutoRecoverSeconds();
         int ar = ar0 == null ? 0 : Math.max(0, ar0);
         if (ar <= 0) return;

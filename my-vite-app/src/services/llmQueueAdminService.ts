@@ -4,9 +4,11 @@ export type LlmQueueTaskStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'CA
 
 export type LlmQueueTaskType =
   | 'CHAT'
+  | 'MULTIMODAL_CHAT'
   | 'TEXT_CHAT'
   | 'IMAGE_CHAT'
   | 'MODERATION'
+  | 'MULTIMODAL_MODERATION'
   | 'TEXT_MODERATION'
   | 'IMAGE_MODERATION'
   | 'MODERATION_CHUNK'

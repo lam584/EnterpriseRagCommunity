@@ -1483,7 +1483,7 @@ export default function AssistantChatPage() {
                   disabled={isStreaming}
                 >
                   <option value="">
-                    {pendingImages.length ? '自动（图片聊天/视觉模型池）' : '自动（文本聊天/均衡负载）'}
+                    {pendingImages.length ? '自动（多模态聊天/多模态模型池）' : '自动（多模态聊天/均衡负载）'}
                   </option>
                   {flatModelOptions.map((it) => (
                     <option key={it.value} value={it.value}>
@@ -1494,7 +1494,7 @@ export default function AssistantChatPage() {
               </div>
               {pendingImages.length ? (
                 <div className="text-xs text-gray-500">
-                  已附加 {pendingImages.length} 张图片：自动会路由到视觉模型；若所选模型不支持图片，会提示你切换为视觉模型（图片聊天）。
+                  已附加 {pendingImages.length} 张图片：请求会统一路由到多模态聊天模型池；若指定模型未加入场景池，会提示你切换为自动或先完成配置。
                 </div>
               ) : null}
               {optionsError ? <div className="text-xs text-red-600">{optionsError}</div> : null}

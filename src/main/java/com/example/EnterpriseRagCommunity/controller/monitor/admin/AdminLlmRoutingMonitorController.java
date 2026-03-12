@@ -142,12 +142,12 @@ public class AdminLlmRoutingMonitorController {
 
     private static LlmQueueTaskType parseTaskType(String taskType) {
         String s = taskType == null ? "" : taskType.trim();
-        if (s.isEmpty()) return LlmQueueTaskType.TEXT_CHAT;
+        if (s.isEmpty()) return LlmQueueTaskType.MULTIMODAL_CHAT;
         String up = s.toUpperCase(Locale.ROOT);
-        if ("CHAT".equals(up)) return LlmQueueTaskType.TEXT_CHAT;
+        if ("CHAT".equals(up)) return LlmQueueTaskType.MULTIMODAL_CHAT;
         for (LlmQueueTaskType t : LlmQueueTaskType.values()) {
             if (t.name().equals(up)) return t;
         }
-        return LlmQueueTaskType.TEXT_CHAT;
+        return LlmQueueTaskType.MULTIMODAL_CHAT;
     }
 }

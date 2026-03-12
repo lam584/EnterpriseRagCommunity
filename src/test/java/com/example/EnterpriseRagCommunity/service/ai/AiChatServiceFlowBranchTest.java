@@ -2,11 +2,13 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,9 +30,11 @@ import com.example.EnterpriseRagCommunity.dto.retrieval.ChatRagAugmentConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
+import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.entity.rag.QaMessagesEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaSessionsEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.QaTurnsEntity;
+import com.example.EnterpriseRagCommunity.entity.ai.LlmModelEntity;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.ContextStrategy;
 import com.example.EnterpriseRagCommunity.entity.rag.enums.MessageRole;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
@@ -82,6 +86,57 @@ class AiChatServiceFlowBranchTest {
         String body = resp.getContentAsString();
         assertTrue(body.contains("event: meta"));
         assertTrue(body.contains("\"sessionId\":-"));
+        assertTrue(body.contains("event: done"));
+    }
+
+    @Test
+    void streamChat_should_ignore_blank_and_non_data_sse_lines() throws Exception {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("");
+            consumer.onLine("event: ping");
+            consumer.onLine("data: {\"content\":\"ok\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        AiChatService service = buildService(llmGateway, mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setSessionId(null);
+        req.setMessage("hi");
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        service.streamChat(req, 1L, resp);
+        String body = resp.getContentAsString();
+        assertTrue(body.contains("ok"));
+        assertTrue(body.contains("event: done"));
+    }
+
+    @Test
+    void streamChat_deepThink_false_should_ignore_reasoning_content() throws Exception {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"reasoning_content\":\"r1\"}");
+            consumer.onLine("data: {\"content\":\"c1\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        AiChatService service = buildService(llmGateway, mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setSessionId(null);
+        req.setMessage("hi");
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        service.streamChat(req, 1L, resp);
+        String body = resp.getContentAsString();
+        assertTrue(body.contains("c1"));
         assertTrue(body.contains("event: done"));
     }
 
@@ -167,6 +222,72 @@ class AiChatServiceFlowBranchTest {
     }
 
     @Test
+    void chatOnce_deepThink_should_autoclose_when_only_reasoning_present() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"reasoning_content\":\"r-only\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        AiChatService service = buildService(llmGateway, mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setMessage("hello");
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(true);
+
+        AiChatResponseDTO dto = service.chatOnce(req, 1L);
+        assertNotNull(dto);
+        assertEquals("<think>r-only</think>", dto.getContent());
+    }
+
+    @Test
+    void chatOnce_should_ignore_blank_and_non_data_sse_lines() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("");
+            consumer.onLine("event: ping");
+            consumer.onLine("data: {\"content\":\"ok\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        AiChatService service = buildService(llmGateway, mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setMessage("hello");
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        AiChatResponseDTO dto = service.chatOnce(req, 1L);
+        assertEquals("ok", dto.getContent());
+    }
+
+    @Test
+    void chatOnce_deepThink_false_should_ignore_reasoning_content() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"reasoning_content\":\"r1\"}");
+            consumer.onLine("data: {\"content\":\"c1\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        AiChatService service = buildService(llmGateway, mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setMessage("hello");
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        AiChatResponseDTO dto = service.chatOnce(req, 1L);
+        assertEquals("c1", dto.getContent());
+    }
+
+    @Test
     void regenerateOnce_should_only_include_history_before_question_message() {
         LlmGateway llmGateway = mock(LlmGateway.class);
         doAnswer(inv -> {
@@ -231,6 +352,89 @@ class AiChatServiceFlowBranchTest {
     }
 
     @Test
+    void regenerateOnce_deepThink_should_autoclose_when_only_reasoning_present() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"reasoning_content\":\"regen-r\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.empty());
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(true);
+        req.setHistoryLimit(20);
+
+        AiChatResponseDTO dto = service.regenerateOnce(10L, req, 1L);
+        assertEquals("<think>regen-r</think>", dto.getContent());
+    }
+
+    @Test
+    void regenerateOnce_deepThink_false_should_ignore_reasoning_content() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"reasoning_content\":\"r1\"}");
+            consumer.onLine("data: {\"content\":\"c1\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.empty());
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        req.setHistoryLimit(20);
+        AiChatResponseDTO dto = service.regenerateOnce(10L, req, 1L);
+        assertEquals("c1", dto.getContent());
+    }
+
+    @Test
     void streamRegenerate_should_write_meta_and_done() throws Exception {
         LlmGateway llmGateway = mock(LlmGateway.class);
         doAnswer(inv -> {
@@ -274,6 +478,747 @@ class AiChatServiceFlowBranchTest {
         String body = resp.getContentAsString();
         assertTrue(body.contains("event: meta"));
         assertTrue(body.contains("event: done"));
+    }
+
+    @Test
+    void streamRegenerate_deepThink_should_emit_autoclosed_think_delta() throws Exception {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"reasoning_content\":\"stream-r\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.empty());
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(true);
+        req.setHistoryLimit(20);
+
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        service.streamRegenerate(10L, req, 1L, resp);
+        String body = resp.getContentAsString();
+        assertTrue(body.contains("event: delta"));
+        assertTrue(body.contains("<think>stream-r"));
+        assertTrue(body.contains("</think>"));
+        assertTrue(body.contains("event: done"));
+    }
+
+    @Test
+    void streamRegenerate_should_ignore_blank_and_non_data_sse_lines() throws Exception {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("");
+            consumer.onLine("event: ping");
+            consumer.onLine("data: {\"content\":\"ok\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.empty());
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        req.setHistoryLimit(20);
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        service.streamRegenerate(10L, req, 1L, resp);
+        String body = resp.getContentAsString();
+        assertTrue(body.contains("ok"));
+        assertTrue(body.contains("event: done"));
+    }
+
+    @Test
+    void chatOnce_should_throw_when_req_is_null() {
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        assertThrows(IllegalArgumentException.class, () -> service.chatOnce(null, 1L));
+    }
+
+    @Test
+    void chatOnce_should_throw_when_current_user_is_null() {
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setMessage("hello");
+        assertThrows(org.springframework.security.core.AuthenticationException.class, () -> service.chatOnce(req, null));
+    }
+
+    @Test
+    void streamChat_should_throw_when_session_not_found() {
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.empty());
+        AiChatService service = buildService(mock(LlmGateway.class), qaSessionsRepository, mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setSessionId(3L);
+        req.setMessage("hello");
+        req.setDryRun(false);
+        req.setUseRag(false);
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class, () -> service.streamChat(req, 1L, new MockHttpServletResponse()));
+        assertEquals("session not found", ex.getMessage());
+    }
+
+    @Test
+    void streamChat_should_throw_when_session_inactive() {
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(false);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        AiChatService service = buildService(mock(LlmGateway.class), qaSessionsRepository, mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setSessionId(3L);
+        req.setMessage("hello");
+        req.setDryRun(false);
+        req.setUseRag(false);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.streamChat(req, 1L, new MockHttpServletResponse()));
+        assertEquals("session inactive", ex.getMessage());
+    }
+
+    @Test
+    void chatOnce_should_throw_when_session_not_found() {
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.empty());
+        AiChatService service = buildService(mock(LlmGateway.class), qaSessionsRepository, mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setSessionId(3L);
+        req.setMessage("hello");
+        req.setDryRun(false);
+        req.setUseRag(false);
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class, () -> service.chatOnce(req, 1L));
+        assertEquals("session not found", ex.getMessage());
+    }
+
+    @Test
+    void chatOnce_should_throw_when_session_inactive() {
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(false);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        AiChatService service = buildService(mock(LlmGateway.class), qaSessionsRepository, mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setSessionId(3L);
+        req.setMessage("hello");
+        req.setDryRun(false);
+        req.setUseRag(false);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.chatOnce(req, 1L));
+        assertEquals("session inactive", ex.getMessage());
+    }
+
+    @Test
+    void regenerateOnce_should_throw_when_question_message_id_is_null() {
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.regenerateOnce(null, req, 1L));
+        assertEquals("questionMessageId is required", ex.getMessage());
+    }
+
+    @Test
+    void regenerateOnce_should_throw_when_req_is_null() {
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.regenerateOnce(10L, null, 1L));
+        assertEquals("req is required", ex.getMessage());
+    }
+
+    @Test
+    void regenerateOnce_should_throw_when_message_not_found() {
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.empty());
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), qaMessagesRepository, mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class, () -> service.regenerateOnce(10L, req, 1L));
+        assertEquals("message not found", ex.getMessage());
+    }
+
+    @Test
+    void regenerateOnce_should_throw_when_session_not_found() {
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.empty());
+        AiChatService service = buildService(mock(LlmGateway.class), qaSessionsRepository, qaMessagesRepository, mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class, () -> service.regenerateOnce(10L, req, 1L));
+        assertEquals("session not found", ex.getMessage());
+    }
+
+    @Test
+    void regenerateOnce_should_throw_when_question_message_role_is_not_user() {
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.ASSISTANT);
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+        AiChatService service = buildService(mock(LlmGateway.class), qaSessionsRepository, qaMessagesRepository, mock(QaTurnsRepository.class));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        assertThrows(IllegalArgumentException.class, () -> service.regenerateOnce(10L, req, 1L));
+    }
+
+    @Test
+    void regenerateOnce_should_throw_when_session_inactive() {
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(false);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+
+        AiChatService service = buildService(mock(LlmGateway.class), qaSessionsRepository, qaMessagesRepository, mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        assertThrows(IllegalArgumentException.class, () -> service.regenerateOnce(10L, req, 1L));
+    }
+
+    @Test
+    void regenerateOnce_should_throw_when_current_user_is_null() {
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        assertThrows(org.springframework.security.core.AuthenticationException.class, () -> service.regenerateOnce(10L, req, null));
+    }
+
+    @Test
+    void streamRegenerate_should_throw_when_current_user_is_null() {
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        assertThrows(org.springframework.security.core.AuthenticationException.class, () -> service.streamRegenerate(10L, req, null, new MockHttpServletResponse()));
+    }
+
+    @Test
+    void streamRegenerate_should_throw_when_question_message_id_is_null() {
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.streamRegenerate(null, req, 1L, new MockHttpServletResponse()));
+        assertEquals("questionMessageId is required", ex.getMessage());
+    }
+
+    @Test
+    void streamRegenerate_should_throw_when_req_is_null() {
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.streamRegenerate(10L, null, 1L, new MockHttpServletResponse()));
+        assertEquals("req is required", ex.getMessage());
+    }
+
+    @Test
+    void streamRegenerate_should_throw_when_message_not_found() {
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.empty());
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), qaMessagesRepository, mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class, () -> service.streamRegenerate(10L, req, 1L, new MockHttpServletResponse()));
+        assertEquals("message not found", ex.getMessage());
+    }
+
+    @Test
+    void streamRegenerate_should_throw_when_session_not_found() {
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.empty());
+        AiChatService service = buildService(mock(LlmGateway.class), qaSessionsRepository, qaMessagesRepository, mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class, () -> service.streamRegenerate(10L, req, 1L, new MockHttpServletResponse()));
+        assertEquals("session not found", ex.getMessage());
+    }
+
+    @Test
+    void streamRegenerate_should_throw_when_question_message_role_is_not_user() {
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.ASSISTANT);
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+        AiChatService service = buildService(mock(LlmGateway.class), mock(QaSessionsRepository.class), qaMessagesRepository, mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.streamRegenerate(10L, req, 1L, new MockHttpServletResponse()));
+        assertEquals("只能对用户问题消息进行重新生成", ex.getMessage());
+    }
+
+    @Test
+    void streamRegenerate_should_throw_when_session_inactive() {
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(false);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        AiChatService service = buildService(mock(LlmGateway.class), qaSessionsRepository, qaMessagesRepository, mock(QaTurnsRepository.class));
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.streamRegenerate(10L, req, 1L, new MockHttpServletResponse()));
+        assertEquals("session inactive", ex.getMessage());
+    }
+
+    @Test
+    void streamRegenerate_should_write_error_and_done_when_llm_throws() throws Exception {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        when(llmGateway.chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("llm boom"));
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        session.setCreatedAt(LocalDateTime.now().minusMinutes(1));
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.empty());
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        req.setHistoryLimit(20);
+
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        service.streamRegenerate(10L, req, 1L, resp);
+        String body = resp.getContentAsString();
+        assertTrue(body.contains("event: error"));
+        assertTrue(body.contains("llm boom"));
+        assertTrue(body.contains("event: done"));
+    }
+
+    @Test
+    void streamChat_should_write_error_and_done_when_llm_throws() throws Exception {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        when(llmGateway.chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("chat boom"));
+        AiChatService service = buildService(llmGateway, mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setMessage("hello");
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        service.streamChat(req, 1L, resp);
+        String body = resp.getContentAsString();
+        assertTrue(body.contains("event: error"));
+        assertTrue(body.contains("chat boom"));
+        assertTrue(body.contains("event: done"));
+    }
+
+    @Test
+    void chatOnce_should_throw_when_llm_throws() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        when(llmGateway.chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("once boom"));
+        AiChatService service = buildService(llmGateway, mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setMessage("hello");
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> service.chatOnce(req, 1L));
+        assertEquals("once boom", ex.getMessage());
+    }
+
+    @Test
+    void regenerateOnce_should_throw_when_llm_throws() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        when(llmGateway.chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("regen boom"));
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.empty());
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        req.setHistoryLimit(20);
+
+        RuntimeException ex = assertThrows(RuntimeException.class, () -> service.regenerateOnce(10L, req, 1L));
+        assertEquals("regen boom", ex.getMessage());
+    }
+
+    @Test
+    void chatOnce_deepThink_should_ignore_reasoning_after_think_closed() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"reasoning_content\":\"r1\"}");
+            consumer.onLine("data: {\"content\":\"c1\"}");
+            consumer.onLine("data: {\"reasoning_content\":\"late\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        AiChatService service = buildService(llmGateway, mock(QaSessionsRepository.class), mock(QaMessagesRepository.class), mock(QaTurnsRepository.class));
+
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setMessage("hello");
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(true);
+
+        AiChatResponseDTO dto = service.chatOnce(req, 1L);
+        assertEquals("<think>r1</think>c1", dto.getContent());
+        assertTrue(!dto.getContent().contains("late"));
+    }
+
+    @Test
+    void regenerateOnce_deepThink_should_ignore_reasoning_after_think_closed() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"reasoning_content\":\"r1\"}");
+            consumer.onLine("data: {\"content\":\"c1\"}");
+            consumer.onLine("data: {\"reasoning_content\":\"late\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.empty());
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(true);
+        req.setHistoryLimit(20);
+        AiChatResponseDTO dto = service.regenerateOnce(10L, req, 1L);
+        assertEquals("<think>r1</think>c1", dto.getContent());
+        assertTrue(!dto.getContent().contains("late"));
+    }
+
+    @Test
+    void streamRegenerate_deepThink_should_ignore_reasoning_after_think_closed() throws Exception {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"reasoning_content\":\"r1\"}");
+            consumer.onLine("data: {\"content\":\"c1\"}");
+            consumer.onLine("data: {\"reasoning_content\":\"late\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.empty());
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(true);
+        req.setHistoryLimit(20);
+
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        service.streamRegenerate(10L, req, 1L, resp);
+        String body = resp.getContentAsString();
+        assertTrue(body.contains("<think>r1"));
+        assertTrue(body.contains("</think>c1"));
+        assertTrue(body.contains("event: done"));
+    }
+
+    @Test
+    void regenerateOnce_should_reset_existing_turn_answer_id_when_not_dry_run() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"content\":\"ok\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+        when(qaMessagesRepository.save(any(QaMessagesEntity.class))).thenAnswer(inv -> {
+            QaMessagesEntity saved = inv.getArgument(0);
+            if (saved.getId() == null) saved.setId(999L);
+            return saved;
+        });
+
+        QaTurnsEntity turn = new QaTurnsEntity();
+        turn.setId(77L);
+        turn.setSessionId(3L);
+        turn.setQuestionMessageId(10L);
+        turn.setAnswerMessageId(88L);
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.of(turn));
+        when(qaTurnsRepository.save(any(QaTurnsEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(false);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        req.setHistoryLimit(20);
+
+        AiChatResponseDTO dto = service.regenerateOnce(10L, req, 1L);
+        assertEquals("ok", dto.getContent());
+        verify(qaTurnsRepository, atLeastOnce()).save(any(QaTurnsEntity.class));
+    }
+
+    @Test
+    void streamRegenerate_should_reset_existing_turn_answer_id_when_not_dry_run() throws Exception {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"content\":\"ok\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+
+        QaTurnsEntity turn = new QaTurnsEntity();
+        turn.setId(77L);
+        turn.setSessionId(3L);
+        turn.setQuestionMessageId(10L);
+        turn.setAnswerMessageId(88L);
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.of(turn));
+        when(qaTurnsRepository.save(any(QaTurnsEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(false);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        req.setHistoryLimit(20);
+
+        MockHttpServletResponse resp = new MockHttpServletResponse();
+        service.streamRegenerate(10L, req, 1L, resp);
+        String body = resp.getContentAsString();
+        assertTrue(body.contains("event: meta"));
+        assertTrue(body.contains("event: done"));
+        verify(qaTurnsRepository, atLeastOnce()).save(any(QaTurnsEntity.class));
+    }
+
+    @Test
+    void regenerateOnce_should_include_system_history_role() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"content\":\"ok\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        AiChatService service = buildService(llmGateway, qaSessionsRepository, qaMessagesRepository, qaTurnsRepository);
+
+        QaMessagesEntity q = new QaMessagesEntity();
+        q.setId(10L);
+        q.setSessionId(3L);
+        q.setRole(MessageRole.USER);
+        q.setContent("question");
+        q.setCreatedAt(LocalDateTime.now());
+        when(qaMessagesRepository.findById(10L)).thenReturn(Optional.of(q));
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+        when(qaTurnsRepository.findByQuestionMessageId(10L)).thenReturn(Optional.empty());
+
+        QaMessagesEntity beforeSystem = new QaMessagesEntity();
+        beforeSystem.setId(2L);
+        beforeSystem.setRole(MessageRole.SYSTEM);
+        beforeSystem.setContent("sys-h");
+        beforeSystem.setCreatedAt(LocalDateTime.now().minusSeconds(20));
+        when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(beforeSystem, q));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ChatMessage>> cap = (ArgumentCaptor) ArgumentCaptor.forClass(List.class);
+        AiChatRegenerateStreamRequest req = new AiChatRegenerateStreamRequest();
+        req.setDryRun(true);
+        req.setUseRag(false);
+        req.setDeepThink(false);
+        req.setHistoryLimit(20);
+        service.regenerateOnce(10L, req, 1L);
+        verify(llmGateway).chatStreamRouted(any(), any(), any(), cap.capture(), any(), any(), any(), any(), any());
+        String merged = cap.getValue().toString();
+        assertTrue(merged.contains("sys-h"));
     }
 
     private static AiChatService buildService(
@@ -346,6 +1291,11 @@ class AiChatServiceFlowBranchTest {
         ChatRagAugmentConfigDTO chatCfg = new ChatRagAugmentConfigDTO();
         chatCfg.setEnabled(false);
         when(chatRagAugmentConfigService.getConfigOrDefault()).thenReturn(chatCfg);
+
+        LlmModelEntity enabled = new LlmModelEntity();
+        enabled.setEnabled(true);
+        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
+            .thenReturn(List.of(enabled));
 
         return new AiChatService(
                 llmGateway,

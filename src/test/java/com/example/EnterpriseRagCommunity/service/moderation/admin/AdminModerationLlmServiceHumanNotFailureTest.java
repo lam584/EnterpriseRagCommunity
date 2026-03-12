@@ -66,8 +66,7 @@ class AdminModerationLlmServiceHumanNotFailureTest {
         PromptsRepository promptsRepository = mock(PromptsRepository.class);
 
         ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
-        cfg.setTextPromptCode("MODERATION_TEXT");
-        cfg.setVisionPromptCode("MODERATION_VISION");
+        cfg.setMultimodalPromptCode("MODERATION_VISION");
         cfg.setJudgePromptCode("MODERATION_JUDGE");
         when(cfgRepo.findTopByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(cfg));
 
@@ -113,10 +112,8 @@ class AdminModerationLlmServiceHumanNotFailureTest {
         String imageRaw = "{\"choices\":[{\"message\":{\"content\":\"{\\\"decision\\\":\\\"APPROVE\\\",\\\"score\\\":0.0,\\\"riskTags\\\":[\\\"safe\\\"],\\\"evidence\\\":[]}\"}}]}";
         String judgeRaw = "{\"choices\":[{\"message\":{\"content\":\"{\\\"decision\\\":\\\"APPROVE\\\",\\\"score\\\":0.0,\\\"riskTags\\\":[\\\"safe\\\"],\\\"evidence\\\":[]}\"}}]}";
 
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
+        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.MULTIMODAL_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(textRaw, "p1", "text-model", null))
-                .thenReturn(new LlmGateway.RoutedChatOnceResult(judgeRaw, "p1", "judge-model", null));
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.IMAGE_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(imageRaw, "p1", "vision-model", null));
 
         AdminModerationLlmService svc = AdminModerationLlmServiceTestFactory.newService(
@@ -149,10 +146,12 @@ class AdminModerationLlmServiceHumanNotFailureTest {
         assertNotNull(resp);
         assertNotNull(resp.getStages());
         assertNotNull(resp.getStages().getText());
+        assertNotNull(resp.getStages().getImage());
+        assertEquals("HUMAN", resp.getDecision());
         assertTrue(resp.getReasons() == null || resp.getReasons().stream().noneMatch(s -> s != null && s.contains("risk tag not in whitelist")));
         assertEquals("multistage", resp.getInputMode());
 
-        verify(llmGateway, times(1)).chatOnceRouted(eq(LlmQueueTaskType.IMAGE_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class));
+        verify(llmGateway, times(2)).chatOnceRouted(eq(LlmQueueTaskType.MULTIMODAL_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class));
     }
 }
 

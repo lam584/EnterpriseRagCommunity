@@ -169,7 +169,7 @@ class ModerationChunkReviewServicePrepareChunksAndSizingBranchTest {
     void resolveChunkSizingDecision_shouldFallbackWhenPromptLookupFails() throws Exception {
         Fixture fx = new Fixture(cfg(true, null, 6000, null, null));
         ModerationLlmConfigEntity llm = new ModerationLlmConfigEntity();
-        llm.setVisionPromptCode("VP");
+        llm.setMultimodalPromptCode("VP");
         when(fx.llmConfigRepository.findAll()).thenReturn(List.of(llm));
         when(fx.promptsRepository.findByPromptCode("VP")).thenThrow(new RuntimeException("prompt"));
 
@@ -185,7 +185,7 @@ class ModerationChunkReviewServicePrepareChunksAndSizingBranchTest {
     void resolveChunkSizingDecision_shouldClampAndReshardWhenVisionBudgetTooTight() throws Exception {
         Fixture fx = new Fixture(cfg(true, null, 8000, null, null));
         ModerationLlmConfigEntity llm = new ModerationLlmConfigEntity();
-        llm.setVisionPromptCode("VP");
+        llm.setMultimodalPromptCode("VP");
         when(fx.llmConfigRepository.findAll()).thenReturn(List.of(llm));
 
         PromptsEntity prompt = new PromptsEntity();

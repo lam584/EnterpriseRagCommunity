@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -130,6 +131,53 @@ class UsersControllerTest {
         var res = controller.ban(1L, req);
         assertThat(res.getBody()).isNotNull();
         verify(usersService).banUser(eq(1L), eq(10L), eq("actor@example.com"), eq("r"), eq("ADMIN_USERS"), eq(null));
+    }
+
+    @Test
+    void update_delete_and_hardDelete_should_pass_actor_id() {
+        UsersService usersService = mock(UsersService.class);
+        AdministratorService administratorService = mock(AdministratorService.class);
+        UsersController controller = new UsersController(usersService, administratorService);
+
+        UsersEntity actor = new UsersEntity();
+        actor.setId(10L);
+        actor.setEmail("actor@example.com");
+        actor.setUsername("actor");
+        when(administratorService.findByUsername("actor@example.com")).thenReturn(Optional.of(actor));
+
+        UsersEntity updated = new UsersEntity();
+        updated.setId(1L);
+        updated.setEmail("u@example.com");
+        updated.setUsername("u");
+        updated.setIsDeleted(false);
+        updated.setCreatedAt(LocalDateTime.now());
+        updated.setUpdatedAt(LocalDateTime.now());
+        when(usersService.update(any(), eq(10L))).thenReturn(updated);
+
+        SecurityContextTestSupport.setAuthenticatedEmail("actor@example.com");
+
+        UsersUpdateDTO req = new UsersUpdateDTO();
+        req.setId(1L);
+        var updateRes = controller.update(req);
+        assertThat(updateRes.getBody()).isNotNull();
+        verify(usersService).update(any(), eq(10L));
+
+        controller.delete(1L);
+        verify(usersService).delete(1L, 10L);
+
+        controller.hardDelete(1L);
+        verify(usersService).hardDelete(1L, 10L);
+    }
+
+    @Test
+    void update_should_throw_when_not_logged_in() {
+        UsersService usersService = mock(UsersService.class);
+        AdministratorService administratorService = mock(AdministratorService.class);
+        UsersController controller = new UsersController(usersService, administratorService);
+
+        assertThatThrownBy(() -> controller.update(new UsersUpdateDTO()))
+                .isInstanceOf(AuthenticationException.class);
+        verify(usersService, never()).update(any(), any());
     }
 
     @Test

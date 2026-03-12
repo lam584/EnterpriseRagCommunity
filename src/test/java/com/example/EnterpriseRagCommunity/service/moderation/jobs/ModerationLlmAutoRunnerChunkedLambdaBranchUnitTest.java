@@ -39,6 +39,7 @@ import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerati
 import com.example.EnterpriseRagCommunity.service.moderation.trace.ModerationPipelineTraceService;
 import com.example.EnterpriseRagCommunity.service.monitor.FileAssetExtractionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -236,6 +237,64 @@ class ModerationLlmAutoRunnerChunkedLambdaBranchUnitTest {
         verify(f.chunkReviewService).markChunkSuccess(eq(9001L), eq("m-task5"), any(), eq(0.2), any(), eq(12), eq(5), eq(false));
         verify(task, atLeastOnce()).reportModel("m-task5");
         verify(task, atLeastOnce()).reportOutput(anyString());
+    }
+
+    @Test
+    void handleChunked_shouldSendCurrentChunkImagesEvenWhenEvidenceOnlyModeHasNoPastImageEvidence() throws Exception {
+        Fixture f = fixture();
+        ModerationQueueEntity q = queue(3051L, QueueStage.LLM, QueueStatus.PENDING);
+        ModerationPipelineRunEntity run = run(19305L, "trace-19305");
+        when(f.pipelineTraceService.startStep(anyLong(), any(), anyInt(), any(), any())).thenReturn(step(193051L));
+        when(f.chunkReviewService.countPendingOrFailed(199L)).thenReturn(1L);
+        when(f.chunkReviewService.getConfig()).thenReturn(chunkCfg(true));
+        when(f.chunkReviewService.listEligibleChunks(199L)).thenReturn(List.of(
+                new ModerationChunkReviewService.ChunkCandidate(9051L, ChunkSourceType.FILE_TEXT, 8811L, "guide.docx", 6, 0, 120, 0)
+        ));
+        when(f.chunkReviewService.claimChunkById(9051L)).thenReturn(Optional.of(
+                new ModerationChunkReviewService.ChunkToProcess(9051L, ChunkSourceType.FILE_TEXT, 8811L, "guide.docx", 6, 0, 120)
+        ));
+        when(f.chunkReviewService.loadChunkText(eq(3051L), eq(ChunkSourceType.FILE_TEXT), eq(8811L), eq(0), eq(120)))
+                .thenReturn(Optional.of("正文开始 [[IMAGE_19]] 正文结束"));
+        when(f.chunkReviewService.getMemory(199L)).thenReturn(Map.of("riskTags", List.of("safe")));
+        when(f.tagsRepository.findByTypeAndIsActiveTrue(any())).thenReturn(List.of());
+
+        FileAssetExtractionsEntity ex = new FileAssetExtractionsEntity();
+        ex.setFileAssetId(8811L);
+        ex.setExtractedMetadataJson("""
+                {
+                  "extractedImages": [
+                    {"index": 18, "placeholder": "[[IMAGE_18]]", "url": "https://img/unit-18.jpg", "mimeType": "image/jpeg"},
+                    {"index": 19, "placeholder": "[[IMAGE_19]]", "url": "https://img/unit-19.png", "mimeType": "image/png"},
+                    {"index": 20, "placeholder": "[[IMAGE_20]]", "url": "https://img/unit-20.jpg", "mimeType": "image/jpeg"}
+                  ]
+                }
+                """);
+        when(f.fileAssetExtractionsRepository.findById(8811L)).thenReturn(Optional.of(ex));
+
+        LlmModerationTestResponse res = new LlmModerationTestResponse();
+        res.setModel("m-image");
+        res.setDecision("REJECT");
+        res.setScore(0.98);
+        when(f.llmService.test(any())).thenReturn(res);
+
+        LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
+        doAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            LlmCallQueueService.CheckedTaskSupplier<Object> supplier =
+                    (LlmCallQueueService.CheckedTaskSupplier<Object>) invocation.getArgument(6);
+            supplier.get(task);
+            return CompletableFuture.completedFuture(null);
+        }).when(f.llmCallQueueService).submitDedup(any(), any(), any(), anyInt(), anyString(), anyString(), any(LlmCallQueueService.CheckedTaskSupplier.class), any());
+
+        invokeHandleChunked(f.runner, q, run, fb(), 193051L, Map.of(), 199L, policyConfig(), "TEXT");
+
+        ArgumentCaptor<com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestRequest> reqCaptor =
+                ArgumentCaptor.forClass(com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestRequest.class);
+        verify(f.llmService).test(reqCaptor.capture());
+        var sentReq = reqCaptor.getValue();
+        org.junit.jupiter.api.Assertions.assertEquals(1, sentReq.getImages().size());
+        org.junit.jupiter.api.Assertions.assertEquals("https://img/unit-19.png", sentReq.getImages().get(0).getUrl());
+        org.junit.jupiter.api.Assertions.assertEquals(8811L, sentReq.getImages().get(0).getFileAssetId());
     }
 
     @Test

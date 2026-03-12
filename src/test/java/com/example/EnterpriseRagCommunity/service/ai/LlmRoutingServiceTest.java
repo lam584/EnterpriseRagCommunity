@@ -89,10 +89,10 @@ public class LlmRoutingServiceTest {
         Fixture fixture = fixture();
         List<LlmModelEntity> rows = new ArrayList<>();
         rows.add(null);
-        rows.add(model("default", "", "TEXT_CHAT", "m0", true, 1, 0));
-        rows.add(model("default", "p1", "TEXT_CHAT", " ", true, 1, 0));
-        rows.add(model("default", "p2", "TEXT_CHAT", "m2", true, 3, 2));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("TEXT_CHAT")))
+        rows.add(model("default", "", "MULTIMODAL_CHAT", "m0", true, 1, 0));
+        rows.add(model("default", "p1", "MULTIMODAL_CHAT", " ", true, 1, 0));
+        rows.add(model("default", "p2", "MULTIMODAL_CHAT", "m2", true, 3, 2));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
                 .thenReturn(rows);
 
         List<LlmRoutingService.RouteTarget> out = fixture.service.listEnabledTargets("TEXT_CHAT");
@@ -104,33 +104,31 @@ public class LlmRoutingServiceTest {
     @Test
     void listEnabledTargets_imageModeration_appliesImageChatAllowlist() {
         Fixture fixture = fixture();
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("IMAGE_MODERATION")))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_MODERATION")))
                 .thenReturn(List.of(
-                        model("default", "p1", "IMAGE_MODERATION", "m1", true, 1, 0),
-                        model("default", "p2", "IMAGE_MODERATION", "m2", true, 1, 0)
+                        model("default", "p1", "MULTIMODAL_MODERATION", "m1", true, 1, 0),
+                        model("default", "p2", "MULTIMODAL_MODERATION", "m2", true, 1, 0)
                 ));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("IMAGE_CHAT")))
-                .thenReturn(List.of(model("default", "p2", "IMAGE_CHAT", "m2", true, 1, 0)));
 
         List<LlmRoutingService.RouteTarget> out = fixture.service.listEnabledTargets("IMAGE_MODERATION");
-        assertEquals(1, out.size());
-        assertEquals("p2", out.get(0).providerId());
-        assertEquals("m2", out.get(0).modelName());
+        assertEquals(2, out.size());
+        assertEquals("p1", out.get(0).providerId());
+        assertEquals("m1", out.get(0).modelName());
     }
 
     @Test
     void listEnabledTargets_imageModeration_allowlistSkipsNullAndBlankRows() {
         Fixture fixture = fixture();
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("IMAGE_MODERATION")))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_MODERATION")))
                 .thenReturn(List.of(
-                        model("default", "p1", "IMAGE_MODERATION", "m1", true, 1, 0),
-                        model("default", "p2", "IMAGE_MODERATION", "m2", true, 1, 0)
+                        model("default", "p1", "MULTIMODAL_MODERATION", "m1", true, 1, 0),
+                        model("default", "p2", "MULTIMODAL_MODERATION", "m2", true, 1, 0)
                 ));
 
-        LlmModelEntity blankProvider = model("default", " ", "IMAGE_CHAT", "m1", true, 1, 0);
-        LlmModelEntity blankModel = model("default", "p2", "IMAGE_CHAT", " ", true, 1, 0);
-        LlmModelEntity allow = model("default", "p2", "IMAGE_CHAT", "m2", true, 1, 0);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("IMAGE_CHAT")))
+        LlmModelEntity blankProvider = model("default", " ", "MULTIMODAL_MODERATION", "m1", true, 1, 0);
+        LlmModelEntity blankModel = model("default", "p2", "MULTIMODAL_MODERATION", " ", true, 1, 0);
+        LlmModelEntity allow = model("default", "p2", "MULTIMODAL_MODERATION", "m2", true, 1, 0);
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_MODERATION")))
                 .thenReturn(Arrays.asList(null, blankProvider, blankModel, allow));
 
         List<LlmRoutingService.RouteTarget> out = fixture.service.listEnabledTargets("IMAGE_MODERATION");
@@ -142,9 +140,7 @@ public class LlmRoutingServiceTest {
     @Test
     void isEnabledTarget_imageModeration_requiresImageChatAlsoEnabled() {
         Fixture fixture = fixture();
-        when(fixture.modelRepo.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue("default", "IMAGE_MODERATION", "p1", "m1"))
-                .thenReturn(true);
-        when(fixture.modelRepo.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue("default", "IMAGE_CHAT", "p1", "m1"))
+        when(fixture.modelRepo.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue("default", "MULTIMODAL_MODERATION", "p1", "m1"))
                 .thenReturn(false, true);
 
         boolean first = fixture.service.isEnabledTarget(LlmQueueTaskType.IMAGE_MODERATION, "p1", "m1");
@@ -157,13 +153,13 @@ public class LlmRoutingServiceTest {
         @Test
         void isEnabledTarget_whenPrimaryExistsFalse_shortCircuitsToFalse() {
                 Fixture fixture = fixture();
-                when(fixture.modelRepo.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue("default", "TEXT_CHAT", "p1", "m1"))
+                when(fixture.modelRepo.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue("default", "MULTIMODAL_CHAT", "p1", "m1"))
                                 .thenReturn(false);
 
                 boolean ok = fixture.service.isEnabledTarget(LlmQueueTaskType.TEXT_CHAT, "p1", "m1");
                 assertFalse(ok);
                 verify(fixture.modelRepo, times(1))
-                                .existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue("default", "TEXT_CHAT", "p1", "m1");
+                                .existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue("default", "MULTIMODAL_CHAT", "p1", "m1");
         }
 
         @Test
@@ -176,22 +172,22 @@ public class LlmRoutingServiceTest {
     @Test
     void listEnabledTargets_chatAlias_usesTextChatPurpose() {
         Fixture fixture = fixture();
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("TEXT_CHAT")))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 1)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
+                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 1)));
 
         List<LlmRoutingService.RouteTarget> out = fixture.service.listEnabledTargets("CHAT");
         assertEquals(1, out.size());
-        verify(fixture.modelRepo).findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT");
+        verify(fixture.modelRepo).findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT");
     }
 
     @Test
     void weightedRoundRobinDistributesByWeight() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 10, 2, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("TEXT_CHAT")))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
                 .thenReturn(List.of(
-                        model("default", "p1", "TEXT_CHAT", "m1", true, 5, 0),
-                        model("default", "p2", "TEXT_CHAT", "m2", true, 1, 0)
+                        model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 5, 0),
+                        model("default", "p2", "MULTIMODAL_CHAT", "m2", true, 1, 0)
                 ));
 
         int c1 = 0;
@@ -211,10 +207,10 @@ public class LlmRoutingServiceTest {
     void priorityFallbackPicksHighestPriority() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "MODERATION", "PRIORITY_FALLBACK", 3, 2, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MODERATION")))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_MODERATION")))
                 .thenReturn(List.of(
-                        model("default", "p1", "MODERATION", "m1", true, 1, 10),
-                        model("default", "p2", "MODERATION", "m2", true, 100, 5)
+                        model("default", "p1", "MULTIMODAL_MODERATION", "m1", true, 1, 10),
+                        model("default", "p2", "MULTIMODAL_MODERATION", "m2", true, 100, 5)
                 ));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(LlmQueueTaskType.MODERATION, Set.of());
@@ -226,10 +222,10 @@ public class LlmRoutingServiceTest {
     void cooldownSkipsFailedTarget() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 60_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("TEXT_CHAT")))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
                 .thenReturn(List.of(
-                        model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0),
-                        model("default", "p2", "TEXT_CHAT", "m2", true, 1, 0)
+                        model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0),
+                        model("default", "p2", "MULTIMODAL_CHAT", "m2", true, 1, 0)
                 ));
 
         LlmRoutingService.RouteTarget first = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
@@ -245,8 +241,8 @@ public class LlmRoutingServiceTest {
     void pickNext_returnsNull_whenAllExcluded() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity only = model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        LlmModelEntity only = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0);
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(only));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(
@@ -260,8 +256,8 @@ public class LlmRoutingServiceTest {
     void pickNextInProvider_whenProviderBlank_delegatesToPickNext() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmRoutingService.RouteTarget direct = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
         fixture.service.resetRuntimeState();
@@ -277,8 +273,8 @@ public class LlmRoutingServiceTest {
     void pickNextInProvider_returnsNull_whenNoTargetsInProvider() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNextInProvider(LlmQueueTaskType.TEXT_CHAT, "p2", Set.of());
         assertNull(t);
@@ -288,11 +284,11 @@ public class LlmRoutingServiceTest {
     void pickNextInProvider_strictRateEmpty_fallsBackToNonStrict() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity a = model("default", "p1", "TEXT_CHAT", "m1", true, 10, 0);
-        LlmModelEntity b = model("default", "p1", "TEXT_CHAT", "m2", true, 1, 0);
+        LlmModelEntity a = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 10, 0);
+        LlmModelEntity b = model("default", "p1", "MULTIMODAL_CHAT", "m2", true, 1, 0);
         a.setQps(0.1);
         b.setQps(0.1);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(a, b));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNextInProvider(LlmQueueTaskType.TEXT_CHAT, "p1", Set.of());
@@ -304,11 +300,11 @@ public class LlmRoutingServiceTest {
     void pickNext_strictRateEmpty_fallsBackToNonStrict() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity a = model("default", "p1", "TEXT_CHAT", "m1", true, 10, 0);
-        LlmModelEntity b = model("default", "p2", "TEXT_CHAT", "m2", true, 1, 0);
+        LlmModelEntity a = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 10, 0);
+        LlmModelEntity b = model("default", "p2", "MULTIMODAL_CHAT", "m2", true, 1, 0);
         a.setQps(0.1);
         b.setQps(0.1);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(a, b));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
@@ -319,11 +315,11 @@ public class LlmRoutingServiceTest {
     void pickNext_whenReserveFailsOnBest_triesNextCandidate() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity first = model("default", "p1", "TEXT_CHAT", "m1", true, 100, 0);
-        LlmModelEntity second = model("default", "p2", "TEXT_CHAT", "m2", true, 1, 0);
+        LlmModelEntity first = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 100, 0);
+        LlmModelEntity second = model("default", "p2", "MULTIMODAL_CHAT", "m2", true, 1, 0);
         first.setQps(0.1);
         second.setQps(null);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(first, second));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
@@ -335,9 +331,9 @@ public class LlmRoutingServiceTest {
     void pickNextInProvider_whenSingleEligibleReserveFails_returnsThatBestTarget() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity only = model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0);
+        LlmModelEntity only = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0);
         only.setQps(0.1);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(only));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNextInProvider(LlmQueueTaskType.TEXT_CHAT, "p1", Set.of());
@@ -350,11 +346,11 @@ public class LlmRoutingServiceTest {
     void pickNextInProvider_whenReserveFailsOnBest_triesNextCandidate() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity first = model("default", "p1", "TEXT_CHAT", "m1", true, 100, 0);
-        LlmModelEntity second = model("default", "p1", "TEXT_CHAT", "m2", true, 1, 0);
+        LlmModelEntity first = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 100, 0);
+        LlmModelEntity second = model("default", "p1", "MULTIMODAL_CHAT", "m2", true, 1, 0);
         first.setQps(0.1);
         second.setQps(null);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(first, second));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNextInProvider(LlmQueueTaskType.TEXT_CHAT, "p1", Set.of());
@@ -366,11 +362,11 @@ public class LlmRoutingServiceTest {
     void pickNextInProvider_priorityFallback_tieBreaksByWeightAndLexicalOrder() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "MODERATION", "PRIORITY_FALLBACK", 3, 1, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MODERATION"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_MODERATION"))
                 .thenReturn(List.of(
-                        model("default", "p1", "MODERATION", "m2", true, 5, 10),
-                        model("default", "p1", "MODERATION", "m1", true, 5, 10),
-                        model("default", "p1", "MODERATION", "m0", true, 4, 10)
+                        model("default", "p1", "MULTIMODAL_MODERATION", "m2", true, 5, 10),
+                        model("default", "p1", "MULTIMODAL_MODERATION", "m1", true, 5, 10),
+                        model("default", "p1", "MULTIMODAL_MODERATION", "m0", true, 4, 10)
                 ));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNextInProvider(LlmQueueTaskType.MODERATION, "p1", Set.of());
@@ -382,9 +378,9 @@ public class LlmRoutingServiceTest {
         void pickNext_whenSingleEligibleReserveFails_returnsThatBestTarget() {
                 Fixture fixture = fixture();
                 when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-                LlmModelEntity only = model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0);
+                LlmModelEntity only = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0);
                 only.setQps(0.1);
-                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                                 .thenReturn(List.of(only));
 
                 LlmRoutingService.RouteTarget t = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
@@ -396,10 +392,10 @@ public class LlmRoutingServiceTest {
         void weightedRoundRobin_whenWeightsNonPositive_stillSelectsCandidates() {
                 Fixture fixture = fixture();
                 when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 10, 2, 30_000)));
-                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("TEXT_CHAT")))
+                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
                                 .thenReturn(List.of(
-                                                model("default", "p1", "TEXT_CHAT", "m1", true, 0, 0),
-                                                model("default", "p2", "TEXT_CHAT", "m2", true, 0, 0)
+                                                model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 0, 0),
+                                                model("default", "p2", "MULTIMODAL_CHAT", "m2", true, 0, 0)
                                 ));
 
                 LlmRoutingService.RouteTarget t1 = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
@@ -413,9 +409,9 @@ public class LlmRoutingServiceTest {
     void pickNext_withNonPositiveQps_bypassesRateGate() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity m = model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0);
+        LlmModelEntity m = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0);
         m.setQps(0.0);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(m));
 
         for (int i = 0; i < 3; i++) {
@@ -429,8 +425,8 @@ public class LlmRoutingServiceTest {
     void recordFailure_429_forcesCooldownWithinBounds() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 5, 60_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
         assertNotNull(t);
@@ -449,8 +445,8 @@ public class LlmRoutingServiceTest {
     void recordFailure_429_whenPolicyCooldownTooSmall_stillUses500msFloor() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 5, 100)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
         assertNotNull(t);
@@ -466,8 +462,8 @@ public class LlmRoutingServiceTest {
     void recordFailure_capsConsecutiveFailuresAt10000() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 20_000, 0)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
         assertNotNull(t);
@@ -483,8 +479,8 @@ public class LlmRoutingServiceTest {
     void recordSuccess_clearsFailuresAndCooldown() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
         assertNotNull(t);
@@ -500,8 +496,8 @@ public class LlmRoutingServiceTest {
         void recordFailure_whenThresholdReached_setsCooldown() {
                 Fixture fixture = fixture();
                 when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 10_000)));
-                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
                 LlmRoutingService.RouteTarget target = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
                 assertNotNull(target);
@@ -521,10 +517,10 @@ public class LlmRoutingServiceTest {
     void snapshot_filtersInvalidTargets_andSortsDeterministically() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity bad = model("default", " ", "TEXT_CHAT", "m0", true, 1, 0);
-        LlmModelEntity c = model("default", "z-provider", "TEXT_CHAT", "z-model", true, 1, 0);
-        LlmModelEntity a = model("default", "a-provider", "TEXT_CHAT", "a-model", true, 1, 0);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        LlmModelEntity bad = model("default", " ", "MULTIMODAL_CHAT", "m0", true, 1, 0);
+        LlmModelEntity c = model("default", "z-provider", "MULTIMODAL_CHAT", "z-model", true, 1, 0);
+        LlmModelEntity a = model("default", "a-provider", "MULTIMODAL_CHAT", "a-model", true, 1, 0);
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(bad, c, a));
 
         LlmRoutingService.RuntimeSnapshot snapshot = fixture.service.snapshot(LlmQueueTaskType.TEXT_CHAT);
@@ -538,8 +534,8 @@ public class LlmRoutingServiceTest {
         void snapshot_aggregatesRunningCountByProviderModel() {
                 Fixture fixture = fixture();
                 when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
                 LlmCallQueueService.TaskSnapshot t1 = mock(LlmCallQueueService.TaskSnapshot.class);
                 LlmCallQueueService.TaskSnapshot t2 = mock(LlmCallQueueService.TaskSnapshot.class);
@@ -562,8 +558,8 @@ public class LlmRoutingServiceTest {
     void resetRuntimeState_clearsCooldownAndAllowsSelectionAgain() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 60_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmRoutingService.RouteTarget first = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
         assertNotNull(first);
@@ -581,9 +577,9 @@ public class LlmRoutingServiceTest {
     void snapshot_reflectsRateTokensAndLastRefillAfterDispatch() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        LlmModelEntity m = model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0);
+        LlmModelEntity m = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0);
         m.setQps(2.0);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(m));
 
                 LlmRoutingService.RouteTarget warmup = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
@@ -607,9 +603,9 @@ public class LlmRoutingServiceTest {
         void pickNext_rateRefill_allowsDispatchAfterElapsedTime() {
                 Fixture fixture = fixture();
                 when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-                LlmModelEntity m = model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0);
+                LlmModelEntity m = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0);
                 m.setQps(1.0);
-                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+                when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                                 .thenReturn(List.of(m));
 
                 LlmRoutingService.RouteTarget first = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
@@ -650,8 +646,8 @@ public class LlmRoutingServiceTest {
         fixture.service.recordSuccess(LlmQueueTaskType.TEXT_CHAT, null);
 
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
-                .thenReturn(List.of(model("default", "p1", "TEXT_CHAT", "m1", true, 1, 0)));
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
+                .thenReturn(List.of(model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 1, 0)));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(LlmQueueTaskType.TEXT_CHAT, Set.of());
         assertNotNull(t);
@@ -662,11 +658,11 @@ public class LlmRoutingServiceTest {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
 
-        LlmModelEntity m1 = model("default", "p1", "TEXT_CHAT", "m1", true, 5, 0);
-        LlmModelEntity m2 = model("default", "p2", "TEXT_CHAT", "m2", true, 1, 0);
+        LlmModelEntity m1 = model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 5, 0);
+        LlmModelEntity m2 = model("default", "p2", "MULTIMODAL_CHAT", "m2", true, 1, 0);
         m1.setQps(0.1);
         m2.setQps(null);
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(m1, m2));
 
         List<LlmCallQueueService.TaskSnapshot> running = new ArrayList<>();
@@ -686,10 +682,10 @@ public class LlmRoutingServiceTest {
     void pickNext_excludeCanForceAlternativeModel() {
         Fixture fixture = fixture();
         when(fixture.policyRepo.findById(any())).thenReturn(Optional.of(policy("default", "TEXT_CHAT", "WEIGHTED_RR", 3, 1, 30_000)));
-        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "TEXT_CHAT"))
+        when(fixture.modelRepo.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc("default", "MULTIMODAL_CHAT"))
                 .thenReturn(List.of(
-                        model("default", "p1", "TEXT_CHAT", "m1", true, 10, 0),
-                        model("default", "p2", "TEXT_CHAT", "m2", true, 1, 0)
+                        model("default", "p1", "MULTIMODAL_CHAT", "m1", true, 10, 0),
+                        model("default", "p2", "MULTIMODAL_CHAT", "m2", true, 1, 0)
                 ));
 
         LlmRoutingService.RouteTarget t = fixture.service.pickNext(

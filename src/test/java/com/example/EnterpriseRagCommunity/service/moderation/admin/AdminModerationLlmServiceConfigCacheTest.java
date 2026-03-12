@@ -49,8 +49,7 @@ public class AdminModerationLlmServiceConfigCacheTest {
 
         ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
         cfg.setId(1L);
-        cfg.setTextPromptCode("x");
-        cfg.setVisionPromptCode("x");
+        cfg.setMultimodalPromptCode("x");
         cfg.setJudgePromptCode("x");
         cfg.setJudgePromptCode("x");
         cfg.setUpdatedAt(LocalDateTime.now());

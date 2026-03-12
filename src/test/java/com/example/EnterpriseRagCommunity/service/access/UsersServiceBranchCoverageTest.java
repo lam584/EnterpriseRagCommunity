@@ -57,6 +57,7 @@ class UsersServiceBranchCoverageTest {
             if (u.getId() == null) u.setId(10L);
             return u;
         });
+        when(usersRepository.countByIsDeletedFalse()).thenReturn(2L);
         when(usersRepository.findById(10L)).thenReturn(Optional.of(user(10L, false, AccountStatus.ACTIVE)));
         when(usersRepository.findById(11L)).thenReturn(Optional.empty());
         when(usersRepository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
@@ -143,6 +144,7 @@ class UsersServiceBranchCoverageTest {
         when(usersRepository.findById(3L)).thenReturn(Optional.of(active));
         when(usersRepository.findById(4L)).thenReturn(Optional.of(deleted));
         when(usersRepository.findById(8L)).thenThrow(new RuntimeException("db"));
+        when(usersRepository.countByIsDeletedFalse()).thenReturn(2L);
         when(usersRepository.save(any(UsersEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(usersRepository.existsById(3L)).thenReturn(true);
         when(usersRepository.existsById(9L)).thenReturn(false);
@@ -200,6 +202,7 @@ class UsersServiceBranchCoverageTest {
 
         when(usersRepository.findById(20L)).thenReturn(Optional.of(softDeletedWithRefs));
         when(usersRepository.findById(21L)).thenReturn(Optional.of(activeUser));
+        when(usersRepository.countByIsDeletedFalse()).thenReturn(2L);
         when(usersRepository.save(any(UsersEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(postsRepository.countByAuthorId(20L)).thenReturn(0L);
         when(commentsRepository.countByAuthorId(20L)).thenReturn(2L);

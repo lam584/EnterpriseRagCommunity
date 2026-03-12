@@ -18,7 +18,7 @@ public class TotpMasterKeyBootstrapService {
 
     public Result generateAndPersistToOsEnv() {
         String keyBase64 = generateKeyBase64(DEFAULT_KEY_BYTES);
-        String osName = String.valueOf(System.getProperty("os.name")).toLowerCase(Locale.ROOT);
+        String osName = currentOsName();
 
         String preferredCommand = "setx /M " + ENV_NAME + " \"" + keyBase64 + "\"";
         String fallbackCommand = "setx " + ENV_NAME + " \"" + keyBase64 + "\"";
@@ -36,8 +36,8 @@ public class TotpMasterKeyBootstrapService {
             return r;
         }
 
-        ExecResult system = execCmd("cmd.exe", "/c", preferredCommand);
-        if (system.exitCode == 0) {
+        int systemExitCode = runCommandExitCode("cmd.exe", "/c", preferredCommand);
+        if (systemExitCode == 0) {
             Result r = new Result();
             r.setKeyBase64(keyBase64);
             r.setEnvVarName(ENV_NAME);
@@ -50,8 +50,8 @@ public class TotpMasterKeyBootstrapService {
             return r;
         }
 
-        ExecResult user = execCmd("cmd.exe", "/c", fallbackCommand);
-        if (user.exitCode == 0) {
+        int userExitCode = runCommandExitCode("cmd.exe", "/c", fallbackCommand);
+        if (userExitCode == 0) {
             Result r = new Result();
             r.setKeyBase64(keyBase64);
             r.setEnvVarName(ENV_NAME);
@@ -73,8 +73,16 @@ public class TotpMasterKeyBootstrapService {
         r.setCommand(preferredCommand);
         r.setFallbackCommand(fallbackCommand);
         r.setMessage("自动写入环境变量失败，请手动执行命令并重启后端。");
-        r.setError("systemExitCode=" + system.exitCode + " userExitCode=" + user.exitCode);
+        r.setError("systemExitCode=" + systemExitCode + " userExitCode=" + userExitCode);
         return r;
+    }
+
+    String currentOsName() {
+        return String.valueOf(System.getProperty("os.name")).toLowerCase(Locale.ROOT);
+    }
+
+    int runCommandExitCode(String... cmd) {
+        return execCmd(cmd).exitCode;
     }
 
     private String generateKeyBase64(int bytes) {
@@ -189,4 +197,3 @@ public class TotpMasterKeyBootstrapService {
         }
     }
 }
-

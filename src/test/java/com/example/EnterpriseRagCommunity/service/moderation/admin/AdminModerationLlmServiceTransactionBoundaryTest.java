@@ -21,8 +21,8 @@ import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.moderation.web.WebContentFetchService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -49,7 +49,7 @@ import static org.mockito.Mockito.when;
 @SpringJUnitConfig(AdminModerationLlmServiceTransactionBoundaryTest.TestConfig.class)
 public class AdminModerationLlmServiceTransactionBoundaryTest {
 
-    @Configuration
+    @TestConfiguration
     @EnableTransactionManagement
     static class TestConfig {
         @Bean
@@ -131,8 +131,7 @@ public class AdminModerationLlmServiceTransactionBoundaryTest {
         ModerationLlmConfigRepository configRepository() {
             ModerationLlmConfigRepository repo = mock(ModerationLlmConfigRepository.class);
             ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
-            cfg.setTextPromptCode("MODERATION_TEXT");
-            cfg.setVisionPromptCode("MODERATION_VISION");
+            cfg.setMultimodalPromptCode("MODERATION_VISION");
             cfg.setJudgePromptCode("MODERATION_JUDGE");
             cfg.setJudgePromptCode("MODERATION_JUDGE");
             when(repo.findTopByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(cfg));
@@ -302,4 +301,3 @@ public class AdminModerationLlmServiceTransactionBoundaryTest {
         });
     }
 }
-

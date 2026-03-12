@@ -52,11 +52,8 @@ class AdminModerationLlmConfigSupport {
     ConfigUpsertResult upsertConfigEntity(LlmModerationConfigDTO payload, Long actorUserId) {
         if (payload == null) throw new IllegalArgumentException("payload cannot be null");
 
-        if (payload.getTextPromptCode() == null || payload.getTextPromptCode().isBlank()) {
-            throw new IllegalArgumentException("textPromptCode 娑撳秷鍏樻稉铏光敄");
-        }
-        if (payload.getVisionPromptCode() == null || payload.getVisionPromptCode().isBlank()) {
-            throw new IllegalArgumentException("visionPromptCode 娑撳秷鍏樻稉铏光敄");
+        if (payload.getMultimodalPromptCode() == null || payload.getMultimodalPromptCode().isBlank()) {
+            throw new IllegalArgumentException("multimodalPromptCode 娑撳秷鍏樻稉铏光敄");
         }
         if (payload.getJudgePromptCode() == null || payload.getJudgePromptCode().isBlank()) {
             throw new IllegalArgumentException("judgePromptCode 娑撳秷鍏樻稉铏光敄");
@@ -66,8 +63,7 @@ class AdminModerationLlmConfigSupport {
         if (cfg == null) cfg = new ModerationLlmConfigEntity();
         Map<String, Object> before = summarizeConfig(cfg);
 
-        cfg.setTextPromptCode(payload.getTextPromptCode());
-        cfg.setVisionPromptCode(payload.getVisionPromptCode());
+        cfg.setMultimodalPromptCode(payload.getMultimodalPromptCode());
         cfg.setJudgePromptCode(payload.getJudgePromptCode());
         cfg.setAutoRun(payload.getAutoRun() != null ? payload.getAutoRun() : Boolean.TRUE);
         cfg.setUpdatedAt(LocalDateTime.now());
@@ -83,8 +79,7 @@ class AdminModerationLlmConfigSupport {
     ModerationLlmConfigEntity merge(ModerationLlmConfigEntity base, LlmModerationTestRequest.LlmModerationConfigOverrideDTO o) {
         ModerationLlmConfigEntity m = new ModerationLlmConfigEntity();
         m.setId(base.getId());
-        m.setTextPromptCode(base.getTextPromptCode());
-        m.setVisionPromptCode(base.getVisionPromptCode());
+        m.setMultimodalPromptCode(base.getMultimodalPromptCode());
         m.setJudgePromptCode(base.getJudgePromptCode());
         m.setAutoRun(base.getAutoRun());
         m.setVersion(base.getVersion());
@@ -99,11 +94,8 @@ class AdminModerationLlmConfigSupport {
     ModerationLlmConfigEntity normalizeBaseConfig(ModerationLlmConfigEntity base) {
         if (base == null) throw new IllegalStateException("moderation_llm_config not initialized");
 
-        if (base.getTextPromptCode() == null || base.getTextPromptCode().isBlank()) {
-            throw new IllegalStateException("moderation_llm_config.text_prompt_code is required");
-        }
-        if (base.getVisionPromptCode() == null || base.getVisionPromptCode().isBlank()) {
-            throw new IllegalStateException("moderation_llm_config.vision_prompt_code is required");
+        if (base.getMultimodalPromptCode() == null || base.getMultimodalPromptCode().isBlank()) {
+            throw new IllegalStateException("moderation_llm_config.multimodal_prompt_code is required");
         }
         if (base.getJudgePromptCode() == null || base.getJudgePromptCode().isBlank()) {
             throw new IllegalStateException("moderation_llm_config.judge_prompt_code is required");
@@ -115,8 +107,7 @@ class AdminModerationLlmConfigSupport {
         LlmModerationConfigDTO dto = new LlmModerationConfigDTO();
         dto.setId(e.getId());
         dto.setVersion(e.getVersion());
-        dto.setTextPromptCode(e.getTextPromptCode());
-        dto.setVisionPromptCode(e.getVisionPromptCode());
+        dto.setMultimodalPromptCode(e.getMultimodalPromptCode());
         dto.setJudgePromptCode(e.getJudgePromptCode());
         dto.setAutoRun(e.getAutoRun());
         dto.setUpdatedAt(e.getUpdatedAt());
@@ -127,8 +118,7 @@ class AdminModerationLlmConfigSupport {
     static Map<String, Object> summarizeConfig(ModerationLlmConfigEntity cfg) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (cfg == null) return out;
-        out.put("textPromptCode", cfg.getTextPromptCode());
-        out.put("visionPromptCode", cfg.getVisionPromptCode());
+        out.put("multimodalPromptCode", cfg.getMultimodalPromptCode());
         out.put("judgePromptCode", cfg.getJudgePromptCode());
         out.put("autoRun", cfg.getAutoRun());
         return out;

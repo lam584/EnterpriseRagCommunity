@@ -9,8 +9,7 @@ public class LlmModerationConfigDTO {
     private Long id;
     private Integer version;
 
-    private String textPromptCode;
-    private String visionPromptCode;
+    private String multimodalPromptCode;
     private String judgePromptCode;
 
     private Boolean autoRun;

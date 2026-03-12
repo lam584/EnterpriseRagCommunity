@@ -52,17 +52,15 @@ class TokenCostMetricsServiceBranchCoverageTest {
             Query q = mock(Query.class);
             when(q.setParameter(anyString(), any())).thenReturn(q);
             List<Object[]> rows;
-            if (sql.contains("FROM generation_jobs")) {
-                rows = java.util.Collections.singletonList(new Object[]{"jobModel", 17L, 0L});
-            } else if (sql.contains("h.type IN ('TEXT_CHAT'")) {
-                rows = java.util.Collections.singletonList(new Object[]{"chatModel", 11L, 0L});
-            } else if (sql.contains("h.type IN ('TEXT_MODERATION'")) {
-                rows = java.util.Collections.singletonList(new Object[]{"moderationModel", 13L, 0L});
-            } else if (sql.contains("h.type = :taskType")) {
-                rows = java.util.Collections.singletonList(new Object[]{"taskModel", 7L, 0L});
-            } else {
-                rows = java.util.Collections.singletonList(new Object[]{"allModel", 19L, 0L});
-            }
+            int callIndex = sqls.size();
+            rows = switch (callIndex) {
+                case 1 -> java.util.Collections.singletonList(new Object[]{"allModel", 19L, 0L});
+                case 2 -> java.util.Collections.singletonList(new Object[]{"taskModel", 7L, 0L});
+                case 3 -> java.util.Collections.singletonList(new Object[]{"chatModel", 11L, 0L});
+                case 4 -> java.util.Collections.singletonList(new Object[]{"moderationModel", 13L, 0L});
+                case 5 -> java.util.Collections.singletonList(new Object[]{"jobModel", 17L, 0L});
+                default -> java.util.Collections.singletonList(new Object[]{"extraModel", 0L, 0L});
+            };
             when(q.getResultList()).thenReturn(rows);
             return q;
         });
@@ -94,8 +92,8 @@ class TokenCostMetricsServiceBranchCoverageTest {
         assertEquals(17L, job.getTotalTokens());
 
         assertTrue(sqls.stream().anyMatch(s -> s.contains("h.status = 'DONE'")));
-        assertTrue(sqls.stream().anyMatch(s -> s.contains("TEXT_CHAT")));
-        assertTrue(sqls.stream().anyMatch(s -> s.contains("TEXT_MODERATION")));
+        assertTrue(sqls.stream().anyMatch(s -> s.contains("MULTIMODAL_CHAT")));
+        assertTrue(sqls.stream().anyMatch(s -> s.contains("MULTIMODAL_MODERATION")));
         assertTrue(sqls.stream().anyMatch(s -> s.contains("FROM generation_jobs")));
     }
 

@@ -8,8 +8,7 @@ type CategorizedModelRow = {
 };
 
 type ProviderModelSets = {
-  TEXT_CHAT: Set<string>;
-  IMAGE_CHAT: Set<string>;
+  MULTIMODAL_CHAT: Set<string>;
   EMBEDDING: Set<string>;
   RERANK: Set<string>;
 };
@@ -120,12 +119,12 @@ export const AvailableModelsCard: React.FC<{
   formatMmddHms,
 }) => {
   const modelSupportsVision = (providerId: string, modelName: string): boolean => {
-    return providerModelsMap[providerId]?.IMAGE_CHAT?.has(modelName) ?? false;
+    return providerModelsMap[providerId]?.MULTIMODAL_CHAT?.has(modelName) ?? false;
   };
 
   const isVisionRequiredScenario = (tt: string): boolean => {
     const up = tt.trim().toUpperCase();
-    return up === 'IMAGE_CHAT' || up === 'IMAGE_MODERATION';
+    return up === 'MULTIMODAL_CHAT' || up === 'MULTIMODAL_MODERATION' || up === 'IMAGE_CHAT' || up === 'IMAGE_MODERATION';
   };
 
   return (

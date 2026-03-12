@@ -54,7 +54,10 @@ export const userAccessService = {
             credentials: 'include',
             body: JSON.stringify(data)
         });
-        if (!res.ok) throw new Error('Failed to update user');
+        if (!res.ok) {
+            const msg = await safeReadErrorMessage(res);
+            throw new Error(msg || 'Failed to update user');
+        }
         return res.json();
     },
 

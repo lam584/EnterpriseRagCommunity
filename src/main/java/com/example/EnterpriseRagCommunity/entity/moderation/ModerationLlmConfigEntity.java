@@ -17,11 +17,8 @@ public class ModerationLlmConfigEntity {
     @Column(name = "id")
     private Long id;
 
-    @Column(name = "text_prompt_code", length = 64)
-    private String textPromptCode;
-
-    @Column(name = "vision_prompt_code", length = 64)
-    private String visionPromptCode;
+    @Column(name = "multimodal_prompt_code", length = 64)
+    private String multimodalPromptCode;
 
     @Column(name = "judge_prompt_code", length = 64)
     private String judgePromptCode;

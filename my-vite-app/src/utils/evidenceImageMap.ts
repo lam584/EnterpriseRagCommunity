@@ -64,14 +64,78 @@ function parseJsonRecord(value: unknown): Record<string, unknown> | null {
   }
 }
 
+function parseExtractedImagesFromSnippet(value: unknown): Array<Record<string, unknown>> {
+  const raw = normalizeString(value);
+  if (!raw) return [];
+
+  const markerIndex = raw.indexOf('"extractedImages"');
+  if (markerIndex < 0) return [];
+  const arrayStart = raw.indexOf('[', markerIndex);
+  if (arrayStart < 0) return [];
+
+  const out: Array<Record<string, unknown>> = [];
+  let depth = 0;
+  let objectStart = -1;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = arrayStart; index < raw.length; index += 1) {
+    const ch = raw[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') {
+      if (depth === 0) objectStart = index;
+      depth += 1;
+      continue;
+    }
+    if (ch === '}') {
+      if (depth <= 0) continue;
+      depth -= 1;
+      if (depth === 0 && objectStart >= 0) {
+        try {
+          const parsed = JSON.parse(raw.slice(objectStart, index + 1)) as unknown;
+          const record = toRecord(parsed);
+          if (record) out.push(record);
+        } catch {
+          // Ignore partial trailing objects from truncated snippets.
+        }
+        objectStart = -1;
+      }
+      continue;
+    }
+    if (ch === ']' && depth === 0) break;
+  }
+
+  return out;
+}
+
 function getExtractedImages(attachment: Record<string, unknown>): Array<Record<string, unknown>> {
   const direct = attachment.extractedImages;
   if (Array.isArray(direct)) return direct.map((item) => toRecord(item)).filter((item): item is Record<string, unknown> => Boolean(item));
 
   const metadata = parseJsonRecord(attachment.extractedMetadata) ?? parseJsonRecord(attachment.extractedMetadataJson) ?? parseJsonRecord(attachment.extractedMetadataJsonSnippet);
   const extracted = metadata?.extractedImages;
-  if (!Array.isArray(extracted)) return [];
-  return extracted.map((item) => toRecord(item)).filter((item): item is Record<string, unknown> => Boolean(item));
+  if (Array.isArray(extracted)) {
+    return extracted.map((item) => toRecord(item)).filter((item): item is Record<string, unknown> => Boolean(item));
+  }
+
+  return parseExtractedImagesFromSnippet(attachment.extractedMetadataJsonSnippet);
 }
 
 function addDerivedImage(map: Record<string, string>, image: Record<string, unknown>, ordinal: number): number {

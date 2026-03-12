@@ -41,7 +41,7 @@ class ModerationPipelineTraceServiceTest {
         ModerationQueueEntity q = new ModerationQueueEntity();
         q.setCaseType(ModerationCaseType.CONTENT);
         q.setContentType(ContentType.POST);
-        q.setContentId(123L);
+        q.setContentId(Math.abs(System.nanoTime()));
         q.setStatus(QueueStatus.PENDING);
         q.setCurrentStage(QueueStage.RULE);
         q.setPriority(0);

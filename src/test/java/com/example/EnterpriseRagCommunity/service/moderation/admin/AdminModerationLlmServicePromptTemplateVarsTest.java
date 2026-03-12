@@ -72,8 +72,7 @@ public class AdminModerationLlmServicePromptTemplateVarsTest {
         PromptsRepository promptsRepository = mock(PromptsRepository.class);
 
         ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
-        cfg.setTextPromptCode("MODERATION_TEXT");
-        cfg.setVisionPromptCode("MODERATION_VISION");
+        cfg.setMultimodalPromptCode("MODERATION_VISION");
         cfg.setJudgePromptCode("MODERATION_JUDGE");
         when(cfgRepo.findTopByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(cfg));
 
@@ -84,7 +83,7 @@ public class AdminModerationLlmServicePromptTemplateVarsTest {
         when(promptsRepository.findByPromptCode("MODERATION_TEXT")).thenReturn(Optional.of(textPrompt));
 
         com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity visionPrompt = new com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity();
-        visionPrompt.setUserPromptTemplate("v");
+        visionPrompt.setUserPromptTemplate("TITLE={{title}}\n\nBODY={{content}}");
         visionPrompt.setSystemPrompt("s");
         when(promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(Optional.of(visionPrompt));
 
@@ -129,7 +128,7 @@ public class AdminModerationLlmServicePromptTemplateVarsTest {
 
         String assistant = "{\"decision\":\"APPROVE\"}";
         String raw = "{\"choices\":[{\"message\":{\"content\":\"" + assistant.replace("\"", "\\\"") + "\"}}]}";
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
+        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.MULTIMODAL_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(raw, "p1", "text-model", null));
 
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
@@ -199,8 +198,7 @@ public class AdminModerationLlmServicePromptTemplateVarsTest {
         PromptsRepository promptsRepository = mock(PromptsRepository.class);
 
         ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
-        cfg.setTextPromptCode("MODERATION_TEXT");
-        cfg.setVisionPromptCode("MODERATION_VISION");
+        cfg.setMultimodalPromptCode("MODERATION_VISION");
         cfg.setJudgePromptCode("MODERATION_JUDGE");
         when(cfgRepo.findTopByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(cfg));
 
@@ -211,7 +209,7 @@ public class AdminModerationLlmServicePromptTemplateVarsTest {
         when(promptsRepository.findByPromptCode("MODERATION_TEXT")).thenReturn(Optional.of(textPrompt));
 
         com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity visionPrompt = new com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity();
-        visionPrompt.setUserPromptTemplate("v");
+        visionPrompt.setUserPromptTemplate("BODY={{content}}");
         visionPrompt.setSystemPrompt("s");
         when(promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(Optional.of(visionPrompt));
 
@@ -231,7 +229,7 @@ public class AdminModerationLlmServicePromptTemplateVarsTest {
 
         String assistant = "{\"decision\":\"APPROVE\"}";
         String raw = "{\"choices\":[{\"message\":{\"content\":\"" + assistant.replace("\"", "\\\"") + "\"}}]}";
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
+        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.MULTIMODAL_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(raw, "p1", "text-model", null));
 
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
@@ -291,8 +289,7 @@ public class AdminModerationLlmServicePromptTemplateVarsTest {
         PromptsRepository promptsRepository = mock(PromptsRepository.class);
 
         ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
-        cfg.setTextPromptCode("MODERATION_TEXT");
-        cfg.setVisionPromptCode("MODERATION_VISION");
+        cfg.setMultimodalPromptCode("MODERATION_VISION");
         cfg.setJudgePromptCode("MODERATION_JUDGE");
         when(cfgRepo.findTopByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(cfg));
 
@@ -364,9 +361,8 @@ public class AdminModerationLlmServicePromptTemplateVarsTest {
 
         String pass = "{\"decision\":\"APPROVE\",\"score\":0.0}";
         String raw = "{\"choices\":[{\"message\":{\"content\":\"" + pass.replace("\"", "\\\"") + "\"}}]}";
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
-                .thenReturn(new LlmGateway.RoutedChatOnceResult(raw, "p1", "text-model", null));
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.IMAGE_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
+        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.MULTIMODAL_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
+                .thenReturn(new LlmGateway.RoutedChatOnceResult(raw, "p1", "text-model", null))
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(raw, "p1", "vision-model", null));
 
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
@@ -398,12 +394,10 @@ public class AdminModerationLlmServicePromptTemplateVarsTest {
         assertNotNull(resp.getPromptMessages());
         assertNotNull(resp.getImages());
 
-        String userPrompt = resp.getPromptMessages().stream()
+        assertTrue(resp.getPromptMessages().stream()
                 .filter(m -> m != null && "user".equalsIgnoreCase(m.getRole()))
                 .map(LlmModerationTestResponse.Message::getContent)
-                .findFirst()
-                .orElse("");
-        assertTrue(userPrompt.contains(derivedUrl));
+                .anyMatch(content -> content != null && content.contains(derivedUrl)));
         assertTrue(resp.getImages().contains(derivedUrl));
     }
 }

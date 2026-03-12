@@ -151,14 +151,14 @@ class AiChatServiceFilesAndVisionTest {
     void ensureVisionModelForRequest_should_throw_when_pool_empty_and_auto_selected() throws Exception {
         LlmGateway llmGateway = mock(LlmGateway.class);
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
-        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("IMAGE_CHAT")))
+        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
                 .thenReturn(List.of());
         AiChatService service = buildService(llmGateway, llmModelRepository, mock(FileAssetsRepository.class), mock(FileAssetExtractionsRepository.class));
 
-        Method m = AiChatService.class.getDeclaredMethod("ensureVisionModelForRequest", LlmQueueTaskType.class, String.class, String.class, boolean.class);
+        Method m = AiChatService.class.getDeclaredMethod("ensureMultimodalModelForRequest", LlmQueueTaskType.class, String.class, String.class);
         m.setAccessible(true);
-        Exception ex = assertThrows(Exception.class, () -> m.invoke(service, LlmQueueTaskType.IMAGE_CHAT, null, null, true));
-        assertEquals(true, String.valueOf(ex.getCause().getMessage()).contains("IMAGE_CHAT"));
+        Exception ex = assertThrows(Exception.class, () -> m.invoke(service, LlmQueueTaskType.MULTIMODAL_CHAT, null, null));
+        assertEquals(true, String.valueOf(ex.getCause().getMessage()).contains("MULTIMODAL_CHAT"));
     }
 
     @Test
@@ -180,14 +180,14 @@ class AiChatServiceFilesAndVisionTest {
         LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
         LlmModelEntity e = new LlmModelEntity();
         e.setEnabled(true);
-        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("IMAGE_CHAT"), eq("vision-1")))
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("vision-1")))
                 .thenReturn(Optional.of(e));
 
         AiChatService service = buildService(llmGateway, llmModelRepository, mock(FileAssetsRepository.class), mock(FileAssetExtractionsRepository.class));
 
-        Method m = AiChatService.class.getDeclaredMethod("ensureVisionModelForRequest", LlmQueueTaskType.class, String.class, String.class, boolean.class);
+        Method m = AiChatService.class.getDeclaredMethod("ensureMultimodalModelForRequest", LlmQueueTaskType.class, String.class, String.class);
         m.setAccessible(true);
-        m.invoke(service, LlmQueueTaskType.IMAGE_CHAT, null, "vision-1", true);
+        m.invoke(service, LlmQueueTaskType.MULTIMODAL_CHAT, null, "vision-1");
     }
 
     @Test
@@ -211,6 +211,104 @@ class AiChatServiceFilesAndVisionTest {
         m.setAccessible(true);
         String out = (String) m.invoke(service, in);
         assertEquals(true, out.startsWith("data:image/png;base64,"));
+    }
+
+    @Test
+    void providerSupportsVision_should_cover_boolean_string_and_exception_paths() throws Exception {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        when(llmGateway.resolve("p_bool")).thenReturn(new AiProvidersConfigService.ResolvedProvider(
+                "p_bool",
+                "OPENAI_COMPAT",
+                "http://127.0.0.1:1",
+                null,
+                "m1",
+                "e1",
+                Map.of("supportsVision", true),
+                Map.of(),
+                1000,
+                1000
+        ));
+        when(llmGateway.resolve("p_str")).thenReturn(new AiProvidersConfigService.ResolvedProvider(
+                "p_str",
+                "OPENAI_COMPAT",
+                "http://127.0.0.1:1",
+                null,
+                "m1",
+                "e1",
+                Map.of("supportsVision", "TRUE"),
+                Map.of(),
+                1000,
+                1000
+        ));
+        when(llmGateway.resolve("p_none")).thenReturn(new AiProvidersConfigService.ResolvedProvider(
+                "p_none",
+                "OPENAI_COMPAT",
+                "http://127.0.0.1:1",
+                null,
+                "m1",
+                "e1",
+                Map.of("other", 1),
+                Map.of(),
+                1000,
+                1000
+        ));
+        when(llmGateway.resolve("p_err")).thenThrow(new RuntimeException("boom"));
+
+        AiChatService service = buildService(llmGateway, mock(LlmModelRepository.class), mock(FileAssetsRepository.class), mock(FileAssetExtractionsRepository.class));
+        Method m = AiChatService.class.getDeclaredMethod("providerSupportsVision", String.class);
+        m.setAccessible(true);
+
+        assertEquals(true, (Boolean) m.invoke(service, "p_bool"));
+        assertEquals(true, (Boolean) m.invoke(service, "p_str"));
+        assertEquals(false, (Boolean) m.invoke(service, "p_none"));
+        assertEquals(false, (Boolean) m.invoke(service, "p_err"));
+    }
+
+    @Test
+    void readLocalUploadBytes_should_read_prefixed_file_and_block_path_traversal() throws Exception {
+        FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+        AiChatService service = buildService(mock(LlmGateway.class), mock(LlmModelRepository.class), fileAssetsRepository, mock(FileAssetExtractionsRepository.class));
+
+        Path root = tempDir.resolve("uploads");
+        Files.createDirectories(root);
+        Path ok = root.resolve("ok.txt");
+        Files.write(ok, "abc".getBytes());
+        Path outside = tempDir.resolve("outside.txt");
+        Files.write(outside, "secret".getBytes());
+
+        setField(service, "uploadRoot", root.toString());
+        setField(service, "urlPrefix", "/uploads");
+
+        Method m = AiChatService.class.getDeclaredMethod("readLocalUploadBytes", Long.class, String.class);
+        m.setAccessible(true);
+        byte[] okBytes = (byte[]) m.invoke(service, null, "/uploads/ok.txt?x=1");
+        byte[] blocked = (byte[]) m.invoke(service, null, "/uploads/../outside.txt");
+
+        assertNotNull(okBytes);
+        assertEquals(3, okBytes.length);
+        assertNull(blocked);
+    }
+
+    @Test
+    void readLocalUploadBytes_should_fallback_to_file_asset_path_when_url_not_local_prefix() throws Exception {
+        FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+        AiChatService service = buildService(mock(LlmGateway.class), mock(LlmModelRepository.class), fileAssetsRepository, mock(FileAssetExtractionsRepository.class));
+
+        Path p = tempDir.resolve("fa.txt");
+        Files.write(p, "from-asset".getBytes());
+        FileAssetsEntity fa = new FileAssetsEntity();
+        fa.setId(10L);
+        fa.setPath(p.toString());
+        when(fileAssetsRepository.findById(10L)).thenReturn(Optional.of(fa));
+
+        setField(service, "uploadRoot", tempDir.resolve("uploads").toString());
+        setField(service, "urlPrefix", "/uploads");
+
+        Method m = AiChatService.class.getDeclaredMethod("readLocalUploadBytes", Long.class, String.class);
+        m.setAccessible(true);
+        byte[] bytes = (byte[]) m.invoke(service, 10L, "/not-local-prefix/x.txt");
+        assertNotNull(bytes);
+        assertEquals(10, bytes.length);
     }
 
     private static void setField(Object target, String name, String value) throws Exception {
@@ -287,4 +385,3 @@ class AiChatServiceFilesAndVisionTest {
         );
     }
 }
-

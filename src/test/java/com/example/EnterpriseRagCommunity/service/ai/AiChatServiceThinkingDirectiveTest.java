@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.entity.ai.LlmModelEntity;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessageSourcesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaMessagesRepository;
 import com.example.EnterpriseRagCommunity.repository.rag.QaSessionsRepository;
@@ -124,6 +126,12 @@ class AiChatServiceThinkingDirectiveTest {
         QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
         QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
         com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository llmModelRepository = mock(com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository.class);
+        LlmModelEntity enabled = new LlmModelEntity();
+        enabled.setEnabled(true);
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("LLM-Studio"), eq("MULTIMODAL_CHAT"), eq("qwen/qwen3-30b-a3b")))
+            .thenReturn(Optional.of(enabled));
+        when(llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(eq("default"), eq("MULTIMODAL_CHAT")))
+            .thenReturn(List.of(enabled));
         RagPostChatRetrievalService ragRetrievalService = mock(RagPostChatRetrievalService.class);
         RagCommentChatRetrievalService ragCommentChatRetrievalService = mock(RagCommentChatRetrievalService.class);
         RagChatPostCommentAggregationService ragChatPostCommentAggregationService = mock(RagChatPostCommentAggregationService.class);

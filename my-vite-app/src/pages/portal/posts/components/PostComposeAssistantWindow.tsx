@@ -748,8 +748,8 @@ export default function PostComposeAssistantWindow(props: Props) {
                   {chatOptionsLoading
                     ? '模型加载中…'
                     : visionImageCount
-                      ? '模型：自动(图片聊天/视觉模型池)'
-                      : '模型：自动(文本聊天/均衡负载)'}
+                      ? '模型：自动(多模态聊天/多模态模型池)'
+                      : '模型：自动(多模态聊天/均衡负载)'}
                 </option>
                 {flatModelOptions.map((o) => (
                   <option key={`${o.providerId}::${o.model}`} value={o.value}>

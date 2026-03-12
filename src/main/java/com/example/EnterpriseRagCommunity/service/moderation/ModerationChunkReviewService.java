@@ -450,9 +450,9 @@ public class ModerationChunkReviewService {
         }
 
         PromptsEntity visionPrompt = null;
-        if (llm != null && llm.getVisionPromptCode() != null) {
+        if (llm != null && llm.getMultimodalPromptCode() != null) {
             try {
-                visionPrompt = promptsRepository.findByPromptCode(llm.getVisionPromptCode()).orElse(null);
+                visionPrompt = promptsRepository.findByPromptCode(llm.getMultimodalPromptCode()).orElse(null);
             } catch (Exception ignore) {
                 visionPrompt = null;
             }

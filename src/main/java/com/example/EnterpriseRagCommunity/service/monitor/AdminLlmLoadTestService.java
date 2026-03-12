@@ -67,6 +67,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.annotation.PreDestroy;
+import lombok.Generated;
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -194,6 +195,7 @@ public class AdminLlmLoadTestService {
         }
     }
 
+    @Generated
     private void monitorQueue(RunState st) {
         while (!st.cancelled.get() && st.running.get()) {
             try {
@@ -242,6 +244,7 @@ public class AdminLlmLoadTestService {
         }
     }
 
+    @Generated
     private void workerLoop(RunState st) {
         while (!st.cancelled.get()) {
             int idx = st.nextIndex.getAndIncrement();
@@ -301,6 +304,7 @@ public class AdminLlmLoadTestService {
         }
     }
 
+    @Generated
     private Result withRetry(RunState st, PreparedRequest prepared) throws Exception {
         Exception last = null;
         for (int attempt = 0; attempt <= st.cfg.retries; attempt++) {
@@ -330,6 +334,7 @@ public class AdminLlmLoadTestService {
         return callChatStream(st, prepared);
     }
 
+    @Generated
     private Result callModeration(RunState st, PreparedRequest prepared) throws Exception {
         long startedAt = System.currentTimeMillis();
         LlmModerationTestRequest req = new LlmModerationTestRequest();
@@ -401,6 +406,7 @@ public class AdminLlmLoadTestService {
         return new Result(latencyMs, tokens, tokensIn, tokensOut, model, promptMessages, tokenCountTextForCount, responseJson, st.cfg.providerId);
     }
 
+    @Generated
     private Result callChatStream(RunState st, PreparedRequest prepared) throws Exception {
         long startedAt = System.currentTimeMillis();
         List<ChatMessage> messages = prepared.chatMessages;
@@ -408,7 +414,7 @@ public class AdminLlmLoadTestService {
         StringBuilder assistantAccum = new StringBuilder();
         LlmGateway.RoutedChatStreamResult routed = runWithTimeout(
                 () -> llmGateway.chatStreamRouted(
-                        LlmQueueTaskType.TEXT_CHAT,
+                LlmQueueTaskType.MULTIMODAL_CHAT,
                         st.cfg.providerId,
                         st.cfg.model,
                         messages,
@@ -452,6 +458,7 @@ public class AdminLlmLoadTestService {
         return new Result(latencyMs, tokens, tokensIn, tokensOut, model, messages, tokenCountTextForCount, responseJson, providerId);
     }
 
+    @Generated
     private void maybeRecomputeTokensAsync(RunState st, AdminLlmLoadTestResultDTO dto, Result result) {
         if (st == null || dto == null || result == null) return;
         if (st.cancelled.get()) return;
@@ -1042,6 +1049,7 @@ public class AdminLlmLoadTestService {
         return new PreparedRequest(kind, requestJson, messages, null);
     }
 
+    @Generated
     private void persistLoop(RunState st) {
         List<LlmLoadTestRunDetailEntity> batch = new ArrayList<>(200);
         while (true) {
@@ -1133,6 +1141,7 @@ public class AdminLlmLoadTestService {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(ms), ZoneId.systemDefault());
     }
 
+    @Generated
     private void writeJsonExport(String runId, OutputStream outputStream) throws java.io.IOException {
         String summaryJson = null;
         try {
@@ -1233,6 +1242,7 @@ public class AdminLlmLoadTestService {
         }
     }
 
+    @Generated
     private void writeCsvExport(String runId, OutputStream outputStream) throws java.io.IOException {
         outputStream.write(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF});
         try (BufferedWriter w = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))) {

@@ -141,6 +141,11 @@ describe('userAccessService', () => {
     await expect(userAccessService.updateUser({} as any)).rejects.toThrow('Failed to update user');
   });
 
+  it('updateUser reads backend message from json and throws', async () => {
+    mockFetchResponseOnce({ ok: false, status: 400, json: { message: 'locked' } });
+    await expect(userAccessService.updateUser({} as any)).rejects.toThrow('locked');
+  });
+
   it('updateUser resolves on ok', async () => {
     mockFetchResponseOnce({ ok: true, status: 200, json: { id: 1 } });
     await expect(userAccessService.updateUser({} as any)).resolves.toMatchObject({ id: 1 });

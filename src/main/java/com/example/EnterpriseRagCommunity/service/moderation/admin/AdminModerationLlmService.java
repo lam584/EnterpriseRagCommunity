@@ -92,56 +92,38 @@ public class AdminModerationLlmService {
 
         LlmModerationTestRequest.LlmModerationConfigOverrideDTO override = req.getConfigOverride();
 
-        PromptsEntity textPromptEntity = promptsRepository.findByPromptCode(merged.getTextPromptCode())
-            .orElseThrow(() -> new IllegalStateException("Text prompt not found: " + merged.getTextPromptCode()));
-        PromptsEntity visionPromptEntity = promptsRepository.findByPromptCode(merged.getVisionPromptCode())
-            .orElseThrow(() -> new IllegalStateException("Vision prompt not found: " + merged.getVisionPromptCode()));
+        PromptsEntity multimodalPromptEntity = promptsRepository.findByPromptCode(merged.getMultimodalPromptCode())
+            .orElseThrow(() -> new IllegalStateException("Multimodal prompt not found: " + merged.getMultimodalPromptCode()));
 
-        int maxImages = imageSupport.clampVisionMaxImages(visionPromptEntity.getVisionMaxImagesPerRequest());
+        int maxImages = imageSupport.clampVisionMaxImages(multimodalPromptEntity.getVisionMaxImagesPerRequest());
         List<ImageRef> images = imageSupport.resolveImages(req, maxImages);
-
-        String promptTemplate = (override != null && override.getPromptTemplate() != null && !override.getPromptTemplate().isBlank())
-            ? override.getPromptTemplate()
-            : textPromptEntity.getUserPromptTemplate();
-        String baseSystemPrompt = (override != null && override.getSystemPrompt() != null)
-            ? override.getSystemPrompt()
-            : textPromptEntity.getSystemPrompt();
 
         String visionPromptTemplate = (override != null && override.getVisionPromptTemplate() != null && !override.getVisionPromptTemplate().isBlank())
             ? override.getVisionPromptTemplate()
-            : visionPromptEntity.getUserPromptTemplate();
+            : multimodalPromptEntity.getUserPromptTemplate();
         String baseVisionSystemPrompt = (override != null && override.getVisionSystemPrompt() != null)
             ? override.getVisionSystemPrompt()
-            : visionPromptEntity.getSystemPrompt();
+            : multimodalPromptEntity.getSystemPrompt();
 
-        if (promptTemplate == null || promptTemplate.isBlank()) {
-            throw new IllegalStateException("Text moderation prompt template is not configured");
+        if (visionPromptTemplate == null || visionPromptTemplate.isBlank()) {
+            throw new IllegalStateException("Multimodal moderation prompt template is not configured");
         }
 
-        PromptLlmParams textInvoke = resolveTextPromptInvocation(textPromptEntity);
-        PromptLlmParams visionInvoke = resolveVisionPromptInvocation(visionPromptEntity);
+        PromptLlmParams visionInvoke = resolveVisionPromptInvocation(multimodalPromptEntity);
 
-        String systemPrompt = baseSystemPrompt == null ? "" : baseSystemPrompt.trim();
         String visionSystemPrompt = baseVisionSystemPrompt == null ? "" : baseVisionSystemPrompt.trim();
         String trace = contextBuilder.buildQueueTraceLine(req);
         if (trace != null && !trace.isBlank()) {
             String t = trace.trim();
-            systemPrompt = systemPrompt.isBlank() ? t : (systemPrompt + "\n" + t);
             visionSystemPrompt = visionSystemPrompt.isBlank() ? t : (visionSystemPrompt + "\n" + t);
         }
         String policyBlock = contextBuilder.buildPolicyContextBlock(req, useQueue);
         if (policyBlock != null && !policyBlock.isBlank()) {
             String t = policyBlock.trim();
-            systemPrompt = systemPrompt.isBlank() ? t : (systemPrompt + "\n" + t);
             visionSystemPrompt = visionSystemPrompt.isBlank() ? t : (visionSystemPrompt + "\n" + t);
         }
 
         ModerationConfidenceFallbackConfigEntity fb = loadFallbackRequired();
-        double textRiskThreshold = require01(fb.getLlmTextRiskThreshold(), "llmTextRiskThreshold");
-        double imageRiskThreshold = require01(fb.getLlmImageRiskThreshold(), "llmImageRiskThreshold");
-        double strongRejectThreshold = require01(fb.getLlmStrongRejectThreshold(), "llmStrongRejectThreshold");
-        double strongPassThreshold = require01(fb.getLlmStrongPassThreshold(), "llmStrongPassThreshold");
-        double judgeThreshold = require01(fb.getLlmCrossModalThreshold(), "llmCrossModalThreshold");
         double rejectThreshold = require01(fb.getLlmRejectThreshold(), "llmRejectThreshold");
         double humanThreshold = require01(fb.getLlmHumanThreshold(), "llmHumanThreshold");
         if (humanThreshold > rejectThreshold) humanThreshold = rejectThreshold;
@@ -157,62 +139,11 @@ public class AdminModerationLlmService {
             allowedLabelsHint = "label_taxonomy.allowed_labels (labels/riskTags must come from this list): " + joined;
         }
         if (allowedLabelsHint != null && !allowedLabelsHint.isBlank()) {
-            systemPrompt = systemPrompt.isBlank() ? allowedLabelsHint : (systemPrompt + "\n" + allowedLabelsHint);
             visionSystemPrompt = visionSystemPrompt.isBlank() ? allowedLabelsHint : (visionSystemPrompt + "\n" + allowedLabelsHint);
         }
 
         QueueCtx ctx = contextBuilder.resolveQueueCtx(req, useQueue);
-        String textInputJson = contextBuilder.buildTextAuditInputJson(req, vars, ctx);
-        String textPrompt0 = AdminModerationLlmUpstreamSupport.renderTextPrompt(promptTemplate, vars);
-        String textPrompt = AdminModerationLlmUpstreamSupport.mergePromptAndJson(promptTemplate, textPrompt0, textInputJson);
         String visionInputJsonList = contextBuilder.buildVisionAuditInputJsonList(req, ctx, images);
-
-        if (images == null || images.isEmpty()) {
-                StageCallResult one0 = upstreamSupport.callTextOnce(
-                    systemPrompt,
-                    textPrompt,
-                    textInvoke.temperature(),
-                    textInvoke.topP(),
-                    textInvoke.maxTokens(),
-                    textInvoke.providerId(),
-                    textInvoke.model(),
-                    textInvoke.enableThinking(),
-                    useQueue
-                );
-            StageCallResult one = enforceRiskTagsWhitelist(one0, labelTaxonomy);
-            LlmModerationTestResponse resp = new LlmModerationTestResponse();
-            resp.setDecisionSuggestion(one.decisionSuggestion());
-            resp.setDecision(one.decision());
-            resp.setRiskScore(one.riskScore());
-            resp.setScore(one.score());
-            resp.setReasons(one.reasons());
-            resp.setLabels(one.labels());
-            resp.setRiskTags(one.riskTags());
-            resp.setLabelTaxonomy(labelTaxonomy);
-            resp.setSeverity(one.severity());
-            resp.setUncertainty(one.uncertainty());
-            resp.setEvidence(upstreamSupport.enrichEvidenceWithText(one.evidence(), text));
-            resp.setRawModelOutput(one.rawModelOutput());
-            resp.setModel(one.model());
-            resp.setLatencyMs(one.latencyMs());
-            resp.setUsage(one.usage());
-            resp.setPromptMessages(one.promptMessages());
-            resp.setImages(List.of());
-            resp.setInputMode(one.inputMode());
-
-            if ((resp.getDecision() == null || resp.getDecision().isBlank()) && resp.getScore() != null) {
-                double s = clamp01(resp.getScore(), 0.0);
-                if (s >= rejectThreshold) resp.setDecision("REJECT");
-                else if (s >= humanThreshold) resp.setDecision("HUMAN");
-                else resp.setDecision("APPROVE");
-            }
-            if (resp.getDecisionSuggestion() == null || resp.getDecisionSuggestion().isBlank()) {
-                resp.setDecisionSuggestion(AdminModerationLlmUpstreamSupport.decisionToSuggestion(resp.getDecision()));
-            }
-            if (resp.getRiskScore() == null) resp.setRiskScore(resp.getScore());
-            if (resp.getLabels() == null) resp.setLabels(List.of());
-            return resp;
-        }
 
         List<String> urls = new ArrayList<>();
         for (ImageRef img : images) {
@@ -224,40 +155,57 @@ public class AdminModerationLlmService {
 
         LlmModerationTestResponse.Stages stages = new LlmModerationTestResponse.Stages();
 
-        StageCallResult textStage = enforceRiskTagsWhitelist(
-            upstreamSupport.callTextOnce(
-                systemPrompt,
-                textPrompt,
-                textInvoke.temperature(),
-                textInvoke.topP(),
-                textInvoke.maxTokens(),
-                textInvoke.providerId(),
-                textInvoke.model(),
-                textInvoke.enableThinking(),
-                useQueue
-            ),
-                labelTaxonomy
+        double textRejectThreshold = clamp01(fb.getLlmTextRiskThreshold(), rejectThreshold);
+        String textPrompt = AdminModerationLlmUpstreamSupport.renderTextPrompt(visionPromptTemplate, vars);
+        StageCallResult textStage0 = upstreamSupport.callTextOnce(
+            visionSystemPrompt,
+            textPrompt,
+            visionInvoke.temperature(),
+            visionInvoke.topP(),
+            visionInvoke.maxTokens(),
+            visionInvoke.providerId(),
+            visionInvoke.model(),
+            visionInvoke.enableThinking(),
+            useQueue
         );
-        stages.setText(toStage(textStage, null));
+        StageCallResult textStage = enforceRiskTagsWhitelist(textStage0, labelTaxonomy);
+        stages.setText(toStage(textStage, textStage == null ? null : textStage.description()));
         if (isStageCallFailed(textStage)) {
-            return finalizeMultiStage("HUMAN", textStage == null ? null : textStage.score(), List.of("Text moderation output invalid, routed to HUMAN"), textStage == null ? null : textStage.riskTags(), stages, urls, labelTaxonomy, textStage);
+            return finalizeMultiStage(
+                "HUMAN",
+                textStage == null ? null : textStage.score(),
+                List.of("Text moderation output invalid, routed to HUMAN"),
+                textStage == null ? null : textStage.riskTags(),
+                stages,
+                List.of(),
+                labelTaxonomy,
+                textStage
+            );
         }
 
         Double textScore = textStage.score();
         double ts = textScore == null ? 0.0 : clamp01(textScore, 0.0);
-        
         boolean textHitTag = exceedsTagThreshold(ts, textStage.riskTags(), tagThresholds);
-        String textDecision = (ts >= textRiskThreshold || textHitTag) ? "REJECT" : "APPROVE";
-        if (stages.getText() != null) stages.getText().setDecision(textDecision);
+        String textDecision = resolveStageDecision(textStage, textRejectThreshold, humanThreshold, textHitTag);
+        stages.getText().setDecision(textDecision);
 
-        if (ts >= strongRejectThreshold) {
-            List<String> reasons = new ArrayList<>();
-        reasons.add("Strong reject: text high confidence violation (>= " + strongRejectThreshold + ")");
-            return finalizeMultiStage("REJECT", ts, reasons, textStage.riskTags(), stages, urls, labelTaxonomy, textStage);
-        }
-
-        if (visionPromptTemplate == null || visionPromptTemplate.isBlank()) {
-            throw new IllegalStateException("Vision moderation prompt template is not configured");
+        if (images == null || images.isEmpty() || "REJECT".equalsIgnoreCase(textDecision)) {
+            List<String> finalReasons = textStage == null || textStage.reasons() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(textStage.reasons());
+            if (finalReasons.isEmpty()) {
+            finalReasons.add("Text moderation decision finalized from primary stage output");
+            }
+            return finalizeMultiStage(
+                textDecision == null ? "APPROVE" : textDecision.toUpperCase(Locale.ROOT),
+                ts,
+                finalReasons,
+                textStage.riskTags(),
+                stages,
+                List.of(),
+                labelTaxonomy,
+                textStage
+            );
         }
 
         StageCallResult imageStage0 = upstreamSupport.callImageDescribeOnce(
@@ -272,200 +220,55 @@ public class AdminModerationLlmService {
                 visionInvoke.providerId(),
                 visionInvoke.model(),
                 visionInvoke.enableThinking(),
-                visionPromptEntity.getVisionImageTokenBudget(),
-                visionPromptEntity.getVisionMaxImagesPerRequest(),
-                visionPromptEntity.getVisionHighResolutionImages(),
-                visionPromptEntity.getVisionMaxPixels(),
+                multimodalPromptEntity.getVisionImageTokenBudget(),
+                multimodalPromptEntity.getVisionMaxImagesPerRequest(),
+                multimodalPromptEntity.getVisionHighResolutionImages(),
+                multimodalPromptEntity.getVisionMaxPixels(),
                 useQueue
         );
         StageCallResult imageStage = enforceRiskTagsWhitelist(imageStage0, labelTaxonomy);
         stages.setImage(toStage(imageStage, imageStage == null ? null : imageStage.description()));
         if (isStageCallFailed(imageStage)) {
-            return finalizeMultiStage("HUMAN", imageStage == null ? null : imageStage.score(), List.of("Image moderation output invalid, routed to HUMAN"), imageStage == null ? null : imageStage.riskTags(), stages, urls, labelTaxonomy, imageStage);
+            return finalizeMultiStage("HUMAN", imageStage == null ? null : imageStage.score(), List.of("Multimodal moderation output invalid, routed to HUMAN"), imageStage == null ? null : imageStage.riskTags(), stages, urls, labelTaxonomy, imageStage);
         }
 
-        Double imageScore = imageStage == null ? null : imageStage.score();
+        Double imageScore = imageStage.score();
         double is = imageScore == null ? 0.0 : clamp01(imageScore, 0.0);
 
-        boolean imageHitTag = exceedsTagThreshold(is, imageStage == null ? null : imageStage.riskTags(), tagThresholds);
-        String imageDecision = (is >= imageRiskThreshold || imageHitTag) ? "REJECT" : "APPROVE";
-        if (stages.getImage() != null) stages.getImage().setDecision(imageDecision);
+        boolean imageHitTag = exceedsTagThreshold(is, imageStage.riskTags(), tagThresholds);
+        String imageDecision = imageStage.decision();
+        if (imageDecision == null || imageDecision.isBlank()) {
+            if (imageHitTag || is >= rejectThreshold) imageDecision = "REJECT";
+            else if (is >= humanThreshold) imageDecision = "HUMAN";
+            else imageDecision = "APPROVE";
+        }
+        stages.getImage().setDecision(imageDecision);
 
-        if (ts >= strongRejectThreshold || is >= strongRejectThreshold) {
-            List<String> reasons = new ArrayList<>();
-            reasons.add("Strong reject: high confidence violation exists (>= " + strongRejectThreshold + ")");
-            return finalizeMultiStage("REJECT", Math.max(ts, is), reasons, mergeTags(textStage.riskTags(), imageStage == null ? null : imageStage.riskTags()), stages, urls, labelTaxonomy, imageStage);
-        }
-
-        if (ts < strongPassThreshold && is < strongPassThreshold) {
-            List<String> reasons = new ArrayList<>();
-            reasons.add("Strong pass: both text and image are low risk (< " + strongPassThreshold + ")");
-            return finalizeMultiStage("APPROVE", Math.max(ts, is), reasons, mergeTags(textStage.riskTags(), imageStage == null ? null : imageStage.riskTags()), stages, urls, labelTaxonomy, imageStage);
-        }
-
-        PromptsEntity judgePromptEntity = promptsRepository.findByPromptCode(merged.getJudgePromptCode())
-            .orElseThrow(() -> new IllegalStateException("Judge prompt not found: " + merged.getJudgePromptCode()));
-        PromptLlmParams judgeInvoke = resolveTextPromptInvocation(judgePromptEntity);
-        String judgeTpl = (override != null && override.getJudgePromptTemplate() != null && !override.getJudgePromptTemplate().isBlank())
-            ? override.getJudgePromptTemplate()
-            : judgePromptEntity.getUserPromptTemplate();
-
-        if (judgeTpl == null || judgeTpl.isBlank()) {
-            throw new IllegalStateException("Judge prompt template is not configured");
-        }
-        String judgePrompt = null;
-        if (ctx != null && ctx.queue() != null && imageStage != null) {
-            judgePrompt = contextBuilder.buildJudgeInputJson(
-                    ctx,
-                    text,
-                    imageStage.description(),
-                    ts,
-                    is,
-                    textStage.reasons(),
-                    imageStage.reasons(),
-                    textStage.evidence(),
-                    imageStage.evidence(),
-                    ctx.queue().getContentType().name(),
-                    ctx.queue().getContentId()
-            );
-        }
-        if (judgePrompt == null) {
-            judgePrompt = AdminModerationLlmUpstreamSupport.renderJudgePrompt(judgeTpl, text, imageStage == null ? null : imageStage.description(), ts, is, textStage.reasons(), imageStage == null ? null : imageStage.reasons());
-        }
-        StageCallResult judgeStage = enforceRiskTagsWhitelist(
-                upstreamSupport.callTextOnce(
-                        systemPrompt,
-                        judgePrompt,
-                        judgeInvoke.temperature(),
-                        judgeInvoke.topP(),
-                        judgeInvoke.maxTokens(),
-                        judgeInvoke.providerId(),
-                        judgeInvoke.model(),
-                        judgeInvoke.enableThinking(),
-                        useQueue
-                ),
-                labelTaxonomy
-        );
-        stages.setJudge(toStage(judgeStage, null));
-
-        if (isStageCallFailed(judgeStage)) {
-            return finalizeMultiStage(
-                    "HUMAN",
-                    judgeStage == null ? null : judgeStage.score(),
-                    List.of("Judge output invalid, routed to HUMAN"),
-                    mergeTags(mergeTags(textStage.riskTags(), imageStage == null ? null : imageStage.riskTags()), judgeStage == null ? null : judgeStage.riskTags()),
-                    stages,
-                    urls,
-                    labelTaxonomy,
-                    judgeStage
-            );
-        }
-
-        double js = judgeStage.score() == null ? 0.0 : clamp01(judgeStage.score(), 0.0);
-        String finalDecision = judgeStage.decision();
-        
-        boolean judgeHitTag = exceedsTagThreshold(js, judgeStage.riskTags(), tagThresholds);
-        
-        if (finalDecision == null || finalDecision.isBlank() || (!"APPROVE".equalsIgnoreCase(finalDecision) && !"REJECT".equalsIgnoreCase(finalDecision) && !"HUMAN".equalsIgnoreCase(finalDecision))) {
-            finalDecision = (js >= judgeThreshold || judgeHitTag) ? "REJECT" : "APPROVE";
-        }
-        if ("REJECT".equalsIgnoreCase(finalDecision) && js < judgeThreshold && !judgeHitTag) {
-            finalDecision = "APPROVE";
-        }
-        if ("APPROVE".equalsIgnoreCase(finalDecision) && (js >= judgeThreshold || judgeHitTag)) {
-            finalDecision = "REJECT";
-        }
-
-        StageCallResult finalStageForReturn = judgeStage;
-        boolean conflict = ("REJECT".equalsIgnoreCase(textDecision) && "APPROVE".equalsIgnoreCase(imageDecision))
-                || ("APPROVE".equalsIgnoreCase(textDecision) && "REJECT".equalsIgnoreCase(imageDecision));
-        Map<String, Object> thresholds = fb.getThresholds();
-        boolean upgradeEnable = asBooleanRequired(thresholds == null ? null : thresholds.get("llm.cross.upgrade.enable"), "llm.cross.upgrade.enable");
-        boolean upgradeOnConflict = asBooleanRequired(thresholds == null ? null : thresholds.get("llm.cross.upgrade.onConflict"), "llm.cross.upgrade.onConflict");
-        boolean upgradeOnUncertainty = asBooleanRequired(thresholds == null ? null : thresholds.get("llm.cross.upgrade.onUncertainty"), "llm.cross.upgrade.onUncertainty");
-        boolean upgradeOnGray = asBooleanRequired(thresholds == null ? null : thresholds.get("llm.cross.upgrade.onGray"), "llm.cross.upgrade.onGray");
-        double uncertaintyMin = clamp01Strict(asDoubleRequired(thresholds == null ? null : thresholds.get("llm.cross.upgrade.uncertaintyMin"), "llm.cross.upgrade.uncertaintyMin"));
-        double scoreGrayMargin = clamp01Strict(asDoubleRequired(thresholds == null ? null : thresholds.get("llm.cross.upgrade.scoreGrayMargin"), "llm.cross.upgrade.scoreGrayMargin"));
-        double judgeUn = judgeStage.uncertainty() == null ? 0.0 : clamp01(judgeStage.uncertainty(), 0.0);
-        boolean shouldUpgrade = upgradeEnable && (
-                (upgradeOnConflict && conflict)
-                        || (upgradeOnUncertainty && judgeUn >= uncertaintyMin)
-                        || (upgradeOnGray && Math.abs(js - judgeThreshold) <= scoreGrayMargin)
-        );
-        if (shouldUpgrade) {
-            PromptLlmParams judgeUpgradeInvoke = judgeInvoke;
-            String upgradeTpl = (override != null && override.getJudgePromptTemplate() != null && !override.getJudgePromptTemplate().isBlank())
-                ? override.getJudgePromptTemplate()
-                : judgePromptEntity.getUserPromptTemplate();
-
-            if (upgradeTpl == null || upgradeTpl.isBlank()) {
-                throw new IllegalStateException("Judge upgrade prompt template is not configured");
-            }
-            String upgradePrompt = AdminModerationLlmUpstreamSupport.renderJudgeUpgradePrompt(
-                    upgradeTpl,
-                    text,
-                    imageStage == null ? null : imageStage.description(),
-                    ts,
-                    is,
-                    js,
-                    judgeThreshold,
-                    textStage.reasons(),
-                    imageStage == null ? null : imageStage.reasons(),
-                    judgeStage.reasons(),
-                    textStage.evidence(),
-                    imageStage == null ? null : imageStage.evidence(),
-                    judgeStage.evidence()
-            );
-            StageCallResult upgradeStage = enforceRiskTagsWhitelist(
-                    upstreamSupport.callTextOnce(
-                            systemPrompt,
-                            upgradePrompt,
-                            judgeUpgradeInvoke.temperature(),
-                            judgeUpgradeInvoke.topP(),
-                            judgeUpgradeInvoke.maxTokens(),
-                            judgeUpgradeInvoke.providerId(),
-                            judgeUpgradeInvoke.model(),
-                            judgeUpgradeInvoke.enableThinking(),
-                            useQueue
-                    ),
-                    labelTaxonomy
-            );
-            stages.setUpgrade(toStage(upgradeStage, null));
-            if (isStageCallFailed(upgradeStage)) {
-                return finalizeMultiStage(
-                        "HUMAN",
-                        upgradeStage == null ? null : upgradeStage.score(),
-                        List.of("Judge upgrade output invalid, routed to HUMAN"),
-                        mergeTags(mergeTags(textStage.riskTags(), imageStage == null ? null : imageStage.riskTags()), judgeStage.riskTags()),
-                        stages,
-                        urls,
-                        labelTaxonomy,
-                        upgradeStage
-                );
-            }
-            double us = upgradeStage.score() == null ? js : clamp01(upgradeStage.score(), js);
-            double uu = upgradeStage.uncertainty() == null ? 0.0 : clamp01(upgradeStage.uncertainty(), 0.0);
-            if (uu >= uncertaintyMin) {
-                return finalizeMultiStage("HUMAN", us, List.of("Judge upgrade: uncertainty too high, routed to HUMAN"), mergeTags(mergeTags(textStage.riskTags(), imageStage == null ? null : imageStage.riskTags()), judgeStage.riskTags()), stages, urls, labelTaxonomy, upgradeStage);
-            }
-            String d = upgradeStage.decision();
-            if (d == null || d.isBlank() || (!"APPROVE".equalsIgnoreCase(d) && !"REJECT".equalsIgnoreCase(d) && !"HUMAN".equalsIgnoreCase(d))) {
-                d = us >= judgeThreshold ? "REJECT" : "APPROVE";
-            }
-            finalDecision = d.toUpperCase(Locale.ROOT);
-            js = us;
-            finalStageForReturn = upgradeStage;
-        }
-
+        String finalDecision = combineStageDecision(textDecision, imageDecision);
+        double finalScore = Math.max(ts, is);
         List<String> finalReasons = new ArrayList<>();
-        finalReasons.add("Judge threshold decision based on threshold=" + judgeThreshold);
-        if (judgeStage.reasons() != null && !judgeStage.reasons().isEmpty()) finalReasons.addAll(judgeStage.reasons());
-        if (stages.getUpgrade() != null && stages.getUpgrade().getReasons() != null && !stages.getUpgrade().getReasons().isEmpty()) {
-            finalReasons.add("Judge upgrade stage applied");
-            finalReasons.addAll(stages.getUpgrade().getReasons());
+        if (textStage != null && textStage.reasons() != null) finalReasons.addAll(textStage.reasons());
+        if (imageStage != null && imageStage.reasons() != null) {
+            for (String reason : imageStage.reasons()) {
+                if (reason != null && !reason.isBlank() && !finalReasons.contains(reason)) {
+                    finalReasons.add(reason);
+                }
+            }
         }
-
-        return finalizeMultiStage(finalDecision.toUpperCase(Locale.ROOT), js, finalReasons, mergeTags(mergeTags(textStage.riskTags(), imageStage == null ? null : imageStage.riskTags()), judgeStage.riskTags()), stages, urls, labelTaxonomy, finalStageForReturn);
+        if (finalReasons.isEmpty()) {
+            finalReasons.add("Multimodal moderation decision finalized from stage aggregation");
+        }
+        StageCallResult decisiveStage = resolveDecisiveStage(finalDecision, textDecision, imageDecision, textStage, imageStage);
+        return finalizeMultiStage(
+                finalDecision,
+                finalScore,
+                finalReasons,
+                mergeTags(textStage.riskTags(), imageStage.riskTags()),
+                stages,
+                urls,
+                labelTaxonomy,
+                decisiveStage
+        );
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -480,20 +283,20 @@ public class AdminModerationLlmService {
         if (vars == null) vars = new PromptVars("", "", "");
 
         LlmModerationTestRequest.LlmModerationConfigOverrideDTO override = req.getConfigOverride();
-        PromptsEntity visionPromptEntity = promptsRepository.findByPromptCode(merged.getVisionPromptCode())
-            .orElseThrow(() -> new IllegalStateException("Vision prompt not found: " + merged.getVisionPromptCode()));
-        PromptLlmParams visionInvoke = resolveVisionPromptInvocation(visionPromptEntity);
+        PromptsEntity multimodalPromptEntity = promptsRepository.findByPromptCode(merged.getMultimodalPromptCode())
+            .orElseThrow(() -> new IllegalStateException("Multimodal prompt not found: " + merged.getMultimodalPromptCode()));
+        PromptLlmParams visionInvoke = resolveVisionPromptInvocation(multimodalPromptEntity);
 
-        int maxImages = imageSupport.clampVisionMaxImages(visionPromptEntity.getVisionMaxImagesPerRequest());
+        int maxImages = imageSupport.clampVisionMaxImages(multimodalPromptEntity.getVisionMaxImagesPerRequest());
         List<ImageRef> images = imageSupport.resolveImages(req, maxImages);
         if (images == null || images.isEmpty()) return null;
 
         String visionPromptTemplate = (override != null && override.getVisionPromptTemplate() != null && !override.getVisionPromptTemplate().isBlank())
             ? override.getVisionPromptTemplate()
-            : visionPromptEntity.getUserPromptTemplate();
+            : multimodalPromptEntity.getUserPromptTemplate();
         String baseVisionSystemPrompt = (override != null && override.getVisionSystemPrompt() != null)
             ? override.getVisionSystemPrompt()
-            : visionPromptEntity.getSystemPrompt();
+            : multimodalPromptEntity.getSystemPrompt();
 
         if (visionPromptTemplate == null || visionPromptTemplate.isBlank()) {
             throw new IllegalStateException("Vision moderation prompt template is not configured");
@@ -535,10 +338,10 @@ public class AdminModerationLlmService {
                 visionInvoke.providerId(),
                 visionInvoke.model(),
                 visionInvoke.enableThinking(),
-                visionPromptEntity.getVisionImageTokenBudget(),
-                visionPromptEntity.getVisionMaxImagesPerRequest(),
-                visionPromptEntity.getVisionHighResolutionImages(),
-                visionPromptEntity.getVisionMaxPixels(),
+                multimodalPromptEntity.getVisionImageTokenBudget(),
+                multimodalPromptEntity.getVisionMaxImagesPerRequest(),
+                multimodalPromptEntity.getVisionHighResolutionImages(),
+                multimodalPromptEntity.getVisionMaxPixels(),
                 useQueue
         );
         StageCallResult imageStage = enforceRiskTagsWhitelist(imageStage0, labelTaxonomy);
@@ -767,6 +570,42 @@ public class AdminModerationLlmService {
         return v;
     }
 
+    private static String resolveStageDecision(StageCallResult stage, double rejectThreshold, double humanThreshold, boolean tagThresholdHit) {
+        String decision = stage == null ? null : stage.decision();
+        if (decision != null && !decision.isBlank()) {
+            return decision.trim().toUpperCase(Locale.ROOT);
+        }
+        double score = clamp01(stage == null ? null : stage.score(), 0.0);
+        if (tagThresholdHit || score >= rejectThreshold) return "REJECT";
+        if (score >= humanThreshold) return "HUMAN";
+        return "APPROVE";
+    }
+
+    private static String combineStageDecision(String left, String right) {
+        if ("REJECT".equalsIgnoreCase(left) || "REJECT".equalsIgnoreCase(right)) return "REJECT";
+        if ("HUMAN".equalsIgnoreCase(left) || "HUMAN".equalsIgnoreCase(right)) return "HUMAN";
+        if ("APPROVE".equalsIgnoreCase(left) || "APPROVE".equalsIgnoreCase(right)) return "APPROVE";
+        return "HUMAN";
+    }
+
+    private static StageCallResult resolveDecisiveStage(
+            String finalDecision,
+            String textDecision,
+            String imageDecision,
+            StageCallResult textStage,
+            StageCallResult imageStage
+    ) {
+        if ("REJECT".equalsIgnoreCase(finalDecision)) {
+            if ("REJECT".equalsIgnoreCase(textDecision)) return textStage;
+            if ("REJECT".equalsIgnoreCase(imageDecision)) return imageStage;
+        }
+        if ("HUMAN".equalsIgnoreCase(finalDecision)) {
+            if ("HUMAN".equalsIgnoreCase(textDecision)) return textStage;
+            if ("HUMAN".equalsIgnoreCase(imageDecision)) return imageStage;
+        }
+        return imageStage != null ? imageStage : textStage;
+    }
+
     private static List<String> mergeTags(List<String> a, List<String> b) {
         LinkedHashSet<String> set = new LinkedHashSet<>();
         if (a != null) set.addAll(a);
@@ -857,7 +696,8 @@ public class AdminModerationLlmService {
         resp.setLabelTaxonomy(labelTaxonomy);
         resp.setStages(stages);
         resp.setImages(images == null ? List.of() : images);
-        resp.setInputMode("multistage");
+        boolean hasSecondaryStage = stages != null && (stages.getJudge() != null || stages.getUpgrade() != null || stages.getText() != null);
+        resp.setInputMode(hasSecondaryStage ? "multistage" : "multimodal");
         if (finalStage != null) {
             resp.setSeverity(finalStage.severity());
             resp.setUncertainty(finalStage.uncertainty());

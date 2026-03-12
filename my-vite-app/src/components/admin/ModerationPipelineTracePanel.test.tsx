@@ -126,7 +126,7 @@ describe('ModerationPipelineTracePanel', () => {
     expect(screen.getByText(/"model":\s*"m2"/)).not.toBeNull();
   });
 
-  it('存在 TEXT/VISION/JUDGE 时隐藏 LLM 阶段展示', async () => {
+  it('隐藏 TEXT 阶段，并在存在 VISION/JUDGE 时隐藏 LLM 阶段展示', async () => {
     mockAdminGetLatestPipelineByQueueId.mockResolvedValueOnce({
       run: {
         id: 100,
@@ -179,10 +179,11 @@ describe('ModerationPipelineTracePanel', () => {
 
     await screen.findByText('runId：');
     const summaryText = Array.from(document.querySelectorAll('summary')).map((x) => x.textContent || '').join(' ');
-    expect(summaryText).toContain('TEXT');
+    expect(summaryText).not.toContain('TEXT');
     expect(summaryText).toContain('VISION');
     expect(summaryText).toContain('JUDGE');
     expect(summaryText).not.toContain('LLM');
+    expect(screen.queryByText(/no_text_stage/)).toBeNull();
     expect(screen.queryByText(/"model":\s*"hidden-llm"/)).toBeNull();
   });
 

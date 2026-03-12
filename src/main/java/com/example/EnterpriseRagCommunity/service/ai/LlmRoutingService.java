@@ -139,25 +139,12 @@ public class LlmRoutingService {
     public List<RouteTarget> listEnabledTargets(String taskType) {
         String purpose = normalizeTaskType(taskType);
         List<LlmModelEntity> models = llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, purpose);
-        Set<String> imageChatAllowKeys = null;
-        if ("IMAGE_MODERATION".equalsIgnoreCase(purpose)) {
-            imageChatAllowKeys = new HashSet<>();
-            List<LlmModelEntity> imageChat = llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, "IMAGE_CHAT");
-            for (LlmModelEntity e : imageChat) {
-                if (e == null) continue;
-                String pid = toNonBlank(e.getProviderId());
-                String mn = toNonBlank(e.getModelName());
-                if (pid == null || mn == null) continue;
-                imageChatAllowKeys.add(pid + "|" + mn);
-            }
-        }
         List<RouteTarget> out = new ArrayList<>();
         for (LlmModelEntity m : models) {
             if (m == null) continue;
             String providerId = toNonBlank(m.getProviderId());
             String modelName = toNonBlank(m.getModelName());
             if (providerId == null || modelName == null) continue;
-            if (imageChatAllowKeys != null && !imageChatAllowKeys.contains(providerId + "|" + modelName)) continue;
             out.add(new RouteTarget(
                     new TargetId(providerId, modelName),
                     m.getWeight() == null ? 0 : m.getWeight(),
@@ -179,12 +166,7 @@ public class LlmRoutingService {
         String pid = toNonBlank(providerId);
         String mn = toNonBlank(modelName);
         if (pid == null || mn == null) return false;
-        boolean ok = llmModelRepository.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue(ENV_DEFAULT, purpose, pid, mn);
-        if (!ok) return false;
-        if ("IMAGE_MODERATION".equalsIgnoreCase(purpose)) {
-            return llmModelRepository.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue(ENV_DEFAULT, "IMAGE_CHAT", pid, mn);
-        }
-        return true;
+        return llmModelRepository.existsByEnvAndPurposeAndProviderIdAndModelNameAndEnabledTrue(ENV_DEFAULT, purpose, pid, mn);
     }
 
     public RouteTarget pickNext(LlmQueueTaskType taskType, Set<TargetId> exclude) {
@@ -500,7 +482,10 @@ public class LlmRoutingService {
     }
 
     private static Policy defaultPolicy(String taskType) {
-        if ("MODERATION".equalsIgnoreCase(taskType) || "TEXT_MODERATION".equalsIgnoreCase(taskType) || "IMAGE_MODERATION".equalsIgnoreCase(taskType)) {
+        if ("MODERATION".equalsIgnoreCase(taskType)
+                || "MULTIMODAL_MODERATION".equalsIgnoreCase(taskType)
+                || "TEXT_MODERATION".equalsIgnoreCase(taskType)
+                || "IMAGE_MODERATION".equalsIgnoreCase(taskType)) {
             return new Policy(Strategy.PRIORITY_FALLBACK, 2, 2, 30_000);
         }
         return new Policy(Strategy.WEIGHTED_RR, 2, 2, 30_000);
@@ -509,14 +494,16 @@ public class LlmRoutingService {
     private static String normalizeTaskType(String tt) {
         if (tt == null) return "UNKNOWN";
         String up = tt.trim().toUpperCase(Locale.ROOT);
-        if ("CHAT".equals(up)) return "TEXT_CHAT";
+        if ("CHAT".equals(up) || "TEXT_CHAT".equals(up) || "IMAGE_CHAT".equals(up)) return "MULTIMODAL_CHAT";
+        if ("MODERATION".equals(up) || "TEXT_MODERATION".equals(up) || "IMAGE_MODERATION".equals(up)) return "MULTIMODAL_MODERATION";
         return up;
     }
 
     private static String normalizeTaskType(LlmQueueTaskType tt) {
         if (tt == null) return "UNKNOWN";
         String up = tt.name().trim().toUpperCase(Locale.ROOT);
-        if ("CHAT".equals(up)) return "TEXT_CHAT";
+        if ("CHAT".equals(up) || "TEXT_CHAT".equals(up) || "IMAGE_CHAT".equals(up)) return "MULTIMODAL_CHAT";
+        if ("MODERATION".equals(up) || "TEXT_MODERATION".equals(up) || "IMAGE_MODERATION".equals(up)) return "MULTIMODAL_MODERATION";
         return up;
     }
 

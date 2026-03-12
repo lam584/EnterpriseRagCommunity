@@ -25,7 +25,9 @@ type ConfigForm = {
   providers: ProviderForm[];
 };
 
-type ModelPurpose = 'TEXT_CHAT' | 'IMAGE_CHAT' | 'EMBEDDING' | 'RERANK';
+type ModelPurpose = 'MULTIMODAL_CHAT' | 'EMBEDDING' | 'RERANK';
+
+const SUPPORTED_CAPABILITY_FILTERS = new Set(['推理', '嵌入', '重排', '视觉', '工具']);
 
 function inferModelCapabilityTags(modelName: string): string[] {
   const name = modelName.trim().toLowerCase();
@@ -50,19 +52,11 @@ function inferModelCapabilityTags(modelName: string): string[] {
   return tags;
 }
 
-function inferPurposeFromName(modelName: string): ModelPurpose {
-  const tags = inferModelCapabilityTags(modelName);
-  if (tags.includes('嵌入')) return 'EMBEDDING';
-  if (tags.includes('重排')) return 'RERANK';
-  if (tags.includes('视觉')) return 'IMAGE_CHAT';
-  return 'TEXT_CHAT';
-}
-
 function getModelPurposeWarning(requestedPurpose: ModelPurpose, modelName: string): string | null {
-  if (requestedPurpose !== 'IMAGE_CHAT') return null;
+  if (requestedPurpose !== 'MULTIMODAL_CHAT') return null;
   const tags = inferModelCapabilityTags(modelName);
   if (tags.includes('视觉')) return null;
-  return '该模型名未识别出视觉能力，可能不支持图片输入。继续添加时，仍会加入视觉模型列表。';
+  return '该模型名未识别出显式视觉能力；仍可加入多模态模型列表，但建议优先选择原生多模态模型。';
 }
 
 type ProviderModelsState = {
@@ -250,7 +244,7 @@ export default function AiProvidersForm() {
     open: false,
     providerId: '',
     providerIndex: -1,
-    purpose: 'TEXT_CHAT',
+    purpose: 'MULTIMODAL_CHAT',
     capability: '',
   });
 
@@ -258,7 +252,7 @@ export default function AiProvidersForm() {
     return {
       loading: false,
       error: null,
-      modelsByPurpose: { TEXT_CHAT: [], IMAGE_CHAT: [], EMBEDDING: [], RERANK: [] },
+      modelsByPurpose: { MULTIMODAL_CHAT: [], EMBEDDING: [], RERANK: [] },
     };
   }, []);
 
@@ -267,7 +261,7 @@ export default function AiProvidersForm() {
       const next: ProviderModelsState = {
         loading: false,
         error: null,
-        modelsByPurpose: { TEXT_CHAT: [], IMAGE_CHAT: [], EMBEDDING: [], RERANK: [] },
+        modelsByPurpose: { MULTIMODAL_CHAT: [], EMBEDDING: [], RERANK: [] },
       };
       const rows = dto.models ?? [];
       for (const r of rows) {
@@ -276,9 +270,9 @@ export default function AiProvidersForm() {
         if (!name) continue;
         const rawPurpose = typeof r.purpose === 'string' ? r.purpose.trim().toUpperCase() : '';
         const purpose: ModelPurpose | null = (() => {
-          if (rawPurpose === 'TEXT_CHAT' || rawPurpose === 'IMAGE_CHAT' || rawPurpose === 'RERANK') return rawPurpose as ModelPurpose;
+          if (rawPurpose === 'MULTIMODAL_CHAT' || rawPurpose === 'RERANK') return rawPurpose as ModelPurpose;
           if (rawPurpose === 'EMBEDDING' || rawPurpose === 'POST_EMBEDDING' || rawPurpose === 'SIMILARITY_EMBEDDING') return 'EMBEDDING';
-          if (rawPurpose === 'CHAT') return inferPurposeFromName(name);
+          if (rawPurpose === 'TEXT_CHAT' || rawPurpose === 'IMAGE_CHAT' || rawPurpose === 'CHAT') return 'MULTIMODAL_CHAT';
           return null;
         })();
         if (!purpose) continue;
@@ -594,8 +588,7 @@ function AiProvidersFormInner(props: InnerProps) {
   );
 
   const purposeLabel = (p: ModelPurpose): string => {
-    if (p === 'TEXT_CHAT') return '文本生成模型';
-    if (p === 'IMAGE_CHAT') return '视觉模型';
+    if (p === 'MULTIMODAL_CHAT') return '多模态模型';
     if (p === 'EMBEDDING') return '文本嵌入模型';
     return '重排模型';
   };
@@ -680,7 +673,7 @@ function AiProvidersFormInner(props: InnerProps) {
     setModalFilter('');
     const hinted = (addModelsModal.capability ?? '').trim();
     setModalCapability(
-      hinted ||
+      (SUPPORTED_CAPABILITY_FILTERS.has(hinted) ? hinted : '') ||
         (addModelsModal.purpose === 'EMBEDDING'
           ? '嵌入'
           : addModelsModal.purpose === 'RERANK'
@@ -699,7 +692,7 @@ function AiProvidersFormInner(props: InnerProps) {
   ]);
 
   const closeModal = () => {
-    setAddModelsModal({ open: false, providerId: '', providerIndex: -1, purpose: 'TEXT_CHAT', capability: '' });
+    setAddModelsModal({ open: false, providerId: '', providerIndex: -1, purpose: 'MULTIMODAL_CHAT', capability: '' });
   };
 
   const addModel = async (providerId: string, purpose: ModelPurpose, modelName: string) => {
@@ -893,8 +886,7 @@ function AiProvidersFormInner(props: InnerProps) {
   const modalExistingSets = useMemo(() => {
     const pid = modalProviderId;
     return {
-      TEXT_CHAT: new Set(getModelsForProvider(pid, 'TEXT_CHAT')),
-      IMAGE_CHAT: new Set(getModelsForProvider(pid, 'IMAGE_CHAT')),
+      MULTIMODAL_CHAT: new Set(getModelsForProvider(pid, 'MULTIMODAL_CHAT')),
       EMBEDDING: new Set(getModelsForProvider(pid, 'EMBEDDING')),
       RERANK: new Set(getModelsForProvider(pid, 'RERANK')),
     };
@@ -1126,9 +1118,9 @@ function AiProvidersFormInner(props: InnerProps) {
                   )}
 
                   <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-                    {(['TEXT_CHAT', 'IMAGE_CHAT', 'EMBEDDING', 'RERANK'] as ModelPurpose[]).map((purpose) => {
+                    {(['MULTIMODAL_CHAT', 'EMBEDDING', 'RERANK'] as ModelPurpose[]).map((purpose) => {
                       const models = getModelsForProvider(p.id ?? '', purpose);
-                      const capHint = purpose === 'IMAGE_CHAT' ? '视觉' : undefined;
+                      const capHint = purpose === 'EMBEDDING' ? '嵌入' : purpose === 'RERANK' ? '重排' : undefined;
                       return (
                         <div key={purpose} className="border rounded-lg p-3 space-y-2">
                           <div className="flex items-center justify-between">
@@ -1462,8 +1454,7 @@ function AiProvidersFormInner(props: InnerProps) {
                   filteredUpstream.map((m) => {
                     const alreadyAdded = modalExistingForPurpose.has(m);
                     const existingPurposes: string[] = [];
-                    if (modalExistingSets.TEXT_CHAT.has(m)) existingPurposes.push('推理');
-                    if (modalExistingSets.IMAGE_CHAT.has(m)) existingPurposes.push('视觉');
+                    if (modalExistingSets.MULTIMODAL_CHAT.has(m)) existingPurposes.push('多模态');
                     if (modalExistingSets.EMBEDDING.has(m)) existingPurposes.push('嵌入');
                     if (modalExistingSets.RERANK.has(m)) existingPurposes.push('重排');
                     const inferred = modelCapabilityTags(m);

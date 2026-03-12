@@ -95,6 +95,8 @@ public class AdminTokenMetricsController {
         String tt = normalizeTaskType(taskType);
         if (tt == null) return fallback;
         return switch (tt) {
+            case "MULTIMODAL_CHAT" -> "多模态聊天";
+            case "MULTIMODAL_MODERATION" -> "多模态审核";
             case "MODERATION_CHUNK" -> "分片审核";
             default -> fallback;
         };

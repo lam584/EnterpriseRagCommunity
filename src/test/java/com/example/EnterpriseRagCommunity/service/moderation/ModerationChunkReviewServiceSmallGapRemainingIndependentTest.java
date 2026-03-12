@@ -137,7 +137,7 @@ class ModerationChunkReviewServiceSmallGapRemainingIndependentTest {
         cfg.setChunkSizeChars(4000);
 
         ModerationLlmConfigEntity llm = new ModerationLlmConfigEntity();
-        llm.setVisionPromptCode("vision-tight-budget");
+        llm.setMultimodalPromptCode("vision-tight-budget");
         when(fx.llmConfigRepository.findAll()).thenReturn(List.of(llm));
 
         com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity prompt =
@@ -162,7 +162,7 @@ class ModerationChunkReviewServiceSmallGapRemainingIndependentTest {
         cfg.setChunkSizeChars(4000);
 
         ModerationLlmConfigEntity llm = new ModerationLlmConfigEntity();
-        llm.setVisionPromptCode("vision-null-fields");
+        llm.setMultimodalPromptCode("vision-null-fields");
         when(fx.llmConfigRepository.findAll()).thenReturn(List.of(llm));
 
         com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity prompt =

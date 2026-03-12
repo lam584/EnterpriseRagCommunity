@@ -63,8 +63,7 @@ public class AdminModerationLlmServiceMultimodalShortCircuitTest {
         PromptsRepository promptsRepository = mock(PromptsRepository.class);
 
         ModerationLlmConfigEntity cfg = new ModerationLlmConfigEntity();
-        cfg.setTextPromptCode("MODERATION_TEXT");
-        cfg.setVisionPromptCode("MODERATION_VISION");
+        cfg.setMultimodalPromptCode("MODERATION_VISION");
         cfg.setJudgePromptCode("MODERATION_JUDGE");
         cfg.setJudgePromptCode("MODERATION_JUDGE");
         when(cfgRepo.findTopByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(cfg));
@@ -76,7 +75,7 @@ public class AdminModerationLlmServiceMultimodalShortCircuitTest {
         when(promptsRepository.findByPromptCode("MODERATION_TEXT")).thenReturn(Optional.of(textPrompt));
 
         com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity visionPrompt = new com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity();
-        visionPrompt.setUserPromptTemplate("v");
+        visionPrompt.setUserPromptTemplate("{{text}}");
         visionPrompt.setSystemPrompt("s");
         when(promptsRepository.findByPromptCode("MODERATION_VISION")).thenReturn(Optional.of(visionPrompt));
 
@@ -99,7 +98,7 @@ public class AdminModerationLlmServiceMultimodalShortCircuitTest {
         when(fbRepo.findAll(any(Sort.class))).thenReturn(List.of(fb));
 
         String raw = "{\"choices\":[{\"message\":{\"content\":\"{\\\"decision\\\":\\\"REJECT\\\",\\\"score\\\":0.96,\\\"reasons\\\":[\\\"x\\\"],\\\"riskTags\\\":[\\\"AD\\\"],\\\"evidence\\\":[\\\"hello\\\"]}\"}}]}";
-        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
+        when(llmGateway.chatOnceRouted(eq(LlmQueueTaskType.MULTIMODAL_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class)))
                 .thenReturn(new LlmGateway.RoutedChatOnceResult(raw, "p1", "text-model", null));
 
         AdminModerationLlmService svc = AdminModerationLlmServiceTestFactory.newService(
@@ -135,9 +134,10 @@ public class AdminModerationLlmServiceMultimodalShortCircuitTest {
         assertNotNull(resp.getStages());
         assertNotNull(resp.getStages().getText());
         assertEquals("REJECT", resp.getStages().getText().getDecision());
+        assertEquals("hello", resp.getEvidence().get(0));
+        assertEquals(null, resp.getStages().getImage());
 
-        verify(llmGateway, times(1)).chatOnceRouted(eq(LlmQueueTaskType.TEXT_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class));
-        verify(llmGateway, times(0)).chatOnceRouted(eq(LlmQueueTaskType.IMAGE_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class));
+        verify(llmGateway, times(1)).chatOnceRouted(eq(LlmQueueTaskType.MULTIMODAL_MODERATION), nullable(String.class), nullable(String.class), anyList(), any(), any(), nullable(Integer.class), nullable(List.class), any(), nullable(Integer.class), nullable(Map.class));
     }
 }
 

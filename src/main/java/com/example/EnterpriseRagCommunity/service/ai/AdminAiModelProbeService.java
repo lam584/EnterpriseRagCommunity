@@ -79,7 +79,7 @@ public class AdminAiModelProbeService {
                 out.setUsedModel(res == null ? modelName : Objects.requireNonNullElse(res.model(), modelName));
                 if (!ok) out.setErrorMessage("rerank 响应为空");
             } else if ("CHAT".equals(kind)) {
-                LlmQueueTaskType tt = LlmQueueTaskType.TEXT_CHAT;
+                LlmQueueTaskType tt = LlmQueueTaskType.MULTIMODAL_CHAT;
                 List<ChatMessage> messages = buildProbeMessages(tt);
                 LlmGateway.RoutedChatOnceResult routed = withTimeout(
                         () -> llmGateway.chatOnceRouted(tt, providerId, modelName, messages, 0.0, 8, List.of("\n")),
