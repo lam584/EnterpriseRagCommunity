@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+  <suppress>
+    <notes><![CDATA[Temporary suppression for CVE-2026-23907 on Apache PDFBox 3.0.7 family until upstream fixed release is available.]]></notes>
+    <cve>CVE-2026-23907</cve>
+  </suppress>
+</suppressions>

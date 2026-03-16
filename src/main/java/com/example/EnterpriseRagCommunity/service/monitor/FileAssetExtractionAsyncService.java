@@ -318,13 +318,13 @@ public class FileAssetExtractionAsyncService {
                     Map<String, Object> perMeta = new LinkedHashMap<>();
                     String txt = extractText(p, fext, remaining, perMeta, fileAssetId, imageBudget);
                     List<Map<String, Object>> imgs = extractImages(p, fext, perMeta, fileAssetId, txt, imageBudget);
-                    if (imgs != null && !imgs.isEmpty()) images.addAll(imgs);
+                    if (!imgs.isEmpty()) images.addAll(imgs);
                     if (txt != null && !txt.isBlank()) {
                         appendExtractedFileBlock(out, vpath, txt);
                     }
                     f.put("parseStatus", "PARSED");
                     f.put("textChars", txt == null ? 0 : txt.length());
-                    f.put("imagesAdded", imgs == null ? 0 : imgs.size());
+                    f.put("imagesAdded", imgs.size());
                     parsed++;
                 } catch (Exception ex) {
                     f.put("parseStatus", "FAILED");
@@ -447,15 +447,11 @@ public class FileAssetExtractionAsyncService {
             }
         }
 
-        if (compression != null && !compression.isBlank()) {
-            archiveMeta.putIfAbsent("compression", compression);
-        }
-        if (archiveType != null && !archiveType.isBlank()) {
-            archiveMeta.putIfAbsent("archiveType", archiveType);
-        }
+        putIfAbsentWhenNonBlank(archiveMeta, "compression", compression);
+        putIfAbsentWhenNonBlank(archiveMeta, "archiveType", archiveType);
 
         if (archiveType == null) {
-            String name = (containerName == null || containerName.isBlank()) ? ("unknown_" + UUID.randomUUID() + ".bin") : containerName;
+            String name = fallbackContainerName(containerName);
             Path target = safeResolveUnder(outDir, name);
             if (target == null) return;
             Files.createDirectories(target.getParent());
@@ -467,7 +463,7 @@ public class FileAssetExtractionAsyncService {
             item.put("ext", ext);
             item.put("sizeBytes", kept);
             item.put("localPath", target.toString());
-            item.put("extractionTruncated", kept >= archiveMaxEntryBytes || (c.totalBytesRead > archiveMaxTotalBytes));
+            item.put("extractionTruncated", isArchiveExtractionTruncated(kept, c));
             files.add(item);
             return;
         }
@@ -475,10 +471,7 @@ public class FileAssetExtractionAsyncService {
         if ("7z".equalsIgnoreCase(archiveType)) {
             byte[] bytes = readAllLimited(aisBuf, c, archiveMaxTotalBytes);
             if (bytes.length == 0) return;
-            if (c.totalBytesRead > archiveMaxTotalBytes) {
-                c.truncatedReason = c.truncatedReason == null ? "TOTAL_BYTES_LIMIT" : c.truncatedReason;
-                return;
-            }
+            markTotalBytesLimitIfExceeded(c, archiveMaxTotalBytes);
             expand7zBytesToDisk(bytes, virtualPrefix, depth, outDir, archiveMeta, c, startNs, files);
             return;
         }
@@ -488,64 +481,106 @@ public class FileAssetExtractionAsyncService {
             archiveIn = new ArchiveStreamFactory().createArchiveInputStream(archiveType, aisBuf);
             ArchiveEntry entry;
             while ((entry = archiveIn.getNextEntry()) != null) {
-                if (exceededArchiveBudget(c, startNs)) {
-                    c.truncatedReason = c.truncatedReason == null ? "TIME_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                c.entriesSeen++;
-                if (c.entriesSeen > archiveMaxEntries) {
-                    c.truncatedReason = c.truncatedReason == null ? "ENTRY_COUNT_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                if (entry.isDirectory()) continue;
-                String name = entry.getName();
-                if (name == null || name.isBlank()) continue;
-                String norm = name.trim();
-                if (isPathTraversal(norm)) {
-                    c.pathTraversalDroppedCount++;
-                    drainEntry(archiveIn, c, startNs);
-                    continue;
-                }
-                Path target = safeResolveUnder(outDir, norm);
-                if (target == null) {
-                    c.pathTraversalDroppedCount++;
-                    drainEntry(archiveIn, c, startNs);
-                    continue;
-                }
-                Files.createDirectories(target.getParent());
-                long kept = writeStreamLimited(archiveIn, target, c, startNs);
-                boolean truncated = kept >= archiveMaxEntryBytes || c.totalBytesRead > archiveMaxTotalBytes;
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("path", virtualPrefix + norm);
-                item.put("depth", depth);
-                String ext = extLowerOrNull(norm);
-                item.put("ext", ext);
-                item.put("sizeBytes", kept);
-                item.put("localPath", target.toString());
-                item.put("extractionTruncated", truncated);
-                files.add(item);
-
-                if (c.totalBytesRead > archiveMaxTotalBytes) {
-                    c.truncatedReason = c.truncatedReason == null ? "TOTAL_BYTES_LIMIT" : c.truncatedReason;
-                    break;
-                }
-
-                if (truncated) continue;
-                if (ext != null && isArchiveExt(ext)) {
-                    if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
-                    Path subDir = target.getParent().resolve(target.getFileName().toString() + "__unpacked").normalize();
-                    if (!subDir.startsWith(outDir)) subDir = outDir.resolve("__unpacked_" + UUID.randomUUID()).normalize();
-                    Files.createDirectories(subDir);
-                    expandArchiveToDisk(target, norm, ext, virtualPrefix + norm + "!/", depth + 1, subDir, archiveMeta, c, startNs, files);
-                }
+                if (handleArchiveStreamEntry(entry, archiveIn, virtualPrefix, depth, outDir, archiveMeta, c, startNs, files)) break;
             }
         } finally {
-            if (archiveIn != null) {
-                try {
-                    archiveIn.close();
-                } catch (Exception ignore) {
-                }
-            }
+            closeArchiveInputStreamQuietly(archiveIn);
+        }
+    }
+
+    private boolean handleArchiveStreamEntry(
+            ArchiveEntry entry,
+            ArchiveInputStream archiveIn,
+            String virtualPrefix,
+            int depth,
+            Path outDir,
+            Map<String, Object> archiveMeta,
+            ArchiveCounters c,
+            long startNs,
+            List<Map<String, Object>> files
+    ) throws Exception {
+        if (exceededArchiveBudget(c, startNs)) {
+            c.truncatedReason = keepReasonOrDefault(c.truncatedReason, "TIME_LIMIT");
+            return true;
+        }
+        c.entriesSeen++;
+        if (c.entriesSeen > archiveMaxEntries) {
+            c.truncatedReason = keepReasonOrDefault(c.truncatedReason, "ENTRY_COUNT_LIMIT");
+            return true;
+        }
+        if (entry.isDirectory()) return false;
+        String name = entry.getName();
+        if (name == null || name.isBlank()) return false;
+        String norm = name.trim();
+        if (isPathTraversal(norm)) {
+            c.pathTraversalDroppedCount++;
+            drainEntry(archiveIn, c, startNs);
+            return false;
+        }
+        Path target = safeResolveUnder(outDir, norm);
+        if (target == null) {
+            c.pathTraversalDroppedCount++;
+            drainEntry(archiveIn, c, startNs);
+            return false;
+        }
+        Files.createDirectories(target.getParent());
+        long kept = writeStreamLimited(archiveIn, target, c, startNs);
+        boolean truncated = isArchiveExtractionTruncated(kept, c);
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("path", virtualPrefix + norm);
+        item.put("depth", depth);
+        String ext = extLowerOrNull(norm);
+        item.put("ext", ext);
+        item.put("sizeBytes", kept);
+        item.put("localPath", target.toString());
+        item.put("extractionTruncated", truncated);
+        files.add(item);
+        if (markTotalBytesLimitIfExceeded(c, archiveMaxTotalBytes)) return true;
+        if (truncated) return false;
+        if (ext != null && isArchiveExt(ext)) {
+            if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
+            Path subDir = safeNestedUnpackDir(target, outDir);
+            Files.createDirectories(subDir);
+            expandArchiveToDisk(target, norm, ext, virtualPrefix + norm + "!/", depth + 1, subDir, archiveMeta, c, startNs, files);
+        }
+        return false;
+    }
+
+    private static void putIfAbsentWhenNonBlank(Map<String, Object> archiveMeta, String key, String value) {
+        if (archiveMeta == null || key == null || key.isBlank()) return;
+        if (value != null && !value.isBlank()) archiveMeta.putIfAbsent(key, value);
+    }
+
+    private static String fallbackContainerName(String containerName) {
+        return (containerName == null || containerName.isBlank()) ? ("unknown_" + UUID.randomUUID() + ".bin") : containerName;
+    }
+
+    private boolean isArchiveExtractionTruncated(long kept, ArchiveCounters c) {
+        long total = c == null ? 0L : c.totalBytesRead;
+        return kept >= archiveMaxEntryBytes || total > archiveMaxTotalBytes;
+    }
+
+    private boolean markTotalBytesLimitIfExceeded(ArchiveCounters c, long totalLimit) {
+        if (c == null || c.totalBytesRead <= totalLimit) return false;
+        c.truncatedReason = keepReasonOrDefault(c.truncatedReason, "TOTAL_BYTES_LIMIT");
+        return true;
+    }
+
+    private static String keepReasonOrDefault(String existing, String fallback) {
+        return existing == null ? fallback : existing;
+    }
+
+    private static Path safeNestedUnpackDir(Path target, Path outDir) {
+        Path subDir = target.getParent().resolve(target.getFileName().toString() + "__unpacked").normalize();
+        if (!subDir.startsWith(outDir)) subDir = outDir.resolve("__unpacked_" + UUID.randomUUID()).normalize();
+        return subDir;
+    }
+
+    private static void closeArchiveInputStreamQuietly(ArchiveInputStream archiveIn) {
+        if (archiveIn == null) return;
+        try {
+            archiveIn.close();
+        } catch (Exception ignore) {
         }
     }
 
@@ -1223,7 +1258,7 @@ public class FileAssetExtractionAsyncService {
         if (c == null) return false;
         if (archiveMaxTotalMillis <= 0) return false;
         long ms = Duration.ofNanos(System.nanoTime() - startNs).toMillis();
-        return ms > archiveMaxTotalMillis;
+        return ms >= archiveMaxTotalMillis;
     }
 
     private byte[] readEntryLimited(InputStream in, ArchiveCounters c, long startNs) throws Exception {
@@ -1886,11 +1921,11 @@ public class FileAssetExtractionAsyncService {
                 @Override
                 public void parseEmbedded(InputStream stream, org.xml.sax.ContentHandler handler, Metadata metadata, boolean outputHtml) {
                     if (stream == null) return;
-                    if (budget != null && !budget.canAdd(0)) return;
+                    if (isBudgetExceeded(budget, 0)) return;
                     try {
                         byte[] bytes = stream.readAllBytes();
                         if (bytes.length == 0) return;
-                        if (budget != null && !budget.canAdd(bytes.length)) return;
+                        if (isBudgetExceeded(budget, bytes.length)) return;
                         String ct = metadata == null ? null : metadata.get(Metadata.CONTENT_TYPE);
                         String name = metadata == null ? null : metadata.get(TikaCoreProperties.RESOURCE_NAME_KEY);
                         int idx = budget == null ? (out.size() + 1) : budget.peekNextIndex();
@@ -1922,21 +1957,10 @@ public class FileAssetExtractionAsyncService {
                                 if (budget != null && !budget.canAdd(0)) break;
                                 String name = en.getName();
                                 String ext = extLowerOrNull(name);
-                                if (!isImageExt(ext == null ? "" : ext)) continue;
+                                if (shouldSkipMobiZipEntry(en, ext)) continue;
                                 long size = en.getSize();
-                                if (size > 0 && derivedUploadStorageService.getMaxImageBytes() > 0 && size > derivedUploadStorageService.getMaxImageBytes()) continue;
                                 if (size > 0 && budget != null && !budget.canAdd(size)) break;
-                                try (InputStream zis = zf.getInputStream(en)) {
-                                    byte[] bytes = zis.readAllBytes();
-                                    if (bytes.length == 0) continue;
-                                    if (budget != null && !budget.canAdd(bytes.length)) break;
-                                    int idx = budget == null ? (zipOut.size() + 1) : budget.peekNextIndex();
-                                    String mime = guessMimeFromExt(ext);
-                                    Map<String, Object> saved = derivedUploadStorageService.saveDerivedImage(bytes, "mobi_" + Path.of(name).getFileName(), mime, fileAssetId);
-                                    if (saved == null) continue;
-                                    if (budget != null) idx = budget.consume(bytes.length);
-                                    zipOut.add(derivedUploadStorageService.buildPlaceholder(idx, saved));
-                                }
+                                if (processMobiZipEntry(zf, en, ext, budget, fileAssetId, zipOut)) break;
                             }
                         }
                         if (!zipOut.isEmpty()) {
@@ -1955,6 +1979,33 @@ public class FileAssetExtractionAsyncService {
             meta.put("imagesExtractionMode", "FAILED");
             meta.put("imagesExtractionError", safeMsg(ex));
             return List.of();
+        }
+    }
+
+    private static boolean isBudgetExceeded(ImageBudget budget, long bytes) {
+        return budget != null && !budget.canAdd(bytes);
+    }
+
+    private boolean shouldSkipMobiZipEntry(ZipEntry en, String ext) {
+        if (!isImageExt(ext == null ? "" : ext)) return true;
+        long size = en.getSize();
+        long max = derivedUploadStorageService.getMaxImageBytes();
+        return size > 0 && max > 0 && size > max;
+    }
+
+    private boolean processMobiZipEntry(ZipFile zf, ZipEntry en, String ext, ImageBudget budget, Long fileAssetId, List<Map<String, Object>> zipOut) throws Exception {
+        String name = en.getName();
+        try (InputStream zis = zf.getInputStream(en)) {
+            byte[] bytes = zis.readAllBytes();
+            if (bytes.length == 0) return false;
+            if (isBudgetExceeded(budget, bytes.length)) return true;
+            int idx = budget == null ? (zipOut.size() + 1) : budget.peekNextIndex();
+            String mime = guessMimeFromExt(ext);
+            Map<String, Object> saved = derivedUploadStorageService.saveDerivedImage(bytes, "mobi_" + Path.of(name).getFileName(), mime, fileAssetId);
+            if (saved == null) return false;
+            if (budget != null) idx = budget.consume(bytes.length);
+            zipOut.add(derivedUploadStorageService.buildPlaceholder(idx, saved));
+            return false;
         }
     }
 

@@ -1148,6 +1148,11 @@ class AiChatServiceFlowBranchTest {
         session.setContextStrategy(ContextStrategy.RECENT_N);
         when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
         when(qaMessagesRepository.findBySessionIdOrderByCreatedAtAsc(3L)).thenReturn(List.of(q));
+        when(qaMessagesRepository.save(any(QaMessagesEntity.class))).thenAnswer(inv -> {
+            QaMessagesEntity saved = inv.getArgument(0);
+            if (saved.getId() == null) saved.setId(998L);
+            return saved;
+        });
 
         QaTurnsEntity turn = new QaTurnsEntity();
         turn.setId(77L);

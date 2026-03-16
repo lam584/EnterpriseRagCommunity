@@ -180,6 +180,7 @@ async function safeReadErrorMessage(res: Response): Promise<string> {
             if (data && typeof data.message === 'string') return data.message;
             if (data && typeof data.error === 'string') return data.error;
             if (data && typeof data.detail === 'string') return data.detail;
+            if (data && typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length === 0) return '';
             return JSON.stringify(data);
         }
         const text = await res.text();
