@@ -1357,6 +1357,264 @@ class LlmGatewayPrivateHelpersCoverageTest {
     }
 
     @Test
+    void callChatOnceSingle_should_cover_partial_usage_branches_with_null_token_service() throws Exception {
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+
+        LlmGateway gateway = new LlmGateway(
+                aiProvidersConfigService,
+                aiEmbeddingService,
+                aiRerankService,
+                llmCallQueueService,
+                llmRoutingService,
+                llmRoutingTelemetryService,
+                null
+        );
+
+        AiProvidersConfigService.ResolvedProvider provider = new AiProvidersConfigService.ResolvedProvider(
+                "p1", "OPENAI_COMPAT", "http://example.invalid", "k", "m1", "e1", Map.of(), Map.of(), 1000, 1000
+        );
+
+        when(llmCallQueueService.call(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
+                org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
+        )).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            LlmCallQueueService.CheckedTaskSupplier<String> supplier = (LlmCallQueueService.CheckedTaskSupplier<String>) inv.getArgument(4);
+            @SuppressWarnings("unchecked")
+            LlmCallQueueService.ResultMetricsExtractor<String> extractor = (LlmCallQueueService.ResultMetricsExtractor<String>) inv.getArgument(5);
+            LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
+            when(task.id()).thenReturn("task-usage");
+            String raw = supplier.get(task);
+            extractor.extract(raw);
+            return raw;
+        });
+
+        when(llmCallQueueService.parseOpenAiUsageFromJson(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new LlmCallQueueService.UsageMetrics(5, null, 9, null))
+                .thenReturn(new LlmCallQueueService.UsageMetrics(7, null, 10, null))
+                .thenReturn(new LlmCallQueueService.UsageMetrics(null, 4, 9, null))
+                .thenReturn(new LlmCallQueueService.UsageMetrics(null, 3, 8, null));
+
+        try (org.mockito.MockedConstruction<OpenAiCompatClient> mocked = org.mockito.Mockito.mockConstruction(
+                OpenAiCompatClient.class,
+                (m, c) -> when(m.chatCompletionsOnce(org.mockito.ArgumentMatchers.any()))
+                        .thenReturn("{\"choices\":[{\"message\":{\"content\":\"alpha\"}}]}")
+                        .thenReturn("{\"choices\":[{\"message\":{\"content\":\"beta\"}}]}")
+        )) {
+            Object r1 = callInstance(
+                    gateway,
+                    "callChatOnceSingle",
+                    new Class[]{
+                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
+                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
+                            int.class, AtomicReference.class, Map.class
+                    },
+                    LlmQueueTaskType.MODERATION_CHUNK, provider, "m1", List.of(ChatMessage.user("hi")),
+                    0.2, null, null, null, Boolean.TRUE, null, Map.of(), 1, null, Map.of()
+            );
+            Object r2 = callInstance(
+                    gateway,
+                    "callChatOnceSingle",
+                    new Class[]{
+                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
+                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
+                            int.class, AtomicReference.class, Map.class
+                    },
+                    LlmQueueTaskType.MODERATION_CHUNK, provider, "m1", List.of(ChatMessage.user("hi")),
+                    0.3, null, null, null, Boolean.TRUE, null, Map.of(), 1, null, Map.of()
+            );
+            assertNotNull(r1);
+            assertNotNull(r2);
+            assertTrue(mocked.constructed().size() >= 1);
+        }
+    }
+
+    @Test
+    void callChatOnceSingle_should_cover_null_raw_and_total_tokens_fallback_branches() throws Exception {
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+
+        LlmGateway gateway = new LlmGateway(
+                aiProvidersConfigService,
+                aiEmbeddingService,
+                aiRerankService,
+                llmCallQueueService,
+                llmRoutingService,
+                llmRoutingTelemetryService,
+                null
+        );
+
+        AiProvidersConfigService.ResolvedProvider provider = new AiProvidersConfigService.ResolvedProvider(
+                "p1", "OPENAI_COMPAT", "http://example.invalid", "k", "m1", "e1", Map.of(), Map.of(), 1000, 1000
+        );
+
+        when(llmCallQueueService.call(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
+                org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
+        )).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            LlmCallQueueService.CheckedTaskSupplier<String> supplier = (LlmCallQueueService.CheckedTaskSupplier<String>) inv.getArgument(4);
+            @SuppressWarnings("unchecked")
+            LlmCallQueueService.ResultMetricsExtractor<String> extractor = (LlmCallQueueService.ResultMetricsExtractor<String>) inv.getArgument(5);
+            String raw = supplier.get(mock(LlmCallQueueService.TaskHandle.class));
+            extractor.extract(raw);
+            return raw;
+        });
+
+        when(llmCallQueueService.parseOpenAiUsageFromJson(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(new LlmCallQueueService.UsageMetrics(2, 1, 3, 1))
+                .thenReturn(new LlmCallQueueService.UsageMetrics(2, 1, 3, 1))
+                .thenReturn(new LlmCallQueueService.UsageMetrics(1, null, 9, 1))
+                .thenReturn(new LlmCallQueueService.UsageMetrics(null, 5, 9, 1));
+
+        try (org.mockito.MockedConstruction<OpenAiCompatClient> mocked = org.mockito.Mockito.mockConstruction(
+                OpenAiCompatClient.class,
+                (m, c) -> when(m.chatCompletionsOnce(org.mockito.ArgumentMatchers.any()))
+                        .thenReturn((String) null)
+                        .thenReturn("{\"choices\":[{\"message\":{\"content\":\"tail\"}}]}")
+        )) {
+            Object r1 = callInstance(
+                    gateway,
+                    "callChatOnceSingle",
+                    new Class[]{
+                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
+                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
+                            int.class, AtomicReference.class, Map.class
+                    },
+                    LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
+                    0.1, null, null, null, null, null, Map.of(), 1, null, Map.of()
+            );
+            Object r2 = callInstance(
+                    gateway,
+                    "callChatOnceSingle",
+                    new Class[]{
+                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
+                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
+                            int.class, AtomicReference.class, Map.class
+                    },
+                    LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
+                    0.2, null, null, null, null, null, Map.of(), 1, null, Map.of()
+            );
+            assertNotNull(r1);
+            assertNotNull(r2);
+            assertTrue(mocked.constructed().size() >= 1);
+        }
+    }
+
+    @Test
+    void lambda_callChatOnceSingle_2_should_cover_null_usage_with_tokenizer_override() throws Exception {
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+        TokenCountService tokenCountService = mock(TokenCountService.class);
+
+        LlmGateway gateway = new LlmGateway(
+                aiProvidersConfigService,
+                aiEmbeddingService,
+                aiRerankService,
+                llmCallQueueService,
+                llmRoutingService,
+                llmRoutingTelemetryService,
+                tokenCountService
+        );
+
+        AiProvidersConfigService.ResolvedProvider provider = new AiProvidersConfigService.ResolvedProvider(
+                "p1", "OPENAI_COMPAT", "http://example.invalid", "k", "m1", "e1", Map.of(), Map.of(), 1000, 1000
+        );
+
+        when(llmCallQueueService.parseOpenAiUsageFromJson(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(null);
+        when(tokenCountService.decideChatTokens(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyBoolean(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(true)
+        )).thenReturn(new TokenCountService.TokenDecision(11, 7, 18, null, "mock"));
+
+        @SuppressWarnings("unchecked")
+        LlmCallQueueService.UsageMetrics usage = (LlmCallQueueService.UsageMetrics) callInstance(
+                gateway,
+                "lambda$callChatOnceSingle$2",
+                new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
+                List.of(ChatMessage.user("hi")),
+                false,
+                LlmQueueTaskType.MODERATION_CHUNK,
+                provider,
+                "m1",
+                Boolean.TRUE,
+                "{\"choices\":[{\"message\":{\"content\":\"xyz\"}}]}"
+        );
+        assertNotNull(usage);
+        assertEquals(11, usage.promptTokens());
+        assertEquals(7, usage.completionTokens());
+        assertEquals(18, usage.totalTokens());
+        assertTrue(usage.estimatedCompletionTokens() != null && usage.estimatedCompletionTokens() >= 0);
+    }
+
+    @Test
+    void extractStreamChunkStats_should_cover_choices_and_reasoning_guard_branches() throws Exception {
+        LlmGateway gateway = gateway();
+        AtomicReference<LlmCallQueueService.UsageMetrics> ref = new AtomicReference<>();
+        long[] outChars = new long[]{0L};
+
+        callInstance(
+                gateway,
+                "extractStreamChunkStats",
+                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
+                "{\"usage\":{},\"choices\":null}",
+                true,
+                outChars,
+                ref
+        );
+        assertEquals(0L, outChars[0]);
+
+        callInstance(
+                gateway,
+                "extractStreamChunkStats",
+                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
+                "{\"usage\":{},\"choices\":[{\"delta\":{\"reasoning_content\":\"\",\"content\":\"q\"},\"text\":\"\"}]}",
+                true,
+                outChars,
+                ref
+        );
+        assertEquals(1L, outChars[0]);
+
+        callInstance(
+                gateway,
+                "extractStreamChunkStats",
+                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
+                "{\"usage\":{},\"choices\":[{\"delta\":null,\"text\":\"z\"}]}",
+                true,
+                outChars,
+                ref
+        );
+        assertEquals(2L, outChars[0]);
+    }
+
+    @Test
     void normalize_and_directive_helpers_should_cover_remaining_edge_paths() throws Exception {
         LlmCallQueueService.UsageMetrics m1 = (LlmCallQueueService.UsageMetrics) callStatic(
                 "normalizeOpenAiCompatUsage",
@@ -1461,7 +1719,7 @@ class LlmGatewayPrivateHelpersCoverageTest {
                 org.mockito.ArgumentMatchers.eq(true)
         )).thenReturn(
                 new TokenCountService.TokenDecision(9, 8, 17, null, "mock"),
-                null
+                (TokenCountService.TokenDecision) null
         );
 
         @SuppressWarnings("unchecked")
@@ -1986,5 +2244,213 @@ class LlmGatewayPrivateHelpersCoverageTest {
         } catch (InvocationTargetException e) {
             assertTrue(String.valueOf(e.getCause().getMessage()).contains("timeout-started"));
         }
+    }
+
+    @Test
+    void normalizeOpenAiCompatUsage_should_cover_null_total_and_sparse_metric_paths() throws Exception {
+        LlmCallQueueService.UsageMetrics cOnly = (LlmCallQueueService.UsageMetrics) callStatic(
+                "normalizeOpenAiCompatUsage",
+                new Class[]{Integer.class, Integer.class, Integer.class},
+                null, 6, null
+        );
+        assertEquals(null, cOnly.promptTokens());
+        assertEquals(6, cOnly.completionTokens());
+        assertEquals(null, cOnly.totalTokens());
+
+        LlmCallQueueService.UsageMetrics tOnly = (LlmCallQueueService.UsageMetrics) callStatic(
+                "normalizeOpenAiCompatUsage",
+                new Class[]{Integer.class, Integer.class, Integer.class},
+                null, null, 9
+        );
+        assertEquals(null, tOnly.promptTokens());
+        assertEquals(null, tOnly.completionTokens());
+        assertEquals(9, tOnly.totalTokens());
+
+        LlmCallQueueService.UsageMetrics pOnly = (LlmCallQueueService.UsageMetrics) callStatic(
+                "normalizeOpenAiCompatUsage",
+                new Class[]{Integer.class, Integer.class, Integer.class},
+                4, null, null
+        );
+        assertEquals(4, pOnly.promptTokens());
+        assertEquals(null, pOnly.completionTokens());
+        assertEquals(null, pOnly.totalTokens());
+
+        LlmCallQueueService.UsageMetrics pcNoTotal = (LlmCallQueueService.UsageMetrics) callStatic(
+                "normalizeOpenAiCompatUsage",
+                new Class[]{Integer.class, Integer.class, Integer.class},
+                2, 3, null
+        );
+        assertEquals(2, pcNoTotal.promptTokens());
+        assertEquals(3, pcNoTotal.completionTokens());
+        assertEquals(5, pcNoTotal.totalTokens());
+    }
+
+    @Test
+    void extractStreamChunkStats_should_cover_non_object_delta_absent_and_text_only_paths() throws Exception {
+        LlmGateway gateway = gateway();
+        AtomicReference<LlmCallQueueService.UsageMetrics> ref = new AtomicReference<>();
+        long[] outChars = new long[]{0L};
+
+        callInstance(
+                gateway,
+                "extractStreamChunkStats",
+                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
+                "{\"choices\":[{\"delta\":\"not-object\",\"text\":\"abc\"}],\"usage\":{\"prompt_tokens\":-1,\"completion_tokens\":2,\"total_tokens\":1}}",
+                true,
+                outChars,
+                ref
+        );
+        assertEquals(3L, outChars[0]);
+        assertNotNull(ref.get());
+        assertEquals(null, ref.get().promptTokens());
+        assertEquals(2, ref.get().completionTokens());
+        assertEquals(1, ref.get().totalTokens());
+
+        callInstance(
+                gateway,
+                "extractStreamChunkStats",
+                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
+                "{\"choices\":[{\"delta\":{\"reasoning_content\":\"long-reason\",\"content\":\"\"},\"text\":\"\"}],\"prompt_tokens\":7,\"completion_tokens\":1,\"total_tokens\":8}",
+                false,
+                outChars,
+                ref
+        );
+        assertEquals(3L, outChars[0]);
+        assertNotNull(ref.get());
+        assertEquals(7, ref.get().promptTokens());
+        assertEquals(1, ref.get().completionTokens());
+        assertEquals(8, ref.get().totalTokens());
+
+        callInstance(
+                gateway,
+                "extractStreamChunkStats",
+                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
+                "[]",
+                true,
+                outChars,
+                ref
+        );
+        assertEquals(3L, outChars[0]);
+    }
+
+    @Test
+    void extractStreamChunkText_should_cover_reasoning_only_content_only_and_empty_choices_paths() throws Exception {
+        LlmGateway gateway = gateway();
+        assertNull(callInstance(
+                gateway,
+                "extractStreamChunkText",
+                new Class[]{String.class, boolean.class},
+                "{\"choices\":[]}",
+                true
+        ));
+
+        String reasoningOnly = (String) callInstance(
+                gateway,
+                "extractStreamChunkText",
+                new Class[]{String.class, boolean.class},
+                "{\"choices\":[{\"delta\":{\"reasoning_content\":\"abc\"}}]}",
+                true
+        );
+        assertEquals("abc", reasoningOnly);
+
+        String contentOnly = (String) callInstance(
+                gateway,
+                "extractStreamChunkText",
+                new Class[]{String.class, boolean.class},
+                "{\"choices\":[{\"delta\":{\"content\":\"xyz\"}}]}",
+                true
+        );
+        assertEquals("xyz", contentOnly);
+
+        String textFallback = (String) callInstance(
+                gateway,
+                "extractStreamChunkText",
+                new Class[]{String.class, boolean.class},
+                "{\"choices\":[{\"delta\":\"bad\",\"text\":\"fallback\"}]}",
+                true
+        );
+        assertEquals("fallback", textFallback);
+    }
+
+    @Test
+    void removeLabelMapFromEmbeddedJson_should_cover_scalar_suffix_and_non_object_taxonomy_paths() throws Exception {
+        LlmGateway gateway = gateway();
+
+        String scalarSuffix = "prefix\n\n123";
+        assertEquals(
+                scalarSuffix,
+                callInstance(gateway, "removeLabelMapFromEmbeddedJson", new Class[]{String.class}, scalarSuffix)
+        );
+
+        String nonObjectTaxonomy = "prefix\n\n{\"label_taxonomy\":\"raw\",\"k\":1}";
+        String out = (String) callInstance(gateway, "removeLabelMapFromEmbeddedJson", new Class[]{String.class}, nonObjectTaxonomy);
+        assertTrue(out.contains("\"label_taxonomy\":\"raw\""));
+        assertTrue(out.contains("\"k\":1"));
+
+        String mixedArray = "lead\n\n[{\"label_taxonomy\":{\"label_map\":{\"a\":1},\"k\":1}},\"s\",1]";
+        String outArray = (String) callInstance(gateway, "removeLabelMapFromEmbeddedJson", new Class[]{String.class}, mixedArray);
+        assertFalse(outArray.contains("label_map"));
+        assertTrue(outArray.contains("\"s\""));
+    }
+
+    @Test
+    void supportsThinkingDirectiveModel_should_cover_raw_prefix_branches() throws Exception {
+        assertFalse((boolean) callStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, "vendor/qwen3-thinking-32b"));
+        assertTrue((boolean) callStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, "provider/qwen3-32b"));
+        assertTrue((boolean) callStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, "qwen-plus-2025-04-28/alias"));
+        assertTrue((boolean) callStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, "qwen-turbo-2025-04-28/alias"));
+    }
+
+    @Test
+    void removeClosedReasoningBlocks_should_cover_guard_limit_and_escaped_precedence_paths() throws Exception {
+        String withBothMarkers = "A<reasoning_content>x</reasoning_content>&lt;reasoning_content&gt;y&lt;/reasoning_content&gt;B";
+        String cleaned = (String) callStatic("removeClosedReasoningBlocks", new Class[]{String.class}, withBothMarkers);
+        assertFalse(cleaned.contains("reasoning_content"));
+        assertTrue(cleaned.startsWith("A"));
+        assertTrue(cleaned.endsWith("B"));
+
+        StringBuilder longChain = new StringBuilder();
+        for (int i = 0; i < 50; i++) {
+            longChain.append("<reasoning_content>").append(i).append("</reasoning_content>");
+        }
+        String emptied = (String) callStatic("removeClosedReasoningBlocks", new Class[]{String.class}, longChain.toString());
+        assertFalse(emptied.contains("reasoning_content"));
+
+        assertEquals(" ", callStatic("removeClosedReasoningBlocks", new Class[]{String.class}, " "));
+    }
+
+    @Test
+    void removeClosedThinkBlocks_should_cover_guard_limit_and_escaped_precedence_paths() throws Exception {
+        String withBothMarkers = "A<think>x</think>&lt;think&gt;y&lt;/think&gt;B";
+        String cleaned = (String) callStatic("removeClosedThinkBlocks", new Class[]{String.class}, withBothMarkers);
+        assertFalse(cleaned.contains("think"));
+        assertTrue(cleaned.startsWith("A"));
+        assertTrue(cleaned.endsWith("B"));
+
+        StringBuilder longChain = new StringBuilder();
+        for (int i = 0; i < 50; i++) {
+            longChain.append("<think>").append(i).append("</think>");
+        }
+        String emptied = (String) callStatic("removeClosedThinkBlocks", new Class[]{String.class}, longChain.toString());
+        assertFalse(emptied.contains("think"));
+
+        assertEquals(" ", callStatic("removeClosedThinkBlocks", new Class[]{String.class}, " "));
+    }
+
+    @Test
+    void string_and_key_helper_methods_should_cover_remaining_short_circuit_branches() throws Exception {
+        assertEquals(-1, callStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, "abc", null, 0));
+        assertEquals(-1, callStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, "abc", "", 99));
+
+        assertEquals("\n/think", callStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, null, true, "qwen3-32b"));
+        assertEquals("x\n/think", callStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, "x\n", true, "qwen3-32b"));
+
+        assertEquals("", callStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, "", "think"));
+        assertEquals("abc", callStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, "abc", null));
+        assertEquals("abc", callStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, "abc", " "));
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode obj = mapper.readTree("{\"a\":\"1\"}");
+        assertEquals(1, callStatic("pickIntLoose", new Class[]{JsonNode.class, String[].class}, obj, new String[]{null, "a"}));
     }
 }

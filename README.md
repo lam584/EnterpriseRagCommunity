@@ -353,6 +353,22 @@ sudo systemctl restart enterprise-rag
 
 ## 常用命令
 
+### 测试前置配置（先做）
+
+在运行 `test`、`integrationTest`、`jacocoTestReport`、`scripts/test-all.ps1` 等测试命令前，请先准备测试密钥文件：
+
+1. 复制 `src/test/resources/test-secrets.properties.example`
+2. 重命名为 `src/test/resources/test-secrets.properties`
+3. 按测试环境填写 `TEST_APP_*` 配置项（AI、ES、邮件、TOTP 等）
+
+可按需设置数据库测试环境变量：
+
+- `TEST_DB_JDBC_URL`
+- `TEST_DB_USERNAME`
+- `TEST_DB_PASSWORD`
+
+若未填写 `test-secrets.properties`，依赖这些配置项的测试可能失败或得到不符合预期的结果。
+
 ### 后端与整站
 
 ```powershell

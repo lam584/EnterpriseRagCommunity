@@ -616,11 +616,14 @@ public class LlmGateway {
                 if (e.started()) {
                     throw new IllegalStateException("上游AI流式调用失败: " + e.getMessage(), e);
                 }
-                if (!isRetriable(e.getCause() == null ? e : e.getCause())) {
+                Throwable cause = e.getCause();
+                if (cause == null) {
+                    cause = e;
+                }
+                if (!isRetriable(cause)) {
                     throw new IllegalStateException("上游AI流式调用失败: " + e.getMessage(), e);
                 }
-                llmRoutingService.recordFailure(tt, target, extractErrorCode(e.getCause() == null ? e : e.getCause()));
-                Throwable cause = e.getCause() == null ? e : e.getCause();
+                llmRoutingService.recordFailure(tt, target, extractErrorCode(cause));
                 llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                         System.currentTimeMillis(),
                         "ROUTE_FAIL",
@@ -1320,26 +1323,26 @@ public class LlmGateway {
                             ? stripReasoningArtifacts(stripThinkBlocks(assistantRaw))
                             : assistantRaw;
                     if (stripThink) {
-                        task.reportOutput(assistant == null ? "" : assistant);
-                    } else if (raw != null && !raw.isBlank() && assistant != null && !assistant.equals(raw)) {
+                        task.reportOutput(assistant);
+                    } else if (raw != null && !raw.isBlank() && !assistant.equals(raw)) {
                         task.reportOutput("输出文本:\n" + assistant + "\n\n原始响应:\n" + raw);
                     } else {
-                        task.reportOutput(assistant == null ? "" : assistant);
+                        task.reportOutput(assistant);
                     }
                     return raw;
                 },
                 (raw) -> {
                     LlmCallQueueService.UsageMetrics usage = llmCallQueueService.parseOpenAiUsageFromJson(raw);
-                    if (usage == null || usage.promptTokens() == null || usage.totalTokens() == null || usage.completionTokens() == null) {
+                    if (isUsageIncomplete(usage)) {
                         int estIn = estimateInputTokens(patchedMessages);
                         String assistantForTokens = extractAssistantContent(raw);
                         if (stripThink) {
                             assistantForTokens = stripReasoningArtifacts(stripThinkBlocks(assistantForTokens));
                         }
-                        int estOut = estimateTokens(assistantForTokens == null ? 0 : assistantForTokens.length());
+                        int estOut = estimateTokens(assistantForTokens.length());
                         Integer prompt = (usage != null && usage.promptTokens() != null) ? usage.promptTokens() : estIn;
                         Integer completion = (usage != null && usage.completionTokens() != null) ? usage.completionTokens() : estOut;
-                        Integer total = (usage != null && usage.totalTokens() != null) ? usage.totalTokens() : (prompt + completion);
+                        Integer total = usageTotalOrFallback(usage, prompt + completion);
                         usage = new LlmCallQueueService.UsageMetrics(prompt, completion, total, estOut);
                     }
                     if (shouldPreferTokenizerIn(taskType) && tokenCountService != null) {
@@ -1357,7 +1360,7 @@ public class LlmGateway {
                                 true
                         );
                         if (dec != null) {
-                            Integer estOut = usage == null ? null : usage.estimatedCompletionTokens();
+                            Integer estOut = usage.estimatedCompletionTokens();
                             usage = new LlmCallQueueService.UsageMetrics(dec.tokensIn(), dec.tokensOut(), dec.totalTokens(), estOut);
                         }
                     }
@@ -1366,17 +1369,17 @@ public class LlmGateway {
         );
         
         LlmCallQueueService.UsageMetrics usage = llmCallQueueService.parseOpenAiUsageFromJson(text);
-        if (usage == null || usage.promptTokens() == null || usage.totalTokens() == null || usage.completionTokens() == null) {
+        if (isUsageIncomplete(usage)) {
             int estIn = estimateInputTokens(patchedMessages);
             String assistantForTokens = extractAssistantContent(text);
             if (stripThink) {
                 assistantForTokens = stripReasoningArtifacts(stripThinkBlocks(assistantForTokens));
             }
-            int estOut = estimateTokens(assistantForTokens == null ? 0 : assistantForTokens.length());
+            int estOut = estimateTokens(assistantForTokens.length());
             
             Integer prompt = (usage != null && usage.promptTokens() != null) ? usage.promptTokens() : estIn;
             Integer completion = (usage != null && usage.completionTokens() != null) ? usage.completionTokens() : estOut;
-            Integer total = (usage != null && usage.totalTokens() != null) ? usage.totalTokens() : (prompt + completion);
+            Integer total = usageTotalOrFallback(usage, prompt + completion);
             usage = new LlmCallQueueService.UsageMetrics(prompt, completion, total, estOut);
         }
         if (shouldPreferTokenizerIn(taskType) && tokenCountService != null) {
@@ -1447,13 +1450,13 @@ public class LlmGateway {
                 ? stripReasoningArtifacts(stripThinkBlocks(assistantRaw))
                 : assistantRaw;
         LlmCallQueueService.UsageMetrics usage = llmCallQueueService.parseOpenAiUsageFromJson(raw);
-        if (usage == null || usage.promptTokens() == null || usage.totalTokens() == null || usage.completionTokens() == null) {
+        if (isUsageIncomplete(usage)) {
             int estIn = estimateInputTokens(patchedMessages);
             String assistantForTokens = assistant;
             int estOut = estimateTokens(assistantForTokens == null ? 0 : assistantForTokens.length());
             Integer prompt = (usage != null && usage.promptTokens() != null) ? usage.promptTokens() : estIn;
             Integer completion = (usage != null && usage.completionTokens() != null) ? usage.completionTokens() : estOut;
-            Integer total = (usage != null && usage.totalTokens() != null) ? usage.totalTokens() : (prompt + completion);
+            Integer total = usageTotalOrFallback(usage, prompt + completion);
             usage = new LlmCallQueueService.UsageMetrics(prompt, completion, total, estOut);
         }
         if (shouldPreferTokenizerIn(taskType) && tokenCountService != null) {
@@ -1855,6 +1858,15 @@ public class LlmGateway {
         return new LlmCallQueueService.UsageMetrics(p, c, t, null);
     }
 
+    private static boolean isUsageIncomplete(LlmCallQueueService.UsageMetrics usage) {
+        return usage == null || usage.promptTokens() == null || usage.totalTokens() == null || usage.completionTokens() == null;
+    }
+
+    private static Integer usageTotalOrFallback(LlmCallQueueService.UsageMetrics usage, Integer fallbackTotal) {
+        Integer total = usage == null ? null : usage.totalTokens();
+        return total != null ? total : fallbackTotal;
+    }
+
     private void extractStreamChunkStats(
             String jsonPayload,
             boolean includeReasoning,
@@ -1863,9 +1875,9 @@ public class LlmGateway {
     ) {
         try {
             JsonNode root = objectMapper.readTree(jsonPayload);
-            if (root != null && root.isObject()) {
+            if (root.isObject()) {
                 JsonNode usage = root.path("usage");
-                JsonNode usageNode = usage != null && usage.isObject() ? usage : root;
+                JsonNode usageNode = usage.isObject() ? usage : root;
                 Integer prompt = pickIntLoose(usageNode, "prompt_tokens", "input_tokens", "promptTokens", "inputTokens");
                 Integer completion = pickIntLoose(usageNode, "completion_tokens", "output_tokens", "completionTokens", "outputTokens");
                 Integer total = pickIntLoose(usageNode, "total_tokens", "totalTokens");
@@ -1873,10 +1885,10 @@ public class LlmGateway {
                 if (norm != null) usageRef.set(norm);
             }
             JsonNode choices = root.path("choices");
-            if (choices != null && choices.isArray() && !choices.isEmpty()) {
+            if (choices.isArray() && !choices.isEmpty()) {
                 JsonNode first = choices.get(0);
                 JsonNode delta = first.path("delta");
-                if (delta != null && delta.isObject()) {
+                if (delta.isObject()) {
                     String reasoning = includeReasoning && delta.path("reasoning_content").isTextual() ? delta.path("reasoning_content").asText() : null;
                     if (reasoning != null && !reasoning.isEmpty()) outChars[0] += reasoning.length();
                     String content = delta.path("content").isTextual() ? delta.path("content").asText() : null;

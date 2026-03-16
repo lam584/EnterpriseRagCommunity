@@ -1,9 +1,11 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -1533,6 +1535,422 @@ class LlmGatewayTest {
             assertEquals("mf", res.model());
             verify(llmRoutingService, times(1)).recordFailure(eq(LlmQueueTaskType.TEXT_CHAT), eq(t1), any());
             assertTrue(mocked.constructed().size() >= 1);
+        }
+    }
+
+    @Test
+    void chatStreamRouted_should_cover_override_success_and_runtime_rethrow_branches() throws Exception {
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+        TokenCountService tokenCountService = mock(TokenCountService.class);
+
+        ResolvedProvider p1 = provider("p1", "OPENAI_COMPAT", "m-default");
+        when(aiProvidersConfigService.resolveProvider("p1")).thenReturn(p1);
+
+        AtomicInteger seq = new AtomicInteger(0);
+        LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
+        when(task.id()).thenReturn("t-stream");
+        when(llmCallQueueService.call(
+                any(LlmQueueTaskType.class),
+                anyString(),
+                anyString(),
+                anyInt(),
+                any(LlmCallQueueService.CheckedTaskSupplier.class),
+                any(LlmCallQueueService.ResultMetricsExtractor.class)
+        )).thenAnswer(inv -> {
+            int n = seq.incrementAndGet();
+            if (n == 1) {
+                @SuppressWarnings("unchecked")
+                LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics> sup =
+                        (LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics>) inv.getArgument(4);
+                return sup.get(task);
+            }
+            throw new IllegalArgumentException("stream-runtime-" + n);
+        });
+
+        OpenAiCompatClient.SseLineConsumer consumer = mock(OpenAiCompatClient.SseLineConsumer.class);
+        try (MockedConstruction<OpenAiCompatClient> mocked = Mockito.mockConstruction(
+                OpenAiCompatClient.class,
+                (mock, _ctx) -> Mockito.doAnswer(inv -> {
+                    OpenAiCompatClient.SseLineConsumer c = inv.getArgument(1);
+                    c.onLine("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}");
+                    c.onLine("data: [DONE]");
+                    return null;
+                }).when(mock).chatCompletionsStream(any(), any())
+        )) {
+            LlmGateway gateway = new LlmGateway(
+                    aiProvidersConfigService,
+                    aiEmbeddingService,
+                    aiRerankService,
+                    llmCallQueueService,
+                    llmRoutingService,
+                    llmRoutingTelemetryService,
+                    tokenCountService
+            );
+
+            LlmGateway.RoutedChatStreamResult ok = gateway.chatStreamRouted(
+                    LlmQueueTaskType.TEXT_CHAT,
+                    "p1",
+                    "m-override",
+                    List.of(ChatMessage.user("hi")),
+                    0.2,
+                    null,
+                    null,
+                    null,
+                    consumer
+            );
+            assertEquals("p1", ok.providerId());
+            assertEquals("m-override", ok.model());
+
+            IllegalArgumentException ex1 = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> gateway.chatStreamRouted(
+                            LlmQueueTaskType.TEXT_CHAT,
+                            "p1",
+                            "m-override",
+                            List.of(ChatMessage.user("hi")),
+                            0.2,
+                            null,
+                            null,
+                            null,
+                            consumer
+                    )
+            );
+            assertTrue(ex1.getMessage().contains("stream-runtime-2"));
+
+            IllegalArgumentException ex2 = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> gateway.chatStreamRouted(
+                            LlmQueueTaskType.TEXT_CHAT,
+                            "p1",
+                            null,
+                            List.of(ChatMessage.user("hi")),
+                            0.2,
+                            null,
+                            null,
+                            null,
+                            consumer
+                    )
+            );
+            assertTrue(ex2.getMessage().contains("stream-runtime-3"));
+            assertTrue(mocked.constructed().size() >= 1);
+        }
+    }
+
+    @Test
+    void chatStreamRouted_should_throw_on_non_retriable_route_checked_exception() throws Exception {
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+        TokenCountService tokenCountService = mock(TokenCountService.class);
+
+        when(llmRoutingService.getPolicy(LlmQueueTaskType.TEXT_CHAT))
+                .thenReturn(new LlmRoutingService.Policy(LlmRoutingService.Strategy.WEIGHTED_RR, 1, 1, 500));
+        LlmRoutingService.RouteTarget t1 = new LlmRoutingService.RouteTarget(
+                new LlmRoutingService.TargetId("p1", "m1"),
+                1,
+                1,
+                null
+        );
+        when(llmRoutingService.pickNext(eq(LlmQueueTaskType.TEXT_CHAT), any())).thenReturn(t1);
+        when(aiProvidersConfigService.resolveProvider("p1")).thenReturn(provider("p1", "OPENAI_COMPAT", "m1"));
+        when(llmCallQueueService.call(
+                any(LlmQueueTaskType.class),
+                anyString(),
+                anyString(),
+                anyInt(),
+                any(LlmCallQueueService.CheckedTaskSupplier.class),
+                any(LlmCallQueueService.ResultMetricsExtractor.class)
+        )).thenThrow(new IOException("HTTP 400 bad request"));
+
+        LlmGateway gateway = new LlmGateway(
+                aiProvidersConfigService,
+                aiEmbeddingService,
+                aiRerankService,
+                llmCallQueueService,
+                llmRoutingService,
+                llmRoutingTelemetryService,
+                tokenCountService
+        );
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> gateway.chatStreamRouted(
+                        LlmQueueTaskType.TEXT_CHAT,
+                        null,
+                        null,
+                        List.of(ChatMessage.user("hi")),
+                        0.2,
+                        null,
+                        null,
+                        null,
+                        line -> {
+                        }
+                )
+        );
+        assertTrue(ex.getMessage().contains("上游AI流式调用失败"));
+    }
+
+    @Test
+    void chatStreamRouted_should_prefer_last_route_error_when_fallback_checked_exception_occurs() throws Exception {
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+        TokenCountService tokenCountService = mock(TokenCountService.class);
+
+        when(llmRoutingService.getPolicy(LlmQueueTaskType.TEXT_CHAT))
+                .thenReturn(new LlmRoutingService.Policy(LlmRoutingService.Strategy.WEIGHTED_RR, 1, 1, 500));
+        LlmRoutingService.RouteTarget t1 = new LlmRoutingService.RouteTarget(
+                new LlmRoutingService.TargetId("p1", "m1"),
+                1,
+                1,
+                null
+        );
+        when(llmRoutingService.pickNext(eq(LlmQueueTaskType.TEXT_CHAT), any())).thenReturn(t1);
+        when(aiProvidersConfigService.resolveProvider("p1")).thenReturn(provider("p1", "OPENAI_COMPAT", "m1"));
+        when(aiProvidersConfigService.listEnabledProviderIds()).thenReturn(List.of("pf"));
+        when(aiProvidersConfigService.resolveProvider("pf")).thenReturn(provider("pf", "OPENAI_COMPAT", "mf"));
+
+        when(llmCallQueueService.call(
+                any(LlmQueueTaskType.class),
+                anyString(),
+                anyString(),
+                anyInt(),
+                any(LlmCallQueueService.CheckedTaskSupplier.class),
+                any(LlmCallQueueService.ResultMetricsExtractor.class)
+        )).thenAnswer(inv -> {
+            String providerId = inv.getArgument(1);
+            if ("p1".equals(providerId)) {
+                throw new IOException("HTTP 429 route");
+            }
+            throw new IOException("fallback checked");
+        });
+
+        LlmGateway gateway = new LlmGateway(
+                aiProvidersConfigService,
+                aiEmbeddingService,
+                aiRerankService,
+                llmCallQueueService,
+                llmRoutingService,
+                llmRoutingTelemetryService,
+                tokenCountService
+        );
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> gateway.chatStreamRouted(
+                        LlmQueueTaskType.TEXT_CHAT,
+                        null,
+                        null,
+                        List.of(ChatMessage.user("hi")),
+                        0.2,
+                        null,
+                        null,
+                        null,
+                        line -> {
+                        }
+                )
+        );
+        assertTrue(ex.getMessage().contains("HTTP 429 route"));
+    }
+
+    @Test
+    void chatStreamRouted_should_rethrow_runtime_exception_from_fallback() throws Exception {
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+        TokenCountService tokenCountService = mock(TokenCountService.class);
+
+        when(llmRoutingService.getPolicy(LlmQueueTaskType.TEXT_CHAT))
+                .thenReturn(new LlmRoutingService.Policy(LlmRoutingService.Strategy.WEIGHTED_RR, 1, 1, 500));
+        when(llmRoutingService.pickNext(eq(LlmQueueTaskType.TEXT_CHAT), any())).thenReturn(null);
+        when(aiProvidersConfigService.listEnabledProviderIds()).thenReturn(List.of("pf"));
+        when(aiProvidersConfigService.resolveProvider("pf")).thenReturn(provider("pf", "OPENAI_COMPAT", "mf"));
+        when(llmCallQueueService.call(
+                any(LlmQueueTaskType.class),
+                anyString(),
+                anyString(),
+                anyInt(),
+                any(LlmCallQueueService.CheckedTaskSupplier.class),
+                any(LlmCallQueueService.ResultMetricsExtractor.class)
+        )).thenThrow(new RuntimeException("fallback runtime"));
+
+        LlmGateway gateway = new LlmGateway(
+                aiProvidersConfigService,
+                aiEmbeddingService,
+                aiRerankService,
+                llmCallQueueService,
+                llmRoutingService,
+                llmRoutingTelemetryService,
+                tokenCountService
+        );
+
+        RuntimeException ex = assertThrows(
+                RuntimeException.class,
+                () -> gateway.chatStreamRouted(
+                        LlmQueueTaskType.TEXT_CHAT,
+                        null,
+                        null,
+                        List.of(ChatMessage.user("hi")),
+                        0.2,
+                        null,
+                        null,
+                        null,
+                        line -> {
+                        }
+                )
+        );
+        assertTrue(ex.getMessage().contains("fallback runtime"));
+    }
+
+    @Test
+    void chatStreamRouted_should_cover_blank_model_override_and_blank_provider_id_paths() throws Exception {
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+        TokenCountService tokenCountService = mock(TokenCountService.class);
+
+        when(llmRoutingService.getPolicy(LlmQueueTaskType.TEXT_CHAT))
+                .thenReturn(new LlmRoutingService.Policy(LlmRoutingService.Strategy.WEIGHTED_RR, 1, 1, 500));
+        when(llmRoutingService.pickNext(eq(LlmQueueTaskType.TEXT_CHAT), any())).thenReturn(null);
+        when(aiProvidersConfigService.listEnabledProviderIds()).thenReturn(List.of("pf"));
+        when(aiProvidersConfigService.resolveProvider("pf")).thenReturn(provider("pf", "OPENAI_COMPAT", "mf"));
+        when(llmCallQueueService.call(
+                any(LlmQueueTaskType.class),
+                anyString(),
+                anyString(),
+                anyInt(),
+                any(LlmCallQueueService.CheckedTaskSupplier.class),
+                any(LlmCallQueueService.ResultMetricsExtractor.class)
+        )).thenThrow(new RuntimeException("fallback-runtime-blank"));
+
+        LlmGateway gateway = new LlmGateway(
+                aiProvidersConfigService,
+                aiEmbeddingService,
+                aiRerankService,
+                llmCallQueueService,
+                llmRoutingService,
+                llmRoutingTelemetryService,
+                tokenCountService
+        );
+
+        RuntimeException ex = assertThrows(
+                RuntimeException.class,
+                () -> gateway.chatStreamRouted(
+                        LlmQueueTaskType.TEXT_CHAT,
+                        "   ",
+                        "   ",
+                        List.of(ChatMessage.user("hi")),
+                        0.2,
+                        null,
+                        null,
+                        null,
+                        line -> {
+                        }
+                )
+        );
+        assertTrue(ex.getMessage().contains("fallback-runtime-blank"));
+    }
+
+    @Test
+    void chatStreamRouted_should_cover_stream_call_failed_exception_with_null_cause_path() throws Exception {
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+        TokenCountService tokenCountService = mock(TokenCountService.class);
+
+        when(llmRoutingService.getPolicy(LlmQueueTaskType.TEXT_CHAT))
+                .thenReturn(new LlmRoutingService.Policy(LlmRoutingService.Strategy.WEIGHTED_RR, 1, 1, 500));
+        LlmRoutingService.RouteTarget t1 = new LlmRoutingService.RouteTarget(
+                new LlmRoutingService.TargetId("p1", "m1"),
+                1,
+                1,
+                null
+        );
+        when(llmRoutingService.pickNext(eq(LlmQueueTaskType.TEXT_CHAT), any())).thenReturn(t1);
+        when(aiProvidersConfigService.resolveProvider("p1")).thenReturn(provider("p1", "OPENAI_COMPAT", "m1"));
+        when(aiProvidersConfigService.listEnabledProviderIds()).thenReturn(List.of("pf"));
+        when(aiProvidersConfigService.resolveProvider("pf")).thenReturn(provider("pf", "OPENAI_COMPAT", "mf"));
+
+        Class<?> streamExClass = Class.forName("com.example.EnterpriseRagCommunity.service.ai.LlmGateway$StreamCallFailedException");
+        Constructor<?> ctor = streamExClass.getDeclaredConstructor(String.class, Throwable.class, boolean.class);
+        ctor.setAccessible(true);
+        Exception crafted = (Exception) ctor.newInstance("HTTP 429 crafted", null, false);
+
+        LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
+        when(task.id()).thenReturn("t-fallback-ok");
+        when(llmCallQueueService.call(
+                any(LlmQueueTaskType.class),
+                anyString(),
+                anyString(),
+                anyInt(),
+                any(LlmCallQueueService.CheckedTaskSupplier.class),
+                any(LlmCallQueueService.ResultMetricsExtractor.class)
+        )).thenAnswer(inv -> {
+            String providerId = inv.getArgument(1);
+            if ("p1".equals(providerId)) {
+                throw crafted;
+            }
+            @SuppressWarnings("unchecked")
+            LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics> sup =
+                    (LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics>) inv.getArgument(4);
+            return sup.get(task);
+        });
+
+        try (MockedConstruction<OpenAiCompatClient> mocked = Mockito.mockConstruction(
+                OpenAiCompatClient.class,
+                (mock, _ctx) -> Mockito.doAnswer(inv -> {
+                    OpenAiCompatClient.SseLineConsumer c = inv.getArgument(1);
+                    c.onLine("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}");
+                    c.onLine("data: [DONE]");
+                    return null;
+                }).when(mock).chatCompletionsStream(any(), any())
+        )) {
+            LlmGateway gateway = new LlmGateway(
+                    aiProvidersConfigService,
+                    aiEmbeddingService,
+                    aiRerankService,
+                    llmCallQueueService,
+                    llmRoutingService,
+                    llmRoutingTelemetryService,
+                    tokenCountService
+            );
+
+            IllegalStateException ex = assertThrows(
+                    IllegalStateException.class,
+                    () -> gateway.chatStreamRouted(
+                            LlmQueueTaskType.TEXT_CHAT,
+                            null,
+                            null,
+                            List.of(ChatMessage.user("hi")),
+                            0.2,
+                            null,
+                            null,
+                            null,
+                            line -> {
+                            }
+                    )
+            );
+            assertTrue(ex.getMessage().contains("上游AI流式调用失败"));
         }
     }
 

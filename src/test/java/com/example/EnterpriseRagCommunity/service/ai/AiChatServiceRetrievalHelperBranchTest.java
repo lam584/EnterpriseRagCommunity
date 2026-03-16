@@ -59,7 +59,7 @@ class AiChatServiceRetrievalHelperBranchTest {
         h1.setChunkIndex(1);
         h1.setScore(0.12);
         h1.setTitle("t1");
-        h1.setContentText("abcdef");
+        h1.setContentText("x".repeat(6000));
         RagPostChatRetrievalService.Hit h2 = new RagPostChatRetrievalService.Hit();
         h2.setPostId(2L);
         h2.setChunkIndex(2);
@@ -74,6 +74,46 @@ class AiChatServiceRetrievalHelperBranchTest {
         String out = (String) m.invoke(null, List.of(h1, h2), cfg);
         assertTrue(out.contains("[1]"));
         assertNotNull(out);
+    }
+
+    @Test
+    void buildRagContextPrompt_should_cover_null_cfg_and_null_hits() throws Exception {
+        Method m = AiChatService.class.getDeclaredMethod("buildRagContextPrompt", List.class, HybridRetrievalConfigDTO.class);
+        m.setAccessible(true);
+
+        RagPostChatRetrievalService.Hit h1 = new RagPostChatRetrievalService.Hit();
+        h1.setPostId(1L);
+        h1.setTitle("  ");
+        h1.setContentText("x".repeat(6000));
+
+        List<RagPostChatRetrievalService.Hit> hits = new ArrayList<>();
+        hits.add(null);
+        hits.add(h1);
+        String out = (String) m.invoke(null, hits, null);
+        assertTrue(out.contains("参考资料"));
+        assertTrue(out.contains("[2]"));
+    }
+
+    @Test
+    void buildRagContextPrompt_should_cover_small_max_input_break_path() throws Exception {
+        Method m = AiChatService.class.getDeclaredMethod("buildRagContextPrompt", List.class, HybridRetrievalConfigDTO.class);
+        m.setAccessible(true);
+
+        List<RagPostChatRetrievalService.Hit> hitList = new ArrayList<>();
+        for (int i = 1; i <= 11; i++) {
+            RagPostChatRetrievalService.Hit h = new RagPostChatRetrievalService.Hit();
+            h.setPostId((long) i);
+            h.setContentText("x".repeat(6000));
+            hitList.add(h);
+        }
+
+        HybridRetrievalConfigDTO cfg = new HybridRetrievalConfigDTO();
+        cfg.setHybridK(20);
+        cfg.setPerDocMaxTokens(100);
+        cfg.setMaxInputTokens(1);
+        String out = (String) m.invoke(null, hitList, cfg);
+        assertTrue(out.contains("[1]"));
+        assertTrue(out.contains("[10]"));
     }
 
     @Test
@@ -187,6 +227,43 @@ class AiChatServiceRetrievalHelperBranchTest {
     }
 
     @Test
+    void writeRagDebugEvent_should_cover_null_out_zero_max_chars_and_null_lists() throws Exception {
+        Method m = AiChatService.class.getDeclaredMethod(
+                "writeRagDebugEvent",
+                PrintWriter.class,
+                ChatRagAugmentConfigDTO.class,
+                String.class,
+                List.class,
+                List.class,
+                RagContextPromptService.AssembleResult.class
+        );
+        m.setAccessible(true);
+
+        ChatRagAugmentConfigDTO on = new ChatRagAugmentConfigDTO();
+        on.setDebugEnabled(true);
+        on.setDebugMaxChars(0);
+        m.invoke(null, null, on, "q", null, null, null);
+
+        StringWriter sw = new StringWriter();
+        ChatRagAugmentConfigDTO enabled = new ChatRagAugmentConfigDTO();
+        enabled.setDebugEnabled(true);
+        enabled.setDebugMaxChars(300);
+
+        RagContextPromptService.AssembleResult ar = new RagContextPromptService.AssembleResult();
+        List<RagContextPromptService.Item> selected = new ArrayList<>();
+        selected.add(new RagContextPromptService.Item());
+        selected.add(null);
+        ar.setSelected(selected);
+        List<RagCommentChatRetrievalService.Hit> comments = new ArrayList<>();
+        comments.add(null);
+        m.invoke(null, new PrintWriter(sw), enabled, null, null, comments, ar);
+        String out = sw.toString();
+        assertTrue(out.contains("event: rag_debug"));
+        assertTrue(out.contains("\"query\":\"\""));
+        assertTrue(out.contains("\"commentHits\":["));
+    }
+
+    @Test
     void sanitizeHitPostIds_should_null_out_missing_posts() throws Exception {
         PostsRepository postsRepository = mock(PostsRepository.class);
         PromptsRepository promptsRepository = mock(PromptsRepository.class);
@@ -206,6 +283,47 @@ class AiChatServiceRetrievalHelperBranchTest {
         m.invoke(service, List.of(h1, h2));
         assertEquals(1L, h1.getPostId());
         assertEquals(null, h2.getPostId());
+    }
+
+    @Test
+    void sanitizeHitPostIds_should_keep_post_ids_when_all_exist() throws Exception {
+        PostsRepository postsRepository = mock(PostsRepository.class);
+        PromptsRepository promptsRepository = mock(PromptsRepository.class);
+        AiChatService service = buildService(postsRepository, promptsRepository);
+
+        com.example.EnterpriseRagCommunity.entity.content.PostsEntity p1 = new com.example.EnterpriseRagCommunity.entity.content.PostsEntity();
+        p1.setId(1L);
+        com.example.EnterpriseRagCommunity.entity.content.PostsEntity p2 = new com.example.EnterpriseRagCommunity.entity.content.PostsEntity();
+        p2.setId(2L);
+        when(postsRepository.findAllById(any())).thenReturn(List.of(p1, p2));
+
+        RetrievalHitsEntity h1 = new RetrievalHitsEntity();
+        h1.setPostId(1L);
+        RetrievalHitsEntity h2 = new RetrievalHitsEntity();
+        h2.setPostId(2L);
+
+        Method m = AiChatService.class.getDeclaredMethod("sanitizeHitPostIds", List.class);
+        m.setAccessible(true);
+        m.invoke(service, List.of(h1, h2));
+        assertEquals(1L, h1.getPostId());
+        assertEquals(2L, h2.getPostId());
+    }
+
+    @Test
+    void sanitizeHitPostIds_should_cover_null_and_empty_input_paths() throws Exception {
+        PostsRepository postsRepository = mock(PostsRepository.class);
+        PromptsRepository promptsRepository = mock(PromptsRepository.class);
+        AiChatService service = buildService(postsRepository, promptsRepository);
+
+        Method m = AiChatService.class.getDeclaredMethod("sanitizeHitPostIds", List.class);
+        m.setAccessible(true);
+        m.invoke(service, new Object[] {null});
+        m.invoke(service, List.of());
+
+        RetrievalHitsEntity h = new RetrievalHitsEntity();
+        h.setPostId(null);
+        m.invoke(service, List.of(h));
+        assertEquals(null, h.getPostId());
     }
 
     @Test

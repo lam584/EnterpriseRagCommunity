@@ -8,6 +8,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -149,10 +150,10 @@ public class AiChatService {
         List<AiChatStreamRequest.ImageInput> images = resolveImages(req);
         List<AiChatStreamRequest.FileInput> files = resolveFiles(req);
         String messageForHistory = req.getMessage();
-        if (images != null && !images.isEmpty()) {
+        if (hasItems(images)) {
             messageForHistory = appendImagesAsText(messageForHistory, images);
         }
-        if (files != null && !files.isEmpty()) {
+        if (hasItems(files)) {
             messageForHistory = appendFilesAsText(messageForHistory, files);
         }
 
@@ -206,7 +207,7 @@ public class AiChatService {
         int historyLimit = (req.getHistoryLimit() != null && req.getHistoryLimit() > 0)
                 ? req.getHistoryLimit()
                 : (portalCfg.getHistoryLimit() != null && portalCfg.getHistoryLimit() > 0 ? portalCfg.getHistoryLimit() : 20);
-        if (!req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE) {
+        if (shouldLoadHistory(req, session)) {
             // fetch last N messages (excluding current user message which is not yet in context)
             var page = qaMessagesRepository.findAll(
                     (root, _query, cb) -> cb.equal(root.get("sessionId"), session.getId()),
@@ -247,7 +248,7 @@ public class AiChatService {
                 hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
                 List<RagPostChatRetrievalService.Hit> postHits = List.of();
                 List<RagCommentChatRetrievalService.Hit> commentHits = List.of();
-                if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                if (isHybridEnabled(hybridCfg)) {
                     if (safeRagTopKOverride > 0) {
                         HybridRetrievalConfigDTO copy = new HybridRetrievalConfigDTO();
                         org.springframework.beans.BeanUtils.copyProperties(hybridCfg, copy);
@@ -263,9 +264,9 @@ public class AiChatService {
                     postHits = ragRetrievalService.retrieve(req.getMessage(), Math.min(50, k), null);
                 }
 
-                boolean augmentEnabled = chatRagCfg == null || chatRagCfg.getEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getEnabled());
+                boolean augmentEnabled = isAugmentEnabled(chatRagCfg);
                 if (augmentEnabled) {
-                    boolean commentsEnabled = chatRagCfg == null || chatRagCfg.getCommentsEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getCommentsEnabled());
+                    boolean commentsEnabled = isCommentsEnabled(chatRagCfg);
                     if (commentsEnabled) {
                         int ck = chatRagCfg == null || chatRagCfg.getCommentTopK() == null ? 20 : Math.max(1, chatRagCfg.getCommentTopK());
                         commentHits = ragCommentChatRetrievalService.retrieve(req.getMessage(), ck);
@@ -289,11 +290,11 @@ public class AiChatService {
                 } else {
                     ragHits = postHits;
                 }
-                if (!req.getDryRun()) {
+                if (shouldPersistRetrieval(req)) {
                     RetrievalEventsEntity ev = new RetrievalEventsEntity();
                     ev.setUserId(currentUserId);
                     ev.setQueryText(req.getMessage());
-                    if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                    if (isHybridEnabled(hybridCfg)) {
                         ev.setBm25K(hybridCfg.getBm25K());
                         ev.setVecK(hybridCfg.getVecK());
                         ev.setHybridK(hybridCfg.getHybridK());
@@ -312,13 +313,13 @@ public class AiChatService {
 
                     if (retrievalEventId != null) {
                         List<RetrievalHitsEntity> outHits = new ArrayList<>();
-                        if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                        if (isHybridEnabled(hybridCfg)) {
                             appendStageHits(outHits, retrievalEventId, RetrievalHitType.BM25, hybridResult == null ? null : hybridResult.getBm25Hits());
                             appendStageHits(outHits, retrievalEventId, RetrievalHitType.VEC, hybridResult == null ? null : hybridResult.getVecHits());
                             appendStageHits(outHits, retrievalEventId, RetrievalHitType.RERANK, hybridResult == null ? null : hybridResult.getFinalHits());
                             appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
                             appendChatHits(outHits, retrievalEventId, RetrievalHitType.AGG, ragHits);
-                        } else if (ragHits != null && !ragHits.isEmpty()) {
+                        } else if (hasItems(ragHits)) {
                             appendChatHits(outHits, retrievalEventId, RetrievalHitType.VEC, postHits);
                             appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
                             if (augmentEnabled) {
@@ -332,16 +333,16 @@ public class AiChatService {
                     }
                 }
 
-                if (ragHits != null && !ragHits.isEmpty()) {
+                if (hasItems(ragHits)) {
                     contextAssembled = ragContextPromptService.assemble(req.getMessage(), ragHits, contextCfg, citationCfg);
                     String prompt = contextAssembled == null ? null : contextAssembled.getContextPrompt();
-                    if (prompt != null && !prompt.isBlank()) {
+                    if (hasText(prompt)) {
                         messages.add(ChatMessage.system(prompt));
                     }
-                    if (chatRagCfg != null && Boolean.TRUE.equals(chatRagCfg.getDebugEnabled())) {
+                    if (isRagDebugEnabled(chatRagCfg)) {
                         writeRagDebugEvent(out, chatRagCfg, req.getMessage(), ragHits, commentHits, contextAssembled);
                     }
-                    if (!req.getDryRun() && retrievalEventId != null && contextAssembled != null && contextCfg != null && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
+                    if (shouldWriteContextWindow(req, retrievalEventId, contextAssembled, contextCfg)) {
                         double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
                         if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
@@ -371,13 +372,13 @@ public class AiChatService {
                 resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
         ChatContextGovernanceConfigDTO govCfg = chatContextGovernanceConfigService.getConfigOrDefault();
-        if (files != null && !files.isEmpty()) {
+        if (hasItems(files)) {
             String filesBlock = buildFilesBlockForModel(files, currentUserId, govCfg);
-            if (filesBlock != null && !filesBlock.isBlank()) {
+            if (hasText(filesBlock)) {
                 userMessageForModel = userMessageForModel + "\n\n" + filesBlock.trim();
             }
         }
-        boolean hasImages = images != null && !images.isEmpty();
+        boolean hasImages = hasItems(images);
         List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
         if (hasImages) {
             List<Map<String, Object>> parts = new ArrayList<>();
@@ -415,7 +416,7 @@ public class AiChatService {
         try {
             boolean[] gotDelta = new boolean[] {false};
             OpenAiCompatClient.SseLineConsumer handler = line -> {
-                if (line == null || line.isBlank()) return;
+                if (isBlankLine(line)) return;
                 if (!line.startsWith("data:")) return;
 
                 String data = line.substring("data:".length()).trim();
@@ -427,7 +428,7 @@ public class AiChatService {
                 String content = extractDeltaContent(data);
 
                 StringBuilder deltaOut = new StringBuilder();
-                if (reasoning != null && !reasoning.isEmpty() && !thinkClosed[0]) {
+                if (hasReasoningDelta(reasoning, thinkClosed)) {
                     if (!thinkOpen[0]) {
                         thinkOpen[0] = true;
                         if (!reasoning.trim().startsWith("<think>")) {
@@ -436,10 +437,10 @@ public class AiChatService {
                     }
                     deltaOut.append(reasoning);
                 }
-                if (content != null && !content.isEmpty()) {
+                if (hasContentDelta(content)) {
                     if (thinkOpen[0] && !thinkClosed[0]) {
                         thinkClosed[0] = true;
-                        if (!assistantAccum.toString().trim().endsWith("</think>") && !content.trim().startsWith("</think>")) {
+                        if (shouldAppendThinkCloseTag(assistantAccum, content)) {
                             deltaOut.append("</think>");
                         }
                     }
@@ -500,7 +501,7 @@ public class AiChatService {
                 citedSourcesForPersist = citedSources;
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSources);
-                if (sourcesText != null && !sourcesText.isBlank()) {
+                if (hasText(sourcesText)) {
                     String delta = "\n\n" + sourcesText.trim();
                     assistantAccum.append(delta);
                     out.write("event: delta\n");
@@ -508,7 +509,7 @@ public class AiChatService {
                     out.flush();
                 }
 
-                if (citedSources != null && !citedSources.isEmpty()) {
+                if (!citedSources.isEmpty()) {
                     StringBuilder sb = new StringBuilder();
                     sb.append("{\"sources\":[");
                     int n = Math.min(200, citedSources.size());
@@ -623,10 +624,10 @@ public class AiChatService {
         List<AiChatStreamRequest.ImageInput> images = resolveImages(req);
         List<AiChatStreamRequest.FileInput> files = resolveFiles(req);
         String messageForHistory = req.getMessage();
-        if (images != null && !images.isEmpty()) {
+        if (hasItems(images)) {
             messageForHistory = appendImagesAsText(messageForHistory, images);
         }
-        if (files != null && !files.isEmpty()) {
+        if (hasItems(files)) {
             messageForHistory = appendFilesAsText(messageForHistory, files);
         }
 
@@ -754,7 +755,7 @@ public class AiChatService {
                     retrievalEventId = retrievalEventsRepository.save(ev).getId();
                 }
 
-                if (!ragHits.isEmpty()) {
+                if (hasItems(ragHits)) {
                     if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null) {
                         int max = Math.min(200, ragHits.size());
                         List<RetrievalHitsEntity> hitEntities = new ArrayList<>();
@@ -811,13 +812,13 @@ public class AiChatService {
                 resolveModelNameForThinkDirective(providerIdOverride, modelOverride)
         );
         ChatContextGovernanceConfigDTO govCfg = chatContextGovernanceConfigService.getConfigOrDefault();
-        if (files != null && !files.isEmpty()) {
+        if (hasItems(files)) {
             String filesBlock = buildFilesBlockForModel(files, currentUserId, govCfg);
-            if (filesBlock != null && !filesBlock.isBlank()) {
+            if (hasText(filesBlock)) {
                 userMessageForModel = userMessageForModel + "\n\n" + filesBlock.trim();
             }
         }
-        boolean hasImages = images != null && !images.isEmpty();
+        boolean hasImages = hasItems(images);
         List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
         if (hasImages) {
             List<Map<String, Object>> parts = new ArrayList<>();
@@ -1008,6 +1009,15 @@ public class AiChatService {
         }
         if (questionMessageId == null) throw new IllegalArgumentException("questionMessageId is required");
         if (req == null) throw new IllegalArgumentException("req is required");
+        return regenerateOnceInternal(questionMessageId, req, currentUserId);
+    }
+
+    private AiChatResponseDTO regenerateOnceInternal(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId) {
+        if (currentUserId == null) {
+            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
+        }
+        if (questionMessageId == null) throw new IllegalArgumentException("questionMessageId is required");
+        if (req == null) throw new IllegalArgumentException("req is required");
 
         QaMessagesEntity questionMsg = qaMessagesRepository.findById(questionMessageId)
                 .orElseThrow(() -> new ResourceNotFoundException("message not found"));
@@ -1084,9 +1094,9 @@ public class AiChatService {
         );
         ChatContextGovernanceConfigDTO govCfg = chatContextGovernanceConfigService.getConfigOrDefault();
         List<AiChatStreamRequest.FileInput> filesFromHistory = extractFilesFromHistoryText(questionText);
-        if (filesFromHistory != null && !filesFromHistory.isEmpty()) {
+        if (hasItems(filesFromHistory)) {
             String filesBlock = buildFilesBlockForModel(filesFromHistory, currentUserId, govCfg);
-            if (filesBlock != null && !filesBlock.isBlank()) {
+            if (hasText(filesBlock)) {
                 userMessageForModel = userMessageForModel + "\n\n" + filesBlock.trim();
             }
         }
@@ -1385,12 +1395,21 @@ public class AiChatService {
 
     public void streamRegenerate(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
             throws IOException {
+        doStreamRegenerate(questionMessageId, req, currentUserId, response);
+    }
+
+    private void doStreamRegenerate(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
+            throws IOException {
         if (currentUserId == null) {
             throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
         }
         if (questionMessageId == null) throw new IllegalArgumentException("questionMessageId is required");
         if (req == null) throw new IllegalArgumentException("req is required");
+        doStreamRegenerateInternal(questionMessageId, req, currentUserId, response);
+    }
 
+    private void doStreamRegenerateInternal(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
+            throws IOException {
         QaMessagesEntity questionMsg = qaMessagesRepository.findById(questionMessageId)
                 .orElseThrow(() -> new ResourceNotFoundException("message not found"));
         if (questionMsg.getRole() != MessageRole.USER) {
@@ -1478,9 +1497,9 @@ public class AiChatService {
         );
         ChatContextGovernanceConfigDTO govCfg = chatContextGovernanceConfigService.getConfigOrDefault();
         List<AiChatStreamRequest.FileInput> filesFromHistory = extractFilesFromHistoryText(questionText);
-        if (filesFromHistory != null && !filesFromHistory.isEmpty()) {
+        if (hasItems(filesFromHistory)) {
             String filesBlock = buildFilesBlockForModel(filesFromHistory, currentUserId, govCfg);
-            if (filesBlock != null && !filesBlock.isBlank()) {
+            if (hasText(filesBlock)) {
                 questionTextForModel = questionTextForModel + "\n\n" + filesBlock.trim();
             }
         }
@@ -1808,6 +1827,67 @@ public class AiChatService {
             out.write("data: {\"latencyMs\":" + latency + "}\n\n");
             out.flush();
         }
+    }
+
+    private static boolean hasItems(Collection<?> values) {
+        return values != null && !values.isEmpty();
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private static boolean shouldLoadHistory(AiChatStreamRequest req, QaSessionsEntity session) {
+        return !req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE;
+    }
+
+    private static boolean isHybridEnabled(HybridRetrievalConfigDTO cfg) {
+        return cfg != null && Boolean.TRUE.equals(cfg.getEnabled());
+    }
+
+    private static boolean isAugmentEnabled(ChatRagAugmentConfigDTO cfg) {
+        return cfg == null || cfg.getEnabled() == null || Boolean.TRUE.equals(cfg.getEnabled());
+    }
+
+    private static boolean isCommentsEnabled(ChatRagAugmentConfigDTO cfg) {
+        return cfg == null || cfg.getCommentsEnabled() == null || Boolean.TRUE.equals(cfg.getCommentsEnabled());
+    }
+
+    private static boolean shouldPersistRetrieval(AiChatStreamRequest req) {
+        return !req.getDryRun();
+    }
+
+    private static boolean isRagDebugEnabled(ChatRagAugmentConfigDTO cfg) {
+        return cfg != null && Boolean.TRUE.equals(cfg.getDebugEnabled());
+    }
+
+    private static boolean shouldWriteContextWindow(
+            AiChatStreamRequest req,
+            Long retrievalEventId,
+            RagContextPromptService.AssembleResult contextAssembled,
+            ContextClipConfigDTO contextCfg
+    ) {
+        return !req.getDryRun()
+                && retrievalEventId != null
+                && contextAssembled != null
+                && contextCfg != null
+                && Boolean.TRUE.equals(contextCfg.getLogEnabled());
+    }
+
+    private static boolean isBlankLine(String line) {
+        return line == null || line.isBlank();
+    }
+
+    private static boolean hasReasoningDelta(String reasoning, boolean[] thinkClosed) {
+        return reasoning != null && !reasoning.isEmpty() && !thinkClosed[0];
+    }
+
+    private static boolean hasContentDelta(String content) {
+        return content != null && !content.isEmpty();
+    }
+
+    private static boolean shouldAppendThinkCloseTag(StringBuilder assistantAccum, String content) {
+        return !assistantAccum.toString().trim().endsWith("</think>") && !content.trim().startsWith("</think>");
     }
 
     private static List<RagContextPromptService.CitationSource> filterSourcesByCitations(
