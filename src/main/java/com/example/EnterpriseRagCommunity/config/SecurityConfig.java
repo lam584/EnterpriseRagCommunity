@@ -35,6 +35,8 @@ import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
 import com.example.EnterpriseRagCommunity.security.AccessChangedFilter;
 import com.example.EnterpriseRagCommunity.security.AccessLogsFilter;
+import com.example.EnterpriseRagCommunity.security.IpPathRateLimitFilter;
+import com.example.EnterpriseRagCommunity.security.ThreatPathBlockFilter;
 import com.example.EnterpriseRagCommunity.security.ContentSafetyCircuitBreakerFilter;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
@@ -65,6 +67,12 @@ public class SecurityConfig {
     @Autowired(required = false)
     private AccessLogsFilter accessLogsFilter;
 
+    @Autowired(required = false)
+    private ThreatPathBlockFilter threatPathBlockFilter;
+
+    @Autowired(required = false)
+    private IpPathRateLimitFilter ipPathRateLimitFilter;
+
     @Autowired
     private ContentSafetyCircuitBreakerService contentSafetyCircuitBreakerService;
 
@@ -92,14 +100,32 @@ public class SecurityConfig {
             }
         }
 
-        if (accessLogsFilter != null) {
-            http.addFilterAfter(contentSafetyCircuitBreakerFilter(), AccessLogsFilter.class);
-        } else {
-            if (accessChangedFilter != null) {
-                http.addFilterAfter(contentSafetyCircuitBreakerFilter(), AccessChangedFilter.class);
+        if (threatPathBlockFilter != null) {
+            http.addFilterBefore(threatPathBlockFilter, SecurityContextHolderFilter.class);
+        }
+
+        if (ipPathRateLimitFilter != null) {
+            if (threatPathBlockFilter != null) {
+                http.addFilterAfter(ipPathRateLimitFilter, ThreatPathBlockFilter.class);
+            } else if (accessLogsFilter != null) {
+                http.addFilterAfter(ipPathRateLimitFilter, AccessLogsFilter.class);
+            } else if (accessChangedFilter != null) {
+                http.addFilterAfter(ipPathRateLimitFilter, AccessChangedFilter.class);
             } else {
-                http.addFilterAfter(contentSafetyCircuitBreakerFilter(), SecurityContextHolderFilter.class);
+                http.addFilterAfter(ipPathRateLimitFilter, SecurityContextHolderFilter.class);
             }
+        }
+
+        if (ipPathRateLimitFilter != null) {
+            http.addFilterAfter(contentSafetyCircuitBreakerFilter(), IpPathRateLimitFilter.class);
+        } else if (threatPathBlockFilter != null) {
+            http.addFilterAfter(contentSafetyCircuitBreakerFilter(), ThreatPathBlockFilter.class);
+        } else if (accessLogsFilter != null) {
+            http.addFilterAfter(contentSafetyCircuitBreakerFilter(), AccessLogsFilter.class);
+        } else if (accessChangedFilter != null) {
+            http.addFilterAfter(contentSafetyCircuitBreakerFilter(), AccessChangedFilter.class);
+        } else {
+            http.addFilterAfter(contentSafetyCircuitBreakerFilter(), SecurityContextHolderFilter.class);
         }
 
         http
@@ -198,9 +224,14 @@ public class SecurityConfig {
     @Order(2) // 较低的优先级，匹配所有其他请求
     public SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
         logger.debug("配置 Web 安全过滤链开始...");
+        http.securityMatcher("/**");
+        if (threatPathBlockFilter != null) {
+            http.addFilterBefore(threatPathBlockFilter, SecurityContextHolderFilter.class);
+            http.addFilterAfter(contentSafetyCircuitBreakerFilter(), SecurityContextHolderFilter.class);
+        } else {
+            http.addFilterAfter(contentSafetyCircuitBreakerFilter(), SecurityContextHolderFilter.class);
+        }
         http
-                .securityMatcher("/**") // 匹配所有其他请求
-                .addFilterAfter(contentSafetyCircuitBreakerFilter(), SecurityContextHolderFilter.class)
                 .cors(cors -> {
                     logger.debug("配置 CORS 开始...");
                     cors.configurationSource(corsConfigurationSource());

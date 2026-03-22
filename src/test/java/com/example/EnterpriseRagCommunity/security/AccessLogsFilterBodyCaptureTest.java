@@ -27,7 +27,7 @@ public class AccessLogsFilterBodyCaptureTest {
         AccessLogWriter accessLogWriter = Mockito.mock(AccessLogWriter.class);
         AdministratorService administratorService = Mockito.mock(AdministratorService.class);
 
-        AccessLogsFilter filter = new AccessLogsFilter(accessLogWriter, administratorService);
+        AccessLogsFilter filter = new AccessLogsFilter(accessLogWriter, administratorService, new ClientIpResolver());
 
         MockHttpServletRequest req = new MockHttpServletRequest("GET", "/api/admin/access-logs");
         MockHttpServletResponse resp = new MockHttpServletResponse();
@@ -68,7 +68,7 @@ public class AccessLogsFilterBodyCaptureTest {
         AccessLogWriter accessLogWriter = Mockito.mock(AccessLogWriter.class);
         AdministratorService administratorService = Mockito.mock(AdministratorService.class);
 
-        AccessLogsFilter filter = new AccessLogsFilter(accessLogWriter, administratorService);
+        AccessLogsFilter filter = new AccessLogsFilter(accessLogWriter, administratorService, new ClientIpResolver());
         ReflectionTestUtils.setField(filter, "captureBodyEnabled", true);
         ReflectionTestUtils.setField(filter, "captureResponseBodyEnabled", true);
         ReflectionTestUtils.setField(filter, "maxBodyBytes", 65536);
@@ -136,7 +136,7 @@ public class AccessLogsFilterBodyCaptureTest {
         AccessLogWriter accessLogWriter = Mockito.mock(AccessLogWriter.class);
         AdministratorService administratorService = Mockito.mock(AdministratorService.class);
 
-        AccessLogsFilter filter = new AccessLogsFilter(accessLogWriter, administratorService);
+        AccessLogsFilter filter = new AccessLogsFilter(accessLogWriter, administratorService, new ClientIpResolver());
         ReflectionTestUtils.setField(filter, "captureBodyEnabled", true);
         ReflectionTestUtils.setField(filter, "captureResponseBodyEnabled", true);
         ReflectionTestUtils.setField(filter, "maxBodyBytes", 20);
@@ -201,7 +201,7 @@ public class AccessLogsFilterBodyCaptureTest {
         AccessLogWriter accessLogWriter = Mockito.mock(AccessLogWriter.class);
         AdministratorService administratorService = Mockito.mock(AdministratorService.class);
 
-        AccessLogsFilter filter = new AccessLogsFilter(accessLogWriter, administratorService);
+        AccessLogsFilter filter = new AccessLogsFilter(accessLogWriter, administratorService, new ClientIpResolver());
         ReflectionTestUtils.setField(filter, "captureBodyEnabled", true);
         ReflectionTestUtils.setField(filter, "captureResponseBodyEnabled", true);
         ReflectionTestUtils.setField(filter, "maxBodyBytes", 65536);
