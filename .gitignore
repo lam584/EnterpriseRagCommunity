@@ -1,8 +1,24 @@
-# Gradle
+# Build and package artifacts
 .gradle/
 build/
+target/
+out/
+bin/
+tmp/
+uploads/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.war
+*.ear
+tmp-list.java
 
-# IDE files
+# Frontend dependencies and reports
+node_modules/
+test-reports/
+my-vite-app/test-reports/
+
+# IDE and tooling
 .idea/
 *.iml
 *.iws
@@ -13,69 +29,44 @@ build/
 .vscode/
 *.sublime-workspace
 .trae/
+.trae-temp
 .VSCodeCounter/
 .codebuddy/
 .qoder/agents
 .qoder/skills
-# Compiled class files
-*.class
 
-# Log files
+# Logs and runtime files
 *.log
 logs/
-
-# Package files
-*.jar
-!gradle/wrapper/gradle-wrapper.jar
-*.war
-*.ear
-
-# Virtual machine crash logs
-hs_err_pid*
-node_modules/
-# Node modules (for frontend)
 npm-debug.log
 yarn-error.log
 yarn-debug.log
+hs_err_pid*
+perf/jmeter/results
+
+# Environment and sensitive files
+.env
+src/test/resources/test-secrets.properties
+#src/main/resources/application-prod.properties
 
 # OS-specific files
 .DS_Store
 Thumbs.db
 
-# Application properties that may contain sensitive information
-#src/main/resources/application-prod.properties
-
-# Others
-target/
-out/
-bin/
-tmp/
-uploads/
-
+# Project temp and docs outputs
 tree.md
 temp.md
 HELP.md
-docs/git操作指南.md
-docs/功能清单.md
 /*.txt
-docs/评估报告.md
-docs/评估报告.docx
-docs/评估报告.pdf
-.env
-test-reports/
-my-vite-app/test-reports/
-logs
-perf/jmeter/results
-docs/temp.md
-src/test/resources/test-secrets.properties
-.trae-temp
-.VSCodeCounter
-.github
 testdata/
-论文/
-tmp-list.java
+.github
+docs/评估报告/
+docs/审核/
+docs/论文/
 docs/待办事项.md
-
+docs/git操作指南.md
+docs/temp.md
 docs/测试/前端分支覆盖测试报告.url
 docs/测试/后端分支覆盖测试报告.lnk
 docs/测试/Failed_tests.lnk
+docs/测试/常用正则表达式.txt
