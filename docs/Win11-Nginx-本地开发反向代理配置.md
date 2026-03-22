@@ -46,6 +46,11 @@ http {
 
         client_max_body_size 2048g;
 
+        # 安全防护：拦截常见漏洞扫描、配置和敏感文件，避免渗透暴露
+        location ~* (\.env|\.git|\.bak|\.sql|\.zip|\.tar\.gz|\.php|\.DS_Store|/wp-admin|/wp-login|/vendor|/actuator|/swagger-ui) {
+            return 444;
+        }
+
         location / {
             root E:/EnterpriseRagCommunity-main/my-vite-app/dist;
             index index.html;

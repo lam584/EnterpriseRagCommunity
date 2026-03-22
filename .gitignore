@@ -59,6 +59,8 @@ docs/git操作指南.md
 docs/功能清单.md
 /*.txt
 docs/评估报告.md
+docs/评估报告.docx
+docs/评估报告.pdf
 .env
 test-reports/
 my-vite-app/test-reports/
@@ -68,12 +70,12 @@ docs/temp.md
 src/test/resources/test-secrets.properties
 .trae-temp
 .VSCodeCounter
-docs/后端分支测试覆盖率.md
-docs/后端分支覆盖测试报告.lnk
 .github
-docs/Failed_tests.lnk
-docs/前端分支覆盖测试报告.url
 testdata/
 论文/
 tmp-list.java
 docs/待办事项.md
+
+docs/测试/前端分支覆盖测试报告.url
+docs/测试/后端分支覆盖测试报告.lnk
+docs/测试/Failed_tests.lnk

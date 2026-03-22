@@ -51,6 +51,7 @@ public class AccessLogsFilter extends OncePerRequestFilter {
 
     private final AccessLogWriter accessLogWriter;
     private final AdministratorService administratorService;
+    private final ClientIpResolver clientIpResolver;
 
     @Value("${app.logging.access.capture-body:true}")
     private boolean captureBodyEnabled;
@@ -100,7 +101,7 @@ public class AccessLogsFilter extends OncePerRequestFilter {
 
         String traceId = firstNonBlank(request.getHeader("X-Trace-Id"), requestId);
 
-        String clientIp = resolveClientIp(request);
+        String clientIp = clientIpResolver.resolveClientIp(request);
         Integer clientPort = safeInt(request.getRemotePort());
         String serverIp = safeString(request.getLocalAddr(), 64);
         Integer serverPort = safeInt(request.getLocalPort());
@@ -232,54 +233,6 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         if ("anonymousUser".equals(auth.getPrincipal())) return null;
         String name = auth.getName();
         return name == null || name.isBlank() ? null : name.trim();
-    }
-
-    private static String resolveClientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("Forwarded");
-        if (forwarded != null && !forwarded.isBlank()) {
-            String ip = parseForwardedFor(forwarded);
-            if (ip != null) return ip;
-        }
-
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            String[] parts = xff.split(",");
-            if (parts.length > 0) {
-                String first = parts[0].trim();
-                if (!first.isBlank()) return first;
-            }
-        }
-
-        String xri = request.getHeader("X-Real-IP");
-        if (xri != null && !xri.isBlank()) return xri.trim();
-
-        String ra = request.getRemoteAddr();
-        return ra == null ? null : ra.trim();
-    }
-
-    private static String parseForwardedFor(String forwarded) {
-        String[] parts = forwarded.split(";");
-        for (String p : parts) {
-            String t = p.trim();
-            if (t.regionMatches(true, 0, "for=", 0, 4)) {
-                String v = t.substring(4).trim();
-                v = stripQuotes(v);
-                if (v.startsWith("[") && v.endsWith("]")) v = v.substring(1, v.length() - 1);
-                int colon = v.indexOf(':');
-                if (colon > 0) v = v.substring(0, colon);
-                return v.isBlank() ? null : v;
-            }
-        }
-        return null;
-    }
-
-    private static String stripQuotes(String s) {
-        if (s == null) return null;
-        String t = s.trim();
-        if ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'"))) {
-            return t.substring(1, t.length() - 1);
-        }
-        return t;
     }
 
     private static String sanitizeQueryString(String qs) {
