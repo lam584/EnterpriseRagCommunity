@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFetchCallInfo, installFetchMock, resetServiceTest } from '../testUtils/serviceTestHarness';
 
 vi.mock('../utils/csrfUtils', () => {
@@ -16,8 +16,8 @@ describe('moderationFallbackService', () => {
     const { replyJsonOnce, replyOnce } = installFetchMock();
     const { getFallbackConfig } = await import('./moderationFallbackService');
 
-    replyJsonOnce({ ok: true, json: { ruleEnabled: true, ruleHighAction: 'REJECT' } });
-    await expect(getFallbackConfig()).resolves.toMatchObject({ ruleEnabled: true });
+    replyJsonOnce({ ok: true, json: { llmEnabled: true, llmHighAction: 'REJECT' } });
+    await expect(getFallbackConfig()).resolves.toMatchObject({ llmEnabled: true });
 
     replyJsonOnce({ ok: false, status: 400, json: { message: 'bad' } });
     await expect(getFallbackConfig()).rejects.toThrow('bad');
@@ -36,22 +36,23 @@ describe('moderationFallbackService', () => {
     const { replyJsonOnce, replyOnce, lastCall } = installFetchMock();
     const { updateFallbackConfig } = await import('./moderationFallbackService');
 
-    replyJsonOnce({ ok: true, json: { ruleEnabled: false, ruleHighAction: 'HUMAN' } });
-    await expect(updateFallbackConfig({ ruleEnabled: false })).resolves.toMatchObject({ ruleEnabled: false });
+    replyJsonOnce({ ok: true, json: { llmEnabled: false, llmOffendingHitAction: 'HUMAN' } });
+    await expect(updateFallbackConfig({ llmEnabled: false })).resolves.toMatchObject({ llmEnabled: false });
     const info = getFetchCallInfo(lastCall());
     expect(info?.method).toBe('PUT');
     expect((info?.headers as any)?.['X-XSRF-TOKEN']).toBe('csrf');
-    expect(JSON.parse(String(info?.body))).toEqual({ ruleEnabled: false });
+    expect(JSON.parse(String(info?.body))).toEqual({ llmEnabled: false });
 
     replyJsonOnce({ ok: false, status: 400, json: { message: 'bad' } });
-    await expect(updateFallbackConfig({ ruleEnabled: false })).rejects.toThrow('bad');
+    await expect(updateFallbackConfig({ llmEnabled: false })).rejects.toThrow('bad');
 
     replyOnce({ ok: false, status: 500, jsonError: new Error('bad') });
-    await expect(updateFallbackConfig({ ruleEnabled: false })).rejects.toThrow('保存置信回退配置失败');
+    await expect(updateFallbackConfig({ llmEnabled: false })).rejects.toThrow('保存置信回退配置失败');
 
     const csrfUtils = await import('../utils/csrfUtils');
     (csrfUtils.getCsrfToken as any).mockRejectedValueOnce(new Error('csrf-bad'));
-    await expect(updateFallbackConfig({ ruleEnabled: false })).rejects.toThrow('csrf-bad');
+    await expect(updateFallbackConfig({ llmEnabled: false })).rejects.toThrow('csrf-bad');
   });
 });
+
 
