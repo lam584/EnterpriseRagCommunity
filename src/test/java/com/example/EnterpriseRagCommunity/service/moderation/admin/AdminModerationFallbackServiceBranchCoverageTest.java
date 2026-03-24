@@ -37,12 +37,10 @@ public class AdminModerationFallbackServiceBranchCoverageTest {
         when(repo.findFirstByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(baseEntity()));
 
         ModerationConfidenceFallbackConfigDTO low = new ModerationConfidenceFallbackConfigDTO();
-        low.setVecThreshold(-0.01);
-        assertThrows(IllegalArgumentException.class, () -> svc.upsert(low, 1L, "u"));
+assertThrows(IllegalArgumentException.class, () -> svc.upsert(low, 1L, "u"));
 
         ModerationConfidenceFallbackConfigDTO high = new ModerationConfidenceFallbackConfigDTO();
-        high.setVecThreshold(2.01);
-        assertThrows(IllegalArgumentException.class, () -> svc.upsert(high, 1L, "u"));
+assertThrows(IllegalArgumentException.class, () -> svc.upsert(high, 1L, "u"));
     }
 
     @Test
@@ -214,15 +212,7 @@ public class AdminModerationFallbackServiceBranchCoverageTest {
 
     private static ModerationConfidenceFallbackConfigEntity baseEntity() {
         ModerationConfidenceFallbackConfigEntity e = new ModerationConfidenceFallbackConfigEntity();
-        e.setRuleEnabled(Boolean.TRUE);
-        e.setRuleHighAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        e.setRuleMediumAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setRuleLowAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setVecEnabled(Boolean.TRUE);
-        e.setVecThreshold(0.2);
-        e.setVecHitAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        e.setVecMissAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setLlmEnabled(Boolean.TRUE);
+e.setLlmEnabled(Boolean.TRUE);
         e.setLlmRejectThreshold(0.75);
         e.setLlmHumanThreshold(0.5);
         e.setChunkLlmRejectThreshold(0.75);

@@ -482,6 +482,7 @@ CREATE TABLE retrieval_events (
                                   session_id BIGINT UNSIGNED NULL COMMENT '会话ID',
                                   query_text TEXT NOT NULL COMMENT '查询文本',
                                   bm25_k INT NULL COMMENT 'BM25 召回 TopK',
+                                  vec_k INT NULL COMMENT '向量召回 TopK',
                                   hybrid_k INT NULL COMMENT '融合后保留 TopK',
                                   rerank_model VARCHAR(64) NULL COMMENT '重排模型',
                                   rerank_k INT NULL COMMENT '重排TopK',
@@ -530,6 +531,7 @@ CREATE TABLE moderation_rules (
 
 CREATE TABLE moderation_rule_hits (
                                       id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+                                      rule_id BIGINT UNSIGNED NOT NULL COMMENT '规则ID',
                                       content_type ENUM('POST','COMMENT','PROFILE') NOT NULL COMMENT '内容类型',
                                       content_id BIGINT UNSIGNED NOT NULL COMMENT '内容ID',
                                       snippet VARCHAR(255) NULL COMMENT '命中文本片段',

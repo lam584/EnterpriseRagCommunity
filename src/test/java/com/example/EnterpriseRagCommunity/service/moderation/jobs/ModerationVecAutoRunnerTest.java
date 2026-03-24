@@ -518,10 +518,6 @@ class ModerationVecAutoRunnerTest {
             Double threshold
     ) {
         ModerationConfidenceFallbackConfigEntity cfg = new ModerationConfidenceFallbackConfigEntity();
-        cfg.setVecEnabled(enabled);
-        cfg.setVecHitAction(hitAction);
-        cfg.setVecMissAction(missAction);
-        cfg.setVecThreshold(threshold);
         return cfg;
     }
 

@@ -97,15 +97,7 @@ public class AdminModerationFallbackServiceChunkThresholdTest {
 
     private static ModerationConfidenceFallbackConfigEntity baseEntity() {
         ModerationConfidenceFallbackConfigEntity e = new ModerationConfidenceFallbackConfigEntity();
-        e.setRuleEnabled(Boolean.TRUE);
-        e.setRuleHighAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        e.setRuleMediumAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setRuleLowAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setVecEnabled(Boolean.TRUE);
-        e.setVecThreshold(0.2);
-        e.setVecHitAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        e.setVecMissAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setLlmEnabled(Boolean.TRUE);
+e.setLlmEnabled(Boolean.TRUE);
         e.setLlmRejectThreshold(0.75);
         e.setLlmHumanThreshold(0.5);
         e.setChunkLlmRejectThreshold(0.75);

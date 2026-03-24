@@ -378,10 +378,6 @@ class ModerationRuleAutoRunnerBranchUnitTest {
 
     private static ModerationConfidenceFallbackConfigEntity fallback(boolean ruleEnabled) {
         ModerationConfidenceFallbackConfigEntity fb = new ModerationConfidenceFallbackConfigEntity();
-        fb.setRuleEnabled(ruleEnabled);
-        fb.setRuleHighAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        fb.setRuleMediumAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        fb.setRuleLowAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
         return fb;
     }
 

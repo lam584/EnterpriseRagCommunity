@@ -113,14 +113,6 @@ class ModerationLlmAutoRunnerUserReasonTest {
         policyConfigRepository.save(policy);
 
         ModerationConfidenceFallbackConfigEntity fb = new ModerationConfidenceFallbackConfigEntity();
-        fb.setRuleEnabled(true);
-        fb.setRuleHighAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        fb.setRuleMediumAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        fb.setRuleLowAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        fb.setVecEnabled(true);
-        fb.setVecThreshold(0.5);
-        fb.setVecHitAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        fb.setVecMissAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
         fb.setLlmEnabled(true);
         fb.setLlmRejectThreshold(0.8);
         fb.setLlmHumanThreshold(0.6);

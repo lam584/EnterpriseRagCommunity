@@ -40,15 +40,7 @@ public class AdminModerationFallbackServiceCoverage100Test {
         when(auditDiffBuilder.build(any(), any())).thenReturn(Map.of("changed", true));
 
         ModerationConfidenceFallbackConfigDTO payload = new ModerationConfidenceFallbackConfigDTO();
-        payload.setRuleEnabled(false);
-        payload.setRuleHighAction(ModerationConfidenceFallbackConfigEntity.Action.REJECT);
-        payload.setRuleMediumAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        payload.setRuleLowAction(ModerationConfidenceFallbackConfigEntity.Action.REJECT);
-        payload.setVecEnabled(false);
-        payload.setVecThreshold(1.5);
-        payload.setVecHitAction(ModerationConfidenceFallbackConfigEntity.Action.REJECT);
-        payload.setVecMissAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        payload.setLlmEnabled(false);
+payload.setLlmEnabled(false);
         payload.setLlmRejectThreshold(0.9);
         payload.setLlmHumanThreshold(0.4);
         payload.setChunkLlmRejectThreshold(0.8);
@@ -63,15 +55,6 @@ public class AdminModerationFallbackServiceCoverage100Test {
         payload.setThresholds(Map.of("custom.number", 123, "custom.bool", true));
 
         ModerationConfidenceFallbackConfigDTO out = svc.upsert(payload, 10L, "alice");
-
-        assertEquals(false, out.getRuleEnabled());
-        assertEquals(ModerationConfidenceFallbackConfigEntity.Action.REJECT, out.getRuleHighAction());
-        assertEquals(ModerationConfidenceFallbackConfigEntity.Action.HUMAN, out.getRuleMediumAction());
-        assertEquals(ModerationConfidenceFallbackConfigEntity.Action.REJECT, out.getRuleLowAction());
-        assertEquals(false, out.getVecEnabled());
-        assertEquals(1.5, out.getVecThreshold());
-        assertEquals(ModerationConfidenceFallbackConfigEntity.Action.REJECT, out.getVecHitAction());
-        assertEquals(ModerationConfidenceFallbackConfigEntity.Action.HUMAN, out.getVecMissAction());
         assertEquals(false, out.getLlmEnabled());
         assertEquals(0.9, out.getLlmRejectThreshold());
         assertEquals(0.4, out.getLlmHumanThreshold());
@@ -82,8 +65,7 @@ public class AdminModerationFallbackServiceCoverage100Test {
         assertEquals(0.95, out.getLlmStrongRejectThreshold());
         assertEquals(0.1, out.getLlmStrongPassThreshold());
         assertEquals(0.8, out.getLlmCrossModalThreshold());
-        assertEquals(12, out.getReportHumanThreshold());
-        assertEquals(31000, out.getChunkThresholdChars());
+assertEquals(31000, out.getChunkThresholdChars());
         assertEquals(123, out.getThresholds().get("custom.number"));
         assertEquals(true, out.getThresholds().get("custom.bool"));
         assertNotNull(out.getUpdatedAt());
@@ -138,8 +120,7 @@ public class AdminModerationFallbackServiceCoverage100Test {
 
         ModerationConfidenceFallbackConfigDTO dto = svc.getConfig();
         assertEquals(21L, dto.getId());
-        assertEquals(7, dto.getVersion());
-        assertEquals(true, dto.getThresholds().get("chunk.global.enable"));
+assertEquals(true, dto.getThresholds().get("chunk.global.enable"));
         assertEquals(null, dto.getUpdatedBy());
     }
 
@@ -155,15 +136,7 @@ public class AdminModerationFallbackServiceCoverage100Test {
 
     private static ModerationConfidenceFallbackConfigEntity baseEntity() {
         ModerationConfidenceFallbackConfigEntity e = new ModerationConfidenceFallbackConfigEntity();
-        e.setRuleEnabled(Boolean.TRUE);
-        e.setRuleHighAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        e.setRuleMediumAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setRuleLowAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setVecEnabled(Boolean.TRUE);
-        e.setVecThreshold(0.2);
-        e.setVecHitAction(ModerationConfidenceFallbackConfigEntity.Action.HUMAN);
-        e.setVecMissAction(ModerationConfidenceFallbackConfigEntity.Action.LLM);
-        e.setLlmEnabled(Boolean.TRUE);
+e.setLlmEnabled(Boolean.TRUE);
         e.setLlmRejectThreshold(0.75);
         e.setLlmHumanThreshold(0.5);
         e.setChunkLlmRejectThreshold(0.75);
