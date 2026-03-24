@@ -20,7 +20,7 @@ describe('BeianFooter', () => {
   });
 
   it('renders null when beian text is empty after trim', async () => {
-    getPublicSiteConfigMock.mockResolvedValue({ beianText: '   ', beianHref: null });
+    getPublicSiteConfigMock.mockResolvedValue({ beianText: '   ', beianHref: null, copyrightText: null });
 
     const { container } = render(<BeianFooter />);
 
@@ -30,7 +30,7 @@ describe('BeianFooter', () => {
   });
 
   it('renders with default href when service returns beian text without href', async () => {
-    getPublicSiteConfigMock.mockResolvedValue({ beianText: '京ICP备12345678号', beianHref: null });
+    getPublicSiteConfigMock.mockResolvedValue({ beianText: '京ICP备12345678号', beianHref: null, copyrightText: null });
 
     render(<BeianFooter />);
 
@@ -48,6 +48,7 @@ describe('BeianFooter', () => {
     getPublicSiteConfigMock.mockResolvedValue({
       beianText: '粤ICP备00000000号',
       beianHref: 'https://example.com/beian',
+      copyrightText: null,
     });
 
     const { container } = render(

@@ -23,11 +23,13 @@ describe('ImportConfigurationForm.utils', () => {
 
   it('returns config label or falls back to key', () => {
     expect(getConfigLabel('APP_AI_API_KEY')).toMatch(/AI API 密钥/);
+    expect(getConfigLabel('APP_SITE_COPYRIGHT')).toBe('版权所有文案');
     expect(getConfigLabel('UNKNOWN_KEY')).toBe('UNKNOWN_KEY');
   });
 
   it('returns help text or falls back to default help', () => {
     expect(getHelpText('APP_AI_API_KEY')).toMatch(/AI 服务的 API 密钥/);
+    expect(getHelpText('APP_SITE_COPYRIGHT')).toMatch(/版权文案/);
     expect(getHelpText('UNKNOWN_KEY')).toBe(HELP_FALLBACK_TEXT);
   });
 
@@ -74,4 +76,3 @@ describe('ImportConfigurationForm.utils', () => {
     expect(container.querySelector('svg.lucide-eye-off')).not.toBeNull();
   });
 });
-

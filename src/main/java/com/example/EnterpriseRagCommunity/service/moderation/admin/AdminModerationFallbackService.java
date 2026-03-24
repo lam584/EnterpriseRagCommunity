@@ -39,10 +39,6 @@ public class AdminModerationFallbackService {
         ModerationConfidenceFallbackConfigDTO beforeDto = getConfig();
 
         // basic validation
-        if (payload.getVecThreshold() != null) {
-            double t = payload.getVecThreshold();
-            if (t < 0 || t > 2) throw new IllegalArgumentException("vecThreshold out of range");
-        }
         if (payload.getLlmRejectThreshold() != null && (payload.getLlmRejectThreshold() < 0 || payload.getLlmRejectThreshold() > 1)) {
             throw new IllegalArgumentException("llmRejectThreshold must be within [0,1]");
         }
@@ -94,16 +90,6 @@ public class AdminModerationFallbackService {
 
         ModerationConfidenceFallbackConfigEntity cfg = repository.findFirstByOrderByUpdatedAtDescIdDesc()
                 .orElseThrow(() -> new IllegalStateException("moderation_confidence_fallback_config not initialized"));
-
-        cfg.setRuleEnabled(payload.getRuleEnabled() != null ? payload.getRuleEnabled() : cfg.getRuleEnabled());
-        if (payload.getRuleHighAction() != null) cfg.setRuleHighAction(payload.getRuleHighAction());
-        if (payload.getRuleMediumAction() != null) cfg.setRuleMediumAction(payload.getRuleMediumAction());
-        if (payload.getRuleLowAction() != null) cfg.setRuleLowAction(payload.getRuleLowAction());
-
-        cfg.setVecEnabled(payload.getVecEnabled() != null ? payload.getVecEnabled() : cfg.getVecEnabled());
-        if (payload.getVecThreshold() != null) cfg.setVecThreshold(payload.getVecThreshold());
-        if (payload.getVecHitAction() != null) cfg.setVecHitAction(payload.getVecHitAction());
-        if (payload.getVecMissAction() != null) cfg.setVecMissAction(payload.getVecMissAction());
 
         cfg.setLlmEnabled(payload.getLlmEnabled() != null ? payload.getLlmEnabled() : cfg.getLlmEnabled());
         if (payload.getLlmRejectThreshold() != null) cfg.setLlmRejectThreshold(payload.getLlmRejectThreshold());
@@ -286,16 +272,6 @@ public class AdminModerationFallbackService {
         dto.setId(e.getId());
         dto.setVersion(e.getVersion());
 
-        dto.setRuleEnabled(e.getRuleEnabled());
-        dto.setRuleHighAction(e.getRuleHighAction());
-        dto.setRuleMediumAction(e.getRuleMediumAction());
-        dto.setRuleLowAction(e.getRuleLowAction());
-
-        dto.setVecEnabled(e.getVecEnabled());
-        dto.setVecThreshold(e.getVecThreshold());
-        dto.setVecHitAction(e.getVecHitAction());
-        dto.setVecMissAction(e.getVecMissAction());
-
         dto.setLlmEnabled(e.getLlmEnabled());
         dto.setLlmRejectThreshold(e.getLlmRejectThreshold());
         dto.setLlmHumanThreshold(e.getLlmHumanThreshold());
@@ -316,3 +292,4 @@ public class AdminModerationFallbackService {
         return dto;
     }
 }
+

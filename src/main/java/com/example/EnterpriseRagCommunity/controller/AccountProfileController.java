@@ -49,6 +49,7 @@ import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationActionsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
@@ -79,6 +80,7 @@ public class AccountProfileController {
     private final ModerationQueueRepository moderationQueueRepository;
     private final ModerationActionsRepository moderationActionsRepository;
     private final ModerationAutoKickService moderationAutoKickService;
+    private final ModerationRuleAutoRunner moderationRuleAutoRunner;
 
     @GetMapping("/profile")
     public ResponseEntity<?> getMyProfileView() {
@@ -355,6 +357,9 @@ public class AccountProfileController {
                 null,
                 auditDiffBuilder.build(beforeAudit, summarizeProfileForAudit(saved))
         );
+        moderationQueueRepository.flush();
+        moderationRuleAutoRunner.runForQueueId(q.getId());
+        saved = usersRepository.findById(saved.getId()).orElse(saved);
         scheduleModerationAutoRunAfterCommit(q.getId());
         return ResponseEntity.ok(toSafeDTO(saved));
     }

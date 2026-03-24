@@ -21,12 +21,14 @@ public class PublicSiteConfigController {
     public Map<String, Object> getSiteConfig() {
         String beianText = trimToNull(systemConfigurationService.getConfig("APP_SITE_BEIAN"));
         String beianHref = trimToNull(systemConfigurationService.getConfig("APP_SITE_BEIAN_HREF"));
+        String copyrightText = trimToNull(systemConfigurationService.getConfig("APP_SITE_COPYRIGHT"));
         if (beianHref == null) {
             beianHref = "https://beian.miit.gov.cn/";
         }
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("beianText", beianText);
         out.put("beianHref", beianText == null ? null : beianHref);
+        out.put("copyrightText", copyrightText);
         return out;
     }
 

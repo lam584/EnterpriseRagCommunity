@@ -359,6 +359,7 @@ public class SetupController {
                         || key.startsWith("APP_MAIL_HOST")
                         || key.startsWith("APP_MAIL_PORT")
                         || key.startsWith("APP_MAIL_FROM_ADDRESS")
+                        || key.equals("APP_SITE_COPYRIGHT")
                         || key.equals("APP_SITE_BEIAN")
                         || key.equals("APP_SITE_BEIAN_HREF")) {
                     shouldEncrypt = false;
@@ -380,7 +381,7 @@ public class SetupController {
 
             return ResponseEntity.ok(Map.of("success", true));
         } catch (Exception e) {
-            logger.error("Failed to save config", e);
+            logger.error("Failed to save config", e); 
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
         }
     }

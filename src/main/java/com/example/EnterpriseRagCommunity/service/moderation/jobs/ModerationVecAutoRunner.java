@@ -148,12 +148,12 @@ public class ModerationVecAutoRunner {
         }
 
         Boolean vecEnabled = deepGetBool(policyConfig, "precheck.vec.enabled");
-        if (vecEnabled == null) vecEnabled = cfg.getVecEnabled();
+        if (vecEnabled == null) vecEnabled = true;
 
-        String vecHitAction = firstNonBlank(deepGetString(policyConfig, "precheck.vec.hit_action"), cfg.getVecHitAction() == null ? null : cfg.getVecHitAction().name());
-        String vecMissAction = firstNonBlank(deepGetString(policyConfig, "precheck.vec.miss_action"), cfg.getVecMissAction() == null ? null : cfg.getVecMissAction().name());
+        String vecHitAction = firstNonBlank(deepGetString(policyConfig, "precheck.vec.hit_action"), "REJECT");
+        String vecMissAction = firstNonBlank(deepGetString(policyConfig, "precheck.vec.miss_action"), "LLM");
         Double vecThreshold = deepGetDouble(policyConfig, "precheck.vec.threshold");
-        if (vecThreshold == null) vecThreshold = cfg.getVecThreshold();
+        if (vecThreshold == null) vecThreshold = 0.2;
 
         if (!Boolean.TRUE.equals(vecEnabled)) {
             // skip VEC -> decide miss action

@@ -242,6 +242,11 @@ public class PostsServiceImpl implements PostsService {
             }
 
             adminModerationQueueService.ensureEnqueuedPost(post.getId());
+            moderationQueueRepository.flush(); // Ensure queue row is visible to native queries
+            moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.CONTENT, com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType.POST, post.getId())
+                    .ifPresent(q -> moderationRuleAutoRunner.runForQueueId(q.getId()));
+            post = postsRepository.findById(post.getId()).orElse(post);
+
             scheduleModerationAutoRunAfterCommit();
 
             try {

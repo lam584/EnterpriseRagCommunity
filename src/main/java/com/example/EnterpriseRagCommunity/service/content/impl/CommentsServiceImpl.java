@@ -70,6 +70,9 @@ public class CommentsServiceImpl implements CommentsService {
     @Autowired
     private ModerationAutoKickService moderationAutoKickService;
 
+    @Autowired
+    private com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner moderationRuleAutoRunner;
+
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
@@ -220,10 +223,15 @@ public class CommentsServiceImpl implements CommentsService {
             CommentsEntity saved = commentsRepository.save(e);
 
             adminModerationQueueService.ensureEnqueuedComment(saved.getId());
+            moderationQueueRepository.flush(); // Ensure queue row is visible
             Long queueId = moderationQueueRepository
                     .findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.COMMENT, saved.getId())
                     .map(q -> q.getId())
                     .orElse(null);
+            if (queueId != null) {
+                moderationRuleAutoRunner.runForQueueId(queueId);
+                saved = commentsRepository.findById(saved.getId()).orElse(saved);
+            }
             scheduleModerationAutoRunAfterCommit(queueId);
 
             if (parentId == null) {

@@ -28,32 +28,38 @@ class PublicSiteConfigControllerTest {
     void getSiteConfig_shouldReturnNulls_whenBeianTextMissing() throws Exception {
         when(systemConfigurationService.getConfig("APP_SITE_BEIAN")).thenReturn(null);
         when(systemConfigurationService.getConfig("APP_SITE_BEIAN_HREF")).thenReturn(null);
+        when(systemConfigurationService.getConfig("APP_SITE_COPYRIGHT")).thenReturn(null);
 
         mockMvc.perform(get("/api/public/site-config"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.beianText").value(nullValue()))
-                .andExpect(jsonPath("$.beianHref").value(nullValue()));
+                .andExpect(jsonPath("$.beianHref").value(nullValue()))
+                .andExpect(jsonPath("$.copyrightText").value(nullValue()));
     }
 
     @Test
     void getSiteConfig_shouldDefaultHref_whenBeianTextPresentButHrefMissing() throws Exception {
         when(systemConfigurationService.getConfig("APP_SITE_BEIAN")).thenReturn("备案号");
         when(systemConfigurationService.getConfig("APP_SITE_BEIAN_HREF")).thenReturn(null);
+        when(systemConfigurationService.getConfig("APP_SITE_COPYRIGHT")).thenReturn("©2026 Demo");
 
         mockMvc.perform(get("/api/public/site-config"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.beianText").value("备案号"))
-                .andExpect(jsonPath("$.beianHref").value("https://beian.miit.gov.cn/"));
+                .andExpect(jsonPath("$.beianHref").value("https://beian.miit.gov.cn/"))
+                .andExpect(jsonPath("$.copyrightText").value("©2026 Demo"));
     }
 
     @Test
     void getSiteConfig_shouldUseConfiguredHref_whenProvided() throws Exception {
         when(systemConfigurationService.getConfig("APP_SITE_BEIAN")).thenReturn("备案号");
         when(systemConfigurationService.getConfig("APP_SITE_BEIAN_HREF")).thenReturn("https://example.invalid/");
+        when(systemConfigurationService.getConfig("APP_SITE_COPYRIGHT")).thenReturn("  版权所有  ");
 
         mockMvc.perform(get("/api/public/site-config"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.beianText").value("备案号"))
-                .andExpect(jsonPath("$.beianHref").value("https://example.invalid/"));
+                .andExpect(jsonPath("$.beianHref").value("https://example.invalid/"))
+                .andExpect(jsonPath("$.copyrightText").value("版权所有"));
     }
 }

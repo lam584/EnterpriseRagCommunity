@@ -25,37 +25,6 @@ public class ModerationConfidenceFallbackConfigEntity {
     @Column(name = "id")
     private Long id;
 
-    // ---- RULE ----
-    @Column(name = "rule_enabled", nullable = false)
-    private Boolean ruleEnabled;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "rule_high_action", nullable = false, length = 16)
-    private Action ruleHighAction;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "rule_medium_action", nullable = false, length = 16)
-    private Action ruleMediumAction;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "rule_low_action", nullable = false, length = 16)
-    private Action ruleLowAction;
-
-    // ---- VEC ----
-    @Column(name = "vec_enabled", nullable = false)
-    private Boolean vecEnabled;
-
-    @Column(name = "vec_threshold", nullable = false)
-    private Double vecThreshold;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "vec_hit_action", nullable = false, length = 16)
-    private Action vecHitAction;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "vec_miss_action", nullable = false, length = 16)
-    private Action vecMissAction;
-
     // ---- LLM ----
     @Column(name = "llm_enabled", nullable = false)
     private Boolean llmEnabled;

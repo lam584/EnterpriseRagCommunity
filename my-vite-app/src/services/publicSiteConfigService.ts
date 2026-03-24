@@ -1,6 +1,7 @@
 export interface PublicSiteConfig {
   beianText: string | null;
   beianHref: string | null;
+  copyrightText: string | null;
 }
 
 export async function getPublicSiteConfig(): Promise<PublicSiteConfig> {

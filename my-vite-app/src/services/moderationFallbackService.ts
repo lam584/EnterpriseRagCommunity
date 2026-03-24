@@ -19,16 +19,6 @@ export interface ModerationConfidenceFallbackConfig {
   id?: number;
   version?: number;
 
-  ruleEnabled: boolean;
-  ruleHighAction: FallbackAction;
-  ruleMediumAction: FallbackAction;
-  ruleLowAction: FallbackAction;
-
-  vecEnabled: boolean;
-  vecThreshold: number;
-  vecHitAction: FallbackAction;
-  vecMissAction: FallbackAction;
-
   llmEnabled: boolean;
   llmRejectThreshold: number;
   llmHumanThreshold: number;

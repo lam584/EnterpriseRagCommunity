@@ -89,7 +89,8 @@ class AccountProfileControllerAfterCommitTest {
                 mock(AuditDiffBuilder.class),
                 mock(ModerationQueueRepository.class),
                 mock(ModerationActionsRepository.class),
-                moderationAutoKickService
+                moderationAutoKickService,
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner.class)
         );
     }
 

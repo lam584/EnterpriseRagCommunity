@@ -172,7 +172,7 @@ public class ModerationRuleAutoRunner {
             }
 
             Boolean ruleEnabled = deepGetBool(policyConfig, "precheck.rule.enabled");
-            if (ruleEnabled == null) ruleEnabled = fb.getRuleEnabled();
+            if (ruleEnabled == null) ruleEnabled = true;
 
             if (!Boolean.TRUE.equals(ruleEnabled)) {
                 q.setCurrentStage(QueueStage.VEC);
@@ -358,9 +358,9 @@ public class ModerationRuleAutoRunner {
             }
 
             String action = switch (maxSeverity) {
-                case HIGH -> firstNonBlank(deepGetString(policyConfig, "precheck.rule.high_action"), fb.getRuleHighAction() == null ? null : fb.getRuleHighAction().name());
-                case MEDIUM -> firstNonBlank(deepGetString(policyConfig, "precheck.rule.medium_action"), fb.getRuleMediumAction() == null ? null : fb.getRuleMediumAction().name());
-                case LOW -> firstNonBlank(deepGetString(policyConfig, "precheck.rule.low_action"), fb.getRuleLowAction() == null ? null : fb.getRuleLowAction().name());
+                case HIGH -> firstNonBlank(deepGetString(policyConfig, "precheck.rule.high_action"), "REJECT");
+                case MEDIUM -> firstNonBlank(deepGetString(policyConfig, "precheck.rule.medium_action"), "REJECT");
+                case LOW -> firstNonBlank(deepGetString(policyConfig, "precheck.rule.low_action"), "HUMAN");
             };
 
             if ("REJECT".equals(normalizeAction(action))) {

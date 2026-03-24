@@ -1956,22 +1956,6 @@ public class ModerationLlmAutoRunner {
             if (oa != null || or != null) source = "policy.by_review_stage";
         }
 
-        Map<String, Object> byLabel = asMap(deepGet(policyConfig, "thresholds.by_label"));
-        boolean labelMatched = false;
-        if (byLabel != null && labels != null) {
-            for (String label : labels) {
-                if (label == null || label.isBlank()) continue;
-                Object v = byLabel.get(label);
-                Map<String, Object> o = asMap(v);
-                if (o == null) continue;
-                Object la = o.get("T_allow");
-                Object lr = o.get("T_reject");
-                if (la != null) tAllow = Math.min(tAllow, clamp01Strict(asDoubleRequired(la, "thresholds.by_label." + label + ".T_allow")));
-                if (lr != null) tReject = Math.min(tReject, clamp01Strict(asDoubleRequired(lr, "thresholds.by_label." + label + ".T_reject")));
-                if (la != null || lr != null) labelMatched = true;
-            }
-        }
-        if (labelMatched) source = "policy.by_label";
         if (tAllow > tReject) tAllow = tReject;
         return new Thresholds(tAllow, tReject, source);
     }

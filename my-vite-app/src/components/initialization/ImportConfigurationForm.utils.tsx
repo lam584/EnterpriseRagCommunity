@@ -13,6 +13,7 @@ export const HELP_CONTENT: Record<string, string> = {
     'Elasticsearch 的 API Key。您可以在 Kibana 或使用 Elasticsearch API 生成。获取方式详情见：https://www.elastic.co/docs/deploy-manage/api-keys/elasticsearch-api-keys',
   APP_AI_TOKENIZER_API_KEY:
     '用于计算 Token 数量的 阿里云 API Key,获取方式详情见：https://help.aliyun.com/zh/open-search/search-platform/user-guide/api-keys-management',
+  APP_SITE_COPYRIGHT: '站点版权文案，例如：©2026 某某公司 版权所有。不填写则使用系统默认文案。',
   APP_SITE_BEIAN: '站点备案号（ICP 备案号），例如：桂ICP备2026*******号。不填写则登录页底部不展示备案信息。',
   'spring.elasticsearch.uris': 'Elasticsearch 的连接地址，例如 http://localhost:9200。默认端口号为9200',
   APP_MAIL_USERNAME: '认证用户名，通常是您的完整邮箱地址。用于登录，建议和 APP_MAIL_FROM_ADDRESS 保持一致。',
@@ -35,6 +36,7 @@ export const CONFIG_LABELS: Record<string, string> = {
   APP_TOTP_MASTER_KEY: 'TOTP 主密钥',
   APP_ES_API_KEY: 'Elasticsearch API 密钥',
   APP_AI_TOKENIZER_API_KEY: 'Tokenizer API 密钥',
+  APP_SITE_COPYRIGHT: '版权所有文案',
   APP_SITE_BEIAN: '备案号（ICP）',
   'spring.elasticsearch.uris': 'Elasticsearch 连接地址',
   APP_MAIL_USERNAME: '邮箱用户名（建议与邮箱账号一致）',
@@ -84,4 +86,3 @@ export const VisibilityToggleButton: React.FC<{
     </Button>
   );
 };
-

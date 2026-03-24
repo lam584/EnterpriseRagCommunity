@@ -6,7 +6,7 @@ export interface AuthFooterProps {
   className?: string;
 }
 
-const DEFAULT_COPYRIGHT = '©2026 ls20@vip.qq.com 版权所有。';
+const DEFAULT_COPYRIGHT = '©2026 版权所有。';
 
 export default function AuthFooter(props: AuthFooterProps) {
   const { className } = props;
@@ -19,7 +19,7 @@ export default function AuthFooter(props: AuthFooterProps) {
         if (!cancelled) setSiteConfig(cfg);
       })
       .catch(() => {
-        if (!cancelled) setSiteConfig({ beianText: null, beianHref: null });
+        if (!cancelled) setSiteConfig({ beianText: null, beianHref: null, copyrightText: null });
       });
     return () => {
       cancelled = true;
@@ -28,11 +28,12 @@ export default function AuthFooter(props: AuthFooterProps) {
 
   const beianText = (siteConfig?.beianText ?? '').trim();
   const beianHref = siteConfig?.beianHref ?? 'https://beian.miit.gov.cn/';
+  const copyrightText = (siteConfig?.copyrightText ?? DEFAULT_COPYRIGHT).trim() || DEFAULT_COPYRIGHT;
   const showBeian = beianText.length > 0;
 
   return (
     <div className={className ?? 'text-center text-white p-4'}>
-      <p className="text-sm mt-4">{DEFAULT_COPYRIGHT}</p>
+      <p className="text-sm mt-4">{copyrightText}</p>
       {showBeian ? (
         <a
           href={beianHref}

@@ -1,4 +1,4 @@
--- MySQL 8.0, InnoDB, utf8mb4
+﻿-- MySQL 8.0, InnoDB, utf8mb4
 -- 统一建表选项
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
@@ -482,7 +482,6 @@ CREATE TABLE retrieval_events (
                                   session_id BIGINT UNSIGNED NULL COMMENT '会话ID',
                                   query_text TEXT NOT NULL COMMENT '查询文本',
                                   bm25_k INT NULL COMMENT 'BM25 召回 TopK',
-                                  vec_k INT NULL COMMENT '向量召回 TopK',
                                   hybrid_k INT NULL COMMENT '融合后保留 TopK',
                                   rerank_model VARCHAR(64) NULL COMMENT '重排模型',
                                   rerank_k INT NULL COMMENT '重排TopK',
@@ -533,7 +532,6 @@ CREATE TABLE moderation_rule_hits (
                                       id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
                                       content_type ENUM('POST','COMMENT','PROFILE') NOT NULL COMMENT '内容类型',
                                       content_id BIGINT UNSIGNED NOT NULL COMMENT '内容ID',
-                                      rule_id BIGINT UNSIGNED NOT NULL COMMENT '命中规则ID',
                                       snippet VARCHAR(255) NULL COMMENT '命中文本片段',
                                       matched_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '命中时间',
                                       KEY idx_mrh_target (content_type, content_id),
@@ -814,16 +812,15 @@ CREATE TABLE moderation_policy_config (
 INSERT INTO moderation_policy_config (content_type, policy_version, config_json) VALUES
 ('POST', 'v1', '{
   "precheck": {
-    "rule": {"enabled": true, "high_action": "HUMAN", "medium_action": "LLM", "low_action": "LLM"},
-    "vec": {"enabled": true, "threshold": 0.2, "hit_action": "HUMAN", "miss_action": "LLM"}
+    "rule": {"enabled": true, "high_action": "REJECT", "medium_action": "REJECT", "low_action": "HUMAN"},
+    "vec": {"enabled": true, "threshold": 0.2, "hit_action": "REJECT", "miss_action": "LLM"}
   },
   "thresholds": {
     "default": {"T_allow": 0.2, "T_reject": 0.8},
     "by_review_stage": {
       "reported": {"T_allow": 0.15, "T_reject": 0.75},
       "appeal": {"T_allow": 0.25, "T_reject": 0.85}
-    },
-    "by_label": {}
+    }
   },
   "escalate_rules": {
     "require_evidence": true
@@ -841,16 +838,15 @@ INSERT INTO moderation_policy_config (content_type, policy_version, config_json)
 }'),
 ('COMMENT', 'v1', '{
   "precheck": {
-    "rule": {"enabled": true, "high_action": "HUMAN", "medium_action": "LLM", "low_action": "LLM"},
-    "vec": {"enabled": true, "threshold": 0.2, "hit_action": "HUMAN", "miss_action": "LLM"}
+    "rule": {"enabled": true, "high_action": "REJECT", "medium_action": "REJECT", "low_action": "HUMAN"},
+    "vec": {"enabled": true, "threshold": 0.2, "hit_action": "REJECT", "miss_action": "LLM"}
   },
   "thresholds": {
     "default": {"T_allow": 0.2, "T_reject": 0.8},
     "by_review_stage": {
       "reported": {"T_allow": 0.15, "T_reject": 0.75},
       "appeal": {"T_allow": 0.25, "T_reject": 0.85}
-    },
-    "by_label": {}
+    }
   },
   "escalate_rules": {
     "require_evidence": true
@@ -868,16 +864,15 @@ INSERT INTO moderation_policy_config (content_type, policy_version, config_json)
 }'),
 ('PROFILE', 'v1', '{
   "precheck": {
-    "rule": {"enabled": true, "high_action": "HUMAN", "medium_action": "LLM", "low_action": "LLM"},
-    "vec": {"enabled": true, "threshold": 0.2, "hit_action": "HUMAN", "miss_action": "LLM"}
+    "rule": {"enabled": true, "high_action": "REJECT", "medium_action": "REJECT", "low_action": "HUMAN"},
+    "vec": {"enabled": true, "threshold": 0.2, "hit_action": "REJECT", "miss_action": "LLM"}
   },
   "thresholds": {
     "default": {"T_allow": 0.2, "T_reject": 0.8},
     "by_review_stage": {
       "reported": {"T_allow": 0.15, "T_reject": 0.75},
       "appeal": {"T_allow": 0.25, "T_reject": 0.85}
-    },
-    "by_label": {}
+    }
   },
   "escalate_rules": {
     "require_evidence": true
@@ -977,14 +972,6 @@ CREATE INDEX idx_moderation_samples_index_config_updated_at ON moderation_sample
 
 CREATE TABLE moderation_confidence_fallback_config (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
-  rule_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '规则层是否启用',
-  rule_high_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'HUMAN' COMMENT '规则层高风险动作',
-  rule_medium_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'LLM' COMMENT '规则层中风险动作',
-  rule_low_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'LLM' COMMENT '规则层低风险动作',
-  vec_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '向量相似层是否启用',
-  vec_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.2000 COMMENT '向量距离阈值(<=阈值视为命中)',
-  vec_hit_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'HUMAN' COMMENT '向量命中动作',
-  vec_miss_action ENUM('REJECT','LLM','HUMAN') NOT NULL DEFAULT 'LLM' COMMENT '向量未命中动作',
   llm_enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'LLM层是否启用',
   llm_reject_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.7500 COMMENT 'LLM拒绝阈值(>=则拒绝)',
   llm_human_threshold DECIMAL(6,4) NOT NULL DEFAULT 0.5000 COMMENT 'LLM人工阈值(介于人工与拒绝之间则转人工)',
@@ -1658,3 +1645,4 @@ INSERT INTO prompts (prompt_code, name, created_at, updated_at) VALUES
 ('PORTAL_POST_COMPOSE_PROTOCOL', '帖子润色协议', NOW(), NOW());
 
 SET FOREIGN_KEY_CHECKS = 1;
+

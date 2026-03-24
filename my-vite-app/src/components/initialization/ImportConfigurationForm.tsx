@@ -89,6 +89,7 @@ const ImportConfigurationForm: React.FC = () => {
         'spring.elasticsearch.uris': 'http://127.0.0.1:9200',
         APP_ES_API_KEY: '',
         APP_AI_TOKENIZER_API_KEY: '',
+        APP_SITE_COPYRIGHT: '',
         APP_SITE_BEIAN: '',
         APP_MAIL_HOST: '',
         APP_MAIL_PORT: '465',
@@ -485,6 +486,7 @@ const ImportConfigurationForm: React.FC = () => {
                                             <Server className="w-5 h-5 text-blue-600" />
                                             站点信息
                                         </div>
+                                        {renderConfigField('APP_SITE_COPYRIGHT')}
                                         {renderConfigField('APP_SITE_BEIAN')}
                                     </div>
 

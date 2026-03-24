@@ -98,6 +98,12 @@ class AccountProfileControllerSliceTest {
     @MockitoBean
     private ModerationAutoKickService moderationAutoKickService;
 
+    @MockitoBean
+    private com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner moderationRuleAutoRunner;
+
+    @MockitoBean
+    private com.example.EnterpriseRagCommunity.security.ClientIpResolver clientIpResolver;
+
     @AfterEach
     void clearSecurity() {
         SecurityContextTestSupport.clear();

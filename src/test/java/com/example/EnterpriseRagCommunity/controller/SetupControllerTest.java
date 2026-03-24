@@ -716,6 +716,7 @@ class SetupControllerTest {
                                     "APP_MAIL_HOST": "smtp",
                                     "APP_MAIL_PORT": "25",
                                     "APP_MAIL_FROM_ADDRESS": "from@example.invalid",
+                                    "APP_SITE_COPYRIGHT": "©2026 Test 版权所有",
                                     "APP_SITE_BEIAN": "ICP",
                                     "APP_SITE_BEIAN_HREF": "https://example.invalid",
                                     "APP_SECRET": "s"
@@ -738,6 +739,7 @@ class SetupControllerTest {
         verify(systemConfigurationService).saveConfig(eq("APP_MAIL_HOST"), eq("smtp"), eq(false), anyString());
         verify(systemConfigurationService).saveConfig(eq("APP_MAIL_PORT"), eq("25"), eq(false), anyString());
         verify(systemConfigurationService).saveConfig(eq("APP_MAIL_FROM_ADDRESS"), eq("from@example.invalid"), eq(false), anyString());
+        verify(systemConfigurationService).saveConfig(eq("APP_SITE_COPYRIGHT"), eq("©2026 Test 版权所有"), eq(false), anyString());
         verify(systemConfigurationService).saveConfig(eq("APP_SITE_BEIAN"), eq("ICP"), eq(false), anyString());
         verify(systemConfigurationService).saveConfig(eq("APP_SITE_BEIAN_HREF"), eq("https://example.invalid"), eq(false), anyString());
         verify(systemConfigurationService).saveConfig(eq("APP_SECRET"), eq("s"), eq(true), anyString());

@@ -30,7 +30,11 @@ describe('AuthFooter', () => {
   });
 
   it('renders beian link when config returns non-empty beianText', async () => {
-    mockGetPublicSiteConfig.mockResolvedValue({ beianText: '京ICP备12345678号', beianHref: null } as never);
+    mockGetPublicSiteConfig.mockResolvedValue({
+      beianText: '京ICP备12345678号',
+      beianHref: null,
+      copyrightText: '©2026 Demo 版权所有。',
+    } as never);
 
     render(<AuthFooter />);
 
@@ -40,11 +44,15 @@ describe('AuthFooter', () => {
   });
 
   it('does not render beian area when beianText is empty/whitespace', async () => {
-    mockGetPublicSiteConfig.mockResolvedValue({ beianText: '   ', beianHref: 'https://example.com' } as never);
+    mockGetPublicSiteConfig.mockResolvedValue({
+      beianText: '   ',
+      beianHref: 'https://example.com',
+      copyrightText: '©2026 Demo 版权所有。',
+    } as never);
 
     render(<AuthFooter />);
 
-    expect(await screen.findByText('©2026 ls20@vip.qq.com 版权所有。')).not.toBeNull();
+    expect(await screen.findByText('©2026 Demo 版权所有。')).not.toBeNull();
     expect(screen.queryByRole('link')).toBeNull();
   });
 
@@ -53,14 +61,14 @@ describe('AuthFooter', () => {
 
     render(<AuthFooter />);
 
-    expect(await screen.findByText('©2026 ls20@vip.qq.com 版权所有。')).not.toBeNull();
+    expect(await screen.findByText('©2026 版权所有。')).not.toBeNull();
     expect(screen.queryByRole('link')).toBeNull();
   });
 
   it('does not update state after unmount when request resolves later', async () => {
-    let resolveFn: ((v: { beianText: string | null; beianHref: string | null } | PromiseLike<{ beianText: string | null; beianHref: string | null }>) => void) | null =
+    let resolveFn: ((v: { beianText: string | null; beianHref: string | null; copyrightText: string | null } | PromiseLike<{ beianText: string | null; beianHref: string | null; copyrightText: string | null }>) => void) | null =
       null;
-    const p = new Promise<{ beianText: string | null; beianHref: string | null }>((r) => {
+    const p = new Promise<{ beianText: string | null; beianHref: string | null; copyrightText: string | null }>((r) => {
       resolveFn = r;
     });
     mockGetPublicSiteConfig.mockReturnValue(p as never);
@@ -69,9 +77,10 @@ describe('AuthFooter', () => {
     const { unmount } = render(<AuthFooter />);
     unmount();
 
-    (resolveFn as unknown as ((v: { beianText: string | null; beianHref: string | null }) => void) | null)?.({
+    (resolveFn as unknown as ((v: { beianText: string | null; beianHref: string | null; copyrightText: string | null }) => void) | null)?.({
       beianText: '京ICP备12345678号',
       beianHref: null,
+      copyrightText: null,
     });
     await Promise.resolve();
     await Promise.resolve();

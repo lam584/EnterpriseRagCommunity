@@ -19,7 +19,7 @@ export default function BeianFooter(props: BeianFooterProps) {
         if (!cancelled) setSiteConfig(cfg);
       })
       .catch(() => {
-        if (!cancelled) setSiteConfig({ beianText: null, beianHref: null });
+        if (!cancelled) setSiteConfig({ beianText: null, beianHref: null, copyrightText: null });
       });
     return () => {
       cancelled = true;

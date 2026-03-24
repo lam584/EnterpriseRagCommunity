@@ -6,8 +6,8 @@ describe('publicSiteConfigService', () => {
     resetServiceTest();
     const { getPublicSiteConfig } = await import('./publicSiteConfigService');
     const { replyOnce } = installFetchMock();
-    replyOnce({ ok: true, json: { beianText: null, beianHref: null } });
-    await expect(getPublicSiteConfig()).resolves.toEqual({ beianText: null, beianHref: null });
+    replyOnce({ ok: true, json: { beianText: null, beianHref: null, copyrightText: null } });
+    await expect(getPublicSiteConfig()).resolves.toEqual({ beianText: null, beianHref: null, copyrightText: null });
   });
 
   it('getPublicSiteConfig throws on non-2xx', async () => {

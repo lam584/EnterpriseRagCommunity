@@ -224,6 +224,35 @@ const OptionalBoolSelect: React.FC<{
   );
 };
 
+const RequiredBoolSelect: React.FC<{
+  label: string;
+  hint?: string;
+  value: unknown;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+}> = ({ label, hint, value, onChange, disabled }) => {
+  const v = (value !== false) ? 'true' : 'false';
+  const id = React.useId();
+  return (
+    <div>
+      <FieldLabel id={id} label={label} hint={hint} />
+      <select
+        id={id}
+        className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
+        value={v}
+        disabled={disabled}
+        onChange={(e) => {
+          const t = e.target.value;
+          onChange(t === 'true');
+        }}
+      >
+        <option value="true">是（true）</option>
+        <option value="false">否（false）</option>
+      </select>
+    </div>
+  );
+};
+
 const OptionalEnumSelect: React.FC<{
   label: string;
   hint?: string;
@@ -258,55 +287,7 @@ const OptionalEnumSelect: React.FC<{
   );
 };
 
-const JsonMiniEditor: React.FC<{
-  label: string;
-  hint?: string;
-  value: unknown;
-  onChange: (next: JsonObject | undefined) => void;
-  placeholder?: string;
-  disabled?: boolean;
-}> = ({ label, hint, value, onChange, placeholder, disabled }) => {
-  const [text, setText] = useState(() => (isObject(value) ? JSON.stringify(value, null, 2) : ''));
-  const [err, setErr] = useState<string | null>(null);
-  const id = React.useId();
-
-  useEffect(() => {
-    setText(isObject(value) ? JSON.stringify(value, null, 2) : '');
-    setErr(null);
-  }, [value]);
-
-  return (
-    <div>
-      <FieldLabel id={id} label={label} hint={hint} />
-      <textarea
-        id={id}
-        className="w-full rounded border border-gray-300 bg-white px-3 py-2 font-mono text-xs min-h-[140px] focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-        value={text}
-        placeholder={placeholder}
-        disabled={disabled}
-        onChange={(e) => {
-          const t = e.target.value;
-          setText(t);
-          if (!t.trim()) {
-            setErr(null);
-            onChange(undefined);
-            return;
-          }
-          try {
-            const v = JSON.parse(t) as unknown;
-            if (!isObject(v)) throw new Error('必须是 JSON object');
-            setErr(null);
-            onChange(v);
-          } catch (e2) {
-            setErr(e2 instanceof Error ? e2.message : String(e2));
-          }
-        }}
-        spellCheck={false}
-      />
-      {err ? <div className="text-xs text-red-600 mt-1">JSON 错误：{err}</div> : <div className="text-xs text-gray-500 mt-1">留空表示不设置。</div>}
-    </div>
-  );
-};
+/* Removed JsonMiniEditor because it's no longer used */
 
 export const OptionalJsonArrayInput: React.FC<{
   label: string;
@@ -500,7 +481,7 @@ export default function ModerationFallbackForm() {
 
       <Section title="前置检测（RULE / VEC）" desc="进入 LLM 之前，先做规则命中与相似检测。">
         <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <OptionalBoolSelect
+          <RequiredBoolSelect
             label="启用规则检测"
             hint={'英文字段：precheck.rule.enabled\n类型：boolean\n作用：进入 LLM 前先做规则命中；命中后按动作处理。\n建议：一般开启。'}
             value={deepGet(config, 'precheck.rule.enabled')}
@@ -546,7 +527,7 @@ export default function ModerationFallbackForm() {
         </div>
 
         <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50/50 p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-          <OptionalBoolSelect
+          <RequiredBoolSelect
             label="启用相似检测"
             hint={'英文字段：precheck.vec.enabled\n类型：boolean\n作用：进入 LLM 前做向量相似命中判断。\n建议：有历史违规样本库时开启。'}
             value={deepGet(config, 'precheck.vec.enabled')}
@@ -588,7 +569,7 @@ export default function ModerationFallbackForm() {
         </div>
       </Section>
 
-      <Section title="决策阈值（thresholds）" desc="default + by_label + by_review_stage（reported/appeal 覆盖）。">
+      <Section title="决策阈值（thresholds）" desc="default + by_review_stage（reported/appeal 覆盖）。注意：此处为全局兜底，针对各项风险标签的具体阈值请到“风险标签管理”中独立配置。">
         <div className="rounded-lg border border-gray-100 bg-gray-50/50 p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <OptionalNumberInput
             label="放行阈值"
@@ -642,15 +623,6 @@ export default function ModerationFallbackForm() {
             placeholder="例如：0.85"
           />
         </div>
-
-        <JsonMiniEditor
-          label="按类目覆盖阈值"
-          hint={'英文字段：thresholds.by_label\n类型：JSON object\n作用：按类目覆盖阈值（优先级高于 default）。\n格式示例：{"涉政":{"T_reject":0.5}}\n留空：不设置。'}
-          value={deepGet(config, 'thresholds.by_label')}
-          onChange={(v) => setPath('thresholds.by_label', v)}
-          disabled={loading || saving}
-          placeholder='例如: {"涉政":{"T_reject":0.5}}'
-        />
       </Section>
 
       <Section title="升级规则（escalate_rules）" desc="证据硬约束触发升级。">

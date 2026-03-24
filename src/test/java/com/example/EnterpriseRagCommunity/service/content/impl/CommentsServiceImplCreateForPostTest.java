@@ -72,6 +72,7 @@ class CommentsServiceImplCreateForPostTest {
         ReflectionTestUtils.setField(svc, "adminModerationQueueService", adminModerationQueueService);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", mock(ModerationQueueRepository.class));
         ReflectionTestUtils.setField(svc, "moderationAutoKickService", mock(ModerationAutoKickService.class));
+        ReflectionTestUtils.setField(svc, "moderationRuleAutoRunner", moderationRuleAutoRunner);
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
         ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
         ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
@@ -100,6 +101,7 @@ class CommentsServiceImplCreateForPostTest {
         ReflectionTestUtils.setField(svc, "adminModerationQueueService", adminModerationQueueService);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "moderationAutoKickService", moderationAutoKickService);
+        ReflectionTestUtils.setField(svc, "moderationRuleAutoRunner", mock(ModerationRuleAutoRunner.class));
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
         ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
         ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
