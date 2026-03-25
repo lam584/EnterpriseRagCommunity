@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.config;
 
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexProvider;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
@@ -160,9 +159,7 @@ class ElasticsearchIndexStartupInitializerTest {
         SystemConfigurationService systemConfigurationService = mock(SystemConfigurationService.class);
 
         when(systemConfigurationService.getConfig(eq("APP_ES_API_KEY"))).thenReturn("k");
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingDims(256);
-        when(moderationSimilarityConfigRepository.findAll()).thenReturn(List.of(cfg));
+        when(moderationSamplesIndexConfigService.getEmbeddingDimsOrDefault()).thenReturn(256);
         doThrow(new RuntimeException("boom")).when(moderationSamplesIndexService).recreateIndex(eq(256));
         when(vectorIndicesRepository.findByProvider(eq(VectorIndexProvider.OTHER))).thenReturn(List.of());
 

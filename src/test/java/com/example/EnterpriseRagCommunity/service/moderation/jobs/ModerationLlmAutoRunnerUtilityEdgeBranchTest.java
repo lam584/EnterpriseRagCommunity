@@ -102,7 +102,7 @@ class ModerationLlmAutoRunnerUtilityEdgeBranchTest {
         Map<?, ?> tagDetails = (Map<?, ?>) evalTag.getClass().getDeclaredMethod("details").invoke(evalTag);
         assertEquals(Verdict.REJECT, tagVerdict);
         assertEquals(true, tagDetails.get("tagThresholdHit"));
-        assertEquals("policy.by_label", tagDetails.get("thresholdSource"));
+        assertEquals("policy.default", tagDetails.get("thresholdSource"));
 
         LlmModerationTestResponse gray = new LlmModerationTestResponse();
         gray.setDecisionSuggestion("ALLOW");

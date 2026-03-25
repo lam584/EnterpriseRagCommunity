@@ -297,8 +297,8 @@ ON DUPLICATE KEY UPDATE
 
 
 -- 6) 初始化：moderation_similarity_config
-INSERT INTO moderation_similarity_config (id, enabled, embedding_model, embedding_dims, max_input_chars, default_top_k, default_threshold, default_num_candidates)
-VALUES (1, 1, NULL, 0, 0, 5, 0.15, 0)
+INSERT INTO moderation_similarity_config (id, enabled, embedding_model, embedding_dims, max_input_chars, default_top_k, default_num_candidates)
+VALUES (1, 1, NULL, 0, 0, 5, 0)
 AS new
 ON DUPLICATE KEY UPDATE
 enabled = new.enabled,
@@ -306,15 +306,14 @@ embedding_model = new.embedding_model,
 embedding_dims = new.embedding_dims,
 max_input_chars = new.max_input_chars,
 default_top_k = new.default_top_k,
-default_threshold = new.default_threshold,
 default_num_candidates = new.default_num_candidates;
 
 
 -- 7) 初始化：moderation_samples_index_config
 INSERT INTO moderation_samples_index_config (
-  id, index_name, ik_enabled, embedding_model, embedding_dims, default_top_k, default_threshold, version, updated_at
+  id, index_name, ik_enabled, embedding_model, embedding_dims, version, updated_at
 )
-SELECT 1, 'ad_violation_samples_v1', 1, NULL, 0, 5, 0.15, 0, NOW(3)
+SELECT 1, 'ad_violation_samples_v1', 1, NULL, 0, 0, NOW(3)
 WHERE NOT EXISTS (SELECT 1 FROM moderation_samples_index_config);
 
 

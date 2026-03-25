@@ -1,7 +1,6 @@
 package com.example.EnterpriseRagCommunity.service.moderation.es;
 
 import java.lang.reflect.Method;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -21,7 +20,6 @@ import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.data.elasticsearch.core.document.Document;
 import org.springframework.data.elasticsearch.core.query.Query;
 
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.service.es.ElasticsearchIkAnalyzerProbe;
 import com.example.EnterpriseRagCommunity.service.safety.DependencyCircuitBreakerService;
@@ -202,36 +200,26 @@ class ModerationSamplesIndexServiceTest {
     }
 
     @Test
-    void ensureIndex_withoutArg_shouldUseSimilarityDimsThenFallback() {
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingDims(11);
-        when(similarityConfigRepository.findAll()).thenReturn(List.of(cfg));
+    void ensureIndex_withoutArg_shouldUseConfiguredDims() {
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(11);
         when(indexOperations.exists()).thenReturn(false);
         when(indexConfigService.isIkEnabledOrDefault()).thenReturn(false);
 
         service.ensureIndex();
 
         verify(indexOperations).putMapping(any(Document.class));
-
-        when(similarityConfigRepository.findAll()).thenThrow(new RuntimeException("db err"));
-        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(-3);
-        service.ensureIndex();
-        verify(indexConfigService).getEmbeddingDimsOrDefault();
     }
 
     @Test
-    void ensureIndex_withoutArg_shouldFallbackWhenSimilarityDimsNonPositive() {
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingDims(0);
-        when(similarityConfigRepository.findAll()).thenReturn(List.of(cfg));
-        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(4);
+    void ensureIndex_withoutArg_shouldSkipRecreateWhenConfiguredDimsNonPositive() {
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(0);
         when(indexOperations.exists()).thenReturn(false);
         when(indexConfigService.isIkEnabledOrDefault()).thenReturn(false);
 
         service.ensureIndex();
 
-        verify(indexConfigService).getEmbeddingDimsOrDefault();
         verify(indexOperations).create(any(Document.class));
+        verify(indexOperations).putMapping(any(Document.class));
     }
 
     @Test
@@ -269,24 +257,18 @@ class ModerationSamplesIndexServiceTest {
     }
 
     @Test
-    void resolveDefaultEmbeddingDims_shouldCoverNullAndPositive() throws Exception {
+    void resolveDefaultEmbeddingDims_shouldClampToNonNegative() throws Exception {
         Method m = ModerationSamplesIndexService.class.getDeclaredMethod("resolveDefaultEmbeddingDims");
         m.setAccessible(true);
 
-        when(similarityConfigRepository.findAll()).thenReturn(List.of());
         when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(0);
         assertThat((Integer) m.invoke(service)).isEqualTo(0);
 
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingDims(12);
-        when(similarityConfigRepository.findAll()).thenReturn(List.of(cfg));
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(12);
         assertThat((Integer) m.invoke(service)).isEqualTo(12);
 
-        ModerationSimilarityConfigEntity cfgWithNull = new ModerationSimilarityConfigEntity();
-        cfgWithNull.setEmbeddingDims(null);
-        when(similarityConfigRepository.findAll()).thenReturn(List.of(cfgWithNull));
-        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(5);
-        assertThat((Integer) m.invoke(service)).isEqualTo(5);
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(-5);
+        assertThat((Integer) m.invoke(service)).isZero();
     }
 
     @Test

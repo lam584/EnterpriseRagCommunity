@@ -253,7 +253,7 @@ class ModerationLlmAutoRunnerCoverageBoostTest {
                 )
         );
         Object th = resolveThresholdsRequired.invoke(null, policy, "reported", List.of("abuse"));
-        assertEquals("policy.by_label", readField(th, "source"));
+        assertEquals("policy.by_review_stage", readField(th, "source"));
 
         ModerationConfidenceFallbackConfigEntity fb = new ModerationConfidenceFallbackConfigEntity();
         fb.setChunkLlmRejectThreshold(0.9);

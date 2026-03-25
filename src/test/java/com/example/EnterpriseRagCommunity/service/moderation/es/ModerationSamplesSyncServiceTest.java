@@ -140,9 +140,7 @@ class ModerationSamplesSyncServiceTest {
     @Test
     void upsertById_shouldFailOnDimsMismatch() throws Exception {
         ModerationSamplesEntity e = sample(11L, "hello");
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingDims(3);
-        when(configRepository.findAll()).thenReturn(List.of(cfg));
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(3);
         when(samplesRepository.findById(11L)).thenReturn(Optional.of(e));
         when(llmGateway.embedOnceRouted(any(), any(), any(), anyString()))
                 .thenReturn(new AiEmbeddingService.EmbeddingResult(new float[]{1f, 2f}, 2, "m"));
@@ -157,10 +155,10 @@ class ModerationSamplesSyncServiceTest {
     void upsertById_shouldUseEmbeddingServiceWhenConfiguredModelEnabled() throws Exception {
         ModerationSamplesEntity e = sample(12L, "abcdef");
         ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingModel("model-a");
-        cfg.setEmbeddingDims(2);
         cfg.setMaxInputChars(3);
         when(configRepository.findAll()).thenReturn(List.of(cfg));
+        when(indexConfigService.getEmbeddingModelOrDefault()).thenReturn("model-a");
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(2);
         when(samplesRepository.findById(12L)).thenReturn(Optional.of(e));
         when(llmRoutingService.listEnabledTargets(LlmQueueTaskType.SIMILARITY_EMBEDDING))
                 .thenReturn(List.of(new LlmRoutingService.RouteTarget(
@@ -197,9 +195,6 @@ class ModerationSamplesSyncServiceTest {
     @Test
     void upsertById_shouldFallbackToGatewayWhenConfiguredModelNotEnabled() throws Exception {
         ModerationSamplesEntity e = sample(14L, "hello");
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingModel("model-a");
-        when(configRepository.findAll()).thenReturn(List.of(cfg));
         when(indexConfigService.getEmbeddingModelOrDefault()).thenReturn("model-b");
         when(samplesRepository.findById(14L)).thenReturn(Optional.of(e));
         when(llmRoutingService.listEnabledTargets(LlmQueueTaskType.SIMILARITY_EMBEDDING))
@@ -219,10 +214,8 @@ class ModerationSamplesSyncServiceTest {
     @Test
     void upsertById_shouldUseConfiguredModelWithMixedTargets() throws Exception {
         ModerationSamplesEntity e = sample(16L, "abcdef");
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingModel("model-a");
-        cfg.setEmbeddingDims(2);
-        when(configRepository.findAll()).thenReturn(List.of(cfg));
+        when(indexConfigService.getEmbeddingModelOrDefault()).thenReturn("model-a");
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(2);
         when(samplesRepository.findById(16L)).thenReturn(Optional.of(e));
         when(llmRoutingService.listEnabledTargets(LlmQueueTaskType.SIMILARITY_EMBEDDING))
                 .thenReturn(List.of(
@@ -241,10 +234,8 @@ class ModerationSamplesSyncServiceTest {
     @Test
     void upsertById_shouldIgnoreNullTargetIdWhenMatchingConfiguredModel() throws Exception {
         ModerationSamplesEntity e = sample(18L, "abcdef");
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingModel("model-a");
-        cfg.setEmbeddingDims(2);
-        when(configRepository.findAll()).thenReturn(List.of(cfg));
+        when(indexConfigService.getEmbeddingModelOrDefault()).thenReturn("model-a");
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(2);
         when(samplesRepository.findById(18L)).thenReturn(Optional.of(e));
         when(llmRoutingService.listEnabledTargets(LlmQueueTaskType.SIMILARITY_EMBEDDING))
                 .thenReturn(List.of(
@@ -277,9 +268,7 @@ class ModerationSamplesSyncServiceTest {
     @Test
     void upsertById_shouldSkipDimsValidationWhenExpectedDimsNotPositive() throws Exception {
         ModerationSamplesEntity e = sample(17L, "abcdef");
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingDims(0);
-        when(configRepository.findAll()).thenReturn(List.of(cfg));
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(0);
         when(samplesRepository.findById(17L)).thenReturn(Optional.of(e));
         when(llmGateway.embedOnceRouted(any(), any(), any(), anyString()))
                 .thenReturn(new AiEmbeddingService.EmbeddingResult(new float[]{1f, 2f, 3f}, 3, "routed"));

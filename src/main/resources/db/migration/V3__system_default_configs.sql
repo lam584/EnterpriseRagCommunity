@@ -256,8 +256,6 @@ INSERT INTO moderation_samples_index_config (
   ik_enabled,
   embedding_model,
   embedding_dims,
-  default_top_k,
-  default_threshold,
   updated_at
 )
 SELECT
@@ -265,8 +263,6 @@ SELECT
   1,
   NULL,
   0,
-  5,
-  0.15,
   NOW(3)
 WHERE NOT EXISTS (
   SELECT 1 FROM moderation_samples_index_config
@@ -278,7 +274,6 @@ INSERT INTO moderation_similarity_config (
   embedding_dims,
   max_input_chars,
   default_top_k,
-  default_threshold,
   default_num_candidates,
   updated_at
 )
@@ -288,7 +283,6 @@ SELECT
   0,
   0,
   5,
-  0.15,
   0,
   NOW(3)
 WHERE NOT EXISTS (

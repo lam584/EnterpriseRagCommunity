@@ -32,7 +32,6 @@ interface SimilarityConfig {
   embeddingDims?: number | null;
   maxInputChars?: number | null;
   defaultTopK?: number | null;
-  defaultThreshold?: number | null;
   defaultNumCandidates?: number | null;
   updatedAt?: string | null;
 }
@@ -76,6 +75,10 @@ type AiProviderModelsDTO = {
   providerId?: string | null;
   models?: AiProviderModelDTO[] | null;
 };
+
+
+
+
 
 // NOTE: “相似命中记录（moderation_similar_hits）” 功能已移除；保留审核历史记录即可。
 
@@ -149,7 +152,6 @@ type SimilarityConfigForm = {
   embeddingDims: string;
   maxInputChars: string;
   defaultTopK: string;
-  defaultThreshold: string;
   defaultNumCandidates: string;
 };
 
@@ -177,7 +179,6 @@ function toCfgFormState(c?: SimilarityConfig | null): SimilarityConfigForm {
     embeddingDims: c?.embeddingDims == null ? '' : String(c.embeddingDims),
     maxInputChars: c?.maxInputChars == null ? '' : String(c.maxInputChars),
     defaultTopK: c?.defaultTopK == null ? '' : String(c.defaultTopK),
-    defaultThreshold: c?.defaultThreshold == null ? '' : String(c.defaultThreshold),
     defaultNumCandidates: c?.defaultNumCandidates == null ? '' : String(c.defaultNumCandidates),
   };
 }
@@ -261,19 +262,12 @@ const EmbedForm: React.FC = () => {
   const manualParams = useMemo(() => {
     const topK = cfgForm.defaultTopK.trim() ? clampInt(Number(cfgForm.defaultTopK), 1, 50) : 5;
 
-    const thresholdText = cfgForm.defaultThreshold.trim();
-    let threshold = 0.15;
-    if (thresholdText) {
-      const n = Number(thresholdText);
-      if (Number.isFinite(n)) threshold = Math.max(0, Math.min(1, n));
-    }
-
     const numCandidates = cfgForm.defaultNumCandidates.trim() ? clampInt(Number(cfgForm.defaultNumCandidates), 0, 10_000) : 0;
     const embeddingModel = cfgForm.embeddingModel.trim() ? cfgForm.embeddingModel.trim() : undefined;
     const embeddingDims = cfgForm.embeddingDims.trim() ? clampInt(Number(cfgForm.embeddingDims), 0, 100_000) : undefined;
     const maxInputChars = cfgForm.maxInputChars.trim() ? clampInt(Number(cfgForm.maxInputChars), 0, 200_000) : undefined;
-    return { topK, threshold, numCandidates, embeddingModel, embeddingDims, maxInputChars };
-  }, [cfgForm.defaultNumCandidates, cfgForm.defaultThreshold, cfgForm.defaultTopK, cfgForm.embeddingDims, cfgForm.embeddingModel, cfgForm.maxInputChars]);
+    return { topK, numCandidates, embeddingModel, embeddingDims, maxInputChars };
+  }, [cfgForm.defaultNumCandidates, cfgForm.defaultTopK, cfgForm.embeddingDims, cfgForm.embeddingModel, cfgForm.maxInputChars]);
 
 
   function openCreateSample() {
@@ -407,8 +401,8 @@ const EmbedForm: React.FC = () => {
         return;
       }
 
-      const cfg = data as AiProvidersConfigDTO;
-      const ps = ((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]).filter((p) => String(p.id ?? '').trim());
+      const cfgData = data as AiProvidersConfigDTO;
+      const ps = ((cfgData.providers ?? []).filter(Boolean) as AiProviderDTO[]).filter((p) => String(p.id ?? '').trim());
       const providerIds = ps.map((p) => String(p.id ?? '').trim());
 
       const names: string[] = [];
@@ -464,7 +458,6 @@ const EmbedForm: React.FC = () => {
         embeddingDims: cfgForm.embeddingDims.trim() ? clampInt(Number(cfgForm.embeddingDims), 0, 100_000) : 0,
         maxInputChars: cfgForm.maxInputChars.trim() ? clampInt(Number(cfgForm.maxInputChars), 0, 200_000) : 0,
         defaultTopK: cfgForm.defaultTopK.trim() ? clampInt(Number(cfgForm.defaultTopK), 1, 50) : 5,
-        defaultThreshold: cfgForm.defaultThreshold.trim() ? Math.max(0, Math.min(1, Number(cfgForm.defaultThreshold))) : 0.15,
         defaultNumCandidates: cfgForm.defaultNumCandidates.trim() ? clampInt(Number(cfgForm.defaultNumCandidates), 0, 10_000) : 0,
       };
 
@@ -548,7 +541,6 @@ const EmbedForm: React.FC = () => {
         body: JSON.stringify({
           text,
           topK: manualParams.topK,
-          threshold: manualParams.threshold,
           numCandidates: manualParams.numCandidates,
           embeddingModel: manualParams.embeddingModel,
           embeddingDims: manualParams.embeddingDims,
@@ -935,7 +927,7 @@ const EmbedForm: React.FC = () => {
                   ))}
                 </select>
                 <div className="text-xs text-gray-500 mt-1">
-                  用于“把文本变成向量”的模型。留空表示按负载均衡从嵌入模型池选择；更换/切换模型后通常需要重建索引以避免维度/分布不一致。
+                  用于把文本转为向量。留空时按路由自动选择；如果切换模型，建议检查维度并按需重建索引。
                 </div>
               </div>
               <div>
@@ -950,7 +942,7 @@ const EmbedForm: React.FC = () => {
                     setCfgForm((p) => ({ ...p, embeddingDims: e.target.value }));
                   }}
                 />
-                <div className="text-xs text-gray-500 mt-1">大多数模型维度是固定的；填 0 表示按模型默认值自动推导。</div>
+                <div className="text-xs text-gray-500 mt-1">填 0 时由后端按实际 embedding 结果自动推断维度。</div>
               </div>
               <div>
                 <div className="text-sm font-medium mb-1">最大输入长度（0=不截断）</div>
@@ -979,20 +971,6 @@ const EmbedForm: React.FC = () => {
                   }}
                 />
                 <div className="text-xs text-gray-500 mt-1">返回最相似的前 K 条样本作为参考（K 越大越慢，但信息更全）。</div>
-              </div>
-              <div>
-                <div className="text-sm font-medium mb-1">阈值（0~1）</div>
-                <input
-                  className={`w-full rounded border px-3 py-2 ${!cfgEditing ? 'bg-gray-50' : ''}`}
-                  placeholder="例如：0.15"
-                  value={cfgForm.defaultThreshold}
-                  readOnly={!cfgEditing}
-                  onChange={(e) => {
-                    if (!cfgEditing) return;
-                    setCfgForm((p) => ({ ...p, defaultThreshold: e.target.value }));
-                  }}
-                />
-                <div className="text-xs text-gray-500 mt-1">判定命中的距离阈值：距离 ≤ 阈值 视为命中。阈值越大越容易命中，阈值越小越不容易命中。</div>
               </div>
               <div>
                 <div className="text-sm font-medium mb-1">候选数（0=自动）</div>

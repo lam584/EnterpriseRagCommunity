@@ -32,9 +32,6 @@ public class ModerationSimilarityConfigEntity {
     @Column(name = "default_top_k", nullable = false)
     private Integer defaultTopK;
 
-    @Column(name = "default_threshold", nullable = false)
-    private Double defaultThreshold;
-
     @Column(name = "default_num_candidates", nullable = false)
     private Integer defaultNumCandidates;
 

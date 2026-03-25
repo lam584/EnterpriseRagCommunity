@@ -15,8 +15,6 @@ public class ModerationSamplesIndexConfigService {
     public static final boolean DEFAULT_IK_ENABLED = true;
     public static final String DEFAULT_EMBEDDING_MODEL = "";
     public static final int DEFAULT_EMBEDDING_DIMS = 0;
-    public static final int DEFAULT_TOP_K = 5;
-    public static final double DEFAULT_THRESHOLD = 0.15;
 
     private final ModerationSamplesIndexConfigRepository repository;
 
@@ -29,8 +27,6 @@ public class ModerationSamplesIndexConfigService {
         e.setIkEnabled(DEFAULT_IK_ENABLED);
         e.setEmbeddingModel(null);
         e.setEmbeddingDims(DEFAULT_EMBEDDING_DIMS);
-        e.setDefaultTopK(DEFAULT_TOP_K);
-        e.setDefaultThreshold(DEFAULT_THRESHOLD);
         e.setUpdatedAt(LocalDateTime.now());
         e.setUpdatedBy(updatedBy);
         return repository.save(e);
@@ -67,22 +63,6 @@ public class ModerationSamplesIndexConfigService {
         Integer v = cfg == null ? null : cfg.getEmbeddingDims();
         int d = v == null ? DEFAULT_EMBEDDING_DIMS : v;
         return Math.max(0, d);
-    }
-
-    public int getDefaultTopKOrDefault() {
-        ModerationSamplesIndexConfigEntity cfg = getConfigOrNull();
-        Integer v = cfg == null ? null : cfg.getDefaultTopK();
-        int k = v == null ? DEFAULT_TOP_K : v;
-        return Math.max(1, Math.min(50, k));
-    }
-
-    public double getDefaultThresholdOrDefault() {
-        ModerationSamplesIndexConfigEntity cfg = getConfigOrNull();
-        Double v = cfg == null ? null : cfg.getDefaultThreshold();
-        double t = v == null ? DEFAULT_THRESHOLD : v;
-        if (t < 0) return 0;
-        if (t > 1) return 1;
-        return t;
     }
 
     private static String toNonBlank(String s) {

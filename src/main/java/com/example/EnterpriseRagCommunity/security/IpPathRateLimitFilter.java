@@ -6,6 +6,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -47,8 +48,8 @@ public class IpPathRateLimitFilter extends OncePerRequestFilter {
     private static final Pattern NUMBER_SEGMENT = Pattern.compile("/\\d+");
     private static final Pattern UUID_SEGMENT = Pattern.compile("/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}");
 
-    public IpPathRateLimitFilter(ClientIpResolver clientIpResolver, ObjectMapper objectMapper) {
-        this.clientIpResolver = clientIpResolver;
+    public IpPathRateLimitFilter(@Nullable ClientIpResolver clientIpResolver, ObjectMapper objectMapper) {
+        this.clientIpResolver = clientIpResolver == null ? new ClientIpResolver() : clientIpResolver;
         this.objectMapper = objectMapper;
     }
 

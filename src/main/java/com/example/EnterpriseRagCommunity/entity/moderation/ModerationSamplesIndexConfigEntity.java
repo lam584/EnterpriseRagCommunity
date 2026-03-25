@@ -35,12 +35,6 @@ public class ModerationSamplesIndexConfigEntity {
     @Column(name = "embedding_dims", nullable = false)
     private Integer embeddingDims;
 
-    @Column(name = "default_top_k", nullable = false)
-    private Integer defaultTopK;
-
-    @Column(name = "default_threshold", nullable = false)
-    private Double defaultThreshold;
-
     @Version
     @Column(name = "version", nullable = false)
     private Integer version;

@@ -46,8 +46,7 @@ class ModerationSamplesIndexConfigServiceTest {
         assertThat(out.getIndexName()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_INDEX_NAME);
         assertThat(out.getIkEnabled()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_IK_ENABLED);
         assertThat(out.getEmbeddingDims()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_EMBEDDING_DIMS);
-        assertThat(out.getDefaultTopK()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_TOP_K);
-        assertThat(out.getDefaultThreshold()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_THRESHOLD);
+        assertThat(out.getEmbeddingModel()).isNull();
         assertThat(out.getUpdatedBy()).isEqualTo(7L);
         assertThat(out.getUpdatedAt()).isNotNull();
     }
@@ -128,45 +127,12 @@ class ModerationSamplesIndexConfigServiceTest {
     }
 
     @Test
-    void getDefaultTopKOrDefault_shouldClampToRange() {
-        ModerationSamplesIndexConfigEntity low = new ModerationSamplesIndexConfigEntity();
-        low.setDefaultTopK(0);
-        when(repository.findAll()).thenReturn(List.of(low));
-        assertThat(service.getDefaultTopKOrDefault()).isEqualTo(1);
-
-        ModerationSamplesIndexConfigEntity high = new ModerationSamplesIndexConfigEntity();
-        high.setDefaultTopK(88);
-        when(repository.findAll()).thenReturn(List.of(high));
-        assertThat(service.getDefaultTopKOrDefault()).isEqualTo(50);
-    }
-
-    @Test
-    void getDefaultThresholdOrDefault_shouldClampAndKeepNormalValue() {
-        ModerationSamplesIndexConfigEntity low = new ModerationSamplesIndexConfigEntity();
-        low.setDefaultThreshold(-0.1);
-        when(repository.findAll()).thenReturn(List.of(low));
-        assertThat(service.getDefaultThresholdOrDefault()).isZero();
-
-        ModerationSamplesIndexConfigEntity high = new ModerationSamplesIndexConfigEntity();
-        high.setDefaultThreshold(1.5);
-        when(repository.findAll()).thenReturn(List.of(high));
-        assertThat(service.getDefaultThresholdOrDefault()).isEqualTo(1.0);
-
-        ModerationSamplesIndexConfigEntity normal = new ModerationSamplesIndexConfigEntity();
-        normal.setDefaultThreshold(0.3);
-        when(repository.findAll()).thenReturn(List.of(normal));
-        assertThat(service.getDefaultThresholdOrDefault()).isEqualTo(0.3);
-    }
-
-    @Test
     void getters_shouldUseDefaultsWhenConfigMissing() {
         when(repository.findAll()).thenReturn(List.of());
         assertThat(service.getIndexNameOrDefault()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_INDEX_NAME);
         assertThat(service.isIkEnabledOrDefault()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_IK_ENABLED);
         assertThat(service.getEmbeddingModelOrDefault()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_EMBEDDING_MODEL);
         assertThat(service.getEmbeddingDimsOrDefault()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_EMBEDDING_DIMS);
-        assertThat(service.getDefaultTopKOrDefault()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_TOP_K);
-        assertThat(service.getDefaultThresholdOrDefault()).isEqualTo(ModerationSamplesIndexConfigService.DEFAULT_THRESHOLD);
     }
 
     @Test
@@ -183,16 +149,12 @@ class ModerationSamplesIndexConfigServiceTest {
         cfg.setIkEnabled(false);
         cfg.setEmbeddingModel(" model-a ");
         cfg.setEmbeddingDims(6);
-        cfg.setDefaultTopK(9);
-        cfg.setDefaultThreshold(0.6);
         when(repository.findAll()).thenReturn(List.of(cfg));
 
         assertThat(service.getIndexNameOrDefault()).isEqualTo("idx_a");
         assertThat(service.isIkEnabledOrDefault()).isFalse();
         assertThat(service.getEmbeddingModelOrDefault()).isEqualTo("model-a");
         assertThat(service.getEmbeddingDimsOrDefault()).isEqualTo(6);
-        assertThat(service.getDefaultTopKOrDefault()).isEqualTo(9);
-        assertThat(service.getDefaultThresholdOrDefault()).isEqualTo(0.6);
     }
 
     @Test

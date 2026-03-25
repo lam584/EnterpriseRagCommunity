@@ -89,8 +89,7 @@ public class InitialAdminIndexBootstrapService {
             e.setEmbeddingModel(toNonBlank(moderationSamplesIndexConfigService.getEmbeddingModelOrDefault()));
             e.setEmbeddingDims(Math.max(0, moderationSamplesIndexConfigService.getEmbeddingDimsOrDefault()));
             e.setMaxInputChars(0);
-            e.setDefaultTopK(Math.max(1, moderationSamplesIndexConfigService.getDefaultTopKOrDefault()));
-            e.setDefaultThreshold(Math.max(0, moderationSamplesIndexConfigService.getDefaultThresholdOrDefault()));
+            e.setDefaultTopK(5);
             e.setDefaultNumCandidates(0);
             e.setUpdatedAt(LocalDateTime.now());
             e.setUpdatedBy(initialAdminUserId);
@@ -101,23 +100,8 @@ public class InitialAdminIndexBootstrapService {
         }
 
         boolean changed = false;
-        if (toNonBlank(cfg.getEmbeddingModel()) == null && toNonBlank(moderationSamplesIndexConfigService.getEmbeddingModelOrDefault()) != null) {
-            cfg.setEmbeddingModel(toNonBlank(moderationSamplesIndexConfigService.getEmbeddingModelOrDefault()));
-            changed = true;
-        }
-        if (cfg.getEmbeddingDims() == null || cfg.getEmbeddingDims() <= 0) {
-            int dims = moderationSamplesIndexConfigService.getEmbeddingDimsOrDefault();
-            if (dims > 0) {
-                cfg.setEmbeddingDims(dims);
-                changed = true;
-            }
-        }
         if (cfg.getDefaultTopK() == null || cfg.getDefaultTopK() <= 0) {
-            cfg.setDefaultTopK(Math.max(1, moderationSamplesIndexConfigService.getDefaultTopKOrDefault()));
-            changed = true;
-        }
-        if (cfg.getDefaultThreshold() == null || cfg.getDefaultThreshold() < 0) {
-            cfg.setDefaultThreshold(Math.max(0, moderationSamplesIndexConfigService.getDefaultThresholdOrDefault()));
+            cfg.setDefaultTopK(5);
             changed = true;
         }
         if (cfg.getMaxInputChars() == null || cfg.getMaxInputChars() < 0) {

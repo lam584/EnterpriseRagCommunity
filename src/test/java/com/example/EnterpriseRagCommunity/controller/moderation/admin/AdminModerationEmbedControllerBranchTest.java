@@ -97,18 +97,15 @@ class AdminModerationEmbedControllerBranchTest {
     void getConfig_createsDefaultWhenRepositoryEmpty() {
         AdminModerationEmbedController controller = newController();
         when(configRepository.findAll()).thenReturn(List.of());
-        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(1024);
-        when(indexConfigService.getDefaultTopKOrDefault()).thenReturn(12);
-        when(indexConfigService.getDefaultThresholdOrDefault()).thenReturn(0.88);
         when(configRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         var resp = controller.getConfig();
 
         assertEquals(200, resp.getStatusCode().value());
         assertTrue(resp.getBody().getEnabled());
-        assertEquals(1024, resp.getBody().getEmbeddingDims());
-        assertEquals(12, resp.getBody().getDefaultTopK());
-        assertEquals(0.88, resp.getBody().getDefaultThreshold());
+        assertEquals(0, resp.getBody().getMaxInputChars());
+        assertEquals(5, resp.getBody().getDefaultTopK());
+        assertEquals(0, resp.getBody().getDefaultNumCandidates());
     }
 
     @Test
@@ -154,18 +151,14 @@ class AdminModerationEmbedControllerBranchTest {
         current.setId(1L);
         current.setEnabled(true);
         current.setDefaultTopK(10);
-        current.setDefaultThreshold(0.2);
         when(configRepository.findAll()).thenReturn(List.of(current));
         when(configRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(auditDiffBuilder.build(any(), any())).thenReturn(Map.of("changed", true));
 
         ModerationSimilarityConfigEntity payload = new ModerationSimilarityConfigEntity();
         payload.setEnabled(false);
-        payload.setEmbeddingModel("   ");
-        payload.setEmbeddingDims(-1);
         payload.setMaxInputChars(-2);
         payload.setDefaultTopK(100);
-        payload.setDefaultThreshold(2.5);
         payload.setDefaultNumCandidates(-3);
 
         var resp = controller.updateConfig(payload);
@@ -173,11 +166,8 @@ class AdminModerationEmbedControllerBranchTest {
         assertEquals(200, resp.getStatusCode().value());
         ModerationSimilarityConfigEntity saved = resp.getBody();
         assertFalse(saved.getEnabled());
-        assertNull(saved.getEmbeddingModel());
-        assertEquals(0, saved.getEmbeddingDims());
         assertEquals(0, saved.getMaxInputChars());
         assertEquals(50, saved.getDefaultTopK());
-        assertEquals(1.0, saved.getDefaultThreshold());
         assertEquals(0, saved.getDefaultNumCandidates());
         verify(auditLogWriter).write(eq(null), eq("alice@example.com"), eq("CONFIG_CHANGE"), eq("MODERATION_EMBED_CONFIG"),
                 eq(1L), any(), eq("更新嵌入相似检测配置"), eq(null), any());
@@ -189,11 +179,8 @@ class AdminModerationEmbedControllerBranchTest {
         ModerationSimilarityConfigEntity current = new ModerationSimilarityConfigEntity();
         current.setId(2L);
         current.setEnabled(false);
-        current.setEmbeddingModel("m1");
-        current.setEmbeddingDims(1536);
         current.setMaxInputChars(888);
         current.setDefaultTopK(12);
-        current.setDefaultThreshold(0.4);
         current.setDefaultNumCandidates(99);
         when(configRepository.findAll()).thenReturn(List.of(current));
         when(configRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -205,16 +192,13 @@ class AdminModerationEmbedControllerBranchTest {
 
         assertEquals(200, resp.getStatusCode().value());
         assertEquals(true, resp.getBody().getEnabled());
-        assertEquals("m1", resp.getBody().getEmbeddingModel());
-        assertEquals(1536, resp.getBody().getEmbeddingDims());
         assertEquals(888, resp.getBody().getMaxInputChars());
         assertEquals(12, resp.getBody().getDefaultTopK());
-        assertEquals(0.4, resp.getBody().getDefaultThreshold());
         assertEquals(99, resp.getBody().getDefaultNumCandidates());
     }
 
     @Test
-    void updateConfig_handlesLowBoundsAndNonBlankModel() {
+    void updateConfig_handlesLowBounds() {
         AdminModerationEmbedController controller = newController();
         ModerationSimilarityConfigEntity current = new ModerationSimilarityConfigEntity();
         current.setId(22L);
@@ -225,14 +209,14 @@ class AdminModerationEmbedControllerBranchTest {
 
         ModerationSimilarityConfigEntity payload = new ModerationSimilarityConfigEntity();
         payload.setEnabled(true);
-        payload.setEmbeddingModel("  model-x  ");
+        payload.setMaxInputChars(-1);
         payload.setDefaultTopK(0);
-        payload.setDefaultThreshold(-0.2);
+        payload.setDefaultNumCandidates(-2);
         var resp = controller.updateConfig(payload);
 
-        assertEquals("model-x", resp.getBody().getEmbeddingModel());
+        assertEquals(0, resp.getBody().getMaxInputChars());
         assertEquals(1, resp.getBody().getDefaultTopK());
-        assertEquals(0.0, resp.getBody().getDefaultThreshold());
+        assertEquals(0, resp.getBody().getDefaultNumCandidates());
     }
 
     @Test
@@ -240,7 +224,6 @@ class AdminModerationEmbedControllerBranchTest {
         AdminModerationEmbedController controller = newController();
         when(samplesIndexService.getIndexName()).thenReturn("idx");
         when(samplesIndexService.indexExists()).thenReturn(false);
-        when(configRepository.findAll()).thenReturn(List.of());
         when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(1536);
         when(samplesAutoSyncConfigService.getLastIncrementalSyncAt()).thenReturn(Optional.of("2026-03-11T10:00:00"));
 
@@ -256,13 +239,11 @@ class AdminModerationEmbedControllerBranchTest {
     @Test
     void getIndexStatus_returnsUnavailableWhenMappingMissingOrMismatch() {
         AdminModerationEmbedController controller = newController();
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingDims(1024);
         when(samplesIndexService.getIndexName()).thenReturn("idx");
         when(samplesIndexService.indexExists()).thenReturn(true);
         when(samplesIndexService.countDocs()).thenReturn(99L);
         when(samplesAutoSyncConfigService.getLastIncrementalSyncAt()).thenReturn(Optional.empty());
-        when(configRepository.findAll()).thenReturn(List.of(cfg));
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(1024);
 
         when(samplesIndexService.getEmbeddingDimsInMapping()).thenReturn(null);
         var r1 = controller.getIndexStatus().getBody();
@@ -278,14 +259,12 @@ class AdminModerationEmbedControllerBranchTest {
     @Test
     void getIndexStatus_returnsAvailableWhenDimsMatch() {
         AdminModerationEmbedController controller = newController();
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingDims(768);
         when(samplesIndexService.getIndexName()).thenReturn("idx");
         when(samplesIndexService.indexExists()).thenReturn(true);
         when(samplesIndexService.getEmbeddingDimsInMapping()).thenReturn(768);
         when(samplesIndexService.countDocs()).thenReturn(1L);
         when(samplesAutoSyncConfigService.getLastIncrementalSyncAt()).thenReturn(Optional.empty());
-        when(configRepository.findAll()).thenReturn(List.of(cfg));
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(768);
 
         var body = controller.getIndexStatus().getBody();
 
@@ -296,14 +275,12 @@ class AdminModerationEmbedControllerBranchTest {
     @Test
     void getIndexStatus_availableWhenConfiguredDimsInvalid() {
         AdminModerationEmbedController controller = newController();
-        ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingDims(0);
         when(samplesIndexService.getIndexName()).thenReturn("idx");
         when(samplesIndexService.indexExists()).thenReturn(true);
         when(samplesIndexService.getEmbeddingDimsInMapping()).thenReturn(512);
         when(samplesIndexService.countDocs()).thenReturn(11L);
         when(samplesAutoSyncConfigService.getLastIncrementalSyncAt()).thenReturn(Optional.empty());
-        when(configRepository.findAll()).thenReturn(List.of(cfg));
+        when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(0);
 
         var body = controller.getIndexStatus().getBody();
 
@@ -319,7 +296,6 @@ class AdminModerationEmbedControllerBranchTest {
         when(samplesIndexService.getEmbeddingDimsInMapping()).thenReturn(0);
         when(samplesIndexService.countDocs()).thenReturn(1L);
         when(samplesAutoSyncConfigService.getLastIncrementalSyncAt()).thenReturn(Optional.empty());
-        when(configRepository.findAll()).thenReturn(List.of());
         when(indexConfigService.getEmbeddingDimsOrDefault()).thenReturn(512);
 
         var body = controller.getIndexStatus().getBody();

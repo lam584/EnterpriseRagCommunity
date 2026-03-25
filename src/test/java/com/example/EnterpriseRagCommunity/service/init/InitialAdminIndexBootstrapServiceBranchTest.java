@@ -55,8 +55,10 @@ class InitialAdminIndexBootstrapServiceBranchTest {
 
         ArgumentCaptor<ModerationSimilarityConfigEntity> captor = ArgumentCaptor.forClass(ModerationSimilarityConfigEntity.class);
         verify(configRepo).save(captor.capture());
-        assertEquals("embed-default", captor.getValue().getEmbeddingModel());
-        assertEquals(128, captor.getValue().getEmbeddingDims());
+        assertEquals(true, captor.getValue().getEnabled());
+        assertEquals(5, captor.getValue().getDefaultTopK());
+        assertEquals(0, captor.getValue().getMaxInputChars());
+        assertEquals(0, captor.getValue().getDefaultNumCandidates());
         verify(vectorRepo, never()).existsByProviderAndCollectionName(any(), any());
         verify(syncService).reindexAll(true, 200, null);
         verify(postBuild, never()).rebuildPosts(any(), any(), any(), any(), any(), any(), any(), any());
@@ -111,16 +113,11 @@ class InitialAdminIndexBootstrapServiceBranchTest {
                 vectorRepo, props, postBuild, commentBuild, fileBuild, syncService, configRepo, indexConfigService
         );
         ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingModel("   ");
-        cfg.setEmbeddingDims(0);
+        cfg.setEnabled(true);
         cfg.setDefaultTopK(0);
-        cfg.setDefaultThreshold(-1D);
         cfg.setMaxInputChars(-1);
         cfg.setDefaultNumCandidates(-1);
 
-        indexConfigService.embeddingDims = 0;
-        indexConfigService.defaultTopK = 0;
-        indexConfigService.defaultThreshold = -2D;
         when(configRepo.findAll()).thenReturn(List.of(cfg));
         when(vectorRepo.existsByProviderAndCollectionName(eq(VectorIndexProvider.OTHER), any())).thenReturn(true);
         when(vectorRepo.findByProvider(VectorIndexProvider.OTHER)).thenReturn(List.of());
@@ -128,17 +125,14 @@ class InitialAdminIndexBootstrapServiceBranchTest {
         service.bootstrap(21L);
 
         verify(configRepo).save(cfg);
-        assertEquals("embed-default", cfg.getEmbeddingModel());
-        assertEquals(0, cfg.getEmbeddingDims());
-        assertEquals(1, cfg.getDefaultTopK());
-        assertEquals(0D, cfg.getDefaultThreshold());
+        assertEquals(5, cfg.getDefaultTopK());
         assertEquals(0, cfg.getMaxInputChars());
         assertEquals(0, cfg.getDefaultNumCandidates());
         verify(vectorRepo, never()).save(any(VectorIndicesEntity.class));
     }
 
     @Test
-    void bootstrap_shouldSetEmbeddingDims_whenExistingConfigDimsMissingAndDefaultPositive() {
+    void bootstrap_shouldKeepExistingConfig_whenDefaultsAlreadyValid() {
         VectorIndicesRepository vectorRepo = mock(VectorIndicesRepository.class);
         ModerationSimilarityConfigRepository configRepo = mock(ModerationSimilarityConfigRepository.class);
         ModerationSamplesSyncService syncService = mock(ModerationSamplesSyncService.class);
@@ -151,16 +145,12 @@ class InitialAdminIndexBootstrapServiceBranchTest {
                 vectorRepo, props, postBuild, commentBuild, fileBuild, syncService, configRepo, indexConfigService
         );
         ModerationSimilarityConfigEntity cfg = validCfg();
-        cfg.setEmbeddingDims(null);
-
-        indexConfigService.embeddingDims = 256;
         when(configRepo.findAll()).thenReturn(List.of(cfg));
         when(vectorRepo.findByProvider(VectorIndexProvider.OTHER)).thenReturn(null);
 
         service.bootstrap(33L);
 
-        verify(configRepo).save(cfg);
-        assertEquals(256, cfg.getEmbeddingDims());
+        verify(configRepo, never()).save(cfg);
     }
 
     @Test
@@ -227,12 +217,9 @@ class InitialAdminIndexBootstrapServiceBranchTest {
                 vectorRepo, props, postBuild, commentBuild, fileBuild, syncService, configRepo, indexConfigService
         );
         ModerationSimilarityConfigEntity cfg = validCfg();
-        cfg.setEmbeddingModel("   ");
         cfg.setDefaultTopK(null);
-        cfg.setDefaultThreshold(null);
         cfg.setMaxInputChars(null);
         cfg.setDefaultNumCandidates(null);
-        indexConfigService.embeddingModel = "   ";
         VectorIndicesEntity sourceTypeMissing = vectorIndex(88L, "meta_missing_source_type", 64, "");
         sourceTypeMissing.setMetadata(new HashMap<>());
 
@@ -315,10 +302,8 @@ class InitialAdminIndexBootstrapServiceBranchTest {
 
     private static ModerationSimilarityConfigEntity validCfg() {
         ModerationSimilarityConfigEntity cfg = new ModerationSimilarityConfigEntity();
-        cfg.setEmbeddingModel("m");
-        cfg.setEmbeddingDims(128);
+        cfg.setEnabled(true);
         cfg.setDefaultTopK(5);
-        cfg.setDefaultThreshold(0.7D);
         cfg.setMaxInputChars(100);
         cfg.setDefaultNumCandidates(10);
         return cfg;
@@ -346,8 +331,6 @@ class InitialAdminIndexBootstrapServiceBranchTest {
     private static class FakeModerationSamplesIndexConfigService extends ModerationSamplesIndexConfigService {
         String embeddingModel = "embed-default";
         int embeddingDims = 128;
-        int defaultTopK = 5;
-        double defaultThreshold = 0.7D;
         String indexName = "moderation_samples_v1";
 
         private FakeModerationSamplesIndexConfigService() {
@@ -372,16 +355,6 @@ class InitialAdminIndexBootstrapServiceBranchTest {
         @Override
         public int getEmbeddingDimsOrDefault() {
             return embeddingDims;
-        }
-
-        @Override
-        public int getDefaultTopKOrDefault() {
-            return defaultTopK;
-        }
-
-        @Override
-        public double getDefaultThresholdOrDefault() {
-            return defaultThreshold;
         }
     }
 }

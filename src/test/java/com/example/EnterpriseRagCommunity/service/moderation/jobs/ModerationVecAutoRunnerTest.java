@@ -129,10 +129,18 @@ class ModerationVecAutoRunnerTest {
         Fixture f = fixture();
         ModerationQueueEntity q = queue(41L, QueueStage.VEC, QueueStatus.PENDING, 1, LocalDateTime.now());
         ModerationConfidenceFallbackConfigEntity cfg = cfg(false, ModerationConfidenceFallbackConfigEntity.Action.LLM, ModerationConfidenceFallbackConfigEntity.Action.REJECT, 0.7);
+        ModerationPolicyConfigEntity policy = policy(Map.of(
+            "precheck", Map.of(
+                "vec", Map.of(
+                    "enabled", false,
+                    "miss_action", "REJECT"
+                )
+            )
+        ));
 
         when(f.queueRepository.findById(41L)).thenReturn(Optional.of(q), Optional.of(q));
         when(f.pipelineTraceService.ensureRun(any())).thenThrow(new RuntimeException("trace down"));
-        when(f.policyConfigRepository.findByContentType(ContentType.POST)).thenThrow(new RuntimeException("policy down"));
+        when(f.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.of(policy));
         when(f.fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(cfg));
 
         f.runner.runForQueueId(41L);
@@ -150,12 +158,20 @@ class ModerationVecAutoRunnerTest {
         ModerationPipelineRunEntity run = run(901L, "trace-901");
         ModerationPipelineStepEntity step = step(77L);
         ModerationConfidenceFallbackConfigEntity cfg = cfg(false, ModerationConfidenceFallbackConfigEntity.Action.HUMAN, ModerationConfidenceFallbackConfigEntity.Action.REJECT, 0.8);
+        ModerationPolicyConfigEntity policy = policy(Map.of(
+            "precheck", Map.of(
+                "vec", Map.of(
+                    "enabled", false,
+                    "miss_action", "REJECT"
+                )
+            )
+        ));
 
         when(f.queueRepository.findById(51L)).thenReturn(Optional.of(first), Optional.of(second));
         when(f.pipelineTraceService.ensureRun(any())).thenReturn(run);
         when(f.pipelineTraceService.startStep(anyLong(), any(), anyInt(), any(), any())).thenReturn(step);
         when(f.fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(cfg));
-        when(f.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.empty());
+        when(f.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.of(policy));
 
         f.runner.runForQueueId(51L);
 
@@ -224,7 +240,16 @@ class ModerationVecAutoRunnerTest {
         when(rejectFixture.pipelineTraceService.ensureRun(any())).thenReturn(run);
         when(rejectFixture.pipelineTraceService.startStep(anyLong(), any(), anyInt(), any(), any())).thenReturn(step);
         when(rejectFixture.fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(rejectCfg));
-        when(rejectFixture.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.empty());
+        when(rejectFixture.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.of(
+            policy(Map.of(
+                "precheck", Map.of(
+                    "vec", Map.of(
+                        "enabled", true,
+                        "miss_action", "REJECT"
+                    )
+                )
+            ))
+        ));
         when(rejectFixture.textLoader.load(any())).thenReturn("   ");
 
         rejectFixture.runner.runForQueueId(71L);
@@ -277,7 +302,7 @@ class ModerationVecAutoRunnerTest {
 
         ArgumentCaptor<SimilarityCheckRequest> requestCaptor = ArgumentCaptor.forClass(SimilarityCheckRequest.class);
         verify(missToVecFixture.similarityService).check(requestCaptor.capture());
-        assertNull(requestCaptor.getValue().getThreshold());
+        assertEquals(0.2, requestCaptor.getValue().getThreshold());
         verify(missToVecFixture.queueRepository).updateStageIfPendingOrReviewing(eq(81L), eq(QueueStage.VEC), any());
         verify(missToVecFixture.pipelineTraceService).finishStepOk(eq(99L), eq("MISS"), eq(null), any());
 
@@ -293,7 +318,16 @@ class ModerationVecAutoRunnerTest {
         when(hitRejectFixture.pipelineTraceService.ensureRun(any())).thenReturn(run(905L, "trace-905"));
         when(hitRejectFixture.pipelineTraceService.startStep(anyLong(), any(), anyInt(), any(), any())).thenReturn(step(101L));
         when(hitRejectFixture.fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(hitRejectCfg));
-        when(hitRejectFixture.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.empty());
+        when(hitRejectFixture.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.of(
+            policy(Map.of(
+                "precheck", Map.of(
+                    "vec", Map.of(
+                        "enabled", true,
+                        "threshold", 0.33
+                    )
+                )
+            ))
+        ));
         when(hitRejectFixture.textLoader.load(any())).thenReturn("txt");
         when(hitRejectFixture.similarityService.check(any())).thenReturn(hitResp);
 
@@ -315,7 +349,16 @@ class ModerationVecAutoRunnerTest {
         when(missRejectFixture.queueRepository.findById(83L)).thenReturn(Optional.of(missRejectQueue), Optional.of(missRejectQueue));
         when(missRejectFixture.pipelineTraceService.ensureRun(any())).thenThrow(new RuntimeException("no-run"));
         when(missRejectFixture.fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(missRejectCfg));
-        when(missRejectFixture.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.empty());
+        when(missRejectFixture.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.of(
+            policy(Map.of(
+                "precheck", Map.of(
+                    "vec", Map.of(
+                        "enabled", true,
+                        "miss_action", "REJECT"
+                    )
+                )
+            ))
+        ));
         when(missRejectFixture.textLoader.load(any())).thenReturn("txt");
         when(missRejectFixture.similarityService.check(any())).thenReturn(missResp);
 
@@ -370,7 +413,16 @@ class ModerationVecAutoRunnerTest {
         when(f.fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(
                 cfg(true, ModerationConfidenceFallbackConfigEntity.Action.LLM, ModerationConfidenceFallbackConfigEntity.Action.HUMAN, 0.2)
         ));
-        when(f.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.empty());
+        when(f.policyConfigRepository.findByContentType(ContentType.POST)).thenReturn(Optional.of(
+            policy(Map.of(
+                "precheck", Map.of(
+                    "vec", Map.of(
+                        "enabled", true,
+                        "hit_action", "LLM"
+                    )
+                )
+            ))
+        ));
         when(f.textLoader.load(any())).thenReturn("vector text");
         when(f.similarityService.check(any())).thenReturn(resp);
 
@@ -518,6 +570,20 @@ class ModerationVecAutoRunnerTest {
             Double threshold
     ) {
         ModerationConfidenceFallbackConfigEntity cfg = new ModerationConfidenceFallbackConfigEntity();
+        cfg.setLlmEnabled(enabled != null ? enabled : Boolean.TRUE);
+        cfg.setLlmRejectThreshold(0.8);
+        cfg.setLlmHumanThreshold(0.4);
+        cfg.setChunkLlmRejectThreshold(0.8);
+        cfg.setChunkLlmHumanThreshold(0.4);
+        cfg.setLlmTextRiskThreshold(0.8);
+        cfg.setLlmImageRiskThreshold(0.3);
+        cfg.setLlmStrongRejectThreshold(0.95);
+        cfg.setLlmStrongPassThreshold(0.1);
+        cfg.setLlmCrossModalThreshold(0.75);
+        cfg.setReportHumanThreshold(5);
+        cfg.setChunkThresholdChars(20_000);
+        cfg.setVersion(0);
+        cfg.setUpdatedAt(LocalDateTime.now());
         return cfg;
     }
 

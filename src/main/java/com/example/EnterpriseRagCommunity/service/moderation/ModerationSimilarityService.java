@@ -5,6 +5,8 @@ import com.example.EnterpriseRagCommunity.dto.moderation.SimilarityCheckResponse
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarHitsEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPolicyConfigEntity;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPolicyConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarHitsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
@@ -36,6 +38,7 @@ public class ModerationSimilarityService {
     private final ModerationSamplesIndexConfigService indexConfigService;
     private final ModerationSimilarHitsRepository similarHitsRepository;
     private final ModerationSimilarityConfigRepository configRepository;
+    private final ModerationPolicyConfigRepository policyConfigRepository;
     private final SystemConfigurationService systemConfigurationService;
 
     public SimilarityCheckResponse check(SimilarityCheckRequest req) {
@@ -46,10 +49,10 @@ public class ModerationSimilarityService {
 
         ModerationSimilarityConfigEntity cfg = loadConfigOrNull();
 
-        int topK = firstNonNull(req.getTopK(), cfg == null ? null : cfg.getDefaultTopK(), indexConfigService.getDefaultTopKOrDefault());
+        int topK = firstNonNull(req.getTopK(), cfg == null ? null : cfg.getDefaultTopK(), 5);
         topK = Math.min(Math.max(topK, 1), 50);
 
-        double threshold = firstNonNull(req.getThreshold(), cfg == null ? null : cfg.getDefaultThreshold(), indexConfigService.getDefaultThresholdOrDefault());
+        double threshold = resolveThreshold(req.getThreshold(), req.getContentType());
         if (threshold < 0) threshold = 0;
 
         Integer numCandidates0 = firstNonNull(req.getNumCandidates(), cfg == null ? null : cfg.getDefaultNumCandidates(), null);
@@ -76,8 +79,8 @@ public class ModerationSimilarityService {
         }
 
         Integer configuredDimsOverride = req.getEmbeddingDims();
-        Integer configuredDimsCfg = cfg == null ? null : cfg.getEmbeddingDims();
-        int configuredDims = firstNonNull(configuredDimsOverride, configuredDimsCfg, indexConfigService.getEmbeddingDimsOrDefault());
+    Integer configuredDimsCfg = cfg == null ? null : cfg.getEmbeddingDims();
+    int configuredDims = firstNonNull(configuredDimsOverride, configuredDimsCfg, indexConfigService.getEmbeddingDimsOrDefault());
         if (configuredDims < 0) configuredDims = 0;
 
         // Embedding
@@ -132,6 +135,25 @@ public class ModerationSimilarityService {
         }
 
         return resp;
+    }
+
+    private double resolveThreshold(Double reqThreshold, ContentType contentType) {
+        if (reqThreshold != null) return reqThreshold;
+        if (contentType != null) {
+            ModerationPolicyConfigEntity policy = policyConfigRepository.findByContentType(contentType).orElse(null);
+            if (policy != null && policy.getConfig() != null) {
+                try {
+                    Map<String, Object> precheck = (Map<String, Object>) policy.getConfig().get("precheck");
+                    if (precheck != null) {
+                        Map<String, Object> vec = (Map<String, Object>) precheck.get("vec");
+                        if (vec != null && vec.get("threshold") != null) {
+                            return ((Number) vec.get("threshold")).doubleValue();
+                        }
+                    }
+                } catch (Exception ignore) {}
+            }
+        }
+        return 0.15; // default fallback
     }
 
     private ModerationSimilarityConfigEntity loadConfigOrNull() {

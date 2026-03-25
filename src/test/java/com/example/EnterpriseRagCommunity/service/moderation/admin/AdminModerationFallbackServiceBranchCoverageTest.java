@@ -37,10 +37,12 @@ public class AdminModerationFallbackServiceBranchCoverageTest {
         when(repo.findFirstByOrderByUpdatedAtDescIdDesc()).thenReturn(Optional.of(baseEntity()));
 
         ModerationConfidenceFallbackConfigDTO low = new ModerationConfidenceFallbackConfigDTO();
-assertThrows(IllegalArgumentException.class, () -> svc.upsert(low, 1L, "u"));
+        low.setLlmRejectThreshold(-0.1);
+        assertThrows(IllegalArgumentException.class, () -> svc.upsert(low, 1L, "u"));
 
         ModerationConfidenceFallbackConfigDTO high = new ModerationConfidenceFallbackConfigDTO();
-assertThrows(IllegalArgumentException.class, () -> svc.upsert(high, 1L, "u"));
+        high.setLlmRejectThreshold(1.1);
+        assertThrows(IllegalArgumentException.class, () -> svc.upsert(high, 1L, "u"));
     }
 
     @Test

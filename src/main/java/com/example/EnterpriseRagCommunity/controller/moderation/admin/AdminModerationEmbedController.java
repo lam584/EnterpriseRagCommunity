@@ -77,8 +77,7 @@ public class AdminModerationEmbedController {
             e.setEmbeddingModel(null);
             e.setEmbeddingDims(indexConfigService.getEmbeddingDimsOrDefault());
             e.setMaxInputChars(0);
-            e.setDefaultTopK(indexConfigService.getDefaultTopKOrDefault());
-            e.setDefaultThreshold(indexConfigService.getDefaultThresholdOrDefault());
+            e.setDefaultTopK(5);
             e.setDefaultNumCandidates(0);
             e.setUpdatedAt(LocalDateTime.now());
             return configRepository.save(e);
@@ -98,8 +97,7 @@ public class AdminModerationEmbedController {
             e.setEmbeddingModel(null);
             e.setEmbeddingDims(indexConfigService.getEmbeddingDimsOrDefault());
             e.setMaxInputChars(0);
-            e.setDefaultTopK(indexConfigService.getDefaultTopKOrDefault());
-            e.setDefaultThreshold(indexConfigService.getDefaultThresholdOrDefault());
+            e.setDefaultTopK(5);
             e.setDefaultNumCandidates(0);
             e.setUpdatedAt(LocalDateTime.now());
             return e;
@@ -115,7 +113,6 @@ public class AdminModerationEmbedController {
             if (payload.getEmbeddingDims() != null) cfg.setEmbeddingDims(Math.max(0, payload.getEmbeddingDims()));
             if (payload.getMaxInputChars() != null) cfg.setMaxInputChars(Math.max(0, payload.getMaxInputChars()));
             if (payload.getDefaultTopK() != null) cfg.setDefaultTopK(Math.max(1, Math.min(50, payload.getDefaultTopK())));
-            if (payload.getDefaultThreshold() != null) cfg.setDefaultThreshold(Math.max(0, Math.min(1, payload.getDefaultThreshold())));
             if (payload.getDefaultNumCandidates() != null) cfg.setDefaultNumCandidates(Math.max(0, payload.getDefaultNumCandidates()));
         }
         cfg.setUpdatedAt(LocalDateTime.now());
@@ -143,7 +140,10 @@ public class AdminModerationEmbedController {
         boolean exists = samplesIndexService.indexExists();
         r.setExists(exists);
         Integer configured = configRepository.findAll().stream().findFirst().map(ModerationSimilarityConfigEntity::getEmbeddingDims).orElse(null);
-        r.setEmbeddingDimsConfigured(configured == null ? indexConfigService.getEmbeddingDimsOrDefault() : configured);
+        if (configured == null || configured <= 0) {
+            configured = indexConfigService.getEmbeddingDimsOrDefault();
+        }
+        r.setEmbeddingDimsConfigured(configured);
         r.setLastIncrementalSyncAt(samplesAutoSyncConfigService.getLastIncrementalSyncAt().orElse(null));
         boolean available = true;
         String availabilityMessage = null;
@@ -556,7 +556,6 @@ public class AdminModerationEmbedController {
         m.put("embeddingDims", cfg.getEmbeddingDims());
         m.put("maxInputChars", cfg.getMaxInputChars());
         m.put("defaultTopK", cfg.getDefaultTopK());
-        m.put("defaultThreshold", cfg.getDefaultThreshold());
         m.put("defaultNumCandidates", cfg.getDefaultNumCandidates());
         return m;
     }
