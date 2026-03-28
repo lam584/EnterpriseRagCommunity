@@ -20,6 +20,8 @@ class CitationTestServiceTest {
     void test_shouldUseSavedConfigWhenRequestNull() {
         CitationConfigService citationConfigService = mock(CitationConfigService.class);
         CitationConfigDTO cfg = new CitationConfigDTO();
+        cfg.setEnabled(true);
+        cfg.setCitationMode("BOTH");
         cfg.setInstructionTemplate("ins");
         cfg.setMaxSources(3);
         cfg.setSourcesTitle("来源");
@@ -48,6 +50,8 @@ class CitationTestServiceTest {
         cfg.setIncludePostId(true);
         cfg.setIncludeChunkIndex(true);
         CitationConfigDTO normalized = new CitationConfigDTO();
+        normalized.setEnabled(true);
+        normalized.setCitationMode("BOTH");
         normalized.setInstructionTemplate("i2");
         normalized.setSourcesTitle("来源");
         normalized.setMaxSources(2);
@@ -92,6 +96,8 @@ class CitationTestServiceTest {
     void test_shouldHandleBlankTitleAndNoUrlTemplateBranches() {
         CitationConfigService citationConfigService = mock(CitationConfigService.class);
         CitationConfigDTO cfg = new CitationConfigDTO();
+        cfg.setEnabled(true);
+        cfg.setCitationMode("SOURCES_SECTION");
         cfg.setMaxSources(5);
         cfg.setSourcesTitle(" ");
         cfg.setPostUrlTemplate(" ");
@@ -131,6 +137,8 @@ class CitationTestServiceTest {
     void test_shouldRenderWithoutOptionalFields() {
         CitationConfigService citationConfigService = mock(CitationConfigService.class);
         CitationConfigDTO cfg = new CitationConfigDTO();
+        cfg.setEnabled(true);
+        cfg.setCitationMode("SOURCES_SECTION");
         cfg.setMaxSources(2);
         cfg.setSourcesTitle("来源");
         cfg.setPostUrlTemplate("/p/{postId}");
@@ -174,9 +182,13 @@ class CitationTestServiceTest {
         render.setAccessible(true);
         assertThat(render.invoke(null, null, List.of())).isEqualTo("");
         CitationConfigDTO noTitle = new CitationConfigDTO();
+        noTitle.setEnabled(true);
+        noTitle.setCitationMode("SOURCES_SECTION");
         noTitle.setSourcesTitle(" ");
         assertThat(render.invoke(null, noTitle, List.of(new CitationTestResponse.Source()))).isEqualTo("");
         CitationConfigDTO full = new CitationConfigDTO();
+        full.setEnabled(true);
+        full.setCitationMode("BOTH");
         full.setSourcesTitle("来源");
         full.setIncludeTitle(true);
         full.setIncludeUrl(true);
@@ -202,6 +214,8 @@ class CitationTestServiceTest {
         Method render = CitationTestService.class.getDeclaredMethod("renderSourcesText", CitationConfigDTO.class, List.class);
         render.setAccessible(true);
         CitationConfigDTO full = new CitationConfigDTO();
+        full.setEnabled(true);
+        full.setCitationMode("BOTH");
         full.setSourcesTitle("来源");
         full.setIncludeTitle(true);
         full.setIncludeUrl(true);
@@ -221,5 +235,22 @@ class CitationTestServiceTest {
         assertThat(text).doesNotContain("score=");
         assertThat(text).doesNotContain("post_id=");
         assertThat(text).doesNotContain("chunk=");
+    }
+
+    @Test
+    void test_shouldHideInstructionPreview_whenModeIsSourcesSection() {
+        CitationConfigService citationConfigService = mock(CitationConfigService.class);
+        CitationConfigDTO cfg = new CitationConfigDTO();
+        cfg.setEnabled(true);
+        cfg.setCitationMode("SOURCES_SECTION");
+        cfg.setInstructionTemplate("ins");
+        cfg.setMaxSources(1);
+        cfg.setSourcesTitle("来源");
+        when(citationConfigService.getConfigOrDefault()).thenReturn(cfg);
+
+        CitationTestService service = new CitationTestService(citationConfigService);
+        CitationTestResponse out = service.test(new CitationTestRequest());
+
+        assertThat(out.getInstructionPreview()).isEmpty();
     }
 }

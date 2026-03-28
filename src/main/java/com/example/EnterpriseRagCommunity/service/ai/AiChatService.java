@@ -121,17 +121,45 @@ public class AiChatService {
     @Value("${app.upload.url-prefix:/uploads}")
     private String urlPrefix;
 
+    private static String normalizeCitationMode(CitationConfigDTO citationCfg) {
+        if (citationCfg == null) return "MODEL_INLINE";
+        String mode = citationCfg.getCitationMode() == null
+                ? ""
+                : citationCfg.getCitationMode().trim().toUpperCase(Locale.ROOT);
+        if (!mode.equals("MODEL_INLINE") && !mode.equals("SOURCES_SECTION") && !mode.equals("BOTH")) {
+            return "MODEL_INLINE";
+        }
+        return mode;
+    }
+
+    private static boolean shouldExposeCitationSources(CitationConfigDTO citationCfg) {
+        if (citationCfg == null || !Boolean.TRUE.equals(citationCfg.getEnabled())) return false;
+        String mode = normalizeCitationMode(citationCfg);
+        return mode.equals("SOURCES_SECTION") || mode.equals("BOTH");
+    }
+
+    private static boolean shouldStripInlineCitations(CitationConfigDTO citationCfg) {
+        if (citationCfg == null || !Boolean.TRUE.equals(citationCfg.getEnabled())) return false;
+        return "SOURCES_SECTION".equals(normalizeCitationMode(citationCfg));
+    }
+
+    private static String enforceCitationModeAnswerBody(CitationConfigDTO citationCfg, String answerText) {
+        if (answerText == null || answerText.isBlank()) return answerText;
+        if (!shouldStripInlineCitations(citationCfg)) return answerText;
+        return stripInlineCitationMarkers(answerText);
+    }
+
     /**
-     * 当模型未按要求输出 [n] 时，兜底返回全部可用来源，避免前端“完全无引用”。
+     * 当模型未按要求输出 [n] 时，兜底返回全部可用来源；仅对需要展示来源的模式生效。
      */
     private static List<RagContextPromptService.CitationSource> resolveSourcesForOutput(
             CitationConfigDTO citationCfg,
             List<RagContextPromptService.CitationSource> sources,
             String answerText
     ) {
+        if (!shouldExposeCitationSources(citationCfg)) return List.of();
         List<RagContextPromptService.CitationSource> cited = filterSourcesByCitations(sources, answerText);
         if (cited != null && !cited.isEmpty()) return cited;
-        if (citationCfg == null || !Boolean.TRUE.equals(citationCfg.getEnabled())) return List.of();
         if (sources == null || sources.isEmpty()) return List.of();
         return sources;
     }
@@ -394,6 +422,121 @@ public class AiChatService {
             if (s == null || s.getIndex() == null) continue;
             if (cited.contains(s.getIndex())) out.add(s);
         }
+        return out;
+    }
+
+    private static String stripInlineCitationMarkers(String text) {
+        if (text == null || text.isEmpty()) return text;
+
+        StringBuilder out = new StringBuilder(text.length());
+        boolean inFence = false;
+        boolean inInlineCode = false;
+        int n = text.length();
+
+        for (int i = 0; i < n; i++) {
+            char c = text.charAt(i);
+
+            if (c == '`') {
+                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
+                    inFence = !inFence;
+                    out.append("```");
+                    i += 2;
+                    continue;
+                }
+                if (!inFence) inInlineCode = !inInlineCode;
+                out.append(c);
+                continue;
+            }
+
+            if (inFence || inInlineCode) {
+                out.append(c);
+                continue;
+            }
+
+            if (c != '[') {
+                out.append(c);
+                continue;
+            }
+
+            int j = i + 1;
+            int value = 0;
+            int digits = 0;
+            while (j < n && digits < 3) {
+                char d = text.charAt(j);
+                if (d < '0' || d > '9') break;
+                value = value * 10 + (d - '0');
+                digits++;
+                j++;
+            }
+
+            boolean isCitation = digits > 0
+                    && j < n
+                    && text.charAt(j) == ']'
+                    && !(j + 1 < n && text.charAt(j + 1) == '(')
+                    && value > 0;
+
+            if (!isCitation) {
+                out.append(c);
+                continue;
+            }
+
+            i = j;
+
+            int next = i + 1;
+            boolean leftWs = out.length() > 0 && Character.isWhitespace(out.charAt(out.length() - 1));
+            boolean rightWs = next < n && Character.isWhitespace(text.charAt(next));
+            if (leftWs && rightWs) {
+                while (next < n && Character.isWhitespace(text.charAt(next))) {
+                    next++;
+                }
+                i = next - 1;
+            }
+        }
+
+        return out.toString();
+    }
+
+    private static Set<Integer> extractCitationIndexes(String text, int maxIndex) {
+        Set<Integer> out = new HashSet<>();
+        if (text == null || text.isEmpty()) return out;
+
+        boolean inFence = false;
+        boolean inInlineCode = false;
+        int n = text.length();
+
+        for (int i = 0; i < n; i++) {
+            char c = text.charAt(i);
+
+            if (c == '`') {
+                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
+                    inFence = !inFence;
+                    i += 2;
+                    continue;
+                }
+                if (!inFence) inInlineCode = !inInlineCode;
+                continue;
+            }
+
+            if (inFence || inInlineCode) continue;
+            if (c != '[') continue;
+
+            int j = i + 1;
+            int value = 0;
+            int digits = 0;
+            while (j < n && digits < 3) {
+                char d = text.charAt(j);
+                if (d < '0' || d > '9') break;
+                value = value * 10 + (d - '0');
+                digits++;
+                j++;
+            }
+            if (digits == 0) continue;
+            if (j >= n || text.charAt(j) != ']') continue;
+            if (j + 1 < n && text.charAt(j + 1) == '(') continue;
+            if (value <= 0 || value > maxIndex) continue;
+            out.add(value);
+        }
+
         return out;
     }
 
@@ -764,16 +907,14 @@ public class AiChatService {
 
             if (contextAssembled != null) {
                 String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
-                if (!normalized.equals(assistantAccum.toString())) {
+                String modeAdjusted = enforceCitationModeAnswerBody(citationCfg, normalized);
+                if (!modeAdjusted.equals(assistantAccum.toString())) {
                     assistantAccum.setLength(0);
-                    assistantAccum.append(normalized);
+                    assistantAccum.append(modeAdjusted);
                 }
-                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                List<RagContextPromptService.CitationSource> citedSources = resolveSourcesForOutput(
-                        citationCfg,
-                        sources,
-                        assistantAccum.toString()
-                );
+                List<RagContextPromptService.CitationSource> citedSources = shouldExposeCitationSources(citationCfg)
+                        ? resolveSourcesForOutput(citationCfg, contextAssembled.getSources(), assistantAccum.toString())
+                        : List.of();
                 citedSourcesForPersist = citedSources;
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSources);
@@ -785,7 +926,7 @@ public class AiChatService {
                     out.flush();
                 }
 
-                if (!citedSources.isEmpty()) {
+                if (shouldExposeCitationSources(citationCfg) && !citedSources.isEmpty()) {
                     out.write("event: sources\n");
                     out.write("data: " + buildSourcesEventData(citedSources, true) + "\n\n");
                     out.flush();
@@ -832,10 +973,10 @@ public class AiChatService {
                     assistantMsg = qaMessagesRepository.save(assistantMsg);
                 }
 
-                if (contextAssembled != null) {
+                if (contextAssembled != null && shouldExposeCitationSources(citationCfg)) {
                     List<RagContextPromptService.CitationSource> citedSources = citedSourcesForPersist;
                     if (citedSources == null) {
-                        citedSources = filterSourcesByCitations(contextAssembled.getSources(), assistantMsg.getContent());
+                        citedSources = resolveSourcesForOutput(citationCfg, contextAssembled.getSources(), assistantMsg.getContent());
                     }
                     persistAssistantSources(assistantMsg.getId(), citedSources);
                 }
@@ -860,50 +1001,6 @@ public class AiChatService {
             out.write("data: {\"latencyMs\":" + latency + "}\n\n");
             out.flush();
         }
-    }
-
-    private static Set<Integer> extractCitationIndexes(String text, int maxIndex) {
-        Set<Integer> out = new HashSet<>();
-        if (text == null || text.isEmpty()) return out;
-
-        boolean inFence = false;
-        boolean inInlineCode = false;
-        int n = text.length();
-
-        for (int i = 0; i < n; i++) {
-            char c = text.charAt(i);
-
-            if (c == '`') {
-                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
-                    inFence = !inFence;
-                    i += 2;
-                    continue;
-                }
-                if (!inFence) inInlineCode = !inInlineCode;
-                continue;
-            }
-
-            if (inFence || inInlineCode) continue;
-            if (c != '[') continue;
-
-            int j = i + 1;
-            int value = 0;
-            int digits = 0;
-            while (j < n && digits < 3) {
-                char d = text.charAt(j);
-                if (d < '0' || d > '9') break;
-                value = value * 10 + (d - '0');
-                digits++;
-                j++;
-            }
-            if (digits == 0) continue;
-            if (j >= n || text.charAt(j) != ']') continue;
-            if (j + 1 < n && text.charAt(j + 1) == '(') continue;
-            if (value <= 0 || value > maxIndex) continue;
-            out.add(value);
-        }
-
-        return out;
     }
 
     private static String normalizeCitationQuoteFormatting(String text) {
@@ -1296,12 +1393,14 @@ public class AiChatService {
 
             if (contextAssembled != null) {
                 String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
-                if (!normalized.equals(assistantAccum.toString())) {
+                String modeAdjusted = enforceCitationModeAnswerBody(citationCfg, normalized);
+                if (!modeAdjusted.equals(assistantAccum.toString())) {
                     assistantAccum.setLength(0);
-                    assistantAccum.append(normalized);
+                    assistantAccum.append(modeAdjusted);
                 }
-                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                citedSourcesForDto = resolveSourcesForOutput(citationCfg, sources, assistantAccum.toString());
+                citedSourcesForDto = shouldExposeCitationSources(citationCfg)
+                        ? resolveSourcesForOutput(citationCfg, contextAssembled.getSources(), assistantAccum.toString())
+                        : List.of();
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSourcesForDto);
                 if (sourcesText != null && !sourcesText.isBlank()) {
@@ -1348,7 +1447,7 @@ public class AiChatService {
                     assistantMsg = qaMessagesRepository.save(assistantMsg);
                 }
 
-                if (contextAssembled != null) {
+                if (contextAssembled != null && shouldExposeCitationSources(citationCfg)) {
                     persistAssistantSources(assistantMsg.getId(), citedSourcesForDto);
                 }
 
@@ -2356,12 +2455,14 @@ public class AiChatService {
 
             if (contextAssembled != null) {
                 String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
-                if (!normalized.equals(assistantAccum.toString())) {
+                String modeAdjusted = enforceCitationModeAnswerBody(citationCfg, normalized);
+                if (!modeAdjusted.equals(assistantAccum.toString())) {
                     assistantAccum.setLength(0);
-                    assistantAccum.append(normalized);
+                    assistantAccum.append(modeAdjusted);
                 }
-                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                citedSourcesForDto = resolveSourcesForOutput(citationCfg, sources, assistantAccum.toString());
+                citedSourcesForDto = shouldExposeCitationSources(citationCfg)
+                        ? resolveSourcesForOutput(citationCfg, contextAssembled.getSources(), assistantAccum.toString())
+                        : List.of();
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSourcesForDto);
                 if (sourcesText != null && !sourcesText.isBlank()) {
@@ -2408,7 +2509,7 @@ public class AiChatService {
                     assistantMsg = qaMessagesRepository.save(assistantMsg);
                 }
 
-                if (contextAssembled != null) {
+                if (contextAssembled != null && shouldExposeCitationSources(citationCfg)) {
                     persistAssistantSources(assistantMsg.getId(), citedSourcesForDto);
                 }
             }
@@ -2746,16 +2847,14 @@ public class AiChatService {
 
             if (contextAssembled != null) {
                 String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
-                if (!normalized.equals(assistantAccum.toString())) {
+                String modeAdjusted = enforceCitationModeAnswerBody(citationCfg, normalized);
+                if (!modeAdjusted.equals(assistantAccum.toString())) {
                     assistantAccum.setLength(0);
-                    assistantAccum.append(normalized);
+                    assistantAccum.append(modeAdjusted);
                 }
-                List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                List<RagContextPromptService.CitationSource> citedSources = resolveSourcesForOutput(
-                        citationCfg,
-                        sources,
-                        assistantAccum.toString()
-                );
+                List<RagContextPromptService.CitationSource> citedSources = shouldExposeCitationSources(citationCfg)
+                        ? resolveSourcesForOutput(citationCfg, contextAssembled.getSources(), assistantAccum.toString())
+                        : List.of();
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSources);
                 if (sourcesText != null && !sourcesText.isBlank()) {
@@ -2766,7 +2865,7 @@ public class AiChatService {
                     out.flush();
                 }
 
-                if (citedSources != null && !citedSources.isEmpty()) {
+                if (shouldExposeCitationSources(citationCfg) && !citedSources.isEmpty()) {
                     out.write("event: sources\n");
                     out.write("data: " + buildSourcesEventData(citedSources, true) + "\n\n");
                     out.flush();
@@ -2812,7 +2911,7 @@ public class AiChatService {
                     assistantMsg = qaMessagesRepository.save(assistantMsg);
                 }
 
-                if (contextAssembled != null) {
+                if (contextAssembled != null && shouldExposeCitationSources(citationCfg)) {
                     List<RagContextPromptService.CitationSource> citedSources = resolveSourcesForOutput(
                             citationCfg,
                             contextAssembled.getSources(),

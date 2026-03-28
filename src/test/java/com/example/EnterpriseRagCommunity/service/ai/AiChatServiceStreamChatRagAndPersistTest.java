@@ -504,7 +504,7 @@ class AiChatServiceStreamChatRagAndPersistTest {
         MockHttpServletResponse resp = new MockHttpServletResponse();
         service.streamChat(req, 1L, resp);
         String body = resp.getContentAsString();
-        assertTrue(body.contains("event: sources"));
+        assertTrue(!body.contains("event: sources"));
         assertTrue(!body.contains("Sources："));
     }
 
@@ -2230,7 +2230,8 @@ class AiChatServiceStreamChatRagAndPersistTest {
 
         var dto = service.chatOnce(req, 1L);
         assertNotNull(dto);
-        assertTrue(dto.getContent().contains("fallback [1]"));
+        assertTrue(dto.getContent().contains("fallback"));
+        assertTrue(!dto.getContent().contains("fallback [1]"));
         assertEquals(1, dto.getSources().size());
         verify(retrievalHitsRepository).saveAll(any());
     }
