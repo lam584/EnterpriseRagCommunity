@@ -334,6 +334,7 @@ class AiChatServiceStreamChatRagAndPersistTest {
         RagContextPromptService.CitationSource s1 = new RagContextPromptService.CitationSource();
         s1.setIndex(1);
         s1.setPostId(null);
+        s1.setCommentId(77L);
         s1.setChunkIndex(null);
         s1.setScore(null);
         s1.setTitle(null);
@@ -390,6 +391,7 @@ class AiChatServiceStreamChatRagAndPersistTest {
         String body = resp.getContentAsString();
         assertTrue(body.contains("event: sources"));
         assertTrue(body.contains("\"postId\":null"));
+        assertTrue(body.contains("\"commentId\":77"));
         assertTrue(body.contains("\"chunkIndex\":null"));
         assertTrue(body.contains("\"score\":null"));
         assertTrue(body.contains("\"title\":\"\""));
@@ -2130,6 +2132,107 @@ class AiChatServiceStreamChatRagAndPersistTest {
         var dto = service.chatOnce(req, 1L);
         assertNotNull(dto);
         assertTrue(dto.getContent().contains("fallback"));
+    }
+
+    @Test
+    void chatOnce_should_continue_when_retrieval_hit_persist_fails() {
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        doAnswer(inv -> {
+            OpenAiCompatClient.SseLineConsumer consumer = inv.getArgument(8);
+            consumer.onLine("data: {\"content\":\"fallback [1]\"}");
+            consumer.onLine("data: [DONE]");
+            return new LlmGateway.RoutedChatStreamResult("p", "m", null);
+        }).when(llmGateway).chatStreamRouted(any(), any(), any(), any(), any(), any(), any(), any(), any());
+
+        QaSessionsRepository qaSessionsRepository = mock(QaSessionsRepository.class);
+        QaMessagesRepository qaMessagesRepository = mock(QaMessagesRepository.class);
+        QaTurnsRepository qaTurnsRepository = mock(QaTurnsRepository.class);
+        RetrievalEventsRepository retrievalEventsRepository = mock(RetrievalEventsRepository.class);
+        RetrievalHitsRepository retrievalHitsRepository = mock(RetrievalHitsRepository.class);
+        RagPostChatRetrievalService ragRetrievalService = mock(RagPostChatRetrievalService.class);
+        RagCommentChatRetrievalService ragCommentChatRetrievalService = mock(RagCommentChatRetrievalService.class);
+        RagChatPostCommentAggregationService ragChatPostCommentAggregationService = mock(RagChatPostCommentAggregationService.class);
+        RagContextPromptService ragContextPromptService = mock(RagContextPromptService.class);
+
+        QaSessionsEntity session = new QaSessionsEntity();
+        session.setId(3L);
+        session.setUserId(1L);
+        session.setIsActive(true);
+        session.setContextStrategy(ContextStrategy.RECENT_N);
+        session.setTitle("t");
+        when(qaSessionsRepository.findByIdAndUserId(3L, 1L)).thenReturn(Optional.of(session));
+
+        when(qaMessagesRepository.save(any(QaMessagesEntity.class))).thenAnswer(inv -> {
+            QaMessagesEntity e = inv.getArgument(0);
+            if (e.getId() == null && e.getRole() == MessageRole.USER) e.setId(401L);
+            if (e.getId() == null && e.getRole() == MessageRole.ASSISTANT) e.setId(402L);
+            return e;
+        });
+        when(qaTurnsRepository.save(any(QaTurnsEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(qaMessagesRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        RetrievalEventsEntity ev = new RetrievalEventsEntity();
+        ev.setId(403L);
+        when(retrievalEventsRepository.save(any(RetrievalEventsEntity.class))).thenReturn(ev);
+        when(retrievalHitsRepository.saveAll(any())).thenThrow(new RuntimeException("hit log fail"));
+
+        RagPostChatRetrievalService.Hit hit = new RagPostChatRetrievalService.Hit();
+        hit.setPostId(100L);
+        hit.setChunkIndex(1);
+        hit.setScore(0.7);
+        hit.setContentText("ctx");
+        when(ragRetrievalService.retrieve(anyString(), anyInt(), any())).thenReturn(List.of(hit));
+        when(ragCommentChatRetrievalService.retrieve(anyString(), anyInt())).thenReturn(List.of());
+        when(ragChatPostCommentAggregationService.aggregate(anyString(), any(), any(), any())).thenReturn(List.of(hit));
+
+        RagContextPromptService.AssembleResult ar = new RagContextPromptService.AssembleResult();
+        ar.setContextPrompt("ctx");
+        ar.setSources(buildSources(1));
+        ar.setSelected(List.of());
+        ar.setDropped(List.of());
+        when(ragContextPromptService.assemble(anyString(), any(), any(), any())).thenReturn(ar);
+
+        HybridRetrievalConfigDTO hybridCfg = new HybridRetrievalConfigDTO();
+        hybridCfg.setEnabled(false);
+        ChatRagAugmentConfigDTO chatCfg = new ChatRagAugmentConfigDTO();
+        chatCfg.setEnabled(false);
+
+        AiChatService service = buildServiceWithOverrides(
+                llmGateway,
+                qaSessionsRepository,
+                qaMessagesRepository,
+                qaTurnsRepository,
+                mock(UsersRepository.class),
+                portalCfgWithDefaults(false, 20, "pid", "m1"),
+                chatCfg,
+                hybridCfg,
+                new ContextClipConfigDTO(),
+                citationCfgEnabled(),
+                new ChatContextGovernanceConfigDTO(),
+                ragContextPromptService,
+                mock(HybridRagRetrievalService.class),
+                ragCommentChatRetrievalService,
+                ragChatPostCommentAggregationService,
+                retrievalEventsRepository,
+                retrievalHitsRepository,
+                mock(ContextWindowsRepository.class),
+                mock(QaMessageSourcesRepository.class),
+                ragRetrievalService
+        );
+
+        AiChatStreamRequest req = new AiChatStreamRequest();
+        req.setSessionId(3L);
+        req.setMessage("hi");
+        req.setUseRag(true);
+        req.setDryRun(false);
+        req.setDeepThink(false);
+
+        var dto = service.chatOnce(req, 1L);
+        assertNotNull(dto);
+        assertTrue(dto.getContent().contains("fallback [1]"));
+        assertEquals(1, dto.getSources().size());
+        verify(retrievalHitsRepository).saveAll(any());
     }
 
     @Test

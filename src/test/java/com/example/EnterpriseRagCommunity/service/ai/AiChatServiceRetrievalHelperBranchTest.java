@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -179,7 +180,8 @@ class AiChatServiceRetrievalHelperBranchTest {
         assertEquals(2, out.size());
         assertEquals(0.0, out.get(0).getScore());
         assertEquals(0.0, out.get(1).getScore());
-        assertEquals(88L, out.get(1).getChunkId());
+        assertNull(out.get(0).getChunkId());
+        assertNull(out.get(1).getChunkId());
     }
 
     @Test
@@ -354,6 +356,7 @@ class AiChatServiceRetrievalHelperBranchTest {
             RagContextPromptService.CitationSource s = new RagContextPromptService.CitationSource();
             s.setIndex(i);
             s.setPostId((long) i);
+            s.setCommentId((long) (i + 1000));
             src.add(s);
         }
         @SuppressWarnings("unchecked")
@@ -361,6 +364,7 @@ class AiChatServiceRetrievalHelperBranchTest {
                 (List<com.example.EnterpriseRagCommunity.dto.ai.AiChatResponseDTO.AiCitationSourceDTO>) m.invoke(null, src);
         assertEquals(199, out.size());
         assertEquals(1, out.get(0).getIndex());
+        assertEquals(1001L, out.get(0).getCommentId());
     }
 
     private static AiChatService buildService(PostsRepository postsRepository, PromptsRepository promptsRepository) {

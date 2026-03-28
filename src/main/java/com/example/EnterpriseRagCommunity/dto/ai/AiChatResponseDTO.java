@@ -18,6 +18,7 @@ public class AiChatResponseDTO {
     public static class AiCitationSourceDTO {
         private Integer index;
         private Long postId;
+        private Long commentId;
         private Integer chunkIndex;
         private Double score;
         private String title;

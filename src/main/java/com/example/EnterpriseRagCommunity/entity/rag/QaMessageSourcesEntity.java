@@ -28,6 +28,9 @@ public class QaMessageSourcesEntity {
     @Column(name = "post_id")
     private Long postId;
 
+    @Column(name = "comment_id")
+    private Long commentId;
+
     @Column(name = "chunk_index")
     private Integer chunkIndex;
 

@@ -149,7 +149,8 @@ public class RagChatPostCommentAggregationService {
                 }
             }
 
-            String commentText = buildCommentContext(postId, comms, perPostMaxCommentChunks, commentChunkMaxTokens);
+            CommentContext commentCtx = buildCommentContext(postId, comms, perPostMaxCommentChunks, commentChunkMaxTokens);
+            String commentText = commentCtx == null ? null : commentCtx.text;
             String attachmentText = buildAttachmentContext(postId, fileHits, perPostMaxAttachmentChunks, attachmentChunkMaxTokens);
 
             StringBuilder combined = new StringBuilder();
@@ -178,10 +179,15 @@ public class RagChatPostCommentAggregationService {
             a.postId = postId;
             a.title = title;
             a.boardId = bestPostHit != null ? bestPostHit.getBoardId() : (pe == null ? null : pe.getBoardId());
-            a.chunkIndex = bestPostHit != null ? bestPostHit.getChunkIndex() : null;
+            a.commentId = commentCtx == null ? null : commentCtx.primaryCommentId;
+            a.chunkIndex = commentCtx != null && commentCtx.primaryChunkIndex != null
+                    ? commentCtx.primaryChunkIndex
+                    : (bestPostHit != null ? bestPostHit.getChunkIndex() : null);
             a.score = score;
             a.contentText = combinedText;
-            a.sourceType = bestPostHit == null ? null : bestPostHit.getSourceType();
+            a.sourceType = bestPostHit == null
+                    ? (a.commentId == null ? null : "COMMENT")
+                    : bestPostHit.getSourceType();
             a.fileAssetId = bestPostHit == null ? null : bestPostHit.getFileAssetId();
             a.type = bestPostHit == null ? null : bestPostHit.getType();
             aggs.add(a);
@@ -198,6 +204,7 @@ public class RagChatPostCommentAggregationService {
             h.setPostId(a.postId);
             h.setBoardId(a.boardId);
             h.setChunkIndex(a.chunkIndex);
+            h.setCommentId(a.commentId);
             h.setScore(a.score);
             h.setTitle(a.title);
             h.setContentText(a.contentText);
@@ -213,7 +220,7 @@ public class RagChatPostCommentAggregationService {
         return out;
     }
 
-    private String buildCommentContext(
+    private CommentContext buildCommentContext(
             Long postId,
             List<RagCommentChatRetrievalService.Hit> hitComments,
             int maxChunks,
@@ -224,6 +231,8 @@ public class RagChatPostCommentAggregationService {
         int kept = 0;
         Set<Long> seenHashes = new java.util.HashSet<>();
         Set<Long> seenCommentIds = new java.util.HashSet<>();
+        Long primaryCommentId = null;
+        Integer primaryChunkIndex = null;
 
         if (hitComments != null) {
             for (RagCommentChatRetrievalService.Hit ch : hitComments) {
@@ -236,6 +245,10 @@ public class RagChatPostCommentAggregationService {
                 if (seenHashes.contains(h32)) continue;
                 seenHashes.add(h32);
                 if (ch.getCommentId() != null) seenCommentIds.add(ch.getCommentId());
+                if (primaryCommentId == null && ch.getCommentId() != null) {
+                    primaryCommentId = ch.getCommentId();
+                    primaryChunkIndex = ch.getChunkIndex();
+                }
 
                 String part = truncateByApproxTokens(trimmed, chunkMaxTokens);
                 if (sb.isEmpty()) sb.append("命中评论片段：\n");
@@ -263,6 +276,10 @@ public class RagChatPostCommentAggregationService {
                 if (seenHashes.contains(h32)) continue;
                 seenHashes.add(h32);
                 if (c.getId() != null) seenCommentIds.add(c.getId());
+                if (primaryCommentId == null && c.getId() != null) {
+                    primaryCommentId = c.getId();
+                    primaryChunkIndex = null;
+                }
 
                 String part = truncateByApproxTokens(trimmed, chunkMaxTokens);
                 if (sb.isEmpty()) sb.append("命中评论片段：\n");
@@ -275,7 +292,11 @@ public class RagChatPostCommentAggregationService {
         }
 
         if (kept <= 0) return null;
-        return sb.toString().trim();
+        CommentContext out = new CommentContext();
+        out.text = sb.toString().trim();
+        out.primaryCommentId = primaryCommentId;
+        out.primaryChunkIndex = primaryChunkIndex;
+        return out;
     }
 
     private Map<Long, PostsEntity> fetchPosts(Set<Long> postIds) {
@@ -468,6 +489,7 @@ public class RagChatPostCommentAggregationService {
     private static class PostAgg {
         private Long postId;
         private Long boardId;
+        private Long commentId;
         private Integer chunkIndex;
         private double score;
         private String title;
@@ -475,6 +497,12 @@ public class RagChatPostCommentAggregationService {
         private String sourceType;
         private Long fileAssetId;
         private com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType type;
+    }
+
+    private static class CommentContext {
+        private String text;
+        private Long primaryCommentId;
+        private Integer primaryChunkIndex;
     }
 
     @Data

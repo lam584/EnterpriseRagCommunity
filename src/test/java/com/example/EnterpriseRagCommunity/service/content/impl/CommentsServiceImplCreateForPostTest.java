@@ -6,6 +6,7 @@ import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.content.CommentsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
@@ -21,6 +22,7 @@ import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmA
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -77,6 +79,7 @@ class CommentsServiceImplCreateForPostTest {
         ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
         ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
         ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
+        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", mock(RagCommentIndexVisibilitySyncService.class));
         return svc;
     }
 
@@ -106,6 +109,7 @@ class CommentsServiceImplCreateForPostTest {
         ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
         ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
         ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
+        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", mock(RagCommentIndexVisibilitySyncService.class));
         return svc;
     }
 
@@ -386,6 +390,73 @@ class CommentsServiceImplCreateForPostTest {
                 isNull(),
                 eq(Map.of("postId", 1L, "parentId", 9L, "status", "PENDING"))
         );
+    }
+
+    @Test
+    void createForPost_should_schedule_rag_sync_when_comment_is_already_visible_after_moderation() {
+        CommentsRepository commentsRepository = mock(CommentsRepository.class);
+        AdministratorService administratorService = mock(AdministratorService.class);
+        AdminModerationQueueService adminModerationQueueService = mock(AdminModerationQueueService.class);
+        ModerationQueueRepository moderationQueueRepository = mock(ModerationQueueRepository.class);
+        ModerationRuleAutoRunner moderationRuleAutoRunner = mock(ModerationRuleAutoRunner.class);
+        RagCommentIndexVisibilitySyncService ragSync = mock(RagCommentIndexVisibilitySyncService.class);
+
+        UsersEntity me = new UsersEntity();
+        me.setId(7L);
+        when(administratorService.findByUsername(eq("u@example.com"))).thenReturn(Optional.of(me));
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("u@example.com", "n/a", List.of()));
+
+        when(commentsRepository.save(any())).thenAnswer(inv -> {
+            CommentsEntity e = inv.getArgument(0);
+            CommentsEntity saved = new CommentsEntity();
+            saved.setId(321L);
+            saved.setPostId(e.getPostId());
+            saved.setParentId(e.getParentId());
+            saved.setAuthorId(e.getAuthorId());
+            saved.setContent(e.getContent());
+            saved.setStatus(CommentStatus.PENDING);
+            saved.setCreatedAt(e.getCreatedAt());
+            saved.setUpdatedAt(e.getUpdatedAt());
+            return saved;
+        });
+        CommentsEntity visible = new CommentsEntity();
+        visible.setId(321L);
+        visible.setPostId(1L);
+        visible.setAuthorId(7L);
+        visible.setContent("ref");
+        visible.setStatus(CommentStatus.VISIBLE);
+        when(commentsRepository.findById(321L)).thenReturn(Optional.of(visible));
+
+        ModerationQueueEntity queue = new ModerationQueueEntity();
+        queue.setId(901L);
+        when(moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(any(), any(), eq(321L))).thenReturn(Optional.of(queue));
+
+        CommentsServiceImpl svc = newService(
+                commentsRepository,
+                administratorService,
+                mock(PostsRepository.class),
+                mock(NotificationsService.class),
+                adminModerationQueueService,
+                moderationRuleAutoRunner,
+                mock(ModerationVecAutoRunner.class),
+                mock(ModerationLlmAutoRunner.class),
+                mock(UsersRepository.class),
+                mock(ReactionsRepository.class),
+                mock(AiLanguageDetectService.class),
+                mock(AuditLogWriter.class)
+        );
+        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
+        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", ragSync);
+
+        CommentCreateRequest req = new CommentCreateRequest();
+        req.setContent("ref");
+
+        CommentDTO out = svc.createForPost(1L, req);
+        assertEquals(321L, out.getId());
+        assertEquals("VISIBLE", out.getStatus());
+        verify(adminModerationQueueService).ensureEnqueuedComment(321L);
+        verify(moderationRuleAutoRunner).runForQueueId(901L);
+        verify(ragSync).scheduleSyncAfterCommit(321L);
     }
 
     @Test

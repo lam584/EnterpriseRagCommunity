@@ -78,6 +78,7 @@ public class RagChatPostCommentAggregationServiceTest {
         assertEquals(1, out.size());
         assertNotNull(out.get(0).getPostId());
         assertEquals(1L, out.get(0).getPostId());
+        assertEquals(10L, out.get(0).getCommentId());
         assertTrue(out.get(0).getContentText().contains("帖子正文："));
         assertTrue(out.get(0).getContentText().contains("命中评论片段"));
     }
@@ -294,6 +295,7 @@ public class RagChatPostCommentAggregationServiceTest {
 
         List<RagPostChatRetrievalService.Hit> out = svc.aggregate("query", List.of(singleFileHit), List.of(), cfg);
         assertEquals(1, out.size());
+        assertEquals(11L, out.get(0).getCommentId());
         String ctx = out.get(0).getContentText();
         assertTrue(ctx.contains("帖子正文："));
         assertTrue(ctx.contains("命中评论片段："));
@@ -302,4 +304,3 @@ public class RagChatPostCommentAggregationServiceTest {
         assertTrue(ctx.contains("参数阈值") || ctx.contains("关键条款"));
     }
 }
-

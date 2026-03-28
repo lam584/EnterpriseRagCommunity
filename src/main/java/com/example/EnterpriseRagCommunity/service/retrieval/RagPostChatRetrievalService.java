@@ -177,6 +177,7 @@ public class RagPostChatRetrievalService {
         private RetrievalHitType type;
         private String sourceType;
         private Long fileAssetId;
+        private Long commentId;
         private Long postId;
         private Integer chunkIndex;
         private Long boardId;

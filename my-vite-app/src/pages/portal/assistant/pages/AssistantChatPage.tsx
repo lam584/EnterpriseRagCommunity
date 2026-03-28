@@ -1930,12 +1930,18 @@ export default function AssistantChatPage() {
                             const isFocused = Number.isFinite(idx) && focusedCitation === idx;
                             return (
                               <div
-                                key={`${s.index}-${s.postId ?? 'x'}`}
+                                  key={`${s.index}-${s.postId ?? 'x'}-${s.commentId ?? 'c'}`}
                                 className={`break-words rounded px-1 py-1 transition-colors ${isFocused ? 'bg-yellow-100 ring-1 ring-yellow-300' : ''}`}
                                 id={sourceAnchorId}
                               >
                                 <span className={`${cls} font-semibold`}>[{s.index}] </span>
                                 {s.title ? <span className="mr-2">{s.title}</span> : null}
+                                  {typeof s.commentId === 'number' ? (
+                                      <span
+                                          className="mr-2 inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-medium text-amber-900">
+                                    评论 #{s.commentId}
+                                  </span>
+                                  ) : null}
                                 {s.url ? (
                                   <a className="text-blue-600 hover:underline" href={s.url} target="_blank" rel="noreferrer">
                                     {s.url}

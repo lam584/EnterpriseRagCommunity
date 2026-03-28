@@ -95,6 +95,23 @@ describe('MarkdownEditor', () => {
     await user.click(screen.getByRole('button', { name: '预览' }));
     expect(screen.getByText('hello world')).not.toBeNull();
   });
+    it('preview tab reuses MarkdownPreview heading and table styles', async () => {
+        const user = userEvent.setup();
+        const markdown = ['# Title', '', '| A | B |', '| --- | --- |', '| 1 | 2 |'].join('\n');
+        const {container} = render(<MarkdownEditor value={{markdown}} onChange={vi.fn()}/>);
+
+        await user.click(screen.getByRole('button', {name: '预览'}));
+
+        const heading = screen.getByRole('heading', {level: 1, name: 'Title'});
+        expect(heading.className.includes('text-2xl')).toBe(true);
+
+        const table = container.querySelector('table');
+        expect(table).not.toBeNull();
+        expect(table!.className.includes('border-collapse')).toBe(true);
+
+        const header = within(table as HTMLTableElement).getByRole('columnheader', {name: 'A'});
+        expect(header.className.includes('bg-gray-50')).toBe(true);
+    });
 
     it('readOnly 模式允许切换预览但禁止编辑与文件插入', async () => {
         const user = userEvent.setup();

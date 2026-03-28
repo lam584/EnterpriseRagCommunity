@@ -6,6 +6,7 @@ import lombok.Data;
 public class QaCitationSourceDTO {
     private Integer index;
     private Long postId;
+    private Long commentId;
     private Integer chunkIndex;
     private Double score;
     private String title;

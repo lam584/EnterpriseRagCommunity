@@ -29,330 +29,26 @@ public class RagContextPromptService {
     private static final String ABLATION_REL_IMP = "REL_IMP";
     private static final String ABLATION_REL_IMP_RED = "REL_IMP_RED";
 
-    public AssembleResult assemble(String queryText, List<RagPostChatRetrievalService.Hit> hits, ContextClipConfigDTO cfg, CitationConfigDTO citationCfg) {
-        ContextClipConfigDTO safe = cfg;
-        if (safe == null) safe = new ContextClipConfigDTO();
-        boolean enabled = safe.getEnabled() == null || Boolean.TRUE.equals(safe.getEnabled());
-        if (!enabled) {
-            AssembleResult out = new AssembleResult();
-            out.setContextPrompt("");
-            out.setBudgetTokens(0);
-            out.setUsedTokens(0);
-            out.setSelected(List.of());
-            out.setDropped(List.of());
-            out.setSources(List.of());
-            out.setSourcesText("");
-            out.setChunkIds(buildChunkIds(out));
-            out.setPolicy(safe.getPolicy() == null ? ContextWindowPolicy.TOPK : safe.getPolicy());
-            return out;
+    private static List<CitationSource> buildSources(CitationConfigDTO cfg, List<Item> selected) {
+        if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return List.of();
+        int max = cfg.getMaxSources() == null ? 0 : Math.max(0, cfg.getMaxSources());
+        if (max <= 0) return List.of();
+        List<CitationSource> out = new ArrayList<>();
+        int n = Math.min(max, selected == null ? 0 : selected.size());
+        for (int i = 0; i < n; i++) {
+            Item it = selected.get(i);
+            if (it == null) continue;
+            CitationSource s = new CitationSource();
+            s.setIndex(i + 1);
+            s.setPostId(it.getPostId());
+            s.setCommentId(it.getCommentId());
+            s.setChunkIndex(it.getChunkIndex());
+            s.setScore(it.getScore());
+            s.setTitle(it.getTitle());
+            s.setUrl(buildCitationUrl(cfg, it.getPostId(), it.getCommentId()));
+            s.setSnippet(it.getSnippet());
+            out.add(s);
         }
-
-        ContextWindowPolicy policy = safe.getPolicy() == null ? ContextWindowPolicy.TOPK : safe.getPolicy();
-        int maxItems = safe.getMaxItems() == null ? 6 : clampInt(safe.getMaxItems(), 1, 100, 6);
-        int maxContextTokens = safe.getMaxContextTokens() == null ? 12000 : clampInt(safe.getMaxContextTokens(), 1, 1_000_000, 12000);
-        int contextTokenBudget = safe.getContextTokenBudget() == null ? maxContextTokens : clampInt(safe.getContextTokenBudget(), 100, 1_000_000, 3000);
-        int reserve = safe.getReserveAnswerTokens() == null ? 2000 : clampInt(safe.getReserveAnswerTokens(), 0, 1_000_000, 2000);
-        int perItemMaxTokens = safe.getPerItemMaxTokens() == null ? 2000 : clampInt(safe.getPerItemMaxTokens(), 50, 200_000, 2000);
-        int maxPromptChars = safe.getMaxPromptChars() == null ? 200_000 : clampInt(safe.getMaxPromptChars(), 1000, 2_000_000, 200_000);
-
-        int budgetTokens = switch (policy) {
-            case FIXED -> contextTokenBudget;
-            case ADAPTIVE -> Math.max(0, contextTokenBudget - reserve - Math.max(0, approxTokens(queryText)) * 2);
-            default -> Math.max(0, contextTokenBudget - reserve);
-        };
-
-        Double minScore = safe.getMinScore();
-        int maxSamePostItems = safe.getMaxSamePostItems() == null ? 0 : Math.max(0, safe.getMaxSamePostItems());
-        boolean requireTitle = Boolean.TRUE.equals(safe.getRequireTitle());
-        boolean dedupByPostId = Boolean.TRUE.equals(safe.getDedupByPostId());
-        boolean dedupByTitle = Boolean.TRUE.equals(safe.getDedupByTitle());
-        boolean dedupByContentHash = Boolean.TRUE.equals(safe.getDedupByContentHash());
-        boolean crossSourceDedup = safe.getCrossSourceDedup() == null || Boolean.TRUE.equals(safe.getCrossSourceDedup());
-        double alpha = clampDouble(safe.getAlpha(), 0.0, 10.0, 1.0);
-        double beta = clampDouble(safe.getBeta(), 0.0, 10.0, 1.0);
-        double gamma = clampDouble(safe.getGamma(), 0.0, 10.0, 1.0);
-        String ablationMode = normalizeAblationMode(safe.getAblationMode());
-
-        String sectionTitle = trimOrDefault(safe.getSectionTitle(), "");
-        String separator = safe.getSeparator() == null ? "\n\n" : safe.getSeparator();
-        String headerTpl = trimOrDefault(safe.getItemHeaderTemplate(), "");
-
-        boolean showPostId = safe.getShowPostId() == null || Boolean.TRUE.equals(safe.getShowPostId());
-        boolean showChunkIndex = safe.getShowChunkIndex() == null || Boolean.TRUE.equals(safe.getShowChunkIndex());
-        boolean showScore = safe.getShowScore() == null || Boolean.TRUE.equals(safe.getShowScore());
-        boolean showTitle = safe.getShowTitle() == null || Boolean.TRUE.equals(safe.getShowTitle());
-
-        List<Item> selected = new ArrayList<>();
-        List<Item> dropped = new ArrayList<>();
-
-        StringBuilder sb = new StringBuilder();
-        if (!sectionTitle.isBlank()) {
-            sb.append(sectionTitle.trim()).append("\n\n");
-        }
-
-        int usedTokens;
-        int idxOut = 0;
-
-        if (policy == ContextWindowPolicy.SLIDING || policy == ContextWindowPolicy.IMPORTANCE || policy == ContextWindowPolicy.HYBRID) {
-            int scanLimit = Math.min(
-                    hits == null ? 0 : hits.size(),
-                    Math.min(500, Math.max(maxItems * 8, 50))
-            );
-
-            List<Candidate> candidates = new ArrayList<>();
-            for (int i = 0; i < scanLimit; i++) {
-                RagPostChatRetrievalService.Hit h = hits.get(i);
-                if (h == null) continue;
-
-                Item item = new Item();
-                item.setRank(i + 1);
-                item.setPostId(h.getPostId());
-                item.setChunkIndex(h.getChunkIndex());
-                item.setScore(h.getScore());
-                item.setTitle(trimOrNull(h.getTitle()));
-
-                Double score = item.getScore();
-                if (score == null) score = 0.0;
-                if (minScore != null && score < minScore) {
-                    item.setReason("minScore");
-                    dropped.add(item);
-                    continue;
-                }
-
-                if (requireTitle && (item.getTitle() == null || item.getTitle().isBlank())) {
-                    item.setReason("requireTitle");
-                    dropped.add(item);
-                    continue;
-                }
-
-                String text = h.getContentText();
-                if (text == null || text.isBlank()) {
-                    item.setReason("emptyContent");
-                    dropped.add(item);
-                    continue;
-                }
-
-                String trimmed = text.trim();
-                String truncated = truncateByApproxTokens(trimmed, perItemMaxTokens);
-                int tokens = approxTokens(truncated);
-                item.setTokens(tokens);
-                item.setSnippet(buildSnippet(truncated));
-                if (tokens <= 0) {
-                    item.setReason("noTokens");
-                    dropped.add(item);
-                    continue;
-                }
-
-                Candidate c = new Candidate();
-                c.item = item;
-                c.text = truncated;
-                c.tokens = tokens;
-                c.sourceKey = resolveSourceKey(h);
-                if (dedupByTitle && item.getTitle() != null) {
-                    String key = normalizeTitle(item.getTitle());
-                    c.titleKey = key.isBlank() ? null : key;
-                }
-                if (dedupByContentHash) {
-                    c.contentHash = crc32(truncated);
-                }
-                c.textKey = normalizeTextKey(truncated);
-                c.tokenSet = tokenizeSet(truncated, 80);
-                candidates.add(c);
-            }
-
-            prepareCandidateScores(candidates);
-
-            SelectionState st = new SelectionState();
-            st.dedupByPostId = dedupByPostId;
-            st.dedupByTitle = dedupByTitle;
-            st.dedupByContentHash = dedupByContentHash;
-            st.crossSourceDedup = crossSourceDedup;
-            st.maxSamePostItems = maxSamePostItems;
-
-            List<Candidate> selectedCandidates;
-            if (policy == ContextWindowPolicy.SLIDING) {
-                selectedCandidates = selectSliding(candidates, st, maxItems, budgetTokens, dropped, alpha, beta, gamma, ablationMode);
-            } else if (policy == ContextWindowPolicy.IMPORTANCE) {
-                selectedCandidates = selectImportance(candidates, st, maxItems, budgetTokens, dropped, alpha, beta, gamma, ablationMode);
-            } else {
-                selectedCandidates = selectHybrid(candidates, st, maxItems, budgetTokens, dropped, alpha, beta, gamma, ablationMode);
-            }
-
-            usedTokens = 0;
-            for (Candidate c : selectedCandidates) {
-                if (c == null || c.item == null) continue;
-                idxOut++;
-                String header = renderHeader(headerTpl, idxOut, c.item, showPostId, showChunkIndex, showScore, showTitle);
-                if (!header.isBlank()) sb.append(header);
-                sb.append(c.text == null ? "" : c.text);
-                sb.append(separator);
-                usedTokens += Math.max(0, c.tokens);
-                c.item.setReason("selected");
-                selected.add(c.item);
-                if (sb.length() > maxPromptChars) break;
-            }
-        } else {
-            Set<Long> seenPostIds = new HashSet<>();
-            Set<String> seenTitles = new HashSet<>();
-            Set<Long> seenContentHash = new HashSet<>();
-            Map<String, String> textKeySource = new HashMap<>();
-            Map<Long, Integer> postCount = new HashMap<>();
-
-            usedTokens = 0;
-            int n = Math.min(maxItems, hits == null ? 0 : hits.size());
-            for (int i = 0; i < n; i++) {
-                RagPostChatRetrievalService.Hit h = hits.get(i);
-                if (h == null) continue;
-
-                Item item = new Item();
-                item.setRank(i + 1);
-                item.setPostId(h.getPostId());
-                item.setChunkIndex(h.getChunkIndex());
-                item.setScore(h.getScore());
-                item.setTitle(trimOrNull(h.getTitle()));
-
-                Double score = item.getScore();
-                if (score == null) score = 0.0;
-                if (minScore != null && score < minScore) {
-                    item.setReason("minScore");
-                    dropped.add(item);
-                    continue;
-                }
-
-                if (requireTitle && (item.getTitle() == null || item.getTitle().isBlank())) {
-                    item.setReason("requireTitle");
-                    dropped.add(item);
-                    continue;
-                }
-
-                if (dedupByPostId && item.getPostId() != null) {
-                    if (seenPostIds.contains(item.getPostId())) {
-                        item.setReason("dedupPostId");
-                        dropped.add(item);
-                        continue;
-                    }
-                }
-
-                if (dedupByTitle && item.getTitle() != null) {
-                    String key = normalizeTitle(item.getTitle());
-                    if (!key.isBlank() && seenTitles.contains(key)) {
-                        item.setReason("dedupTitle");
-                        dropped.add(item);
-                        continue;
-                    }
-                }
-
-                String text = h.getContentText();
-                if (text == null || text.isBlank()) {
-                    item.setReason("emptyContent");
-                    dropped.add(item);
-                    continue;
-                }
-
-                String trimmed = text.trim();
-                String truncated = truncateByApproxTokens(trimmed, perItemMaxTokens);
-                int tokens = approxTokens(truncated);
-                String textKey = normalizeTextKey(truncated);
-                item.setTokens(tokens);
-                item.setSnippet(buildSnippet(truncated));
-                if (tokens <= 0) {
-                    item.setReason("noTokens");
-                    dropped.add(item);
-                    continue;
-                }
-
-                if (dedupByContentHash) {
-                    long h32 = crc32(truncated);
-                    if (seenContentHash.contains(h32)) {
-                        item.setReason("dedupContent");
-                        dropped.add(item);
-                        continue;
-                    }
-                    seenContentHash.add(h32);
-                }
-
-                if (crossSourceDedup && textKey != null) {
-                    String sourceKey = resolveSourceKey(h);
-                    String prevSource = textKeySource.get(textKey);
-                    if (prevSource != null && sourceKey != null && !sourceKey.equals(prevSource)) {
-                        item.setReason("crossSourceDedup");
-                        dropped.add(item);
-                        continue;
-                    }
-                }
-
-                if (maxSamePostItems > 0 && item.getPostId() != null) {
-                    int c = postCount.getOrDefault(item.getPostId(), 0);
-                    if (c >= maxSamePostItems) {
-                        item.setReason("maxSamePostItems");
-                        dropped.add(item);
-                        continue;
-                    }
-                }
-
-                if (usedTokens + tokens > budgetTokens) {
-                    item.setReason("budgetExceeded");
-                    dropped.add(item);
-                    continue;
-                }
-
-                idxOut++;
-                String header = renderHeader(headerTpl, idxOut, item, showPostId, showChunkIndex, showScore, showTitle);
-                if (!header.isBlank()) sb.append(header);
-                sb.append(truncated);
-                sb.append(separator);
-
-                usedTokens += tokens;
-                item.setReason("selected");
-                selected.add(item);
-
-                if (dedupByPostId && item.getPostId() != null) seenPostIds.add(item.getPostId());
-                if (dedupByTitle && item.getTitle() != null) {
-                    String key = normalizeTitle(item.getTitle());
-                    if (!key.isBlank()) seenTitles.add(key);
-                }
-                if (maxSamePostItems > 0 && item.getPostId() != null) {
-                    postCount.put(item.getPostId(), postCount.getOrDefault(item.getPostId(), 0) + 1);
-                }
-                if (crossSourceDedup && textKey != null) {
-                    String sourceKey = resolveSourceKey(h);
-                    textKeySource.putIfAbsent(textKey, sourceKey == null ? "UNKNOWN" : sourceKey);
-                }
-                if (sb.length() > maxPromptChars) break;
-            }
-        }
-
-        String prompt = sb.toString().trim();
-
-        String extraInstruction = trimOrNull(safe.getExtraInstruction());
-        if (extraInstruction != null && !extraInstruction.isBlank()) {
-            prompt = (prompt.isBlank() ? "" : prompt + "\n\n") + extraInstruction.trim();
-        }
-
-        String citationInstruction = null;
-        if (citationCfg != null && Boolean.TRUE.equals(citationCfg.getEnabled())) {
-            String mode = citationCfg.getCitationMode() == null ? "" : citationCfg.getCitationMode().trim().toUpperCase();
-            if (mode.equals("MODEL_INLINE") || mode.equals("BOTH")) {
-                citationInstruction = trimOrNull(citationCfg.getInstructionTemplate());
-            }
-        }
-        if (citationInstruction != null && !citationInstruction.isBlank()) {
-            prompt = (prompt.isBlank() ? "" : prompt + "\n\n") + appendExactCitationRule(citationInstruction);
-        }
-
-        List<CitationSource> sources = buildSources(citationCfg, selected);
-        String sourcesText = renderSourcesText(citationCfg, sources);
-
-        AssembleResult out = new AssembleResult();
-        out.setPolicy(policy);
-        out.setBudgetTokens(budgetTokens);
-        out.setUsedTokens(usedTokens);
-        out.setContextPrompt(prompt);
-        out.setSelected(selected);
-        out.setDropped(dropped);
-        out.setSources(sources);
-        out.setSourcesText(sourcesText);
-        out.setChunkIds(buildChunkIds(out));
         return out;
     }
 
@@ -740,28 +436,6 @@ public class RagContextPromptService {
         return base + "\n" + extra;
     }
 
-    private static List<CitationSource> buildSources(CitationConfigDTO cfg, List<Item> selected) {
-        if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return List.of();
-        int max = cfg.getMaxSources() == null ? 0 : Math.max(0, cfg.getMaxSources());
-        if (max <= 0) return List.of();
-        List<CitationSource> out = new ArrayList<>();
-        int n = Math.min(max, selected == null ? 0 : selected.size());
-        for (int i = 0; i < n; i++) {
-            Item it = selected.get(i);
-            if (it == null) continue;
-            CitationSource s = new CitationSource();
-            s.setIndex(i + 1);
-            s.setPostId(it.getPostId());
-            s.setChunkIndex(it.getChunkIndex());
-            s.setScore(it.getScore());
-            s.setTitle(it.getTitle());
-            s.setUrl(buildPostUrl(cfg, it.getPostId()));
-            s.setSnippet(it.getSnippet());
-            out.add(s);
-        }
-        return out;
-    }
-
     static String renderSourcesText(CitationConfigDTO cfg, List<CitationSource> sources) {
         if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return "";
         String mode = cfg.getCitationMode() == null ? "" : cfg.getCitationMode().trim().toUpperCase();
@@ -785,12 +459,351 @@ public class RagContextPromptService {
             if (Boolean.TRUE.equals(cfg.getIncludePostId()) && s.getPostId() != null) {
                 sb.append("post_id=").append(s.getPostId()).append(' ');
             }
+            if (s.getCommentId() != null) {
+                sb.append("comment_id=").append(s.getCommentId()).append(' ');
+            }
             if (Boolean.TRUE.equals(cfg.getIncludeChunkIndex()) && s.getChunkIndex() != null) {
                 sb.append("chunk=").append(s.getChunkIndex()).append(' ');
             }
             sb.append('\n');
         }
         return sb.toString().trim();
+    }
+
+    private static String buildCitationUrl(CitationConfigDTO cfg, Long postId, Long commentId) {
+        String base = buildPostUrl(cfg, postId);
+        if (base == null || base.isBlank() || commentId == null) return base;
+        String glue = base.contains("?") ? "&" : "?";
+        return base + glue + "commentId=" + commentId + "#comment-" + commentId;
+    }
+
+    public AssembleResult assemble(String queryText, List<RagPostChatRetrievalService.Hit> hits, ContextClipConfigDTO cfg, CitationConfigDTO citationCfg) {
+        ContextClipConfigDTO safe = cfg;
+        if (safe == null) safe = new ContextClipConfigDTO();
+        boolean enabled = safe.getEnabled() == null || Boolean.TRUE.equals(safe.getEnabled());
+        if (!enabled) {
+            AssembleResult out = new AssembleResult();
+            out.setContextPrompt("");
+            out.setBudgetTokens(0);
+            out.setUsedTokens(0);
+            out.setSelected(List.of());
+            out.setDropped(List.of());
+            out.setSources(List.of());
+            out.setSourcesText("");
+            out.setChunkIds(buildChunkIds(out));
+            out.setPolicy(safe.getPolicy() == null ? ContextWindowPolicy.TOPK : safe.getPolicy());
+            return out;
+        }
+
+        ContextWindowPolicy policy = safe.getPolicy() == null ? ContextWindowPolicy.TOPK : safe.getPolicy();
+        int maxItems = safe.getMaxItems() == null ? 6 : clampInt(safe.getMaxItems(), 1, 100, 6);
+        int maxContextTokens = safe.getMaxContextTokens() == null ? 12000 : clampInt(safe.getMaxContextTokens(), 1, 1_000_000, 12000);
+        int contextTokenBudget = safe.getContextTokenBudget() == null ? maxContextTokens : clampInt(safe.getContextTokenBudget(), 100, 1_000_000, 3000);
+        int reserve = safe.getReserveAnswerTokens() == null ? 2000 : clampInt(safe.getReserveAnswerTokens(), 0, 1_000_000, 2000);
+        int perItemMaxTokens = safe.getPerItemMaxTokens() == null ? 2000 : clampInt(safe.getPerItemMaxTokens(), 50, 200_000, 2000);
+        int maxPromptChars = safe.getMaxPromptChars() == null ? 200_000 : clampInt(safe.getMaxPromptChars(), 1000, 2_000_000, 200_000);
+
+        int budgetTokens = switch (policy) {
+            case FIXED -> contextTokenBudget;
+            case ADAPTIVE -> Math.max(0, contextTokenBudget - reserve - Math.max(0, approxTokens(queryText)) * 2);
+            default -> Math.max(0, contextTokenBudget - reserve);
+        };
+
+        Double minScore = safe.getMinScore();
+        int maxSamePostItems = safe.getMaxSamePostItems() == null ? 0 : Math.max(0, safe.getMaxSamePostItems());
+        boolean requireTitle = Boolean.TRUE.equals(safe.getRequireTitle());
+        boolean dedupByPostId = Boolean.TRUE.equals(safe.getDedupByPostId());
+        boolean dedupByTitle = Boolean.TRUE.equals(safe.getDedupByTitle());
+        boolean dedupByContentHash = Boolean.TRUE.equals(safe.getDedupByContentHash());
+        boolean crossSourceDedup = safe.getCrossSourceDedup() == null || Boolean.TRUE.equals(safe.getCrossSourceDedup());
+        double alpha = clampDouble(safe.getAlpha(), 0.0, 10.0, 1.0);
+        double beta = clampDouble(safe.getBeta(), 0.0, 10.0, 1.0);
+        double gamma = clampDouble(safe.getGamma(), 0.0, 10.0, 1.0);
+        String ablationMode = normalizeAblationMode(safe.getAblationMode());
+
+        String sectionTitle = trimOrDefault(safe.getSectionTitle(), "");
+        String separator = safe.getSeparator() == null ? "\n\n" : safe.getSeparator();
+        String headerTpl = trimOrDefault(safe.getItemHeaderTemplate(), "");
+
+        boolean showPostId = safe.getShowPostId() == null || Boolean.TRUE.equals(safe.getShowPostId());
+        boolean showChunkIndex = safe.getShowChunkIndex() == null || Boolean.TRUE.equals(safe.getShowChunkIndex());
+        boolean showScore = safe.getShowScore() == null || Boolean.TRUE.equals(safe.getShowScore());
+        boolean showTitle = safe.getShowTitle() == null || Boolean.TRUE.equals(safe.getShowTitle());
+
+        List<Item> selected = new ArrayList<>();
+        List<Item> dropped = new ArrayList<>();
+
+        StringBuilder sb = new StringBuilder();
+        if (!sectionTitle.isBlank()) {
+            sb.append(sectionTitle.trim()).append("\n\n");
+        }
+
+        int usedTokens;
+        int idxOut = 0;
+
+        if (policy == ContextWindowPolicy.SLIDING || policy == ContextWindowPolicy.IMPORTANCE || policy == ContextWindowPolicy.HYBRID) {
+            int scanLimit = Math.min(
+                    hits == null ? 0 : hits.size(),
+                    Math.min(500, Math.max(maxItems * 8, 50))
+            );
+
+            List<Candidate> candidates = new ArrayList<>();
+            for (int i = 0; i < scanLimit; i++) {
+                RagPostChatRetrievalService.Hit h = hits.get(i);
+                if (h == null) continue;
+
+                Item item = new Item();
+                item.setRank(i + 1);
+                item.setPostId(h.getPostId());
+                item.setCommentId(h.getCommentId());
+                item.setChunkIndex(h.getChunkIndex());
+                item.setScore(h.getScore());
+                item.setTitle(trimOrNull(h.getTitle()));
+
+                Double score = item.getScore();
+                if (score == null) score = 0.0;
+                if (minScore != null && score < minScore) {
+                    item.setReason("minScore");
+                    dropped.add(item);
+                    continue;
+                }
+
+                if (requireTitle && (item.getTitle() == null || item.getTitle().isBlank())) {
+                    item.setReason("requireTitle");
+                    dropped.add(item);
+                    continue;
+                }
+
+                String text = h.getContentText();
+                if (text == null || text.isBlank()) {
+                    item.setReason("emptyContent");
+                    dropped.add(item);
+                    continue;
+                }
+
+                String trimmed = text.trim();
+                String truncated = truncateByApproxTokens(trimmed, perItemMaxTokens);
+                int tokens = approxTokens(truncated);
+                item.setTokens(tokens);
+                item.setSnippet(buildSnippet(truncated));
+                if (tokens <= 0) {
+                    item.setReason("noTokens");
+                    dropped.add(item);
+                    continue;
+                }
+
+                Candidate c = new Candidate();
+                c.item = item;
+                c.text = truncated;
+                c.tokens = tokens;
+                c.sourceKey = resolveSourceKey(h);
+                if (dedupByTitle && item.getTitle() != null) {
+                    String key = normalizeTitle(item.getTitle());
+                    c.titleKey = key.isBlank() ? null : key;
+                }
+                if (dedupByContentHash) {
+                    c.contentHash = crc32(truncated);
+                }
+                c.textKey = normalizeTextKey(truncated);
+                c.tokenSet = tokenizeSet(truncated, 80);
+                candidates.add(c);
+            }
+
+            prepareCandidateScores(candidates);
+
+            SelectionState st = new SelectionState();
+            st.dedupByPostId = dedupByPostId;
+            st.dedupByTitle = dedupByTitle;
+            st.dedupByContentHash = dedupByContentHash;
+            st.crossSourceDedup = crossSourceDedup;
+            st.maxSamePostItems = maxSamePostItems;
+
+            List<Candidate> selectedCandidates;
+            if (policy == ContextWindowPolicy.SLIDING) {
+                selectedCandidates = selectSliding(candidates, st, maxItems, budgetTokens, dropped, alpha, beta, gamma, ablationMode);
+            } else if (policy == ContextWindowPolicy.IMPORTANCE) {
+                selectedCandidates = selectImportance(candidates, st, maxItems, budgetTokens, dropped, alpha, beta, gamma, ablationMode);
+            } else {
+                selectedCandidates = selectHybrid(candidates, st, maxItems, budgetTokens, dropped, alpha, beta, gamma, ablationMode);
+            }
+
+            usedTokens = 0;
+            for (Candidate c : selectedCandidates) {
+                if (c == null || c.item == null) continue;
+                idxOut++;
+                String header = renderHeader(headerTpl, idxOut, c.item, showPostId, showChunkIndex, showScore, showTitle);
+                if (!header.isBlank()) sb.append(header);
+                sb.append(c.text == null ? "" : c.text);
+                sb.append(separator);
+                usedTokens += Math.max(0, c.tokens);
+                c.item.setReason("selected");
+                selected.add(c.item);
+                if (sb.length() > maxPromptChars) break;
+            }
+        } else {
+            Set<Long> seenPostIds = new HashSet<>();
+            Set<String> seenTitles = new HashSet<>();
+            Set<Long> seenContentHash = new HashSet<>();
+            Map<String, String> textKeySource = new HashMap<>();
+            Map<Long, Integer> postCount = new HashMap<>();
+
+            usedTokens = 0;
+            int n = Math.min(maxItems, hits == null ? 0 : hits.size());
+            for (int i = 0; i < n; i++) {
+                RagPostChatRetrievalService.Hit h = hits.get(i);
+                if (h == null) continue;
+
+                Item item = new Item();
+                item.setRank(i + 1);
+                item.setPostId(h.getPostId());
+                item.setCommentId(h.getCommentId());
+                item.setChunkIndex(h.getChunkIndex());
+                item.setScore(h.getScore());
+                item.setTitle(trimOrNull(h.getTitle()));
+
+                Double score = item.getScore();
+                if (score == null) score = 0.0;
+                if (minScore != null && score < minScore) {
+                    item.setReason("minScore");
+                    dropped.add(item);
+                    continue;
+                }
+
+                if (requireTitle && (item.getTitle() == null || item.getTitle().isBlank())) {
+                    item.setReason("requireTitle");
+                    dropped.add(item);
+                    continue;
+                }
+
+                if (dedupByPostId && item.getPostId() != null) {
+                    if (seenPostIds.contains(item.getPostId())) {
+                        item.setReason("dedupPostId");
+                        dropped.add(item);
+                        continue;
+                    }
+                }
+
+                if (dedupByTitle && item.getTitle() != null) {
+                    String key = normalizeTitle(item.getTitle());
+                    if (!key.isBlank() && seenTitles.contains(key)) {
+                        item.setReason("dedupTitle");
+                        dropped.add(item);
+                        continue;
+                    }
+                }
+
+                String text = h.getContentText();
+                if (text == null || text.isBlank()) {
+                    item.setReason("emptyContent");
+                    dropped.add(item);
+                    continue;
+                }
+
+                String trimmed = text.trim();
+                String truncated = truncateByApproxTokens(trimmed, perItemMaxTokens);
+                int tokens = approxTokens(truncated);
+                String textKey = normalizeTextKey(truncated);
+                item.setTokens(tokens);
+                item.setSnippet(buildSnippet(truncated));
+                if (tokens <= 0) {
+                    item.setReason("noTokens");
+                    dropped.add(item);
+                    continue;
+                }
+
+                if (dedupByContentHash) {
+                    long h32 = crc32(truncated);
+                    if (seenContentHash.contains(h32)) {
+                        item.setReason("dedupContent");
+                        dropped.add(item);
+                        continue;
+                    }
+                    seenContentHash.add(h32);
+                }
+
+                if (crossSourceDedup && textKey != null) {
+                    String sourceKey = resolveSourceKey(h);
+                    String prevSource = textKeySource.get(textKey);
+                    if (prevSource != null && sourceKey != null && !sourceKey.equals(prevSource)) {
+                        item.setReason("crossSourceDedup");
+                        dropped.add(item);
+                        continue;
+                    }
+                }
+
+                if (maxSamePostItems > 0 && item.getPostId() != null) {
+                    int c = postCount.getOrDefault(item.getPostId(), 0);
+                    if (c >= maxSamePostItems) {
+                        item.setReason("maxSamePostItems");
+                        dropped.add(item);
+                        continue;
+                    }
+                }
+
+                if (usedTokens + tokens > budgetTokens) {
+                    item.setReason("budgetExceeded");
+                    dropped.add(item);
+                    continue;
+                }
+
+                idxOut++;
+                String header = renderHeader(headerTpl, idxOut, item, showPostId, showChunkIndex, showScore, showTitle);
+                if (!header.isBlank()) sb.append(header);
+                sb.append(truncated);
+                sb.append(separator);
+
+                usedTokens += tokens;
+                item.setReason("selected");
+                selected.add(item);
+
+                if (dedupByPostId && item.getPostId() != null) seenPostIds.add(item.getPostId());
+                if (dedupByTitle && item.getTitle() != null) {
+                    String key = normalizeTitle(item.getTitle());
+                    if (!key.isBlank()) seenTitles.add(key);
+                }
+                if (maxSamePostItems > 0 && item.getPostId() != null) {
+                    postCount.put(item.getPostId(), postCount.getOrDefault(item.getPostId(), 0) + 1);
+                }
+                if (crossSourceDedup && textKey != null) {
+                    String sourceKey = resolveSourceKey(h);
+                    textKeySource.putIfAbsent(textKey, sourceKey == null ? "UNKNOWN" : sourceKey);
+                }
+                if (sb.length() > maxPromptChars) break;
+            }
+        }
+
+        String prompt = sb.toString().trim();
+
+        String extraInstruction = trimOrNull(safe.getExtraInstruction());
+        if (extraInstruction != null && !extraInstruction.isBlank()) {
+            prompt = (prompt.isBlank() ? "" : prompt + "\n\n") + extraInstruction.trim();
+        }
+
+        String citationInstruction = null;
+        if (citationCfg != null && Boolean.TRUE.equals(citationCfg.getEnabled())) {
+            String mode = citationCfg.getCitationMode() == null ? "" : citationCfg.getCitationMode().trim().toUpperCase();
+            if (mode.equals("MODEL_INLINE") || mode.equals("BOTH")) {
+                citationInstruction = trimOrNull(citationCfg.getInstructionTemplate());
+            }
+        }
+        if (citationInstruction != null && !citationInstruction.isBlank()) {
+            prompt = (prompt.isBlank() ? "" : prompt + "\n\n") + appendExactCitationRule(citationInstruction);
+        }
+
+        List<CitationSource> sources = buildSources(citationCfg, selected);
+        String sourcesText = renderSourcesText(citationCfg, sources);
+
+        AssembleResult out = new AssembleResult();
+        out.setPolicy(policy);
+        out.setBudgetTokens(budgetTokens);
+        out.setUsedTokens(usedTokens);
+        out.setContextPrompt(prompt);
+        out.setSelected(selected);
+        out.setDropped(dropped);
+        out.setSources(sources);
+        out.setSourcesText(sourcesText);
+        out.setChunkIds(buildChunkIds(out));
+        return out;
     }
 
     private static String buildPostUrl(CitationConfigDTO cfg, Long postId) {
@@ -1029,6 +1042,7 @@ public class RagContextPromptService {
     public static class Item {
         private Integer rank;
         private Long postId;
+        private Long commentId;
         private Integer chunkIndex;
         private Double score;
         private Double relScore;
@@ -1046,6 +1060,7 @@ public class RagContextPromptService {
     public static class CitationSource {
         private Integer index;
         private Long postId;
+        private Long commentId;
         private Integer chunkIndex;
         private Double score;
         private String title;

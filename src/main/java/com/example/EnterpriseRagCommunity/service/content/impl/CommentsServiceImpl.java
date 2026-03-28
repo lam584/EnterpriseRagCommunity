@@ -237,6 +237,9 @@ public class CommentsServiceImpl implements CommentsService {
                 saved = commentsRepository.findById(saved.getId()).orElse(saved);
             }
             scheduleModerationAutoRunAfterCommit(queueId);
+            if (saved.getId() != null && saved.getStatus() == CommentStatus.VISIBLE) {
+                ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+            }
 
             if (parentId == null) {
                 PostsEntity post = postsRepository.findById(postId).orElse(null);

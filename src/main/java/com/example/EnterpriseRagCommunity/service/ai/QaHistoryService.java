@@ -413,6 +413,7 @@ public class QaHistoryService {
         QaCitationSourceDTO dto = new QaCitationSourceDTO();
         dto.setIndex(e.getSourceIndex());
         dto.setPostId(e.getPostId());
+        dto.setCommentId(e.getCommentId());
         dto.setChunkIndex(e.getChunkIndex());
         dto.setScore(e.getScore());
         dto.setTitle(e.getTitle());

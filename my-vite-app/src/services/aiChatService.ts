@@ -23,6 +23,7 @@ export type AiStreamEvent =
 export type AiCitationSource = {
   index: number;
   postId?: number | null;
+    commentId?: number | null;
   chunkIndex?: number | null;
   score?: number | null;
   title?: string | null;
@@ -115,6 +116,7 @@ function parseEventBlock(block: string): AiStreamEvent | null {
               .map((x) => ({
                 index: Number((x as Record<string, unknown>).index ?? 0),
                 postId: (x as Record<string, unknown>).postId as number | null | undefined,
+                  commentId: (x as Record<string, unknown>).commentId as number | null | undefined,
                 chunkIndex: (x as Record<string, unknown>).chunkIndex as number | null | undefined,
                 score: (x as Record<string, unknown>).score as number | null | undefined,
                 title: ((x as Record<string, unknown>).title as string | null | undefined) ?? null,
