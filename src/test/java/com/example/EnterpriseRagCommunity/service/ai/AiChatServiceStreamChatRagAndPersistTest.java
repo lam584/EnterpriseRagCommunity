@@ -1146,7 +1146,7 @@ class AiChatServiceStreamChatRagAndPersistTest {
         service.streamChat(req, 1L, resp);
         String body = resp.getContentAsString();
         assertTrue(body.contains("event: done"));
-        assertTrue(!body.contains("event: sources"));
+        assertTrue(body.contains("event: sources"));
     }
 
     @Test

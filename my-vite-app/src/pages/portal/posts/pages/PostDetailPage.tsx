@@ -8,7 +8,13 @@ import { formatPostTime, getPostCoverThumbUrl } from '../../../../utils/postMeta
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import * as StatButtonModule from '../../../../components/ui/StatButton';
 import HotScoreBadge from '../../../../components/post/HotScoreBadge';
-import { createPostComment, listPostComments, toggleCommentLike, type CommentDTO } from '../../../../services/commentService';
+import {
+    createPostComment,
+    deleteMyComment,
+    listPostComments,
+    toggleCommentLike,
+    type CommentDTO
+} from '../../../../services/commentService';
 import { listTags, type TagDTO } from '../../../../services/tagService';
 import { getTranslateConfig, translateComment, translatePost, type TranslateResultDTO } from '../../../../services/translateService';
 import { getMyTranslatePreferences, type TranslatePreferencesDTO } from '../../../../services/accountPreferencesService';
@@ -17,6 +23,7 @@ import { reportComment, reportPost } from '../../../../services/reportService';
 import { extractLanguagesFromMetadata, normalizeLangBase, normalizeTargetLanguageBase } from '../../../../utils/langUtils';
 import { parseTranslateMarkdown } from '../../../../utils/translateOutputUtils';
 import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';
+import {useAuth} from '../../../../contexts/AuthContext';
 
 function clamp0(n: number) {
   return n < 0 ? 0 : n;
@@ -68,6 +75,7 @@ export default function PostDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { postId } = useParams();
+    const {currentUser} = useAuth();
 
   const id = useMemo(() => {
     const n = Number(postId);
@@ -104,7 +112,10 @@ export default function PostDetailPage() {
 
   const [commentSortMode, setCommentSortMode] = useState<CommentSortMode>('TIME');
   const [expandedRootComments, setExpandedRootComments] = useState<Record<number, boolean>>({});
+    const [commentContentExpanded, setCommentContentExpanded] = useState<Record<number, boolean>>({});
+    const [commentContentOverflow, setCommentContentOverflow] = useState<Record<number, boolean>>({});
   const [commentLikePending, setCommentLikePending] = useState<Record<number, boolean>>({});
+    const [commentDeletePending, setCommentDeletePending] = useState<Record<number, boolean>>({});
   const [targetCommentId, setTargetCommentId] = useState<number | null>(null);
   const [highlightCommentId, setHighlightCommentId] = useState<number | null>(null);
 
@@ -153,6 +164,7 @@ export default function PostDetailPage() {
   const [commentReportReasonText, setCommentReportReasonText] = useState('');
   const [commentReportPending, setCommentReportPending] = useState(false);
   const [commentReportError, setCommentReportError] = useState<string | null>(null);
+    const currentUserId = typeof currentUser?.id === 'number' ? currentUser.id : null;
 
   useEffect(() => {
     if (!post) return;
@@ -637,6 +649,37 @@ export default function PostDetailPage() {
     };
   }, [targetCommentId, commentsLoading, comments, commentNodes.byId]);
 
+    useEffect(() => {
+        const rafId = window.requestAnimationFrame(() => {
+            const contentEls = Array.from(document.querySelectorAll<HTMLElement>('[data-comment-content-id]'));
+            if (contentEls.length === 0) return;
+
+            setCommentContentOverflow((prev) => {
+                let changed = false;
+                const next = {...prev};
+
+                for (const el of contentEls) {
+                    const raw = el.dataset.commentContentId;
+                    const cid = raw ? Number(raw) : NaN;
+                    if (!Number.isFinite(cid) || cid <= 0) continue;
+                    if (commentContentExpanded[cid]) continue;
+
+                    const overflow = el.scrollHeight > el.clientHeight + 1;
+                    if ((next[cid] ?? false) !== overflow) {
+                        next[cid] = overflow;
+                        changed = true;
+                    }
+                }
+
+                return changed ? next : prev;
+            });
+        });
+
+        return () => {
+            window.cancelAnimationFrame(rafId);
+        };
+    }, [comments, expandedRootComments, threadModalOpen, threadModalRootId, commentSortMode, threadSortMode, commentContentExpanded]);
+
   const compareNodes = (a: CommentNode, b: CommentNode, mode: CommentSortMode) => {
     if (mode === 'HOT') {
       const d = (b.hotScore || 0) - (a.hotScore || 0);
@@ -678,6 +721,36 @@ export default function PostDetailPage() {
       setCommentLikePending((p) => ({ ...p, [commentId]: false }));
     }
   };
+
+    const handleDeleteComment = async (commentId: number) => {
+        if (!commentId) return;
+        if (commentDeletePending[commentId]) return;
+        const ok = window.confirm('确定删除这条评论吗？');
+        if (!ok) return;
+
+        setCommentDeletePending((p) => ({...p, [commentId]: true}));
+        setCommentsError(null);
+        try {
+            await deleteMyComment(commentId);
+            if (replyTargetId === commentId) {
+                setReplyTargetId(null);
+                setReplyDraft('');
+            }
+            if (threadModalRootId === commentId) {
+                closeThreadModal();
+            }
+            await loadAllComments();
+        } catch (e) {
+            setCommentsError(e instanceof Error ? e.message : String(e));
+        } finally {
+            setCommentDeletePending((p) => ({...p, [commentId]: false}));
+        }
+    };
+
+    const toggleCommentContentExpanded = (commentId: number) => {
+        if (!commentId) return;
+        setCommentContentExpanded((p) => ({...p, [commentId]: !(p[commentId] ?? false)}));
+    };
 
   const openReplyEditor = (commentId: number) => {
     setReplyTargetId(commentId);
@@ -773,6 +846,13 @@ export default function PostDetailPage() {
     const parentNode = node.parentId == null ? null : commentNodes.byId.get(node.parentId) ?? null;
     const replyToName = relativeDepth >= 3 && parentNode ? getCommentDisplayName(parentNode.comment) : '';
     const highlighted = highlightCommentId === node.id;
+      const contentExpanded = !!commentContentExpanded[node.id];
+      const contentOverflow = !!commentContentOverflow[node.id];
+      const canDelete =
+          currentUserId != null &&
+          c.authorId != null &&
+          Number.isFinite(Number(c.authorId)) &&
+          Number(c.authorId) === Number(currentUserId);
 
     return (
       <div id={`comment-${node.id}`} key={node.id} style={indent ? { marginLeft: indent } : undefined} className="space-y-2">
@@ -836,6 +916,17 @@ export default function PostDetailPage() {
                       查看全部对话
                     </button>
                   ) : null}
+                    {canDelete ? (
+                        <button
+                            type="button"
+                            className="px-2 py-1 rounded border border-red-300 bg-white hover:bg-red-50 disabled:opacity-50 text-xs text-red-700"
+                            onClick={() => void handleDeleteComment(node.id)}
+                            disabled={commentDeletePending[node.id]}
+                            title="删除该评论"
+                        >
+                            {commentDeletePending[node.id] ? '删除中...' : '删除'}
+                        </button>
+                    ) : null}
                   {(shouldShowCommentTranslateButton(c) || !!commentTranslations[node.id]) ? (
                     <button
                       type="button"
@@ -877,7 +968,30 @@ export default function PostDetailPage() {
                 </div>
               </div>
 
-              <div className="mt-1 whitespace-pre-wrap break-words text-sm text-gray-800">{c.content}</div>
+                <div className="mt-1">
+                    <div
+                        data-comment-content-id={node.id}
+                        data-testid={`comment-content-${node.id}`}
+                        className={`whitespace-pre-wrap break-words text-sm text-gray-800 ${
+                            contentExpanded
+                                ? ''
+                                : 'overflow-hidden max-h-[10rem] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:8]'
+                        }`}
+                    >
+                        {c.content}
+                    </div>
+                    {contentOverflow ? (
+                        <div className="mt-1">
+                            <button
+                                type="button"
+                                className="text-xs text-blue-700 hover:underline"
+                                onClick={() => toggleCommentContentExpanded(node.id)}
+                            >
+                                {contentExpanded ? '折叠' : '展开'}
+                            </button>
+                        </div>
+                    ) : null}
+                </div>
 
               {replyTargetId === node.id ? (
                 <div className="mt-3 space-y-2">

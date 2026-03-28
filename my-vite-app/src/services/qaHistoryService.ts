@@ -49,6 +49,13 @@ export type QaCompressContextResultDTO = {
   summary?: string | null;
 };
 
+type PageEnvelope<T> = {
+    content: T[];
+    totalElements: number;
+    number: number;
+    size: number;
+};
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl(path), {
@@ -74,10 +81,41 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+function normalizePageEnvelope<T>(raw: unknown, fallbackPage: number, fallbackSize: number): PageEnvelope<T> {
+    const data = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+    const pageMeta = data.page && typeof data.page === 'object' ? (data.page as Record<string, unknown>) : {};
+
+    const content = Array.isArray(data.content) ? (data.content as T[]) : [];
+    const totalElements =
+        typeof data.totalElements === 'number'
+            ? data.totalElements
+            : typeof pageMeta.totalElements === 'number'
+                ? pageMeta.totalElements
+                : content.length;
+    const number =
+        typeof data.number === 'number'
+            ? data.number
+            : typeof pageMeta.number === 'number'
+                ? pageMeta.number
+                : fallbackPage;
+    const size =
+        typeof data.size === 'number'
+            ? data.size
+            : typeof pageMeta.size === 'number'
+                ? pageMeta.size
+                : fallbackSize;
+
+    return {
+        content,
+        totalElements,
+        number,
+        size,
+    };
+}
+
 export async function listQaSessions(page = 0, size = 20) {
-  return apiFetch<{ content: QaSessionDTO[]; totalElements: number; number: number; size: number }>(
-    `/api/ai/qa/sessions?page=${page}&size=${size}`
-  );
+    const raw = await apiFetch<unknown>(`/api/ai/qa/sessions?page=${page}&size=${size}`);
+    return normalizePageEnvelope<QaSessionDTO>(raw, page, size);
 }
 
 export async function getQaSessionMessages(sessionId: number) {
@@ -86,9 +124,8 @@ export async function getQaSessionMessages(sessionId: number) {
 
 export async function searchQaHistory(q: string, page = 0, size = 20) {
   const qs = new URLSearchParams({ q, page: String(page), size: String(size) });
-  return apiFetch<{ content: QaSearchHitDTO[]; totalElements: number; number: number; size: number }>(
-    `api/ai/qa/search?${qs.toString()}`
-  );
+    const raw = await apiFetch<unknown>(`api/ai/qa/search?${qs.toString()}`);
+    return normalizePageEnvelope<QaSearchHitDTO>(raw, page, size);
 }
 
 export async function updateQaSession(sessionId: number, payload: { title?: string; isActive?: boolean }) {
@@ -130,7 +167,6 @@ export async function toggleQaMessageFavorite(messageId: number) {
 }
 
 export async function listFavoriteQaMessages(page = 0, size = 20) {
-  return apiFetch<{ content: QaMessageDTO[]; totalElements: number; number: number; size: number }>(
-    `api/ai/qa/favorites?page=${page}&size=${size}`
-  );
+    const raw = await apiFetch<unknown>(`api/ai/qa/favorites?page=${page}&size=${size}`);
+    return normalizePageEnvelope<QaMessageDTO>(raw, page, size);
 }

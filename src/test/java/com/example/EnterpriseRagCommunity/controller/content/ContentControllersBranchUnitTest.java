@@ -14,6 +14,7 @@ import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.content.HotScoresService;
 import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
 import com.example.EnterpriseRagCommunity.service.content.PortalSearchService;
+import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,8 @@ class ContentControllersBranchUnitTest {
     HotScoresService hotScoresService;
     @Mock
     PortalSearchService portalSearchService;
+    @Mock
+    CommentsService commentsService;
 
     @AfterEach
     void cleanup() {
@@ -65,6 +68,7 @@ class ContentControllersBranchUnitTest {
         setField(c, "reactionsRepository", reactionsRepository);
         setField(c, "administratorService", administratorService);
         setField(c, "auditLogWriter", auditLogWriter);
+        setField(c, "commentsService", commentsService);
 
         assertThrows(IllegalArgumentException.class, () -> c.toggleLike(null));
 
@@ -106,6 +110,9 @@ class ContentControllersBranchUnitTest {
         when(reactionsRepository.existsByUserIdAndTargetTypeAndTargetIdAndType(2L, ReactionTargetType.COMMENT, 13L, ReactionType.LIKE))
                 .thenThrow(new RuntimeException("db"));
         assertThrows(RuntimeException.class, () -> c.toggleLike(13L));
+
+        c.deleteMyComment(77L);
+        verify(commentsService).deleteOwnComment(77L);
     }
 
     @Test

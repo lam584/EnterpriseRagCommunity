@@ -7,6 +7,7 @@ import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionType;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
@@ -29,6 +30,9 @@ public class CommentInteractionsController {
 
     @Autowired
     private AuditLogWriter auditLogWriter;
+
+    @Autowired
+    private CommentsService commentsService;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -102,5 +106,18 @@ public class CommentInteractionsController {
             );
             throw e;
         }
+    }
+
+    @DeleteMapping("/{commentId}")
+    public void deleteMyComment(@PathVariable("commentId") Long commentId) {
+        commentsService.deleteOwnComment(commentId);
+    }
+
+    @GetMapping("/mine")
+    public org.springframework.data.domain.Page<com.example.EnterpriseRagCommunity.dto.content.CommentDTO> listMyComments(
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "pageSize", defaultValue = "20") int pageSize,
+            @RequestParam(name = "keyword", required = false) String keyword) {
+        return commentsService.listMyComments(page, pageSize, keyword);
     }
 }

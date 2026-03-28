@@ -13,6 +13,7 @@ import EvidenceListView from '../../../../components/admin/EvidenceListView';
 import { buildEvidenceImageUrlMap, extractLatestRunImageUrls } from '../../../../utils/evidenceImageMap';
 import { countUniqueEvidence, extractEvidenceFromDetails, shouldSkipStepEvidenceForChunkedReview } from '../../../../utils/evidence-utils';
 import DetailDialog from '../../../../components/common/DetailDialog';
+import {downloadBlob} from '../../../../utils/download';
 
 function formatDateTime(s?: string | null): string {
   if (!s) return '—';
@@ -33,6 +34,11 @@ function safeJson(v: unknown): string {
   } catch {
     return String(v);
   }
+}
+
+function toCsvCell(v: unknown): string {
+    const text = v == null ? '' : String(v);
+    return `"${text.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
 }
 
 function toChunkRows(v: unknown): Array<Record<string, unknown>> {
@@ -397,6 +403,128 @@ const ReviewTraceForm: React.FC = () => {
     setPage(1);
   };
 
+    const exportCsv = useCallback(() => {
+        if (!items.length) return;
+        const header = [
+            'Queue ID',
+            'Content Type',
+            'Content ID',
+            'Queue Status Code',
+            'Queue Status Label',
+            'Final Status',
+            'Queue Stage',
+            'Latest Trace ID',
+            'Latest Run ID',
+            'Latest Run Status',
+            'Latest Final Decision',
+            'Latest Total Ms',
+            'Latest Total Human',
+            'Rule Stage',
+            'Rule Decision',
+            'Rule Score',
+            'Rule Threshold',
+            'Rule Cost Ms',
+            'Rule Details JSON',
+            'VEC Stage',
+            'VEC Decision',
+            'VEC Score',
+            'VEC Threshold',
+            'VEC Cost Ms',
+            'VEC Details JSON',
+            'LLM Stage',
+            'LLM Decision',
+            'LLM Decision Label',
+            'LLM Score',
+            'LLM Threshold',
+            'LLM Cost Ms',
+            'LLM Details JSON',
+            'Chunked',
+            'Chunked Label',
+            'Chunk Set ID',
+            'Chunks Completed',
+            'Chunks Total',
+            'Chunks Failed',
+            'Chunk Max Score',
+            'Chunk Avg Ms',
+            'Chunk Pass Ratio',
+            'Manual Exists',
+            'Manual Last Action',
+            'Manual Last Actor Name',
+            'Manual Last Actor ID',
+            'Manual Last At',
+            'Queue Updated At',
+            'Queue Updated At Human',
+            'Latest Started At',
+            'Latest Started At Human',
+            'Latest Ended At',
+            'Latest Ended At Human',
+        ].join(',');
+
+        const rows = items.map((it) => {
+            const totalChunks = it.chunk?.totalChunks ?? 0;
+            const completedChunks = it.chunk?.completedChunks ?? 0;
+            const chunkPassRatio = totalChunks > 0 ? `${completedChunks}/${totalChunks}` : '';
+            return [
+                it.queueId,
+                it.contentType,
+                it.contentId,
+                it.queueStatus,
+                statusLabel(it.queueStatus ?? null),
+                it.queueStatus,
+                it.queueStage,
+                it.latestTraceId,
+                it.latestRunId,
+                it.latestRunStatus,
+                it.latestFinalDecision,
+                it.latestTotalMs,
+                formatMs(it.latestTotalMs),
+                it.rule?.stage,
+                it.rule?.decision,
+                it.rule?.score,
+                it.rule?.threshold,
+                it.rule?.costMs,
+                safeJson(it.rule?.details ?? null),
+                it.vec?.stage,
+                it.vec?.decision,
+                it.vec?.score,
+                it.vec?.threshold,
+                it.vec?.costMs,
+                safeJson(it.vec?.details ?? null),
+                it.llm?.stage,
+                it.llm?.decision,
+                decisionLabel(it.llm?.decision ?? null),
+                it.llm?.score,
+                it.llm?.threshold,
+                it.llm?.costMs,
+                safeJson(it.llm?.details ?? null),
+                it.chunk?.chunked,
+                it.chunk?.chunked ? '是' : '否',
+                it.chunk?.chunkSetId,
+                it.chunk?.completedChunks,
+                it.chunk?.totalChunks,
+                it.chunk?.failedChunks,
+                it.chunk?.maxScore,
+                it.chunk?.avgMs,
+                chunkPassRatio,
+                it.manual?.hasManual,
+                it.manual?.lastAction,
+                it.manual?.lastActorName,
+                it.manual?.lastActorId,
+                it.manual?.lastAt,
+                it.queueUpdatedAt,
+                formatDateTime(it.queueUpdatedAt ?? null),
+                it.latestStartedAt,
+                formatDateTime(it.latestStartedAt ?? null),
+                it.latestEndedAt,
+                formatDateTime(it.latestEndedAt ?? null),
+            ].map(toCsvCell).join(',');
+        });
+
+        const csv = [header, ...rows].join('\n');
+        const blob = new Blob(['\uFEFF' + csv], {type: 'text/csv;charset=utf-8;'});
+        downloadBlob(blob, `review-trace-${new Date().toISOString().slice(0, 10)}.csv`);
+    }, [items]);
+
   const activeTraceId = useMemo(() => {
     const run = (detail?.latestRun as { run?: { traceId?: unknown } } | null | undefined)?.run;
     const t = run && typeof run === 'object' ? (run as { traceId?: unknown }).traceId : undefined;
@@ -553,6 +681,15 @@ const ReviewTraceForm: React.FC = () => {
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-lg font-semibold">审核日志与追溯（按任务聚合）</h3>
         <div className="flex items-center gap-2">
+            <button
+                type="button"
+                onClick={exportCsv}
+                className="rounded border px-4 py-2 disabled:opacity-60"
+                disabled={loading || items.length === 0}
+                title={items.length === 0 ? '当前列表无数据可导出' : undefined}
+            >
+                导出 CSV
+            </button>
           <button type="button" onClick={load} className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60" disabled={loading}>
             {loading ? '加载中…' : '搜索'}
           </button>

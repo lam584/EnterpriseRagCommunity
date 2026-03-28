@@ -74,6 +74,7 @@ export const portalSections: PortalSection[] = [
       { id: 'security', label: '安全', path: 'security', description: '密码、二次验证与邮箱安全' },
       { id: 'preferences', label: '偏好', path: 'preferences', description: '语言、展示与通知偏好' },
       { id: 'mine', label: '我的帖子', path: 'mine', description: '我发布过的帖子' },
+        {id: 'comments', label: '我的评论', path: 'comments', description: '我发布过的评论'},
       { id: 'bookmarks', label: '收藏', path: 'bookmarks', description: '我收藏的帖子' },
     ],
   },

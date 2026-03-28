@@ -8,6 +8,7 @@ import {
   type CommentAdminQuery,
   type CommentStatus,
 } from '../../../../services/commentService';
+import {batchCommentIndexSyncStatus, type IndexSyncStatus} from '../../../../services/retrievalIndexSyncAdminService';
 import { useAccess } from '../../../../contexts/AccessContext';
 
 const statuses: { value: CommentStatus; label: string }[] = [
@@ -42,6 +43,8 @@ const CommentForm: React.FC = () => {
   const [filterCreatedFrom, setFilterCreatedFrom] = useState('');
   const [filterCreatedTo, setFilterCreatedTo] = useState('');
   const [showDeleted, setShowDeleted] = useState(false);
+    const [indexStatusByCommentId, setIndexStatusByCommentId] = useState<Record<number, IndexSyncStatus>>({});
+    const [fullContentRow, setFullContentRow] = useState<CommentAdminDTO | null>(null);
 
   const effectivePostOptions = useMemo(() => {
     if (postKw.trim().length < 2) return [];
@@ -119,6 +122,37 @@ const CommentForm: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessLoading, canRead, query]);
 
+    const items = resp?.content ?? [];
+
+    useEffect(() => {
+        if (!canRead || items.length === 0) {
+            setIndexStatusByCommentId({});
+            return;
+        }
+        let alive = true;
+        (async () => {
+            try {
+                const ids = items.map((x) => x.id).filter((x): x is number => typeof x === 'number');
+                if (ids.length === 0) {
+                    if (alive) setIndexStatusByCommentId({});
+                    return;
+                }
+                const rows = await batchCommentIndexSyncStatus(ids);
+                if (!alive) return;
+                const next: Record<number, IndexSyncStatus> = {};
+                for (const r of rows) {
+                    next[r.commentId] = r.commentIndex;
+                }
+                setIndexStatusByCommentId(next);
+            } catch {
+                if (alive) setIndexStatusByCommentId({});
+            }
+        })();
+        return () => {
+            alive = false;
+        };
+    }, [items, canRead]);
+
   const changeStatus = async (id: number, next: CommentStatus) => {
     if (!canUpdate) {
       setError('无权限：admin_comments:update');
@@ -145,7 +179,35 @@ const CommentForm: React.FC = () => {
     }
   };
 
-  const items = resp?.content ?? [];
+    const renderIndexStatus = (status?: IndexSyncStatus) => {
+        if (!status) return <span className="text-gray-400">加载中</span>;
+        const isOk = status.indexed;
+        const label = isOk ? (status.reason || '已同步') : (status.reason || '失败');
+        return (
+            <div className="flex items-center gap-2">
+                <span className={isOk ? 'text-emerald-700' : 'text-rose-700'}>{label}</span>
+                <span className="text-xs text-gray-500">({status.docCount ?? 0})</span>
+                {!isOk ? (
+                    <button
+                        type="button"
+                        className="text-blue-600 hover:underline text-xs"
+                        onClick={() => {
+                            const detail = [
+                                `状态: ${status.status ?? '-'}`,
+                                `原因: ${status.reason ?? '-'}`,
+                                `详情: ${status.detail ?? '-'}`,
+                                `索引: ${status.indexName ?? '-'}`,
+                                `文档数: ${status.docCount ?? 0}`,
+                            ].join('\n');
+                            window.alert(detail);
+                        }}
+                    >
+                        查看详情
+                    </button>
+                ) : null}
+            </div>
+        );
+    };
 
   // 用搜索结果/已选中帖子来解析标题（不会触发全量拉取）
   const postTitleById = useMemo(() => {
@@ -343,6 +405,7 @@ const CommentForm: React.FC = () => {
                     <th className="py-2 pr-4">作者</th>
                     <th className="py-2 pr-4">父评论</th>
                     <th className="py-2 pr-4">评论内容</th>
+                      <th className="py-2 pr-4">评论索引</th>
                     <th className="py-2 pr-4">状态</th>
                     <th className="py-2 pr-4">删除</th>
                     <th className="py-2 pr-4">创建时间</th>
@@ -369,6 +432,7 @@ const CommentForm: React.FC = () => {
                       </td>
                       <td className="py-2 pr-4">{c.parentId ? `#${c.parentId}` : '-'}</td>
                       <td className="py-2 pr-4 max-w-[360px] truncate" title={c.content}>{c.content}</td>
+                        <td className="py-2 pr-4">{renderIndexStatus(indexStatusByCommentId[c.id])}</td>
                       <td className="py-2 pr-4">
                         <select
                           className="rounded border px-2 py-1 border-gray-300 disabled:bg-gray-100 disabled:text-gray-500"
@@ -386,6 +450,11 @@ const CommentForm: React.FC = () => {
                       <td className="py-2 pr-4">{new Date(c.createdAt).toLocaleString()}</td>
                       <td className="py-2 pr-4">
                         <button
+                            className="text-blue-600 hover:underline mr-3"
+                            onClick={() => setFullContentRow(c)}
+                        >查看全文
+                        </button>
+                          <button
                           className={c.isDeleted ? 'text-green-600 hover:underline' : 'text-red-600 hover:underline'}
                           onClick={() => toggleDelete(c.id, c.isDeleted)}
                           disabled={loading || !canUpdate}
@@ -417,6 +486,27 @@ const CommentForm: React.FC = () => {
           </>
         )}
       </div>
+
+        {fullContentRow ? (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl max-h-[85vh] flex flex-col">
+                    <div className="px-5 py-4 border-b flex items-center justify-between">
+                        <h3 className="text-lg font-semibold">评论全文 #{fullContentRow.id}</h3>
+                        <button type="button" className="text-gray-500 hover:text-gray-700 px-2 py-1"
+                                onClick={() => setFullContentRow(null)}>×
+                        </button>
+                    </div>
+                    <div className="p-5 overflow-auto">
+                        <pre className="text-sm whitespace-pre-wrap break-words">{fullContentRow.content}</pre>
+                    </div>
+                    <div className="px-5 py-3 border-t flex justify-end">
+                        <button type="button" className="rounded border px-4 py-2"
+                                onClick={() => setFullContentRow(null)}>关闭
+                        </button>
+                    </div>
+                </div>
+            </div>
+        ) : null}
     </div>
   );
 };

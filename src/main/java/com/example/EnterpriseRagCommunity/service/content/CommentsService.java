@@ -9,6 +9,9 @@ public interface CommentsService {
 
     CommentDTO createForPost(Long postId, CommentCreateRequest req);
 
+    void deleteOwnComment(Long commentId);
+
+    Page<CommentDTO> listMyComments(int page, int pageSize, String keyword);
     long countByPostId(Long postId);
 }
 

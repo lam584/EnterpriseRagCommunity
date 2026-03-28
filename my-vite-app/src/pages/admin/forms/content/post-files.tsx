@@ -7,6 +7,7 @@ import {
   type PostFileExtractionAdminDetailDTO,
   type PostFileExtractionAdminListItemDTO,
 } from '../../../../services/postFilesAdminService';
+import {batchPostIndexSyncStatus, type IndexSyncStatus} from '../../../../services/retrievalIndexSyncAdminService';
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import { estimateVisionImageTokens } from '../../../../utils/visionImageTokens';
 
@@ -47,6 +48,7 @@ const PostFilesForm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<{ items: PostFileExtractionAdminListItemDTO[]; totalPages: number; totalElements: number } | null>(null);
+    const [attachmentIndexByPostId, setAttachmentIndexByPostId] = useState<Record<number, IndexSyncStatus>>({});
   const inflightRef = useRef<AbortController | null>(null);
 
   const [detailOpen, setDetailOpen] = useState(false);
@@ -137,6 +139,68 @@ const PostFilesForm: React.FC = () => {
 
   const items = data?.items ?? [];
   const totalPages = data?.totalPages ?? 0;
+
+    useEffect(() => {
+        if (items.length === 0) {
+            setAttachmentIndexByPostId({});
+            return;
+        }
+        let alive = true;
+        void (async () => {
+            try {
+                const postIds = Array.from(new Set(items
+                    .map((x) => x.postId)
+                    .filter((x): x is number => typeof x === 'number')));
+                if (postIds.length === 0) {
+                    if (alive) setAttachmentIndexByPostId({});
+                    return;
+                }
+                const rows = await batchPostIndexSyncStatus(postIds);
+                if (!alive) return;
+                const next: Record<number, IndexSyncStatus> = {};
+                for (const row of rows) {
+                    if (row.attachmentIndex) next[row.postId] = row.attachmentIndex;
+                }
+                setAttachmentIndexByPostId(next);
+            } catch {
+                if (alive) setAttachmentIndexByPostId({});
+            }
+        })();
+        return () => {
+            alive = false;
+        };
+    }, [items]);
+
+    const renderAttachmentIndexStatus = (status?: IndexSyncStatus) => {
+        if (!status) return <span className="text-gray-400">加载中</span>;
+        const isOk = status.indexed;
+        const label = isOk ? (status.reason || '已同步') : (status.reason || '失败');
+        return (
+            <div className="flex items-center gap-2">
+                <span className={isOk ? 'text-emerald-700' : 'text-rose-700'}>{label}</span>
+                <span className="text-xs text-gray-500">({status.docCount ?? 0})</span>
+                {!isOk ? (
+                    <button
+                        type="button"
+                        className="text-blue-600 hover:underline text-xs"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const detail = [
+                                `状态: ${status.status ?? '-'}`,
+                                `原因: ${status.reason ?? '-'}`,
+                                `详情: ${status.detail ?? '-'}`,
+                                `索引: ${status.indexName ?? '-'}`,
+                                `文档数: ${status.docCount ?? 0}`,
+                            ].join('\n');
+                            window.alert(detail);
+                        }}
+                    >
+                        查看详情
+                    </button>
+                ) : null}
+            </div>
+        );
+    };
 
   const extractedImages = useMemo((): ExtractedImageItemDTO[] => {
     const list = detail?.extractedImages;
@@ -265,6 +329,7 @@ const PostFilesForm: React.FC = () => {
               <th className="text-left px-3 py-2">格式</th>
               <th className="text-left px-3 py-2">大小</th>
               <th className="text-left px-3 py-2">状态</th>
+                <th className="text-left px-3 py-2">附件索引</th>
               <th className="text-right px-3 py-2">耗时(ms)</th>
               <th className="text-right px-3 py-2">tokens</th>
               <th className="text-right px-3 py-2">图片数</th>
@@ -274,7 +339,7 @@ const PostFilesForm: React.FC = () => {
           <tbody>
             {items.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-gray-500">暂无数据</td>
+                  <td colSpan={10} className="px-3 py-8 text-center text-gray-500">暂无数据</td>
               </tr>
             )}
             {items.map((it) => (
@@ -287,6 +352,7 @@ const PostFilesForm: React.FC = () => {
                 <td className="px-3 py-2">{it.ext || it.mimeType || '—'}</td>
                 <td className="px-3 py-2">{fmtBytes(it.sizeBytes ?? undefined)}</td>
                 <td className="px-3 py-2">{it.extractStatus || '—'}</td>
+                  <td className="px-3 py-2">{renderAttachmentIndexStatus(attachmentIndexByPostId[it.postId])}</td>
                 <td className="px-3 py-2 text-right">{fmtNum(it.parseDurationMs ?? undefined)}</td>
                 <td className="px-3 py-2 text-right">{fmtNum(it.textTokenCount ?? undefined)}</td>
                 <td className="px-3 py-2 text-right">{fmtNum(it.imageCount ?? undefined)}</td>

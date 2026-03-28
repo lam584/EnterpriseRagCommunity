@@ -1,5 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { adminListComments, adminSetCommentDeleted, adminUpdateCommentStatus, createPostComment, listPostComments, toggleCommentLike } from './commentService';
+import {
+    adminListComments,
+    adminSetCommentDeleted,
+    adminUpdateCommentStatus,
+    createPostComment,
+    deleteMyComment,
+    listPostComments,
+    toggleCommentLike,
+} from './commentService';
 import { mockFetch, mockFetchJsonOnce, mockFetchResponseOnce } from '../testUtils/mockFetch';
 
 vi.mock('../utils/csrfUtils', () => {
@@ -77,6 +85,22 @@ describe('commentService', () => {
     await mockFetchJsonOnce({ ok: true, json: { likedByMe: true, likeCount: 2 } });
     await expect(toggleCommentLike(1)).resolves.toEqual({ likedByMe: true, likeCount: 2 });
   });
+
+    it('deleteMyComment sends csrf header and handles ok/error', async () => {
+        const fetchMock = mockFetch();
+        (fetchMock as any).mockResolvedValueOnce({ok: true, json: async () => ({})});
+        await expect(deleteMyComment(1)).resolves.toBeUndefined();
+
+        const init = (fetchMock as any).mock.calls[0]?.[1];
+        expect(init.method).toBe('DELETE');
+        expect(init.headers?.['X-XSRF-TOKEN']).toBe('csrf');
+
+        (fetchMock as any).mockResolvedValueOnce({ok: false, json: async () => ({message: '无权删除该评论'})});
+        await expect(deleteMyComment(1)).rejects.toThrow('无权删除该评论');
+
+        (fetchMock as any).mockResolvedValueOnce({ok: false, json: async () => ({})});
+        await expect(deleteMyComment(1)).rejects.toThrow('删除评论失败');
+    });
 
   it('adminListComments omits empty fields and uses page defaults', async () => {
     const fetchMock = mockFetchJsonOnce({ ok: true, json: { content: [] } });

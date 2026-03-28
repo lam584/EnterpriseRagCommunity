@@ -17,6 +17,8 @@ import java.util.Optional;
 public interface PostAttachmentsRepository extends JpaRepository<PostAttachmentsEntity, Long>, JpaSpecificationExecutor<PostAttachmentsEntity> {
     Page<PostAttachmentsEntity> findByPostId(Long postId, Pageable pageable);
 
+    List<PostAttachmentsEntity> findByPostId(Long postId);
+
     void deleteByPostId(Long postId);
 
     List<PostAttachmentsEntity> findByFileAssetIdIn(List<Long> fileAssetIds);

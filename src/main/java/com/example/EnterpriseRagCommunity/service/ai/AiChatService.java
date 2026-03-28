@@ -121,6 +121,21 @@ public class AiChatService {
     @Value("${app.upload.url-prefix:/uploads}")
     private String urlPrefix;
 
+    /**
+     * 当模型未按要求输出 [n] 时，兜底返回全部可用来源，避免前端“完全无引用”。
+     */
+    private static List<RagContextPromptService.CitationSource> resolveSourcesForOutput(
+            CitationConfigDTO citationCfg,
+            List<RagContextPromptService.CitationSource> sources,
+            String answerText
+    ) {
+        List<RagContextPromptService.CitationSource> cited = filterSourcesByCitations(sources, answerText);
+        if (cited != null && !cited.isEmpty()) return cited;
+        if (citationCfg == null || !Boolean.TRUE.equals(citationCfg.getEnabled())) return List.of();
+        if (sources == null || sources.isEmpty()) return List.of();
+        return sources;
+    }
+
     public void streamChat(AiChatStreamRequest req, Long currentUserId, HttpServletResponse response) throws IOException {
         if (currentUserId == null) {
             throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
@@ -194,7 +209,7 @@ public class AiChatService {
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        
+
         String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
         String systemPrompt = resolvePromptText(systemPromptCode);
 
@@ -494,7 +509,8 @@ public class AiChatService {
                     assistantAccum.append(normalized);
                 }
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
+                List<RagContextPromptService.CitationSource> citedSources = resolveSourcesForOutput(
+                        citationCfg,
                         sources,
                         assistantAccum.toString()
                 );
@@ -604,6 +620,15 @@ public class AiChatService {
         }
     }
 
+    public AiChatResponseDTO regenerateOnce(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId) {
+        if (currentUserId == null) {
+            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
+        }
+        if (questionMessageId == null) throw new IllegalArgumentException("questionMessageId is required");
+        if (req == null) throw new IllegalArgumentException("req is required");
+        return regenerateOnceInternal(questionMessageId, req, currentUserId);
+    }
+
     public AiChatResponseDTO chatOnce(AiChatStreamRequest req, Long currentUserId) {
         if (currentUserId == null) {
             throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
@@ -652,10 +677,10 @@ public class AiChatService {
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        
+
         String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
         String systemPrompt = resolvePromptText(systemPromptCode);
-        
+
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
@@ -927,7 +952,7 @@ public class AiChatService {
                     assistantAccum.append(normalized);
                 }
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                citedSourcesForDto = filterSourcesByCitations(sources, assistantAccum.toString());
+                citedSourcesForDto = resolveSourcesForOutput(citationCfg, sources, assistantAccum.toString());
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSourcesForDto);
                 if (sourcesText != null && !sourcesText.isBlank()) {
@@ -1003,13 +1028,39 @@ public class AiChatService {
         return dto;
     }
 
-    public AiChatResponseDTO regenerateOnce(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId) {
+    private static List<AiChatResponseDTO.AiCitationSourceDTO> toCitationSourceDtos(List<RagContextPromptService.CitationSource> sources) {
+        if (sources == null || sources.isEmpty()) return List.of();
+        int n = Math.min(200, sources.size());
+        List<AiChatResponseDTO.AiCitationSourceDTO> out = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            RagContextPromptService.CitationSource s = sources.get(i);
+            if (s == null) continue;
+            AiChatResponseDTO.AiCitationSourceDTO dto = new AiChatResponseDTO.AiCitationSourceDTO();
+            dto.setIndex(s.getIndex());
+            dto.setPostId(s.getPostId());
+            dto.setChunkIndex(s.getChunkIndex());
+            dto.setScore(s.getScore());
+            dto.setTitle(s.getTitle());
+            dto.setUrl(s.getUrl());
+            dto.setSnippet(s.getSnippet());
+            out.add(dto);
+        }
+        return out;
+    }
+
+    public void streamRegenerate(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
+            throws IOException {
+        doStreamRegenerate(questionMessageId, req, currentUserId, response);
+    }
+
+    private void doStreamRegenerate(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
+            throws IOException {
         if (currentUserId == null) {
             throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
         }
         if (questionMessageId == null) throw new IllegalArgumentException("questionMessageId is required");
         if (req == null) throw new IllegalArgumentException("req is required");
-        return regenerateOnceInternal(questionMessageId, req, currentUserId);
+        doStreamRegenerateInternal(questionMessageId, req, currentUserId, response);
     }
 
     private AiChatResponseDTO regenerateOnceInternal(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId) {
@@ -1050,10 +1101,10 @@ public class AiChatService {
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        
+
         String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
         String systemPrompt = resolvePromptText(systemPromptCode);
-        
+
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
@@ -1305,7 +1356,7 @@ public class AiChatService {
                     assistantAccum.append(normalized);
                 }
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                citedSourcesForDto = filterSourcesByCitations(sources, assistantAccum.toString());
+                citedSourcesForDto = resolveSourcesForOutput(citationCfg, sources, assistantAccum.toString());
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSourcesForDto);
                 if (sourcesText != null && !sourcesText.isBlank()) {
@@ -1373,39 +1424,90 @@ public class AiChatService {
         return dto;
     }
 
-    private static List<AiChatResponseDTO.AiCitationSourceDTO> toCitationSourceDtos(List<RagContextPromptService.CitationSource> sources) {
+    private static boolean hasItems(Collection<?> values) {
+        return values != null && !values.isEmpty();
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private static boolean shouldLoadHistory(AiChatStreamRequest req, QaSessionsEntity session) {
+        return !req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE;
+    }
+
+    private static boolean isHybridEnabled(HybridRetrievalConfigDTO cfg) {
+        return cfg != null && Boolean.TRUE.equals(cfg.getEnabled());
+    }
+
+    private static boolean isAugmentEnabled(ChatRagAugmentConfigDTO cfg) {
+        return cfg == null || cfg.getEnabled() == null || Boolean.TRUE.equals(cfg.getEnabled());
+    }
+
+    private static boolean isCommentsEnabled(ChatRagAugmentConfigDTO cfg) {
+        return cfg == null || cfg.getCommentsEnabled() == null || Boolean.TRUE.equals(cfg.getCommentsEnabled());
+    }
+
+    private static boolean shouldPersistRetrieval(AiChatStreamRequest req) {
+        return !req.getDryRun();
+    }
+
+    private static boolean isRagDebugEnabled(ChatRagAugmentConfigDTO cfg) {
+        return cfg != null && Boolean.TRUE.equals(cfg.getDebugEnabled());
+    }
+
+    private static boolean shouldWriteContextWindow(
+            AiChatStreamRequest req,
+            Long retrievalEventId,
+            RagContextPromptService.AssembleResult contextAssembled,
+            ContextClipConfigDTO contextCfg
+    ) {
+        return !req.getDryRun()
+                && retrievalEventId != null
+                && contextAssembled != null
+                && contextCfg != null
+                && Boolean.TRUE.equals(contextCfg.getLogEnabled());
+    }
+
+    private static boolean isBlankLine(String line) {
+        return line == null || line.isBlank();
+    }
+
+    private static boolean hasReasoningDelta(String reasoning, boolean[] thinkClosed) {
+        return reasoning != null && !reasoning.isEmpty() && !thinkClosed[0];
+    }
+
+    private static boolean hasContentDelta(String content) {
+        return content != null && !content.isEmpty();
+    }
+
+    private static boolean shouldAppendThinkCloseTag(StringBuilder assistantAccum, String content) {
+        return !assistantAccum.toString().trim().endsWith("</think>") && !content.trim().startsWith("</think>");
+    }
+
+    private static List<RagContextPromptService.CitationSource> filterSourcesByCitations(
+            List<RagContextPromptService.CitationSource> sources,
+            String answerText
+    ) {
         if (sources == null || sources.isEmpty()) return List.of();
-        int n = Math.min(200, sources.size());
-        List<AiChatResponseDTO.AiCitationSourceDTO> out = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) {
-            RagContextPromptService.CitationSource s = sources.get(i);
-            if (s == null) continue;
-            AiChatResponseDTO.AiCitationSourceDTO dto = new AiChatResponseDTO.AiCitationSourceDTO();
-            dto.setIndex(s.getIndex());
-            dto.setPostId(s.getPostId());
-            dto.setChunkIndex(s.getChunkIndex());
-            dto.setScore(s.getScore());
-            dto.setTitle(s.getTitle());
-            dto.setUrl(s.getUrl());
-            dto.setSnippet(s.getSnippet());
-            out.add(dto);
+        if (answerText == null || answerText.isBlank()) return List.of();
+
+        int maxIndex = 0;
+        for (RagContextPromptService.CitationSource s : sources) {
+            if (s == null || s.getIndex() == null) continue;
+            maxIndex = Math.max(maxIndex, s.getIndex());
+        }
+        if (maxIndex <= 0) return List.of();
+
+        Set<Integer> cited = extractCitationIndexes(answerText, maxIndex);
+        if (cited.isEmpty()) return List.of();
+
+        List<RagContextPromptService.CitationSource> out = new ArrayList<>();
+        for (RagContextPromptService.CitationSource s : sources) {
+            if (s == null || s.getIndex() == null) continue;
+            if (cited.contains(s.getIndex())) out.add(s);
         }
         return out;
-    }
-
-    public void streamRegenerate(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
-            throws IOException {
-        doStreamRegenerate(questionMessageId, req, currentUserId, response);
-    }
-
-    private void doStreamRegenerate(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
-            throws IOException {
-        if (currentUserId == null) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
-        }
-        if (questionMessageId == null) throw new IllegalArgumentException("questionMessageId is required");
-        if (req == null) throw new IllegalArgumentException("req is required");
-        doStreamRegenerateInternal(questionMessageId, req, currentUserId, response);
     }
 
     private void doStreamRegenerateInternal(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
@@ -1453,10 +1555,10 @@ public class AiChatService {
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
         boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        
+
         String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
         String systemPrompt = resolvePromptText(systemPromptCode);
-        
+
         messages.add(ChatMessage.system(systemPrompt));
         String userSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
         if (userSystemPrompt != null) {
@@ -1731,7 +1833,8 @@ public class AiChatService {
                     assistantAccum.append(normalized);
                 }
                 List<RagContextPromptService.CitationSource> sources = contextAssembled.getSources();
-                List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
+                List<RagContextPromptService.CitationSource> citedSources = resolveSourcesForOutput(
+                        citationCfg,
                         sources,
                         assistantAccum.toString()
                 );
@@ -1809,7 +1912,8 @@ public class AiChatService {
                 }
 
                 if (contextAssembled != null) {
-                    List<RagContextPromptService.CitationSource> citedSources = filterSourcesByCitations(
+                    List<RagContextPromptService.CitationSource> citedSources = resolveSourcesForOutput(
+                            citationCfg,
                             contextAssembled.getSources(),
                             assistantMsg.getContent()
                     );
@@ -1827,92 +1931,6 @@ public class AiChatService {
             out.write("data: {\"latencyMs\":" + latency + "}\n\n");
             out.flush();
         }
-    }
-
-    private static boolean hasItems(Collection<?> values) {
-        return values != null && !values.isEmpty();
-    }
-
-    private static boolean hasText(String value) {
-        return value != null && !value.isBlank();
-    }
-
-    private static boolean shouldLoadHistory(AiChatStreamRequest req, QaSessionsEntity session) {
-        return !req.getDryRun() && session.getId() != null && session.getId() > 0 && session.getContextStrategy() != ContextStrategy.NONE;
-    }
-
-    private static boolean isHybridEnabled(HybridRetrievalConfigDTO cfg) {
-        return cfg != null && Boolean.TRUE.equals(cfg.getEnabled());
-    }
-
-    private static boolean isAugmentEnabled(ChatRagAugmentConfigDTO cfg) {
-        return cfg == null || cfg.getEnabled() == null || Boolean.TRUE.equals(cfg.getEnabled());
-    }
-
-    private static boolean isCommentsEnabled(ChatRagAugmentConfigDTO cfg) {
-        return cfg == null || cfg.getCommentsEnabled() == null || Boolean.TRUE.equals(cfg.getCommentsEnabled());
-    }
-
-    private static boolean shouldPersistRetrieval(AiChatStreamRequest req) {
-        return !req.getDryRun();
-    }
-
-    private static boolean isRagDebugEnabled(ChatRagAugmentConfigDTO cfg) {
-        return cfg != null && Boolean.TRUE.equals(cfg.getDebugEnabled());
-    }
-
-    private static boolean shouldWriteContextWindow(
-            AiChatStreamRequest req,
-            Long retrievalEventId,
-            RagContextPromptService.AssembleResult contextAssembled,
-            ContextClipConfigDTO contextCfg
-    ) {
-        return !req.getDryRun()
-                && retrievalEventId != null
-                && contextAssembled != null
-                && contextCfg != null
-                && Boolean.TRUE.equals(contextCfg.getLogEnabled());
-    }
-
-    private static boolean isBlankLine(String line) {
-        return line == null || line.isBlank();
-    }
-
-    private static boolean hasReasoningDelta(String reasoning, boolean[] thinkClosed) {
-        return reasoning != null && !reasoning.isEmpty() && !thinkClosed[0];
-    }
-
-    private static boolean hasContentDelta(String content) {
-        return content != null && !content.isEmpty();
-    }
-
-    private static boolean shouldAppendThinkCloseTag(StringBuilder assistantAccum, String content) {
-        return !assistantAccum.toString().trim().endsWith("</think>") && !content.trim().startsWith("</think>");
-    }
-
-    private static List<RagContextPromptService.CitationSource> filterSourcesByCitations(
-            List<RagContextPromptService.CitationSource> sources,
-            String answerText
-    ) {
-        if (sources == null || sources.isEmpty()) return List.of();
-        if (answerText == null || answerText.isBlank()) return List.of();
-
-        int maxIndex = 0;
-        for (RagContextPromptService.CitationSource s : sources) {
-            if (s == null || s.getIndex() == null) continue;
-            maxIndex = Math.max(maxIndex, s.getIndex());
-        }
-        if (maxIndex <= 0) return List.of();
-
-        Set<Integer> cited = extractCitationIndexes(answerText, maxIndex);
-        if (cited.isEmpty()) return List.of();
-
-        List<RagContextPromptService.CitationSource> out = new ArrayList<>();
-        for (RagContextPromptService.CitationSource s : sources) {
-            if (s == null || s.getIndex() == null) continue;
-            if (cited.contains(s.getIndex())) out.add(s);
-        }
-        return out;
     }
 
     private static Set<Integer> extractCitationIndexes(String text, int maxIndex) {

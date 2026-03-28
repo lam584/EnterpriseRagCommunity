@@ -96,6 +96,28 @@ describe('MarkdownEditor', () => {
     expect(screen.getByText('hello world')).not.toBeNull();
   });
 
+    it('readOnly 模式允许切换预览但禁止编辑与文件插入', async () => {
+        const user = userEvent.setup();
+        const onChange = vi.fn();
+        const {container} = render(<MarkdownEditor value={{markdown: 'locked'}} onChange={onChange} readOnly/>);
+
+        const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+        expect(textarea.readOnly).toBe(true);
+
+        fireEvent.change(textarea, {target: {value: 'changed'}});
+        expect(onChange).not.toHaveBeenCalled();
+        expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('locked');
+
+        const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+        expect(fileInput.disabled).toBe(true);
+
+        await user.click(screen.getByRole('button', {name: '预览'}));
+        expect(screen.getByText('locked')).not.toBeNull();
+
+        await user.click(screen.getByRole('button', {name: '编辑'}));
+        expect(screen.getByRole('textbox')).not.toBeNull();
+    });
+
   it('会从外部 value.markdown 同步到内部输入框值', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

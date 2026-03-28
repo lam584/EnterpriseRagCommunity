@@ -95,9 +95,9 @@ public class AdminRiskTagsController {
     public ResponseEntity<TagsDTO> update(@PathVariable("id") Long id, @Valid @RequestBody TagsUpdateDTO updateDTO) {
         if (updateDTO == null) updateDTO = new TagsUpdateDTO();
         updateDTO.setId(id);
-        updateDTO.getType().ifPresent(t -> {
-            if (t != TagType.RISK) throw new IllegalArgumentException("风险标签类型不可修改");
-        });
+        if (updateDTO.getType() != null && updateDTO.getType() != TagType.RISK) {
+            throw new IllegalArgumentException("风险标签类型不可修改");
+        }
 
         TagsEntity current = tagsRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("审核标签不存在: " + id));
         if (current.getType() != TagType.RISK) {

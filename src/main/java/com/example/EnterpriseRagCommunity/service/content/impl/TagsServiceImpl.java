@@ -143,34 +143,34 @@ public class TagsServiceImpl implements TagsService {
         TagsEntity entity = tagsRepository.findById(updateDTO.getId())
                 .orElseThrow(() -> new RuntimeException("Tag not found with id: " + updateDTO.getId()));
 
-        if (updateDTO.getTenantId() != null && updateDTO.getTenantId().isPresent()) {
-            entity.setTenantId(updateDTO.getTenantId().get());
+        if (updateDTO.getTenantId() != null) {
+            entity.setTenantId(updateDTO.getTenantId());
         }
-        if (updateDTO.getType() != null && updateDTO.getType().isPresent()) {
-            entity.setType(updateDTO.getType().get());
+        if (updateDTO.getType() != null) {
+            entity.setType(updateDTO.getType());
         }
-        if (updateDTO.getName() != null && updateDTO.getName().isPresent()) {
-            entity.setName(updateDTO.getName().get() == null ? null : updateDTO.getName().get().trim());
+        if (updateDTO.getName() != null) {
+            entity.setName(updateDTO.getName().trim());
         }
-        if (updateDTO.getSlug() != null && updateDTO.getSlug().isPresent()) {
-            entity.setSlug(updateDTO.getSlug().get() == null ? null : updateDTO.getSlug().get().trim());
+        if (updateDTO.getSlug() != null) {
+            entity.setSlug(updateDTO.getSlug().trim());
         }
-        if (updateDTO.getDescription() != null && updateDTO.getDescription().isPresent()) {
-            entity.setDescription(StringUtils.hasText(updateDTO.getDescription().get()) ? updateDTO.getDescription().get().trim() : null);
+        if (updateDTO.getDescription() != null) {
+            entity.setDescription(StringUtils.hasText(updateDTO.getDescription()) ? updateDTO.getDescription().trim() : null);
         }
-        if (updateDTO.getIsSystem() != null && updateDTO.getIsSystem().isPresent()) {
-            entity.setIsSystem(updateDTO.getIsSystem().get());
+        if (updateDTO.getIsSystem() != null) {
+            entity.setIsSystem(updateDTO.getIsSystem());
         }
-        if (updateDTO.getIsActive() != null && updateDTO.getIsActive().isPresent()) {
-            entity.setIsActive(updateDTO.getIsActive().get());
+        if (updateDTO.getIsActive() != null) {
+            entity.setIsActive(updateDTO.getIsActive());
         }
-        if (updateDTO.getThreshold() != null && updateDTO.getThreshold().isPresent()) {
-            entity.setThreshold(updateDTO.getThreshold().get());
+        if (updateDTO.getThreshold() != null) {
+            entity.setThreshold(updateDTO.getThreshold());
         }
 
         // createdAt 只读：即使前端传入也忽略（DTO 已标注只读）
 
-        if (updateDTO.getSlug() != null && updateDTO.getSlug().isPresent()) {
+        if (updateDTO.getSlug() != null) {
             validateSlug(entity.getType(), entity.getSlug());
         }
 

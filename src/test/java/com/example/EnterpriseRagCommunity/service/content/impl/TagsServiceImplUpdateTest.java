@@ -83,15 +83,15 @@ class TagsServiceImplUpdateTest {
 
         TagsUpdateDTO dto = new TagsUpdateDTO();
         dto.setId(10L);
-        dto.setTenantId(Optional.of(2L));
-        dto.setType(Optional.of(TagType.RISK));
-        dto.setName(Optional.of("  New Name  "));
-        dto.setSlug(Optional.of("软-色情"));
-        dto.setDescription(Optional.of("   "));
-        dto.setIsSystem(Optional.of(Boolean.TRUE));
-        dto.setIsActive(Optional.of(Boolean.FALSE));
-        dto.setThreshold(Optional.of(0.5));
-        dto.setCreatedAt(Optional.of(LocalDateTime.now().minusDays(1)));
+        dto.setTenantId(2L);
+        dto.setType(TagType.RISK);
+        dto.setName("  New Name  ");
+        dto.setSlug("软-色情");
+        dto.setDescription("   ");
+        dto.setIsSystem(Boolean.TRUE);
+        dto.setIsActive(Boolean.FALSE);
+        dto.setThreshold(0.5);
+        dto.setCreatedAt(LocalDateTime.now().minusDays(1));
 
         TagsEntity saved = service.update(dto);
 
@@ -122,7 +122,7 @@ class TagsServiceImplUpdateTest {
 
         TagsUpdateDTO dto = new TagsUpdateDTO();
         dto.setId(10L);
-        dto.setSlug(Optional.of("new-slug"));
+        dto.setSlug("new-slug");
 
         assertThatThrownBy(() -> service.update(dto))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -130,7 +130,7 @@ class TagsServiceImplUpdateTest {
     }
 
     @Test
-    void update_shouldSetNullNameWhenOptionalGetReturnsNull() {
+    void update_shouldSetNullNameWhenProvidedNull() {
         TagsRepository tagsRepository = mock(TagsRepository.class);
         PostTagRepository postTagRepository = mock(PostTagRepository.class);
         TagsServiceImpl service = new TagsServiceImpl(tagsRepository, postTagRepository);
@@ -141,21 +141,16 @@ class TagsServiceImplUpdateTest {
                 .thenReturn(Optional.empty());
         when(tagsRepository.save(any(TagsEntity.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        @SuppressWarnings("unchecked")
-        Optional<String> optionalPresentNull = mock(Optional.class);
-        when(optionalPresentNull.isPresent()).thenReturn(true);
-        when(optionalPresentNull.get()).thenReturn(null);
-
         TagsUpdateDTO dto = new TagsUpdateDTO();
         dto.setId(10L);
-        dto.setName(optionalPresentNull);
+        dto.setName(null);
 
         TagsEntity saved = service.update(dto);
-        assertThat(saved.getName()).isNull();
+        assertThat(saved.getName()).isEqualTo("Old Name");
     }
 
     @Test
-    void update_shouldThrowWhenSlugOptionalGetReturnsNullAndTriggersValidation() {
+    void update_shouldThrowWhenSlugBlankAndTriggersValidation() {
         TagsRepository tagsRepository = mock(TagsRepository.class);
         PostTagRepository postTagRepository = mock(PostTagRepository.class);
         TagsServiceImpl service = new TagsServiceImpl(tagsRepository, postTagRepository);
@@ -163,14 +158,9 @@ class TagsServiceImplUpdateTest {
         TagsEntity entity = baseEntity();
         when(tagsRepository.findById(10L)).thenReturn(Optional.of(entity));
 
-        @SuppressWarnings("unchecked")
-        Optional<String> optionalPresentNull = mock(Optional.class);
-        when(optionalPresentNull.isPresent()).thenReturn(true);
-        when(optionalPresentNull.get()).thenReturn(null);
-
         TagsUpdateDTO dto = new TagsUpdateDTO();
         dto.setId(10L);
-        dto.setSlug(optionalPresentNull);
+        dto.setSlug("   ");
 
         assertThatThrownBy(() -> service.update(dto))
                 .isInstanceOf(IllegalArgumentException.class)

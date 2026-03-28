@@ -276,13 +276,18 @@ public class QaHistoryService {
             return Page.empty();
         }
 
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(1, Math.min(size, 200));
+
         // BOOLEAN MODE: append * for prefix matching to make UX friendlier.
         String booleanQ = toBooleanModeQuery(query);
 
-        Pageable pageable = PageRequest.of(page, size);
+        int from = safePage * safeSize;
+        int fetchLimit = Math.min(2000, Math.max(safeSize * 2, from + safeSize));
+        Pageable fetchPageable = PageRequest.of(0, fetchLimit);
 
-        Page<QaSessionsEntity> sessionHits = qaSessionsRepository.searchByTitleFulltext(userId, booleanQ, pageable);
-        Page<QaMessagesEntity> messageHits = qaMessagesRepository.searchMyMessagesFulltext(userId, booleanQ, pageable);
+        Page<QaSessionsEntity> sessionHits = qaSessionsRepository.searchByTitleFulltext(userId, booleanQ, fetchPageable);
+        Page<QaMessagesEntity> messageHits = qaMessagesRepository.searchMyMessagesFulltext(userId, booleanQ, fetchPageable);
 
         // merge into a simple Page-like structure (best-effort). For v1, concatenate and cap size.
         List<QaSearchHitDTO> merged = new ArrayList<>();
@@ -313,11 +318,12 @@ public class QaHistoryService {
             return b.getCreatedAt().compareTo(a.getCreatedAt());
         });
 
-        int from = Math.min(page * size, merged.size());
-        int to = Math.min(from + size, merged.size());
-        List<QaSearchHitDTO> slice = merged.subList(from, to);
+        int safeFrom = Math.min(from, merged.size());
+        int to = Math.min(safeFrom + safeSize, merged.size());
+        long total = Math.max(0L, sessionHits.getTotalElements()) + Math.max(0L, messageHits.getTotalElements());
+        List<QaSearchHitDTO> slice = merged.subList(safeFrom, to);
 
-        return new org.springframework.data.domain.PageImpl<>(slice, pageable, merged.size());
+        return new org.springframework.data.domain.PageImpl<>(slice, PageRequest.of(safePage, safeSize), total);
     }
 
     @Transactional

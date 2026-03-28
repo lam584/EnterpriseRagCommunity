@@ -43,6 +43,7 @@ import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 
 import jakarta.transaction.Transactional;
 
@@ -106,6 +107,9 @@ public class CommentsServiceImpl implements CommentsService {
 
     @Autowired
     private AuditLogWriter auditLogWriter;
+
+    @Autowired
+    private RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
 
     private static String extractProfileString(UsersEntity u, String key) {
         if (u == null || u.getMetadata() == null) return null;
@@ -281,6 +285,110 @@ public class CommentsServiceImpl implements CommentsService {
             );
             throw ex;
         }
+    }
+
+    @Override
+    @Transactional
+    public void deleteOwnComment(Long commentId) {
+        if (commentId == null) throw new IllegalArgumentException("commentId 不能为空");
+
+        Long me = null;
+        String actorName = currentUsernameOrNull();
+        try {
+            me = currentUserIdOrThrow();
+
+            CommentsEntity comment = commentsRepository.findById(commentId)
+                    .orElseThrow(() -> new IllegalArgumentException("评论不存在: " + commentId));
+
+            if (Boolean.TRUE.equals(comment.getIsDeleted())) {
+                return;
+            }
+
+            boolean isAuthor = comment.getAuthorId() != null && comment.getAuthorId().equals(me);
+            if (!isAuthor) {
+                throw new IllegalArgumentException("无权删除该评论");
+            }
+
+            comment.setIsDeleted(true);
+            comment.setUpdatedAt(LocalDateTime.now());
+
+            CommentsEntity saved = commentsRepository.save(comment);
+            moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.COMMENT, saved.getId())
+                    .ifPresent(moderationQueueRepository::delete);
+            ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+
+            Map<String, Object> successDetails = new HashMap<>();
+            successDetails.put("postId", saved.getPostId());
+            successDetails.put("status", saved.getStatus() == null ? null : saved.getStatus().name());
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "COMMENT_DELETE",
+                    "COMMENT",
+                    saved.getId(),
+                    AuditResult.SUCCESS,
+                    "删除评论",
+                    null,
+                    successDetails
+            );
+        } catch (RuntimeException ex) {
+            Map<String, Object> failDetails = new HashMap<>();
+            failDetails.put("commentId", commentId);
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "COMMENT_DELETE",
+                    "COMMENT",
+                    commentId,
+                    AuditResult.FAIL,
+                    safeText(ex.getMessage(), 512),
+                    null,
+                    failDetails
+            );
+            throw ex;
+        }
+    }
+
+    @Override
+    public Page<CommentDTO> listMyComments(int page, int pageSize, String keyword) {
+        Long me = currentUserIdOrThrow();
+        int safePage = Math.max(page, 1);
+        int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
+        Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Page<CommentsEntity> entityPage;
+        if (keyword != null && !keyword.isBlank()) {
+            entityPage = commentsRepository.findAll((root, query, cb) ->
+                    cb.and(
+                            cb.equal(root.get("authorId"), me),
+                            cb.equal(root.get("isDeleted"), false),
+                            cb.like(root.get("content"), "%" + keyword + "%")
+                    ), pageable);
+        } else {
+            entityPage = commentsRepository.findByAuthorIdAndIsDeletedFalse(me, pageable);
+        }
+
+        List<CommentsEntity> entities = entityPage.getContent();
+        List<CommentDTO> dtos = entities.stream().map(CommentsServiceImpl::toDTO).toList();
+
+        // 批量获取帖子信息以填充标题（用于前端展示）
+        Set<Long> postIds = entities.stream().map(CommentsEntity::getPostId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> postTitles = new HashMap<>();
+        if (!postIds.isEmpty()) {
+            postsRepository.findAllById(postIds).forEach(p -> postTitles.put(p.getId(), p.getTitle()));
+        }
+
+        for (CommentDTO dto : dtos) {
+            if (dto.getPostId() != null) {
+                String title = postTitles.get(dto.getPostId());
+                if (title != null) {
+                    if (dto.getMetadata() == null) dto.setMetadata(new HashMap<>());
+                    dto.getMetadata().put("postTitle", title);
+                }
+            }
+        }
+
+        return new PageImpl<>(dtos, pageable, entityPage.getTotalElements());
     }
 
     @Override

@@ -231,7 +231,7 @@ class AdminRiskTagsControllerBranchTest {
         AdminRiskTagsController controller = new AdminRiskTagsController(
                 tagsService, tagsRepository, riskLabelingRepository, auditLogWriter, auditDiffBuilder);
         TagsUpdateDTO dto = new TagsUpdateDTO();
-        dto.setType(Optional.of(TagType.TOPIC));
+        dto.setType(TagType.TOPIC);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> controller.update(55L, dto));
 

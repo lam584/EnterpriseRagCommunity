@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, fireEvent, cleanup } from '@testing-library/react';
+import {render, screen, within, fireEvent, cleanup, waitFor} from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 vi.mock('../../../../services/postService', () => ({
@@ -12,6 +12,13 @@ vi.mock('../../../../services/commentService', () => ({
   listPostComments: vi.fn(),
   createPostComment: vi.fn(),
   toggleCommentLike: vi.fn(),
+    deleteMyComment: vi.fn(),
+}));
+
+vi.mock('../../../../contexts/AuthContext', () => ({
+    useAuth: vi.fn(() => ({
+        currentUser: {id: 7, email: 'me@example.com', username: 'me', isDeleted: false},
+    })),
 }));
 
 vi.mock('../../../../services/translateService', () => ({
@@ -35,7 +42,7 @@ vi.mock('../../../../services/reportService', () => ({
 
 import PostDetailPage from './PostDetailPage';
 import { getPost } from '../../../../services/postService';
-import { listPostComments } from '../../../../services/commentService';
+import {deleteMyComment, listPostComments} from '../../../../services/commentService';
 import { getTranslateConfig } from '../../../../services/translateService';
 import { getMyTranslatePreferences } from '../../../../services/accountPreferencesService';
 import { listTags } from '../../../../services/tagService';
@@ -236,4 +243,181 @@ describe('PostDetailPage (comments)', () => {
     await new Promise((r) => setTimeout(r, 80));
     expect(scrollSpy).toHaveBeenCalled();
   });
+
+    it('shows expand button when comment content exceeds 8 lines and toggles collapse', async () => {
+        const originScrollHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+        const originClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+
+        Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+            configurable: true,
+            get() {
+                return (this as HTMLElement).dataset?.commentContentId ? 360 : 0;
+            },
+        });
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+            configurable: true,
+            get() {
+                return (this as HTMLElement).dataset?.commentContentId ? 120 : 0;
+            },
+        });
+
+        try {
+            const comments = [
+                {
+                    id: 301,
+                    postId: 1,
+                    parentId: null,
+                    authorId: 9,
+                    content: Array.from({length: 12}, (_, i) => `第${i + 1}行`).join('\n'),
+                    authorName: 'Long',
+                    createdAt: '2026-01-01T00:00:00Z',
+                    metadata: {languages: ['en']},
+                },
+            ];
+
+            (listTags as any).mockResolvedValue([]);
+            (getTranslateConfig as any).mockResolvedValue({enabled: true, allowedTargetLanguages: []});
+            (getMyTranslatePreferences as any).mockResolvedValue({
+                targetLanguage: '简体中文（Simplified Chinese）',
+                autoTranslatePosts: false,
+                autoTranslateComments: false,
+            });
+            (getPost as any).mockResolvedValue({
+                id: 1,
+                boardId: 1,
+                title: 't',
+                content: 'c',
+                contentFormat: 'MARKDOWN',
+                metadata: {languages: ['zh']},
+                tags: [],
+                hotScore: 0,
+                likedByMe: false,
+                favoritedByMe: false,
+                reactionCount: 0,
+                favoriteCount: 0,
+                commentCount: comments.length,
+            });
+            (listPostComments as any).mockResolvedValue({
+                content: comments,
+                totalPages: 1,
+                totalElements: comments.length,
+                number: 0,
+                size: 20,
+            });
+
+            render(
+                <MemoryRouter initialEntries={['/posts/1']}>
+                    <Routes>
+                        <Route path="/posts/:postId" element={<PostDetailPage/>}/>
+                    </Routes>
+                </MemoryRouter>,
+            );
+
+            const contentEl = await screen.findByTestId('comment-content-301');
+            const expandBtn = await screen.findByRole('button', {name: '展开'});
+            expect(contentEl.className).toContain('[-webkit-line-clamp:8]');
+
+            fireEvent.click(expandBtn);
+            await screen.findByRole('button', {name: '折叠'});
+            expect(contentEl.className).not.toContain('[-webkit-line-clamp:8]');
+
+            fireEvent.click(screen.getByRole('button', {name: '折叠'}));
+            await screen.findByRole('button', {name: '展开'});
+            expect(contentEl.className).toContain('[-webkit-line-clamp:8]');
+        } finally {
+            if (originScrollHeight) {
+                Object.defineProperty(HTMLElement.prototype, 'scrollHeight', originScrollHeight);
+            }
+            if (originClientHeight) {
+                Object.defineProperty(HTMLElement.prototype, 'clientHeight', originClientHeight);
+            }
+        }
+    });
+
+    it('shows delete button only for current user comments and triggers delete API', async () => {
+        const comments = [
+            {
+                id: 201,
+                postId: 1,
+                parentId: null,
+                authorId: 7,
+                content: 'mine',
+                authorName: 'Me',
+                createdAt: '2026-01-01T00:00:00Z',
+                metadata: {languages: ['en']},
+            },
+            {
+                id: 202,
+                postId: 1,
+                parentId: null,
+                authorId: 9,
+                content: 'other',
+                authorName: 'Other',
+                createdAt: '2026-01-02T00:00:00Z',
+                metadata: {languages: ['en']},
+            },
+        ];
+
+        (listTags as any).mockResolvedValue([]);
+        (getTranslateConfig as any).mockResolvedValue({enabled: true, allowedTargetLanguages: []});
+        (getMyTranslatePreferences as any).mockResolvedValue({
+            targetLanguage: '简体中文（Simplified Chinese）',
+            autoTranslatePosts: false,
+            autoTranslateComments: false,
+        });
+        (getPost as any).mockResolvedValue({
+            id: 1,
+            boardId: 1,
+            title: 't',
+            content: 'c',
+            contentFormat: 'MARKDOWN',
+            metadata: {languages: ['zh']},
+            tags: [],
+            hotScore: 0,
+            likedByMe: false,
+            favoritedByMe: false,
+            reactionCount: 0,
+            favoriteCount: 0,
+            commentCount: comments.length,
+        });
+        (listPostComments as any)
+            .mockResolvedValueOnce({
+                content: comments,
+                totalPages: 1,
+                totalElements: comments.length,
+                number: 0,
+                size: 20,
+            })
+            .mockResolvedValueOnce({
+                content: comments.filter((c) => c.id !== 201),
+                totalPages: 1,
+                totalElements: comments.length - 1,
+                number: 0,
+                size: 20,
+            });
+        (deleteMyComment as any).mockResolvedValue(undefined);
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+        render(
+            <MemoryRouter initialEntries={['/posts/1']}>
+                <Routes>
+                    <Route path="/posts/:postId" element={<PostDetailPage/>}/>
+                </Routes>
+            </MemoryRouter>,
+        );
+
+        const mineCard = (await screen.findByText('mine')).closest('.rounded-lg') as HTMLElement;
+        const otherCard = (await screen.findByText('other')).closest('.rounded-lg') as HTMLElement;
+
+        const mineDeleteBtn = within(mineCard).getByRole('button', {name: '删除'});
+        expect(mineDeleteBtn).not.toBeNull();
+        expect(within(otherCard).queryByRole('button', {name: '删除'})).toBeNull();
+
+        fireEvent.click(mineDeleteBtn);
+
+        expect(confirmSpy).toHaveBeenCalled();
+        await waitFor(() => {
+            expect(deleteMyComment).toHaveBeenCalledWith(201);
+        });
+    });
 });

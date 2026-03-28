@@ -126,6 +126,33 @@ export async function toggleCommentLike(commentId: number): Promise<CommentToggl
   return data as CommentToggleResponseDTO;
 }
 
+export async function deleteMyComment(commentId: number): Promise<void> {
+  const csrfToken = await getCsrfToken();
+  const res = await fetch(apiUrl(`/api/comments/${commentId}`), {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': csrfToken,
+    },
+    credentials: 'include',
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '删除评论失败');
+}
+
+export async function listMyComments(page = 1, pageSize = 20, keyword?: string): Promise<SpringPage<CommentDTO>> {
+  const qs = buildQuery({page, pageSize, keyword});
+  const res = await fetch(apiUrl(`/api/comments/mine${qs}`), {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取我的评论失败');
+  return data as SpringPage<CommentDTO>;
+}
+
 export async function adminListComments(query: CommentAdminQuery = {}): Promise<SpringPage<CommentAdminDTO>> {
   const qs = buildQuery({
     page: query.page ?? 1,

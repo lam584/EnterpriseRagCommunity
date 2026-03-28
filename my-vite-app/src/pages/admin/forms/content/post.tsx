@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { listBoards, type BoardDTO } from '../../../../services/boardService';
 import { type PostDTO, type PostStatus, searchAdminPosts, updatePostStatus } from '../../../../services/postService';
+import {batchPostIndexSyncStatus, type IndexSyncStatus} from '../../../../services/retrievalIndexSyncAdminService';
 import { useAccess } from '../../../../contexts/AccessContext';
 
 // Lazy-load heavy markdown renderer to avoid blocking the main thread during route/menu switches.
@@ -37,6 +38,10 @@ const PostAdminManage: React.FC = () => {
   // 结果集
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<PostDTO[]>([]);
+    const [indexStatusByPostId, setIndexStatusByPostId] = useState<Record<number, {
+        post?: IndexSyncStatus;
+        attachment?: IndexSyncStatus
+    }>>({});
 
   // 分页（后端 page 从 1 开始）
   const [page, setPage] = useState(1);
@@ -146,6 +151,35 @@ const PostAdminManage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessLoading, canRead]);
 
+    useEffect(() => {
+        if (!canRead || items.length === 0) {
+            setIndexStatusByPostId({});
+            return;
+        }
+        let alive = true;
+        (async () => {
+            try {
+                const postIds = items.map((x) => x.id).filter((x): x is number => typeof x === 'number');
+                if (postIds.length === 0) {
+                    if (alive) setIndexStatusByPostId({});
+                    return;
+                }
+                const rows = await batchPostIndexSyncStatus(postIds);
+                if (!alive) return;
+                const next: Record<number, { post?: IndexSyncStatus; attachment?: IndexSyncStatus }> = {};
+                for (const r of rows) {
+                    next[r.postId] = {post: r.postIndex, attachment: r.attachmentIndex};
+                }
+                setIndexStatusByPostId(next);
+            } catch {
+                if (alive) setIndexStatusByPostId({});
+            }
+        })();
+        return () => {
+            alive = false;
+        };
+    }, [items, canRead]);
+
   const confirmAndGetReason = (next: PostStatus): string | undefined => {
     let needReason = false;
     let actionLabel = '';
@@ -200,6 +234,36 @@ const PostAdminManage: React.FC = () => {
     if (compact.length <= maxLen) return compact;
     return `${compact.slice(0, maxLen)}…`;
   };
+
+    const renderIndexStatus = (status?: IndexSyncStatus) => {
+        if (!status) return <span className="text-gray-400">加载中</span>;
+        const isOk = status.indexed;
+        const label = isOk ? (status.reason || '已同步') : (status.reason || '失败');
+        return (
+            <div className="flex items-center gap-2">
+                <span className={isOk ? 'text-emerald-700' : 'text-rose-700'}>{label}</span>
+                <span className="text-xs text-gray-500">({status.docCount ?? 0})</span>
+                {!isOk ? (
+                    <button
+                        type="button"
+                        className="text-blue-600 hover:underline text-xs"
+                        onClick={() => {
+                            const detail = [
+                                `状态: ${status.status ?? '-'}`,
+                                `原因: ${status.reason ?? '-'}`,
+                                `详情: ${status.detail ?? '-'}`,
+                                `索引: ${status.indexName ?? '-'}`,
+                                `文档数: ${status.docCount ?? 0}`,
+                            ].join('\n');
+                            window.alert(detail);
+                        }}
+                    >
+                        查看详情
+                    </button>
+                ) : null}
+            </div>
+        );
+    };
 
   const PreviewModal: React.FC<{ post: PostDTO; onClose: () => void }> = ({ post, onClose }) => {
     const content = post.content ?? '';
@@ -354,6 +418,7 @@ const PostAdminManage: React.FC = () => {
                   <th className="py-2 pr-4">板块</th>
                   <th className="py-2 pr-4">作者</th>
                   <th className="py-2 pr-4">状态</th>
+                    <th className="py-2 pr-4">帖子索引</th>
                   <th className="py-2 pr-4">创建时间</th>
                   <th className="py-2 pr-4">操作</th>
                 </tr>
@@ -383,6 +448,7 @@ const PostAdminManage: React.FC = () => {
                         ))}
                       </select>
                     </td>
+                      <td className="py-2 pr-4">{renderIndexStatus(indexStatusByPostId[p.id]?.post)}</td>
                     <td className="py-2 pr-4">{formatDateTime(p.createdAt)}</td>
                     <td className="py-2 pr-4">
                       <button

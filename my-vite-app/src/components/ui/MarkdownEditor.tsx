@@ -121,6 +121,7 @@ export default function MarkdownEditor(props: {
   onBoxHeightChange?: (heightPx: number) => void;
   editorHeightPx?: number;
   toolbarAfterTabs?: ReactNode;
+    readOnly?: boolean;
 }) {
   const {
     value,
@@ -132,6 +133,7 @@ export default function MarkdownEditor(props: {
     onBoxHeightChange,
     editorHeightPx,
     toolbarAfterTabs,
+      readOnly,
   } = props;
   const [tab, setTab] = useState<'edit' | 'preview'>('edit');
 
@@ -208,6 +210,7 @@ export default function MarkdownEditor(props: {
   };
 
   const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      if (readOnly) return;
     // Prefer file paste (images/screenshots) and other attachments.
     // If no files, let normal paste happen.
     const dt = e.clipboardData;
@@ -286,12 +289,17 @@ export default function MarkdownEditor(props: {
         </div>
 
         <div className="flex items-center gap-2">
-          <label className="px-3 py-1.5 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer">
+            <label
+                className={`px-3 py-1.5 text-sm rounded-md border border-gray-200 bg-white ${
+                    readOnly ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-50 cursor-pointer'
+                }`}
+            >
             插入文件
             <input
               type="file"
               className="hidden"
               accept={fileAccept}
+              disabled={readOnly}
               onChange={async (e) => {
                 const f = e.target.files?.[0];
                 e.target.value = '';
@@ -313,7 +321,9 @@ export default function MarkdownEditor(props: {
           ref={textareaRef}
           value={live}
           onPaste={handlePaste}
+          readOnly={readOnly}
           onChange={(e) => {
+              if (readOnly) return;
             setLive(e.target.value);
             onChange({ markdown: e.target.value });
           }}

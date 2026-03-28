@@ -30,6 +30,19 @@ describe('qaHistoryService', () => {
     expect(lastCall()?.[1]?.headers).toMatchObject({ 'Content-Type': 'application/json', 'X-XSRF-TOKEN': 'csrf' });
   });
 
+    it('listQaSessions supports spring page envelope format', async () => {
+        const {listQaSessions} = await import('./qaHistoryService');
+        const {replyOnce} = installFetchMock();
+        replyOnce({ok: true, json: {content: [], page: {totalElements: 12, number: 0, size: 10}}});
+
+        await expect(listQaSessions(0, 10)).resolves.toMatchObject({
+            content: [],
+            totalElements: 12,
+            number: 0,
+            size: 10
+        });
+    });
+
   it('deleteQaSession returns undefined on 204 No Content', async () => {
     const { deleteQaSession } = await import('./qaHistoryService');
     const { replyOnce } = installFetchMock();
