@@ -218,7 +218,7 @@ describe('p0ModerationRetrievalRisk', () => {
     const { adminListVectorIndices, adminCreateVectorIndex, adminUpdateVectorIndex, adminDeleteVectorIndex, adminBuildPostRagIndex, adminRebuildPostRagIndex, adminSyncPostRagIndex, adminGetRagAutoSyncConfig, adminUpdateRagAutoSyncConfig, adminTestQueryPostRagIndex } =
       await import('./retrievalVectorIndexService');
     await adminListVectorIndices({ page: 0, size: 20 });
-    await adminCreateVectorIndex({ name: 'n', embeddingProviderId: 'p', embeddingModel: 'm', dims: 1 } as any);
+      await adminCreateVectorIndex({name: 'n', embeddingProviderId: 'p', dims: 1} as any);
     await adminUpdateVectorIndex({ id: 1, name: 'n' } as any);
     await adminDeleteVectorIndex(1);
     await adminBuildPostRagIndex({ indexId: 1, boardIds: [1] } as any);

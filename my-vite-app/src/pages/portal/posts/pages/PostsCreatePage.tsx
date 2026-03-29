@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+﻿import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
 import MarkdownEditor from '../../../../components/ui/MarkdownEditor';
 import { createPost, getPost, updatePost, type PostDTO } from '../../../../services/postService';
@@ -37,71 +37,16 @@ import {
 import type { PostsOutletContext } from '../PostsLayout';
 import PostComposeAssistantWindow from '../components/PostComposeAssistantWindow';
 import PostUploadTransferWindow, { type UploadItem as TransferUploadItem } from '../components/PostUploadTransferWindow';
-
-function getErrorMessage(e: unknown, fallback: string) {
-  if (e && typeof e === 'object' && 'message' in e) {
-    const m = (e as { message?: unknown }).message;
-    if (typeof m === 'string') return m;
-  }
-  return fallback;
-}
-
-function getFieldErrors(e: unknown): Record<string, string> | undefined {
-  if (!e || typeof e !== 'object') return undefined;
-  if (!('fieldErrors' in e)) return undefined;
-  const fe = (e as { fieldErrors?: unknown }).fieldErrors;
-  if (!fe || typeof fe !== 'object') return undefined;
-  // fieldErrors is expected like: { title: '...', content: '...' }
-  return fe as Record<string, string>;
-}
-
-type UploadItemStatus = 'uploading' | 'verifying' | 'finalizing' | 'paused' | 'done' | 'error' | 'canceled';
-
-type UploadItemDedupeStatus = 'hashing' | 'checking' | 'hit' | 'miss' | 'error' | null;
-
-type UploadItem = {
-  id: string;
-  kind: 'image' | 'attachment';
-  fileName: string;
-  fileSize: number;
-  status: UploadItemStatus;
-  dedupeStatus: UploadItemDedupeStatus;
-  sha256: string | null;
-  hashLoaded: number;
-  hashTotal: number;
-  loaded: number;
-  total: number;
-  speedBps: number | null;
-  etaSeconds: number | null;
-  lastTickAtMs: number | null;
-  lastLoaded: number;
-  speedSampleAtMs: number | null;
-  speedSampleLoaded: number;
-  serverUploadId: string | null;
-  verifyLoaded: number;
-  verifyTotal: number;
-  verifySpeedBps: number | null;
-  verifyEtaSeconds: number | null;
-  verifyLastTickAtMs: number | null;
-  verifyLastLoaded: number;
-  verifySpeedSampleAtMs: number | null;
-  verifySpeedSampleLoaded: number;
-  errorMessage: string | null;
-};
-
-function clampCount(n: number, maxCount?: number | null): number {
-  const max = Math.max(1, Math.min(maxCount ?? 50, 50));
-  const nn = Number.isFinite(n) ? Math.trunc(n) : 1;
-  return Math.max(1, Math.min(max, nn));
-}
-
-function normalizeCount(raw: unknown, fallback: number): number {
-  const n = typeof raw === 'number' ? raw : raw == null ? NaN : Number(raw);
-  if (!Number.isFinite(n)) return fallback;
-  const nn = Math.trunc(n);
-  if (nn < 1 || nn > 50) return fallback;
-  return nn;
-}
+import {PostsBasicSection} from './PostsCreatePage.sections';
+import {
+    clampCount,
+    getErrorMessage,
+    getFieldErrors,
+    normalizeCount,
+    type UploadItem,
+    type UploadItemStatus,
+} from './PostsCreatePage.shared';
+import {useEditorAutoHeight} from './use-editor-auto-height';
 
 export default function PostsCreatePage() {
   const navigate = useNavigate();
@@ -129,7 +74,7 @@ export default function PostsCreatePage() {
 
   const [draft, setDraft] = useState<PostDraftDTO>(() => createEmptyDraft());
   const contentEditorWrapRef = useRef<HTMLDivElement | null>(null);
-  const [contentEditorHeightPx, setContentEditorHeightPx] = useState<number | null>(null);
+    const contentEditorHeightPx = useEditorAutoHeight(contentEditorWrapRef);
 
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const uploadHandleRef = useRef<Map<string, ResumableUploadHandle>>(new Map());
@@ -219,36 +164,6 @@ export default function PostsCreatePage() {
   useEffect(() => {
     uploadItemsRef.current = uploadItems;
   }, [uploadItems]);
-
-  useEffect(() => {
-    let raf = 0;
-
-    const update = () => {
-      cancelAnimationFrame(raf);
-      raf = window.requestAnimationFrame(() => {
-        const wrap = contentEditorWrapRef.current;
-        if (!wrap) return;
-
-        const textarea = wrap.querySelector('textarea');
-        const top = (textarea ?? wrap).getBoundingClientRect().top;
-        const bottomReservePx = 220;
-        const minPx = 240;
-        const maxPx = 1200;
-        const next = Math.floor(window.innerHeight - top - bottomReservePx);
-        const clamped = Math.max(minPx, Math.min(maxPx, next));
-        setContentEditorHeightPx((prev) => (prev === clamped ? prev : clamped));
-      });
-    };
-
-    update();
-    window.addEventListener('resize', update);
-    window.addEventListener('scroll', update, true);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener('resize', update);
-      window.removeEventListener('scroll', update, true);
-    };
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -641,7 +556,7 @@ export default function PostsCreatePage() {
         const nextTotal = Number.isFinite(p.total) && p.total > 0 ? p.total : item.total;
         const nextLoaded = Number.isFinite(p.loaded) && p.loaded >= 0 ? Math.min(p.loaded, nextTotal || p.loaded) : item.loaded;
         const nextErrorMessage =
-          nextLoaded > item.loaded && item.errorMessage && item.errorMessage.startsWith('重试中')
+            nextLoaded > item.loaded && item.errorMessage && item.errorMessage.startsWith('重试中（')
             ? null
             : item.errorMessage;
         const shouldVerify = Boolean(item.serverUploadId) && nextTotal > 0 && nextLoaded >= nextTotal;
@@ -1686,7 +1601,7 @@ export default function PostsCreatePage() {
         await deleteDraft(draftId);
       }
 
-      // 新帖默认进入“待审核”，不会出现在首页/热榜等公共区域；引导用户去“我的帖子”查看
+        // 新帖默认进入“待审核”，不会出现在首页/热榜等公共区域；引导用户去“我的帖子”查看。
       navigate('/portal/posts/mine');
     } catch (e: unknown) {
       const fieldErrors = getFieldErrors(e);
@@ -1853,7 +1768,7 @@ export default function PostsCreatePage() {
   }, [draft.content]);
 
   useEffect(() => {
-    // 切换草稿/帖子时，清理标题候选避免跨帖子串数据
+      // 切换草稿/帖子时，清理标题候选，避免跨帖子串数据。
     setTitleCandidates([]);
     setTitleDropdownOpen(false);
     setTitleSuggestError(null);
@@ -1935,236 +1850,37 @@ export default function PostsCreatePage() {
           <div className="space-y-3">
               <div className={composeLocked ? 'opacity-70' : ''}>
               <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
-                  <fieldset disabled={composeLocked} className="space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div className="md:col-span-2">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">标题</label>
-
-                              <div className="flex items-center gap-2">
-                                  <div className="relative flex-1 min-w-0">
-                                      <input
-                                          value={draft.title}
-                                          onChange={(e) => setDraft((p) => ({...p, title: e.target.value}))}
-                                          className="w-full border border-gray-300 rounded-md px-3 py-2 pr-9 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                          placeholder="输入标题..."
-                                      />
-                                      <button
-                                          type="button"
-                                          className="absolute right-0 top-0 h-full px-2 border-l border-gray-300 text-gray-500 hover:text-gray-800 disabled:opacity-50"
-                                          onClick={() => setTitleDropdownOpen((v) => !v)}
-                                          disabled={titleCandidates.length === 0}
-                                          title={titleCandidates.length ? '选择一个候选标题' : '先生成候选标题'}
-                                          aria-label="选择候选标题"
-                                      >
-                                          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                                              <path
-                                                  fillRule="evenodd"
-                                                  d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 10.94l3.71-3.71a.75.75 0 1 1 1.06 1.06l-4.24 4.24a.75.75 0 0 1-1.06 0L5.21 8.29a.75.75 0 0 1 .02-1.08Z"
-                                                  clipRule="evenodd"
-                                              />
-                                          </svg>
-                                      </button>
-
-                                      {titleDropdownOpen && titleCandidates.length ? (
-                                          <div
-                                              className="absolute z-10 mt-2 w-full rounded-md border border-gray-200 bg-white shadow-sm max-h-[260px] overflow-auto">
-                                              {titleCandidates.map((t, idx) => (
-                                                  <button
-                                                      key={`${idx}-${t}`}
-                                                      type="button"
-                                                      className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                                                      onMouseDown={(e) => e.preventDefault()}
-                                                      onClick={() => {
-                                                          setDraft((p) => ({...p, title: t}));
-                                                          setTitleDropdownOpen(false);
-                                                      }}
-                                                      title="点击使用该标题"
-                                                  >
-                                                      <div className="text-sm text-gray-900">{t}</div>
-                                                  </button>
-                                              ))}
-                                          </div>
-                                      ) : null}
-                                  </div>
-
-                                  <button
-                                      type="button"
-                                      disabled={useAiTitle !== true || titleGenConfig?.enabled === false || titleSuggesting}
-                                      onClick={() => void handleSuggestTitles()}
-                                      className="px-3 py-2 rounded-md bg-white border border-gray-300 hover:bg-gray-50 text-sm disabled:opacity-60"
-                                  >
-                                      {titleSuggesting ? '生成中...' : '生成标题'}
-                                  </button>
-                              </div>
-
-                              {titleGenConfig?.enabled === false && (
-                                  <div
-                                      className="mt-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                                      标题生成已被管理员关闭。
-                                  </div>
-                              )}
-                              {titleGenConfigError && (
-                                  <div
-                                      className="mt-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                                      {titleGenConfigError}
-                                  </div>
-                              )}
-                              {titleSuggestError && (
-                                  <div
-                                      className="mt-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-                                      {titleSuggestError}
-                                  </div>
-                              )}
-                          </div>
-
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">版块</label>
-                              <select
-                                  value={draft.boardId}
-                                  onChange={(e) => setDraft((p) => ({...p, boardId: Number(e.target.value)}))}
-                                  className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              >
-                                  {loadingBoards && !boards.length ? (
-                                      <option value={draft.boardId}>加载中...</option>
-                                  ) : boards.length ? (
-                                      boards.map((b) => (
-                                          <option key={b.id} value={b.id}>
-                                              {b.name} (#{b.id})
-                                          </option>
-                                      ))
-                                  ) : (
-                                      <option value={draft.boardId}>（暂无版块）</option>
-                                  )}
-                              </select>
-                              {!boards.length && !loadingBoards && (
-                                  <div className="text-xs text-gray-500 mt-1">未能加载版块列表，将使用当前
-                                      boardId：{draft.boardId}</div>
-                              )}
-                          </div>
-                      </div>
-
-                      <div className="space-y-2">
-                          {(draft.tags ?? []).length ? (
-                              <>
-                                  <div className="flex items-center justify-between gap-3">
-                                      <label className="block text-sm font-medium text-gray-700">标签</label>
-                                      <div className="flex items-center gap-2 text-xs text-gray-600">
-                                          {loadingTags ? <span>加载中...</span> : null}
-                                          {tagsError ? <span className="text-red-600">{tagsError}</span> : null}
-                                      </div>
-                                  </div>
-
-                                  <div className="flex flex-wrap gap-2">
-                                      {(draft.tags ?? []).map((slugValue) => {
-                                          const t = availableTags.find((x) => x.slug === slugValue);
-                                          const label = t?.name ?? slugValue;
-                                          return (
-                                              <span
-                                                  key={slugValue}
-                                                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-300 bg-white text-sm"
-                                                  title={slugValue}
-                                              >
-                                <span>{label}</span>
-                                <button
-                                    type="button"
-                                    className="text-gray-500 hover:text-gray-800"
-                                    onClick={() => removeTagSlug(slugValue)}
-                                    title="移除"
-                                >
-                                  ×
-                                </button>
-                              </span>
-                                          );
-                                      })}
-                                  </div>
-                              </>
-                          ) : null}
-
-                          <div className="relative">
-                              <div className="flex gap-2">
-                                  <input
-                                      className="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                      placeholder="搜索已有标签或输入新标签后回车"
-                                      value={tagQuery}
-                                      onChange={(e) => setTagQuery(e.target.value)}
-                                      onKeyDown={(e) => {
-                                          if (e.key === 'Enter') {
-                                              e.preventDefault();
-                                              const v = tagQuery.trim();
-                                              if (!v) return;
-                                              void ensureTagExistsAndAdd(v);
-                                              setTagQuery('');
-                                          }
-                                      }}
-                                  />
-                                  <button
-                                      type="button"
-                                      className="px-3 py-2 rounded-md border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
-                                      disabled={!tagQuery.trim()}
-                                      onClick={() => {
-                                          const v = tagQuery.trim();
-                                          if (!v) return;
-                                          void ensureTagExistsAndAdd(v);
-                                          setTagQuery('');
-                                      }}
-                                  >
-                                      添加标签
-                                  </button>
-                                  <button
-                                      type="button"
-                                      disabled={useAiTags !== true || tagGenConfig?.enabled === false || tagSuggesting}
-                                      onClick={() => void handleSuggestTags(false)}
-                                      className="px-3 py-2 rounded-md bg-white border border-gray-300 hover:bg-gray-50 text-sm disabled:opacity-60"
-                                  >
-                                      {tagSuggesting ? '生成中...' : '生成标签'}
-                                  </button>
-                              </div>
-
-                              {tagQuery.trim() && filteredTagOptions.length ? (
-                                  <div
-                                      className="absolute z-10 mt-2 w-full rounded-md border border-gray-200 bg-white shadow-sm max-h-[260px] overflow-auto">
-                                      {filteredTagOptions.map((t) => (
-                                          <button
-                                              key={t.id}
-                                              type="button"
-                                              className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                                              onClick={() => {
-                                                  addTagSlug(t.slug);
-                                                  setTagQuery('');
-                                              }}
-                                              title={t.slug}
-                                          >
-                                              <div className="flex items-center justify-between gap-3">
-                                                  <span className="text-sm text-gray-900">{t.name}</span>
-                                                  <span className="text-xs text-gray-500">{t.slug}</span>
-                                              </div>
-                                          </button>
-                                      ))}
-                                  </div>
-                              ) : null}
-                          </div>
-
-                          {tagGenConfig?.enabled === false ? (
-                              <div
-                                  className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                                  主题标签生成已被管理员关闭。
-                              </div>
-                          ) : null}
-                          {tagGenConfigError ? (
-                              <div
-                                  className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                                  {tagGenConfigError}
-                              </div>
-                          ) : null}
-                          {tagSuggestError ? (
-                              <div
-                                  className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-                                  {tagSuggestError}
-                              </div>
-                          ) : null}
-                      </div>
-                  </fieldset>
-
+                  <PostsBasicSection
+                      composeLocked={composeLocked}
+                      draft={draft}
+                      setDraft={setDraft}
+                      titleCandidates={titleCandidates}
+                      titleDropdownOpen={titleDropdownOpen}
+                      setTitleDropdownOpen={setTitleDropdownOpen}
+                      titleSuggesting={titleSuggesting}
+                      useAiTitle={useAiTitle}
+                      titleGenConfig={titleGenConfig}
+                      titleGenConfigError={titleGenConfigError}
+                      titleSuggestError={titleSuggestError}
+                      onSuggestTitles={() => void handleSuggestTitles()}
+                      loadingBoards={loadingBoards}
+                      boards={boards}
+                      loadingTags={loadingTags}
+                      tagsError={tagsError}
+                      availableTags={availableTags}
+                      onRemoveTagSlug={removeTagSlug}
+                      tagQuery={tagQuery}
+                      setTagQuery={setTagQuery}
+                      onEnsureTagExistsAndAdd={ensureTagExistsAndAdd}
+                      useAiTags={useAiTags}
+                      tagGenConfig={tagGenConfig}
+                      tagSuggesting={tagSuggesting}
+                      onSuggestTags={() => void handleSuggestTags(false)}
+                      filteredTagOptions={filteredTagOptions}
+                      onAddTagSlug={addTagSlug}
+                      tagGenConfigError={tagGenConfigError}
+                      tagSuggestError={tagSuggestError}
+                  />
                 <div ref={contentEditorWrapRef}>
                   <MarkdownEditor
                     value={{ markdown: draft.content }}
@@ -2326,3 +2042,4 @@ export default function PostsCreatePage() {
     </div>
   );
 }
+

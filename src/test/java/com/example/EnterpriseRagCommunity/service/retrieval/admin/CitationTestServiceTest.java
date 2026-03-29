@@ -83,7 +83,7 @@ class CitationTestServiceTest {
 
         verify(citationConfigService).normalizeConfig(cfg);
         assertThat(out.getSources()).hasSize(1);
-        assertThat(out.getSources().get(0).getUrl()).isEqualTo("/p/11");
+        assertThat(out.getSources().getFirst().getUrl()).isEqualTo("/p/11");
         assertThat(out.getSourcesPreview()).contains("来源");
         assertThat(out.getSourcesPreview()).contains("[1]");
         assertThat(out.getSourcesPreview()).contains("t1");
@@ -117,7 +117,7 @@ class CitationTestServiceTest {
         CitationTestService service = new CitationTestService(citationConfigService);
         CitationTestResponse out = service.test(req);
         assertThat(out.getSources()).hasSize(1);
-        assertThat(out.getSources().get(0).getUrl()).isNull();
+        assertThat(out.getSources().getFirst().getUrl()).isNull();
         assertThat(out.getSourcesPreview()).isEmpty();
     }
 

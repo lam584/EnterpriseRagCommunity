@@ -87,17 +87,19 @@ public class RagCommentIndexBuildService {
         int overlap = chunkOverlapChars == null || chunkOverlapChars < 0 ? 80 : Math.min(maxChars - 1, chunkOverlapChars);
 
         Map<String, Object> meta0ForDefaults = vi.getMetadata();
-        String metaModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingModel"));
-        if (metaModel == null) metaModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingModel"));
+        String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
         String modelToUse = toNonBlankString(embeddingModelOverride);
-        if (modelToUse == null) modelToUse = metaModel;
         if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
 
-        String providerToUse = null;
+        String providerToUse = fixedProviderId;
         if (modelToUse == null) {
-            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
+            LlmRoutingService.RouteTarget target = (providerToUse == null)
+                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
+                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
             if (target == null) {
-                throw new IllegalStateException("no eligible embedding target (please check embedding routing config)");
+                throw new IllegalStateException(providerToUse == null
+                        ? "no eligible embedding target (please check embedding routing config)"
+                        : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
             }
             providerToUse = target.providerId();
             modelToUse = target.modelName();
@@ -354,6 +356,7 @@ public class RagCommentIndexBuildService {
         Long fromCommentId0 = fromCommentId;
 
         touchMetadata(vectorIndexId, meta -> {
+            meta.remove("embeddingModel");
             meta.put("sourceType", "COMMENT");
             meta.put("esIndex", indexName);
             meta.put("lastBuildAt", LocalDateTime.now().toString());
@@ -424,19 +427,17 @@ public class RagCommentIndexBuildService {
         }
 
         String modelToUse = null;
-        Object metaModel = vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingModel");
-        modelToUse = toNonBlankString(metaModel);
-        if (modelToUse == null) {
-            Object meta2 = vi.getMetadata() == null ? null : vi.getMetadata().get("lastBuildEmbeddingModel");
-            modelToUse = toNonBlankString(meta2);
-        }
+        String providerToUse = toNonBlankString(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingProviderId"));
         if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
 
-        String providerToUse = null;
         if (modelToUse == null) {
-            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
+            LlmRoutingService.RouteTarget target = (providerToUse == null)
+                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
+                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
             if (target == null) {
-                throw new IllegalStateException("no eligible embedding target (please check embedding routing config)");
+                throw new IllegalStateException(providerToUse == null
+                        ? "no eligible embedding target (please check embedding routing config)"
+                        : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
             }
             providerToUse = target.providerId();
             modelToUse = target.modelName();

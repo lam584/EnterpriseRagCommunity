@@ -332,7 +332,6 @@ SELECT
   'READY',
   JSON_OBJECT(
     'sourceType', 'POST',
-    'embeddingModel', '',
     'defaultChunkMaxChars', 800,
     'defaultChunkOverlapChars', 80
   )
@@ -350,7 +349,6 @@ SELECT
   'READY',
   JSON_OBJECT(
     'sourceType', 'COMMENT',
-    'embeddingModel', '',
     'defaultChunkMaxChars', 800,
     'defaultChunkOverlapChars', 80
   )
@@ -368,7 +366,6 @@ SELECT
   'READY',
   JSON_OBJECT(
     'sourceType', 'FILE_ASSET',
-    'embeddingModel', '',
     'defaultChunkMaxChars', 1200,
     'defaultChunkOverlapChars', 120
   )

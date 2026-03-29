@@ -108,7 +108,6 @@ const VectorIndexForm: React.FC = () => {
 
   const [indexConfig, setIndexConfig] = useState({
     dim: '' as number | '',
-    embeddingModel: '',
     embeddingProviderId: '',
     defaultChunkMaxChars: 800,
     defaultChunkOverlapChars: 80,
@@ -142,21 +141,14 @@ const VectorIndexForm: React.FC = () => {
     const metaDefaultOverlap = safeNumber(metaStr(meta, 'defaultChunkOverlapChars'));
     const metaLastMax = safeNumber(metaStr(meta, 'lastBuildChunkMaxChars'));
     const metaLastOverlap = safeNumber(metaStr(meta, 'lastBuildChunkOverlapChars'));
-    const cfgModel = String(metaStr(meta, 'embeddingModel') ?? '').trim();
     const cfgProviderId = String(metaStr(meta, 'embeddingProviderId') ?? '').trim();
-    const lastBuildModel = String(metaStr(meta, 'lastBuildEmbeddingModel') ?? '').trim();
-    const lastBuildProviderId = String(metaStr(meta, 'lastBuildEmbeddingProviderId') ?? '').trim();
-    const hasFixedEmbedding = Boolean(cfgModel && cfgProviderId);
-    const metaModel = hasFixedEmbedding ? cfgModel : '';
-    const metaProviderId = hasFixedEmbedding ? cfgProviderId : '';
 
     const nextDefaultMax = metaDefaultMax ?? metaLastMax ?? 800;
     const nextDefaultOverlap = metaDefaultOverlap ?? metaLastOverlap ?? 80;
 
     setIndexConfig({
       dim: selectedIndex.dim && selectedIndex.dim > 0 ? selectedIndex.dim : '',
-      embeddingModel: metaModel,
-      embeddingProviderId: metaProviderId,
+        embeddingProviderId: cfgProviderId,
       defaultChunkMaxChars: nextDefaultMax,
       defaultChunkOverlapChars: nextDefaultOverlap,
     });
@@ -164,8 +156,7 @@ const VectorIndexForm: React.FC = () => {
 
     setTestForm((v) => ({
       ...v,
-      embeddingModel: cfgModel || lastBuildModel || v.embeddingModel,
-      embeddingProviderId: cfgProviderId || lastBuildProviderId || v.embeddingProviderId,
+        embeddingProviderId: cfgProviderId || v.embeddingProviderId,
     }));
   }, [selectedIndex]);
 
@@ -287,9 +278,7 @@ const VectorIndexForm: React.FC = () => {
     setError(null);
     setMessage(null);
     try {
-      const embModel = indexConfig.embeddingModel.trim();
       const embProviderId = indexConfig.embeddingProviderId.trim();
-      const hasEmbeddingOverride = Boolean(embModel && embProviderId);
       if (selectedSourceType === 'FILE_ASSET') {
         const res = await adminRebuildFileRagIndex({
           id: selectedIndexId,
@@ -297,8 +286,7 @@ const VectorIndexForm: React.FC = () => {
           chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
           chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
           embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-          embeddingModel: hasEmbeddingOverride ? embModel : undefined,
-          embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+            embeddingProviderId: embProviderId || undefined,
         });
         const clearedText =
           res.cleared === true ? '已删除并重建索引' : res.cleared === false ? `清空失败：${res.clearError ?? ''}` : '';
@@ -317,8 +305,7 @@ const VectorIndexForm: React.FC = () => {
           chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
           chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
           embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-          embeddingModel: hasEmbeddingOverride ? embModel : undefined,
-          embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+            embeddingProviderId: embProviderId || undefined,
         });
         const clearedText =
           res.cleared === true ? '已删除并重建索引' : res.cleared === false ? `清空失败：${res.clearError ?? ''}` : '';
@@ -339,7 +326,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId, selectedSourceType]);
+  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId, selectedSourceType]);
 
   const onSync = useCallback(async () => {
     if (!canAction) return;
@@ -351,9 +338,7 @@ const VectorIndexForm: React.FC = () => {
     setError(null);
     setMessage(null);
     try {
-      const embModel = indexConfig.embeddingModel.trim();
       const embProviderId = indexConfig.embeddingProviderId.trim();
-      const hasEmbeddingOverride = Boolean(embModel && embProviderId);
       if (selectedSourceType === 'FILE_ASSET') {
         const res = await adminSyncFileRagIndex({
           id: selectedIndexId,
@@ -361,8 +346,7 @@ const VectorIndexForm: React.FC = () => {
           chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
           chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
           embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-          embeddingModel: hasEmbeddingOverride ? embModel : undefined,
-          embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+            embeddingProviderId: embProviderId || undefined,
         });
         setMessage(`${res.failedChunks ? '文件增量同步完成（部分失败）' : '文件增量同步完成'}：新增文件 ${res.totalFiles ?? 0}，成功 ${res.successChunks ?? 0}，失败 ${res.failedChunks ?? 0}`);
       } else {
@@ -372,8 +356,7 @@ const VectorIndexForm: React.FC = () => {
           chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
           chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
           embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-          embeddingModel: hasEmbeddingOverride ? embModel : undefined,
-          embeddingProviderId: hasEmbeddingOverride ? embProviderId : undefined,
+            embeddingProviderId: embProviderId || undefined,
         });
         setMessage(`${res.failedChunks ? '增量同步完成（部分失败）' : '增量同步完成'}：新增帖子 ${res.totalPosts ?? 0}，成功 ${res.successChunks ?? 0}，失败 ${res.failedChunks ?? 0}`);
       }
@@ -386,7 +369,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId, selectedSourceType]);
+  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId, selectedSourceType]);
 
   const onSaveAutoSync = useCallback(async (next?: { enabled?: boolean; intervalSeconds?: number }) => {
     if (!canAction) return;
@@ -421,18 +404,15 @@ const VectorIndexForm: React.FC = () => {
       return false;
     }
 
-    const embModel = indexConfig.embeddingModel.trim();
     const embProviderId = indexConfig.embeddingProviderId.trim();
-    const hasFixedEmbedding = Boolean(embModel && embProviderId);
 
     const mergedMeta = {
       ...(selectedIndex?.metadata ?? {}),
-      embeddingModel: hasFixedEmbedding ? embModel : undefined,
-      embeddingProviderId: hasFixedEmbedding ? embProviderId : undefined,
+        embeddingProviderId: embProviderId || undefined,
       defaultChunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
       defaultChunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
     } as Record<string, unknown>;
-    if (!mergedMeta.embeddingModel) delete mergedMeta.embeddingModel;
+      delete mergedMeta.embeddingModel;
     if (!mergedMeta.embeddingProviderId) delete mergedMeta.embeddingProviderId;
 
     setLoading(true);
@@ -453,7 +433,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingModel, indexConfig.embeddingProviderId, load, selectedIndex?.metadata, selectedIndexId]);
+  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingProviderId, load, selectedIndex?.metadata, selectedIndexId]);
 
   const onTestQuery = useCallback(async () => {
     if (!canAction) return;
@@ -710,19 +690,6 @@ const VectorIndexForm: React.FC = () => {
                          selectClassName={`${inputClass} disabled:bg-gray-50 disabled:text-gray-500`}
                          onChange={(next) => setIndexConfig((v) => ({ ...v, embeddingProviderId: next.providerId }))}
                        />
-                     </div>
-                     <div className="col-span-2">
-                       <label className="text-xs text-gray-500 font-medium mb-1 block">嵌入模型（可选，留空=自动）</label>
-                       <input
-                         className={`${inputClass} disabled:bg-gray-50 disabled:text-gray-500`}
-                         placeholder="留空=自动（均衡负载）"
-                         value={indexConfig.embeddingModel}
-                         disabled={loading || !canAction || !indexConfigEditing}
-                         onChange={(e) => setIndexConfig((v) => ({ ...v, embeddingModel: e.target.value }))}
-                       />
-                       <div className="text-[11px] text-gray-500 mt-1">
-                         留空表示按负载均衡从嵌入模型池选择；若已限定来源，则只在该来源的可用模型池内选择。
-                       </div>
                      </div>
                      <div>
                        <label className="text-xs text-gray-500 font-medium mb-1 block">维度 dim（0=自动）</label>

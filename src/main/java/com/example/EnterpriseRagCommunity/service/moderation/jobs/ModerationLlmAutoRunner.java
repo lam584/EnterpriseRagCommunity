@@ -1,5 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.moderation.jobs;
 
+import static com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunnerSupport.*;
+
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -60,10 +62,13 @@ import com.example.EnterpriseRagCommunity.service.moderation.RiskLabelingService
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmService;
 import com.example.EnterpriseRagCommunity.service.moderation.trace.ModerationPipelineTraceService;
 import com.example.EnterpriseRagCommunity.service.monitor.FileAssetExtractionService;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
+
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunnerSupport.ChunkedVerdict;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunnerSupport.PolicyEval;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunnerSupport.Thresholds;
 
 /**
  * LLM 闂備胶鍘ч〃搴㈢濠婂嫭鍙忛柍鍝勫暊閸嬫捇宕楁径濠傗拤闂?runner闂? * - 濠电偛顕慨鎾箠鎼粹槄鑰?moderation_llm_config.auto_run=true 闂備礁鎼崯鍐测枖濞戙垹绠氶幖娣妽閸? * - decision=APPROVE/REJECT 闂備胶鍘ч〃搴㈢濠婂嫭鍙忛柍鍝勬噺婵即鏌﹀Ο渚Ш婵ǜ鍔嶉〃銉╂倷鐠鸿櫣鍘┑鐐村絻濞尖€愁嚕椤掑嫬绾ч悹鎭掑妿閹虫劙鏌?闂佽崵濮村ú銈団偓姘煎灦椤㈡瑩骞嬮敂钘変汗闂佺厧鎽滈。浠嬪磻閹惧鐟瑰┑鐘插閼扮笩ecision=HUMAN 闂佸搫顦遍崕鎰板礂濞戞褎寰勬繝搴℃櫊? * - 闂備礁鎲￠懝楣冨嫉椤掆偓椤啴宕掗悙鑼厬濠碉紕鍋熼崕鐢稿磻閹炬剚鐓ラ柛娑卞灡閻庮厽绻涢敐鍛闁逞屽墲濞呮洜绮堥埀顒勬⒒娓氬洤浜愰柛瀣崌閺岋繝宕煎┑鍥ㄥ創闂佺硶鏅滈〃濠囧垂閹€鏀介柛銉戝倻甯涢梻浣告啞鐢喖顢欓幇顔筋潟濞村吋娼欓惌妤併亜閺嶃劏澹樼憸鎵█濮?LLM 闂備胶鎳撻悺銊╂偋濡ゅ啠鍋撻崹顐ょ煉闁哄苯锕ら濂稿炊閳哄倻鈧參姊婚崒姘殭闁绘妫濋崺鈧い鎺戝暙椤ュ秶鎮▎鎾粹拺?score
@@ -73,10 +78,6 @@ import lombok.RequiredArgsConstructor;
 public class ModerationLlmAutoRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ModerationLlmAutoRunner.class);
-    private static final java.util.regex.Pattern IMAGE_PLACEHOLDER = java.util.regex.Pattern.compile("\\[\\[IMAGE_(\\d+)\\]\\]");
-    private static final ObjectMapper EVIDENCE_MAPPER = new ObjectMapper();
-    private static final TypeReference<Map<String, Object>> STRING_OBJECT_MAP_TYPE = new TypeReference<>() {};
-
     private final ModerationLlmConfigRepository llmConfigRepository;
     private final ModerationQueueRepository queueRepository;
     private final AdminModerationLlmService llmService;
@@ -753,6 +754,765 @@ public class ModerationLlmAutoRunner {
         }
     }
 
+    static Object sanitizeModerationResponseForQueueOutput(ObjectMapper objectMapper, LlmModerationTestResponse res) {
+        return ModerationLlmAutoRunnerSupport.sanitizeModerationResponseForQueueOutput(objectMapper, res);
+    }
+
+
+    private String judgePromptTemplate(ModerationLlmConfigEntity cfg) {
+        ModerationLlmConfigEntity effective = cfg;
+        if (effective == null) {
+            effective = llmConfigRepository.findAll().stream().findFirst()
+                    .orElseThrow(() -> new IllegalStateException("moderation_llm_config not initialized"));
+        }
+        String promptCode = toStr(effective.getJudgePromptCode());
+        if (promptCode == null) {
+            throw new IllegalStateException("moderation_llm_config.judge_prompt_code is required");
+        }
+        return promptsRepository.findByPromptCode(promptCode)
+                .map(com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity::getUserPromptTemplate)
+                .orElseThrow(() -> new IllegalStateException("Prompt " + promptCode + " not found"));
+    }
+
+    private static class FilesReadiness {
+        final boolean hasAttachments;
+        final List<Long> pendingFileAssetIds;
+
+        private FilesReadiness(boolean hasAttachments, List<Long> pendingFileAssetIds) {
+            this.hasAttachments = hasAttachments;
+            this.pendingFileAssetIds = pendingFileAssetIds == null ? List.of() : pendingFileAssetIds;
+        }
+    }
+
+    private int resolveWaitFilesSeconds(ModerationLlmConfigEntity cfg) {
+        if (cfg != null && cfg.getMultimodalPromptCode() != null) {
+            try {
+                var prompt = promptsRepository.findByPromptCode(cfg.getMultimodalPromptCode()).orElse(null);
+                if (prompt != null && prompt.getWaitFilesSeconds() != null) {
+                    int n = prompt.getWaitFilesSeconds();
+                    if (n < 0) n = 0;
+                    if (n > 3600) n = 3600;
+                    return n;
+                }
+            } catch (Exception ignore) {
+            }
+        }
+        return 60;
+    }
+
+    private FilesReadiness checkPostFilesReadiness(ModerationQueueEntity q) {
+        if (q == null || q.getContentType() != com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType.POST) {
+            return new FilesReadiness(false, List.of());
+        }
+        Long postId = q.getContentId();
+        if (postId == null) return new FilesReadiness(false, List.of());
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                0,
+                200,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.asc("createdAt"), org.springframework.data.domain.Sort.Order.asc("id"))
+        );
+        List<Long> fileAssetIds = new ArrayList<>();
+        try {
+            var page = postAttachmentsRepository.findByPostId(postId, pageable);
+            if (page != null && page.getContent() != null) {
+                for (PostAttachmentsEntity a : page.getContent()) {
+                    if (a == null || a.getFileAssetId() == null) continue;
+                    if (!fileAssetIds.contains(a.getFileAssetId())) fileAssetIds.add(a.getFileAssetId());
+                }
+            }
+        } catch (Exception ignore) {
+        }
+        if (fileAssetIds.isEmpty()) return new FilesReadiness(false, List.of());
+
+        Map<Long, FileAssetExtractionsEntity> extById = new HashMap<>();
+        try {
+            List<FileAssetExtractionsEntity> exts = fileAssetExtractionsRepository.findAllById(fileAssetIds);
+            if (exts != null) {
+                for (FileAssetExtractionsEntity e : exts) {
+                    if (e == null || e.getFileAssetId() == null) continue;
+                    extById.put(e.getFileAssetId(), e);
+                }
+            }
+        } catch (Exception ignore) {
+        }
+
+        List<Long> pending = new ArrayList<>();
+        for (Long id : fileAssetIds) {
+            if (id == null) continue;
+            FileAssetExtractionsEntity e = extById.get(id);
+            if (e == null) {
+                try {
+                    fileAssetExtractionService.requestExtractionIfEnabled(id);
+                    e = fileAssetExtractionsRepository.findById(id).orElse(null);
+                } catch (Exception ignore) {
+                }
+            }
+            if (e == null) continue;
+            if (e.getExtractStatus() == FileAssetExtractionStatus.PENDING) {
+                pending.add(id);
+            }
+        }
+        return new FilesReadiness(true, pending);
+    }
+
+    private String detectHardRejectFromPostFiles(Long postId) {
+        if (postId == null) return null;
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                0,
+                200,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.asc("createdAt"), org.springframework.data.domain.Sort.Order.asc("id"))
+        );
+        List<Long> fileAssetIds = new ArrayList<>();
+        try {
+            var page = postAttachmentsRepository.findByPostId(postId, pageable);
+            if (page != null && page.getContent() != null) {
+                for (PostAttachmentsEntity a : page.getContent()) {
+                    if (a == null || a.getFileAssetId() == null) continue;
+                    if (!fileAssetIds.contains(a.getFileAssetId())) fileAssetIds.add(a.getFileAssetId());
+                }
+            }
+        } catch (Exception ignore) {
+        }
+        if (fileAssetIds.isEmpty()) return null;
+        try {
+            for (FileAssetExtractionsEntity e : fileAssetExtractionsRepository.findAllById(fileAssetIds)) {
+                if (e == null) continue;
+                if (e.getExtractStatus() != FileAssetExtractionStatus.FAILED) continue;
+                String msg = e.getErrorMessage();
+                if (msg != null && msg.contains("ARCHIVE_NESTING_TOO_DEEP")) return "ARCHIVE_NESTING_TOO_DEEP";
+                String meta = e.getExtractedMetadataJson();
+                if (meta != null && meta.contains("ARCHIVE_NESTING_TOO_DEEP")) return "ARCHIVE_NESTING_TOO_DEEP";
+            }
+        } catch (Exception ignore) {
+        }
+        return null;
+    }
+
+    private Map<String, Double> resolveRiskTagThresholdsCached() {
+        long now = System.currentTimeMillis();
+        long loadedAt = riskTagThresholdsLoadedAtMs;
+        if (loadedAt > 0 && (now - loadedAt) <= 10_000) return riskTagThresholdsCache;
+        synchronized (this) {
+            now = System.currentTimeMillis();
+            loadedAt = riskTagThresholdsLoadedAtMs;
+            if (loadedAt > 0 && (now - loadedAt) <= 10_000) return riskTagThresholdsCache;
+            HashMap<String, Double> map = new HashMap<>();
+            try {
+                tagsRepository.findByTypeAndIsActiveTrue(TagType.RISK).forEach(t -> {
+                    if (t == null) return;
+                    String slug = t.getSlug();
+                    Double th = t.getThreshold();
+                    if (slug == null || slug.isBlank()) return;
+                    if (th == null || !Double.isFinite(th)) return;
+                    map.put(slug.trim(), clamp01(th, 0.0));
+                });
+            } catch (Exception ignore) {
+            }
+            riskTagThresholdsCache = map.isEmpty() ? Map.of() : Map.copyOf(map);
+            riskTagThresholdsLoadedAtMs = now;
+            return riskTagThresholdsCache;
+        }
+    }
+
+    private void writeChunkedDecisionAuditLog(
+            ModerationQueueEntity q,
+            ModerationPipelineRunEntity run,
+            Long llmStepId,
+            Long chunkSetId,
+            String finalDecision,
+            LlmModerationTestResponse globalRes,
+            Map<String, Object> extraDetails
+    ) {
+        if (q == null || q.getId() == null || run == null) return;
+        try {
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("runId", run.getId());
+            details.put("stage", "LLM");
+            details.put("mode", "chunked");
+            details.put("decision", finalDecision);
+            if (llmStepId != null) details.put("llmStepId", llmStepId);
+            if (chunkSetId != null) details.put("chunkSetId", chunkSetId);
+
+            if (globalRes != null) {
+                if (globalRes.getModel() != null) details.put("model", globalRes.getModel());
+                if (globalRes.getDecision() != null) details.put("globalDecision", globalRes.getDecision());
+                if (globalRes.getScore() != null) details.put("globalScore", globalRes.getScore());
+            }
+
+            try {
+                AdminModerationChunkProgressDTO p = chunkReviewService.getProgress(q.getId(), false, 0);
+                if (p != null) {
+                    details.put("chunkProgress", Map.of(
+                            "status", p.getStatus(),
+                            "total", p.getTotalChunks(),
+                            "completed", p.getCompletedChunks(),
+                            "failed", p.getFailedChunks(),
+                            "running", p.getRunningChunks()
+                    ));
+                    if (llmStepId != null && p.getTotalChunks() != null && p.getTotalChunks() > 0) {
+                        ModerationPipelineStepEntity step = pipelineStepRepository.findById(llmStepId).orElse(null);
+                        if (step != null && step.getCostMs() != null) {
+                            details.put("avgLatencyMs", Math.max(0L, step.getCostMs() / Math.max(1, (long) p.getTotalChunks())));
+                        }
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+
+            try {
+                if (chunkSetId != null) {
+                    Map<String, Object> mem = chunkReviewService.getMemory(chunkSetId);
+                    if (mem != null) {
+                        Object ms = mem.get("maxScore");
+                        if (ms != null) details.put("maxScore", ms);
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+
+            if (extraDetails != null && !extraDetails.isEmpty()) details.putAll(extraDetails);
+
+            String msg = "LLM chunked decision: " + finalDecision;
+            auditLogWriter.writeSystem("LLM_DECISION", "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, msg, run.getTraceId(), details);
+        } catch (Exception ignore) {
+        }
+    }
+
+    private List<ChunkImageRef> selectPostImageRefs(Long postId) {
+        if (postId == null) return List.of();
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                0,
+                200,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.asc("createdAt"), org.springframework.data.domain.Sort.Order.asc("id"))
+        );
+        List<PostAttachmentsEntity> atts;
+        try {
+            var page = postAttachmentsRepository.findByPostId(postId, pageable);
+            atts = page == null ? List.of() : (page.getContent() == null ? List.of() : page.getContent());
+        } catch (Exception ignore) {
+            atts = List.of();
+        }
+        if (atts.isEmpty()) return List.of();
+        ArrayList<ChunkImageRef> out = new ArrayList<>();
+        LinkedHashSet<String> seenUrl = new LinkedHashSet<>();
+        int idx = 0;
+        for (PostAttachmentsEntity a : atts) {
+            if (a == null || a.getFileAsset() == null) continue;
+            String mt0 = a.getFileAsset().getMimeType() == null ? "" : a.getFileAsset().getMimeType().trim().toLowerCase(Locale.ROOT);
+            if (!mt0.startsWith("image/")) continue;
+            String url = a.getFileAsset().getUrl();
+            if (url == null || url.isBlank()) continue;
+            String u = url.trim();
+            if (!seenUrl.add(u)) continue;
+            idx += 1;
+            String ph = "[[IMAGE_" + idx + "]]";
+            out.add(new ChunkImageRef(idx, ph, u, a.getFileAsset().getMimeType(), a.getFileAssetId()));
+        }
+        return out.isEmpty() ? List.of() : out;
+    }
+
+    private void applyRiskTags(ModerationQueueEntity q, LlmModerationTestResponse res) {
+        if (q == null || res == null) return;
+        try {
+            Double score0 = res.getScore();
+            double score = score0 == null ? 0.0 : score0;
+            if (!Double.isFinite(score)) score = 0.0;
+            if (score < 0) score = 0.0;
+            if (score > 1) score = 1.0;
+            LinkedHashSet<String> set = new LinkedHashSet<>();
+            if (res.getRiskTags() != null) {
+                for (String t : res.getRiskTags()) {
+                    if (t == null) continue;
+                    String s = t.trim();
+                    if (!s.isEmpty()) set.add(s);
+                }
+            }
+            if (res.getLabels() != null) {
+                for (String t : res.getLabels()) {
+                    if (t == null) continue;
+                    String s = t.trim();
+                    if (!s.isEmpty()) set.add(s);
+                }
+            }
+            List<String> tags = set.isEmpty() ? List.of() : new ArrayList<>(set);
+            riskLabelingService.replaceRiskTags(q.getContentType(), q.getContentId(), Source.LLM, tags, BigDecimal.valueOf(score), false);
+        } catch (Exception ignore) {
+        }
+    }
+
+    private void applyChunkedRiskTags(ModerationQueueEntity q, Long chunkSetId, LlmModerationTestResponse res) {
+        if (q == null) return;
+        try {
+            LinkedHashSet<String> set = new LinkedHashSet<>();
+            double score = 0.0;
+
+            if (res != null) {
+                Double score0 = res.getScore();
+                double s = score0 == null ? 0.0 : score0;
+                if (!Double.isFinite(s)) s = 0.0;
+                if (s < 0) s = 0.0;
+                if (s > 1) s = 1.0;
+                score = Math.max(score, s);
+
+                if (res.getRiskTags() != null) {
+                    for (String t : res.getRiskTags()) {
+                        if (t == null) continue;
+                        String v = t.trim();
+                        if (!v.isEmpty()) set.add(v);
+                    }
+                }
+                if (res.getLabels() != null) {
+                    for (String t : res.getLabels()) {
+                        if (t == null) continue;
+                        String v = t.trim();
+                        if (!v.isEmpty()) set.add(v);
+                    }
+                }
+            }
+
+            if (chunkSetId != null) {
+                Map<String, Object> mem = chunkReviewService.getMemory(chunkSetId);
+                Object r0 = mem == null ? null : mem.get("riskTags");
+                if (r0 instanceof Collection<?> col) {
+                    for (Object o : col) {
+                        if (o == null) continue;
+                        String v = String.valueOf(o).trim();
+                        if (!v.isEmpty()) set.add(v);
+                    }
+                }
+                double memScore = clamp01(asDoubleOrDefault(mem == null ? null : mem.get("maxScore"), asDoubleOrDefault(mem == null ? null : mem.get("imageScore"), 0.0)), 0.0);
+                score = Math.max(score, memScore);
+            }
+
+            if (set.isEmpty()) return;
+            riskLabelingService.replaceRiskTags(q.getContentType(), q.getContentId(), Source.LLM, new ArrayList<>(set), BigDecimal.valueOf(score), false);
+        } catch (Exception ignore) {
+        }
+    }
+
+    static List<LlmModerationTestRequest.ImageInput> selectChunkImageInputs(ObjectMapper objectMapper,
+                                                                            String chunkText,
+                                                                            Long fileAssetId,
+                                                                            String extractedMetadataJson) {
+        return refsToImageInputs(selectChunkImageRefs(objectMapper, chunkText, fileAssetId, extractedMetadataJson), fileAssetId);
+    }
+
+    static List<ChunkImageRef> selectChunkImageRefs(ObjectMapper objectMapper,
+                                                    String chunkText,
+                                                    Long fileAssetId,
+                                                    String extractedMetadataJson) {
+        return fromSupportRefs(ModerationLlmAutoRunnerSupport.selectChunkImageRefs(objectMapper, chunkText, fileAssetId, extractedMetadataJson));
+    }
+
+    static Set<Integer> parseUsedImageIndices(String text) {
+        return ModerationLlmAutoRunnerSupport.parseUsedImageIndices(text);
+    }
+
+    static List<String> filterChunkEvidence(List<String> evidence) {
+        return ModerationLlmAutoRunnerSupport.filterChunkEvidence(evidence);
+    }
+
+    static String extractByContextAnchors(Map<String, Object> node, String chunkText) {
+        if (node == null || chunkText == null || chunkText.isBlank()) return null;
+        Object beforeObj = node.get("before_context");
+        String before = beforeObj == null ? null : String.valueOf(beforeObj).trim();
+        if (before == null || before.isBlank()) return null;
+        Object afterObj = node.get("after_context");
+        String after = afterObj == null ? null : String.valueOf(afterObj).trim();
+        String extracted = extractBetweenAnchorsByRegex(chunkText, before, after, 500);
+        if (extracted == null || extracted.isBlank()) return null;
+        return extracted;
+    }
+
+    static List<String> buildEvidenceNormalizeReplay(List<String> before, List<String> after, int maxItems) {
+        return ModerationLlmAutoRunnerSupport.buildEvidenceNormalizeReplay(before, after, maxItems);
+    }
+
+    static List<String> filterChunkImageEvidence(List<String> evidence, List<ChunkImageRef> refs) {
+        return ModerationLlmAutoRunnerSupport.filterChunkImageEvidence(evidence, toSupportRefs(refs));
+    }
+
+    static String normalizeSuggestion(String suggestion, String decisionFallback) {
+        return ModerationLlmAutoRunnerSupport.normalizeSuggestion(suggestion, decisionFallback);
+    }
+
+    static List<String> asStringList(Object v) {
+        return ModerationLlmAutoRunnerSupport.asStringList(v);
+    }
+
+    static Object deepGet(Map<String, Object> root, String path) {
+        return ModerationLlmAutoRunnerSupport.deepGet(root, path);
+    }
+
+    static String normalizeImageEvidenceToTextAnchor(String evidenceItem, String chunkText) {
+        return ModerationLlmAutoRunnerSupport.normalizeImageEvidenceToTextAnchor(evidenceItem, chunkText);
+    }
+
+    static String normalizeChunkImageEvidenceId(String evidenceItem, List<ChunkImageRef> actualChunkImageRefs) {
+        return ModerationLlmAutoRunnerSupport.normalizeChunkImageEvidenceId(evidenceItem, toSupportRefs(actualChunkImageRefs));
+    }
+
+    static Integer parseImageIndexFromPlaceholder(String placeholder) {
+        return ModerationLlmAutoRunnerSupport.parseImageIndexFromPlaceholder(placeholder);
+    }
+
+    static boolean containsNormalizedText(String text, String needle) {
+        return ModerationLlmAutoRunnerSupport.containsNormalizedText(text, needle);
+    }
+
+    static List<ChunkImageRef> filterChunkImageRefsByIndices(List<ChunkImageRef> refs, Set<Integer> indices) {
+        return fromSupportRefs(ModerationLlmAutoRunnerSupport.filterChunkImageRefsByIndices(toSupportRefs(refs), indices));
+    }
+
+    static List<ChunkImageRef> mergeChunkImageRefs(List<ChunkImageRef> primaryRefs, List<ChunkImageRef> secondaryRefs) {
+        return fromSupportRefs(ModerationLlmAutoRunnerSupport.mergeChunkImageRefs(toSupportRefs(primaryRefs), toSupportRefs(secondaryRefs)));
+    }
+
+    static List<String> extractPlaceholdersFromRefs(List<ChunkImageRef> refs) {
+        return ModerationLlmAutoRunnerSupport.extractPlaceholdersFromRefs(toSupportRefs(refs));
+    }
+
+    static EvidenceImageSelection selectEvidenceDrivenChunkImages(Map<String, Object> mem,
+                                                                  Integer chunkIndex,
+                                                                  List<ChunkImageRef> candidateRefs) {
+        ModerationLlmAutoRunnerSupport.EvidenceImageSelection selection =
+                ModerationLlmAutoRunnerSupport.selectEvidenceDrivenChunkImages(mem, chunkIndex, toSupportRefs(candidateRefs));
+        if (selection == null) {
+            return new EvidenceImageSelection(List.of(), List.of(), List.of());
+        }
+        return new EvidenceImageSelection(
+                fromSupportRefs(selection.selectedRefs),
+                selection.sourceChunkIndexes,
+                selection.placeholders
+        );
+    }
+
+    static List<LlmModerationTestRequest.ImageInput> refsToImageInputs(List<ChunkImageRef> refs, Long fileAssetId) {
+        return ModerationLlmAutoRunnerSupport.refsToImageInputs(toSupportRefs(refs), fileAssetId);
+    }
+
+    static List<String> normalizeChunkEvidenceForLabels(ObjectMapper objectMapper,
+                                                        List<String> evidence,
+                                                        String chunkText,
+                                                        List<ChunkImageRef> actualChunkImageRefs) {
+        return ModerationLlmAutoRunnerSupport.normalizeChunkEvidenceForLabels(
+                objectMapper,
+                evidence,
+                chunkText,
+                toSupportRefs(actualChunkImageRefs)
+        );
+    }
+
+    static String buildChunkPromptText(ModerationQueueEntity q,
+                                       ModerationChunkReviewService.ChunkToProcess c,
+                                       String raw,
+                                       com.example.EnterpriseRagCommunity.dto.moderation.ModerationChunkReviewConfigDTO cfg,
+                                       Map<String, Object> mem,
+                                       List<ChunkImageRef> imageRefs) {
+        return ModerationLlmAutoRunnerSupport.buildChunkPromptText(
+                q,
+                c,
+                raw,
+                cfg,
+                mem,
+                toSupportRefs(imageRefs)
+        );
+    }
+
+    static PolicyEval evaluatePolicyVerdict(Map<String, Object> policyConfig,
+                                            String reviewStage,
+                                            LlmModerationTestResponse res,
+                                            Map<String, Double> tagThresholds,
+                                            boolean upgraded,
+                                            boolean upgradeFailed) {
+        return ModerationLlmAutoRunnerSupport.evaluatePolicyVerdict(
+                policyConfig,
+                reviewStage,
+                res,
+                tagThresholds,
+                upgraded,
+                upgradeFailed
+        );
+    }
+
+    static Thresholds resolveThresholdsRequired(Map<String, Object> policyConfig, String reviewStage, List<String> labels) {
+        return ModerationLlmAutoRunnerSupport.resolveThresholdsRequired(policyConfig, reviewStage, labels);
+    }
+
+    static Thresholds resolveThresholdsPreferred(Map<String, Object> policyConfig,
+                                                 String reviewStage,
+                                                 List<String> labels,
+                                                 ModerationConfidenceFallbackConfigEntity fb) {
+        return ModerationLlmAutoRunnerSupport.resolveThresholdsPreferred(policyConfig, reviewStage, labels, fb);
+    }
+
+    static String resolveReviewStage(ModerationQueueEntity q) {
+        return ModerationLlmAutoRunnerSupport.resolveReviewStage(q);
+    }
+
+    static String normalizeReviewStage(String reviewStage) {
+        return ModerationLlmAutoRunnerSupport.normalizeReviewStage(reviewStage);
+    }
+
+    static boolean hasIntersection(List<String> a, List<String> b) {
+        return ModerationLlmAutoRunnerSupport.hasIntersection(a, b);
+    }
+
+    static Verdict aggregateChunkVerdict(AdminModerationChunkProgressDTO progress,
+                                         ModerationConfidenceFallbackConfigEntity fb,
+                                         Map<String, Object> policyConfig,
+                                         String reviewStage,
+                                         List<String> labels) {
+        return ModerationLlmAutoRunnerSupport.aggregateChunkVerdict(progress, fb, policyConfig, reviewStage, labels);
+    }
+
+    static Verdict guardChunkedAggregateByMemory(Verdict v,
+                                                 Map<String, Object> mem,
+                                                 ModerationConfidenceFallbackConfigEntity fb,
+                                                 Map<String, Object> policyConfig,
+                                                 String reviewStage,
+                                                 List<String> labels) {
+        return ModerationLlmAutoRunnerSupport.guardChunkedAggregateByMemory(v, mem, fb, policyConfig, reviewStage, labels);
+    }
+
+    static Verdict verdictFromLlm(LlmModerationTestResponse res, ModerationConfidenceFallbackConfigEntity fb) {
+        return ModerationLlmAutoRunnerSupport.verdictFromLlm(res, fb);
+    }
+
+    static Verdict verdictFromScore(double score, double rejectThreshold, double humanThreshold) {
+        return ModerationLlmAutoRunnerSupport.verdictFromScore(score, rejectThreshold, humanThreshold);
+    }
+
+    static Verdict verdictFromDecisionAndScore(String decision, Double score, double rejectThreshold, double humanThreshold) {
+        return ModerationLlmAutoRunnerSupport.verdictFromDecisionAndScore(decision, score, rejectThreshold, humanThreshold);
+    }
+
+    static Verdict stricterVerdict(Verdict a, Verdict b) {
+        return ModerationLlmAutoRunnerSupport.stricterVerdict(a, b);
+    }
+
+    static String normalizeDecisionOrNull(String decision) {
+        return ModerationLlmAutoRunnerSupport.normalizeDecisionOrNull(decision);
+    }
+
+    static Map<String, Object> summarizeLlmStage(LlmModerationTestResponse.Stage stage) {
+        return ModerationLlmAutoRunnerSupport.summarizeLlmStage(stage);
+    }
+
+    static Map<String, Object> summarizeLlmRes(LlmModerationTestResponse res) {
+        return ModerationLlmAutoRunnerSupport.summarizeLlmRes(res);
+    }
+
+    static List<Map<String, Object>> extractEntitiesFromText(String text, int chunkIndex, int max) {
+        return ModerationLlmAutoRunnerSupport.extractEntitiesFromText(text, chunkIndex, max);
+    }
+
+    static Map<String, Object> buildTokenDiagnostics(String promptText,
+                                                     List<LlmModerationTestRequest.ImageInput> images,
+                                                     LlmModerationTestResponse res,
+                                                     com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity visionPrompt,
+                                                     int imagesCandidate,
+                                                     List<Integer> evidenceSourceChunks,
+                                                     List<String> evidencePlaceholdersUsed) {
+        return ModerationLlmAutoRunnerSupport.buildTokenDiagnostics(
+                promptText,
+                images,
+                res,
+                visionPrompt,
+                imagesCandidate,
+                evidenceSourceChunks,
+                evidencePlaceholdersUsed
+        );
+    }
+
+    static String classifyImageUrlKind(String rawUrl) {
+        return ModerationLlmAutoRunnerSupport.classifyImageUrlKind(rawUrl);
+    }
+
+    static String buildUserFacingRejectReason(LlmModerationTestResponse res, String fallback) {
+        return ModerationLlmAutoRunnerSupport.buildUserFacingRejectReason(res, fallback);
+    }
+
+    static String buildFinalReviewInput(Map<String, Object> mem) {
+        return ModerationLlmAutoRunnerSupport.buildFinalReviewInput(mem);
+    }
+
+    static boolean asBooleanRequired(Object value, String key) {
+        return ModerationLlmAutoRunnerSupport.asBooleanRequired(value, key);
+    }
+
+    static boolean asBooleanOrDefault(Object value, boolean def) {
+        return ModerationLlmAutoRunnerSupport.asBooleanOrDefault(value, def);
+    }
+
+    static double asDoubleRequired(Object value, String key) {
+        return ModerationLlmAutoRunnerSupport.asDoubleRequired(value, key);
+    }
+
+    static long asLongRequired(Object value, String key) {
+        return ModerationLlmAutoRunnerSupport.asLongRequired(value, key);
+    }
+
+    static double clamp01Strict(double value) {
+        return ModerationLlmAutoRunnerSupport.clamp01Strict(value);
+    }
+
+    static List<String> summarizeEvidenceMemory(Map<String, Object> mem, Integer chunkIndex, int maxLines) {
+        return ModerationLlmAutoRunnerSupport.summarizeEvidenceMemory(mem, chunkIndex, maxLines);
+    }
+
+    static List<String> collectChunkEvidenceForStepDetail(Map<String, Object> mem, int maxItems) {
+        return ModerationLlmAutoRunnerSupport.collectChunkEvidenceForStepDetail(mem, maxItems);
+    }
+
+    static String fingerprintAggregateEvidenceItem(String item) {
+        return ModerationLlmAutoRunnerSupport.fingerprintAggregateEvidenceItem(item);
+    }
+
+    static String canonicalEvidenceValue(Object value) {
+        return ModerationLlmAutoRunnerSupport.canonicalEvidenceValue(value);
+    }
+
+    static String normalizeForAnchorRegex(String value) {
+        if (value == null) return "";
+        String out = value
+                .replace('\u201c', '"')
+                .replace('\u201d', '"')
+                .replace('\u2018', '\'')
+                .replace('\u2019', '\'');
+        out = out.replaceAll(" ?\\\" ?", "\\\"")
+                .replaceAll(" ?' ?", "'")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return out;
+    }
+
+    static String anchorToRegex(String anchor) {
+        if (anchor == null) return "";
+        String text = normalizeForAnchorRegex(anchor);
+        if (text.isBlank()) return "";
+        String[] parts = text.split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (String part : parts) {
+            if (part == null || part.isBlank()) continue;
+            if (!sb.isEmpty()) sb.append("\\s+");
+            sb.append(java.util.regex.Pattern.quote(part));
+        }
+        return sb.toString();
+    }
+
+    static String extractBetweenAnchorsByRegex(String text, String before, String after, int maxLen) {
+        if (text == null || text.isEmpty() || before == null || before.isBlank()) return null;
+        int cap = Math.max(20, Math.min(2000, maxLen));
+
+        String normText = normalizeForAnchorRegex(text);
+        String normBefore = normalizeForAnchorRegex(before);
+        String normAfter = after == null || after.isBlank() ? null : normalizeForAnchorRegex(after);
+        if (normBefore.isBlank() || normText.isBlank()) return null;
+
+        String best = null;
+        int bestLen = Integer.MAX_VALUE;
+        boolean matchedWindow = false;
+
+        int from = 0;
+        while (from >= 0 && from < normText.length()) {
+            int bIdx = normText.indexOf(normBefore, from);
+            if (bIdx < 0) break;
+            int start = bIdx + normBefore.length();
+
+            if (normAfter != null && !normAfter.isBlank()) {
+                int aIdx = normText.indexOf(normAfter, start);
+                if (aIdx >= 0) {
+                    matchedWindow = true;
+                    String mid = normText.substring(start, aIdx);
+                    if (mid.length() > cap) mid = mid.substring(0, cap);
+                    String cleaned = cleanExtractedSnippet(mid);
+                    cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}\\].*$", "").trim();
+                    if (!cleaned.isBlank()) {
+                        int len = cleaned.length();
+                        if (len < bestLen) {
+                            best = cleaned;
+                            bestLen = len;
+                        }
+                    }
+                }
+            } else {
+                matchedWindow = true;
+                String tail = normText.substring(start);
+                String candidate = fallbackViolationSnippet(tail, 0);
+                String cleaned = cleanExtractedSnippet(candidate);
+                cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}\\].*$", "").trim();
+                if (!cleaned.isBlank()) {
+                    if (cleaned.length() > cap) cleaned = cleaned.substring(0, cap);
+                    int len = cleaned.length();
+                    if (len < bestLen) {
+                        best = cleaned;
+                        bestLen = len;
+                    }
+                }
+            }
+
+            from = Math.max(start, bIdx + 1);
+        }
+
+        if (best != null) return best;
+        if (matchedWindow) return null;
+
+        int fallbackStart = normText.indexOf(normBefore);
+        if (fallbackStart < 0) return null;
+        String candidate = fallbackViolationSnippet(normText, fallbackStart + normBefore.length());
+        String cleaned = cleanExtractedSnippet(candidate);
+        cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}\\].*$", "").trim();
+        return cleaned.isBlank() ? null : cleaned;
+    }
+
+    static boolean isSuspiciousEvidenceText(String text, String chunkText) {
+        return ModerationLlmAutoRunnerSupport.isSuspiciousEvidenceText(text, chunkText);
+    }
+
+    static String clipTextForEvidenceJson(String text, int maxChars) {
+        return ModerationLlmAutoRunnerSupport.clipTextForEvidenceJson(text, maxChars);
+    }
+
+    static String cleanExtractedSnippet(String snippet) {
+        return ModerationLlmAutoRunnerSupport.cleanExtractedSnippet(snippet);
+    }
+
+    static int findBoundaryEnd(String text, int start, int maxEnd) {
+        return ModerationLlmAutoRunnerSupport.findBoundaryEnd(text, start, maxEnd);
+    }
+
+    static String fallbackViolationSnippet(String text, int violationStart) {
+        return ModerationLlmAutoRunnerSupport.fallbackViolationSnippet(text, violationStart);
+    }
+
+    private static List<ModerationLlmAutoRunnerSupport.ChunkImageRef> toSupportRefs(List<ChunkImageRef> refs) {
+        if (refs == null || refs.isEmpty()) return List.of();
+        List<ModerationLlmAutoRunnerSupport.ChunkImageRef> out = new ArrayList<>();
+        for (ChunkImageRef ref : refs) {
+            if (ref == null) continue;
+            out.add(new ModerationLlmAutoRunnerSupport.ChunkImageRef(
+                    ref.index,
+                    ref.placeholder,
+                    ref.url,
+                    ref.mimeType,
+                    ref.fileAssetId
+            ));
+        }
+        return out;
+    }
+
+    private static List<ChunkImageRef> fromSupportRefs(List<ModerationLlmAutoRunnerSupport.ChunkImageRef> refs) {
+        if (refs == null || refs.isEmpty()) return List.of();
+        List<ChunkImageRef> out = new ArrayList<>();
+        for (ModerationLlmAutoRunnerSupport.ChunkImageRef ref : refs) {
+            if (ref == null) continue;
+            out.add(new ChunkImageRef(ref.index, ref.placeholder, ref.url, ref.mimeType, ref.fileAssetId));
+        }
+        return out;
+    }
+
     private void handleChunked(
             ModerationQueueEntity q,
             ModerationPipelineRunEntity run,
@@ -1145,14 +1905,14 @@ public class ModerationLlmAutoRunner {
                                     if (res.getSeverity() != null) labels.put("severity", res.getSeverity());
                                     if (res.getUncertainty() != null) labels.put("uncertainty", res.getUncertainty());
                                     PolicyEval policyEval = evaluatePolicyVerdict(policyConfig, reviewStage, res, resolveRiskTagThresholdsCached(), false, false);
-                                    if (policyEval != null && policyEval.verdict() != null) {
-                                        labels.put("policyVerdict", policyEval.verdict().name());
+                                    if (policyEval != null && policyEval.verdict != null) {
+                                        labels.put("policyVerdict", policyEval.verdict.name());
                                     }
-                                        Verdict policyVerdict = policyEval == null ? null : policyEval.verdict();
+                                    Verdict policyVerdict = policyEval == null ? null : policyEval.verdict;
                                         boolean keepEvidence = policyVerdict == Verdict.REJECT || policyVerdict == Verdict.REVIEW;
                                         List<String> evidenceBeforeNormalize = filterChunkEvidence(res == null ? null : res.getEvidence());
                                         List<String> evidence = keepEvidence
-                                            ? normalizeChunkEvidenceForLabels(res == null ? null : res.getEvidence(), raw, actualChunkImageRefs)
+                                                ? normalizeChunkEvidenceForLabels(objectMapper, res == null ? null : res.getEvidence(), raw, actualChunkImageRefs)
                                             : List.of();
                                     if (evidence != null && !evidence.isEmpty()) {
                                         int take = Math.min(10, evidence.size());
@@ -1201,12 +1961,12 @@ public class ModerationLlmAutoRunner {
                                 Integer tokensIn = res == null || res.getUsage() == null ? null : res.getUsage().getPromptTokens();
                                 Integer tokensOut = res == null || res.getUsage() == null ? null : res.getUsage().getCompletionTokens();
                                 chunkReviewService.markChunkSuccess(c.chunkId(), res == null ? null : res.getModel(), v, res == null ? null : res.getScore(), labels, tokensIn, tokensOut, false);
-                                
+
                                 try {
                                     Map<String, Object> simpleOutput = new LinkedHashMap<>();
                                     simpleOutput.put("decision", String.valueOf(v));
                                     simpleOutput.put("model", String.valueOf(res == null ? null : res.getModel()));
-                                    
+
                                     Map<String, Object> combinedOutput = new LinkedHashMap<>();
                                     combinedOutput.put("summary", simpleOutput);
                                     combinedOutput.put("full_response", sanitizeModerationResponseForQueueOutput(objectMapper, res));
@@ -1219,7 +1979,7 @@ public class ModerationLlmAutoRunner {
                                 } catch (Exception e) {
                                     task.reportOutput("{\"error\":\"Output merge failed: " + e.getMessage() + "\"}");
                                 }
-                                
+
                                 return res;
                             } catch (Exception ex) {
                                 chunkReviewService.markChunkFailed(c.chunkId(), ex.getMessage(), false);
@@ -1458,1301 +2218,29 @@ public class ModerationLlmAutoRunner {
         writeChunkedDecisionAuditLog(q, run, llmStepId, chunkSetId, "HUMAN", globalRes, details);
     }
 
-    private static Verdict verdictFromScore(double score, double rejectThreshold, double humanThreshold) {
-        double s = clamp01(score, 0.0);
-        double rejectT = clamp01Strict(rejectThreshold);
-        double humanT = clamp01Strict(humanThreshold);
-        if (humanT > rejectT) humanT = rejectT;
-        if (s >= rejectT) return Verdict.REJECT;
-        if (s >= humanT) return Verdict.REVIEW;
-        return Verdict.APPROVE;
+    private String ensureAnchorEvidenceContainsText(String evidenceItem, String chunkText) {
+        return ModerationLlmAutoRunnerSupport.ensureAnchorEvidenceContainsText(objectMapper, evidenceItem, chunkText);
     }
 
-    private static Verdict verdictFromDecisionAndScore(String decision, Double score, double rejectThreshold, double humanThreshold) {
-        if ("REJECT".equalsIgnoreCase(decision)) return Verdict.REJECT;
-        if ("HUMAN".equalsIgnoreCase(decision) || "REVIEW".equalsIgnoreCase(decision)) return Verdict.REVIEW;
-        if ("APPROVE".equalsIgnoreCase(decision)) {
-            if (score == null) return Verdict.APPROVE;
-            return stricterVerdict(Verdict.APPROVE, verdictFromScore(clamp01(score, 0.0), rejectThreshold, humanThreshold));
-        }
-        if (score == null) return Verdict.REVIEW;
-        return verdictFromScore(clamp01(score, 0.0), rejectThreshold, humanThreshold);
+    private String evidenceFingerprint(String item) {
+        return ModerationLlmAutoRunnerSupport.evidenceFingerprint(objectMapper, item);
     }
 
-    private static Verdict stricterVerdict(Verdict a, Verdict b) {
-        if (a == Verdict.REJECT || b == Verdict.REJECT) return Verdict.REJECT;
-        if (a == Verdict.REVIEW || b == Verdict.REVIEW) return Verdict.REVIEW;
-        return Verdict.APPROVE;
+    private List<String> normalizeChunkEvidenceForLabels(List<String> evidence,
+                                                         String chunkText,
+                                                         List<ChunkImageRef> actualChunkImageRefs) {
+        return normalizeChunkEvidenceForLabels(objectMapper, evidence, chunkText, actualChunkImageRefs);
     }
 
-    private static String normalizeDecisionOrNull(String decision) {
-        if (decision == null || decision.isBlank()) return null;
-        return ModerationFallbackDecisionService.normalizeDecision(decision);
-    }
-
-    private static Map<String, Object> summarizeLlmStage(LlmModerationTestResponse.Stage s) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        if (s == null) return m;
-        if (s.getDecisionSuggestion() != null) m.put("decision_suggestion", s.getDecisionSuggestion());
-        if (s.getDecision() != null) m.put("decision", s.getDecision());
-        if (s.getRiskScore() != null) m.put("risk_score", s.getRiskScore());
-        if (s.getScore() != null) m.put("score", s.getScore());
-        if (s.getSeverity() != null) m.put("severity", s.getSeverity());
-        if (s.getUncertainty() != null) m.put("uncertainty", s.getUncertainty());
-        if (s.getLabels() != null && !s.getLabels().isEmpty()) m.put("labels", s.getLabels());
-        if (s.getRiskTags() != null && !s.getRiskTags().isEmpty()) m.put("riskTags", s.getRiskTags());
-        if (s.getReasons() != null && !s.getReasons().isEmpty()) {
-            int take = Math.min(10, s.getReasons().size());
-            m.put("reasons", s.getReasons().subList(0, take));
-        }
-        if (s.getEvidence() != null && !s.getEvidence().isEmpty()) {
-            int take = Math.min(10, s.getEvidence().size());
-            m.put("evidence", s.getEvidence().subList(0, take));
-        }
-        if (s.getInputMode() != null) m.put("inputMode", s.getInputMode());
-        if (s.getModel() != null) m.put("model", s.getModel());
-        if (s.getLatencyMs() != null) m.put("latencyMs", s.getLatencyMs());
-        if (s.getDescription() != null) m.put("description", s.getDescription());
-        String raw = s.getRawModelOutput();
-        if (raw != null) {
-            if (raw.length() > 1000) raw = raw.substring(0, 1000);
-            m.put("rawModelOutput", raw);
-        }
-        return m;
-    }
-
-    private static String buildUserFacingRejectReason(LlmModerationTestResponse res, String fallback) {
-        String fb = fallback == null ? "" : fallback.trim();
-        if (fb.isEmpty()) fb = "Content violates policy";
-        if (res == null) return fb;
-
-        List<String> parts = new ArrayList<>();
-        if (res.getReasons() != null) {
-            for (String r : res.getReasons()) {
-                String t = normalizeOneLine(r);
-                if (t.isEmpty()) continue;
-                parts.add(t);
-                if (parts.size() >= 3) break;
-            }
-        }
-        if (parts.isEmpty() && res.getRiskTags() != null) {
-            List<String> tags = new ArrayList<>();
-            for (String tag : res.getRiskTags()) {
-                String t = normalizeOneLine(tag);
-                if (t.isEmpty()) continue;
-                tags.add(t);
-                if (tags.size() >= 3) break;
-            }
-            if (!tags.isEmpty()) {
-                parts.add("Matched tags: " + String.join(", ", tags));
-            }
-        }
-        if (parts.isEmpty()) return fb;
-
-        String joined = String.join("; ", parts);
-        String out = normalizeOneLine(joined);
-        if (out.length() > 160) out = out.substring(0, 160);
-        return out.isEmpty() ? fb : out;
-    }
-
-    private static String normalizeOneLine(String s) {
-        if (s == null) return "";
-        String t = s.trim().replaceAll("\\s+", " ");
-        return t;
-    }
-
-    private static boolean asBooleanRequired(Object v, String key) {
-        if (v == null) throw new IllegalStateException("missing threshold: " + key);
-        if (v instanceof Boolean b) return b;
-        if (v instanceof Number n) return n.intValue() != 0;
-        String s = String.valueOf(v).trim().toLowerCase(Locale.ROOT);
-        if (s.equals("true") || s.equals("1") || s.equals("yes") || s.equals("y")) return true;
-        if (s.equals("false") || s.equals("0") || s.equals("no") || s.equals("n")) return false;
-        throw new IllegalStateException("invalid boolean threshold: " + key);
-    }
-
-    private static double asDoubleRequired(Object v, String key) {
-        if (v == null) throw new IllegalStateException("missing threshold: " + key);
-        if (v instanceof Number n) return n.doubleValue();
-        try {
-            return Double.parseDouble(String.valueOf(v).trim());
-        } catch (Exception e) {
-            throw new IllegalStateException("invalid double threshold: " + key, e);
-        }
-    }
-
-    private static long asLongRequired(Object v, String key) {
-        if (v == null) throw new IllegalStateException("missing threshold: " + key);
-        if (v instanceof Number n) return n.longValue();
-        try {
-            return Long.parseLong(String.valueOf(v).trim());
-        } catch (Exception e) {
-            throw new IllegalStateException("invalid long threshold: " + key, e);
-        }
-    }
-
-    private static double clamp01Strict(double v) {
-        if (!Double.isFinite(v)) throw new IllegalStateException("invalid double value");
-        if (v < 0) return 0.0;
-        if (v > 1) return 1.0;
-        return v;
-    }
-
-    private static boolean asBooleanOrDefault(Object v, boolean def) {
-        if (v == null) return def;
-        if (v instanceof Boolean b) return b;
-        if (v instanceof Number n) return n.intValue() != 0;
-        String s = String.valueOf(v).trim().toLowerCase();
-        if (s.equals("true") || s.equals("1") || s.equals("yes") || s.equals("y")) return true;
-        if (s.equals("false") || s.equals("0") || s.equals("no") || s.equals("n")) return false;
-        return def;
-    }
-
-    private static double asDoubleOrDefault(Object v, double def) {
-        if (v == null) return def;
-        if (v instanceof Number n) return n.doubleValue();
-        try {
-            return Double.parseDouble(String.valueOf(v).trim());
-        } catch (Exception e) {
-            return def;
-        }
-    }
-
-    private static double clamp01(Double v, double def) {
-        if (v == null || !Double.isFinite(v)) return def;
-        if (v < 0) return 0.0;
-        if (v > 1) return 1.0;
-        return v;
-    }
-
-    private static double clamp01(double v, double def) {
-        if (!Double.isFinite(v)) return def;
-        if (v < 0) return 0.0;
-        if (v > 1) return 1.0;
-        return v;
-    }
-
-    private static Map<String, Object> summarizeLlmRes(LlmModerationTestResponse r) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        if (r == null) return m;
-        if (r.getDecisionSuggestion() != null) m.put("decision_suggestion", r.getDecisionSuggestion());
-        if (r.getDecision() != null) m.put("decision", r.getDecision());
-        if (r.getRiskScore() != null) m.put("risk_score", r.getRiskScore());
-        if (r.getScore() != null) m.put("score", r.getScore());
-        if (r.getSeverity() != null) m.put("severity", r.getSeverity());
-        if (r.getUncertainty() != null) m.put("uncertainty", r.getUncertainty());
-        if (r.getLabels() != null && !r.getLabels().isEmpty()) m.put("labels", r.getLabels());
-        if (r.getRiskTags() != null && !r.getRiskTags().isEmpty()) m.put("riskTags", r.getRiskTags());
-        if (r.getReasons() != null && !r.getReasons().isEmpty()) {
-            int take = Math.min(10, r.getReasons().size());
-            m.put("reasons", r.getReasons().subList(0, take));
-        }
-        if (r.getEvidence() != null && !r.getEvidence().isEmpty()) {
-            int take = Math.min(10, r.getEvidence().size());
-            m.put("evidence", r.getEvidence().subList(0, take));
-        }
-        if (r.getInputMode() != null) m.put("inputMode", r.getInputMode());
-        if (r.getModel() != null) m.put("model", r.getModel());
-        if (r.getLatencyMs() != null) m.put("latencyMs", r.getLatencyMs());
-        if (r.getUsage() != null) m.put("usage", r.getUsage());
-        if (r.getStages() != null) {
-            m.put("hasTextStage", r.getStages().getText() != null);
-            m.put("hasImageStage", r.getStages().getImage() != null);
-            m.put("hasJudgeStage", r.getStages().getJudge() != null);
-            m.put("hasUpgradeStage", r.getStages().getUpgrade() != null);
-        }
-        String raw = r.getRawModelOutput();
-        if (raw != null) {
-            if (raw.length() > 1000) raw = raw.substring(0, 1000);
-            m.put("rawModelOutput", raw);
-        }
-        return m;
-    }
-
-    private String judgePromptTemplate(ModerationLlmConfigEntity cfg) {
-        ModerationLlmConfigEntity effective = cfg;
-        if (effective == null) {
-            effective = llmConfigRepository.findAll().stream().findFirst()
-                    .orElseThrow(() -> new IllegalStateException("moderation_llm_config not initialized"));
-        }
-        String promptCode = toStr(effective.getJudgePromptCode());
-        if (promptCode == null) {
-            throw new IllegalStateException("moderation_llm_config.judge_prompt_code is required");
-        }
-        return promptsRepository.findByPromptCode(promptCode)
-                .map(com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity::getUserPromptTemplate)
-                .orElseThrow(() -> new IllegalStateException("Prompt " + promptCode + " not found"));
-    }
-
-    private static String buildFinalReviewInput(Map<String, Object> mem) {
-        if (mem == null || mem.isEmpty()) return "[EMPTY_MEMORY]";
-        StringBuilder sb = new StringBuilder();
-        Object desc = mem.get("imageDescription");
-        if (desc != null && !String.valueOf(desc).isBlank()) {
-            sb.append("[IMAGE_DESCRIPTION]\n");
-            String t = String.valueOf(desc).trim();
-            if (t.length() > 1500) t = t.substring(0, 1500);
-            sb.append(t).append("\n\n");
-        }
-        sb.append("[EVIDENCE_BOOK]\n");
-        Object risk = mem.get("riskTags");
-        if (risk != null) sb.append("riskTags: ").append(String.valueOf(risk)).append('\n');
-        Object ms = mem.get("maxScore");
-        if (ms != null) sb.append("maxScore: ").append(String.valueOf(ms)).append('\n');
-        Object ents = mem.get("entities");
-        if (ents != null) sb.append("entities: ").append(String.valueOf(ents)).append('\n');
-        Object ev = mem.get("evidence");
-        if (ev != null) {
-            sb.append("evidence: ").append(String.valueOf(ev)).append('\n');
-        } else {
-            List<String> fromChunk = collectChunkEvidenceForStepDetail(mem, 20);
-            if (!fromChunk.isEmpty()) {
-                sb.append("evidence: ").append(String.valueOf(fromChunk)).append('\n');
-            }
-        }
-        Object oq = mem.get("openQuestions");
-        if (oq != null) sb.append("openQuestions: ").append(String.valueOf(oq)).append('\n');
-        String out = sb.toString();
-        if (out.length() > 4000) out = out.substring(0, 4000);
-        return out;
-    }
-
-    private static class FilesReadiness {
-        final boolean hasAttachments;
-        final List<Long> pendingFileAssetIds;
-
-        private FilesReadiness(boolean hasAttachments, List<Long> pendingFileAssetIds) {
-            this.hasAttachments = hasAttachments;
-            this.pendingFileAssetIds = pendingFileAssetIds == null ? List.of() : pendingFileAssetIds;
-        }
-    }
-
-    private int resolveWaitFilesSeconds(ModerationLlmConfigEntity cfg) {
-        if (cfg != null && cfg.getMultimodalPromptCode() != null) {
-            try {
-                var prompt = promptsRepository.findByPromptCode(cfg.getMultimodalPromptCode()).orElse(null);
-                if (prompt != null && prompt.getWaitFilesSeconds() != null) {
-                    int n = prompt.getWaitFilesSeconds();
-                    if (n < 0) n = 0;
-                    if (n > 3600) n = 3600;
-                    return n;
-                }
-            } catch (Exception ignore) {
-            }
-        }
-        return 60;
-    }
-
-    private FilesReadiness checkPostFilesReadiness(ModerationQueueEntity q) {
-        if (q == null || q.getContentType() != com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType.POST) {
-            return new FilesReadiness(false, List.of());
-        }
-        Long postId = q.getContentId();
-        if (postId == null) return new FilesReadiness(false, List.of());
-
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
-                0,
-                200,
-                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.asc("createdAt"), org.springframework.data.domain.Sort.Order.asc("id"))
-        );
-        List<Long> fileAssetIds = new ArrayList<>();
-        try {
-            var page = postAttachmentsRepository.findByPostId(postId, pageable);
-            if (page != null && page.getContent() != null) {
-                for (PostAttachmentsEntity a : page.getContent()) {
-                    if (a == null || a.getFileAssetId() == null) continue;
-                    if (!fileAssetIds.contains(a.getFileAssetId())) fileAssetIds.add(a.getFileAssetId());
-                }
-            }
-        } catch (Exception ignore) {
-        }
-        if (fileAssetIds.isEmpty()) return new FilesReadiness(false, List.of());
-
-        Map<Long, FileAssetExtractionsEntity> extById = new HashMap<>();
-        try {
-            List<FileAssetExtractionsEntity> exts = fileAssetExtractionsRepository.findAllById(fileAssetIds);
-            if (exts != null) {
-                for (FileAssetExtractionsEntity e : exts) {
-                    if (e == null || e.getFileAssetId() == null) continue;
-                    extById.put(e.getFileAssetId(), e);
-                }
-            }
-        } catch (Exception ignore) {
-        }
-
-        List<Long> pending = new ArrayList<>();
-        for (Long id : fileAssetIds) {
-            if (id == null) continue;
-            FileAssetExtractionsEntity e = extById.get(id);
-            if (e == null) {
-                try {
-                    fileAssetExtractionService.requestExtractionIfEnabled(id);
-                    e = fileAssetExtractionsRepository.findById(id).orElse(null);
-                } catch (Exception ignore) {
-                }
-            }
-            if (e == null) continue;
-            if (e.getExtractStatus() == FileAssetExtractionStatus.PENDING) {
-                pending.add(id);
-            }
-        }
-        return new FilesReadiness(true, pending);
-    }
-
-    private String detectHardRejectFromPostFiles(Long postId) {
-        if (postId == null) return null;
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
-                0,
-                200,
-                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.asc("createdAt"), org.springframework.data.domain.Sort.Order.asc("id"))
-        );
-        List<Long> fileAssetIds = new ArrayList<>();
-        try {
-            var page = postAttachmentsRepository.findByPostId(postId, pageable);
-            if (page != null && page.getContent() != null) {
-                for (PostAttachmentsEntity a : page.getContent()) {
-                    if (a == null || a.getFileAssetId() == null) continue;
-                    if (!fileAssetIds.contains(a.getFileAssetId())) fileAssetIds.add(a.getFileAssetId());
-                }
-            }
-        } catch (Exception ignore) {
-        }
-        if (fileAssetIds.isEmpty()) return null;
-        try {
-            for (FileAssetExtractionsEntity e : fileAssetExtractionsRepository.findAllById(fileAssetIds)) {
-                if (e == null) continue;
-                if (e.getExtractStatus() != FileAssetExtractionStatus.FAILED) continue;
-                String msg = e.getErrorMessage();
-                if (msg != null && msg.contains("ARCHIVE_NESTING_TOO_DEEP")) return "ARCHIVE_NESTING_TOO_DEEP";
-                String meta = e.getExtractedMetadataJson();
-                if (meta != null && meta.contains("ARCHIVE_NESTING_TOO_DEEP")) return "ARCHIVE_NESTING_TOO_DEEP";
-            }
-        } catch (Exception ignore) {
-        }
-        return null;
-    }
-
-    private Map<String, Double> resolveRiskTagThresholdsCached() {
-        long now = System.currentTimeMillis();
-        long loadedAt = riskTagThresholdsLoadedAtMs;
-        if (loadedAt > 0 && (now - loadedAt) <= 10_000) return riskTagThresholdsCache;
-        synchronized (this) {
-            now = System.currentTimeMillis();
-            loadedAt = riskTagThresholdsLoadedAtMs;
-            if (loadedAt > 0 && (now - loadedAt) <= 10_000) return riskTagThresholdsCache;
-            HashMap<String, Double> map = new HashMap<>();
-            try {
-                tagsRepository.findByTypeAndIsActiveTrue(TagType.RISK).forEach(t -> {
-                    if (t == null) return;
-                    String slug = t.getSlug();
-                    Double th = t.getThreshold();
-                    if (slug == null || slug.isBlank()) return;
-                    if (th == null || !Double.isFinite(th)) return;
-                    map.put(slug.trim(), clamp01(th, 0.0));
-                });
-            } catch (Exception ignore) {
-            }
-            riskTagThresholdsCache = map.isEmpty() ? Map.of() : Map.copyOf(map);
-            riskTagThresholdsLoadedAtMs = now;
-            return riskTagThresholdsCache;
-        }
-    }
-
-    private record PolicyEval(Verdict verdict, Map<String, Object> details) {}
-
-    private static PolicyEval evaluatePolicyVerdict(
-            Map<String, Object> policyConfig,
-            String reviewStage,
-            LlmModerationTestResponse res,
-            Map<String, Double> tagThresholds,
-            boolean upgraded,
-            boolean upgradeFailed
-    ) {
-        Map<String, Object> details = new LinkedHashMap<>();
-        if (reviewStage != null) details.put("reviewStage", reviewStage);
-
-        if (upgraded && upgradeFailed) {
-            details.put("reason", "upgrade_failed");
-            return new PolicyEval(Verdict.REVIEW, details);
-        }
-
-        String suggestion = normalizeSuggestion(res == null ? null : res.getDecisionSuggestion(), res == null ? null : res.getDecision());
-        Double rs0 = res == null ? null : (res.getRiskScore() == null ? res.getScore() : res.getRiskScore());
-        double riskScore = rs0 == null ? 0.0 : clamp01(rs0, 0.0);
-        List<String> labels = coalesceLabels(res);
-        details.put("decision_suggestion", suggestion);
-        details.put("risk_score", riskScore);
-        if (labels != null && !labels.isEmpty()) details.put("labels", labels);
-
-        if ("ESCALATE".equalsIgnoreCase(suggestion)) {
-            details.put("reason", "suggested_escalate");
-            return new PolicyEval(Verdict.REVIEW, details);
-        }
-
-        Thresholds th = resolveThresholdsRequired(policyConfig, reviewStage, labels);
-        details.put("thresholdsEffective", Map.of("T_allow", th.tAllow, "T_reject", th.tReject));
-        details.put("thresholdSource", th.source);
-
-        boolean tagThresholdHit = exceedsTagThreshold(riskScore, res == null ? null : res.getRiskTags(), tagThresholds);
-        if (tagThresholdHit) details.put("tagThresholdHit", true);
-
-        boolean requireEvidence = asBooleanOrDefault(deepGet(policyConfig, "escalate_rules.require_evidence"), false);
-        boolean evidenceMissing = res == null || res.getEvidence() == null || res.getEvidence().isEmpty();
-        details.put("requireEvidence", requireEvidence);
-        details.put("evidenceMissing", evidenceMissing);
-
-        Verdict verdict;
-        if ("REJECT".equalsIgnoreCase(suggestion) || tagThresholdHit) {
-            verdict = Verdict.REJECT;
-        } else if ("ALLOW".equalsIgnoreCase(suggestion)) {
-            if (riskScore >= th.tReject) verdict = Verdict.REJECT;
-            else if (riskScore <= th.tAllow) verdict = Verdict.APPROVE;
-            else verdict = Verdict.REVIEW;
-        } else {
-            if (riskScore >= th.tReject) verdict = Verdict.REJECT;
-            else if (riskScore <= th.tAllow) verdict = Verdict.APPROVE;
-            else verdict = Verdict.REVIEW;
-        }
-
-        if (verdict == Verdict.REJECT) {
-            if ("reported".equalsIgnoreCase(reviewStage) && evidenceMissing) {
-                details.put("reason", "reported_requires_evidence");
-                verdict = Verdict.REVIEW;
-            } else if (requireEvidence && evidenceMissing) {
-                details.put("reason", "requires_evidence");
-                verdict = Verdict.REVIEW;
-            }
-        }
-
-        if (verdict == Verdict.REVIEW && details.get("reason") == null) {
-            details.put("reason", "threshold_gray_zone");
-        }
-        return new PolicyEval(verdict, details);
-    }
-
-    private static boolean exceedsTagThreshold(double score, List<String> riskTags, Map<String, Double> thresholds) {
-        if (riskTags == null || riskTags.isEmpty() || thresholds == null || thresholds.isEmpty()) return false;
-        for (String tag : riskTags) {
-            if (tag == null || tag.isBlank()) continue;
-            Double t = thresholds.get(tag.trim());
-            if (t != null && score >= t) return true;
-        }
-        return false;
-    }
-
-    private record Thresholds(double tAllow, double tReject, String source) {}
-
-    private static Thresholds resolveThresholdsRequired(Map<String, Object> policyConfig, String reviewStage, List<String> labels) {
-        double tAllow = clamp01Strict(asDoubleRequired(deepGet(policyConfig, "thresholds.default.T_allow"), "thresholds.default.T_allow"));
-        double tReject = clamp01Strict(asDoubleRequired(deepGet(policyConfig, "thresholds.default.T_reject"), "thresholds.default.T_reject"));
-        String source = "policy.default";
-
-        if (reviewStage != null && !reviewStage.isBlank()) {
-            String s = reviewStage.trim();
-            Object oa = deepGet(policyConfig, "thresholds.by_review_stage." + s + ".T_allow");
-            Object or = deepGet(policyConfig, "thresholds.by_review_stage." + s + ".T_reject");
-            if (oa != null) tAllow = clamp01Strict(asDoubleRequired(oa, "thresholds.by_review_stage." + s + ".T_allow"));
-            if (or != null) tReject = clamp01Strict(asDoubleRequired(or, "thresholds.by_review_stage." + s + ".T_reject"));
-            if (oa != null || or != null) source = "policy.by_review_stage";
-        }
-
-        if (tAllow > tReject) tAllow = tReject;
-        return new Thresholds(tAllow, tReject, source);
-    }
-
-    private static String resolveReviewStage(ModerationQueueEntity q) {
-        if (q == null) return null;
-        String candidate = q.getReviewStage();
-        if (candidate == null || candidate.isBlank()) {
-            candidate = (q.getCaseType() == ModerationCaseType.REPORT) ? "reported" : null;
-        }
-        return normalizeReviewStage(candidate);
-    }
-
-    private static String normalizeReviewStage(String reviewStage) {
-        if (reviewStage == null) return null;
-        String s = reviewStage.trim().toLowerCase(Locale.ROOT);
-        if (s.isEmpty()) return null;
-        if ("reported".equals(s) || "appeal".equals(s) || "default".equals(s)) return s;
-        return null;
-    }
-
-    private static List<String> coalesceLabels(LlmModerationTestResponse res) {
-        if (res == null) return List.of();
-        if (res.getLabels() != null && !res.getLabels().isEmpty()) return res.getLabels();
-        if (res.getRiskTags() != null && !res.getRiskTags().isEmpty()) return res.getRiskTags();
-        return List.of();
-    }
-
-    private static boolean hasIntersection(List<String> a, List<String> b) {
-        if (a == null || a.isEmpty() || b == null || b.isEmpty()) return false;
-        java.util.HashSet<String> set = new java.util.HashSet<>();
-        for (String s : a) {
-            if (s != null && !s.isBlank()) set.add(s.trim());
-        }
-        for (String s : b) {
-            if (s != null && !s.isBlank() && set.contains(s.trim())) return true;
-        }
-        return false;
-    }
-
-    private static String normalizeSuggestion(String suggestion, String decisionFallback) {
-        String raw = (suggestion == null || suggestion.isBlank()) ? decisionFallback : suggestion;
-        if (raw == null) return "ESCALATE";
-        String d = raw.trim().toUpperCase(Locale.ROOT);
-        if (d.equals("ALLOW") || d.equals("REJECT") || d.equals("ESCALATE")) return d;
-        if (d.equals("APPROVE")) return "ALLOW";
-        if (d.equals("HUMAN")) return "ESCALATE";
-        if (raw.toLowerCase(Locale.ROOT).contains("allow")) return "ALLOW";
-        if (raw.toLowerCase(Locale.ROOT).contains("reject")) return "REJECT";
-        if (raw.toLowerCase(Locale.ROOT).contains("escalate")) return "ESCALATE";
-        return d;
-    }
-
-    private static List<String> asStringList(Object v) {
-        if (v == null) return List.of();
-        if (v instanceof List<?> list) {
-            List<String> out = new ArrayList<>();
-            for (Object it : list) {
-                if (it == null) continue;
-                String s = String.valueOf(it).trim();
-                if (!s.isBlank()) out.add(s);
-            }
-            return out;
-        }
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? List.of() : List.of(s);
-    }
-
-    private static Object deepGet(Map<String, Object> root, String path) {
-        if (root == null || root.isEmpty() || path == null || path.isBlank()) return null;
-        String[] segs = path.split("\\.");
-        Object cur = root;
-        for (String seg : segs) {
-            if (seg == null || seg.isBlank()) continue;
-            Map<String, Object> m = asMap(cur);
-            if (m == null) return null;
-            cur = m.get(seg);
-        }
-        return cur;
-    }
-
-    private static Map<String, Object> asMap(Object v) {
-        if (!(v instanceof Map<?, ?> mm)) return null;
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (var e : mm.entrySet()) {
-            Object k = e.getKey();
-            if (k == null) continue;
-            out.put(String.valueOf(k), e.getValue());
-        }
-        return out;
-    }
-
-    private static Verdict verdictFromLlm(LlmModerationTestResponse res, ModerationConfidenceFallbackConfigEntity fb) {
-        String decision = res == null ? null : ModerationFallbackDecisionService.normalizeDecision(res.getDecision());
-        if ("APPROVE".equals(decision)) return Verdict.APPROVE;
-        if ("REJECT".equals(decision)) return Verdict.REJECT;
-        if ("HUMAN".equals(decision)) return Verdict.REVIEW;
-        return ModerationFallbackDecisionService.verdictFromLlmScore(
-                res == null ? null : res.getScore(),
-                fb == null ? null : fb.getLlmRejectThreshold(),
-                fb == null ? null : fb.getLlmHumanThreshold()
-        );
-    }
-
-    private record ChunkedVerdict(Verdict verdict, Thresholds thresholds) {}
-
-    private static ChunkedVerdict verdictFromLlmInChunked(
-            LlmModerationTestResponse res,
-            ModerationConfidenceFallbackConfigEntity fb,
-            Map<String, Object> policyConfig,
-            String reviewStage
-    ) {
-        String decision = res == null ? null : ModerationFallbackDecisionService.normalizeDecision(res.getDecision());
-        Thresholds th = resolveThresholdsPreferred(policyConfig, reviewStage, coalesceLabels(res), fb);
-        if ("APPROVE".equals(decision)) return new ChunkedVerdict(Verdict.APPROVE, th);
-        if ("REJECT".equals(decision)) return new ChunkedVerdict(Verdict.REJECT, th);
-        if ("HUMAN".equals(decision)) return new ChunkedVerdict(Verdict.REVIEW, th);
-        Verdict v = ModerationFallbackDecisionService.verdictFromLlmScore(
-                res == null ? null : res.getScore(),
-                th.tReject,
-                th.tAllow
-        );
-        return new ChunkedVerdict(v, th);
-    }
-
-    private static Verdict aggregateChunkVerdict(
-            AdminModerationChunkProgressDTO progress,
-            ModerationConfidenceFallbackConfigEntity fb,
-            Map<String, Object> policyConfig,
-            String reviewStage,
-            List<String> labels
-    ) {
-        boolean anyHuman = false;
-        if (progress == null || progress.getChunks() == null) return Verdict.REVIEW;
-        Thresholds th = resolveThresholdsPreferred(policyConfig, reviewStage, labels, fb);
-        double rejectThreshold = th.tReject;
-        double humanThreshold = th.tAllow;
-
-        for (var c : progress.getChunks()) {
-            if (c == null) continue;
-            String v = c.getVerdict();
-            Double s = c.getScore();
-            if (s != null && Double.isFinite(s)) {
-                double sc = s;
-                if (sc < 0) sc = 0;
-                if (sc > 1) sc = 1;
-                if (sc >= rejectThreshold) return Verdict.REJECT;
-                if (sc >= humanThreshold) anyHuman = true;
-            } else {
-                if ("REJECT".equalsIgnoreCase(v)) return Verdict.REJECT;
-                if ("REVIEW".equalsIgnoreCase(v)) anyHuman = true;
-            }
-        }
-        return anyHuman ? Verdict.REVIEW : Verdict.APPROVE;
-    }
-
-    private static Verdict guardChunkedAggregateByMemory(
-            Verdict v,
-            Map<String, Object> mem,
-            ModerationConfidenceFallbackConfigEntity fb,
-            Map<String, Object> policyConfig,
-            String reviewStage,
-            List<String> labels
-    ) {
-        if (v == null) return Verdict.REVIEW;
-        if (v != Verdict.APPROVE) return v;
-        if (mem == null || mem.isEmpty()) return v;
-        Thresholds th = resolveThresholdsPreferred(policyConfig, reviewStage, labels, fb);
-        double humanThreshold = th.tAllow;
-        double maxScore = clamp01(asDoubleOrDefault(mem.get("maxScore"), 0.0), 0.0);
-        if (maxScore >= humanThreshold) return Verdict.REVIEW;
-        return v;
-    }
-
-    private static Thresholds resolveThresholdsPreferred(
-            Map<String, Object> policyConfig,
-            String reviewStage,
-            List<String> labels,
-            ModerationConfidenceFallbackConfigEntity fb
-    ) {
-        if (policyConfig != null && !policyConfig.isEmpty()) {
-            try {
-                return resolveThresholdsRequired(policyConfig, reviewStage, labels);
-            } catch (Exception ignore) {
-            }
-        }
-
-        Double rr = fb == null ? null : fb.getChunkLlmRejectThreshold();
-        if (rr == null) rr = fb == null ? null : fb.getLlmRejectThreshold();
-        double tReject = clamp01(rr == null ? 0.75 : rr, 0.75);
-
-        Double hh = fb == null ? null : fb.getChunkLlmHumanThreshold();
-        if (hh == null) hh = fb == null ? null : fb.getLlmHumanThreshold();
-        double tAllow = clamp01(hh == null ? 0.5 : hh, 0.5);
-
-        if (tAllow > tReject) tAllow = tReject;
-        return new Thresholds(tAllow, tReject, "fallback.chunk_config");
-    }
-
-    private void writeChunkedDecisionAuditLog(
-            ModerationQueueEntity q,
-            ModerationPipelineRunEntity run,
-            Long llmStepId,
-            Long chunkSetId,
-            String finalDecision,
-            LlmModerationTestResponse globalRes,
-            Map<String, Object> extraDetails
-    ) {
-        if (q == null || q.getId() == null || run == null) return;
-        try {
-            Map<String, Object> details = new LinkedHashMap<>();
-            details.put("runId", run.getId());
-            details.put("stage", "LLM");
-            details.put("mode", "chunked");
-            details.put("decision", finalDecision);
-            if (llmStepId != null) details.put("llmStepId", llmStepId);
-            if (chunkSetId != null) details.put("chunkSetId", chunkSetId);
-
-            if (globalRes != null) {
-                if (globalRes.getModel() != null) details.put("model", globalRes.getModel());
-                if (globalRes.getDecision() != null) details.put("globalDecision", globalRes.getDecision());
-                if (globalRes.getScore() != null) details.put("globalScore", globalRes.getScore());
-            }
-
-            try {
-                AdminModerationChunkProgressDTO p = chunkReviewService.getProgress(q.getId(), false, 0);
-                if (p != null) {
-                    details.put("chunkProgress", Map.of(
-                            "status", p.getStatus(),
-                            "total", p.getTotalChunks(),
-                            "completed", p.getCompletedChunks(),
-                            "failed", p.getFailedChunks(),
-                            "running", p.getRunningChunks()
-                    ));
-                    if (llmStepId != null && p.getTotalChunks() != null && p.getTotalChunks() > 0) {
-                        ModerationPipelineStepEntity step = pipelineStepRepository.findById(llmStepId).orElse(null);
-                        if (step != null && step.getCostMs() != null) {
-                            details.put("avgLatencyMs", Math.max(0L, step.getCostMs() / Math.max(1, (long) p.getTotalChunks())));
-                        }
-                    }
-                }
-            } catch (Exception ignore) {
-            }
-
-            try {
-                if (chunkSetId != null) {
-                    Map<String, Object> mem = chunkReviewService.getMemory(chunkSetId);
-                    if (mem != null) {
-                        Object ms = mem.get("maxScore");
-                        if (ms != null) details.put("maxScore", ms);
-                    }
-                }
-            } catch (Exception ignore) {
-            }
-
-            if (extraDetails != null && !extraDetails.isEmpty()) details.putAll(extraDetails);
-
-            String msg = "LLM chunked decision: " + finalDecision;
-            auditLogWriter.writeSystem("LLM_DECISION", "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, msg, run.getTraceId(), details);
-        } catch (Exception ignore) {
-        }
-    }
-
-    private static Map<String, Object> buildFinalReviewAuditDetails(Map<String, Object> chunkProgressFinal, LlmModerationTestResponse finalReviewRes) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("scope", "finalReview");
-        m.put("decisionSource", "finalReview");
-        if (chunkProgressFinal != null) m.put("chunkProgressFinal", chunkProgressFinal);
-        if (finalReviewRes != null) {
-            if (finalReviewRes.getDecision() != null) m.put("finalReviewDecision", finalReviewRes.getDecision());
-            if (finalReviewRes.getScore() != null) m.put("finalReviewScore", finalReviewRes.getScore());
-            if (finalReviewRes.getModel() != null) m.put("finalReviewModel", finalReviewRes.getModel());
-        }
-        return m;
-    }
-
-    private static String buildChunkPromptText(ModerationQueueEntity q, ModerationChunkReviewService.ChunkToProcess c, String raw) {
-        return buildChunkPromptText(q, c, raw, null, Map.of());
-    }
-
-    private static String buildChunkPromptText(
-            ModerationQueueEntity q,
-            ModerationChunkReviewService.ChunkToProcess c,
-            String raw,
-            com.example.EnterpriseRagCommunity.dto.moderation.ModerationChunkReviewConfigDTO cfg,
-            Map<String, Object> mem
-    ) {
-        return buildChunkPromptText(q, c, raw, cfg, mem, List.of());
-    }
-
-    private static String buildChunkPromptText(
-            ModerationQueueEntity q,
-            ModerationChunkReviewService.ChunkToProcess c,
-            String raw,
-            com.example.EnterpriseRagCommunity.dto.moderation.ModerationChunkReviewConfigDTO cfg,
-            Map<String, Object> mem,
-            List<ChunkImageRef> imageRefs
-    ) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[CHUNK_REVIEW]\n");
-        sb.append("queueId: ").append(q == null ? "" : String.valueOf(q.getId())).append('\n');
-        sb.append("contentType: ").append(q == null || q.getContentType() == null ? "" : q.getContentType().name()).append('\n');
-        sb.append("contentId: ").append(q == null ? "" : String.valueOf(q.getContentId())).append('\n');
-        sb.append("source: ").append(c.sourceType() == null ? "" : c.sourceType().name()).append('\n');
-        if (c.fileAssetId() != null) sb.append("fileAssetId: ").append(c.fileAssetId()).append('\n');
-        if (c.fileName() != null && !c.fileName().isBlank()) sb.append("fileName: ").append(c.fileName().trim()).append('\n');
-        sb.append("chunkIndex: ").append(c.chunkIndex() == null ? 0 : c.chunkIndex()).append('\n');
-        sb.append("range: ").append(c.startOffset()).append('-').append(c.endOffset()).append('\n');
-        String t = raw == null ? "" : raw.trim();
-        
-        if (cfg != null && Boolean.TRUE.equals(cfg.getEnableContextCompress())) {
-            t = normalizeForPrompt(t);
-        }
-        List<String> hints = null;
-        if (cfg != null && Boolean.TRUE.equals(cfg.getEnableTempIndexHints())) {
-            hints = extractKeywords(t, 12);
-        }
-        if (cfg != null && Boolean.TRUE.equals(cfg.getEnableGlobalMemory()) && mem != null && !mem.isEmpty()) {
-            sb.append("\n[GLOBAL_MEMORY]\n");
-            Object r = mem.get("riskTags");
-            Object s = mem.get("maxScore");
-            if (r != null) sb.append("riskTags: ").append(String.valueOf(r)).append('\n');
-            if (s != null) sb.append("maxScore: ").append(String.valueOf(s)).append('\n');
-            Object ents = mem.get("entities");
-            if (ents != null) sb.append("entities: ").append(String.valueOf(ents)).append('\n');
-            Object oq = mem.get("openQuestions");
-            if (oq != null) sb.append("openQuestions: ").append(String.valueOf(oq)).append('\n');
-            Object prev = null;
-            try {
-                int idx = c == null || c.chunkIndex() == null ? 0 : c.chunkIndex();
-                Object sm = mem.get("summaries");
-                if (idx > 0 && sm instanceof Map<?, ?> m) {
-                    Object v = m.get(String.valueOf(idx - 1));
-                    if (v == null) v = m.get(idx - 1);
-                    if (v != null && !String.valueOf(v).isBlank()) prev = v;
-                }
-            } catch (Exception ignore) {
-                prev = null;
-            }
-            if (prev == null) prev = mem.get("prevSummary");
-            if (prev != null && !String.valueOf(prev).isBlank()) {
-                sb.append("\n[PREV_CHUNK_SUMMARY]\n");
-                sb.append(String.valueOf(prev).trim()).append('\n');
-            }
-        }
-        if (hints != null && !hints.isEmpty()) {
-            sb.append("\n[HINTS]\n");
-            sb.append("keywords: ").append(String.join(", ", hints)).append('\n');
-        }
-        if (imageRefs != null && !imageRefs.isEmpty()) {
-            sb.append("\n[IMAGES]\n");
-            for (ChunkImageRef r : imageRefs) {
-                if (r == null || r.url == null || r.url.isBlank()) continue;
-                String ph = r.placeholder == null || r.placeholder.isBlank() ? (r.index == null ? "" : "[[IMAGE_" + r.index + "]]") : r.placeholder.trim();
-                sb.append(ph).append(": ").append(r.url.trim()).append('\n');
-            }
-        }
-        sb.append("\n[TEXT]\n");
-        if (t.length() > 5500) t = t.substring(0, 5500);
-        sb.append(t);
-        return sb.toString();
-    }
-
-    private static long asLongOrDefault(Object v, long def) {
-        if (v == null) return def;
-        if (v instanceof Number n) return n.longValue();
-        try {
-            return Long.parseLong(String.valueOf(v).trim());
-        } catch (Exception e) {
-            return def;
-        }
-    }
-
-    private static long clampLong(long v, long min, long max) {
-        if (v < min) return min;
-        if (v > max) return max;
-        return v;
-    }
-
-    private static Map<String, Object> buildTokenDiagnostics(
-            String promptText,
-            List<LlmModerationTestRequest.ImageInput> images,
-            LlmModerationTestResponse res,
-            com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity visionPrompt,
-            int imagesCandidate,
-            List<Integer> evidenceSourceChunks,
-            List<String> evidencePlaceholdersUsed
-    ) {
-        LinkedHashMap<String, Object> diag = new LinkedHashMap<>();
-        int promptChars = promptText == null ? 0 : promptText.length();
-        int imageCount = images == null ? 0 : images.size();
-        int maxImagesPerRequest = visionPrompt == null || visionPrompt.getVisionMaxImagesPerRequest() == null
-                ? 10
-                : clampInt(visionPrompt.getVisionMaxImagesPerRequest(), 1, 50);
-        Integer imageTokenBudget = visionPrompt == null ? null : visionPrompt.getVisionImageTokenBudget();
-        Boolean highResolutionImages = visionPrompt == null ? null : visionPrompt.getVisionHighResolutionImages();
-        Integer maxPixels = visionPrompt == null ? null : visionPrompt.getVisionMaxPixels();
-        Integer tokensIn = (res == null || res.getUsage() == null) ? null : res.getUsage().getPromptTokens();
-
-        int localUploads = 0;
-        int dataUrls = 0;
-        int remoteUrls = 0;
-        int otherUrls = 0;
-        if (images != null) {
-            for (LlmModerationTestRequest.ImageInput in : images) {
-                String kind = classifyImageUrlKind(in == null ? null : in.getUrl());
-                switch (kind) {
-                    case "local_upload" -> localUploads += 1;
-                    case "data_url" -> dataUrls += 1;
-                    case "remote_url" -> remoteUrls += 1;
-                    default -> otherUrls += 1;
-                }
-            }
-        }
-
-        int estimatedBatchesByCount = imageCount <= 0 ? 0 : (imageCount + maxImagesPerRequest - 1) / maxImagesPerRequest;
-
-        diag.put("promptChars", promptChars);
-        diag.put("imagesSent", imageCount);
-        diag.put("imagesCandidate", Math.max(0, imagesCandidate));
-        diag.put("imagesSelectedByEvidence", imageCount);
-        if (evidenceSourceChunks != null && !evidenceSourceChunks.isEmpty()) {
-            diag.put("evidenceSourceChunks", evidenceSourceChunks);
-        }
-        if (evidencePlaceholdersUsed != null && !evidencePlaceholdersUsed.isEmpty()) {
-            diag.put("evidencePlaceholdersUsed", evidencePlaceholdersUsed);
-        }
-        diag.put("visionMaxImagesPerRequest", maxImagesPerRequest);
-        if (imageTokenBudget != null) diag.put("visionImageTokenBudget", imageTokenBudget);
-        if (highResolutionImages != null) diag.put("visionHighResolutionImages", highResolutionImages);
-        if (maxPixels != null) diag.put("visionMaxPixels", maxPixels);
-        diag.put("estimatedImageBatchesByCount", estimatedBatchesByCount);
-        diag.put("imageUrlKinds", Map.of(
-                "localUpload", localUploads,
-                "dataUrl", dataUrls,
-                "remoteUrl", remoteUrls,
-                "other", otherUrls
-        ));
-        if (tokensIn != null) {
-            diag.put("promptTokens", tokensIn);
-            if (promptChars > 0) diag.put("promptTokensPerPromptChar", round3(tokensIn / (double) promptChars));
-            if (imageCount > 0) diag.put("promptTokensPerImage", round3(tokensIn / (double) imageCount));
-        }
-
-        List<String> hypotheses = new ArrayList<>();
-        if (localUploads > 0 || dataUrls > 0) {
-            hypotheses.add("Detected local/data URL images; prompt token usage may increase.");
-        }
-        if (estimatedBatchesByCount > 1) {
-            hypotheses.add("Multiple image batches were generated; check token budget and batching parameters.");
-        }
-        if (imagesCandidate > imageCount) {
-            hypotheses.add("Evidence-only image mode is enabled; only evidence-hit images are uploaded.");
-        }
-        if (tokensIn != null && tokensIn >= 70_000) {
-            hypotheses.add("Chunk input tokens are high (>=70000); verify URL form and batching strategy.");
-        }
-        if (!hypotheses.isEmpty()) diag.put("hypotheses", hypotheses);
-        return diag;
-    }
-
-    private static String classifyImageUrlKind(String rawUrl) {
-        if (rawUrl == null || rawUrl.isBlank()) return "other";
-        String url = rawUrl.trim().toLowerCase(Locale.ROOT);
-        if (url.startsWith("data:")) return "data_url";
-        if (url.startsWith("/uploads/") || url.startsWith("uploads/") || url.startsWith("./uploads/") || url.startsWith("../uploads/")) {
-            return "local_upload";
-        }
-        if (url.startsWith("http://") || url.startsWith("https://")) return "remote_url";
-        return "other";
-    }
-
-    private static double round3(double v) {
-        if (!Double.isFinite(v)) return 0.0;
-        return Math.round(v * 1000.0d) / 1000.0d;
-    }
-
-    private static int clampInt(int v, int min, int max) {
-        if (v < min) return min;
-        if (v > max) return max;
-        return v;
-    }
-
-    private static List<Map<String, Object>> extractEntitiesFromText(String text, int chunkIndex, int max) {
-        if (text == null || text.isBlank()) return List.of();
-        int limit = Math.max(0, Math.min(200, max));
-        if (limit == 0) return List.of();
-        LinkedHashSet<String> seen = new LinkedHashSet<>();
-        ArrayList<Map<String, Object>> out = new ArrayList<>();
-
-        java.util.regex.Matcher mUrl = java.util.regex.Pattern.compile("(?i)\\bhttps?://[^\\s<>\"]{6,200}").matcher(text);
-        while (mUrl.find() && out.size() < limit) {
-            String v = mUrl.group();
-            if (v == null) continue;
-            String s = v.trim();
-            if (s.isEmpty()) continue;
-            String key = "URL|" + s;
-            if (!seen.add(key)) continue;
-            out.add(Map.of("type", "URL", "value", s, "chunkIndex", chunkIndex));
-        }
-
-        java.util.regex.Matcher mWww = java.util.regex.Pattern.compile("(?i)\\bwww\\.[^\\s<>\"]{6,200}").matcher(text);
-        while (mWww.find() && out.size() < limit) {
-            String v = mWww.group();
-            if (v == null) continue;
-            String s = v.trim();
-            if (s.isEmpty()) continue;
-            String key = "URL|" + s;
-            if (!seen.add(key)) continue;
-            out.add(Map.of("type", "URL", "value", s, "chunkIndex", chunkIndex));
-        }
-
-        java.util.regex.Matcher mPhone = java.util.regex.Pattern.compile("\\b1\\d{10}\\b").matcher(text);
-        while (mPhone.find() && out.size() < limit) {
-            String v = mPhone.group();
-            if (v == null) continue;
-            String s = v.trim();
-            if (s.isEmpty()) continue;
-            String key = "PHONE|" + s;
-            if (!seen.add(key)) continue;
-            out.add(Map.of("type", "PHONE", "value", s, "chunkIndex", chunkIndex));
-        }
-
-        java.util.regex.Matcher mWechat = java.util.regex.Pattern.compile("(?i)\\b(?:wx|wechat)[:闂?]?([a-zA-Z][-_a-zA-Z0-9]{5,19})\\b").matcher(text);
-        while (mWechat.find() && out.size() < limit) {
-            String v = mWechat.group(1);
-            if (v == null) continue;
-            String s = v.trim();
-            if (s.isEmpty()) continue;
-            String key = "WECHAT|" + s;
-            if (!seen.add(key)) continue;
-            out.add(Map.of("type", "WECHAT", "value", s, "chunkIndex", chunkIndex));
-        }
-        return out;
-    }
-
-    private static String normalizeForPrompt(String text) {
-        if (text == null) return "";
-        String t = text.trim();
-        if (t.isEmpty()) return "";
-        t = t.replaceAll("[ \\t\\x0B\\f\\r]+", " ");
-        t = t.replaceAll("\\n{3,}", "\n\n");
-        return t.trim();
-    }
-
-    static Object sanitizeModerationResponseForQueueOutput(ObjectMapper objectMapper, LlmModerationTestResponse res) {
-        if (objectMapper == null) return res;
-        if (res == null) return null;
-        try {
-            com.fasterxml.jackson.databind.JsonNode n = objectMapper.valueToTree(res);
-            if (n != null && n.isObject()) {
-                com.fasterxml.jackson.databind.node.ObjectNode o = (com.fasterxml.jackson.databind.node.ObjectNode) n;
-                o.remove("promptMessages");
-                com.fasterxml.jackson.databind.JsonNode lt = o.get("labelTaxonomy");
-                if (lt != null && lt.isObject()) {
-                    ((com.fasterxml.jackson.databind.node.ObjectNode) lt).remove("labelMap");
-                }
-            }
-            return n;
-        } catch (Exception ignore) {
-            return res;
-        }
-    }
-
-    private static EvidenceImageSelection selectEvidenceDrivenChunkImages(
-            Map<String, Object> mem,
-            Integer chunkIndex,
-            List<ChunkImageRef> candidateRefs
-    ) {
-        if (candidateRefs == null || candidateRefs.isEmpty()) {
-            return new EvidenceImageSelection(List.of(), List.of(), List.of());
-        }
-        Object raw = mem == null ? null : mem.get("llmEvidenceByChunk");
-        if (!(raw instanceof Map<?, ?> byChunk) || byChunk.isEmpty()) {
-            return new EvidenceImageSelection(List.of(), List.of(), List.of());
-        }
-
-        List<Integer> sourceChunkIndexes = new ArrayList<>();
-        LinkedHashSet<String> placeholders = new LinkedHashSet<>();
-        int current = chunkIndex == null ? Integer.MAX_VALUE : chunkIndex;
-
-        List<Integer> keys = new ArrayList<>();
-        for (Object k : byChunk.keySet()) {
-            Integer idx = toInt(k);
-            if (idx == null) continue;
-            if (idx >= current) continue;
-            keys.add(idx);
-        }
-        keys.sort(Comparator.reverseOrder());
-
-        for (Integer idx : keys) {
-            if (idx == null) continue;
-            Object value = byChunk.get(String.valueOf(idx));
-            if (value == null) value = byChunk.get(idx);
-            if (!(value instanceof Collection<?> col) || col.isEmpty()) continue;
-
-            boolean chunkUsed = false;
-            for (Object item : col) {
-                if (item == null) continue;
-                List<String> ps = extractImagePlaceholdersFromEvidence(String.valueOf(item));
-                if (ps.isEmpty()) continue;
-                chunkUsed = true;
-                for (String p : ps) {
-                    if (p == null || p.isBlank()) continue;
-                    placeholders.add(p.trim());
-                    if (placeholders.size() >= 64) break;
-                }
-                if (placeholders.size() >= 64) break;
-            }
-            if (chunkUsed) sourceChunkIndexes.add(idx);
-            if (sourceChunkIndexes.size() >= 12 || placeholders.size() >= 64) break;
-        }
-
-        if (placeholders.isEmpty()) {
-            return new EvidenceImageSelection(List.of(), List.of(), List.of());
-        }
-
-        LinkedHashSet<String> allowed = new LinkedHashSet<>(placeholders);
-        List<ChunkImageRef> selectedRefs = new ArrayList<>();
-        for (ChunkImageRef ref : candidateRefs) {
-            if (ref == null) continue;
-            String p = ref.placeholder == null ? "" : ref.placeholder.trim();
-            if (p.isEmpty()) continue;
-            if (!allowed.contains(p)) continue;
-            selectedRefs.add(ref);
-        }
-        List<String> picked = extractPlaceholdersFromRefs(selectedRefs);
-        return new EvidenceImageSelection(selectedRefs, sourceChunkIndexes, picked);
-    }
-
-    private static List<String> extractPlaceholdersFromRefs(List<ChunkImageRef> refs) {
-        if (refs == null || refs.isEmpty()) return List.of();
-        LinkedHashSet<String> out = new LinkedHashSet<>();
-        for (ChunkImageRef r : refs) {
-            if (r == null || r.placeholder == null || r.placeholder.isBlank()) continue;
-            out.add(r.placeholder.trim());
-        }
-        return out.isEmpty() ? List.of() : new ArrayList<>(out);
-    }
-
-    private static List<ChunkImageRef> filterChunkImageRefsByIndices(List<ChunkImageRef> refs, Set<Integer> indices) {
-        if (refs == null || refs.isEmpty() || indices == null || indices.isEmpty()) return List.of();
-        ArrayList<ChunkImageRef> out = new ArrayList<>();
-        for (ChunkImageRef ref : refs) {
-            if (ref == null || ref.index == null || !indices.contains(ref.index)) continue;
-            out.add(ref);
-        }
-        return out.isEmpty() ? List.of() : out;
-    }
-
-    private static List<ChunkImageRef> mergeChunkImageRefs(List<ChunkImageRef> primaryRefs, List<ChunkImageRef> secondaryRefs) {
-        if ((primaryRefs == null || primaryRefs.isEmpty()) && (secondaryRefs == null || secondaryRefs.isEmpty())) {
-            return List.of();
-        }
-        ArrayList<ChunkImageRef> out = new ArrayList<>();
-        LinkedHashSet<String> seen = new LinkedHashSet<>();
-        for (ChunkImageRef ref : primaryRefs == null ? List.<ChunkImageRef>of() : primaryRefs) {
-            if (appendChunkImageRef(out, seen, ref)) continue;
-        }
-        for (ChunkImageRef ref : secondaryRefs == null ? List.<ChunkImageRef>of() : secondaryRefs) {
-            appendChunkImageRef(out, seen, ref);
-        }
-        return out.isEmpty() ? List.of() : out;
-    }
-
-    private static boolean appendChunkImageRef(List<ChunkImageRef> out, Set<String> seen, ChunkImageRef ref) {
-        if (ref == null) return false;
-        String placeholder = ref.placeholder == null ? "" : ref.placeholder.trim();
-        String url = ref.url == null ? "" : ref.url.trim();
-        String key = !placeholder.isEmpty() ? "ph|" + placeholder : (!url.isEmpty() ? "url|" + url : "");
-        if (key.isEmpty() || !seen.add(key)) return false;
-        out.add(ref);
-        return true;
-    }
-
-    private static List<String> summarizeEvidenceMemory(Map<String, Object> mem, Integer chunkIndex, int maxLines) {
-        if (mem == null || mem.isEmpty()) return List.of();
-        Object raw = mem.get("llmEvidenceByChunk");
-        if (!(raw instanceof Map<?, ?> byChunk) || byChunk.isEmpty()) return List.of();
-
-        int current = chunkIndex == null ? Integer.MAX_VALUE : chunkIndex;
-        int limit = Math.max(1, Math.min(20, maxLines));
-        List<Integer> keys = new ArrayList<>();
-        for (Object k : byChunk.keySet()) {
-            Integer idx = toInt(k);
-            if (idx == null) continue;
-            if (idx >= current) continue;
-            keys.add(idx);
-        }
-        keys.sort(Comparator.reverseOrder());
-
-        List<String> out = new ArrayList<>();
-        for (Integer idx : keys) {
-            if (idx == null) continue;
-            Object value = byChunk.get(String.valueOf(idx));
-            if (value == null) value = byChunk.get(idx);
-            if (!(value instanceof Collection<?> col) || col.isEmpty()) continue;
-
-            ArrayList<String> lines = new ArrayList<>();
-            for (Object item : col) {
-                if (item == null) continue;
-                String text = String.valueOf(item).trim();
-                if (text.isEmpty()) continue;
-                lines.add(text);
-                if (lines.size() >= 3) break;
-            }
-            if (lines.isEmpty()) continue;
-            out.add("chunk-" + idx + ": " + String.join(" | ", lines));
-            if (out.size() >= limit) break;
-        }
-        return out;
-    }
-
-    private static List<String> collectChunkEvidenceForStepDetail(Map<String, Object> mem, int maxItems) {
-        if (mem == null || mem.isEmpty()) return List.of();
-        Object raw = mem.get("llmEvidenceByChunk");
-        if (!(raw instanceof Map<?, ?> byChunk) || byChunk.isEmpty()) return List.of();
-
-        List<Integer> keys = new ArrayList<>();
-        for (Object k : byChunk.keySet()) {
-            Integer idx = toInt(k);
-            if (idx == null) continue;
-            keys.add(idx);
-        }
-        if (keys.isEmpty()) return List.of();
-        keys.sort(Comparator.naturalOrder());
-
-        int limit = Math.max(1, Math.min(100, maxItems));
-        ArrayList<String> out = new ArrayList<>();
-        LinkedHashSet<String> seen = new LinkedHashSet<>();
-        for (Integer idx : keys) {
-            if (idx == null) continue;
-            Object value = byChunk.get(String.valueOf(idx));
-            if (value == null) value = byChunk.get(idx);
-            if (!(value instanceof Collection<?> col) || col.isEmpty()) continue;
-            for (Object item : col) {
-                if (item == null) continue;
-                String text = String.valueOf(item).trim();
-                if (text.isEmpty()) continue;
-                String fp = fingerprintAggregateEvidenceItem(text);
-                if (fp == null || fp.isBlank()) fp = "raw|" + normalizeForAnchorMatch(text);
-                if (!seen.add(fp)) continue;
-                out.add(text);
-                if (out.size() >= limit) return out;
-            }
-        }
-        return out;
-    }
-
-    private static String fingerprintAggregateEvidenceItem(String item) {
-        if (item == null) return "";
-        String t = item.trim();
-        if (t.isEmpty()) return "";
-        if (!(t.startsWith("{") && t.endsWith("}"))) return "raw|" + normalizeForAnchorMatch(t);
-        try {
-            Map<String, Object> node = EVIDENCE_MAPPER.readValue(t, STRING_OBJECT_MAP_TYPE);
-            if (node == null) return "raw|" + normalizeForAnchorMatch(t);
-            String text = canonicalEvidenceValue(String.valueOf(node.get("text") == null ? "" : node.get("text")));
-            if (!text.isBlank()) return "text|" + text;
-            String before = canonicalEvidenceValue(String.valueOf(node.get("before_context") == null ? "" : node.get("before_context")));
-            String after = canonicalEvidenceValue(String.valueOf(node.get("after_context") == null ? "" : node.get("after_context")));
-            if (!before.isBlank() || !after.isBlank()) return "ctx|" + before + "|" + after;
-            return "raw|" + normalizeForAnchorMatch(t);
-        } catch (Exception e) {
-            return "raw|" + normalizeForAnchorMatch(t);
-        }
-    }
-
-    private static final class EvidenceImageSelection {
-        final List<ChunkImageRef> selectedRefs;
-        final List<Integer> sourceChunkIndexes;
-        final List<String> placeholders;
-
-        EvidenceImageSelection(List<ChunkImageRef> selectedRefs, List<Integer> sourceChunkIndexes, List<String> placeholders) {
-            this.selectedRefs = selectedRefs == null ? List.of() : selectedRefs;
-            this.sourceChunkIndexes = sourceChunkIndexes == null ? List.of() : sourceChunkIndexes;
-            this.placeholders = placeholders == null ? List.of() : placeholders;
-        }
-    }
-
-    static List<LlmModerationTestRequest.ImageInput> selectChunkImageInputs(ObjectMapper objectMapper,
-                                                                           String chunkText,
-                                                                           Long fileAssetId,
-                                                                           String extractedMetadataJson) {
-        if (fileAssetId == null) return List.of();
-        List<ChunkImageRef> refs = selectChunkImageRefs(objectMapper, chunkText, fileAssetId, extractedMetadataJson);
-        return refsToImageInputs(refs, fileAssetId);
-    }
-
-    static final class ChunkImageRef {
+    // Backward-compatible static helpers for existing tests/callers.
+    public static final class ChunkImageRef {
         final Integer index;
         final String placeholder;
         final String url;
         final String mimeType;
         final Long fileAssetId;
 
-        ChunkImageRef(Integer index, String placeholder, String url, String mimeType, Long fileAssetId) {
+        public ChunkImageRef(Integer index, String placeholder, String url, String mimeType, Long fileAssetId) {
             this.index = index;
             this.placeholder = placeholder;
             this.url = url;
@@ -2761,665 +2249,15 @@ public class ModerationLlmAutoRunner {
         }
     }
 
-    static List<ChunkImageRef> selectChunkImageRefs(ObjectMapper objectMapper,
-                                                    String chunkText,
-                                                    Long fileAssetId,
-                                                    String extractedMetadataJson) {
-        if (objectMapper == null) return List.of();
-        if (fileAssetId == null) return List.of();
-        if (extractedMetadataJson == null || extractedMetadataJson.isBlank()) return List.of();
-        Set<Integer> used = parseUsedImageIndices(chunkText);
-        if (used.isEmpty()) return List.of();
+    static final class EvidenceImageSelection {
+        final List<ChunkImageRef> selectedRefs;
+        final List<Integer> sourceChunkIndexes;
+        final List<String> placeholders;
 
-        Map<String, Object> meta;
-        try {
-            meta = objectMapper.readValue(extractedMetadataJson, STRING_OBJECT_MAP_TYPE);
-        } catch (Exception ignore) {
-            return List.of();
-        }
-        Object listObj = meta.get("extractedImages");
-        if (!(listObj instanceof List<?> list) || list.isEmpty()) return List.of();
-
-        List<ChunkImageRef> picked = new ArrayList<>();
-        LinkedHashSet<String> seenUrl = new LinkedHashSet<>();
-        for (Object it : list) {
-            if (!(it instanceof Map<?, ?> m)) continue;
-            Integer idx = toInt(m.get("index"));
-            String placeholder = toStr(m.get("placeholder"));
-            if (idx == null && placeholder != null) idx = parseImageIndexFromPlaceholder(placeholder);
-            if (idx == null || !used.contains(idx)) continue;
-            String url = toStr(m.get("url"));
-            if (url == null || url.isBlank()) continue;
-            String u = url.trim();
-            if (!seenUrl.add(u)) continue;
-            String ph = placeholder == null || placeholder.isBlank() ? "[[IMAGE_" + idx + "]]" : placeholder.trim();
-            picked.add(new ChunkImageRef(idx, ph, u, toStr(m.get("mimeType")), fileAssetId));
-        }
-        if (picked.isEmpty()) return List.of();
-        picked.sort(Comparator.comparingInt(a -> a.index == null ? 0 : a.index));
-        return picked;
-    }
-
-    static List<LlmModerationTestRequest.ImageInput> refsToImageInputs(List<ChunkImageRef> refs, Long fileAssetId) {
-        if (refs == null || refs.isEmpty()) return List.of();
-        List<LlmModerationTestRequest.ImageInput> out = new ArrayList<>();
-        for (ChunkImageRef r : refs) {
-            if (r == null || r.url == null || r.url.isBlank()) continue;
-            Long fid = r.fileAssetId != null ? r.fileAssetId : fileAssetId;
-            if (fid == null) continue;
-            LlmModerationTestRequest.ImageInput in = new LlmModerationTestRequest.ImageInput();
-            in.setFileAssetId(fid);
-            in.setUrl(r.url);
-            in.setMimeType(r.mimeType);
-            out.add(in);
-        }
-        return out;
-    }
-
-    private List<ChunkImageRef> selectPostImageRefs(Long postId) {
-        if (postId == null) return List.of();
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
-                0,
-                200,
-                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.asc("createdAt"), org.springframework.data.domain.Sort.Order.asc("id"))
-        );
-        List<PostAttachmentsEntity> atts;
-        try {
-            var page = postAttachmentsRepository.findByPostId(postId, pageable);
-            atts = page == null ? List.of() : (page.getContent() == null ? List.of() : page.getContent());
-        } catch (Exception ignore) {
-            atts = List.of();
-        }
-        if (atts.isEmpty()) return List.of();
-        ArrayList<ChunkImageRef> out = new ArrayList<>();
-        LinkedHashSet<String> seenUrl = new LinkedHashSet<>();
-        int idx = 0;
-        for (PostAttachmentsEntity a : atts) {
-            if (a == null || a.getFileAsset() == null) continue;
-            String mt0 = a.getFileAsset().getMimeType() == null ? "" : a.getFileAsset().getMimeType().trim().toLowerCase(Locale.ROOT);
-            if (!mt0.startsWith("image/")) continue;
-            String url = a.getFileAsset().getUrl();
-            if (url == null || url.isBlank()) continue;
-            String u = url.trim();
-            if (!seenUrl.add(u)) continue;
-            idx += 1;
-            String ph = "[[IMAGE_" + idx + "]]";
-            out.add(new ChunkImageRef(idx, ph, u, a.getFileAsset().getMimeType(), a.getFileAssetId()));
-        }
-        return out.isEmpty() ? List.of() : out;
-    }
-
-    static Set<Integer> parseUsedImageIndices(String text) {
-        String t = text == null ? "" : text;
-        java.util.regex.Matcher m = IMAGE_PLACEHOLDER.matcher(t);
-        Set<Integer> out = new LinkedHashSet<>();
-        while (m.find()) {
-            Integer idx = toInt(m.group(1));
-            if (idx != null) out.add(idx);
-        }
-        return out;
-    }
-
-    static List<String> filterChunkEvidence(List<String> evidence) {
-        if (evidence == null || evidence.isEmpty()) return List.of();
-        ArrayList<String> out = new ArrayList<>();
-        for (String s : evidence) {
-            if (s == null) continue;
-            String t = s.trim();
-            if (t.isEmpty()) continue;
-            out.add(t);
-        }
-        return out;
-    }
-
-    private List<String> normalizeChunkEvidenceForLabels(List<String> evidence, String chunkText, List<ChunkImageRef> actualChunkImageRefs) {
-        List<String> cleaned = filterChunkEvidence(evidence);
-        if (cleaned.isEmpty()) return List.of();
-        ArrayList<String> out = new ArrayList<>();
-        LinkedHashSet<String> seen = new LinkedHashSet<>();
-        for (String item : cleaned) {
-            String t = item == null ? "" : item.trim();
-            if (t.isEmpty()) continue;
-            String normalized = normalizeChunkImageEvidenceId(t, actualChunkImageRefs);
-            normalized = normalizeImageEvidenceToTextAnchor(normalized, chunkText);
-            normalized = ensureAnchorEvidenceContainsText(normalized, chunkText);
-            String key = evidenceFingerprint(normalized);
-            if (key == null || key.isBlank()) key = "raw|" + normalized;
-            if (!seen.add(key)) continue;
-            out.add(normalized);
-        }
-        return out.isEmpty() ? List.of() : out;
-    }
-
-    private static String normalizeChunkImageEvidenceId(String evidenceItem, List<ChunkImageRef> actualChunkImageRefs) {
-        if (evidenceItem == null) return "";
-        String raw = evidenceItem.trim();
-        if (!raw.startsWith("{") || !raw.endsWith("}")) return raw;
-        if (actualChunkImageRefs == null || actualChunkImageRefs.isEmpty()) return raw;
-
-        Map<String, Object> node;
-        try {
-            node = EVIDENCE_MAPPER.readValue(raw, STRING_OBJECT_MAP_TYPE);
-        } catch (Exception e) {
-            return raw;
-        }
-        if (node == null) return raw;
-
-        String imageId = firstNonBlank(
-                toStr(node.get("image_id")),
-                toStr(node.get("imageId")),
-                toStr(node.get("image"))
-        );
-        Integer ordinal = parseChunkEvidenceImageOrdinal(imageId);
-        if (ordinal == null || ordinal <= 0 || ordinal > actualChunkImageRefs.size()) return raw;
-
-        ChunkImageRef target = actualChunkImageRefs.get(ordinal - 1);
-        if (target == null) return raw;
-        String placeholder = firstNonBlank(
-                target.placeholder,
-                target.index == null ? null : "[[IMAGE_" + target.index + "]]"
-        );
-        if (placeholder == null || placeholder.isBlank()) return raw;
-
-        node.put("image_id", placeholder);
-        node.remove("imageId");
-        node.remove("image");
-        try {
-            return EVIDENCE_MAPPER.writeValueAsString(node);
-        } catch (Exception e) {
-            return raw;
-        }
-    }
-
-    private static Integer parseChunkEvidenceImageOrdinal(String imageId) {
-        if (imageId == null || imageId.isBlank()) return null;
-        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^img[\\s_-]*(\\d+)$", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(imageId.trim());
-        if (!matcher.matches()) return null;
-        return toInt(matcher.group(1));
-    }
-
-    private static String normalizeImageEvidenceToTextAnchor(String evidenceItem, String chunkText) {
-        if (evidenceItem == null) return "";
-        String raw = evidenceItem.trim();
-        if (!raw.startsWith("{") || !raw.endsWith("}")) return raw;
-
-        Map<String, Object> node;
-        try {
-            node = EVIDENCE_MAPPER.readValue(raw, STRING_OBJECT_MAP_TYPE);
-        } catch (Exception e) {
-            return raw;
-        }
-        if (node == null) return raw;
-
-        String imageId = toStr(node.get("image_id"));
-        if (imageId == null) imageId = toStr(node.get("imageId"));
-        if (imageId == null) return raw;
-
-        String snippet = firstNonBlank(
-                toStr(node.get("quote")),
-                toStr(node.get("text"))
-        );
-        if (snippet == null || snippet.isBlank()) return raw;
-        if (!containsNormalizedText(chunkText, snippet)) return raw;
-
-        AnchoredSnippet anchored = buildAnchoredSnippetFromChunk(chunkText, snippet, 15);
-        if (anchored == null || anchored.text == null || anchored.text.isBlank()) return raw;
-
-        node.remove("image_id");
-        node.remove("imageId");
-        node.remove("image");
-        node.put("text", clipTextForEvidenceJson(anchored.text, 240));
-        if (anchored.beforeContext != null && !anchored.beforeContext.isBlank()) {
-            node.put("before_context", anchored.beforeContext);
-        }
-        if (anchored.afterContext != null && !anchored.afterContext.isBlank()) {
-            node.put("after_context", anchored.afterContext);
-        }
-        if (containsNormalizedText(anchored.text, toStr(node.get("quote")))) {
-            node.remove("quote");
-        }
-        try {
-            return EVIDENCE_MAPPER.writeValueAsString(node);
-        } catch (Exception e) {
-            return raw;
-        }
-    }
-
-    private String ensureAnchorEvidenceContainsText(String evidenceItem, String chunkText) {
-        if (evidenceItem == null) return "";
-        String raw = evidenceItem.trim();
-        if (!raw.startsWith("{") || !raw.endsWith("}")) return raw;
-
-        Map<String, Object> node;
-        try {
-            node = objectMapper.readValue(raw, STRING_OBJECT_MAP_TYPE);
-        } catch (Exception e) {
-            return raw;
-        }
-        if (node == null) return raw;
-
-        Object textObj = node.get("text");
-        String exists = textObj == null ? "" : String.valueOf(textObj).trim();
-        if (!exists.isBlank() && !isSuspiciousEvidenceText(exists, chunkText)) return raw;
-
-        String snippet = extractByContextAnchors(node, chunkText);
-
-        if (snippet == null || snippet.isBlank()) return raw;
-
-        snippet = IMAGE_PLACEHOLDER.matcher(snippet).replaceAll("").trim();
-        if (snippet.isBlank()) return raw;
-
-        snippet = cleanExtractedSnippet(snippet);
-        if (snippet.isBlank()) return raw;
-
-        node.put("text", clipTextForEvidenceJson(snippet, 240));
-        try {
-            return objectMapper.writeValueAsString(node);
-        } catch (Exception e) {
-            return raw;
-        }
-    }
-
-    static String extractByContextAnchors(Map<String, Object> node, String chunkText) {
-        Object bc = node.get("before_context");
-        Object ac = node.get("after_context");
-        String before = bc == null ? null : String.valueOf(bc).trim();
-        String after = ac == null ? null : String.valueOf(ac).trim();
-        if (before == null || before.isBlank()) return null;
-
-        if (chunkText == null || chunkText.isBlank()) return null;
-        String r = extractBetweenAnchorsByRegex(chunkText, before, after, 500);
-        return r == null || r.isBlank() ? null : r;
-    }
-
-    private static String normalizeForAnchorMatch(String s) {
-        if (s == null) return "";
-        return s.replace('\u201c', '"').replace('\u201d', '"')
-                .replace('\u2018', '\'').replace('\u2019', '\'')
-                .replaceAll("\\s+", " ")
-                .replaceAll(" ?\" ?", "\"")
-                .replaceAll(" ?' ?", "'");
-    }
-
-    private static boolean containsNormalizedText(String text, String needle) {
-        String t = text == null ? "" : text.trim();
-        String n = needle == null ? "" : needle.trim();
-        if (t.isEmpty() || n.isEmpty()) return false;
-        if (t.contains(n)) return true;
-        String nt = normalizeForAnchorMatch(t);
-        String nn = normalizeForAnchorMatch(n);
-        return nn.length() >= 6 && nt.contains(nn);
-    }
-
-    private static boolean isSuspiciousEvidenceText(String text, String chunkText) {
-        String t = text == null ? "" : text.trim();
-        if (t.isBlank()) return true;
-        if (t.length() > 320) return true;
-        return !containsNormalizedText(chunkText, t);
-    }
-
-    private static String clipTextForEvidenceJson(String text, int maxChars) {
-        String t = text == null ? "" : text;
-        int max = Math.max(20, maxChars);
-        if (t.length() <= max) return t;
-        return t.substring(0, max);
-    }
-
-    private static AnchoredSnippet buildAnchoredSnippetFromChunk(String chunkText, String snippet, int anchorChars) {
-        String text = chunkText == null ? "" : chunkText;
-        String needle = snippet == null ? "" : snippet.trim();
-        if (text.isBlank() || needle.isBlank()) return null;
-        int idx = text.indexOf(needle);
-        if (idx < 0) return null;
-        int start = idx;
-        int end = idx + needle.length();
-        int around = Math.max(6, Math.min(40, anchorChars));
-        String before = text.substring(Math.max(0, start - around), start).trim();
-        String after = text.substring(end, Math.min(text.length(), end + around)).trim();
-        String cleanedText = cleanExtractedSnippet(needle);
-        String cleanedBefore = cleanExtractedSnippet(before);
-        String cleanedAfter = cleanExtractedSnippet(after);
-        if (cleanedText.isBlank()) return null;
-        return new AnchoredSnippet(cleanedBefore, cleanedText, cleanedAfter);
-    }
-
-    private static String firstNonBlank(String... values) {
-        if (values == null || values.length == 0) return null;
-        for (String value : values) {
-            String t = toStr(value);
-            if (t != null) return t;
-        }
-        return null;
-    }
-
-    private static String fallbackViolationSnippet(String text, int violationStart) {
-        int hardEnd = Math.min(violationStart + 220, text.length());
-        int end = hardEnd;
-        int imageIdx = text.indexOf("[[IMAGE_", violationStart);
-        if (imageIdx >= 0 && imageIdx < end) end = imageIdx;
-        int sectionIdx = text.indexOf("\n[", violationStart);
-        if (sectionIdx >= 0 && sectionIdx < end) end = sectionIdx;
-        int dblNl = text.indexOf("\n\n", violationStart);
-        if (dblNl > violationStart && dblNl < end) end = dblNl;
-        int boundary = findBoundaryEnd(text, violationStart, end);
-        if (boundary > violationStart + 4 && boundary < end) end = boundary;
-        if (end <= violationStart) return null;
-        String snippet = text.substring(violationStart, end);
-        String cleaned = cleanExtractedSnippet(snippet);
-        if (!cleaned.isEmpty()) return cleaned;
-        int altEnd = Math.min(violationStart + 80, text.length());
-        if (altEnd <= violationStart) return null;
-        return cleanExtractedSnippet(text.substring(violationStart, altEnd));
-    }
-
-    private static int findBoundaryEnd(String text, int start, int maxEnd) {
-        int end = Math.min(text.length(), maxEnd);
-        for (int i = start; i < end; i++) {
-            char c = text.charAt(i);
-            if (c == '\n' || c == '\r' || c == '.' || c == ',' || c == ';' || c == '!' || c == '?') {
-                return i;
-            }
-        }
-        return end;
-    }
-
-    private static String cleanExtractedSnippet(String snippet) {
-        if (snippet == null) return "";
-        String cleaned = IMAGE_PLACEHOLDER.matcher(snippet).replaceAll(" ").trim();
-        cleaned = cleaned.replaceAll("[\\p{Cntrl}&&[^\n\t]]", " ").trim();
-        cleaned = cleaned.replaceAll("\\s+", " ").trim();
-        return cleaned;
-    }
-
-    private static String extractBetweenAnchorsByRegex(String text, String before, String after, int maxLen) {
-        if (text == null || text.isEmpty() || before == null || before.isBlank()) return null;
-        int cap = Math.max(20, Math.min(2000, maxLen));
-
-        String normText = normalizeForAnchorRegex(text);
-        String normBefore = normalizeForAnchorRegex(before);
-        String normAfter = after != null && !after.isBlank() ? normalizeForAnchorRegex(after) : null;
-
-        String b = anchorToRegex(normBefore);
-        if (b.isEmpty()) return null;
-        String a = normAfter == null ? "" : anchorToRegex(normAfter);
-
-        java.util.regex.Pattern p;
-        if (a.isEmpty()) {
-            String boundary = "(?:(?:\\r\\n)|\\r|\\n|闂備線娼уΛ妤呭焵椤掆偓閻楁捇寮鍡欘洸闁告稑鐡ㄩ弲顒勬煟?|!|\\?|$)";
-            p = java.util.regex.Pattern.compile(b + "(.{0," + cap + "}?)" + "(?=" + boundary + ")", java.util.regex.Pattern.DOTALL);
-        } else {
-            p = java.util.regex.Pattern.compile(b + "(.{0," + cap + "}?)" + a, java.util.regex.Pattern.DOTALL);
-        }
-
-        java.util.regex.Matcher m = p.matcher(normText);
-        String best = null;
-        int bestLen = Integer.MAX_VALUE;
-        boolean matched = false;
-        int guard = 0;
-        while (m.find() && guard < 50) {
-            guard += 1;
-            matched = true;
-            String mid = m.group(1);
-            if (mid == null) continue;
-            String cleaned = cleanExtractedSnippet(mid);
-            if (cleaned.isBlank()) continue;
-            int len = cleaned.length();
-            if (len < bestLen) {
-                best = cleaned;
-                bestLen = len;
-            }
-        }
-        if (best != null) return best;
-        if (matched) return null;
-
-        int bIdx = normText.indexOf(normBefore);
-        if (bIdx < 0) return null;
-        return fallbackViolationSnippet(normText, bIdx + normBefore.length());
-    }
-
-    private static String anchorToRegex(String anchor) {
-        if (anchor == null) return "";
-        String t = anchor.trim();
-        if (t.isEmpty()) return "";
-        String[] parts = t.split("\\s+");
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < parts.length; i++) {
-            String p = parts[i];
-            if (p == null || p.isEmpty()) continue;
-            if (sb.length() > 0) sb.append("\\s+");
-            sb.append(java.util.regex.Pattern.quote(p));
-        }
-        return sb.toString();
-    }
-
-    private static String normalizeForAnchorRegex(String s) {
-        if (s == null) return "";
-        String x = s.replace('\u201c', '"').replace('\u201d', '"')
-                .replace('\u2018', '\'').replace('\u2019', '\'');
-        x = x.replaceAll(" ?\" ?", "\"")
-                .replaceAll(" ?' ?", "'");
-        return x;
-    }
-
-    private String evidenceFingerprint(String item) {
-        if (item == null) return "";
-        String t = item.trim();
-        if (t.isEmpty()) return "";
-        if (!(t.startsWith("{") && t.endsWith("}"))) return "raw|" + normalizeForAnchorMatch(t);
-        try {
-            Map<String, Object> node = objectMapper.readValue(t, STRING_OBJECT_MAP_TYPE);
-            if (node == null) return "raw|" + normalizeForAnchorMatch(t);
-            String text = canonicalEvidenceValue(node.get("text"));
-            if (!text.isBlank()) return "text|" + text;
-            String before = canonicalEvidenceValue(node.get("before_context"));
-            String after = canonicalEvidenceValue(node.get("after_context"));
-            if (!before.isBlank() || !after.isBlank()) return "ctx|" + before + "|" + after;
-            return "raw|" + normalizeForAnchorMatch(t);
-        } catch (Exception e) {
-            return "raw|" + normalizeForAnchorMatch(t);
-        }
-    }
-
-    private static String canonicalEvidenceValue(Object value) {
-        if (value == null) return "";
-        String s = String.valueOf(value).trim();
-        if (s.isEmpty()) return "";
-        s = IMAGE_PLACEHOLDER.matcher(s).replaceAll(" ").trim();
-        return normalizeForAnchorMatch(s);
-    }
-
-    static List<String> buildEvidenceNormalizeReplay(List<String> before, List<String> after, int maxItems) {
-        List<String> b = before == null ? List.of() : before;
-        List<String> a = after == null ? List.of() : after;
-        int max = Math.max(1, Math.min(10, maxItems));
-        int n = Math.max(b.size(), a.size());
-        ArrayList<String> out = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            String bv = i < b.size() && b.get(i) != null ? b.get(i).trim() : "";
-            String av = i < a.size() && a.get(i) != null ? a.get(i).trim() : "";
-            if (bv.equals(av)) continue;
-            out.add("idx=" + i + " | before=" + clipTextForEvidenceJson(bv, 240) + " | after=" + clipTextForEvidenceJson(av, 240));
-            if (out.size() >= max) break;
-        }
-        return out.isEmpty() ? List.of() : out;
-    }
-
-    static List<String> filterChunkImageEvidence(List<String> evidence, List<ChunkImageRef> refs) {
-        List<String> cleaned = filterChunkEvidence(evidence);
-        if (cleaned.isEmpty()) return List.of();
-        LinkedHashSet<String> allowed = new LinkedHashSet<>();
-        if (refs != null) {
-            for (ChunkImageRef r : refs) {
-                if (r == null || r.placeholder == null || r.placeholder.isBlank()) continue;
-                allowed.add(r.placeholder.trim());
-            }
-        }
-        ArrayList<String> out = new ArrayList<>();
-        for (String t : cleaned) {
-            if (t == null) continue;
-            String s = t.trim();
-            if (s.isEmpty()) continue;
-            List<String> ph = extractImagePlaceholdersFromEvidence(s);
-            if (ph.isEmpty()) continue;
-            ArrayList<String> picked = new ArrayList<>();
-            for (String p : ph) {
-                if (p == null || p.isBlank()) continue;
-                if (allowed.isEmpty() || allowed.contains(p)) picked.add(p);
-            }
-            if (picked.isEmpty()) continue;
-            out.add(String.join(" ", picked));
-        }
-        return out.isEmpty() ? List.of() : out;
-    }
-
-    private static List<String> extractImagePlaceholdersFromEvidence(String text) {
-        if (text == null) return List.of();
-        java.util.regex.Matcher m = IMAGE_PLACEHOLDER.matcher(text);
-        LinkedHashSet<String> out = new LinkedHashSet<>();
-        while (m.find()) {
-            String idx = m.group(1);
-            if (idx == null) continue;
-            String t = idx.trim();
-            if (t.isEmpty()) continue;
-            out.add("[[IMAGE_" + t + "]]");
-        }
-        return new ArrayList<>(out);
-    }
-
-    private static Integer parseImageIndexFromPlaceholder(String placeholder) {
-        if (placeholder == null) return null;
-        java.util.regex.Matcher m = IMAGE_PLACEHOLDER.matcher(placeholder);
-        if (!m.find()) return null;
-        return toInt(m.group(1));
-    }
-
-    private static Integer toInt(Object v) {
-        if (v == null) return null;
-        if (v instanceof Integer i) return i;
-        if (v instanceof Long l) return (int) Math.min(Integer.MAX_VALUE, Math.max(Integer.MIN_VALUE, l));
-        if (v instanceof Number n) return n.intValue();
-        try {
-            String s = String.valueOf(v).trim();
-            if (s.isEmpty()) return null;
-            return Integer.parseInt(s);
-        } catch (Exception ignore) {
-            return null;
-        }
-    }
-
-    private static String toStr(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v);
-        if (s == null) return null;
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
-    }
-
-    private record AnchoredSnippet(String beforeContext, String text, String afterContext) {
-    }
-
-    private static List<String> extractKeywords(String text, int limit) {
-        if (text == null) return List.of();
-        String t = text.trim();
-        if (t.isEmpty()) return List.of();
-        HashMap<String, Integer> freq = new HashMap<>();
-        String[] parts = t.split("[^\\p{L}\\p{N}]+");
-        for (String p : parts) {
-            if (p == null) continue;
-            String s = p.trim();
-            if (s.length() < 2) continue;
-            if (s.length() > 24) s = s.substring(0, 24);
-            freq.put(s, freq.getOrDefault(s, 0) + 1);
-        }
-        if (freq.isEmpty()) return List.of();
-        List<Map.Entry<String, Integer>> list = new ArrayList<>(freq.entrySet());
-        list.sort((a, b) -> {
-            int c = Integer.compare(b.getValue(), a.getValue());
-            if (c != 0) return c;
-            return Integer.compare(b.getKey().length(), a.getKey().length());
-        });
-        int take = Math.max(0, Math.min(limit, list.size()));
-        List<String> out = new ArrayList<>();
-        for (int i = 0; i < take; i++) out.add(list.get(i).getKey());
-        return out;
-    }
-
-    private void applyRiskTags(ModerationQueueEntity q, LlmModerationTestResponse res) {
-        if (q == null || res == null) return;
-        try {
-            Double score0 = res.getScore();
-            double score = score0 == null ? 0.0 : score0;
-            if (!Double.isFinite(score)) score = 0.0;
-            if (score < 0) score = 0.0;
-            if (score > 1) score = 1.0;
-            LinkedHashSet<String> set = new LinkedHashSet<>();
-            if (res.getRiskTags() != null) {
-                for (String t : res.getRiskTags()) {
-                    if (t == null) continue;
-                    String s = t.trim();
-                    if (!s.isEmpty()) set.add(s);
-                }
-            }
-            if (res.getLabels() != null) {
-                for (String t : res.getLabels()) {
-                    if (t == null) continue;
-                    String s = t.trim();
-                    if (!s.isEmpty()) set.add(s);
-                }
-            }
-            List<String> tags = set.isEmpty() ? List.of() : new ArrayList<>(set);
-            riskLabelingService.replaceRiskTags(q.getContentType(), q.getContentId(), Source.LLM, tags, BigDecimal.valueOf(score), false);
-        } catch (Exception ignore) {
-        }
-    }
-
-    private void applyChunkedRiskTags(ModerationQueueEntity q, Long chunkSetId, LlmModerationTestResponse res) {
-        if (q == null) return;
-        try {
-            LinkedHashSet<String> set = new LinkedHashSet<>();
-            double score = 0.0;
-
-            if (res != null) {
-                Double score0 = res.getScore();
-                double s = score0 == null ? 0.0 : score0;
-                if (!Double.isFinite(s)) s = 0.0;
-                if (s < 0) s = 0.0;
-                if (s > 1) s = 1.0;
-                score = Math.max(score, s);
-
-                if (res.getRiskTags() != null) {
-                    for (String t : res.getRiskTags()) {
-                        if (t == null) continue;
-                        String v = t.trim();
-                        if (!v.isEmpty()) set.add(v);
-                    }
-                }
-                if (res.getLabels() != null) {
-                    for (String t : res.getLabels()) {
-                        if (t == null) continue;
-                        String v = t.trim();
-                        if (!v.isEmpty()) set.add(v);
-                    }
-                }
-            }
-
-            if (chunkSetId != null) {
-                Map<String, Object> mem = chunkReviewService.getMemory(chunkSetId);
-                Object r0 = mem == null ? null : mem.get("riskTags");
-                if (r0 instanceof Collection<?> col) {
-                    for (Object o : col) {
-                        if (o == null) continue;
-                        String v = String.valueOf(o).trim();
-                        if (!v.isEmpty()) set.add(v);
-                    }
-                }
-                double memScore = clamp01(asDoubleOrDefault(mem == null ? null : mem.get("maxScore"), asDoubleOrDefault(mem == null ? null : mem.get("imageScore"), 0.0)), 0.0);
-                score = Math.max(score, memScore);
-            }
-
-            if (set.isEmpty()) return;
-            riskLabelingService.replaceRiskTags(q.getContentType(), q.getContentId(), Source.LLM, new ArrayList<>(set), BigDecimal.valueOf(score), false);
-        } catch (Exception ignore) {
+        EvidenceImageSelection(List<ChunkImageRef> selectedRefs, List<Integer> sourceChunkIndexes, List<String> placeholders) {
+            this.selectedRefs = selectedRefs == null ? List.of() : selectedRefs;
+            this.sourceChunkIndexes = sourceChunkIndexes == null ? List.of() : sourceChunkIndexes;
+            this.placeholders = placeholders == null ? List.of() : placeholders;
         }
     }
 

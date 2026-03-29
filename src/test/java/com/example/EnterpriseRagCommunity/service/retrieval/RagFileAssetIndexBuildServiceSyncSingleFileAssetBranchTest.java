@@ -169,13 +169,12 @@ class RagFileAssetIndexBuildServiceSyncSingleFileAssetBranchTest {
         vi.setDim(0);
         vi.setStatus(VectorIndexStatus.READY);
         HashMap<String, Object> meta = new HashMap<>();
-        meta.put("embeddingModel", "m_fixed");
         meta.put("embeddingProviderId", "p_fixed");
         vi.setMetadata(meta);
         when(vectorIndicesRepository.findById(1L)).thenReturn(Optional.of(vi));
 
-        when(llmRoutingService.isEnabledTarget(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_fixed"), eq("m_fixed")))
-                .thenReturn(true);
+        when(llmRoutingService.pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_fixed"), any()))
+                .thenReturn(new LlmRoutingService.RouteTarget(new LlmRoutingService.TargetId("p_fixed", "m_fixed"), 1, 1, null));
 
         FileAssetsEntity fa = new FileAssetsEntity();
         fa.setId(10L);
@@ -371,14 +370,11 @@ class RagFileAssetIndexBuildServiceSyncSingleFileAssetBranchTest {
         vi.setMetric("cosine");
         vi.setDim(0);
         vi.setStatus(VectorIndexStatus.READY);
-        HashMap<String, Object> meta = new HashMap<>();
-        meta.put("lastBuildEmbeddingModel", "m_last");
-        meta.put("lastBuildEmbeddingProviderId", "p_last");
-        vi.setMetadata(meta);
+        vi.setMetadata(new HashMap<>());
         when(vectorIndicesRepository.findById(1L)).thenReturn(Optional.of(vi));
 
-        when(llmRoutingService.isEnabledTarget(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_last"), eq("m_last")))
-                .thenReturn(true);
+        when(llmRoutingService.pickNext(eq(LlmQueueTaskType.POST_EMBEDDING), any()))
+                .thenReturn(new LlmRoutingService.RouteTarget(new LlmRoutingService.TargetId("p_pick", "m_pick"), 1, 1, null));
 
         FileAssetsEntity fa = new FileAssetsEntity();
         fa.setId(10L);
@@ -393,8 +389,8 @@ class RagFileAssetIndexBuildServiceSyncSingleFileAssetBranchTest {
         when(fileAssetExtractionsRepository.findById(10L)).thenReturn(Optional.of(ex));
         when(postAttachmentsRepository.findByFileAssetIdIn(eq(List.of(10L)))).thenReturn(null);
 
-        when(embeddingService.embedOnceForTask(anyString(), eq("m_last"), eq("p_last"), eq(LlmQueueTaskType.POST_EMBEDDING)))
-                .thenReturn(new AiEmbeddingService.EmbeddingResult(new float[0], 3, "m_last"));
+        when(embeddingService.embedOnceForTask(anyString(), eq("m_pick"), eq("p_pick"), eq(LlmQueueTaskType.POST_EMBEDDING)))
+                .thenReturn(new AiEmbeddingService.EmbeddingResult(new float[0], 3, "m_pick"));
 
         assertDoesNotThrow(() -> svc.syncSingleFileAsset(1L, 10L, 200, 0, null));
         verify(indexService, atLeastOnce()).ensureIndex("idx_default", 3, true);

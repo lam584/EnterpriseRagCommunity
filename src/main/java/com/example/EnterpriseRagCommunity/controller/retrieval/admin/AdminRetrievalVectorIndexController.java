@@ -150,13 +150,12 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
             @RequestParam(value = "clear", required = false) Boolean clear,
-            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
             @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagPostsBuildResponse resp = buildService.buildPosts(id, boardId, fromPostId, postBatchSize, chunkMaxChars, chunkOverlapChars, clear, embeddingModel, embeddingProviderId, embeddingDims);
+            RagPostsBuildResponse resp = buildService.buildPosts(id, boardId, fromPostId, postBatchSize, chunkMaxChars, chunkOverlapChars, clear, null, embeddingProviderId, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("boardId", boardId);
             details.put("fromPostId", fromPostId);
@@ -164,7 +163,6 @@ public class AdminRetrievalVectorIndexController {
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
             details.put("clear", clear);
-            details.put("embeddingModel", embeddingModel);
             details.put("embeddingProviderId", embeddingProviderId);
             details.put("embeddingDims", embeddingDims);
             details.put("totalPosts", resp.getTotalPosts());
@@ -189,19 +187,17 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "postBatchSize", required = false) Integer postBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
-            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
             @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagPostsBuildResponse resp = buildService.rebuildPosts(id, boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
+            RagPostsBuildResponse resp = buildService.rebuildPosts(id, boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, null, embeddingProviderId, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("boardId", boardId);
             details.put("postBatchSize", postBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
-            details.put("embeddingModel", embeddingModel);
             details.put("embeddingProviderId", embeddingProviderId);
             details.put("embeddingDims", embeddingDims);
             details.put("totalPosts", resp.getTotalPosts());
@@ -226,19 +222,17 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "postBatchSize", required = false) Integer postBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
-            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
             @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagPostsBuildResponse resp = buildService.syncPostsIncremental(id, boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
+            RagPostsBuildResponse resp = buildService.syncPostsIncremental(id, boardId, postBatchSize, chunkMaxChars, chunkOverlapChars, null, embeddingProviderId, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("boardId", boardId);
             details.put("postBatchSize", postBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
-            details.put("embeddingModel", embeddingModel);
             details.put("embeddingProviderId", embeddingProviderId);
             details.put("embeddingDims", embeddingDims);
             details.put("totalPosts", resp.getTotalPosts());
@@ -264,19 +258,17 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
             @RequestParam(value = "clear", required = false) Boolean clear,
-            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagCommentsBuildResponse resp = commentBuildService.buildComments(id, fromCommentId, commentBatchSize, chunkMaxChars, chunkOverlapChars, clear, embeddingModel, embeddingDims);
+            RagCommentsBuildResponse resp = commentBuildService.buildComments(id, fromCommentId, commentBatchSize, chunkMaxChars, chunkOverlapChars, clear, null, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("fromCommentId", fromCommentId);
             details.put("commentBatchSize", commentBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
             details.put("clear", clear);
-            details.put("embeddingModel", embeddingModel);
             details.put("embeddingDims", embeddingDims);
             details.put("totalComments", resp.getTotalComments());
             details.put("totalChunks", resp.getTotalChunks());
@@ -299,17 +291,15 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "commentBatchSize", required = false) Integer commentBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
-            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagCommentsBuildResponse resp = commentBuildService.rebuildComments(id, commentBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingDims);
+            RagCommentsBuildResponse resp = commentBuildService.rebuildComments(id, commentBatchSize, chunkMaxChars, chunkOverlapChars, null, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("commentBatchSize", commentBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
-            details.put("embeddingModel", embeddingModel);
             details.put("embeddingDims", embeddingDims);
             details.put("totalComments", resp.getTotalComments());
             details.put("totalChunks", resp.getTotalChunks());
@@ -332,17 +322,15 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "commentBatchSize", required = false) Integer commentBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
-            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagCommentsBuildResponse resp = commentBuildService.syncCommentsIncremental(id, commentBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingDims);
+            RagCommentsBuildResponse resp = commentBuildService.syncCommentsIncremental(id, commentBatchSize, chunkMaxChars, chunkOverlapChars, null, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("commentBatchSize", commentBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
-            details.put("embeddingModel", embeddingModel);
             details.put("embeddingDims", embeddingDims);
             details.put("totalComments", resp.getTotalComments());
             details.put("totalChunks", resp.getTotalChunks());
@@ -395,20 +383,18 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
             @RequestParam(value = "clear", required = false) Boolean clear,
-            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
             @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagFilesBuildResponse resp = fileBuildService.buildFiles(id, fromFileAssetId, fileBatchSize, chunkMaxChars, chunkOverlapChars, clear, embeddingModel, embeddingProviderId, embeddingDims);
+            RagFilesBuildResponse resp = fileBuildService.buildFiles(id, fromFileAssetId, fileBatchSize, chunkMaxChars, chunkOverlapChars, clear, null, embeddingProviderId, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("fromFileAssetId", fromFileAssetId);
             details.put("fileBatchSize", fileBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
             details.put("clear", clear);
-            details.put("embeddingModel", embeddingModel);
             details.put("embeddingProviderId", embeddingProviderId);
             details.put("embeddingDims", embeddingDims);
             details.put("totalFiles", resp.getTotalFiles());
@@ -431,18 +417,16 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "fileBatchSize", required = false) Integer fileBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
-            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
             @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagFilesBuildResponse resp = fileBuildService.rebuildFiles(id, fileBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
+            RagFilesBuildResponse resp = fileBuildService.rebuildFiles(id, fileBatchSize, chunkMaxChars, chunkOverlapChars, null, embeddingProviderId, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("fileBatchSize", fileBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
-            details.put("embeddingModel", embeddingModel);
             details.put("embeddingProviderId", embeddingProviderId);
             details.put("embeddingDims", embeddingDims);
             details.put("totalFiles", resp.getTotalFiles());
@@ -465,18 +449,16 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "fileBatchSize", required = false) Integer fileBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
-            @RequestParam(value = "embeddingModel", required = false) String embeddingModel,
             @RequestParam(value = "embeddingProviderId", required = false) String embeddingProviderId,
             @RequestParam(value = "embeddingDims", required = false) Integer embeddingDims,
             Principal principal
     ) {
         try {
-            RagFilesBuildResponse resp = fileBuildService.syncFilesIncremental(id, fileBatchSize, chunkMaxChars, chunkOverlapChars, embeddingModel, embeddingProviderId, embeddingDims);
+            RagFilesBuildResponse resp = fileBuildService.syncFilesIncremental(id, fileBatchSize, chunkMaxChars, chunkOverlapChars, null, embeddingProviderId, embeddingDims);
             Map<String, Object> details = new LinkedHashMap<>();
             details.put("fileBatchSize", fileBatchSize);
             details.put("chunkMaxChars", chunkMaxChars);
             details.put("chunkOverlapChars", chunkOverlapChars);
-            details.put("embeddingModel", embeddingModel);
             details.put("embeddingProviderId", embeddingProviderId);
             details.put("embeddingDims", embeddingDims);
             details.put("totalFiles", resp.getTotalFiles());

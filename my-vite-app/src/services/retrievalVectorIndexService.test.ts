@@ -153,7 +153,6 @@ describe('retrievalVectorIndexService', () => {
         chunkMaxChars: 2000,
         chunkOverlapChars: 50,
         clear: true,
-        embeddingModel: 'm',
         embeddingProviderId: 'p',
         embeddingDims: 3,
       }),
@@ -171,7 +170,6 @@ describe('retrievalVectorIndexService', () => {
     expect(u.searchParams.get('chunkMaxChars')).toBe('2000');
     expect(u.searchParams.get('chunkOverlapChars')).toBe('50');
     expect(u.searchParams.get('clear')).toBe('true');
-    expect(u.searchParams.get('embeddingModel')).toBe('m');
     expect(u.searchParams.get('embeddingProviderId')).toBe('p');
     expect(u.searchParams.get('embeddingDims')).toBe('3');
   });
@@ -189,7 +187,6 @@ describe('retrievalVectorIndexService', () => {
       chunkMaxChars: 0,
       chunkOverlapChars: 0,
       clear: false,
-      embeddingModel: 'm',
       embeddingProviderId: 'p',
       embeddingDims: 0,
     });
@@ -202,7 +199,6 @@ describe('retrievalVectorIndexService', () => {
     expect(u.searchParams.has('clear')).toBe(false);
     expect(u.searchParams.has('embeddingDims')).toBe(false);
     expect(u.searchParams.get('chunkOverlapChars')).toBe('0');
-    expect(u.searchParams.get('embeddingModel')).toBe('m');
     expect(u.searchParams.get('embeddingProviderId')).toBe('p');
   });
 

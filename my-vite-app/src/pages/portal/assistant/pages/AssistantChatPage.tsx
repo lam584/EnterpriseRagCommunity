@@ -8,7 +8,7 @@ import {
   highlightExactCitationQuotes,
   pickCitationHighlightTerms
 } from '../../../../utils/citationHighlight';
-import { RefreshCw, Pencil, Trash2, Bot, Send, Square, Copy, Check, Languages, X, ChevronDown, Heart } from 'lucide-react';
+import {RefreshCw, Pencil, Trash2, Bot, Send, Copy, Check, Languages, X, ChevronDown, Heart} from 'lucide-react';
 
 import { chatOnce, chatStream, regenerateOnce, type AiCitationSource, type AiStreamEvent } from '../../../../services/aiChatService';
 import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
@@ -27,178 +27,31 @@ import {
   updateQaMessage,
   toggleQaMessageFavorite
 } from '../../../../services/qaHistoryService';
-
-const MAX_VISION_IMAGES = 10;
-const MAX_CHAT_FILES = 10;
-
-type ChatMsg = {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  createdAt?: string;
-  isFavorite?: boolean;
-  model?: string | null;
-  tokensIn?: number | null;
-  tokensOut?: number | null;
-  latencyMs?: number | null;
-  firstTokenLatencyMs?: number | null;
-};
-
-type MsgPerf = {
-  startAtMs: number;
-  firstDeltaAtMs?: number;
-  doneAtMs?: number;
-  backendLatencyMs?: number;
-};
-
-type ThinkPerf = {
-  startedAtMs?: number;
-  endedAtMs?: number;
-};
-
-type ThinkUi = {
-  collapsed: boolean;
-};
-
-type BranchInfo = {
-  id: string;
-  label: string;
-};
-
-type BranchAnchorState = {
-  activeBranchId: string;
-  branches: BranchInfo[];
-};
-
-type BranchMembership = {
-  anchorId: string;
-  branchId: string;
-};
-
-function uid(): string {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function buildProviderModelValue(providerId: string, model: string): string {
-  const p = String(providerId ?? '').trim();
-  const m = String(model ?? '').trim();
-  if (!p || !m) return '';
-  return `${encodeURIComponent(p)}|${encodeURIComponent(m)}`;
-}
-
-function parseProviderModelValue(value: string): { providerId: string; model: string } | null {
-  const v = String(value ?? '').trim();
-  if (!v) return null;
-  const idx = v.indexOf('|');
-  if (idx <= 0) return null;
-  const p = v.slice(0, idx);
-  const m = v.slice(idx + 1);
-  try {
-    const providerId = decodeURIComponent(p).trim();
-    const model = decodeURIComponent(m).trim();
-    if (!providerId || !model) return null;
-    return { providerId, model };
-  } catch {
-    return null;
-  }
-}
-
-function isPersistedId(id: string): boolean {
-  return /^\d+$/.test(id);
-}
-
-function formatDateTime(iso?: string): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return null;
-  return d.toLocaleString();
-}
-
-function formatMsgTokensInfo(msg: Pick<ChatMsg, 'role' | 'tokensIn' | 'tokensOut'>): string {
-  if (msg.role === 'user') {
-    const inStr = typeof msg.tokensIn === 'number' ? String(msg.tokensIn) : '-';
-    return `tokens in ${inStr}`;
-  }
-  const outStr = typeof msg.tokensOut === 'number' ? String(msg.tokensOut) : '-';
-  return `tokens out ${outStr}`;
-}
-
-function toNullableNumber(v: unknown): number | null {
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-  if (typeof v === 'string') {
-    const s = v.trim();
-    if (!s) return null;
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function colorClassForCitationIndex(index: number): string {
-  const palette = [
-    'text-blue-600',
-    'text-emerald-600',
-    'text-purple-600',
-    'text-amber-600',
-    'text-rose-600',
-    'text-cyan-600'
-  ];
-  const i = Number.isFinite(index) ? Math.abs(index) : 0;
-  return palette[i % palette.length] ?? 'text-blue-600';
-}
-
-function linkifyCitations(md: string, anchorPrefix = 'cite-'): string {
-  if (!md) return md;
-  const parts: string[] = [];
-  const re = /```[\s\S]*?```/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(md)) !== null) {
-    const before = md.slice(lastIndex, match.index);
-    parts.push(before.replace(/\[(\d{1,3})\](?!\()/g, (_m, n) => `[[${n}]](#${anchorPrefix}${n})`));
-    parts.push(match[0]);
-    lastIndex = match.index + match[0].length;
-  }
-  const tail = md.slice(lastIndex);
-  parts.push(tail.replace(/\[(\d{1,3})\](?!\()/g, (_m, n) => `[[${n}]](#${anchorPrefix}${n})`));
-  return parts.join('');
-}
-
-function extractCitationIndexes(md: string): Set<number> {
-  const out = new Set<number>();
-  if (!md) return out;
-  const reCode = /```[\s\S]*?```/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  const extractFromText = (txt: string) => {
-    for (const m of txt.matchAll(/\[(\d{1,3})\](?!\()/g)) {
-      const n = Number(m[1]);
-      if (Number.isFinite(n) && n > 0) out.add(n);
-    }
-  };
-  while ((match = reCode.exec(md)) !== null) {
-    extractFromText(md.slice(lastIndex, match.index));
-    lastIndex = match.index + match[0].length;
-  }
-  extractFromText(md.slice(lastIndex));
-  return out;
-}
-
-function isThinkingOnlyModel(model: string): boolean {
-  const m = String(model ?? '').trim().toLowerCase();
-  if (!m) return false;
-  return m.includes("-thinking") || m.includes("thinking-") || m.endsWith("thinking");
-}
-
-function formatDurationMs(ms: number): string {
-  const safe = Number.isFinite(ms) ? Math.max(0, ms) : 0;
-  const totalSeconds = safe / 1000;
-  if (totalSeconds < 10) return `${totalSeconds.toFixed(1)}s`;
-  if (totalSeconds < 60) return `${Math.round(totalSeconds)}s`;
-  const mins = Math.floor(totalSeconds / 60);
-  const secs = Math.round(totalSeconds - mins * 60);
-  return `${mins}m${secs}s`;
-}
+import {
+    MAX_CHAT_FILES,
+    MAX_VISION_IMAGES,
+    buildProviderModelValue,
+    colorClassForCitationIndex,
+    extractCitationIndexes,
+    formatDateTime,
+    formatDurationMs,
+    formatMsgTokensInfo,
+    isPersistedId,
+    isThinkingOnlyModel,
+    linkifyCitations,
+    parseProviderModelValue,
+    toNullableNumber,
+    uid,
+    type BranchAnchorState,
+    type BranchInfo,
+    type BranchMembership,
+    type ChatMsg,
+    type MsgPerf,
+    type ThinkPerf,
+    type ThinkUi,
+} from './AssistantChatPage.shared';
+import {AssistantChatComposer} from './AssistantChatComposer';
+import {useResizableInputHeight} from './use-resizable-input-height';
 
 export default function AssistantChatPage() {
   const [searchParams] = useSearchParams();
@@ -260,48 +113,10 @@ export default function AssistantChatPage() {
   const [compressingContext, setCompressingContext] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | undefined>(undefined);
-  const [inputHeight, setInputHeight] = useState<number>(120);
-  const [isResizing, setIsResizing] = useState(false);
+    const {inputHeight, handleResizeMouseDown} = useResizableInputHeight(120, 80, 600);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeBranchContextRef = useRef<{ anchorId: string; branchId: string } | null>(null);
   const prevPersistedMsgIdsRef = useRef<Set<string>>(new Set());
-
-  const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  }, []);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-      // 向上拖动（movementY 为负）增加高度
-      setInputHeight((prev) => {
-        const next = prev - e.movementY;
-        return Math.max(80, Math.min(600, next));
-      });
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-    } else {
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizing]);
 
   const displayUsername = useMemo(() => {
     const name = currentUser?.username?.trim();
@@ -1991,167 +1806,51 @@ export default function AssistantChatPage() {
             ) : null}
           </div>
 
-      <form
-        className="space-y-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void handleSend();
-        }}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.pdf,.txt,.md,.html,.htm,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            const files = Array.from(e.target.files ?? []);
-            e.target.value = '';
-            void handleUploadFiles(files);
-          }}
-          disabled={isStreaming}
-        />
-        <div
-          onMouseDown={handleResizeMouseDown}
-          className="h-1.5 w-full cursor-row-resize hover:bg-blue-400/30 transition-colors flex items-center justify-center group"
-          title="拖动调整高度"
-        >
-          <div className="w-12 h-0.5 rounded-full bg-gray-300 group-hover:bg-blue-400 transition-colors" />
-        </div>
-        <textarea
-          value={question}
-          onChange={(e) => {
-            setQuestion(e.target.value);
-          }}
-          onPaste={(e) => {
-            const items = Array.from(e.clipboardData?.items ?? []);
-            const files: File[] = [];
-            for (const it of items) {
-              if (it.kind !== 'file') continue;
-              if (!String(it.type ?? '').toLowerCase().startsWith('image/')) continue;
-              const f = it.getAsFile();
-              if (f) files.push(f);
-            }
-            if (files.length === 0) return;
-            void handleUploadFiles(files);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void handleSend();
-            }
-          }}
-          style={{ height: inputHeight }}
-          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          placeholder="输入你的问题..."
-          disabled={isStreaming}
-        />
-        {pendingImages.length ? (
-          <div className="flex gap-2 overflow-x-auto">
-            {pendingImages.slice(0, MAX_VISION_IMAGES).map((it) => (
-              <div key={`${it.id}-${it.fileUrl}`} className="shrink-0 relative w-16 h-16 rounded border overflow-hidden bg-gray-50">
-                <img src={it.fileUrl} alt={it.fileName} className="w-full h-full object-cover" loading="lazy" />
-                <button
-                  type="button"
-                  className="absolute top-0 right-0 px-1 py-0.5 text-[10px] bg-white/90 border border-gray-200 rounded-bl"
-                  onClick={() => setPendingImages((prev) => prev.filter((x) => x.fileUrl !== it.fileUrl))}
-                  disabled={isStreaming}
-                >
-                  删除
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {pendingFiles.length ? (
-          <div className="flex flex-wrap gap-2">
-            {pendingFiles.slice(0, MAX_CHAT_FILES).map((it) => (
-              <div
-                key={`${it.id}-${it.fileUrl}`}
-                className="inline-flex items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700"
-              >
-                <span className="max-w-[260px] truncate">{it.fileName}</span>
-                <button
-                  type="button"
-                  className="text-gray-600 hover:text-gray-900"
-                  onClick={() => setPendingFiles((prev) => prev.filter((x) => x.fileUrl !== it.fileUrl))}
-                  disabled={isStreaming}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-4">
-            <label className="inline-flex items-center gap-2 text-sm text-gray-600">
-              <input
-                type="checkbox"
-                checked={effectiveDeepThink}
-                disabled={thinkingOnly}
-                onChange={(e) => {
-                  const next = e.target.checked;
+          <AssistantChatComposer
+              fileInputRef={fileInputRef}
+              isStreaming={isStreaming}
+              onFilesSelected={(files) => {
+                  void handleUploadFiles(files);
+              }}
+              onResizeMouseDown={handleResizeMouseDown}
+              question={question}
+              onQuestionChange={setQuestion}
+              onPasteImages={(files) => {
+                  void handleUploadFiles(files);
+              }}
+              onSend={() => {
+                  void handleSend();
+              }}
+              inputHeight={inputHeight}
+              pendingImages={pendingImages}
+              pendingFiles={pendingFiles}
+              maxVisionImages={MAX_VISION_IMAGES}
+              maxChatFiles={MAX_CHAT_FILES}
+              onRemovePendingImage={(fileUrl) => {
+                  setPendingImages((prev) => prev.filter((x) => x.fileUrl !== fileUrl));
+              }}
+              onRemovePendingFile={(fileUrl) => {
+                  setPendingFiles((prev) => prev.filter((x) => x.fileUrl !== fileUrl));
+              }}
+              effectiveDeepThink={effectiveDeepThink}
+              thinkingOnly={thinkingOnly}
+              onDeepThinkChange={(next) => {
                   setDeepThink(next);
-                  void updateMyAssistantPreferences({ defaultDeepThink: next }).catch(() => {});
-                }}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              深度思考{thinkingOnly ? <span className="text-xs text-gray-500"></span> : null}
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-gray-600">
-              <input
-                type="checkbox"
-                checked={useRag}
-                onChange={(e) => {
-                  const next = e.target.checked;
+                  void updateMyAssistantPreferences({defaultDeepThink: next}).catch(() => {
+                  });
+              }}
+              useRag={useRag}
+              onUseRagChange={(next) => {
                   setUseRag(next);
-                  void updateMyAssistantPreferences({ defaultUseRag: next }).catch(() => {});
-                }}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              使用RAG功能
-            </label>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="text-xs text-gray-600">
-              Token：in {tokensTotals.inStr} / out {tokensTotals.outStr} / total {tokensTotals.totalStr}
-            </div>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-gray-300 bg-white text-sm hover:bg-gray-50 disabled:opacity-60"
-              onClick={handlePickImages}
-              disabled={isStreaming || imageUploading}
-            >
-              {imageUploading ? '上传中…' : '添加文件/图片'}
-            </button>
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={stopGenerating}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gray-200 hover:bg-gray-300 transition-colors"
-              >
-                <Square size={16} fill="currentColor" />
-                停止输出
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={!canSend}
-                className={
-                  'inline-flex items-center gap-2 px-4 py-2 rounded-md text-white transition-colors ' +
-                  (canSend ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-300 cursor-not-allowed')
-                }
-              >
-                <Send size={16} />
-                发送
-              </button>
-            )}
-          </div>
-        </div>
-      </form>
+                  void updateMyAssistantPreferences({defaultUseRag: next}).catch(() => {
+                  });
+              }}
+              tokensTotals={tokensTotals}
+              onPickImages={handlePickImages}
+              imageUploading={imageUploading}
+              canSend={canSend}
+              onStop={stopGenerating}
+          />
       </div>
     </div>
   );

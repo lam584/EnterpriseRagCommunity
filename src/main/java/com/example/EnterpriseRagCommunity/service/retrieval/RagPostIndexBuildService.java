@@ -101,23 +101,7 @@ public class RagPostIndexBuildService {
         String overrideProviderId = toNonBlankString(embeddingProviderId);
         boolean hasOverride = overrideModel != null && overrideProviderId != null;
 
-        String fixedModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingModel"));
         String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
-        boolean hasFixed = fixedModel != null && fixedProviderId != null;
-        boolean fixedEnabled = hasFixed && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, fixedProviderId, fixedModel);
-        if (hasFixed && !fixedEnabled) {
-            log.warn("RAG fixed embedding target is not enabled. vectorIndexId={}, providerId={}, model={}",
-                    vectorIndexId, fixedProviderId, fixedModel);
-        }
-
-        String lastBuildModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingModel"));
-        String lastBuildProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingProviderId"));
-        boolean hasLastBuild = lastBuildModel != null && lastBuildProviderId != null;
-        boolean lastBuildEnabled = hasLastBuild && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, lastBuildProviderId, lastBuildModel);
-        if (hasLastBuild && !lastBuildEnabled) {
-            log.info("RAG lastBuild embedding target is not enabled; fallback to routing. vectorIndexId={}, providerId={}, model={}",
-                    vectorIndexId, lastBuildProviderId, lastBuildModel);
-        }
 
         String modelToUse = null;
         String providerToUse = null;
@@ -125,12 +109,8 @@ public class RagPostIndexBuildService {
         if (hasOverride) {
             modelToUse = overrideModel;
             providerToUse = overrideProviderId;
-        } else if (fixedEnabled) {
-            modelToUse = fixedModel;
+        } else if (fixedProviderId != null) {
             providerToUse = fixedProviderId;
-        } else if (lastBuildEnabled) {
-            modelToUse = lastBuildModel;
-            providerToUse = lastBuildProviderId;
         } else if (overrideProviderId != null && overrideModel == null) {
             providerToUse = overrideProviderId;
         }
@@ -352,6 +332,7 @@ public class RagPostIndexBuildService {
 
         Map<String, Object> meta0 = vi.getMetadata();
         Map<String, Object> meta = meta0 == null ? new LinkedHashMap<>() : new LinkedHashMap<>(meta0);
+        meta.remove("embeddingModel");
         meta.put("esIndex", indexName);
         meta.put("sourceType", "POST");
         meta.put("lastBuildAt", LocalDateTime.now().toString());
@@ -485,23 +466,7 @@ public class RagPostIndexBuildService {
         String overrideProviderId = toNonBlankString(embeddingProviderId);
         boolean hasOverride = overrideModel != null && overrideProviderId != null;
 
-        String fixedModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingModel"));
         String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
-        boolean hasFixed = fixedModel != null && fixedProviderId != null;
-        boolean fixedEnabled = hasFixed && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, fixedProviderId, fixedModel);
-        if (hasFixed && !fixedEnabled) {
-            log.warn("RAG fixed embedding target is not enabled. vectorIndexId={}, postId={}, providerId={}, model={}",
-                    vectorIndexId, postId, fixedProviderId, fixedModel);
-        }
-
-        String lastBuildModel = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingModel"));
-        String lastBuildProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("lastBuildEmbeddingProviderId"));
-        boolean hasLastBuild = lastBuildModel != null && lastBuildProviderId != null;
-        boolean lastBuildEnabled = hasLastBuild && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, lastBuildProviderId, lastBuildModel);
-        if (hasLastBuild && !lastBuildEnabled) {
-            log.info("RAG lastBuild embedding target is not enabled; fallback to routing. vectorIndexId={}, postId={}, providerId={}, model={}",
-                    vectorIndexId, postId, lastBuildProviderId, lastBuildModel);
-        }
 
         String modelToUse = null;
         String providerToUse = null;
@@ -509,12 +474,8 @@ public class RagPostIndexBuildService {
         if (hasOverride) {
             modelToUse = overrideModel;
             providerToUse = overrideProviderId;
-        } else if (fixedEnabled) {
-            modelToUse = fixedModel;
+        } else if (fixedProviderId != null) {
             providerToUse = fixedProviderId;
-        } else if (lastBuildEnabled) {
-            modelToUse = lastBuildModel;
-            providerToUse = lastBuildProviderId;
         } else if (overrideProviderId != null && overrideModel == null) {
             providerToUse = overrideProviderId;
         }

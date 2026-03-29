@@ -204,7 +204,7 @@ class RagPostTestQueryServiceTest {
     }
 
     @Test
-    void testQuery_shouldUseFixedModel_whenMetadataEnabled() throws Exception {
+    void testQuery_shouldRouteWithinFixedProvider_whenMetadataEnabled() throws Exception {
         MockHttpUrl.installOnce();
         MockHttpUrl.reset();
         MockHttpUrl.enqueue(200, "{\"hits\":{\"hits\":[]}}");
@@ -212,11 +212,11 @@ class RagPostTestQueryServiceTest {
         Fixture f = fixture();
         f.vectorIndex.setMetadata(new HashMap<>() {{
             put("embeddingProviderId", " fixed-p ");
-            put("embeddingModel", " fixed-m ");
         }});
         when(f.vectorIndicesRepository.findById(1L)).thenReturn(Optional.of(f.vectorIndex));
         when(f.systemConfigurationService.getConfig("spring.elasticsearch.uris")).thenReturn("mockhttp://es");
-        when(f.llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, "fixed-p", "fixed-m")).thenReturn(true);
+        when(f.llmRoutingService.pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("fixed-p"), any()))
+                .thenReturn(new LlmRoutingService.RouteTarget(new LlmRoutingService.TargetId("fixed-p", "fixed-m"), 1, 1, null));
         when(f.llmGateway.embedOnceRouted(eq(LlmQueueTaskType.POST_EMBEDDING), eq("fixed-p"), eq("fixed-m"), eq("hello")))
                 .thenReturn(new AiEmbeddingService.EmbeddingResult(new float[]{0.1f, 0.2f, 0.3f}, 3, "fixed-m"));
 
@@ -225,11 +225,11 @@ class RagPostTestQueryServiceTest {
 
         RagPostsTestQueryResponse resp = f.service.testQuery(1L, req);
         assertEquals("fixed-p", resp.getEmbeddingProviderId());
-        assertEquals("fixed-m", resp.getEmbeddingModel());
+        assertEquals(null, resp.getEmbeddingModel());
     }
 
     @Test
-    void testQuery_shouldUseLastBuildModel_whenFixedUnavailable() throws Exception {
+    void testQuery_shouldIgnoreLastBuildModel_whenFixedProviderConfigured() throws Exception {
         MockHttpUrl.installOnce();
         MockHttpUrl.reset();
         MockHttpUrl.enqueue(200, "{\"hits\":{\"hits\":[]}}");
@@ -237,23 +237,22 @@ class RagPostTestQueryServiceTest {
         Fixture f = fixture();
         f.vectorIndex.setMetadata(new HashMap<>() {{
             put("embeddingProviderId", "fixed-p");
-            put("embeddingModel", "fixed-m");
             put("lastBuildEmbeddingProviderId", "last-p");
             put("lastBuildEmbeddingModel", "last-m");
         }});
         when(f.vectorIndicesRepository.findById(1L)).thenReturn(Optional.of(f.vectorIndex));
         when(f.systemConfigurationService.getConfig("spring.elasticsearch.uris")).thenReturn("mockhttp://es");
-        when(f.llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, "fixed-p", "fixed-m")).thenReturn(false);
-        when(f.llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, "last-p", "last-m")).thenReturn(true);
-        when(f.llmGateway.embedOnceRouted(eq(LlmQueueTaskType.POST_EMBEDDING), eq("last-p"), eq("last-m"), eq("hello")))
-                .thenReturn(new AiEmbeddingService.EmbeddingResult(new float[]{0.1f, 0.2f, 0.3f}, 3, "last-m"));
+        when(f.llmRoutingService.pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("fixed-p"), any()))
+                .thenReturn(new LlmRoutingService.RouteTarget(new LlmRoutingService.TargetId("fixed-p", "fresh-m"), 1, 1, null));
+        when(f.llmGateway.embedOnceRouted(eq(LlmQueueTaskType.POST_EMBEDDING), eq("fixed-p"), eq("fresh-m"), eq("hello")))
+                .thenReturn(new AiEmbeddingService.EmbeddingResult(new float[]{0.1f, 0.2f, 0.3f}, 3, "fresh-m"));
 
         RagPostsTestQueryRequest req = new RagPostsTestQueryRequest();
         req.setQueryText("hello");
 
         RagPostsTestQueryResponse resp = f.service.testQuery(1L, req);
-        assertEquals("last-p", resp.getEmbeddingProviderId());
-        assertEquals("last-m", resp.getEmbeddingModel());
+        assertEquals("fixed-p", resp.getEmbeddingProviderId());
+        assertEquals(null, resp.getEmbeddingModel());
     }
 
     @Test

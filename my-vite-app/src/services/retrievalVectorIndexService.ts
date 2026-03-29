@@ -235,7 +235,6 @@ export async function adminBuildPostRagIndex(params: {
   chunkMaxChars?: number;
   chunkOverlapChars?: number;
   clear?: boolean;
-  embeddingModel?: string;
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagPostsBuildResponse> {
@@ -246,7 +245,6 @@ export async function adminBuildPostRagIndex(params: {
   if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
   if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
   if (params.clear) sp.set('clear', 'true');
-  if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
   if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
   if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
 
@@ -270,7 +268,6 @@ export async function adminRebuildPostRagIndex(params: {
   postBatchSize?: number;
   chunkMaxChars?: number;
   chunkOverlapChars?: number;
-  embeddingModel?: string;
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagPostsBuildResponse> {
@@ -279,7 +276,6 @@ export async function adminRebuildPostRagIndex(params: {
   if (params.postBatchSize) sp.set('postBatchSize', String(params.postBatchSize));
   if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
   if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
   if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
   if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
 
@@ -303,7 +299,6 @@ export async function adminSyncPostRagIndex(params: {
   postBatchSize?: number;
   chunkMaxChars?: number;
   chunkOverlapChars?: number;
-  embeddingModel?: string;
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagPostsBuildResponse> {
@@ -312,7 +307,6 @@ export async function adminSyncPostRagIndex(params: {
   if (params.postBatchSize) sp.set('postBatchSize', String(params.postBatchSize));
   if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
   if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
   if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
   if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
 
@@ -337,7 +331,6 @@ export async function adminBuildFileRagIndex(params: {
   chunkMaxChars?: number;
   chunkOverlapChars?: number;
   clear?: boolean;
-  embeddingModel?: string;
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagFilesBuildResponse> {
@@ -347,7 +340,6 @@ export async function adminBuildFileRagIndex(params: {
   if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
   if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
   if (params.clear) sp.set('clear', 'true');
-  if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
   if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
   if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
 
@@ -369,7 +361,6 @@ export async function adminRebuildFileRagIndex(params: {
   fileBatchSize?: number;
   chunkMaxChars?: number;
   chunkOverlapChars?: number;
-  embeddingModel?: string;
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagFilesBuildResponse> {
@@ -377,7 +368,6 @@ export async function adminRebuildFileRagIndex(params: {
   if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
   if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
   if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
   if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
   if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
 
@@ -399,7 +389,6 @@ export async function adminSyncFileRagIndex(params: {
   fileBatchSize?: number;
   chunkMaxChars?: number;
   chunkOverlapChars?: number;
-  embeddingModel?: string;
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagFilesBuildResponse> {
@@ -407,7 +396,6 @@ export async function adminSyncFileRagIndex(params: {
   if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
   if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
   if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.embeddingModel) sp.set('embeddingModel', params.embeddingModel);
   if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
   if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
 

@@ -62,25 +62,15 @@ public class RagFileAssetTestQueryService {
         String overrideProviderId = toNonBlank(req.getEmbeddingProviderId());
         boolean hasOverride = overrideModel != null && overrideProviderId != null;
 
-        String fixedModel = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingModel"));
         String fixedProviderId = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingProviderId"));
-        boolean hasFixed = fixedModel != null && fixedProviderId != null;
-
-        String lastBuildModel = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("lastBuildEmbeddingModel"));
-        String lastBuildProviderId = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("lastBuildEmbeddingProviderId"));
-        boolean hasLastBuild = lastBuildModel != null && lastBuildProviderId != null;
 
         String modelToUse = null;
         String providerToUse = null;
         if (hasOverride) {
             modelToUse = overrideModel;
             providerToUse = overrideProviderId;
-        } else if (hasFixed && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, fixedProviderId, fixedModel)) {
-            modelToUse = fixedModel;
+        } else if (fixedProviderId != null) {
             providerToUse = fixedProviderId;
-        } else if (hasLastBuild && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, lastBuildProviderId, lastBuildModel)) {
-            modelToUse = lastBuildModel;
-            providerToUse = lastBuildProviderId;
         } else if (overrideProviderId != null && overrideModel == null) {
             providerToUse = overrideProviderId;
         }

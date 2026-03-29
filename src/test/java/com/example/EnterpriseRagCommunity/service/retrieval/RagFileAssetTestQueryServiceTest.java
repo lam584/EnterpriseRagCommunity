@@ -139,7 +139,7 @@ class RagFileAssetTestQueryServiceTest {
     }
 
     @Test
-    void testQuery_shouldUseFixedModelAndSaveDims_whenOverrideIncomplete() throws Exception {
+    void testQuery_shouldRouteWithinFixedProviderAndSaveDims_whenOverrideIncomplete() throws Exception {
         MockHttpUrl.installOnce();
         MockHttpUrl.reset();
         MockHttpUrl.enqueue(200, "{\"hits\":{\"hits\":[]}}");
@@ -164,11 +164,11 @@ class RagFileAssetTestQueryServiceTest {
         vi.setId(1L);
         vi.setCollectionName(" idx_fixed ");
         vi.setMetadata(new HashMap<>() {{
-            put("embeddingModel", "fm");
             put("embeddingProviderId", "fp");
         }});
         when(vectorIndicesRepository.findById(1L)).thenReturn(Optional.of(vi));
-        when(llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, "fp", "fm")).thenReturn(true);
+        when(llmRoutingService.pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("fp"), any()))
+                .thenReturn(new LlmRoutingService.RouteTarget(new LlmRoutingService.TargetId("fp", "fm"), 1, 1, null));
         when(systemConfigurationService.getConfig("spring.elasticsearch.uris"))
                 .thenReturn("mockhttp://es-fixed/,mockhttp://es-backup");
         when(systemConfigurationService.getConfig("APP_ES_API_KEY"))
@@ -187,7 +187,7 @@ class RagFileAssetTestQueryServiceTest {
         assertEquals(1, resp.getTopK());
         assertEquals(10, resp.getNumCandidates());
         assertEquals("fp", resp.getEmbeddingProviderId());
-        assertEquals("fm", resp.getEmbeddingModel());
+        assertEquals(null, resp.getEmbeddingModel());
         verify(vectorIndicesRepository).save(vi);
 
         MockHttpUrl.RequestCapture capture = MockHttpUrl.pollRequest();
@@ -197,7 +197,7 @@ class RagFileAssetTestQueryServiceTest {
     }
 
     @Test
-    void testQuery_shouldUseLastBuildModel_whenFixedDisabled() throws Exception {
+    void testQuery_shouldIgnoreLastBuildModel_whenFixedProviderConfigured() throws Exception {
         MockHttpUrl.installOnce();
         MockHttpUrl.reset();
         MockHttpUrl.enqueue(200, "{\"hits\":{\"hits\":[]}}");
@@ -223,7 +223,6 @@ class RagFileAssetTestQueryServiceTest {
         vi.setCollectionName("idx_files");
         vi.setDim(2);
         vi.setMetadata(new HashMap<>() {{
-            put("embeddingModel", "fm");
             put("embeddingProviderId", "fp");
             put("lastBuildEmbeddingModel", "lm");
             put("lastBuildEmbeddingProviderId", "lp");
@@ -231,18 +230,18 @@ class RagFileAssetTestQueryServiceTest {
         when(vectorIndicesRepository.findById(1L)).thenReturn(Optional.of(vi));
         when(systemConfigurationService.getConfig("spring.elasticsearch.uris"))
                 .thenReturn("mockhttp://es");
-        when(llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, "fp", "fm")).thenReturn(false);
-        when(llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, "lp", "lm")).thenReturn(true);
-        when(llmGateway.embedOnceRouted(eq(LlmQueueTaskType.POST_EMBEDDING), eq("lp"), eq("lm"), eq("q2")))
-                .thenReturn(new AiEmbeddingService.EmbeddingResult(new float[]{0.2f, 0.3f}, 2, "lm"));
+        when(llmRoutingService.pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("fp"), any()))
+                .thenReturn(new LlmRoutingService.RouteTarget(new LlmRoutingService.TargetId("fp", "fresh-m"), 1, 1, null));
+        when(llmGateway.embedOnceRouted(eq(LlmQueueTaskType.POST_EMBEDDING), eq("fp"), eq("fresh-m"), eq("q2")))
+                .thenReturn(new AiEmbeddingService.EmbeddingResult(new float[]{0.2f, 0.3f}, 2, "fresh-m"));
 
         RagFilesTestQueryRequest req = new RagFilesTestQueryRequest();
         req.setQueryText("q2");
 
         RagFilesTestQueryResponse resp = svc.testQuery(1L, req);
         assertNotNull(resp);
-        assertEquals("lm", resp.getEmbeddingModel());
-        assertEquals("lp", resp.getEmbeddingProviderId());
+        assertEquals(null, resp.getEmbeddingModel());
+        assertEquals("fp", resp.getEmbeddingProviderId());
     }
 
     @Test

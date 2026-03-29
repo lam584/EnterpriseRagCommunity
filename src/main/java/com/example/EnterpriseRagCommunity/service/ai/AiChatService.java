@@ -72,8 +72,6 @@ import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
-import com.example.EnterpriseRagCommunity.service.ai.ChatContextGovernanceConfigService;
-import com.example.EnterpriseRagCommunity.service.ai.ChatContextGovernanceService;
 
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -85,7 +83,6 @@ public class AiChatService {
 
     private static final Logger logger = LoggerFactory.getLogger(AiChatService.class);
     private static final String ENV_DEFAULT = "default";
-    private static final Pattern FILE_ASSET_ID_PATTERN = Pattern.compile("file_asset_id\\s*=\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
 
     private final LlmGateway llmGateway;
     private final LlmModelRepository llmModelRepository;
@@ -122,31 +119,19 @@ public class AiChatService {
     private String urlPrefix;
 
     private static String normalizeCitationMode(CitationConfigDTO citationCfg) {
-        if (citationCfg == null) return "MODEL_INLINE";
-        String mode = citationCfg.getCitationMode() == null
-                ? ""
-                : citationCfg.getCitationMode().trim().toUpperCase(Locale.ROOT);
-        if (!mode.equals("MODEL_INLINE") && !mode.equals("SOURCES_SECTION") && !mode.equals("BOTH")) {
-            return "MODEL_INLINE";
-        }
-        return mode;
+        return AiChatCitationSupport.normalizeCitationMode(citationCfg);
     }
 
     private static boolean shouldExposeCitationSources(CitationConfigDTO citationCfg) {
-        if (citationCfg == null || !Boolean.TRUE.equals(citationCfg.getEnabled())) return false;
-        String mode = normalizeCitationMode(citationCfg);
-        return mode.equals("SOURCES_SECTION") || mode.equals("BOTH");
+        return AiChatCitationSupport.shouldExposeCitationSources(citationCfg);
     }
 
     private static boolean shouldStripInlineCitations(CitationConfigDTO citationCfg) {
-        if (citationCfg == null || !Boolean.TRUE.equals(citationCfg.getEnabled())) return false;
-        return "SOURCES_SECTION".equals(normalizeCitationMode(citationCfg));
+        return AiChatCitationSupport.shouldStripInlineCitations(citationCfg);
     }
 
     private static String enforceCitationModeAnswerBody(CitationConfigDTO citationCfg, String answerText) {
-        if (answerText == null || answerText.isBlank()) return answerText;
-        if (!shouldStripInlineCitations(citationCfg)) return answerText;
-        return stripInlineCitationMarkers(answerText);
+        return AiChatCitationSupport.enforceCitationModeAnswerBody(citationCfg, answerText);
     }
 
     /**
@@ -157,32 +142,11 @@ public class AiChatService {
             List<RagContextPromptService.CitationSource> sources,
             String answerText
     ) {
-        if (!shouldExposeCitationSources(citationCfg)) return List.of();
-        List<RagContextPromptService.CitationSource> cited = filterSourcesByCitations(sources, answerText);
-        if (cited != null && !cited.isEmpty()) return cited;
-        if (sources == null || sources.isEmpty()) return List.of();
-        return sources;
+        return AiChatCitationSupport.resolveSourcesForOutput(citationCfg, sources, answerText);
     }
 
     private static List<AiChatResponseDTO.AiCitationSourceDTO> toCitationSourceDtos(List<RagContextPromptService.CitationSource> sources) {
-        if (sources == null || sources.isEmpty()) return List.of();
-        int n = Math.min(200, sources.size());
-        List<AiChatResponseDTO.AiCitationSourceDTO> out = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) {
-            RagContextPromptService.CitationSource s = sources.get(i);
-            if (s == null) continue;
-            AiChatResponseDTO.AiCitationSourceDTO dto = new AiChatResponseDTO.AiCitationSourceDTO();
-            dto.setIndex(s.getIndex());
-            dto.setPostId(s.getPostId());
-            dto.setCommentId(s.getCommentId());
-            dto.setChunkIndex(s.getChunkIndex());
-            dto.setScore(s.getScore());
-            dto.setTitle(s.getTitle());
-            dto.setUrl(s.getUrl());
-            dto.setSnippet(s.getSnippet());
-            out.add(dto);
-        }
-        return out;
+        return AiChatCitationSupport.toCitationSourceDtos(sources);
     }
 
     public AiChatResponseDTO regenerateOnce(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId) {
@@ -194,33 +158,20 @@ public class AiChatService {
         return regenerateOnceInternal(questionMessageId, req, currentUserId);
     }
 
-    private static String buildSourcesEventData(List<RagContextPromptService.CitationSource> sources, boolean includeSnippet) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"sources\":[");
-        int n = Math.min(200, sources == null ? 0 : sources.size());
-        for (int i = 0; i < n; i++) {
-            RagContextPromptService.CitationSource s = sources.get(i);
-            if (s == null) continue;
-            if (sb.charAt(sb.length() - 1) != '[') sb.append(',');
-            sb.append('{');
-            sb.append("\"index\":").append(s.getIndex() == null ? "null" : s.getIndex());
-            sb.append(",\"postId\":").append(s.getPostId() == null ? "null" : s.getPostId());
-            sb.append(",\"commentId\":").append(s.getCommentId() == null ? "null" : s.getCommentId());
-            sb.append(",\"chunkIndex\":").append(s.getChunkIndex() == null ? "null" : s.getChunkIndex());
-            sb.append(",\"score\":").append(s.getScore() == null ? "null" : String.format(Locale.ROOT, "%.6f", s.getScore()));
-            sb.append(",\"title\":\"").append(jsonEscape(s.getTitle() == null ? "" : s.getTitle())).append('"');
-            sb.append(",\"url\":\"").append(jsonEscape(s.getUrl() == null ? "" : s.getUrl())).append('"');
-            if (includeSnippet) {
-                sb.append(",\"snippet\":\"").append(jsonEscape(s.getSnippet() == null ? "" : s.getSnippet())).append('"');
-            }
-            sb.append('}');
-        }
-        sb.append("]}");
-        return sb.toString();
+    private static String buildSourcesEventData(List<RagContextPromptService.CitationSource> sources) {
+        return AiChatCitationSupport.buildSourcesEventData(sources);
     }
 
-    private static void appendCommentHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<RagCommentChatRetrievalService.Hit> hits) {
+    private static void appendCommentHits(List<RetrievalHitsEntity> out, Long eventId, List<RagCommentChatRetrievalService.Hit> hits) {
+        appendCommentHits(out, eventId, RetrievalHitType.COMMENT_VEC, hits);
+    }
+
+    private static void appendCommentHits(List<RetrievalHitsEntity> out,
+                                          Long eventId,
+                                          RetrievalHitType type,
+                                          List<RagCommentChatRetrievalService.Hit> hits) {
         if (eventId == null || hits == null || hits.isEmpty()) return;
+        RetrievalHitType effectiveType = type == null ? RetrievalHitType.COMMENT_VEC : type;
         int n = Math.min(1000, hits.size());
         for (int i = 0; i < n; i++) {
             RagCommentChatRetrievalService.Hit h = hits.get(i);
@@ -228,12 +179,40 @@ public class AiChatService {
             RetrievalHitsEntity rh = new RetrievalHitsEntity();
             rh.setEventId(eventId);
             rh.setRank(i + 1);
-            rh.setHitType(type);
+            rh.setHitType(effectiveType);
             rh.setPostId(h.getPostId());
             rh.setChunkId(null);
             rh.setScore(h.getScore() == null ? 0.0 : h.getScore());
             out.add(rh);
         }
+    }
+
+    private static String buildRagContextPrompt(List<RagPostChatRetrievalService.Hit> hits, HybridRetrievalConfigDTO cfg) {
+        int maxItems = cfg == null || cfg.getHybridK() == null ? 10 : Math.max(1, cfg.getHybridK());
+        int perDocMaxTokens = cfg == null || cfg.getPerDocMaxTokens() == null ? 300 : Math.max(1, cfg.getPerDocMaxTokens());
+        int perDocMaxChars = Math.clamp(perDocMaxTokens * 16, 32, 12_000);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("参考资料：\n");
+        if (hits == null || hits.isEmpty()) return sb.toString();
+
+        int emitted = 0;
+        for (int i = 0; i < hits.size() && emitted < maxItems; i++) {
+            RagPostChatRetrievalService.Hit h = hits.get(i);
+            if (h == null) continue;
+
+            String title = toNonBlank(h.getTitle());
+            if (title == null) title = "文档#" + (i + 1);
+
+            String content = toNonBlank(h.getContentText());
+            if (content == null) content = "";
+            if (content.length() > perDocMaxChars) content = content.substring(0, perDocMaxChars);
+
+            sb.append('[').append(i + 1).append("] ").append(title).append('\n');
+            sb.append(content).append("\n\n");
+            emitted += 1;
+        }
+        return sb.toString().trim();
     }
 
     private static void writeRagDebugEvent(
@@ -244,75 +223,7 @@ public class AiChatService {
             List<RagCommentChatRetrievalService.Hit> commentHits,
             RagContextPromptService.AssembleResult contextAssembled
     ) {
-        if (out == null || cfg == null || !Boolean.TRUE.equals(cfg.getDebugEnabled())) return;
-        int maxChars = cfg.getDebugMaxChars() == null ? 4000 : Math.max(0, Math.min(200_000, cfg.getDebugMaxChars()));
-        if (maxChars <= 0) return;
-
-        Map<Long, RagPostChatRetrievalService.Hit> aggByPostId = new java.util.HashMap<>();
-        if (aggHits != null) {
-            for (RagPostChatRetrievalService.Hit h : aggHits) {
-                if (h == null || h.getPostId() == null) continue;
-                aggByPostId.putIfAbsent(h.getPostId(), h);
-            }
-        }
-
-        List<RagContextPromptService.Item> selected = contextAssembled == null ? List.of() : (contextAssembled.getSelected() == null ? List.of() : contextAssembled.getSelected());
-        int perItemMax = Math.max(200, Math.min(2000, maxChars / Math.max(1, selected.size())));
-
-        StringBuilder sb = new StringBuilder();
-        sb.append('{');
-        sb.append("\"query\":\"").append(jsonEscape(queryText == null ? "" : queryText)).append('"');
-
-        sb.append(",\"selected\":[");
-        int totalPreview = 0;
-        for (int i = 0; i < selected.size(); i++) {
-            RagContextPromptService.Item it = selected.get(i);
-            if (it == null) continue;
-            if (sb.charAt(sb.length() - 1) != '[') sb.append(',');
-            sb.append('{');
-            sb.append("\"rank\":").append(it.getRank() == null ? "null" : it.getRank());
-            sb.append(",\"postId\":").append(it.getPostId() == null ? "null" : it.getPostId());
-            sb.append(",\"commentId\":").append(it.getCommentId() == null ? "null" : it.getCommentId());
-            sb.append(",\"score\":").append(it.getScore() == null ? "null" : String.format(Locale.ROOT, "%.6f", it.getScore()));
-            String preview = "";
-            if (it.getPostId() != null) {
-                RagPostChatRetrievalService.Hit h = aggByPostId.get(it.getPostId());
-                String t = h == null ? null : h.getContentText();
-                if (t != null) {
-                    String trimmed = t.trim();
-                    int remain = Math.max(0, maxChars - totalPreview);
-                    int cap = Math.min(perItemMax, remain);
-                    if (cap > 0) {
-                        preview = trimmed.length() <= cap ? trimmed : trimmed.substring(0, cap);
-                        totalPreview += preview.length();
-                    }
-                }
-            }
-            sb.append(",\"preview\":\"").append(jsonEscape(preview)).append('"');
-            sb.append('}');
-            if (totalPreview >= maxChars) break;
-        }
-        sb.append(']');
-
-        sb.append(",\"commentHits\":[");
-        int n = Math.min(50, commentHits == null ? 0 : commentHits.size());
-        for (int i = 0; i < n; i++) {
-            RagCommentChatRetrievalService.Hit h = commentHits.get(i);
-            if (h == null) continue;
-            if (sb.charAt(sb.length() - 1) != '[') sb.append(',');
-            sb.append('{');
-            sb.append("\"commentId\":").append(h.getCommentId() == null ? "null" : h.getCommentId());
-            sb.append(",\"postId\":").append(h.getPostId() == null ? "null" : h.getPostId());
-            sb.append(",\"score\":").append(h.getScore() == null ? "null" : String.format(Locale.ROOT, "%.6f", h.getScore()));
-            sb.append('}');
-        }
-        sb.append(']');
-
-        sb.append('}');
-
-        out.write("event: rag_debug\n");
-        out.write("data: " + sb + "\n\n");
-        out.flush();
+        AiChatRetrievalSupport.writeRagDebugEvent(out, cfg, queryText, aggHits, commentHits, contextAssembled);
     }
 
     public void streamRegenerate(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId, HttpServletResponse response)
@@ -331,12 +242,7 @@ public class AiChatService {
     }
 
     private static void sanitizeHitChunkIds(List<RetrievalHitsEntity> hits) {
-        if (hits == null || hits.isEmpty()) return;
-        for (RetrievalHitsEntity h : hits) {
-            if (h == null) continue;
-            // retrieval_hits.chunk_id points to document_chunks.id, not comment ids or chunk indexes.
-            h.setChunkId(null);
-        }
+        AiChatRetrievalSupport.sanitizeHitChunkIds(hits);
     }
 
     private static boolean hasItems(Collection<?> values) {
@@ -356,11 +262,11 @@ public class AiChatService {
     }
 
     private static boolean isAugmentEnabled(ChatRagAugmentConfigDTO cfg) {
-        return cfg == null || cfg.getEnabled() == null || Boolean.TRUE.equals(cfg.getEnabled());
+        return cfg == null || cfg.getEnabled() == null || cfg.getEnabled();
     }
 
     private static boolean isCommentsEnabled(ChatRagAugmentConfigDTO cfg) {
-        return cfg == null || cfg.getCommentsEnabled() == null || Boolean.TRUE.equals(cfg.getCommentsEnabled());
+        return cfg == null || cfg.getCommentsEnabled() == null || cfg.getCommentsEnabled();
     }
 
     private static boolean shouldPersistRetrieval(AiChatStreamRequest req) {
@@ -404,140 +310,304 @@ public class AiChatService {
             List<RagContextPromptService.CitationSource> sources,
             String answerText
     ) {
-        if (sources == null || sources.isEmpty()) return List.of();
-        if (answerText == null || answerText.isBlank()) return List.of();
-
-        int maxIndex = 0;
-        for (RagContextPromptService.CitationSource s : sources) {
-            if (s == null || s.getIndex() == null) continue;
-            maxIndex = Math.max(maxIndex, s.getIndex());
-        }
-        if (maxIndex <= 0) return List.of();
-
-        Set<Integer> cited = extractCitationIndexes(answerText, maxIndex);
-        if (cited.isEmpty()) return List.of();
-
-        List<RagContextPromptService.CitationSource> out = new ArrayList<>();
-        for (RagContextPromptService.CitationSource s : sources) {
-            if (s == null || s.getIndex() == null) continue;
-            if (cited.contains(s.getIndex())) out.add(s);
-        }
-        return out;
+        return AiChatCitationSupport.filterSourcesByCitations(sources, answerText);
     }
 
     private static String stripInlineCitationMarkers(String text) {
-        if (text == null || text.isEmpty()) return text;
-
-        StringBuilder out = new StringBuilder(text.length());
-        boolean inFence = false;
-        boolean inInlineCode = false;
-        int n = text.length();
-
-        for (int i = 0; i < n; i++) {
-            char c = text.charAt(i);
-
-            if (c == '`') {
-                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
-                    inFence = !inFence;
-                    out.append("```");
-                    i += 2;
-                    continue;
-                }
-                if (!inFence) inInlineCode = !inInlineCode;
-                out.append(c);
-                continue;
-            }
-
-            if (inFence || inInlineCode) {
-                out.append(c);
-                continue;
-            }
-
-            if (c != '[') {
-                out.append(c);
-                continue;
-            }
-
-            int j = i + 1;
-            int value = 0;
-            int digits = 0;
-            while (j < n && digits < 3) {
-                char d = text.charAt(j);
-                if (d < '0' || d > '9') break;
-                value = value * 10 + (d - '0');
-                digits++;
-                j++;
-            }
-
-            boolean isCitation = digits > 0
-                    && j < n
-                    && text.charAt(j) == ']'
-                    && !(j + 1 < n && text.charAt(j + 1) == '(')
-                    && value > 0;
-
-            if (!isCitation) {
-                out.append(c);
-                continue;
-            }
-
-            i = j;
-
-            int next = i + 1;
-            boolean leftWs = out.length() > 0 && Character.isWhitespace(out.charAt(out.length() - 1));
-            boolean rightWs = next < n && Character.isWhitespace(text.charAt(next));
-            if (leftWs && rightWs) {
-                while (next < n && Character.isWhitespace(text.charAt(next))) {
-                    next++;
-                }
-                i = next - 1;
-            }
-        }
-
-        return out.toString();
+        return AiChatCitationSupport.stripInlineCitationMarkers(text);
     }
 
     private static Set<Integer> extractCitationIndexes(String text, int maxIndex) {
-        Set<Integer> out = new HashSet<>();
-        if (text == null || text.isEmpty()) return out;
+        return AiChatCitationSupport.extractCitationIndexes(text, maxIndex);
+    }
 
-        boolean inFence = false;
-        boolean inInlineCode = false;
-        int n = text.length();
+    private static String normalizeCitationQuoteFormatting(String text) {
+        return AiChatCitationSupport.normalizeCitationQuoteFormatting(text);
+    }
 
-        for (int i = 0; i < n; i++) {
+    private static int findCitationQuoteClose(String text, int start) {
+        int n = text == null ? 0 : text.length();
+        for (int i = Math.max(0, start); i < n; i++) {
             char c = text.charAt(i);
-
-            if (c == '`') {
-                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
-                    inFence = !inFence;
-                    i += 2;
-                    continue;
-                }
-                if (!inFence) inInlineCode = !inInlineCode;
-                continue;
+            if (c == '\n' || c == '\r') return -1;
+            if (c == '\\' && i + 1 < n && isCitationQuote(text.charAt(i + 1))) {
+                return i + 1;
             }
-
-            if (inFence || inInlineCode) continue;
-            if (c != '[') continue;
-
-            int j = i + 1;
-            int value = 0;
-            int digits = 0;
-            while (j < n && digits < 3) {
-                char d = text.charAt(j);
-                if (d < '0' || d > '9') break;
-                value = value * 10 + (d - '0');
-                digits++;
-                j++;
+            if (c == '"' || c == '”' || c == '」' || c == '』') {
+                return i;
             }
-            if (digits == 0) continue;
-            if (j >= n || text.charAt(j) != ']') continue;
-            if (j + 1 < n && text.charAt(j + 1) == '(') continue;
-            if (value <= 0 || value > maxIndex) continue;
-            out.add(value);
+        }
+        return -1;
+    }
+
+    private static boolean isCitationQuote(char c) {
+        return c == '"' || c == '“' || c == '”' || c == '「' || c == '」' || c == '『' || c == '』';
+    }
+
+    private static boolean isCitationOpenQuote(char c) {
+        return c == '"' || c == '“' || c == '「' || c == '『';
+    }
+
+    /**
+     * Extremely small extractor to avoid adding JSON deps.
+     * It looks for "\"content\":\"...\"" under choices[0].delta.
+     *
+     * This is not a full JSON parser but works for common OpenAI-compatible SSE frames.
+     */
+    static String extractDeltaContent(String json) {
+        return AiChatSseSupport.extractDeltaContent(json);
+    }
+
+    static String extractDeltaReasoningContent(String json) {
+        return AiChatSseSupport.extractDeltaReasoningContent(json);
+    }
+
+    static String extractDeltaStringField(String json, String field) {
+        return AiChatSseSupport.extractDeltaStringField(json, field);
+    }
+
+    private QaSessionsEntity ensureSession(Long sessionId, Long currentUserId, boolean dryRun) {
+        if (sessionId != null) {
+            QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, currentUserId)
+                    .orElseThrow(() -> new ResourceNotFoundException("session not found"));
+            if (Boolean.FALSE.equals(s.getIsActive())) {
+                throw new IllegalArgumentException("session inactive");
+            }
+            return s;
         }
 
-        return out;
+        QaSessionsEntity s = new QaSessionsEntity();
+        s.setUserId(currentUserId);
+        s.setTitle(null);
+        s.setContextStrategy(ContextStrategy.RECENT_N);
+        s.setIsActive(true);
+        s.setCreatedAt(LocalDateTime.now());
+
+        if (dryRun) {
+            s.setId(-System.currentTimeMillis());
+            return s;
+        }
+        return qaSessionsRepository.save(s);
+    }
+
+    private static String decodeEscapedContent(String text) {
+        return AiChatSseSupport.decodeEscapedContent(text);
+    }
+
+    private static List<AiChatStreamRequest.ImageInput> resolveImages(AiChatStreamRequest req) {
+        return AiChatInputSupport.resolveImages(req);
+    }
+
+    private static List<AiChatStreamRequest.FileInput> resolveFiles(AiChatStreamRequest req) {
+        return AiChatInputSupport.resolveFiles(req);
+    }
+
+    private static List<AiChatStreamRequest.FileInput> extractFilesFromHistoryText(String text) {
+        return AiChatInputSupport.extractFilesFromHistoryText(text);
+    }
+
+    private String resolveModelNameForThinkDirective(String providerId, String modelOverride) {
+        String m = toNonBlank(modelOverride);
+        if (m != null) return m;
+        try {
+            AiProvidersConfigService.ResolvedProvider p = llmGateway.resolve(providerId);
+            m = toNonBlank(p == null ? null : p.defaultChatModel());
+            if (m != null) return m;
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    private static String applyThinkingDirective(String content, boolean deepThink, String modelName) {
+        String text = content == null ? "" : content;
+        if (!supportsThinkingDirectiveModel(modelName)) return text;
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.contains("/no_think") || lower.contains("/think")) return text;
+        String directive = deepThink ? "/think" : "/no_think";
+        if (text.endsWith("\n") || text.endsWith("\r")) return text + directive;
+        return text + "\n" + directive;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String loadUserDefaultSystemPrompt(Long userId) {
+        if (userId == null) return null;
+        UsersEntity u = usersRepository.findById(userId).orElse(null);
+        if (u == null) return null;
+        Map<String, Object> metadata = u.getMetadata();
+        if (metadata == null) return null;
+        Object prefs = metadata.get("preferences");
+        if (!(prefs instanceof Map)) return null;
+        Object assistant = ((Map<String, Object>) prefs).get("assistant");
+        if (!(assistant instanceof Map)) return null;
+        Object v = ((Map<String, Object>) assistant).get("defaultSystemPrompt");
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return StringUtils.hasText(s) ? s : null;
+    }
+
+    private static boolean supportsThinkingDirectiveModel(String modelName) {
+        String raw = modelName == null ? "" : modelName.trim().toLowerCase(Locale.ROOT);
+        if (raw.isEmpty()) return false;
+
+        String base = raw;
+        int slash = base.lastIndexOf('/');
+        if (slash >= 0 && slash + 1 < base.length()) base = base.substring(slash + 1);
+        int colon = base.lastIndexOf(':');
+        if (colon >= 0 && colon + 1 < base.length()) base = base.substring(colon + 1);
+
+        if (raw.contains("thinking") || base.contains("thinking")) return false;
+        if (base.startsWith("qwen3-") || raw.startsWith("qwen3-")) return true;
+        return base.startsWith("qwen-plus-2025-04-28")
+                || base.startsWith("qwen-turbo-2025-04-28")
+                || raw.startsWith("qwen-plus-2025-04-28")
+                || raw.startsWith("qwen-turbo-2025-04-28");
+    }
+
+    private static String toNonBlank(Object v) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isBlank() ? null : s;
+    }
+
+    private void ensureMultimodalModelForRequest(LlmQueueTaskType taskType, String providerId, String modelOverride) {
+        if (taskType != LlmQueueTaskType.MULTIMODAL_CHAT) return;
+
+        String mo = toNonBlank(modelOverride);
+        String pid = toNonBlank(providerId);
+
+        if (mo != null) {
+            String effectiveProviderId = pid;
+            if (effectiveProviderId == null) {
+                try {
+                    var p = llmGateway.resolve(null);
+                    effectiveProviderId = p == null ? null : toNonBlank(p.id());
+                } catch (Exception ignored) {
+                }
+            }
+            if (effectiveProviderId == null) {
+                throw new IllegalArgumentException("未指定模型提供商(providerId)，无法发送多模态请求");
+            }
+            if (!isEnabledMultimodalChatModel(effectiveProviderId, mo)) {
+                throw new IllegalArgumentException("当前选择的模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
+            }
+            return;
+        }
+
+        if (pid != null) {
+            try {
+                var p = llmGateway.resolve(pid);
+                String effectiveProviderId = p == null ? null : toNonBlank(p.id());
+                String effectiveModel = p == null ? null : toNonBlank(p.defaultChatModel());
+                if (effectiveProviderId == null || effectiveModel == null) {
+                    throw new IllegalArgumentException("未配置可用的默认模型，无法发送多模态请求");
+                }
+                if (!isEnabledMultimodalChatModel(effectiveProviderId, effectiveModel)) {
+                    throw new IllegalArgumentException("当前选择的默认模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
+                }
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalArgumentException("模型提供商解析失败，无法发送多模态请求");
+            }
+            return;
+        }
+
+        if (llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, "MULTIMODAL_CHAT").isEmpty()) {
+            throw new IllegalArgumentException("未配置“多模态聊天(MULTIMODAL_CHAT)”模型池，请先在管理端配置场景模型");
+        }
+    }
+
+    private boolean isEnabledMultimodalChatModel(String providerId, String modelName) {
+        String pid = toNonBlank(providerId);
+        String mn = toNonBlank(modelName);
+        if (pid == null || mn == null) return false;
+        return llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, "MULTIMODAL_CHAT", mn)
+                .filter((e) -> !Boolean.FALSE.equals(e.getEnabled()))
+                .isPresent();
+    }
+
+    private static boolean isLikelyImageUrl(String url) {
+        return AiChatInputSupport.isLikelyImageUrl(url);
+    }
+
+    private static String appendImagesAsText(String userMsg, List<AiChatStreamRequest.ImageInput> images) {
+        return AiChatInputSupport.appendImagesAsText(userMsg, images);
+    }
+
+    private static String appendFilesAsText(String userMsg, List<AiChatStreamRequest.FileInput> files) {
+        return AiChatInputSupport.appendFilesAsText(userMsg, files);
+    }
+
+    static String jsonEscape(String s) {
+        return AiChatJsonSupport.jsonEscape(s);
+    }
+
+    private static List<RagPostChatRetrievalService.Hit> toRagHits(List<HybridRagRetrievalService.DocHit> hits) {
+        return AiChatRetrievalSupport.toRagHits(hits);
+    }
+
+    private static void appendStageHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<HybridRagRetrievalService.DocHit> hits) {
+        AiChatRetrievalSupport.appendStageHits(out, eventId, type, hits);
+    }
+
+    private static void appendChatHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<RagPostChatRetrievalService.Hit> hits) {
+        AiChatRetrievalSupport.appendChatHits(out, eventId, type, hits);
+    }
+
+    private String encodeImageUrlForUpstream(AiChatStreamRequest.ImageInput img) {
+        if (img == null) return null;
+        String url = toNonBlank(img.getUrl());
+        if (url == null) return null;
+
+        if (url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://")) {
+            return url;
+        }
+
+        byte[] bytes = readLocalUploadBytes(img.getFileAssetId(), url);
+        if (bytes == null || bytes.length == 0) return url;
+        if (bytes.length > 4_000_000) return url;
+
+        String mimeType = toNonBlank(img.getMimeType());
+        if (!StringUtils.hasText(mimeType) && img.getFileAssetId() != null) {
+            var fa = fileAssetsRepository.findById(img.getFileAssetId()).orElse(null);
+            mimeType = fa == null ? null : toNonBlank(fa.getMimeType());
+        }
+        if (!StringUtils.hasText(mimeType)) mimeType = "application/octet-stream";
+
+        return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+    }
+
+    private byte[] readLocalUploadBytes(Long fileAssetId, String url) {
+        try {
+            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
+            String u = toNonBlank(url);
+            if (u != null && !prefix.isEmpty() && u.startsWith(prefix + "/")) {
+                int q = u.indexOf('?');
+                if (q >= 0) u = u.substring(0, q);
+                String rel = u.substring(prefix.length());
+                while (rel.startsWith("/")) rel = rel.substring(1);
+
+                Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
+                Path p = root.resolve(rel).normalize();
+                if (p.startsWith(root) && Files.exists(p) && Files.isRegularFile(p)) {
+                    return Files.readAllBytes(p);
+                }
+            }
+
+            if (fileAssetId != null) {
+                var fa = fileAssetsRepository.findById(fileAssetId).orElse(null);
+                if (fa != null && fa.getPath() != null && !fa.getPath().isBlank()) {
+                    Path p = Paths.get(fa.getPath()).toAbsolutePath().normalize();
+                    if (Files.exists(p) && Files.isRegularFile(p)) {
+                        return Files.readAllBytes(p);
+                    }
+                }
+            }
+
+            return null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     public void streamChat(AiChatStreamRequest req, Long currentUserId, HttpServletResponse response) throws IOException {
@@ -597,7 +667,7 @@ public class AiChatService {
             } catch (Exception ex) {
                 logger.error("ai_chat_persist_turn_failed userId={} sessionId={}", currentUserId, session.getId(), ex);
                 out.write("event: error\n");
-                out.write("data: {\"message\":\"" + jsonEscape("数据操作失败：" + String.valueOf(ex.getMessage())) + "\"}\n\n");
+                out.write("data: {\"message\":\"" + jsonEscape("数据操作失败：" + ex.getMessage()) + "\"}\n\n");
                 out.write("event: done\n");
                 out.write("data: {}\n\n");
                 out.flush();
@@ -612,7 +682,7 @@ public class AiChatService {
         // 4) load history for context
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
-        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+        boolean deepThink = req.getDeepThink() != null ? req.getDeepThink() : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
 
         String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
         String systemPrompt = resolvePromptText(systemPromptCode);
@@ -645,9 +715,9 @@ public class AiChatService {
             }
         }
 
-        boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
+        boolean useRag = req.getUseRag() != null ? req.getUseRag() : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
         Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
-        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
+        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.clamp(ragTopKOverride, 1, 50);
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
         Long retrievalEventId = null;
@@ -665,7 +735,7 @@ public class AiChatService {
 
             if (useRag) {
                 hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
-                List<RagPostChatRetrievalService.Hit> postHits = List.of();
+                List<RagPostChatRetrievalService.Hit> postHits;
                 List<RagCommentChatRetrievalService.Hit> commentHits = List.of();
                 if (isHybridEnabled(hybridCfg)) {
                     if (safeRagTopKOverride > 0) {
@@ -701,7 +771,6 @@ public class AiChatService {
                         try {
                             pol = RagChatPostCommentAggregationService.IncludePostContentPolicy.valueOf(polRaw.trim().toUpperCase(Locale.ROOT));
                         } catch (Exception ignored) {
-                            pol = null;
                         }
                     }
                     ac.setIncludePostContentPolicy(pol);
@@ -736,11 +805,11 @@ public class AiChatService {
                             appendStageHits(outHits, retrievalEventId, RetrievalHitType.BM25, hybridResult == null ? null : hybridResult.getBm25Hits());
                             appendStageHits(outHits, retrievalEventId, RetrievalHitType.VEC, hybridResult == null ? null : hybridResult.getVecHits());
                             appendStageHits(outHits, retrievalEventId, RetrievalHitType.RERANK, hybridResult == null ? null : hybridResult.getFinalHits());
-                            appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
+                            appendCommentHits(outHits, retrievalEventId, commentHits);
                             appendChatHits(outHits, retrievalEventId, RetrievalHitType.AGG, ragHits);
                         } else if (hasItems(ragHits)) {
                             appendChatHits(outHits, retrievalEventId, RetrievalHitType.VEC, postHits);
-                            appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
+                            appendCommentHits(outHits, retrievalEventId, commentHits);
                             if (augmentEnabled) {
                                 appendChatHits(outHits, retrievalEventId, RetrievalHitType.AGG, ragHits);
                             }
@@ -762,7 +831,7 @@ public class AiChatService {
                     }
                     if (shouldWriteContextWindow(req, retrievalEventId, contextAssembled, contextCfg)) {
                         double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
-                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.clamp(p, 0.0, 1.0)) {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
                             cw.setPolicy(contextAssembled.getPolicy());
@@ -814,7 +883,7 @@ public class AiChatService {
         messages = messagesMultimodal;
         messages = chatContextGovernanceService.apply(
                 currentUserId,
-                session == null ? null : session.getId(),
+                session.getId(),
                 userMsg == null ? null : userMsg.getId(),
                 messages
         ).getMessages();
@@ -832,7 +901,6 @@ public class AiChatService {
         QaMessagesEntity assistantMsg = null;
 
         try {
-            boolean[] gotDelta = new boolean[] {false};
             OpenAiCompatClient.SseLineConsumer handler = line -> {
                 if (isBlankLine(line)) return;
                 if (!line.startsWith("data:")) return;
@@ -868,7 +936,6 @@ public class AiChatService {
                 String delta = deltaOut.toString();
 
                 if (firstDeltaAtMs[0] == 0L) firstDeltaAtMs[0] = System.currentTimeMillis();
-                gotDelta[0] = true;
                 assistantAccum.append(delta);
 
                 out.write("event: delta\n");
@@ -879,21 +946,17 @@ public class AiChatService {
             LlmGateway.RoutedChatStreamResult routed;
             LlmQueueTaskType chatTaskType = LlmQueueTaskType.MULTIMODAL_CHAT;
             ensureMultimodalModelForRequest(chatTaskType, providerIdOverride, modelOverride);
-            try {
-                routed = llmGateway.chatStreamRouted(
-                        chatTaskType,
-                        providerIdOverride,
-                        modelOverride,
-                        messages,
-                        temperature,
-                        topP,
-                        deepThink,
-                        null,
-                        handler
-                );
-            } catch (Exception ex) {
-                throw ex;
-            }
+            routed = llmGateway.chatStreamRouted(
+                    chatTaskType,
+                    providerIdOverride,
+                    modelOverride,
+                    messages,
+                    temperature,
+                    topP,
+                    deepThink,
+                    null,
+                    handler
+            );
             model = routed == null ? null : routed.model();
 
             if (deepThink && thinkOpen[0] && !thinkClosed[0]) {
@@ -908,7 +971,7 @@ public class AiChatService {
             if (contextAssembled != null) {
                 String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
                 String modeAdjusted = enforceCitationModeAnswerBody(citationCfg, normalized);
-                if (!modeAdjusted.equals(assistantAccum.toString())) {
+                if (!modeAdjusted.contentEquals(assistantAccum)) {
                     assistantAccum.setLength(0);
                     assistantAccum.append(modeAdjusted);
                 }
@@ -928,7 +991,7 @@ public class AiChatService {
 
                 if (shouldExposeCitationSources(citationCfg) && !citedSources.isEmpty()) {
                     out.write("event: sources\n");
-                    out.write("data: " + buildSourcesEventData(citedSources, true) + "\n\n");
+                    out.write("data: " + buildSourcesEventData(citedSources) + "\n\n");
                     out.flush();
                 }
             }
@@ -974,11 +1037,7 @@ public class AiChatService {
                 }
 
                 if (contextAssembled != null && shouldExposeCitationSources(citationCfg)) {
-                    List<RagContextPromptService.CitationSource> citedSources = citedSourcesForPersist;
-                    if (citedSources == null) {
-                        citedSources = resolveSourcesForOutput(citationCfg, contextAssembled.getSources(), assistantMsg.getContent());
-                    }
-                    persistAssistantSources(assistantMsg.getId(), citedSources);
+                    persistAssistantSources(assistantMsg.getId(), citedSourcesForPersist);
                 }
 
                 // auto title if empty
@@ -1003,76 +1062,20 @@ public class AiChatService {
         }
     }
 
-    private static String normalizeCitationQuoteFormatting(String text) {
-        if (text == null || text.isBlank()) return text;
-        StringBuilder out = new StringBuilder(text.length());
-        boolean inFence = false;
-        boolean inInlineCode = false;
-        int n = text.length();
-        for (int i = 0; i < n; i++) {
-            char c = text.charAt(i);
-            if (c == '`') {
-                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
-                    inFence = !inFence;
-                    out.append("```");
-                    i += 2;
-                    continue;
-                }
-                if (!inFence) inInlineCode = !inInlineCode;
-                out.append(c);
-                continue;
-            }
-            if (inFence || inInlineCode) {
-                out.append(c);
-                continue;
-            }
-            if (c == '\\' && i + 1 < n && isCitationQuote(text.charAt(i + 1))) {
-                continue;
-            }
-            if (!isCitationOpenQuote(c)) {
-                out.append(c);
-                continue;
-            }
-
-            int closeIndex = findCitationQuoteClose(text, i + 1);
-            if (closeIndex < 0) {
-                out.append(c);
-                continue;
-            }
-            int tailIndex = closeIndex + 1;
-            if (tailIndex >= n || text.charAt(tailIndex) != '[') {
-                out.append(c);
-                continue;
-            }
-            out.append('“');
-            out.append(text, i + 1, closeIndex);
-            out.append('”');
-            i = closeIndex;
+    private boolean providerSupportsVision(String providerId) {
+        String pid = toNonBlank(providerId);
+        if (pid == null) return false;
+        try {
+            AiProvidersConfigService.ResolvedProvider p = llmGateway.resolve(pid);
+            Map<String, Object> metadata = p == null ? null : p.metadata();
+            if (metadata == null || metadata.isEmpty()) return false;
+            Object flag = metadata.get("supportsVision");
+            if (flag instanceof Boolean b) return b;
+            String s = toNonBlank(flag);
+            return s != null && "true".equalsIgnoreCase(s);
+        } catch (Exception ignored) {
+            return false;
         }
-        return out.toString();
-    }
-
-    private static boolean isCitationQuote(char c) {
-        return c == '"' || c == '“' || c == '”' || c == '「' || c == '」' || c == '『' || c == '』';
-    }
-
-    private static boolean isCitationOpenQuote(char c) {
-        return c == '"' || c == '“' || c == '「' || c == '『';
-    }
-
-    private static int findCitationQuoteClose(String text, int start) {
-        int n = text.length();
-        for (int i = start; i < n; i++) {
-            char c = text.charAt(i);
-            if (c == '\n' || c == '\r') return -1;
-            if (c == '\\' && i + 1 < n && isCitationQuote(text.charAt(i + 1))) {
-                return i + 1;
-            }
-            if (c == '"' || c == '”' || c == '」' || c == '』') {
-                return i;
-            }
-        }
-        return -1;
     }
 
     public AiChatResponseDTO chatOnce(AiChatStreamRequest req, Long currentUserId) {
@@ -1122,7 +1125,7 @@ public class AiChatService {
 
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
-        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+        boolean deepThink = req.getDeepThink() != null ? req.getDeepThink() : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
 
         String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
         String systemPrompt = resolvePromptText(systemPromptCode);
@@ -1154,9 +1157,9 @@ public class AiChatService {
             }
         }
 
-        boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
+        boolean useRag = req.getUseRag() != null ? req.getUseRag() : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
         Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
-        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
+        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.clamp(ragTopKOverride, 1, 50);
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
         Long retrievalEventId = null;
@@ -1173,9 +1176,9 @@ public class AiChatService {
 
             if (useRag) {
                 hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
-                List<RagPostChatRetrievalService.Hit> postHits = List.of();
+                List<RagPostChatRetrievalService.Hit> postHits;
                 List<RagCommentChatRetrievalService.Hit> commentHits = List.of();
-                if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                if (isHybridEnabled(hybridCfg)) {
                     if (safeRagTopKOverride > 0) {
                         HybridRetrievalConfigDTO copy = new HybridRetrievalConfigDTO();
                         org.springframework.beans.BeanUtils.copyProperties(hybridCfg, copy);
@@ -1191,9 +1194,9 @@ public class AiChatService {
                     postHits = ragRetrievalService.retrieve(req.getMessage(), Math.min(50, k), null);
                 }
 
-                boolean augmentEnabled = chatRagCfg == null || chatRagCfg.getEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getEnabled());
+                boolean augmentEnabled = isAugmentEnabled(chatRagCfg);
                 if (augmentEnabled) {
-                    boolean commentsEnabled = chatRagCfg == null || chatRagCfg.getCommentsEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getCommentsEnabled());
+                    boolean commentsEnabled = isCommentsEnabled(chatRagCfg);
                     if (commentsEnabled) {
                         int ck = chatRagCfg == null || chatRagCfg.getCommentTopK() == null ? 20 : Math.max(1, chatRagCfg.getCommentTopK());
                         commentHits = ragCommentChatRetrievalService.retrieve(req.getMessage(), ck);
@@ -1209,7 +1212,6 @@ public class AiChatService {
                         try {
                             pol = RagChatPostCommentAggregationService.IncludePostContentPolicy.valueOf(polRaw.trim().toUpperCase(Locale.ROOT));
                         } catch (Exception ignored) {
-                            pol = null;
                         }
                     }
                     ac.setIncludePostContentPolicy(pol);
@@ -1255,7 +1257,7 @@ public class AiChatService {
                     if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null && contextAssembled != null && contextCfg != null
                             && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
                         double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
-                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.clamp(p, 0.0, 1.0)) {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
                             cw.setPolicy(contextAssembled.getPolicy());
@@ -1307,7 +1309,7 @@ public class AiChatService {
         messages = messagesMultimodal;
         messages = chatContextGovernanceService.apply(
                 currentUserId,
-                session == null ? null : session.getId(),
+                session.getId(),
                 userMsg == null ? null : userMsg.getId(),
                 messages
         ).getMessages();
@@ -1326,7 +1328,6 @@ public class AiChatService {
         List<RagContextPromptService.CitationSource> citedSourcesForDto = List.of();
         long latency;
         try {
-            boolean[] gotDelta = new boolean[] {false};
             OpenAiCompatClient.SseLineConsumer handler = line -> {
                 if (line == null || line.isBlank()) return;
                 if (!line.startsWith("data:")) return;
@@ -1362,28 +1363,23 @@ public class AiChatService {
                 String delta = deltaOut.toString();
 
                 if (firstDeltaAtMs[0] == 0L) firstDeltaAtMs[0] = System.currentTimeMillis();
-                gotDelta[0] = true;
                 assistantAccum.append(delta);
             };
 
             LlmGateway.RoutedChatStreamResult routed;
             LlmQueueTaskType chatTaskType = LlmQueueTaskType.MULTIMODAL_CHAT;
             ensureMultimodalModelForRequest(chatTaskType, providerIdOverride, modelOverride);
-            try {
-                routed = llmGateway.chatStreamRouted(
-                        chatTaskType,
-                        providerIdOverride,
-                        modelOverride,
-                        messages,
-                        temperature,
-                        topP,
-                        deepThink,
-                        null,
-                        handler
-                );
-            } catch (Exception ex) {
-                throw ex;
-            }
+            routed = llmGateway.chatStreamRouted(
+                    chatTaskType,
+                    providerIdOverride,
+                    modelOverride,
+                    messages,
+                    temperature,
+                    topP,
+                    deepThink,
+                    null,
+                    handler
+            );
             model = routed == null ? null : routed.model();
 
             if (deepThink && thinkOpen[0] && !thinkClosed[0]) {
@@ -1394,7 +1390,7 @@ public class AiChatService {
             if (contextAssembled != null) {
                 String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
                 String modeAdjusted = enforceCitationModeAnswerBody(citationCfg, normalized);
-                if (!modeAdjusted.equals(assistantAccum.toString())) {
+                if (!modeAdjusted.contentEquals(assistantAccum)) {
                     assistantAccum.setLength(0);
                     assistantAccum.append(modeAdjusted);
                 }
@@ -1476,430 +1472,9 @@ public class AiChatService {
         return dto;
     }
 
-    private QaSessionsEntity ensureSession(Long sessionId, Long currentUserId, boolean dryRun) {
-        if (sessionId != null) {
-            QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, currentUserId)
-                    .orElseThrow(() -> new ResourceNotFoundException("session not found"));
-            if (Boolean.FALSE.equals(s.getIsActive())) {
-                throw new IllegalArgumentException("session inactive");
-            }
-            return s;
-        }
-
-        QaSessionsEntity s = new QaSessionsEntity();
-        s.setUserId(currentUserId);
-        s.setTitle(null);
-        s.setContextStrategy(ContextStrategy.RECENT_N);
-        s.setIsActive(true);
-        s.setCreatedAt(LocalDateTime.now());
-
-        if (dryRun) {
-            s.setId(-System.currentTimeMillis());
-            return s;
-        }
-        return qaSessionsRepository.save(s);
-    }
-
-    /**
-     * Extremely small extractor to avoid adding JSON deps.
-     * It looks for "\"content\":\"...\"" under choices[0].delta.
-     *
-     * This is not a full JSON parser but works for common OpenAI-compatible SSE frames.
-     */
-    static String extractDeltaContent(String json) {
-        return sanitizeMarker(extractDeltaStringField(json, "content"));
-    }
-
-    static String extractDeltaReasoningContent(String json) {
-        return sanitizeMarker(extractDeltaStringField(json, "reasoning_content"));
-    }
-
-    private static String sanitizeMarker(String s) {
-        if (s == null) return null;
-        if (s.equals("reasoning_content")) return "";
-        return s;
-    }
-
-    static String extractDeltaStringField(String json, String field) {
-        if (json == null) return null;
-        String f = field == null ? "" : field.trim();
-        if (f.isEmpty()) return null;
-        int idx = json.indexOf("\"" + f + "\"");
-        if (idx < 0) return null;
-        int colon = json.indexOf(':', idx);
-        if (colon < 0) return null;
-        int firstQuote = json.indexOf('"', colon + 1);
-        if (firstQuote < 0) return null;
-        int i = firstQuote + 1;
-        StringBuilder sb = new StringBuilder();
-        boolean esc = false;
-        while (i < json.length()) {
-            char c = json.charAt(i);
-            if (esc) {
-                switch (c) {
-                    case '"' -> sb.append('"');
-                    case '\\' -> sb.append('\\');
-                    case '/' -> sb.append('/');
-                    case 'b' -> sb.append('\b');
-                    case 'f' -> sb.append('\f');
-                    case 'n' -> sb.append('\n');
-                    case 'r' -> sb.append('\r');
-                    case 't' -> sb.append('\t');
-                    case 'u' -> {
-                        if (i + 4 < json.length()) {
-                            String hex = json.substring(i + 1, i + 5);
-                            try {
-                                sb.append((char) Integer.parseInt(hex, 16));
-                            } catch (Exception ignore) {
-                            }
-                            i += 4;
-                        }
-                    }
-                    default -> sb.append(c);
-                }
-                esc = false;
-            } else {
-                if (c == '\\') {
-                    esc = true;
-                } else if (c == '"') {
-                    break;
-                } else {
-                    sb.append(c);
-                }
-            }
-            i++;
-        }
-        return decodeEscapedContent(sb.toString());
-    }
-
-    private static String decodeEscapedContent(String text) {
-        if (text == null || text.isEmpty()) return text;
-        StringBuilder out = new StringBuilder(text.length());
-        int i = 0;
-        while (i < text.length()) {
-            char c = text.charAt(i);
-            if (c == '\\' && i + 1 < text.length()) {
-                char n = text.charAt(i + 1);
-                switch (n) {
-                    case '"' -> {
-                        out.append('"');
-                        i += 2;
-                        continue;
-                    }
-                    case '\\' -> {
-                        out.append('\\');
-                        i += 2;
-                        continue;
-                    }
-                    case '/' -> {
-                        out.append('/');
-                        i += 2;
-                        continue;
-                    }
-                    case 'b' -> {
-                        out.append('\b');
-                        i += 2;
-                        continue;
-                    }
-                    case 'f' -> {
-                        out.append('\f');
-                        i += 2;
-                        continue;
-                    }
-                    case 'n' -> {
-                        out.append('\n');
-                        i += 2;
-                        continue;
-                    }
-                    case 'r' -> {
-                        out.append('\r');
-                        i += 2;
-                        continue;
-                    }
-                    case 't' -> {
-                        out.append('\t');
-                        i += 2;
-                        continue;
-                    }
-                    case 'u' -> {
-                        if (i + 5 < text.length()) {
-                            String hex = text.substring(i + 2, i + 6);
-                            try {
-                                out.append((char) Integer.parseInt(hex, 16));
-                            } catch (Exception ignore) {
-                            }
-                            i += 6;
-                            continue;
-                        }
-                        i += 2;
-                        continue;
-                    }
-                    default -> {
-                        out.append(n);
-                        i += 2;
-                        continue;
-                    }
-                }
-            }
-            out.append(c);
-            i++;
-        }
-        return out.toString();
-    }
-
-    private String resolveModelNameForThinkDirective(String providerId, String modelOverride) {
-        String m = toNonBlank(modelOverride);
-        if (m != null) return m;
-        try {
-            AiProvidersConfigService.ResolvedProvider p = llmGateway.resolve(providerId);
-            m = toNonBlank(p == null ? null : p.defaultChatModel());
-            if (m != null) return m;
-        } catch (Exception ignored) {
-        }
-        return null;
-    }
-
-    private static String applyThinkingDirective(String content, boolean deepThink, String modelName) {
-        String text = content == null ? "" : content;
-        if (!supportsThinkingDirectiveModel(modelName)) return text;
-        String lower = text.toLowerCase(Locale.ROOT);
-        if (lower.contains("/no_think") || lower.contains("/think")) return text;
-        String directive = deepThink ? "/think" : "/no_think";
-        if (text.endsWith("\n") || text.endsWith("\r")) return text + directive;
-        return text + "\n" + directive;
-    }
-
-    @SuppressWarnings("unchecked")
-    private String loadUserDefaultSystemPrompt(Long userId) {
-        if (userId == null) return null;
-        UsersEntity u = usersRepository.findById(userId).orElse(null);
-        if (u == null) return null;
-        Map<String, Object> metadata = u.getMetadata();
-        if (metadata == null) return null;
-        Object prefs = metadata.get("preferences");
-        if (!(prefs instanceof Map)) return null;
-        Object assistant = ((Map<String, Object>) prefs).get("assistant");
-        if (!(assistant instanceof Map)) return null;
-        Object v = ((Map<String, Object>) assistant).get("defaultSystemPrompt");
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return StringUtils.hasText(s) ? s : null;
-    }
-
-    private static boolean supportsThinkingDirectiveModel(String modelName) {
-        String raw = modelName == null ? "" : modelName.trim().toLowerCase(Locale.ROOT);
-        if (raw.isEmpty()) return false;
-
-        String base = raw;
-        int slash = base.lastIndexOf('/');
-        if (slash >= 0 && slash + 1 < base.length()) base = base.substring(slash + 1);
-        int colon = base.lastIndexOf(':');
-        if (colon >= 0 && colon + 1 < base.length()) base = base.substring(colon + 1);
-
-        if (raw.contains("thinking") || base.contains("thinking")) return false;
-        if (base.startsWith("qwen3-") || raw.startsWith("qwen3-")) return true;
-        return base.startsWith("qwen-plus-2025-04-28")
-                || base.startsWith("qwen-turbo-2025-04-28")
-                || raw.startsWith("qwen-plus-2025-04-28")
-                || raw.startsWith("qwen-turbo-2025-04-28");
-    }
-
-    private static String toNonBlank(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? null : s;
-    }
-
-    private boolean providerSupportsVision(String providerId) {
-        try {
-            var p = llmGateway.resolve(providerId);
-            if (p == null || p.metadata() == null) return false;
-            Object v = p.metadata().get("supportsVision");
-            if (v instanceof Boolean b) return b;
-            if (v instanceof String s) return "true".equalsIgnoreCase(s.trim());
-            return false;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private void ensureMultimodalModelForRequest(LlmQueueTaskType taskType, String providerId, String modelOverride) {
-        if (taskType != LlmQueueTaskType.MULTIMODAL_CHAT) return;
-
-        String mo = toNonBlank(modelOverride);
-        String pid = toNonBlank(providerId);
-
-        if (mo != null) {
-            String effectiveProviderId = pid;
-            if (effectiveProviderId == null) {
-                try {
-                    var p = llmGateway.resolve(null);
-                    effectiveProviderId = p == null ? null : toNonBlank(p.id());
-                } catch (Exception ignored) {
-                }
-            }
-            if (effectiveProviderId == null) {
-                throw new IllegalArgumentException("未指定模型提供商(providerId)，无法发送多模态请求");
-            }
-            if (!isEnabledMultimodalChatModel(effectiveProviderId, mo)) {
-                throw new IllegalArgumentException("当前选择的模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
-            }
-            return;
-        }
-
-        if (pid != null) {
-            try {
-                var p = llmGateway.resolve(pid);
-                String effectiveProviderId = p == null ? null : toNonBlank(p.id());
-                String effectiveModel = p == null ? null : toNonBlank(p.defaultChatModel());
-                if (effectiveProviderId == null || effectiveModel == null) {
-                    throw new IllegalArgumentException("未配置可用的默认模型，无法发送多模态请求");
-                }
-                if (!isEnabledMultimodalChatModel(effectiveProviderId, effectiveModel)) {
-                    throw new IllegalArgumentException("当前选择的默认模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
-                }
-            } catch (RuntimeException e) {
-                throw e;
-            } catch (Exception e) {
-                throw new IllegalArgumentException("模型提供商解析失败，无法发送多模态请求");
-            }
-            return;
-        }
-
-        if (llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, "MULTIMODAL_CHAT").isEmpty()) {
-            throw new IllegalArgumentException("未配置“多模态聊天(MULTIMODAL_CHAT)”模型池，请先在管理端配置场景模型");
-        }
-    }
-
-    private boolean isEnabledMultimodalChatModel(String providerId, String modelName) {
-        String pid = toNonBlank(providerId);
-        String mn = toNonBlank(modelName);
-        if (pid == null || mn == null) return false;
-        return llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, "MULTIMODAL_CHAT", mn)
-                .filter((e) -> !Boolean.FALSE.equals(e.getEnabled()))
-                .isPresent();
-    }
-
-    private static List<AiChatStreamRequest.ImageInput> resolveImages(AiChatStreamRequest req) {
-        if (req == null || req.getImages() == null || req.getImages().isEmpty()) return List.of();
-        List<AiChatStreamRequest.ImageInput> out = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (AiChatStreamRequest.ImageInput img : req.getImages()) {
-            if (img == null) continue;
-            if (out.size() >= 5) break;
-            String url = toNonBlank(img.getUrl());
-            if (url == null) continue;
-            if (seen.contains(url)) continue;
-            String mt = toNonBlank(img.getMimeType());
-            boolean isImg = mt != null && mt.toLowerCase().startsWith("image/");
-            if (!isImg && !isLikelyImageUrl(url)) continue;
-            out.add(img);
-            seen.add(url);
-        }
-        return out;
-    }
-
-    private static List<AiChatStreamRequest.FileInput> resolveFiles(AiChatStreamRequest req) {
-        if (req == null || req.getFiles() == null || req.getFiles().isEmpty()) return List.of();
-        List<AiChatStreamRequest.FileInput> out = new ArrayList<>();
-        Set<Long> seenIds = new HashSet<>();
-        Set<String> seenUrls = new HashSet<>();
-        for (AiChatStreamRequest.FileInput f : req.getFiles()) {
-            if (f == null) continue;
-            if (out.size() >= 20) break;
-            Long id = f.getFileAssetId();
-            String url = toNonBlank(f.getUrl());
-            if (id == null && url == null) continue;
-            if (id != null) {
-                if (seenIds.contains(id)) continue;
-                seenIds.add(id);
-            } else {
-                if (seenUrls.contains(url)) continue;
-                seenUrls.add(url);
-            }
-            out.add(f);
-        }
-        return out;
-    }
-
-    private static List<AiChatStreamRequest.FileInput> extractFilesFromHistoryText(String text) {
-        String t = text == null ? "" : text;
-        Matcher m = FILE_ASSET_ID_PATTERN.matcher(t);
-        List<AiChatStreamRequest.FileInput> out = new ArrayList<>();
-        Set<Long> seen = new HashSet<>();
-        while (m.find()) {
-            if (out.size() >= 20) break;
-            String raw = m.group(1);
-            if (raw == null || raw.isBlank()) continue;
-            try {
-                long id = Long.parseLong(raw.trim());
-                if (id <= 0) continue;
-                if (seen.contains(id)) continue;
-                seen.add(id);
-                AiChatStreamRequest.FileInput fi = new AiChatStreamRequest.FileInput();
-                fi.setFileAssetId(id);
-                out.add(fi);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return out;
-    }
-
-    private static boolean isLikelyImageUrl(String url) {
-        String u = toNonBlank(url);
-        if (u == null) return false;
-        String lower = u.toLowerCase();
-        if (lower.startsWith("/uploads/")) return true;
-        return lower.endsWith(".png")
-                || lower.endsWith(".jpg")
-                || lower.endsWith(".jpeg")
-                || lower.endsWith(".gif")
-                || lower.endsWith(".webp")
-                || lower.endsWith(".bmp")
-                || lower.endsWith(".svg");
-    }
-
-    private static String appendImagesAsText(String userMsg, List<AiChatStreamRequest.ImageInput> images) {
-        String base = userMsg == null ? "" : userMsg;
-        StringBuilder sb = new StringBuilder(base);
-        sb.append("\n\n[IMAGES]\n");
-        int take = 0;
-        for (AiChatStreamRequest.ImageInput img : images) {
-            if (img == null) continue;
-            String url = toNonBlank(img.getUrl());
-            if (url == null) continue;
-            sb.append("- ").append(url).append("\n");
-            take += 1;
-            if (take >= 5) break;
-        }
-        return sb.toString();
-    }
-
-    private static String appendFilesAsText(String userMsg, List<AiChatStreamRequest.FileInput> files) {
-        String base = userMsg == null ? "" : userMsg;
-        StringBuilder sb = new StringBuilder(base);
-        sb.append("\n\n[FILES]\n");
-        int take = 0;
-        for (AiChatStreamRequest.FileInput f : files) {
-            if (f == null) continue;
-            if (take >= 20) break;
-            String url = toNonBlank(f.getUrl());
-            Long id = f.getFileAssetId();
-            String name = toNonBlank(f.getFileName());
-            String mt = toNonBlank(f.getMimeType());
-            sb.append("- file_asset_id=").append(id == null ? "null" : id);
-            if (name != null) sb.append(" name=").append(name);
-            if (mt != null) sb.append(" mime=").append(mt);
-            if (url != null) sb.append(" url=").append(url);
-            sb.append("\n");
-            take += 1;
-        }
-        return sb.toString();
-    }
-
     private String buildFilesBlockForModel(List<AiChatStreamRequest.FileInput> files, Long currentUserId, ChatContextGovernanceConfigDTO cfg) {
         if (files == null || files.isEmpty() || currentUserId == null) return null;
-        int maxFiles = cfg == null || cfg.getMaxFiles() == null ? 10 : Math.max(0, Math.min(50, cfg.getMaxFiles()));
+        int maxFiles = cfg == null || cfg.getMaxFiles() == null ? 10 : Math.clamp(cfg.getMaxFiles(), 0, 50);
         if (maxFiles <= 0) return null;
         int perFileMaxChars = cfg == null || cfg.getPerFileMaxChars() == null ? 6000 : Math.max(100, cfg.getPerFileMaxChars());
         int totalFilesMaxChars = cfg == null || cfg.getTotalFilesMaxChars() == null ? 24000 : Math.max(100, cfg.getTotalFilesMaxChars());
@@ -1986,187 +1561,6 @@ public class AiChatService {
         return sb.toString().trim();
     }
 
-    private String encodeImageUrlForUpstream(AiChatStreamRequest.ImageInput img) {
-        if (img == null) return null;
-        String url = toNonBlank(img.getUrl());
-        if (url == null) return null;
-
-        if (url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://")) {
-            return url;
-        }
-
-        byte[] bytes = readLocalUploadBytes(img.getFileAssetId(), url);
-        if (bytes == null || bytes.length == 0) return url;
-        if (bytes.length > 4_000_000) return url;
-
-        String mimeType = toNonBlank(img.getMimeType());
-        if (!StringUtils.hasText(mimeType) && img.getFileAssetId() != null) {
-            var fa = fileAssetsRepository.findById(img.getFileAssetId()).orElse(null);
-            mimeType = fa == null ? null : toNonBlank(fa.getMimeType());
-        }
-        if (!StringUtils.hasText(mimeType)) mimeType = "application/octet-stream";
-
-        return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
-    }
-
-    private byte[] readLocalUploadBytes(Long fileAssetId, String url) {
-        try {
-            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
-            String u = toNonBlank(url);
-            if (u != null && !prefix.isEmpty() && u.startsWith(prefix + "/")) {
-                int q = u.indexOf('?');
-                if (q >= 0) u = u.substring(0, q);
-                String rel = u.substring(prefix.length());
-                while (rel.startsWith("/")) rel = rel.substring(1);
-
-                Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
-                Path p = root.resolve(rel).normalize();
-                if (p.startsWith(root) && Files.exists(p) && Files.isRegularFile(p)) {
-                    return Files.readAllBytes(p);
-                }
-            }
-
-            if (fileAssetId != null) {
-                var fa = fileAssetsRepository.findById(fileAssetId).orElse(null);
-                if (fa != null && fa.getPath() != null && !fa.getPath().isBlank()) {
-                    Path p = Paths.get(fa.getPath()).toAbsolutePath().normalize();
-                    if (Files.exists(p) && Files.isRegularFile(p)) {
-                        return Files.readAllBytes(p);
-                    }
-                }
-            }
-
-            return null;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
-    static String jsonEscape(String s) {
-        if (s == null) return "";
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\b' -> sb.append("\\b");
-                case '\f' -> sb.append("\\f");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
-                    if (c < 0x20) sb.append(String.format("\\u%04x", (int) c));
-                    else sb.append(c);
-                }
-            }
-        }
-        return sb.toString();
-    }
-
-    private static String buildRagContextPrompt(List<RagPostChatRetrievalService.Hit> hits, HybridRetrievalConfigDTO cfg) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("以下为从社区帖子检索到的参考资料（仅供参考，回答时请结合用户问题，不要编造不存在的来源）：\n\n");
-        int maxItems = cfg == null || cfg.getHybridK() == null ? 6 : Math.max(1, cfg.getHybridK());
-        maxItems = Math.min(50, maxItems);
-        int perDocMaxTokens = cfg == null || cfg.getPerDocMaxTokens() == null ? 4000 : Math.max(100, cfg.getPerDocMaxTokens());
-        int maxInputTokens = cfg == null || cfg.getMaxInputTokens() == null ? 30000 : Math.max(1000, cfg.getMaxInputTokens());
-
-        int usedTokens = 0;
-        int n = Math.min(maxItems, hits == null ? 0 : hits.size());
-        for (int i = 0; i < n; i++) {
-            RagPostChatRetrievalService.Hit h = hits.get(i);
-            if (h == null) continue;
-            sb.append('[').append(i + 1).append("] ");
-            if (h.getPostId() != null) sb.append("post_id=").append(h.getPostId()).append(' ');
-            if (h.getChunkIndex() != null) sb.append("chunk=").append(h.getChunkIndex()).append(' ');
-            if (h.getScore() != null) sb.append("score=").append(String.format(Locale.ROOT, "%.4f", h.getScore())).append(' ');
-            if (h.getTitle() != null && !h.getTitle().isBlank()) sb.append("\n标题：").append(h.getTitle().trim());
-            sb.append('\n');
-            String text = h.getContentText();
-            if (text != null) {
-                String t = truncateByApproxTokens(text.trim(), perDocMaxTokens);
-                int tokens = approxTokens(t);
-                if (usedTokens + tokens > maxInputTokens) break;
-                usedTokens += tokens;
-                sb.append(t);
-            }
-            sb.append("\n\n");
-            if (sb.length() > 200_000) break;
-        }
-        return sb.toString().trim();
-    }
-
-    private static List<RagPostChatRetrievalService.Hit> toRagHits(List<HybridRagRetrievalService.DocHit> hits) {
-        if (hits == null || hits.isEmpty()) return List.of();
-        List<RagPostChatRetrievalService.Hit> out = new ArrayList<>();
-        for (HybridRagRetrievalService.DocHit h : hits) {
-            if (h == null) continue;
-            RagPostChatRetrievalService.Hit rr = new RagPostChatRetrievalService.Hit();
-            rr.setDocId(h.getDocId());
-            rr.setSourceType(h.getSourceType());
-            rr.setFileAssetId(h.getFileAssetId());
-            Double s = h.getRerankScore();
-            if (s == null) s = h.getFusedScore();
-            if (s == null) s = h.getScore();
-            rr.setScore(s);
-            Long postId = h.getPostId();
-            if (postId == null && h.getPostIds() != null && !h.getPostIds().isEmpty()) {
-                postId = h.getPostIds().get(0);
-            }
-            rr.setPostId(postId);
-            rr.setChunkIndex(h.getChunkIndex());
-            rr.setBoardId(h.getBoardId());
-            rr.setTitle(h.getTitle());
-            rr.setContentText(h.getContentText());
-            out.add(rr);
-        }
-        return out;
-    }
-
-    private static void appendStageHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<HybridRagRetrievalService.DocHit> hits) {
-        if (eventId == null || hits == null || hits.isEmpty()) return;
-        int n = Math.min(1000, hits.size());
-        for (int i = 0; i < n; i++) {
-            HybridRagRetrievalService.DocHit h = hits.get(i);
-            if (h == null) continue;
-            RetrievalHitsEntity rh = new RetrievalHitsEntity();
-            rh.setEventId(eventId);
-            rh.setRank(i + 1);
-            rh.setHitType(type);
-            Long postId = h.getPostId();
-            if (postId == null && h.getPostIds() != null && !h.getPostIds().isEmpty()) {
-                postId = h.getPostIds().get(0);
-            }
-            rh.setPostId(postId);
-            rh.setChunkId(null);
-            Double s = h.getScore();
-            if (type == RetrievalHitType.BM25 && h.getBm25Score() != null) s = h.getBm25Score();
-            if (type == RetrievalHitType.VEC && h.getVecScore() != null) s = h.getVecScore();
-            if (type == RetrievalHitType.RERANK && h.getRerankScore() != null) s = h.getRerankScore();
-            if (s == null) s = 0.0;
-            rh.setScore(s);
-            out.add(rh);
-        }
-    }
-
-    private static void appendChatHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<RagPostChatRetrievalService.Hit> hits) {
-        if (eventId == null || hits == null || hits.isEmpty()) return;
-        int n = Math.min(1000, hits.size());
-        for (int i = 0; i < n; i++) {
-            RagPostChatRetrievalService.Hit h = hits.get(i);
-            if (h == null) continue;
-            RetrievalHitsEntity rh = new RetrievalHitsEntity();
-            rh.setEventId(eventId);
-            rh.setRank(i + 1);
-            rh.setHitType(type);
-            rh.setPostId(h.getPostId());
-            rh.setChunkId(null);
-            rh.setScore(h.getScore() == null ? 0.0 : h.getScore());
-            out.add(rh);
-        }
-    }
-
     private AiChatResponseDTO regenerateOnceInternal(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId) {
         if (currentUserId == null) {
             throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
@@ -2196,7 +1590,6 @@ public class AiChatService {
                 turn.setCreatedAt(LocalDateTime.now());
                 turn = qaTurnsRepository.save(turn);
             } else if (turn.getAnswerMessageId() != null) {
-                Long oldAnswerId = turn.getAnswerMessageId();
                 turn.setAnswerMessageId(null);
                 qaTurnsRepository.save(turn);
             }
@@ -2204,7 +1597,7 @@ public class AiChatService {
 
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
-        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+        boolean deepThink = req.getDeepThink() != null ? req.getDeepThink() : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
 
         String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
         String systemPrompt = resolvePromptText(systemPromptCode);
@@ -2257,9 +1650,9 @@ public class AiChatService {
         }
         messages.add(ChatMessage.user(userMessageForModel));
 
-        boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
+        boolean useRag = req.getUseRag() != null ? req.getUseRag() : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
         Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
-        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
+        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.clamp(ragTopKOverride, 1, 50);
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
         Long retrievalEventId = null;
@@ -2277,8 +1670,8 @@ public class AiChatService {
 
             if (useRag) {
                 hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
-                List<RagPostChatRetrievalService.Hit> postHits = List.of();
-                if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                List<RagPostChatRetrievalService.Hit> postHits;
+                if (isHybridEnabled(hybridCfg)) {
                     if (safeRagTopKOverride > 0) {
                         HybridRetrievalConfigDTO copy = new HybridRetrievalConfigDTO();
                         org.springframework.beans.BeanUtils.copyProperties(hybridCfg, copy);
@@ -2294,9 +1687,9 @@ public class AiChatService {
                     postHits = ragRetrievalService.retrieve(questionText, Math.min(50, k), null);
                 }
 
-                boolean augmentEnabled = chatRagCfg == null || chatRagCfg.getEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getEnabled());
+                boolean augmentEnabled = isAugmentEnabled(chatRagCfg);
                 if (augmentEnabled) {
-                    boolean commentsEnabled = chatRagCfg == null || chatRagCfg.getCommentsEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getCommentsEnabled());
+                    boolean commentsEnabled = isCommentsEnabled(chatRagCfg);
                     if (commentsEnabled) {
                         int ck = chatRagCfg == null || chatRagCfg.getCommentTopK() == null ? 20 : Math.max(1, chatRagCfg.getCommentTopK());
                         commentHits = ragCommentChatRetrievalService.retrieve(questionText, ck);
@@ -2312,7 +1705,6 @@ public class AiChatService {
                         try {
                             pol = RagChatPostCommentAggregationService.IncludePostContentPolicy.valueOf(polRaw.trim().toUpperCase(Locale.ROOT));
                         } catch (Exception ignored) {
-                            pol = null;
                         }
                     }
                     ac.setIncludePostContentPolicy(pol);
@@ -2359,7 +1751,7 @@ public class AiChatService {
                     if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null && contextAssembled != null && contextCfg != null
                             && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
                         double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
-                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.clamp(p, 0.0, 1.0)) {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
                             cw.setPolicy(contextAssembled.getPolicy());
@@ -2380,7 +1772,7 @@ public class AiChatService {
 
         messages = chatContextGovernanceService.apply(
                 currentUserId,
-                session == null ? null : session.getId(),
+                session.getId(),
                 questionMsg == null ? null : questionMsg.getId(),
                 messages
         ).getMessages();
@@ -2456,7 +1848,7 @@ public class AiChatService {
             if (contextAssembled != null) {
                 String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
                 String modeAdjusted = enforceCitationModeAnswerBody(citationCfg, normalized);
-                if (!modeAdjusted.equals(assistantAccum.toString())) {
+                if (!modeAdjusted.contentEquals(assistantAccum)) {
                     assistantAccum.setLength(0);
                     assistantAccum.append(modeAdjusted);
                 }
@@ -2562,7 +1954,6 @@ public class AiChatService {
                 turn.setCreatedAt(LocalDateTime.now());
                 turn = qaTurnsRepository.save(turn);
             } else if (turn.getAnswerMessageId() != null) {
-                Long oldAnswerId = turn.getAnswerMessageId();
                 turn.setAnswerMessageId(null);
                 qaTurnsRepository.save(turn);
             }
@@ -2574,7 +1965,7 @@ public class AiChatService {
 
         PortalChatConfigDTO.AssistantChatConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getAssistantChat();
         List<ChatMessage> messages = new ArrayList<>();
-        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+        boolean deepThink = req.getDeepThink() != null ? req.getDeepThink() : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
 
         String systemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
         String systemPrompt = resolvePromptText(systemPromptCode);
@@ -2627,9 +2018,9 @@ public class AiChatService {
         }
         messages.add(ChatMessage.user(questionTextForModel));
 
-        boolean useRag = req.getUseRag() != null ? Boolean.TRUE.equals(req.getUseRag()) : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
+        boolean useRag = req.getUseRag() != null ? req.getUseRag() : Boolean.TRUE.equals(portalCfg.getDefaultUseRag());
         Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
-        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.max(1, Math.min(50, ragTopKOverride));
+        int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.clamp(ragTopKOverride, 1, 50);
 
         List<RagPostChatRetrievalService.Hit> ragHits = List.of();
         Long retrievalEventId = null;
@@ -2646,9 +2037,9 @@ public class AiChatService {
 
             if (useRag) {
                 hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
-                List<RagPostChatRetrievalService.Hit> postHits = List.of();
+                List<RagPostChatRetrievalService.Hit> postHits;
                 List<RagCommentChatRetrievalService.Hit> commentHits = List.of();
-                if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {
+                if (isHybridEnabled(hybridCfg)) {
                     if (safeRagTopKOverride > 0) {
                         HybridRetrievalConfigDTO copy = new HybridRetrievalConfigDTO();
                         org.springframework.beans.BeanUtils.copyProperties(hybridCfg, copy);
@@ -2664,9 +2055,9 @@ public class AiChatService {
                     postHits = ragRetrievalService.retrieve(questionText, Math.min(50, k), null);
                 }
 
-                boolean augmentEnabled = chatRagCfg == null || chatRagCfg.getEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getEnabled());
+                boolean augmentEnabled = isAugmentEnabled(chatRagCfg);
                 if (augmentEnabled) {
-                    boolean commentsEnabled = chatRagCfg == null || chatRagCfg.getCommentsEnabled() == null || Boolean.TRUE.equals(chatRagCfg.getCommentsEnabled());
+                    boolean commentsEnabled = isCommentsEnabled(chatRagCfg);
                     if (commentsEnabled) {
                         int ck = chatRagCfg == null || chatRagCfg.getCommentTopK() == null ? 20 : Math.max(1, chatRagCfg.getCommentTopK());
                         commentHits = ragCommentChatRetrievalService.retrieve(questionText, ck);
@@ -2682,7 +2073,6 @@ public class AiChatService {
                         try {
                             pol = RagChatPostCommentAggregationService.IncludePostContentPolicy.valueOf(polRaw.trim().toUpperCase(Locale.ROOT));
                         } catch (Exception ignored) {
-                            pol = null;
                         }
                     }
                     ac.setIncludePostContentPolicy(pol);
@@ -2717,11 +2107,11 @@ public class AiChatService {
                             appendStageHits(outHits, retrievalEventId, RetrievalHitType.BM25, hybridResult == null ? null : hybridResult.getBm25Hits());
                             appendStageHits(outHits, retrievalEventId, RetrievalHitType.VEC, hybridResult == null ? null : hybridResult.getVecHits());
                             appendStageHits(outHits, retrievalEventId, RetrievalHitType.RERANK, hybridResult == null ? null : hybridResult.getFinalHits());
-                            appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
+                            appendCommentHits(outHits, retrievalEventId, commentHits);
                             appendChatHits(outHits, retrievalEventId, RetrievalHitType.AGG, ragHits);
                         } else if (ragHits != null && !ragHits.isEmpty()) {
                             appendChatHits(outHits, retrievalEventId, RetrievalHitType.VEC, postHits);
-                            appendCommentHits(outHits, retrievalEventId, RetrievalHitType.COMMENT_VEC, commentHits);
+                            appendCommentHits(outHits, retrievalEventId, commentHits);
                             if (augmentEnabled) {
                                 appendChatHits(outHits, retrievalEventId, RetrievalHitType.AGG, ragHits);
                             }
@@ -2744,7 +2134,7 @@ public class AiChatService {
                     if (!Boolean.TRUE.equals(req.getDryRun()) && retrievalEventId != null && contextAssembled != null && contextCfg != null
                             && Boolean.TRUE.equals(contextCfg.getLogEnabled())) {
                         double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
-                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.max(0.0, Math.min(1.0, p))) {
+                        if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.clamp(p, 0.0, 1.0)) {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
                             cw.setPolicy(contextAssembled.getPolicy());
@@ -2765,7 +2155,7 @@ public class AiChatService {
 
         messages = chatContextGovernanceService.apply(
                 currentUserId,
-                session == null ? null : session.getId(),
+                session.getId(),
                 questionMsg == null ? null : questionMsg.getId(),
                 messages
         ).getMessages();
@@ -2848,7 +2238,7 @@ public class AiChatService {
             if (contextAssembled != null) {
                 String normalized = normalizeCitationQuoteFormatting(assistantAccum.toString());
                 String modeAdjusted = enforceCitationModeAnswerBody(citationCfg, normalized);
-                if (!modeAdjusted.equals(assistantAccum.toString())) {
+                if (!modeAdjusted.contentEquals(assistantAccum)) {
                     assistantAccum.setLength(0);
                     assistantAccum.append(modeAdjusted);
                 }
@@ -2867,7 +2257,7 @@ public class AiChatService {
 
                 if (shouldExposeCitationSources(citationCfg) && !citedSources.isEmpty()) {
                     out.write("event: sources\n");
-                    out.write("data: " + buildSourcesEventData(citedSources, true) + "\n\n");
+                    out.write("data: " + buildSourcesEventData(citedSources) + "\n\n");
                     out.flush();
                 }
             }

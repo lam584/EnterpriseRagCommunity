@@ -299,7 +299,7 @@ data = [
         "后台-用户与权限",
         "高风险操作2FA校验",
         "已登录系统，账号角色为管理员。",
-        "1. 配置 SMTP 并发送测试邮件。\n2. 开启危险操作二次校验。\n3. 触发高风险操作。",
+        "1. 配置 SMTP 并发送测试邮件。\n2. 为用户账号分配角色。",
         "测试邮件发送成功；高风险操作前强制弹出 2FA 验证。",
         "SMTP 联通正常；执行危险操作前成功触发 2FA 弹窗。",
         "通过"
@@ -504,7 +504,7 @@ columns = [
 
 df = pd.DataFrame(data, columns=columns)
 
-output_dir = r'e:\EnterpriseRagCommunity-main\docs\测试'
+output_dir = r'/docs/测试'
 os.makedirs(output_dir, exist_ok=True)
 output_path = os.path.join(output_dir, '功能测试用例表.xlsx')
 

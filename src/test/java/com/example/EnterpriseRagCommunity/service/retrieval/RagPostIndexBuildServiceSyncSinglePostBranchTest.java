@@ -195,15 +195,14 @@ class RagPostIndexBuildServiceSyncSinglePostBranchTest {
         vi.setDim(0);
         vi.setStatus(VectorIndexStatus.READY);
         HashMap<String, Object> meta = new HashMap<>();
-        meta.put("embeddingModel", "m_fixed");
         meta.put("embeddingProviderId", "p_fixed");
         meta.put("lastBuildChunkMaxChars", "100");
         meta.put("lastBuildChunkOverlapChars", "99999");
         vi.setMetadata(meta);
         when(vectorIndicesRepository.findById(1L)).thenReturn(Optional.of(vi));
 
-        when(llmRoutingService.isEnabledTarget(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_fixed"), eq("m_fixed")))
-                .thenReturn(true);
+        when(llmRoutingService.pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_fixed"), any()))
+                .thenReturn(new LlmRoutingService.RouteTarget(new LlmRoutingService.TargetId("p_fixed", "m_fixed"), 1, 1, null));
 
         PostsEntity p = new PostsEntity();
         p.setId(10L);

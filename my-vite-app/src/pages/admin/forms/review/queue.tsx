@@ -19,7 +19,6 @@ import {
     adminToHumanModerationQueue,
     adminBatchRequeueModerationQueue,
     type ContentType,
-    type ModerationCaseType,
     type ModerationQueueBackfillResponse,
     type ModerationQueueDetail,
     type ModerationChunkProgress,
@@ -40,200 +39,27 @@ import DetailDialog from '../../../../components/common/DetailDialog';
 import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import { buildEvidenceImageUrlMap, extractLatestRunImageUrls } from '../../../../utils/evidenceImageMap';
-
-function formatDateTime(s?: string | null): string {
-    if (!s) return '—';
-    const d = new Date(s);
-    if (Number.isNaN(d.getTime())) return String(s);
-    return d.toLocaleString();
-}
-
-function excerptText(text?: string | null, maxChars: number = 240): string {
-    const t = String(text ?? '').trim();
-    if (!t) return '';
-    if (t.length <= maxChars) return t;
-    return `${t.substring(0, maxChars)}…`;
-}
-
-function isImageFileName(name?: string | null): boolean {
-    const n = String(name ?? '').trim().toLowerCase();
-    if (!n) return false;
-    const dot = n.lastIndexOf('.');
-    if (dot < 0) return false;
-    const ext = n.substring(dot + 1);
-    return ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || ext === 'gif' || ext === 'bmp' || ext === 'tif' || ext === 'tiff';
-}
-
-function toRecord(v: unknown): Record<string, unknown> | null {
-    if (typeof v === 'string') {
-        const t = v.trim();
-        if (!t) return null;
-        try {
-            const parsed = JSON.parse(t) as unknown;
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
-        } catch {
-        }
-        return null;
-    }
-    if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
-    return v as Record<string, unknown>;
-}
-
-function toInt(v: unknown): number | null {
-    if (typeof v === 'number' && Number.isFinite(v)) return Math.floor(v);
-    if (typeof v === 'string') {
-        const t = v.trim();
-        if (!t) return null;
-        const n = Number(t);
-        if (Number.isFinite(n)) return Math.floor(n);
-    }
-    return null;
-}
-
-function toStringDict(v: unknown): Record<string, string> {
-    const out: Record<string, string> = {};
-    const o = toRecord(v);
-    if (!o) return out;
-    for (const [k0, v0] of Object.entries(o)) {
-        const k = String(k0).trim();
-        const t = v0 == null ? '' : String(v0).trim();
-        if (!k || !t) continue;
-        out[k] = t;
-    }
-    return out;
-}
-
-function toStringListDict(v: unknown): Record<string, string[]> {
-    const out: Record<string, string[]> = {};
-    const o = toRecord(v);
-    if (!o) return out;
-    for (const [k0, v0] of Object.entries(o)) {
-        const k = String(k0).trim();
-        if (!k) continue;
-        if (!Array.isArray(v0)) continue;
-        const list = v0
-            .map((x) => (x == null ? '' : String(x).trim()))
-            .filter(Boolean);
-        if (!list.length) continue;
-        out[k] = list;
-    }
-    return out;
-}
-
-function riskSlugsFromDetail(d: ModerationQueueDetail | null): string[] {
-    if (!d) return [];
-    if (Array.isArray(d.riskTags) && d.riskTags.length) return d.riskTags;
-    if (Array.isArray(d.riskTagItems) && d.riskTagItems.length) {
-        const out: string[] = [];
-        for (const it of d.riskTagItems) {
-            const s = String(it?.slug ?? '').trim();
-            if (!s) continue;
-            if (!out.includes(s)) out.push(s);
-        }
-        return out;
-    }
-    return [];
-}
-
-const DETAIL_CHUNK_COLLAPSE_THRESHOLD = 5;
-const POST_MARKDOWN_PREVIEW_STORAGE_KEY = 'admin.review.queue.postMarkdownPreviewEnabled';
-
-const statusBadgeClass = (status?: string | null) => {
-    switch (status) {
-        case 'PENDING':
-            return 'bg-yellow-100 text-yellow-800';
-        case 'REVIEWING':
-            return 'bg-blue-100 text-blue-800';
-        // HUMAN is treated as "waiting for human". If it's claimed, we will render a second badge.
-        case 'HUMAN':
-            return 'bg-indigo-100 text-indigo-800';
-        case 'APPROVED':
-            return 'bg-green-100 text-green-800';
-        case 'REJECTED':
-            return 'bg-red-100 text-red-800';
-        default:
-            return 'bg-gray-100 text-gray-700';
-    }
-};
-
-const isTerminal = (s?: string | null) => s === 'APPROVED' || s === 'REJECTED';
-
-const statusLabel = (status?: string | null, caseType?: ModerationCaseType | null) => {
-    switch (status) {
-        case 'PENDING':
-            return '待自动审核';
-        case 'REVIEWING':
-            return '审核中';
-        case 'HUMAN':
-            return '待人工审核';
-        case 'APPROVED':
-            return caseType === 'REPORT' ? '举报未核实' : '已通过';
-        case 'REJECTED':
-            return caseType === 'REPORT' ? '举报已核实' : '已驳回';
-        default:
-            return '—';
-    }
-};
-
-const typeLabel = (caseType?: ModerationCaseType | null, contentType?: ContentType | null) => {
-    if (caseType === 'REPORT') {
-        if (contentType === 'POST') return '举报-帖子';
-        if (contentType === 'COMMENT') return '举报-评论';
-        if (contentType === 'PROFILE') return '举报-资料';
-        return '举报';
-    }
-    if (contentType === 'POST') return '帖子';
-    if (contentType === 'COMMENT') return '评论';
-    if (contentType === 'PROFILE') return '资料';
-    return '—';
-};
-
-const stageLabel = (stage?: string | null) => {
-    switch (stage) {
-        case 'RULE':
-            return '规则';
-        case 'VEC':
-            return '向量';
-        case 'LLM':
-            return '大模型';
-        case 'HUMAN':
-            return '人工';
-        default:
-            return '—';
-    }
-};
-
-const PAGE_SIZE_OPTIONS = [10, 30, 100, 200, 500] as const;
-
-function fingerprintQueueList(items: ModerationQueueItem[], totalPages: number, totalElements: number): string {
-    const parts: string[] = [`tp:${totalPages}`, `te:${totalElements}`];
-    for (const it of items) {
-        const cp = it.chunkProgress;
-        const tags = it.riskTags;
-        const tagsKey = tags && tags.length ? [...tags].sort().join(',') : '';
-        parts.push(
-            [
-                it.id,
-                it.caseType,
-                it.contentType,
-                it.contentId,
-                it.status,
-                it.currentStage,
-                it.priority,
-                it.assignedToId ?? '',
-                it.createdAt,
-                it.updatedAt,
-                tagsKey,
-                cp?.status ?? '',
-                cp?.totalChunks ?? '',
-                cp?.completedChunks ?? '',
-                cp?.failedChunks ?? '',
-                cp?.updatedAt ?? '',
-            ].join('|'),
-        );
-    }
-    return parts.join('~');
-}
+import {RiskEditorModal, TextPreviewModal} from './queue-components';
+import {useQueueSelection} from './use-queue-selection';
+import {
+    DETAIL_CHUNK_COLLAPSE_THRESHOLD,
+    PAGE_SIZE_OPTIONS,
+    POST_MARKDOWN_PREVIEW_STORAGE_KEY,
+    excerptText,
+    fingerprintQueueList,
+    formatDateTime,
+    isImageFileName,
+    isTerminal,
+    riskSlugsFromDetail,
+    stageLabel,
+    statusBadgeClass,
+    statusLabel,
+    toInt,
+    toRecord,
+    toStringDict,
+    toStringListDict,
+    typeLabel,
+} from './queue-utils';
 
 const QueueForm: React.FC = () => {
     const navigate = useNavigate();
@@ -505,17 +331,14 @@ const QueueForm: React.FC = () => {
         }
     }, []);
 
-    const [selectedMap, setSelectedMap] = useState<Record<number, boolean>>({});
-    const selectedIds = useMemo(() => {
-        const out: number[] = [];
-        for (const [k, v] of Object.entries(selectedMap)) {
-            if (!v) continue;
-            const n = Number(k);
-            if (Number.isFinite(n) && n > 0) out.push(n);
-        }
-        out.sort((a, b) => a - b);
-        return out;
-    }, [selectedMap]);
+    const {
+        selectedMap,
+        selectedIds,
+        allOnPageSelected,
+        toggleAllOnPage,
+        toggleOne,
+        clearSelection,
+    } = useQueueSelection(items);
     const [batchReason, setBatchReason] = useState('');
 
     const [myUserId, setMyUserId] = useState<number | undefined>(undefined);
@@ -1251,10 +1074,6 @@ const QueueForm: React.FC = () => {
 
     const canPrev = page > 1;
     const canNext = page < totalPages;
-    const allOnPageSelected = useMemo(() => {
-        if (!items.length) return false;
-        return items.every((it) => !!selectedMap[it.id]);
-    }, [items, selectedMap]);
 
     return (
         <div className="bg-white rounded-lg shadow p-4 space-y-4">
@@ -1425,7 +1244,7 @@ const QueueForm: React.FC = () => {
                                             : prev
                                     ));
                                 }
-                                setSelectedMap({});
+                                clearSelection();
                                 setBatchReason('');
                                 await load();
                             } catch (e) {
@@ -1438,7 +1257,7 @@ const QueueForm: React.FC = () => {
                     <button
                         type="button"
                         className="rounded border px-3 py-1.5"
-                        onClick={() => setSelectedMap({})}
+                        onClick={clearSelection}
                     >
                         清空选择
                     </button>
@@ -1456,12 +1275,7 @@ const QueueForm: React.FC = () => {
                                 className="h-4 w-4"
                                 checked={allOnPageSelected}
                                 onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    setSelectedMap((prev) => {
-                                        const next = { ...prev };
-                                        for (const it of items) next[it.id] = checked;
-                                        return next;
-                                    });
+                                    toggleAllOnPage(e.target.checked);
                                 }}
                                 aria-label="全选本页"
                             />
@@ -1495,8 +1309,7 @@ const QueueForm: React.FC = () => {
                                             className="h-4 w-4"
                                             checked={!!selectedMap[it.id]}
                                             onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                setSelectedMap((prev) => ({ ...prev, [it.id]: checked }));
+                                                toggleOne(it.id, e.target.checked);
                                             }}
                                             aria-label={`选择任务 ${it.id}`}
                                         />
@@ -2362,171 +2175,38 @@ const QueueForm: React.FC = () => {
                 </DetailDialog>
             ) : null}
 
-            {riskEditorOpen ? (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[85vh] overflow-auto">
-                        <div className="flex items-center justify-between px-4 py-3 border-b">
-                            <div className="font-semibold">编辑风险标签</div>
-                            <button
-                                type="button"
-                                className="rounded border px-3 py-1 hover:bg-gray-50 disabled:opacity-60"
-                                onClick={closeRiskEditor}
-                                disabled={riskEditorSaving}
-                            >
-                                关闭
-                            </button>
-                        </div>
+            <RiskEditorModal
+                open={riskEditorOpen}
+                saving={riskEditorSaving}
+                loading={riskEditorLoading}
+                error={riskEditorError}
+                selected={riskSelected}
+                query={riskQuery}
+                options={riskOptions}
+                newName={riskNewName}
+                onClose={closeRiskEditor}
+                onCancel={closeRiskEditor}
+                onSave={() => void saveRiskTags()}
+                onQueryChange={setRiskQuery}
+                onRemoveSelected={removeRiskSlug}
+                onAddOption={addRiskSlug}
+                onNewNameChange={setRiskNewName}
+                onCreateAndSelect={() => void createAndSelectRiskTag()}
+            />
 
-                        <div className="p-4 space-y-4">
-                            {riskEditorError ? <div className="text-sm text-red-700">{riskEditorError}</div> : null}
+            <TextPreviewModal
+                open={postSummaryErrorOpen}
+                title="摘要错误详情"
+                text={postSummaryLatestHistory?.errorMessage || '—'}
+                onClose={() => setPostSummaryErrorOpen(false)}
+            />
 
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-gray-700">已选择</div>
-                                {riskSelected.length ? (
-                                    <div className="flex flex-wrap gap-2">
-                                        {riskSelected.map((t) => (
-                                            <span
-                                                key={t}
-                                                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-200 bg-amber-50 text-sm text-amber-900"
-                                                title={t}
-                                            >
-                                                <span>{t}</span>
-                                                <button
-                                                    type="button"
-                                                    className="text-amber-800 hover:text-amber-950"
-                                                    onClick={() => removeRiskSlug(t)}
-                                                    disabled={riskEditorSaving}
-                                                >
-                                                    ×
-                                                </button>
-                                            </span>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-sm text-gray-500">（未选择）</div>
-                                )}
-                            </div>
-
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-gray-700">搜索已有风险标签</div>
-                                <input
-                                    className="w-full rounded border px-3 py-2 border-gray-300"
-                                    placeholder="输入关键字搜索 name/slug"
-                                    value={riskQuery}
-                                    onChange={(e) => setRiskQuery(e.target.value)}
-                                    disabled={riskEditorSaving}
-                                />
-                                {riskEditorLoading ? <div className="text-sm text-gray-500">加载中...</div> : null}
-                                {riskOptions.length ? (
-                                    <div className="max-h-[260px] overflow-auto border rounded">
-                                        {riskOptions.map((t) => (
-                                            <button
-                                                key={t.id}
-                                                type="button"
-                                                className="w-full text-left px-3 py-2 hover:bg-gray-50 disabled:opacity-60"
-                                                onClick={() => addRiskSlug(t.slug)}
-                                                disabled={riskEditorSaving}
-                                                title={t.slug}
-                                            >
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <span className="text-sm text-gray-900">{t.name}</span>
-                                                    <span className="text-xs text-gray-500">{t.slug}</span>
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-sm text-gray-500">（无匹配结果）</div>
-                                )}
-                            </div>
-
-                            <div className="space-y-2">
-                                <div className="text-sm font-medium text-gray-700">快速新增</div>
-                                <div className="flex gap-2">
-                                    <input
-                                        className="flex-1 rounded border px-3 py-2 border-gray-300"
-                                        placeholder="输入新风险标签名称（将自动生成 slug）"
-                                        value={riskNewName}
-                                        onChange={(e) => setRiskNewName(e.target.value)}
-                                        disabled={riskEditorSaving}
-                                    />
-                                    <button
-                                        type="button"
-                                        className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-                                        onClick={() => void createAndSelectRiskTag()}
-                                        disabled={riskEditorSaving || !riskNewName.trim()}
-                                    >
-                                        新增并选中
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="flex justify-end gap-2">
-                                <button
-                                    type="button"
-                                    className="rounded border px-4 py-2 hover:bg-gray-50 disabled:opacity-60"
-                                    onClick={closeRiskEditor}
-                                    disabled={riskEditorSaving}
-                                >
-                                    取消
-                                </button>
-                                <button
-                                    type="button"
-                                    className="rounded bg-blue-600 text-white px-4 py-2 disabled:opacity-60"
-                                    onClick={() => void saveRiskTags()}
-                                    disabled={riskEditorSaving}
-                                >
-                                    {riskEditorSaving ? '保存中...' : '保存'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
-
-            {postSummaryErrorOpen ? (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl max-h-[85vh] overflow-auto">
-                        <div className="flex items-center justify-between px-4 py-3 border-b">
-                            <div className="font-semibold">摘要错误详情</div>
-                            <button
-                                type="button"
-                                className="rounded border px-3 py-1 hover:bg-gray-50"
-                                onClick={() => setPostSummaryErrorOpen(false)}
-                            >
-                                关闭
-                            </button>
-                        </div>
-                        <div className="p-4">
-                            <pre className="whitespace-pre-wrap text-xs bg-gray-50 rounded p-3 overflow-auto max-h-[70vh]">
-                                {postSummaryLatestHistory?.errorMessage || '—'}
-                            </pre>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
-
-            {chunkErrorOpen ? (
-                <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl max-h-[85vh] overflow-auto">
-                        <div className="flex items-center justify-between px-4 py-3 border-b">
-                            <div className="font-semibold">{chunkErrorTitle || '分片错误详情'}</div>
-                            <button
-                                type="button"
-                                className="rounded border px-3 py-1 hover:bg-gray-50"
-                                onClick={() => setChunkErrorOpen(false)}
-                            >
-                                关闭
-                            </button>
-                        </div>
-                        <div className="p-4">
-                            <pre className="whitespace-pre-wrap text-xs bg-gray-50 rounded p-3 overflow-auto max-h-[70vh]">
-                                {chunkErrorText || '—'}
-                            </pre>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
+            <TextPreviewModal
+                open={chunkErrorOpen}
+                title={chunkErrorTitle || '分片错误详情'}
+                text={chunkErrorText || '—'}
+                onClose={() => setChunkErrorOpen(false)}
+            />
         </div>
     );
 };

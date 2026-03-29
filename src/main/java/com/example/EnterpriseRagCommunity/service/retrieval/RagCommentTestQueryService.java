@@ -62,34 +62,26 @@ public class RagCommentTestQueryService {
 
         String overrideModel = toNonBlank(req.getEmbeddingModel());
 
-        String fixedModel = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingModel"));
         String fixedProviderId = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingProviderId"));
-        boolean hasFixed = fixedModel != null && fixedProviderId != null;
-
-        String lastBuildModel = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("lastBuildEmbeddingModel"));
-        String lastBuildProviderId = toNonBlank(vi.getMetadata() == null ? null : vi.getMetadata().get("lastBuildEmbeddingProviderId"));
-        boolean hasLastBuild = lastBuildModel != null && lastBuildProviderId != null;
 
         String modelToUse = null;
-        String providerToUse = null;
+        String providerToUse = fixedProviderId;
         if (overrideModel != null) {
             modelToUse = overrideModel;
-        } else if (hasFixed && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, fixedProviderId, fixedModel)) {
-            modelToUse = fixedModel;
-            providerToUse = fixedProviderId;
-        } else if (hasLastBuild && llmRoutingService.isEnabledTarget(LlmQueueTaskType.POST_EMBEDDING, lastBuildProviderId, lastBuildModel)) {
-            modelToUse = lastBuildModel;
-            providerToUse = lastBuildProviderId;
         }
 
         AiEmbeddingService.EmbeddingResult er;
         try {
             if (modelToUse == null) {
-                LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>());
+                LlmRoutingService.RouteTarget target = (providerToUse == null)
+                        ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
+                        : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
                 if (target == null) {
                     String legacy = toNonBlank(ragProps.getEs().getEmbeddingModel());
                     if (legacy == null) {
-                        throw new IllegalStateException("no eligible embedding target (please check embedding routing config)");
+                        throw new IllegalStateException(providerToUse == null
+                                ? "no eligible embedding target (please check embedding routing config)"
+                                : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
                     }
                     modelToUse = legacy;
                     providerToUse = null;

@@ -400,7 +400,7 @@ class RagFileAssetIndexBuildServiceBuildFilesBranchTest {
     }
 
     @Test
-    void buildFiles_shouldUseFixedEnabledTargetWithoutRouting() {
+    void buildFiles_shouldRouteWithinFixedProviderWithoutGlobalRouting() {
         VectorIndicesRepository vectorIndicesRepository = mock(VectorIndicesRepository.class);
         FileAssetExtractionsRepository fileAssetExtractionsRepository = mock(FileAssetExtractionsRepository.class);
         LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
@@ -424,14 +424,14 @@ class RagFileAssetIndexBuildServiceBuildFilesBranchTest {
         vi.setDim(256);
         vi.setStatus(VectorIndexStatus.READY);
         HashMap<String, Object> meta = new HashMap<>();
-        meta.put("embeddingModel", "m_fixed");
         meta.put("embeddingProviderId", "p_fixed");
         vi.setMetadata(meta);
         when(vectorIndicesRepository.findById(1L)).thenReturn(Optional.of(vi));
         when(vectorIndicesRepository.save(any(VectorIndicesEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(fileAssetExtractionsRepository.findByExtractStatusAndFileAssetIdGreaterThanOrderByFileAssetIdAsc(
                 eq(FileAssetExtractionStatus.READY), anyLong(), any())).thenReturn(emptyExtractionPage());
-        when(llmRoutingService.isEnabledTarget(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_fixed"), eq("m_fixed"))).thenReturn(true);
+        when(llmRoutingService.pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_fixed"), any()))
+                .thenReturn(new LlmRoutingService.RouteTarget(new LlmRoutingService.TargetId("p_fixed", "m_fixed"), 1, 1, null));
 
         RagFilesBuildResponse resp = svc.buildFiles(1L, 1L, 20, 500, 10, false, null, null, null);
         assertNotNull(resp);
@@ -439,11 +439,11 @@ class RagFileAssetIndexBuildServiceBuildFilesBranchTest {
         assertEquals("p_fixed", resp.getEmbeddingProviderId());
         assertNull(resp.getEmbeddingDims());
         verify(llmRoutingService, never()).pickNext(any(), any());
-        verify(llmRoutingService, never()).pickNextInProvider(any(), any(), any());
+        verify(llmRoutingService).pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_fixed"), any());
     }
 
     @Test
-    void buildFiles_shouldUseLastBuildEnabledTargetWithoutRouting() {
+    void buildFiles_shouldIgnoreLastBuildModelWhenProviderIsFixed() {
         VectorIndicesRepository vectorIndicesRepository = mock(VectorIndicesRepository.class);
         FileAssetExtractionsRepository fileAssetExtractionsRepository = mock(FileAssetExtractionsRepository.class);
         LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
@@ -467,7 +467,6 @@ class RagFileAssetIndexBuildServiceBuildFilesBranchTest {
         vi.setDim(128);
         vi.setStatus(VectorIndexStatus.READY);
         HashMap<String, Object> meta = new HashMap<>();
-        meta.put("embeddingModel", "m_disabled");
         meta.put("embeddingProviderId", "p_disabled");
         meta.put("lastBuildEmbeddingModel", "m_last");
         meta.put("lastBuildEmbeddingProviderId", "p_last");
@@ -476,15 +475,15 @@ class RagFileAssetIndexBuildServiceBuildFilesBranchTest {
         when(vectorIndicesRepository.save(any(VectorIndicesEntity.class))).thenAnswer(inv -> inv.getArgument(0));
         when(fileAssetExtractionsRepository.findByExtractStatusAndFileAssetIdGreaterThanOrderByFileAssetIdAsc(
                 eq(FileAssetExtractionStatus.READY), anyLong(), any())).thenReturn(emptyExtractionPage());
-        when(llmRoutingService.isEnabledTarget(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_disabled"), eq("m_disabled"))).thenReturn(false);
-        when(llmRoutingService.isEnabledTarget(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_last"), eq("m_last"))).thenReturn(true);
+        when(llmRoutingService.pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_disabled"), any()))
+                .thenReturn(new LlmRoutingService.RouteTarget(new LlmRoutingService.TargetId("p_disabled", "m_fresh"), 1, 1, null));
 
         RagFilesBuildResponse resp = svc.buildFiles(1L, null, 20, 500, 10, false, null, null, null);
         assertNotNull(resp);
-        assertEquals("m_last", resp.getEmbeddingModel());
-        assertEquals("p_last", resp.getEmbeddingProviderId());
+        assertEquals("m_fresh", resp.getEmbeddingModel());
+        assertEquals("p_disabled", resp.getEmbeddingProviderId());
         verify(llmRoutingService, never()).pickNext(any(), any());
-        verify(llmRoutingService, never()).pickNextInProvider(any(), any(), any());
+        verify(llmRoutingService).pickNextInProvider(eq(LlmQueueTaskType.POST_EMBEDDING), eq("p_disabled"), any());
     }
 
     @Test
