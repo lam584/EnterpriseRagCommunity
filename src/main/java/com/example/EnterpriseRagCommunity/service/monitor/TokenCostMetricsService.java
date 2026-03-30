@@ -26,7 +26,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -238,13 +237,13 @@ public class TokenCostMetricsService {
                                    IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0)) AS tokens_in,
                                    IFNULL(h.tokens_out, 0) AS tokens_out
                             FROM llm_queue_task_history h
-                            WHERE h.finished_at BETWEEN :start AND :end
+                            WHERE h.finished_at BETWEEN ?1 AND ?2
                               AND h.status = 'DONE'
-                              AND h.type = :taskType
+                              AND h.type = ?3
                             """)
-                    .setParameter("start", start)
-                    .setParameter("end", end)
-                    .setParameter("taskType", taskType)
+                    .setParameter(1, start)
+                    .setParameter(2, end)
+                    .setParameter(3, taskType)
                     .getResultList();
         } else {
             raw = entityManager.createNativeQuery("""
@@ -252,11 +251,11 @@ public class TokenCostMetricsService {
                                    IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0)) AS tokens_in,
                                    IFNULL(h.tokens_out, 0) AS tokens_out
                             FROM llm_queue_task_history h
-                            WHERE h.finished_at BETWEEN :start AND :end
+                            WHERE h.finished_at BETWEEN ?1 AND ?2
                               AND h.status = 'DONE'
                             """)
-                    .setParameter("start", start)
-                    .setParameter("end", end)
+                    .setParameter(1, start)
+                    .setParameter(2, end)
                     .getResultList();
         }
 
@@ -281,15 +280,15 @@ public class TokenCostMetricsService {
                                    SUM(IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0))) AS tokens_in,
                                    SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                             FROM llm_queue_task_history h
-                            WHERE h.finished_at BETWEEN :start AND :end
+                            WHERE h.finished_at BETWEEN ?1 AND ?2
                               AND h.status = 'DONE'
-                              AND h.type = :taskType
+                              AND h.type = ?3
                             GROUP BY t
                             ORDER BY t
                             """.formatted(tcol))
-                    .setParameter("start", start)
-                    .setParameter("end", end)
-                    .setParameter("taskType", taskType)
+                    .setParameter(1, start)
+                    .setParameter(2, end)
+                    .setParameter(3, taskType)
                     .getResultList();
         } else {
             raw = entityManager.createNativeQuery("""
@@ -297,13 +296,13 @@ public class TokenCostMetricsService {
                                    SUM(IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0))) AS tokens_in,
                                    SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                             FROM llm_queue_task_history h
-                            WHERE h.finished_at BETWEEN :start AND :end
+                            WHERE h.finished_at BETWEEN ?1 AND ?2
                               AND h.status = 'DONE'
                             GROUP BY t
                             ORDER BY t
                             """.formatted(tcol))
-                    .setParameter("start", start)
-                    .setParameter("end", end)
+                    .setParameter(1, start)
+                    .setParameter(2, end)
                     .getResultList();
         }
 
@@ -325,12 +324,12 @@ public class TokenCostMetricsService {
                                IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0)) AS tokens_in,
                                IFNULL(h.tokens_out, 0) AS tokens_out
                         FROM llm_queue_task_history h
-                        WHERE h.finished_at BETWEEN :start AND :end
+                        WHERE h.finished_at BETWEEN ?1 AND ?2
                           AND h.status = 'DONE'
                                                     AND h.type IN ('MULTIMODAL_CHAT', 'TEXT_CHAT', 'IMAGE_CHAT')
                         """)
-                .setParameter("start", start)
-                .setParameter("end", end)
+                .setParameter(1, start)
+                .setParameter(2, end)
                 .getResultList();
 
         List<UsageRow> out = new ArrayList<>();
@@ -352,14 +351,14 @@ public class TokenCostMetricsService {
                                SUM(IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0))) AS tokens_in,
                                SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                         FROM llm_queue_task_history h
-                        WHERE h.finished_at BETWEEN :start AND :end
+                        WHERE h.finished_at BETWEEN ?1 AND ?2
                           AND h.status = 'DONE'
                                                     AND h.type IN ('MULTIMODAL_CHAT', 'TEXT_CHAT', 'IMAGE_CHAT')
                         GROUP BY t
                         ORDER BY t
                         """.formatted(tcol))
-                .setParameter("start", start)
-                .setParameter("end", end)
+                .setParameter(1, start)
+                .setParameter(2, end)
                 .getResultList();
 
         List<TimelineRow> out = new ArrayList<>();
@@ -380,12 +379,12 @@ public class TokenCostMetricsService {
                                IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0)) AS tokens_in,
                                IFNULL(h.tokens_out, 0) AS tokens_out
                         FROM llm_queue_task_history h
-                        WHERE h.finished_at BETWEEN :start AND :end
+                        WHERE h.finished_at BETWEEN ?1 AND ?2
                           AND h.status = 'DONE'
                                                     AND h.type IN ('MULTIMODAL_MODERATION', 'TEXT_MODERATION', 'IMAGE_MODERATION', 'MODERATION_CHUNK', 'SIMILARITY_EMBEDDING')
                         """)
-                .setParameter("start", start)
-                .setParameter("end", end)
+                .setParameter(1, start)
+                .setParameter(2, end)
                 .getResultList();
 
         List<UsageRow> out = new ArrayList<>();
@@ -407,14 +406,14 @@ public class TokenCostMetricsService {
                                SUM(IFNULL(h.tokens_in, IFNULL(h.total_tokens, 0))) AS tokens_in,
                                SUM(IFNULL(h.tokens_out, 0)) AS tokens_out
                         FROM llm_queue_task_history h
-                        WHERE h.finished_at BETWEEN :start AND :end
+                        WHERE h.finished_at BETWEEN ?1 AND ?2
                           AND h.status = 'DONE'
                                                     AND h.type IN ('MULTIMODAL_MODERATION', 'TEXT_MODERATION', 'IMAGE_MODERATION', 'MODERATION_CHUNK', 'SIMILARITY_EMBEDDING')
                         GROUP BY t
                         ORDER BY t
                         """.formatted(tcol))
-                .setParameter("start", start)
-                .setParameter("end", end)
+                .setParameter(1, start)
+                .setParameter(2, end)
                 .getResultList();
 
         List<TimelineRow> out = new ArrayList<>();
@@ -433,10 +432,10 @@ public class TokenCostMetricsService {
         List<Object[]> raw = entityManager.createNativeQuery("""
                         SELECT j.model, j.tokens_in, j.tokens_out
                         FROM generation_jobs j
-                        WHERE j.created_at BETWEEN :start AND :end
+                        WHERE j.created_at BETWEEN ?1 AND ?2
                         """)
-                .setParameter("start", start)
-                .setParameter("end", end)
+                .setParameter(1, start)
+                .setParameter(2, end)
                 .getResultList();
 
         List<UsageRow> out = new ArrayList<>();
@@ -456,12 +455,12 @@ public class TokenCostMetricsService {
         List<Object[]> raw = entityManager.createNativeQuery("""
                         SELECT %s AS t, SUM(IFNULL(j.tokens_in, 0)) AS tokens_in, SUM(IFNULL(j.tokens_out, 0)) AS tokens_out
                         FROM generation_jobs j
-                        WHERE j.created_at BETWEEN :start AND :end
+                        WHERE j.created_at BETWEEN ?1 AND ?2
                         GROUP BY t
                         ORDER BY t
                         """.formatted(tcol))
-                .setParameter("start", start)
-                .setParameter("end", end)
+                .setParameter(1, start)
+                .setParameter(2, end)
                 .getResultList();
 
         List<TimelineRow> out = new ArrayList<>();

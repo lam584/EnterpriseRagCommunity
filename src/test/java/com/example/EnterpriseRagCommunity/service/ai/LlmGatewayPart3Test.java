@@ -1,14 +1,10 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import java.io.IOException;
-import java.lang.reflect.Constructor;
-import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,14 +14,12 @@ import org.mockito.MockedConstruction;
 import org.mockito.Mockito;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,10 +30,10 @@ import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 
 class LlmGatewayPart3Test {
 
-    private static ResolvedProvider provider(String id, String type, String defaultChatModel) {
+    private static ResolvedProvider provider(String id, String defaultChatModel) {
         return new ResolvedProvider(
                 id,
-                type,
+                "OPENAI_COMPAT",
                 "http://example.invalid",
                 "k",
                 defaultChatModel,
@@ -50,15 +44,6 @@ class LlmGatewayPart3Test {
                 1000
         );
     }
-
-    private static AiEmbeddingService.EmbeddingResult dummyEmbedding(String model) {
-        return new AiEmbeddingService.EmbeddingResult(new float[]{1.0f, 2.0f}, 2, model);
-    }
-
-    private static AiRerankService.RerankResult dummyRerank(String providerId, String model) {
-        return new AiRerankService.RerankResult(List.of(new AiRerankService.RerankHit(0, 0.9)), 10, providerId, model);
-    }
-
 
     @Test
     void chatOnce_should_delegate_to_chatOnceRouted_and_return_text() {
@@ -103,7 +88,7 @@ class LlmGatewayPart3Test {
         when(llmRoutingService.pickNext(eq(LlmQueueTaskType.TEXT_CHAT), any())).thenReturn(null);
 
         when(aiProvidersConfigService.listEnabledProviderIds()).thenReturn(List.of("p-fallback"));
-        when(aiProvidersConfigService.resolveProvider("p-fallback")).thenReturn(provider("p-fallback", "OPENAI_COMPAT", "m-fallback"));
+        when(aiProvidersConfigService.resolveProvider("p-fallback")).thenReturn(provider("p-fallback", "m-fallback"));
 
         String okRawJson = """
                 {"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
@@ -113,8 +98,8 @@ class LlmGatewayPart3Test {
                 anyString(),
                 anyString(),
                 anyInt(),
-                any(LlmCallQueueService.CheckedTaskSupplier.class),
-                any(LlmCallQueueService.ResultMetricsExtractor.class)
+                org.mockito.ArgumentMatchers.<LlmCallQueueService.CheckedTaskSupplier<String>>any(),
+                any()
         )).thenReturn(okRawJson);
         when(llmCallQueueService.parseOpenAiUsageFromJson(anyString()))
                 .thenReturn(new LlmCallQueueService.UsageMetrics(1, 1, 2, 1));
@@ -195,7 +180,7 @@ class LlmGatewayPart3Test {
         when(llmRoutingService.pickNext(eq(LlmQueueTaskType.TEXT_CHAT), any())).thenReturn(null);
 
         when(aiProvidersConfigService.listEnabledProviderIds()).thenReturn(List.of());
-        when(aiProvidersConfigService.resolveActiveProvider()).thenReturn(provider("p-active", "OPENAI_COMPAT", "m-active"));
+        when(aiProvidersConfigService.resolveActiveProvider()).thenReturn(provider("p-active", "m-active"));
 
         String okRawJson = """
                 {"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
@@ -205,8 +190,8 @@ class LlmGatewayPart3Test {
                 anyString(),
                 anyString(),
                 anyInt(),
-                any(LlmCallQueueService.CheckedTaskSupplier.class),
-                any(LlmCallQueueService.ResultMetricsExtractor.class)
+                org.mockito.ArgumentMatchers.<LlmCallQueueService.CheckedTaskSupplier<String>>any(),
+                any()
         )).thenReturn(okRawJson);
         when(llmCallQueueService.parseOpenAiUsageFromJson(anyString()))
                 .thenReturn(new LlmCallQueueService.UsageMetrics(1, 1, 2, 1));
@@ -290,13 +275,13 @@ class LlmGatewayPart3Test {
                     Map.of("vl_high_resolution_images", true, "foo", "bar")
             );
 
-            OpenAiCompatClient client = mocked.constructed().get(0);
+            OpenAiCompatClient client = mocked.constructed().getFirst();
             ArgumentCaptor<OpenAiCompatClient.ChatRequest> reqCap = ArgumentCaptor.forClass(OpenAiCompatClient.ChatRequest.class);
             verify(client).chatCompletionsOnce(reqCap.capture());
             OpenAiCompatClient.ChatRequest req = reqCap.getValue();
             assertEquals(Boolean.FALSE, req.enableThinking());
-            assertEquals(null, req.thinkingBudget());
-            assertEquals(true, req.extraBody().containsKey("vl_high_resolution_images"));
+            assertNull(req.thinkingBudget());
+            assertTrue(req.extraBody().containsKey("vl_high_resolution_images"));
             assertEquals("bar", req.extraBody().get("foo"));
         }
     }

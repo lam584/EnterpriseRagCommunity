@@ -4,24 +4,18 @@ import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.TextNode;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 class LlmGatewayPrivateHelpersCoveragePart3Test {
@@ -46,6 +39,19 @@ class LlmGatewayPrivateHelpersCoveragePart3Test {
         Method m = LlmGateway.class.getDeclaredMethod(name, paramTypes);
         m.setAccessible(true);
         return m.invoke(gateway, args);
+    }
+
+    private static Object callCallChatOnceSingleLambda(LlmGateway gateway, Class<?>[] paramTypes, Object... args) throws Exception {
+        for (int i = 0; i < 8; i++) {
+            try {
+                Method m = LlmGateway.class.getDeclaredMethod("lambda$callChatOnceSingle$" + i, paramTypes);
+                m.setAccessible(true);
+                return m.invoke(gateway, args);
+            } catch (NoSuchMethodException ignore) {
+                // Continue probing synthetic lambda index.
+            }
+        }
+        throw new NoSuchMethodException("lambda$callChatOnceSingle$* with expected signature not found");
     }
 
     private static LlmGateway gateway() {
@@ -314,9 +320,8 @@ class LlmGatewayPrivateHelpersCoveragePart3Test {
                 .thenReturn("{\"choices\":[{\"message\":{\"content\":\"<think>x</think>ok\"}}]}")
                 .thenReturn("   ");
 
-        callInstance(
+        callCallChatOnceSingleLambda(
                 gateway,
-                "lambda$callChatOnceSingle$1",
                 new Class[]{
                         AtomicReference.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class, Double.class,
                         Boolean.class, Integer.class, int.class, OpenAiCompatClient.class, OpenAiCompatClient.ChatRequest.class,
@@ -325,9 +330,8 @@ class LlmGatewayPrivateHelpersCoveragePart3Test {
                 idOut, provider, "m1", List.of(ChatMessage.user("hi")), 0.2,
                 Boolean.TRUE, null, 1, client, req, false, task
         );
-        callInstance(
+        callCallChatOnceSingleLambda(
                 gateway,
-                "lambda$callChatOnceSingle$1",
                 new Class[]{
                         AtomicReference.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class, Double.class,
                         Boolean.class, Integer.class, int.class, OpenAiCompatClient.class, OpenAiCompatClient.ChatRequest.class,
@@ -336,9 +340,8 @@ class LlmGatewayPrivateHelpersCoveragePart3Test {
                 idOut, provider, "m1", List.of(ChatMessage.user("hi")), 0.2,
                 Boolean.FALSE, null, 1, client, req, true, task
         );
-        callInstance(
+        callCallChatOnceSingleLambda(
                 gateway,
-                "lambda$callChatOnceSingle$1",
                 new Class[]{
                         AtomicReference.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class, Double.class,
                         Boolean.class, Integer.class, int.class, OpenAiCompatClient.class, OpenAiCompatClient.ChatRequest.class,

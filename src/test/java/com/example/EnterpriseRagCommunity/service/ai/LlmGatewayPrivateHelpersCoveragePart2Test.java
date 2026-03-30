@@ -2,36 +2,18 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.TextNode;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
-import java.net.ConnectException;
-import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 class LlmGatewayPrivateHelpersCoveragePart2Test {
@@ -46,6 +28,39 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         Method m = LlmGateway.class.getDeclaredMethod(name, paramTypes);
         m.setAccessible(true);
         return m.invoke(gateway, args);
+    }
+
+    private static Object callCallChatOnceSingleLambda(LlmGateway gateway, Class<?>[] paramTypes, Object... args) throws Exception {
+        for (Method m : LlmGateway.class.getDeclaredMethods()) {
+            if (!m.getName().startsWith("lambda$callChatOnceSingle$")) {
+                continue;
+            }
+            Class<?>[] actual = m.getParameterTypes();
+            boolean isStatic = java.lang.reflect.Modifier.isStatic(m.getModifiers());
+            int shift = (isStatic && actual.length == paramTypes.length + 1 && actual[0] == LlmGateway.class) ? 1 : 0;
+            if (actual.length != paramTypes.length + shift) {
+                continue;
+            }
+            boolean match = true;
+            for (int i = 0; i < paramTypes.length; i++) {
+                if (!actual[i + shift].equals(paramTypes[i])) {
+                    match = false;
+                    break;
+                }
+            }
+            if (!match) {
+                continue;
+            }
+            m.setAccessible(true);
+            if (shift == 1) {
+                Object[] invokeArgs = new Object[args.length + 1];
+                invokeArgs[0] = gateway;
+                System.arraycopy(args, 0, invokeArgs, 1, args.length);
+                return m.invoke(null, invokeArgs);
+            }
+            return isStatic ? m.invoke(null, args) : m.invoke(gateway, args);
+        }
+        throw new NoSuchMethodException("lambda$callChatOnceSingle$* with expected signature not found");
     }
 
     private static LlmGateway gateway() {
@@ -92,10 +107,8 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.CheckedTaskSupplier<String> supplier = (LlmCallQueueService.CheckedTaskSupplier<String>) inv.getArgument(4);
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.ResultMetricsExtractor<String> extractor = (LlmCallQueueService.ResultMetricsExtractor<String>) inv.getArgument(5);
+            LlmCallQueueService.CheckedTaskSupplier<String> supplier = inv.getArgument(4);
+            LlmCallQueueService.ResultMetricsExtractor<String> extractor = inv.getArgument(5);
             LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
             when(task.id()).thenReturn("task-x");
             String raw = supplier.get(task);
@@ -152,7 +165,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                     new AtomicReference<String>(), Map.of("x-h", "1")
             );
             assertNotNull(r2);
-            assertTrue(mocked.constructed().size() >= 1);
+            assertFalse(mocked.constructed().isEmpty());
         }
     }
 
@@ -189,10 +202,8 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.CheckedTaskSupplier<String> supplier = (LlmCallQueueService.CheckedTaskSupplier<String>) inv.getArgument(4);
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.ResultMetricsExtractor<String> extractor = (LlmCallQueueService.ResultMetricsExtractor<String>) inv.getArgument(5);
+            LlmCallQueueService.CheckedTaskSupplier<String> supplier = inv.getArgument(4);
+            LlmCallQueueService.ResultMetricsExtractor<String> extractor = inv.getArgument(5);
             LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
             when(task.id()).thenReturn("task-z");
             doAnswer(a -> {
@@ -260,7 +271,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                     null, Map.of()
             );
             assertNotNull(r3);
-            assertTrue(mocked.constructed().size() >= 1);
+            assertFalse(mocked.constructed().isEmpty());
         }
 
         assertTrue(outputs.contains("hello"));
@@ -356,7 +367,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         @SuppressWarnings("unchecked")
         List<ChatMessage> cleaned = (List<ChatMessage>) callInstance(gateway, "sanitizeMessagesForTrace", new Class[]{List.class}, mixed);
         assertEquals(3, cleaned.size());
-        assertEquals(null, cleaned.get(0).content());
+        assertNull(cleaned.get(0).content());
         assertEquals(1234, cleaned.get(1).content());
 
         assertNull(callInstance(gateway, "stripTraceLines", new Class[]{String.class}, (Object) null));
@@ -408,9 +419,8 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
             LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics> supplier =
-                    (LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics>) inv.getArgument(4);
+                    inv.getArgument(4);
             return supplier.get(mock(LlmCallQueueService.TaskHandle.class));
         });
 
@@ -438,7 +448,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                     }, 1, null
             );
             assertNotNull(usage);
-            assertTrue(mocked.constructed().size() >= 1);
+            assertFalse(mocked.constructed().isEmpty());
         }
     }
 
@@ -479,10 +489,8 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.CheckedTaskSupplier<String> supplier = (LlmCallQueueService.CheckedTaskSupplier<String>) inv.getArgument(4);
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.ResultMetricsExtractor<String> extractor = (LlmCallQueueService.ResultMetricsExtractor<String>) inv.getArgument(5);
+            LlmCallQueueService.CheckedTaskSupplier<String> supplier = inv.getArgument(4);
+            LlmCallQueueService.ResultMetricsExtractor<String> extractor = inv.getArgument(5);
             LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
             doAnswer(a -> {
                 outputs.add(String.valueOf(a.getArguments()[0]));
@@ -510,7 +518,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                     0.2, null, null, null, null, null, Map.of(), 1, null, Map.of()
             );
             assertNotNull(r);
-            assertTrue(mocked.constructed().size() >= 1);
+            assertFalse(mocked.constructed().isEmpty());
         }
         assertTrue(outputs.stream().anyMatch(String::isEmpty));
     }
@@ -556,10 +564,8 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.CheckedTaskSupplier<String> supplier = (LlmCallQueueService.CheckedTaskSupplier<String>) inv.getArgument(4);
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.ResultMetricsExtractor<String> extractor = (LlmCallQueueService.ResultMetricsExtractor<String>) inv.getArgument(5);
+            LlmCallQueueService.CheckedTaskSupplier<String> supplier = inv.getArgument(4);
+            LlmCallQueueService.ResultMetricsExtractor<String> extractor = inv.getArgument(5);
             LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
             doAnswer(a -> {
                 outputs.add(String.valueOf(a.getArguments()[0]));
@@ -610,7 +616,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                     LlmQueueTaskType.TEXT_CHAT, dashProvider, "m1", List.of(ChatMessage.user("hi")),
                     0.3, null, null, null, Boolean.FALSE, null, Map.of(), 1, null, Map.of()
             );
-            assertTrue(mocked.constructed().size() >= 1);
+            assertFalse(mocked.constructed().isEmpty());
         }
 
         assertTrue(outputs.stream().anyMatch("RAW_TEXT"::equals));
@@ -649,10 +655,8 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.CheckedTaskSupplier<String> supplier = (LlmCallQueueService.CheckedTaskSupplier<String>) inv.getArgument(4);
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.ResultMetricsExtractor<String> extractor = (LlmCallQueueService.ResultMetricsExtractor<String>) inv.getArgument(5);
+            LlmCallQueueService.CheckedTaskSupplier<String> supplier = inv.getArgument(4);
+            LlmCallQueueService.ResultMetricsExtractor<String> extractor = inv.getArgument(5);
             LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
             when(task.id()).thenReturn("task-usage");
             String raw = supplier.get(task);
@@ -696,7 +700,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             );
             assertNotNull(r1);
             assertNotNull(r2);
-            assertTrue(mocked.constructed().size() >= 1);
+            assertFalse(mocked.constructed().isEmpty());
         }
     }
 
@@ -731,10 +735,8 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
                 org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.CheckedTaskSupplier<String> supplier = (LlmCallQueueService.CheckedTaskSupplier<String>) inv.getArgument(4);
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.ResultMetricsExtractor<String> extractor = (LlmCallQueueService.ResultMetricsExtractor<String>) inv.getArgument(5);
+            LlmCallQueueService.CheckedTaskSupplier<String> supplier = inv.getArgument(4);
+            LlmCallQueueService.ResultMetricsExtractor<String> extractor = inv.getArgument(5);
             String raw = supplier.get(mock(LlmCallQueueService.TaskHandle.class));
             extractor.extract(raw);
             return raw;
@@ -749,7 +751,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         try (org.mockito.MockedConstruction<OpenAiCompatClient> mocked = org.mockito.Mockito.mockConstruction(
                 OpenAiCompatClient.class,
                 (m, c) -> when(m.chatCompletionsOnce(org.mockito.ArgumentMatchers.any()))
-                        .thenReturn((String) null)
+                        .thenReturn(null)
                         .thenReturn("{\"choices\":[{\"message\":{\"content\":\"tail\"}}]}")
         )) {
             Object r1 = callInstance(
@@ -776,7 +778,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             );
             assertNotNull(r1);
             assertNotNull(r2);
-            assertTrue(mocked.constructed().size() >= 1);
+            assertFalse(mocked.constructed().isEmpty());
         }
     }
 
@@ -816,10 +818,8 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 org.mockito.ArgumentMatchers.eq(true)
         )).thenReturn(new TokenCountService.TokenDecision(11, 7, 18, null, "mock"));
 
-        @SuppressWarnings("unchecked")
-        LlmCallQueueService.UsageMetrics usage = (LlmCallQueueService.UsageMetrics) callInstance(
+        LlmCallQueueService.UsageMetrics usage = (LlmCallQueueService.UsageMetrics) callCallChatOnceSingleLambda(
                 gateway,
-                "lambda$callChatOnceSingle$2",
                 new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
                 List.of(ChatMessage.user("hi")),
                 false,
@@ -892,7 +892,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 new Class[]{Integer.class, Integer.class, Integer.class},
                 null, 5, 3
         );
-        assertEquals(null, m2.promptTokens());
+        assertNull(m2.promptTokens());
         assertEquals(5, m2.completionTokens());
         assertEquals(3, m2.totalTokens());
 
@@ -915,7 +915,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 "qwen3-32b"
         );
         assertEquals(1, unchanged.size());
-        assertTrue(unchanged.get(0).content() instanceof List<?>);
+        assertInstanceOf(List.class, unchanged.getFirst().content());
     }
 
     @Test
@@ -984,35 +984,30 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 (TokenCountService.TokenDecision) null
         );
 
-        @SuppressWarnings("unchecked")
         List<ChatMessage> patched = List.of(ChatMessage.user("hi"));
-        Object u1 = callInstance(
+        Object u1 = callCallChatOnceSingleLambda(
                 gateway,
-                "lambda$callChatOnceSingle$2",
                 new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
                 patched, false, LlmQueueTaskType.TEXT_CHAT, provider, "m1", Boolean.TRUE, "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}"
         );
         assertNotNull(u1);
 
-        Object u2 = callInstance(
+        Object u2 = callCallChatOnceSingleLambda(
                 gateway,
-                "lambda$callChatOnceSingle$2",
                 new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
                 patched, true, LlmQueueTaskType.TEXT_CHAT, provider, "m1", Boolean.FALSE, "{\"choices\":[{\"message\":{\"content\":\"<think>x</think>ok\"}}]}"
         );
         assertNotNull(u2);
 
-        Object u3 = callInstance(
+        Object u3 = callCallChatOnceSingleLambda(
                 gateway,
-                "lambda$callChatOnceSingle$2",
                 new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
                 patched, false, LlmQueueTaskType.MODERATION_CHUNK, provider, "m1", Boolean.TRUE, "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}"
         );
         assertNotNull(u3);
 
-        Object u4 = callInstance(
+        Object u4 = callCallChatOnceSingleLambda(
                 gateway,
-                "lambda$callChatOnceSingle$2",
                 new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
                 patched, false, LlmQueueTaskType.MODERATION_CHUNK, provider, "m1", Boolean.TRUE, "{\"choices\":[{\"message\":{\"content\":\"ok2\"}}]}"
         );

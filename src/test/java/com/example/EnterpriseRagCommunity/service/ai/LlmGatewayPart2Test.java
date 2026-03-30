@@ -1,14 +1,10 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
-import java.io.IOException;
-import java.lang.reflect.Constructor;
 import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,7 +14,6 @@ import org.mockito.MockedConstruction;
 import org.mockito.Mockito;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -35,29 +30,6 @@ import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 
 
 class LlmGatewayPart2Test {
-
-    private static ResolvedProvider provider(String id, String type, String defaultChatModel) {
-        return new ResolvedProvider(
-                id,
-                type,
-                "http://example.invalid",
-                "k",
-                defaultChatModel,
-                "e-default",
-                Map.of(),
-                Map.of(),
-                1000,
-                1000
-        );
-    }
-
-    private static AiEmbeddingService.EmbeddingResult dummyEmbedding(String model) {
-        return new AiEmbeddingService.EmbeddingResult(new float[]{1.0f, 2.0f}, 2, model);
-    }
-
-    private static AiRerankService.RerankResult dummyRerank(String providerId, String model) {
-        return new AiRerankService.RerankResult(List.of(new AiRerankService.RerankHit(0, 0.9)), 10, providerId, model);
-    }
 
 
     @Test
@@ -94,11 +66,10 @@ class LlmGatewayPart2Test {
                 anyString(),
                 anyString(),
                 anyInt(),
-                any(LlmCallQueueService.CheckedTaskSupplier.class),
-                any(LlmCallQueueService.ResultMetricsExtractor.class)
+                org.mockito.ArgumentMatchers.<LlmCallQueueService.CheckedTaskSupplier<String>>any(),
+                any()
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
-            LlmCallQueueService.CheckedTaskSupplier<String> sup = (LlmCallQueueService.CheckedTaskSupplier<String>) inv.getArgument(4);
+            LlmCallQueueService.CheckedTaskSupplier<String> sup = inv.getArgument(4);
             return sup.get(task);
         });
 
@@ -137,11 +108,11 @@ class LlmGatewayPart2Test {
                     Boolean.TRUE
             );
 
-            OpenAiCompatClient client = mocked.constructed().get(0);
+            OpenAiCompatClient client = mocked.constructed().getFirst();
             ArgumentCaptor<OpenAiCompatClient.ChatRequest> reqCap = ArgumentCaptor.forClass(OpenAiCompatClient.ChatRequest.class);
             verify(client).chatCompletionsOnce(reqCap.capture());
             List<ChatMessage> sent = reqCap.getValue().messages();
-            assertTrue(String.valueOf(sent.get(sent.size() - 1).content()).contains("/think"));
+            assertTrue(String.valueOf(sent.getLast().content()).contains("/think"));
         }
     }
 
@@ -206,18 +177,17 @@ class LlmGatewayPart2Test {
                 anyString(),
                 anyString(),
                 anyInt(),
-                any(LlmCallQueueService.CheckedTaskSupplier.class),
-                any(LlmCallQueueService.ResultMetricsExtractor.class)
+                org.mockito.ArgumentMatchers.<LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics>>any(),
+                any()
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
             LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics> sup =
-                    (LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics>) inv.getArgument(4);
+                    inv.getArgument(4);
             return sup.get(task);
         });
 
         OpenAiCompatClient.SseLineConsumer consumer = mock(OpenAiCompatClient.SseLineConsumer.class);
 
-        try (MockedConstruction<OpenAiCompatClient> mocked = Mockito.mockConstruction(
+        try (MockedConstruction<OpenAiCompatClient> ignored = Mockito.mockConstruction(
                 OpenAiCompatClient.class,
                 (mock, _ctx) -> Mockito.doAnswer(inv -> {
                     OpenAiCompatClient.ChatRequest req = inv.getArgument(0);
@@ -302,18 +272,17 @@ class LlmGatewayPart2Test {
                 anyString(),
                 anyString(),
                 anyInt(),
-                any(LlmCallQueueService.CheckedTaskSupplier.class),
-                any(LlmCallQueueService.ResultMetricsExtractor.class)
+                org.mockito.ArgumentMatchers.<LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics>>any(),
+                any()
         )).thenAnswer(inv -> {
-            @SuppressWarnings("unchecked")
             LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics> sup =
-                    (LlmCallQueueService.CheckedTaskSupplier<LlmCallQueueService.UsageMetrics>) inv.getArgument(4);
+                    inv.getArgument(4);
             return sup.get(task);
         });
 
         OpenAiCompatClient.SseLineConsumer consumer = mock(OpenAiCompatClient.SseLineConsumer.class);
 
-        try (MockedConstruction<OpenAiCompatClient> mocked = Mockito.mockConstruction(
+        try (MockedConstruction<OpenAiCompatClient> ignored = Mockito.mockConstruction(
                 OpenAiCompatClient.class,
                 (mock, _ctx) -> Mockito.doAnswer(inv -> {
                     OpenAiCompatClient.SseLineConsumer c = inv.getArgument(1);

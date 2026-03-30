@@ -97,7 +97,7 @@ const VectorIndexForm: React.FC = () => {
   const [page, setPage] = useState(0);
   const [indicesPage, setIndicesPage] = useState<SpringPage<VectorIndexDTO> | null>(null);
 
-  const indices = indicesPage?.content ?? [];
+    const indices = useMemo(() => indicesPage?.content ?? [], [indicesPage]);
   const [selectedIndexId, setSelectedIndexId] = useState<number | ''>('');
 
   const selectedIndex = useMemo(() => {

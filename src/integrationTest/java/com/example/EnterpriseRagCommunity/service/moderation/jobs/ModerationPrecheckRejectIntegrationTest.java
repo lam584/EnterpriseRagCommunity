@@ -28,8 +28,8 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueR
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationRulesRepository;
 import com.example.EnterpriseRagCommunity.testsupport.MySqlTestcontainersBase;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.TestConstructor;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -40,37 +40,42 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class ModerationPrecheckRejectIntegrationTest extends MySqlTestcontainersBase {
 
-    @Autowired
-    private ModerationRuleAutoRunner ruleRunner;
+    private final ModerationRuleAutoRunner ruleRunner;
+    private final ModerationVecAutoRunner vecRunner;
+    private final UsersRepository usersRepository;
+    private final ModerationQueueRepository queueRepository;
+    private final ModerationRulesRepository rulesRepository;
+    private final ModerationPolicyConfigRepository policyConfigRepository;
+    private final BoardsRepository boardsRepository;
+    private final PostsRepository postsRepository;
+    private final CommentsRepository commentsRepository;
+    private final ModerationPipelineStepRepository pipelineStepRepository;
 
-    @Autowired
-    private ModerationVecAutoRunner vecRunner;
-
-    @Autowired
-    private UsersRepository usersRepository;
-
-    @Autowired
-    private ModerationQueueRepository queueRepository;
-
-    @Autowired
-    private ModerationRulesRepository rulesRepository;
-
-    @Autowired
-    private ModerationPolicyConfigRepository policyConfigRepository;
-
-        @Autowired
-        private BoardsRepository boardsRepository;
-
-        @Autowired
-        private PostsRepository postsRepository;
-
-        @Autowired
-        private CommentsRepository commentsRepository;
-
-        @Autowired
-        private ModerationPipelineStepRepository pipelineStepRepository;
+    ModerationPrecheckRejectIntegrationTest(
+            ModerationRuleAutoRunner ruleRunner,
+            ModerationVecAutoRunner vecRunner,
+            UsersRepository usersRepository,
+            ModerationQueueRepository queueRepository,
+            ModerationRulesRepository rulesRepository,
+            ModerationPolicyConfigRepository policyConfigRepository,
+            BoardsRepository boardsRepository,
+            PostsRepository postsRepository,
+            CommentsRepository commentsRepository,
+            ModerationPipelineStepRepository pipelineStepRepository) {
+        this.ruleRunner = ruleRunner;
+        this.vecRunner = vecRunner;
+        this.usersRepository = usersRepository;
+        this.queueRepository = queueRepository;
+        this.rulesRepository = rulesRepository;
+        this.policyConfigRepository = policyConfigRepository;
+        this.boardsRepository = boardsRepository;
+        this.postsRepository = postsRepository;
+        this.commentsRepository = commentsRepository;
+        this.pipelineStepRepository = pipelineStepRepository;
+    }
 
     @Test
     void ruleActionReject_shouldEndWithRejectedStatus() {
@@ -195,49 +200,49 @@ class ModerationPrecheckRejectIntegrationTest extends MySqlTestcontainersBase {
         return usersRepository.save(user);
     }
 
-        private CommentsEntity createWhitespaceComment(Long userId) {
-                BoardsEntity board = new BoardsEntity();
-                board.setName("it-board-" + UUID.randomUUID().toString().replace("-", ""));
-                board.setDescription("it");
-                board.setVisible(true);
-                board.setSortOrder(0);
-                board.setCreatedAt(LocalDateTime.now());
-                board.setUpdatedAt(LocalDateTime.now());
-                board = boardsRepository.save(board);
+    private CommentsEntity createWhitespaceComment(Long userId) {
+        BoardsEntity board = new BoardsEntity();
+        board.setName("it-board-" + UUID.randomUUID().toString().replace("-", ""));
+        board.setDescription("it");
+        board.setVisible(true);
+        board.setSortOrder(0);
+        board.setCreatedAt(LocalDateTime.now());
+        board.setUpdatedAt(LocalDateTime.now());
+        board = boardsRepository.save(board);
 
-                PostsEntity post = new PostsEntity();
-                post.setBoardId(board.getId());
-                post.setAuthorId(userId);
-                post.setTitle("t");
-                post.setContent("x");
-                post.setContentLength(1);
-                post.setIsChunkedReview(false);
-                post.setContentFormat(ContentFormat.PLAIN);
-                post.setStatus(PostStatus.PENDING);
-                post.setIsDeleted(false);
-                post.setMetadata(new LinkedHashMap<>());
-                post = postsRepository.save(post);
+        PostsEntity post = new PostsEntity();
+        post.setBoardId(board.getId());
+        post.setAuthorId(userId);
+        post.setTitle("t");
+        post.setContent("x");
+        post.setContentLength(1);
+        post.setIsChunkedReview(false);
+        post.setContentFormat(ContentFormat.PLAIN);
+        post.setStatus(PostStatus.PENDING);
+        post.setIsDeleted(false);
+        post.setMetadata(new LinkedHashMap<>());
+        post = postsRepository.save(post);
 
-                CommentsEntity comment = new CommentsEntity();
-                comment.setPostId(post.getId());
-                comment.setAuthorId(userId);
-                comment.setContent("   ");
-                comment.setStatus(CommentStatus.PENDING);
-                comment.setIsDeleted(false);
-                comment.setMetadata(new LinkedHashMap<>());
-                comment.setCreatedAt(LocalDateTime.now());
-                comment.setUpdatedAt(LocalDateTime.now());
-                return commentsRepository.save(comment);
-        }
+        CommentsEntity comment = new CommentsEntity();
+        comment.setPostId(post.getId());
+        comment.setAuthorId(userId);
+        comment.setContent("   ");
+        comment.setStatus(CommentStatus.PENDING);
+        comment.setIsDeleted(false);
+        comment.setMetadata(new LinkedHashMap<>());
+        comment.setCreatedAt(LocalDateTime.now());
+        comment.setUpdatedAt(LocalDateTime.now());
+        return commentsRepository.save(comment);
+    }
 
-        private ModerationQueueEntity createQueue(Long contentId, QueueStage stage) {
-                return createQueue(ContentType.PROFILE, contentId, stage);
-        }
+    private ModerationQueueEntity createQueue(Long contentId, QueueStage stage) {
+        return createQueue(ContentType.PROFILE, contentId, stage);
+    }
 
-        private ModerationQueueEntity createQueue(ContentType contentType, Long contentId, QueueStage stage) {
+    private ModerationQueueEntity createQueue(ContentType contentType, Long contentId, QueueStage stage) {
         ModerationQueueEntity q = new ModerationQueueEntity();
         q.setCaseType(ModerationCaseType.CONTENT);
-                q.setContentType(contentType);
+        q.setContentType(contentType);
         q.setContentId(contentId);
         q.setStatus(QueueStatus.PENDING);
         q.setCurrentStage(stage);
@@ -252,13 +257,13 @@ class ModerationPrecheckRejectIntegrationTest extends MySqlTestcontainersBase {
     }
 
     private void upsertProfilePolicy(Map<String, Object> config) {
-                upsertPolicy(ContentType.PROFILE, config);
-        }
+        upsertPolicy(ContentType.PROFILE, config);
+    }
 
-        private void upsertPolicy(ContentType contentType, Map<String, Object> config) {
-                ModerationPolicyConfigEntity policy = policyConfigRepository.findByContentType(contentType)
+    private void upsertPolicy(ContentType contentType, Map<String, Object> config) {
+        ModerationPolicyConfigEntity policy = policyConfigRepository.findByContentType(contentType)
                 .orElseGet(ModerationPolicyConfigEntity::new);
-                policy.setContentType(contentType);
+        policy.setContentType(contentType);
         policy.setPolicyVersion("it-precheck-reject");
         policy.setConfig(new LinkedHashMap<>(config));
         policy.setUpdatedAt(LocalDateTime.now());

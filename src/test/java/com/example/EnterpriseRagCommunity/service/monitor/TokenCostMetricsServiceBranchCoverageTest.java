@@ -21,7 +21,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -50,7 +50,7 @@ class TokenCostMetricsServiceBranchCoverageTest {
             String sql = inv.getArgument(0, String.class);
             sqls.add(sql);
             Query q = mock(Query.class);
-            when(q.setParameter(anyString(), any())).thenReturn(q);
+            when(q.setParameter(anyInt(), any())).thenReturn(q);
             List<Object[]> rows;
             int callIndex = sqls.size();
             rows = switch (callIndex) {
@@ -105,7 +105,7 @@ class TokenCostMetricsServiceBranchCoverageTest {
 
         when(em.createNativeQuery(anyString())).thenAnswer(inv -> {
             Query q = mock(Query.class);
-            when(q.setParameter(anyString(), any())).thenReturn(q);
+            when(q.setParameter(anyInt(), any())).thenReturn(q);
             when(q.getResultList()).thenReturn(List.of(
                     new Object[]{" modelA ", 100L, null},
                     new Object[]{"modelB", -5L, 10L},
@@ -187,7 +187,7 @@ class TokenCostMetricsServiceBranchCoverageTest {
             String sql = inv.getArgument(0, String.class);
             sqls.add(sql);
             Query q = mock(Query.class);
-            when(q.setParameter(anyString(), any())).thenReturn(q);
+            when(q.setParameter(anyInt(), any())).thenReturn(q);
             when(q.getResultList()).thenReturn(Arrays.asList(
                     new Object[]{Timestamp.valueOf(LocalDateTime.of(2020, 1, 1, 10, 10)), 1L, 2L},
                     new Object[]{Timestamp.valueOf(LocalDateTime.of(2020, 1, 1, 12, 5)), 3L, 4L},

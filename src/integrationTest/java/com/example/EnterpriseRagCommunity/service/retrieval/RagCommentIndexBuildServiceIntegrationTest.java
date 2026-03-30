@@ -16,8 +16,8 @@ import com.example.EnterpriseRagCommunity.testsupport.MySqlTestcontainersBase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.TestConstructor;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
 import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
@@ -44,19 +44,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class RagCommentIndexBuildServiceIntegrationTest extends MySqlTestcontainersBase {
 
-    @Autowired
-    private RagCommentIndexBuildService buildService;
-
-    @Autowired
-    private VectorIndicesRepository vectorIndicesRepository;
-
-    @Autowired
-    private CommentsRepository commentsRepository;
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    private final RagCommentIndexBuildService buildService;
+    private final VectorIndicesRepository vectorIndicesRepository;
+    private final CommentsRepository commentsRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     @MockitoBean
     private ElasticsearchTemplate esTemplate;
@@ -72,6 +66,17 @@ class RagCommentIndexBuildServiceIntegrationTest extends MySqlTestcontainersBase
 
     @MockitoBean
     private LlmRoutingService llmRoutingService;
+
+    RagCommentIndexBuildServiceIntegrationTest(
+            RagCommentIndexBuildService buildService,
+            VectorIndicesRepository vectorIndicesRepository,
+            CommentsRepository commentsRepository,
+            JdbcTemplate jdbcTemplate) {
+        this.buildService = buildService;
+        this.vectorIndicesRepository = vectorIndicesRepository;
+        this.commentsRepository = commentsRepository;
+        this.jdbcTemplate = jdbcTemplate;
+    }
 
     @BeforeEach
     void setUpMocks() throws Exception {
@@ -196,14 +201,16 @@ class RagCommentIndexBuildServiceIntegrationTest extends MySqlTestcontainersBase
         verify(ragCommentsIndexService).ensureIndex(eq(updated.getCollectionName()), eq(4));
     }
 
-    private long insertAndReturnId(String sql, Object... args) {
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(con -> {
-            return prepareStatement(con, sql, args);
-        }, keyHolder);
-        Number key = keyHolder.getKey();
-        if (key == null) throw new IllegalStateException("insert did not return generated key");
-        return key.longValue();
+    private static long numberLike(Object v) {
+        return switch (v) {
+            case null -> 0L;
+            case Number n -> n.longValue();
+            case String s -> {
+                String t = s.trim();
+                yield t.isBlank() ? 0L : Long.parseLong(t);
+            }
+            default -> throw new IllegalArgumentException("not a number: " + v.getClass().getName());
+        };
     }
 
     private static PreparedStatement prepareStatement(Connection con, String sql, Object... args) throws java.sql.SQLException {
@@ -214,14 +221,11 @@ class RagCommentIndexBuildServiceIntegrationTest extends MySqlTestcontainersBase
         return ps;
     }
 
-    private static long numberLike(Object v) {
-        if (v == null) return 0L;
-        if (v instanceof Number n) return n.longValue();
-        if (v instanceof String s) {
-            String t = s.trim();
-            if (t.isBlank()) return 0L;
-            return Long.parseLong(t);
-        }
-        throw new IllegalArgumentException("not a number: " + v.getClass().getName());
+    private long insertAndReturnId(String sql, Object... args) {
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(con -> prepareStatement(con, sql, args), keyHolder);
+        Number key = keyHolder.getKey();
+        if (key == null) throw new IllegalStateException("insert did not return generated key");
+        return key.longValue();
     }
 }

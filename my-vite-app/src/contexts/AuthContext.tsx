@@ -44,7 +44,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     setLoading(true);
 
-    const p = (async (): Promise<boolean> => {
+    const p: Promise<boolean> = (async () => {
       try {
         const user = await getCurrentAdmin();
         setCurrentUser(user);
