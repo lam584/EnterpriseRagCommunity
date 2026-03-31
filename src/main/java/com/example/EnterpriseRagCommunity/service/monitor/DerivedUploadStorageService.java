@@ -137,9 +137,9 @@ public class DerivedUploadStorageService {
         }
 
         static Budget fromMap(Map<String, Object> m) {
-            int c = (int) clampLong(asLong(m == null ? null : m.get("maxCount")), 0L, 100000L);
-            long mib = clampLong(asLong(m == null ? null : m.get("maxImageBytes")), 0L, 1024L * 1024 * 1024);
-            long mtb = clampLong(asLong(m == null ? null : m.get("maxTotalBytes")), 0L, 20L * 1024 * 1024 * 1024);
+            int c = (int) clampLong(asLong(m == null ? null : m.get("maxCount")), 100000L);
+            long mib = clampLong(asLong(m.get("maxImageBytes")), 1024L * 1024 * 1024);
+            long mtb = clampLong(asLong(m.get("maxTotalBytes")), 20L * 1024 * 1024 * 1024);
             return new Budget(c, mib, mtb);
         }
 
@@ -153,10 +153,9 @@ public class DerivedUploadStorageService {
             }
         }
 
-        private static long clampLong(long v, long min, long max) {
-            if (v < min) return min;
-            if (v > max) return max;
-            return v;
+        private static long clampLong(long v, long max) {
+            if (v < 0L) return 0L;
+            return Math.min(v, max);
         }
     }
 }

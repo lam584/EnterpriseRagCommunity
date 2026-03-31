@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 public class TokenCountService {
 
     private static final Pattern THINK_BLOCK_PATTERN = Pattern.compile("(?is)<think\\b[^>]*>.*?</think>\\s*");
-    private static final Pattern OK_LIKE_PATTERN = Pattern.compile("(?i)^ok(?:[\\s\\p{Punct}。！？、，．。｡]*)$");
+    private static final Pattern OK_LIKE_PATTERN = Pattern.compile("(?i)^ok[\\s\\p{Punct}。！？、，．｡]*$");
 
     private final OpenSearchTokenizeService openSearchTokenizeService;
 
@@ -107,12 +107,12 @@ public class TokenCountService {
                             if (iu instanceof Map<?, ?> ium) {
                                 Object u = ium.get("url");
                                 if (u instanceof String us && !us.isEmpty()) {
-                                    if (sb.length() > 0) sb.append('\n');
+                                    if (!sb.isEmpty()) sb.append('\n');
                                     sb.append(us);
                                 }
                             }
                         } else {
-                            if (sb.length() > 0) sb.append('\n');
+                            if (!sb.isEmpty()) sb.append('\n');
                             sb.append(String.valueOf(p));
                         }
                     }

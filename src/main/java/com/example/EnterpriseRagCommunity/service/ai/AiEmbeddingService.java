@@ -129,7 +129,6 @@ public class AiEmbeddingService {
                             }
                         } catch (Exception ignore) {
                             promptTokens = null;
-                            totalTokens = null;
                         }
                         if (totalTokens == null) totalTokens = promptTokens;
 

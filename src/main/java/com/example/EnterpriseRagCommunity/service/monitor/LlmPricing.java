@@ -128,13 +128,7 @@ public final class LlmPricing {
             if (!tmp.isEmpty()) tiers = tmp;
         }
 
-        if (defaultIn == null
-                && defaultOut == null
-                && nonThinkingIn == null
-                && nonThinkingOut == null
-                && thinkingIn == null
-                && thinkingOut == null
-                && (tiers == null || tiers.isEmpty())) {
+        if (defaultIn == null && defaultOut == null && nonThinkingIn == null && nonThinkingOut == null && thinkingIn == null && thinkingOut == null && tiers == null) {
             return null;
         }
 

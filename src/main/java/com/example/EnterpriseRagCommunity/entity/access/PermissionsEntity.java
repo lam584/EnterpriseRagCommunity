@@ -20,6 +20,6 @@ public class PermissionsEntity {
     @Column(name = "action", nullable = false, length = 32)
     private String action;
 
-    @Column(name = "description", length = 255)
+    @Column(name = "description")
     private String description;
 }

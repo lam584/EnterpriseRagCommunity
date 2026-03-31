@@ -8,7 +8,6 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 
 @Data
 public class MetricsEventsUpdateDTO {
@@ -17,13 +16,13 @@ public class MetricsEventsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "指标名称")
-    private Optional<@Size(max = 96) String> name = Optional.empty();
+    private @Size(max = 96) String name;
 
     @ApiModelProperty(value = "标签（JSON Map）")
-    private Optional<Map<String, Object>> tags = Optional.empty();
+    private Map<String, Object> tags;
 
     @ApiModelProperty(value = "数值")
-    private Optional<Double> value = Optional.empty();
+    private Double value;
 
     @ApiModelProperty(value = "时间戳(审计，不允许修改)")
     @JsonIgnore

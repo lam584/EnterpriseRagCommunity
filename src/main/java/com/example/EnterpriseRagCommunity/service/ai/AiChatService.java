@@ -10,15 +10,12 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -545,7 +542,9 @@ public class AiChatService {
                         if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.clamp(p, 0.0, 1.0)) {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
-                            cw.setPolicy(contextAssembled.getPolicy());
+                            if (contextAssembled != null) {
+                                cw.setPolicy(contextAssembled.getPolicy());
+                            }
                             cw.setBudgetTokens(contextAssembled.getBudgetTokens());
                             cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
                             cw.setSelectedItems(contextAssembled.getSelected() == null ? 0 : contextAssembled.getSelected().size());
@@ -1137,7 +1136,7 @@ public class AiChatService {
                         : List.of();
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSourcesForDto);
-                if (sourcesText != null && !sourcesText.isBlank()) {
+                if (!sourcesText.isBlank()) {
                     assistantAccum.append("\n\n").append(sourcesText.trim());
                 }
             }
@@ -1360,7 +1359,6 @@ public class AiChatService {
             try {
                 ownerId = a.getOwner() == null ? null : a.getOwner().getId();
             } catch (Exception ignored) {
-                ownerId = null;
             }
             if (ownerId == null || !ownerId.equals(currentUserId)) continue;
             allowedIds.add(id);

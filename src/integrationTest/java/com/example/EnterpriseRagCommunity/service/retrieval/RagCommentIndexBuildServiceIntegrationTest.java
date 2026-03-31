@@ -16,7 +16,6 @@ import com.example.EnterpriseRagCommunity.testsupport.MySqlTestcontainersBase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
 import org.springframework.data.elasticsearch.core.IndexOperations;
@@ -24,6 +23,7 @@ import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.test.context.TestConstructor;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.sql.Connection;
@@ -44,6 +44,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class RagCommentIndexBuildServiceIntegrationTest extends MySqlTestcontainersBase {
 
     private final RagCommentIndexBuildService buildService;
@@ -66,7 +67,6 @@ class RagCommentIndexBuildServiceIntegrationTest extends MySqlTestcontainersBase
     @MockitoBean
     private LlmRoutingService llmRoutingService;
 
-    @Autowired
     RagCommentIndexBuildServiceIntegrationTest(
             RagCommentIndexBuildService buildService,
             VectorIndicesRepository vectorIndicesRepository,

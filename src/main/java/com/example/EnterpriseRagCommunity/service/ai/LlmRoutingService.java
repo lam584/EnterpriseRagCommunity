@@ -2,7 +2,6 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -293,8 +292,8 @@ public class LlmRoutingService {
     private static RouteTarget pickPriorityFallback(List<RouteTarget> candidates) {
         if (candidates == null || candidates.isEmpty()) return null;
         candidates.sort(Comparator
-                    .comparingInt((RouteTarget t) -> t.priority()).reversed()
-                    .thenComparing(Comparator.comparingInt((RouteTarget t) -> t.weight()).reversed())
+                .comparingInt(RouteTarget::priority).reversed()
+                .thenComparing(Comparator.comparingInt(RouteTarget::weight).reversed())
                     .thenComparing(RouteTarget::providerId)
                     .thenComparing(RouteTarget::modelName)
             );
@@ -401,11 +400,8 @@ public class LlmRoutingService {
                 return x;
             });
 
-            if (qps != null && qps > 0.0) {
-                RateState peek = peekRefill(st, nowMs, qps);
-                if (peek.tokens < 1.0) return false;
-            }
-            return true;
+            RateState peek = peekRefill(st, nowMs, qps);
+            return !(peek.tokens < 1.0);
         }
     }
 
@@ -428,11 +424,9 @@ public class LlmRoutingService {
                 x.lastRefillAtMs = nowMs;
                 return x;
             });
-            if (qps != null && qps > 0.0) {
-                refillInPlace(st, nowMs, qps);
-                if (st.tokens < 1.0) return false;
-                st.tokens -= 1.0;
-            }
+            refillInPlace(st, nowMs, qps);
+            if (st.tokens < 1.0) return false;
+            st.tokens -= 1.0;
             st.lastDispatchAtMs = nowMs;
             return true;
         }

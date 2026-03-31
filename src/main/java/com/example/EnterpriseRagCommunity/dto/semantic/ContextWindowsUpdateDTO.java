@@ -8,7 +8,6 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 
 @Data
 public class ContextWindowsUpdateDTO {
@@ -17,19 +16,19 @@ public class ContextWindowsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "检索事件ID")
-    private Optional<Long> eventId = Optional.empty();
+    private Long eventId;
 
     @ApiModelProperty(value = "裁剪策略")
-    private Optional<ContextWindowPolicy> policy = Optional.empty();
+    private ContextWindowPolicy policy;
 
     @ApiModelProperty(value = "上下文总Token数")
-    private Optional<Integer> totalTokens = Optional.empty();
+    private Integer totalTokens;
 
     @ApiModelProperty(value = "入选分片ID集合(JSON)")
-    private Optional<Map<String, Object>> chunkIds = Optional.empty();
+    private Map<String, Object> chunkIds;
 
     @ApiModelProperty(value = "创建时间，审计字段，禁止更新")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }
 

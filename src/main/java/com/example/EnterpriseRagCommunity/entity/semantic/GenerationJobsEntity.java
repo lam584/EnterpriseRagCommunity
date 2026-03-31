@@ -73,7 +73,7 @@ public class GenerationJobsEntity {
     @Column(name = "cost_cents")
     private Integer costCents;
 
-    @Column(name = "error_message", length = 255)
+    @Column(name = "error_message")
     private String errorMessage;
 
     @Column(name = "created_at", nullable = false)

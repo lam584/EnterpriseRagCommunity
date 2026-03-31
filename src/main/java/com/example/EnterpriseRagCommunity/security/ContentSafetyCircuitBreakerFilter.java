@@ -7,6 +7,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -31,15 +32,13 @@ public class ContentSafetyCircuitBreakerFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        if (request == null) return true;
         String path = request.getRequestURI();
         if (path == null) return true;
-        if (path.startsWith("/api/admin/safety/circuit-breaker")) return true;
-        return false;
+        return path.startsWith("/api/admin/safety/circuit-breaker");
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain)
             throws ServletException, IOException {
 
         ContentSafetyCircuitBreakerConfigDTO cfg = circuitBreakerService.getConfig();

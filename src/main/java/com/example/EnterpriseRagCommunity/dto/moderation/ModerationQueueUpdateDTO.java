@@ -9,7 +9,6 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class ModerationQueueUpdateDTO {
@@ -18,22 +17,22 @@ public class ModerationQueueUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "内容类型", example = "POST")
-    private Optional<ContentType> contentType = Optional.empty();
+    private ContentType contentType;
 
     @ApiModelProperty(value = "内容ID", example = "123")
-    private Optional<Long> contentId = Optional.empty();
+    private Long contentId;
 
     @ApiModelProperty(value = "状态", example = "REVIEWING")
-    private Optional<QueueStatus> status = Optional.empty();
+    private QueueStatus status;
 
     @ApiModelProperty(value = "当前阶段", example = "RULE")
-    private Optional<QueueStage> currentStage = Optional.empty();
+    private QueueStage currentStage;
 
     @ApiModelProperty(value = "优先级", example = "5")
-    private Optional<Integer> priority = Optional.empty();
+    private Integer priority;
 
     @ApiModelProperty(value = "指派审核员用户ID", example = "200")
-    private Optional<Long> assignedToId = Optional.empty();
+    private Long assignedToId;
 
     @ApiModelProperty(value = "创建时间(不可修改)")
     @JsonIgnore

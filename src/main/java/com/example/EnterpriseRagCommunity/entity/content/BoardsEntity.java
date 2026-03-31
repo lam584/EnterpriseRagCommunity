@@ -27,7 +27,7 @@ public class BoardsEntity {
     @Column(name = "name", nullable = false, length = 64)
     private String name;
 
-    @Column(name = "description", length = 255)
+    @Column(name = "description")
     private String description;
 
     @Column(name = "visible", nullable = false)

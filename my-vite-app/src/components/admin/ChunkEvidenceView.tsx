@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import {useEffect, useMemo, useState} from 'react';
 import ImageLightbox from '../ui/ImageLightbox';
-import { adminGetModerationChunkLogContent, type ModerationChunkContentPreview } from '../../services/moderationChunkReviewLogsService';
-import { expandEvidenceContext } from '../../utils/evidence-context-display';
+import {
+  adminGetModerationChunkLogContent,
+  type ModerationChunkContentPreview
+} from '../../services/moderationChunkReviewLogsService';
+import {expandEvidenceContext} from '../../utils/evidence-context-display';
 
 type EvidenceAnchor = { beforeContext: string; afterContext?: string };
 type ParsedEvidence = { raw: string; text: string; anchor?: EvidenceAnchor; imagePlaceholders: string[]; imageId?: string };
@@ -50,7 +53,7 @@ function parseAnchorFromObject(o: Record<string, unknown>): EvidenceAnchor | und
 
 function extractImagePlaceholders(text: string): string[] {
   const out = new Set<string>();
-  const re = /\[\[IMAGE_(\d+)\]\]/g;
+  const re = /\[\[IMAGE_(\d+)]]/g;
   for (;;) {
     const m = re.exec(text);
     if (!m) break;
@@ -235,8 +238,7 @@ export default function ChunkEvidenceView({ chunkId, evidence, compact, maxThumb
       {items.length ? (
         <div className={compact ? 'space-y-1' : 'space-y-1.5'}>
           {items.map((it, i) => {
-            const anchorSnippet = it.anchor ? pickEvidenceByAnchor(it.anchor, preview ?? null) : null;
-            const snippet = anchorSnippet;
+            const snippet = it.anchor ? pickEvidenceByAnchor(it.anchor, preview ?? null) : null;
             const modelText = it.text ? it.text.trim() : '';
             const suspiciousText = isSuspiciousEvidenceText(modelText);
             const expandedContext = expandEvidenceContext({

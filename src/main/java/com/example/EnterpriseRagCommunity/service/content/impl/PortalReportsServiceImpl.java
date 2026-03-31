@@ -157,26 +157,8 @@ public class PortalReportsServiceImpl implements PortalReportsService {
         return out;
     }
 
-    private void tryWriteReportSnapshot(ModerationQueueEntity q, ReportsEntity rep, Map<String, Object> targetSnapshot) {
-        try {
-            if (q == null || q.getId() == null || rep == null || rep.getId() == null) return;
-            ModerationActionsEntity a = new ModerationActionsEntity();
-            a.setQueueId(q.getId());
-            a.setActorUserId(rep.getReporterId());
-            a.setAction(ActionType.NOTE);
-            a.setReason("REPORT_SNAPSHOT");
-            java.util.LinkedHashMap<String, Object> snap = new java.util.LinkedHashMap<>();
-            String snapshotId = "report:" + rep.getId() + (rep.getCreatedAt() == null ? "" : (":at:" + rep.getCreatedAt().toString()));
-            snap.put("content_snapshot_id", snapshotId);
-            snap.put("report_id", rep.getId());
-            snap.put("target_type", rep.getTargetType() == null ? null : rep.getTargetType().name());
-            snap.put("target_id", rep.getTargetId());
-            if (targetSnapshot != null && !targetSnapshot.isEmpty()) snap.put("target_snapshot", targetSnapshot);
-            a.setSnapshot(snap);
-            a.setCreatedAt(LocalDateTime.now());
-            moderationActionsRepository.save(a);
-        } catch (Exception ignore) {
-        }
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     private ReportsEntity saveReport(ReportTargetType targetType, Long targetId, String reasonCode, String reasonText) {
@@ -249,7 +231,6 @@ public class PortalReportsServiceImpl implements PortalReportsService {
                 }
             }
         } catch (Exception ignore) {
-            toHuman = false;
         }
 
         if (!toHuman) {
@@ -428,6 +409,28 @@ public class PortalReportsServiceImpl implements PortalReportsService {
         return out;
     }
 
+    private void tryWriteReportSnapshot(ModerationQueueEntity q, ReportsEntity rep, Map<String, Object> targetSnapshot) {
+        try {
+            if (q == null || q.getId() == null || rep == null || rep.getId() == null) return;
+            ModerationActionsEntity a = new ModerationActionsEntity();
+            a.setQueueId(q.getId());
+            a.setActorUserId(rep.getReporterId());
+            a.setAction(ActionType.NOTE);
+            a.setReason("REPORT_SNAPSHOT");
+            java.util.LinkedHashMap<String, Object> snap = new java.util.LinkedHashMap<>();
+            String snapshotId = "report:" + rep.getId() + (rep.getCreatedAt() == null ? "" : (":at:" + rep.getCreatedAt().toString()));
+            snap.put("content_snapshot_id", snapshotId);
+            snap.put("report_id", rep.getId());
+            snap.put("target_type", enumName(rep.getTargetType()));
+            snap.put("target_id", rep.getTargetId());
+            if (targetSnapshot != null && !targetSnapshot.isEmpty()) snap.put("target_snapshot", targetSnapshot);
+            a.setSnapshot(snap);
+            a.setCreatedAt(LocalDateTime.now());
+            moderationActionsRepository.save(a);
+        } catch (Exception ignore) {
+        }
+    }
+
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
@@ -462,7 +465,6 @@ public class PortalReportsServiceImpl implements PortalReportsService {
         try {
             run = moderationPipelineRunRepository.findFirstByQueueIdOrderByCreatedAtDesc(queueId).orElse(null);
         } catch (Exception ignore) {
-            run = null;
         }
         if (run == null || run.getStatus() != ModerationPipelineRunEntity.RunStatus.RUNNING) return;
         try {

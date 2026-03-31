@@ -191,9 +191,9 @@ public class AiPostTagService {
         if ((lObj >= 0 && rObj <= lObj) || (lArr >= 0 && rArr <= lArr)) {
             throw new IllegalArgumentException("AI 输出包含不完整的 JSON 片段，请重试");
         }
-        if (lObj >= 0 && rObj > lObj && (lArr < 0 || lObj < lArr)) {
+        if (lObj >= 0 && (lArr < 0 || lObj < lArr)) {
             json = json.substring(lObj, rObj + 1);
-        } else if (lArr >= 0 && rArr > lArr) {
+        } else if (lArr >= 0) {
             json = json.substring(lArr, rArr + 1);
         }
 
@@ -212,10 +212,7 @@ public class AiPostTagService {
             throw new IllegalArgumentException("AI 输出无法解析为标签列表，请重试", e);
         }
 
-        LinkedHashSet<String> set = new LinkedHashSet<>();
-        for (String t : tags) {
-            set.add(t);
-        }
+        LinkedHashSet<String> set = new LinkedHashSet<>(tags);
 
         List<String> out = new ArrayList<>(set);
         if (out.size() > expectedCount) {

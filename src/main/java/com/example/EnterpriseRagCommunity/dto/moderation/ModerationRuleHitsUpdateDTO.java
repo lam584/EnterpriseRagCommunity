@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Data
@@ -17,20 +16,20 @@ public class ModerationRuleHitsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "内容类型(可选)")
-    private Optional<ContentType> contentType = Optional.empty();
+    private ContentType contentType;
 
     @ApiModelProperty(value = "内容ID(可选)")
-    private Optional<Long> contentId = Optional.empty();
+    private Long contentId;
 
     @ApiModelProperty(value = "命中规则ID(可选)")
-    private Optional<Long> ruleId = Optional.empty();
+    private Long ruleId;
 
     @Size(max = 255)
     @ApiModelProperty(value = "命中文本片段(可选)")
-    private Optional<String> snippet = Optional.empty();
+    private String snippet;
 
     @ApiModelProperty(value = "命中时间(不可由外部修改)")
     @JsonIgnore
-    private Optional<LocalDateTime> matchedAt = Optional.empty();
+    private LocalDateTime matchedAt;
 }
 

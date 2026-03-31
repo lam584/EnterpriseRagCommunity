@@ -1,10 +1,6 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
 import java.io.IOException;
-import java.net.ConnectException;
-import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -637,6 +633,84 @@ public class LlmGateway {
         return LlmGatewaySupport.shouldSendDashscopeThinking(provider);
     }
 
+    private static void withStreamRetry(
+            int maxAttempts,
+            OpenAiCompatClient.ChatRequest req,
+            OpenAiCompatClient client,
+            OpenAiCompatClient.SseLineConsumer consumer
+    ) throws Exception {
+        int attempts = Math.max(1, maxAttempts);
+        Exception last = null;
+        for (int i = 1; i <= attempts; i++) {
+            AtomicBoolean started = new AtomicBoolean(false);
+            OpenAiCompatClient.SseLineConsumer wrapped = (line) -> {
+                if (!started.get() && line != null) {
+                    String t = line.trim();
+                    if (t.startsWith("data:") && !t.equals("data: [DONE]")) {
+                        started.set(true);
+                    }
+                }
+                consumer.onLine(line);
+            };
+
+            try {
+                client.chatCompletionsStream(req, wrapped);
+                return;
+            } catch (Exception e) {
+                last = e;
+                if (started.get()) {
+                    throw e;
+                }
+                if (i >= attempts || !isRetriable(e)) {
+                    throw e;
+                }
+                sleepBackoff(i);
+            }
+        }
+        throw new IllegalStateException("Unexpected retry exit", last);
+    }
+
+    private static Map<String, Object> filterExtraBody(AiProvidersConfigService.ResolvedProvider provider, Map<String, Object> extraBody) {
+        return LlmGatewaySupport.filterExtraBody(provider, extraBody);
+    }
+
+    private static boolean isRetriable(Throwable e) {
+        return LlmGatewaySupport.isRetriable(e);
+    }
+
+    private static String extractErrorCode(Throwable e) {
+        return LlmGatewaySupport.extractErrorCode(e);
+    }
+
+    private static Integer asIntLoose(JsonNode n) {
+        return LlmGatewaySupport.asIntLoose(n);
+    }
+
+    private static Integer pickIntLoose(JsonNode obj, String... keys) {
+        return LlmGatewaySupport.pickIntLoose(obj, keys);
+    }
+
+    private static LlmCallQueueService.UsageMetrics normalizeOpenAiCompatUsage(Integer prompt, Integer completion, Integer total) {
+        return LlmGatewaySupport.normalizeOpenAiCompatUsage(prompt, completion, total);
+    }
+
+    private static <T> T withRetry(int maxAttempts, CheckedSupplier<T> call) throws Exception {
+        int attempts = Math.max(1, maxAttempts);
+        Exception last = null;
+        for (int i = 1; i <= attempts; i++) {
+            try {
+                return call.get();
+            } catch (Exception e) {
+                last = e;
+                if (i >= attempts || !isRetriable(e)) {
+                    throw e;
+                }
+                sleepBackoff(i);
+            }
+        }
+        throw last == null ? new IllegalStateException("调用失败") : last;
+    }
+
     private ChatOnceInternalResult callChatOnceSingleNoQueue(
             LlmQueueTaskType taskType,
             AiProvidersConfigService.ResolvedProvider provider,
@@ -702,7 +776,7 @@ public class LlmGateway {
                     true
             );
             if (dec != null) {
-                Integer estOut = usage == null ? null : usage.estimatedCompletionTokens();
+                Integer estOut = usage.estimatedCompletionTokens();
                 usage = new LlmCallQueueService.UsageMetrics(dec.tokensIn(), dec.tokensOut(), dec.totalTokens(), estOut);
             }
         }
@@ -718,7 +792,6 @@ public class LlmGateway {
             Double topP,
             Boolean enableThinking,
             Integer thinkingBudget,
-            Map<String, Object> extraBody,
             OpenAiCompatClient.SseLineConsumer consumer,
             int streamAttempts,
             AtomicReference<String> taskIdOut
@@ -726,7 +799,7 @@ public class LlmGateway {
         OpenAiCompatClient client = new OpenAiCompatClient();
         Boolean enableThinkingToSend = shouldSendDashscopeThinking(provider) ? enableThinking : null;
         Integer thinkingBudgetToSend = shouldSendDashscopeThinking(provider) ? thinkingBudget : null;
-        Map<String, Object> extraBodyToSend = filterExtraBody(provider, extraBody);
+        Map<String, Object> extraBodyToSend = filterExtraBody(provider, null);
         OpenAiCompatClient.ChatRequest req = new OpenAiCompatClient.ChatRequest(
                 provider.apiKey(),
                 provider.baseUrl(),
@@ -812,99 +885,208 @@ public class LlmGateway {
         );
     }
 
-    private static Map<String, Object> filterExtraBody(AiProvidersConfigService.ResolvedProvider provider, Map<String, Object> extraBody) {
-        return LlmGatewaySupport.filterExtraBody(provider, extraBody);
-    }
+    public RoutedChatStreamResult chatStreamRouted(
+            LlmQueueTaskType taskType,
+            String providerId,
+            String modelOverride,
+            List<ChatMessage> messages,
+            Double temperature,
+            Double topP,
+            Boolean enableThinking,
+            Integer thinkingBudget,
+            OpenAiCompatClient.SseLineConsumer consumer
+    ) {
+        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.MULTIMODAL_CHAT : taskType;
+        String pid = providerId == null ? null : providerId.trim();
+        String mo = modelOverride == null ? null : modelOverride.trim();
 
-    private static boolean isRetriable(Throwable e) {
-        return LlmGatewaySupport.isRetriable(e);
-    }
-
-    private static String extractErrorCode(Throwable e) {
-        return LlmGatewaySupport.extractErrorCode(e);
-    }
-
-    private static Integer asIntLoose(JsonNode n) {
-        return LlmGatewaySupport.asIntLoose(n);
-    }
-
-    private static final class StreamCallFailedException extends Exception {
-        private final boolean started;
-
-        private StreamCallFailedException(String message, Throwable cause, boolean started) {
-            super(message, cause);
-            this.started = started;
+        if (mo != null && !mo.isBlank()) {
+            AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
+            String model = mo;
+            try {
+                List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
+                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 2, null);
+                return new RoutedChatStreamResult(provider.id(), model, usage);
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
+            }
         }
 
-        public boolean started() {
-            return started;
+        if (pid != null && !pid.isBlank()) {
+            AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
+            String model = provider.defaultChatModel();
+            try {
+                List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
+                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 2, null);
+                return new RoutedChatStreamResult(provider.id(), model, usage);
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
+            }
+        }
+
+        LlmRoutingService.Policy policy = llmRoutingService.getPolicy(tt);
+        Set<LlmRoutingService.TargetId> tried = new java.util.HashSet<>();
+        Exception last = null;
+
+        for (int attempt = 1; attempt <= Math.max(1, policy.maxAttempts()); attempt++) {
+            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(tt, tried);
+            if (target == null) {
+                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                        System.currentTimeMillis(),
+                        "ROUTE_NO_TARGET",
+                        tt.name(),
+                        attempt,
+                        null,
+                        null,
+                        null,
+                        false,
+                        "",
+                        "no eligible target",
+                        0L,
+                        "chatStream"
+                ));
+                break;
+            }
+            tried.add(target.id());
+
+            AiProvidersConfigService.ResolvedProvider provider = resolve(target.providerId());
+            String model = target.modelName();
+            AtomicReference<String> taskIdRef = new AtomicReference<>(null);
+            long startedNs = System.nanoTime();
+
+            try {
+                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                        System.currentTimeMillis(),
+                        "ROUTE_ATTEMPT",
+                        tt.name(),
+                        attempt,
+                        null,
+                        provider.id(),
+                        model,
+                        null,
+                        "",
+                        "",
+                        null,
+                        "chatStream"
+                ));
+                List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
+                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 1, taskIdRef);
+                llmRoutingService.recordSuccess(tt, target);
+                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                        System.currentTimeMillis(),
+                        "ROUTE_OK",
+                        tt.name(),
+                        attempt,
+                        taskIdRef.get(),
+                        provider.id(),
+                        model,
+                        true,
+                        "",
+                        "",
+                        elapsedMs(startedNs),
+                        "chatStream"
+                ));
+                return new RoutedChatStreamResult(provider.id(), model, usage);
+            } catch (StreamCallFailedException e) {
+                last = e;
+                if (e.started()) {
+                    throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
+                }
+                Throwable cause = e.getCause();
+                if (cause == null) {
+                    cause = e;
+                }
+                if (!isRetriable(cause)) {
+                    throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
+                }
+                llmRoutingService.recordFailure(tt, target, extractErrorCode(cause));
+                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                        System.currentTimeMillis(),
+                        "ROUTE_FAIL",
+                        tt.name(),
+                        attempt,
+                        taskIdRef.get(),
+                        provider.id(),
+                        model,
+                        false,
+                        safeErrorCode(cause),
+                        safeErrorMessage(cause),
+                        elapsedMs(startedNs),
+                        "chatStream"
+                ));
+            } catch (Exception e) {
+                last = e;
+                if (!isRetriable(e)) {
+                    throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
+                }
+                llmRoutingService.recordFailure(tt, target, extractErrorCode(e));
+                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                        System.currentTimeMillis(),
+                        "ROUTE_FAIL",
+                        tt.name(),
+                        attempt,
+                        taskIdRef.get(),
+                        provider.id(),
+                        model,
+                        false,
+                        safeErrorCode(e),
+                        safeErrorMessage(e),
+                        elapsedMs(startedNs),
+                        "chatStream"
+                ));
+            }
+        }
+
+        try {
+            AiProvidersConfigService.ResolvedProvider provider = resolve(pickFallbackProviderId(AiProvidersConfigService.ResolvedProvider::defaultChatModel));
+            String model = provider.defaultChatModel();
+            AtomicReference<String> taskIdRef = new AtomicReference<>(null);
+            long startedNs = System.nanoTime();
+            llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                    System.currentTimeMillis(),
+                    "FALLBACK_ATTEMPT",
+                    tt.name(),
+                    null,
+                    null,
+                    provider.id(),
+                    model,
+                    null,
+                    "",
+                    "",
+                    null,
+                    "chatStream"
+            ));
+            List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
+            LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 1, taskIdRef);
+            llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
+                    System.currentTimeMillis(),
+                    "FALLBACK_OK",
+                    tt.name(),
+                    null,
+                    taskIdRef.get(),
+                    provider.id(),
+                    model,
+                    true,
+                    "",
+                    "",
+                    elapsedMs(startedNs),
+                    "chatStream"
+            ));
+            return new RoutedChatStreamResult(provider.id(), model, usage);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            Exception ex = last == null ? e : last;
+            throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + ex.getMessage(), ex);
         }
     }
 
     private interface CheckedSupplier<T> {
         T get() throws Exception;
-    }
-
-    private static Integer pickIntLoose(JsonNode obj, String... keys) {
-        return LlmGatewaySupport.pickIntLoose(obj, keys);
-    }
-
-    private static LlmCallQueueService.UsageMetrics normalizeOpenAiCompatUsage(Integer prompt, Integer completion, Integer total) {
-        return LlmGatewaySupport.normalizeOpenAiCompatUsage(prompt, completion, total);
-    }
-
-    private static <T> T withRetry(int maxAttempts, CheckedSupplier<T> call) throws Exception {
-        int attempts = Math.max(1, maxAttempts);
-        Exception last = null;
-        for (int i = 1; i <= attempts; i++) {
-            try {
-                return call.get();
-            } catch (Exception e) {
-                last = e;
-                if (i >= attempts || !isRetriable(e)) {
-                    throw e;
-                }
-                sleepBackoff(i);
-            }
-        }
-        throw last == null ? new IllegalStateException("调用失败") : last;
-    }
-
-    private static void withStreamRetry(
-            int maxAttempts,
-            OpenAiCompatClient.ChatRequest req,
-            OpenAiCompatClient client,
-            OpenAiCompatClient.SseLineConsumer consumer
-    ) throws Exception {
-        int attempts = Math.max(1, maxAttempts);
-        Exception last = null;
-        for (int i = 1; i <= attempts; i++) {
-            AtomicBoolean started = new AtomicBoolean(false);
-            OpenAiCompatClient.SseLineConsumer wrapped = (line) -> {
-                if (!started.get() && line != null) {
-                    String t = line.trim();
-                    if (t.startsWith("data:") && !t.equals("data: [DONE]")) {
-                        started.set(true);
-                    }
-                }
-                consumer.onLine(line);
-            };
-
-            try {
-                client.chatCompletionsStream(req, wrapped);
-                return;
-            } catch (Exception e) {
-                last = e;
-                if (started.get()) {
-                    throw e;
-                }
-                if (i >= attempts || !isRetriable(e)) {
-                    throw e;
-                }
-                sleepBackoff(i);
-            }
-        }
-        if (last != null) throw last;
     }
 
     private static void callStreamWithRetry(
@@ -1468,203 +1650,16 @@ public class LlmGateway {
         return raw;
     }
 
-    public RoutedChatStreamResult chatStreamRouted(
-            LlmQueueTaskType taskType,
-            String providerId,
-            String modelOverride,
-            List<ChatMessage> messages,
-            Double temperature,
-            Double topP,
-            Boolean enableThinking,
-            Integer thinkingBudget,
-            OpenAiCompatClient.SseLineConsumer consumer
-    ) {
-        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.MULTIMODAL_CHAT : taskType;
-        String pid = providerId == null ? null : providerId.trim();
-        String mo = modelOverride == null ? null : modelOverride.trim();
+    private static final class StreamCallFailedException extends Exception {
+        private final boolean started;
 
-        if (mo != null && !mo.isBlank()) {
-            AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
-            String model = mo;
-            try {
-                List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, null, consumer, 2, null);
-                return new RoutedChatStreamResult(provider.id(), model, usage);
-            } catch (RuntimeException e) {
-                throw e;
-            } catch (Exception e) {
-                throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
-            }
+        private StreamCallFailedException(String message, Throwable cause, boolean started) {
+            super(message, cause);
+            this.started = started;
         }
 
-        if (pid != null && !pid.isBlank()) {
-            AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
-            String model = provider.defaultChatModel();
-            try {
-                List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, null, consumer, 2, null);
-                return new RoutedChatStreamResult(provider.id(), model, usage);
-            } catch (RuntimeException e) {
-                throw e;
-            } catch (Exception e) {
-                throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
-            }
-        }
-
-        LlmRoutingService.Policy policy = llmRoutingService.getPolicy(tt);
-        Set<LlmRoutingService.TargetId> tried = new java.util.HashSet<>();
-        Exception last = null;
-
-        for (int attempt = 1; attempt <= Math.max(1, policy.maxAttempts()); attempt++) {
-            LlmRoutingService.RouteTarget target = llmRoutingService.pickNext(tt, tried);
-            if (target == null) {
-                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
-                        System.currentTimeMillis(),
-                        "ROUTE_NO_TARGET",
-                        tt.name(),
-                        attempt,
-                        null,
-                        null,
-                        null,
-                        false,
-                        "",
-                        "no eligible target",
-                        0L,
-                        "chatStream"
-                ));
-                break;
-            }
-            tried.add(target.id());
-
-            AiProvidersConfigService.ResolvedProvider provider = resolve(target.providerId());
-            String model = target.modelName();
-            AtomicReference<String> taskIdRef = new AtomicReference<>(null);
-            long startedNs = System.nanoTime();
-
-            try {
-                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
-                        System.currentTimeMillis(),
-                        "ROUTE_ATTEMPT",
-                        tt.name(),
-                        attempt,
-                        null,
-                        provider.id(),
-                        model,
-                        null,
-                        "",
-                        "",
-                        null,
-                        "chatStream"
-                ));
-                List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, null, consumer, 1, taskIdRef);
-                llmRoutingService.recordSuccess(tt, target);
-                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
-                        System.currentTimeMillis(),
-                        "ROUTE_OK",
-                        tt.name(),
-                        attempt,
-                        taskIdRef.get(),
-                        provider.id(),
-                        model,
-                        true,
-                        "",
-                        "",
-                        elapsedMs(startedNs),
-                        "chatStream"
-                ));
-                return new RoutedChatStreamResult(provider.id(), model, usage);
-            } catch (StreamCallFailedException e) {
-                last = e;
-                if (e.started()) {
-                    throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
-                }
-                Throwable cause = e.getCause();
-                if (cause == null) {
-                    cause = e;
-                }
-                if (!isRetriable(cause)) {
-                    throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
-                }
-                llmRoutingService.recordFailure(tt, target, extractErrorCode(cause));
-                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
-                        System.currentTimeMillis(),
-                        "ROUTE_FAIL",
-                        tt.name(),
-                        attempt,
-                        taskIdRef.get(),
-                        provider.id(),
-                        model,
-                        false,
-                        safeErrorCode(cause),
-                        safeErrorMessage(cause),
-                        elapsedMs(startedNs),
-                        "chatStream"
-                ));
-            } catch (Exception e) {
-                last = e;
-                if (!isRetriable(e)) {
-                    throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
-                }
-                llmRoutingService.recordFailure(tt, target, extractErrorCode(e));
-                llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
-                        System.currentTimeMillis(),
-                        "ROUTE_FAIL",
-                        tt.name(),
-                        attempt,
-                        taskIdRef.get(),
-                        provider.id(),
-                        model,
-                        false,
-                        safeErrorCode(e),
-                        safeErrorMessage(e),
-                        elapsedMs(startedNs),
-                        "chatStream"
-                ));
-            }
-        }
-
-        try {
-            AiProvidersConfigService.ResolvedProvider provider = resolve(pickFallbackProviderId(AiProvidersConfigService.ResolvedProvider::defaultChatModel));
-            String model = provider.defaultChatModel();
-            AtomicReference<String> taskIdRef = new AtomicReference<>(null);
-            long startedNs = System.nanoTime();
-            llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
-                    System.currentTimeMillis(),
-                    "FALLBACK_ATTEMPT",
-                    tt.name(),
-                    null,
-                    null,
-                    provider.id(),
-                    model,
-                    null,
-                    "",
-                    "",
-                    null,
-                    "chatStream"
-            ));
-            List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-            LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, null, consumer, 1, taskIdRef);
-            llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
-                    System.currentTimeMillis(),
-                    "FALLBACK_OK",
-                    tt.name(),
-                    null,
-                    taskIdRef.get(),
-                    provider.id(),
-                    model,
-                    true,
-                    "",
-                    "",
-                    elapsedMs(startedNs),
-                    "chatStream"
-            ));
-            return new RoutedChatStreamResult(provider.id(), model, usage);
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            Exception ex = last == null ? e : last;
-            throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + ex.getMessage(), ex);
+        public boolean started() {
+            return started;
         }
     }
 

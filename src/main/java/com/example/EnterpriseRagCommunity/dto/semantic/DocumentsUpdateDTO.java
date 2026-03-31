@@ -9,7 +9,6 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 
 @Data
 public class DocumentsUpdateDTO {
@@ -18,32 +17,32 @@ public class DocumentsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "租户ID")
-    private Optional<Long> tenantId = Optional.empty();
+    private Long tenantId;
 
     @ApiModelProperty(value = "来源类型，枚举：POST/COMMENT/FILE/URL")
-    private Optional<DocumentSourceType> sourceType = Optional.empty();
+    private DocumentSourceType sourceType;
 
     @ApiModelProperty(value = "来源对象ID")
-    private Optional<Long> sourceId = Optional.empty();
+    private Long sourceId;
 
     @ApiModelProperty(value = "标题")
     @Size(max = 191)
-    private Optional<String> title = Optional.empty();
+    private String title;
 
     @ApiModelProperty(value = "语言，例如 zh, en")
     @Size(max = 16)
-    private Optional<String> language = Optional.empty();
+    private String language;
 
     @ApiModelProperty(value = "版本号")
-    private Optional<Integer> version = Optional.empty();
+    private Integer version;
 
     @ApiModelProperty(value = "是否有效")
-    private Optional<Boolean> isActive = Optional.empty();
+    private Boolean isActive;
 
     @ApiModelProperty(value = "元数据(JSON)")
-    private Optional<Map<String, Object>> metadata = Optional.empty();
+    private Map<String, Object> metadata;
 
     @ApiModelProperty(value = "创建时间，审计字段，禁止更新")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }

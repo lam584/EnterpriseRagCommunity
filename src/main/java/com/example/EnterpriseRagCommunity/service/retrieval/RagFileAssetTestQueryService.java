@@ -71,7 +71,7 @@ public class RagFileAssetTestQueryService {
             providerToUse = overrideProviderId;
         } else if (fixedProviderId != null) {
             providerToUse = fixedProviderId;
-        } else if (overrideProviderId != null && overrideModel == null) {
+        } else if (overrideProviderId != null) {
             providerToUse = overrideProviderId;
         }
 

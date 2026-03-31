@@ -60,7 +60,7 @@ public class RagChatPostCommentAggregationService {
         if (h == null) return false;
         if (h.getFileAssetId() != null) return true;
         String st = trimOrNull(h.getSourceType());
-        return st != null && "FILE_ASSET".equalsIgnoreCase(st);
+        return "FILE_ASSET".equalsIgnoreCase(st);
     }
 
     public List<RagPostChatRetrievalService.Hit> aggregate(
@@ -74,8 +74,8 @@ public class RagChatPostCommentAggregationService {
         int perPostMaxCommentChunks = safe.getPerPostMaxCommentChunks() == null ? 2 : clampInt(safe.getPerPostMaxCommentChunks(), 0, 50, 2);
         int postContentMaxTokens = safe.getPostContentMaxTokens() == null ? 1200 : clampInt(safe.getPostContentMaxTokens(), 50, 200_000, 1200);
         int commentChunkMaxTokens = safe.getCommentChunkMaxTokens() == null ? 400 : clampInt(safe.getCommentChunkMaxTokens(), 20, 200_000, 400);
-        int perPostMaxAttachmentChunks = Math.max(1, Math.min(3, perPostMaxCommentChunks <= 0 ? 2 : perPostMaxCommentChunks));
-        int attachmentChunkMaxTokens = Math.max(80, Math.min(300, commentChunkMaxTokens));
+        int perPostMaxAttachmentChunks = Math.clamp(perPostMaxCommentChunks <= 0 ? 2 : perPostMaxCommentChunks, 1, 3);
+        int attachmentChunkMaxTokens = Math.clamp(commentChunkMaxTokens, 80, 300);
 
         IncludePostContentPolicy postPolicy = safe.getIncludePostContentPolicy() == null
                 ? IncludePostContentPolicy.ON_COMMENT_HIT
@@ -278,7 +278,6 @@ public class RagChatPostCommentAggregationService {
                 if (c.getId() != null) seenCommentIds.add(c.getId());
                 if (primaryCommentId == null && c.getId() != null) {
                     primaryCommentId = c.getId();
-                    primaryChunkIndex = null;
                 }
 
                 String part = truncateByApproxTokens(trimmed, chunkMaxTokens);
@@ -398,7 +397,7 @@ public class RagChatPostCommentAggregationService {
                     CommentStatus.VISIBLE,
                     PageRequest.of(0, limit, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")))
             );
-            if (page == null || page.getContent() == null || page.getContent().isEmpty()) return List.of();
+            if (page.getContent().isEmpty()) return List.of();
             return page.getContent();
         } catch (Exception ignored) {
             return List.of();

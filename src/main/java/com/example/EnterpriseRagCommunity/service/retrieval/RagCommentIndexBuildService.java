@@ -137,7 +137,7 @@ public class RagCommentIndexBuildService {
         Long cursor = fromCommentId;
         while (true) {
             Page<CommentsEntity> page = commentsRepository.scanVisibleFromId(cursor, PageRequest.of(0, ps, Sort.by(Sort.Direction.ASC, "id")));
-            if (page == null || page.isEmpty()) break;
+            if (page.isEmpty()) break;
 
             for (CommentsEntity c : page.getContent()) {
                 if (c == null) continue;
@@ -428,7 +428,7 @@ public class RagCommentIndexBuildService {
 
         String modelToUse = null;
         String providerToUse = toNonBlankString(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingProviderId"));
-        if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
+        modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
 
         if (modelToUse == null) {
             LlmRoutingService.RouteTarget target = (providerToUse == null)
@@ -454,7 +454,7 @@ public class RagCommentIndexBuildService {
         if (overlap >= maxChars) overlap = Math.max(0, maxChars - 1);
 
         String content = ModerationSampleTextUtils.normalize(c.getContent());
-        if (content == null || content.isBlank()) return;
+        if (content.isBlank()) return;
         List<String> parts = splitWithOverlap(content, maxChars, overlap);
         if (parts.isEmpty()) return;
 

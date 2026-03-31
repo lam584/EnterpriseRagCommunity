@@ -8,7 +8,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class QaSessionsUpdateDTO {
@@ -17,19 +16,19 @@ public class QaSessionsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "所属用户ID，可空")
-    private Optional<Long> userId = Optional.empty();
+    private Long userId;
 
     @ApiModelProperty(value = "会话标题，可空，最长191字符")
     @Size(max = 191)
-    private Optional<String> title = Optional.empty();
+    private String title;
 
     @ApiModelProperty(value = "上下文策略，枚举：RECENT_N/SUMMARIZE/NONE")
-    private Optional<ContextStrategy> contextStrategy = Optional.empty();
+    private ContextStrategy contextStrategy;
 
     @ApiModelProperty(value = "是否有效")
-    private Optional<Boolean> isActive = Optional.empty();
+    private Boolean isActive;
 
     @ApiModelProperty(value = "创建时间，审计字段，禁止更新")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }

@@ -21,7 +21,7 @@ class ModerationLlmAutoRunnerChunkImageSelectionTest {
                 """;
         String chunkText = "hello [[IMAGE_2]] world [[IMAGE_1]]";
 
-        var imgs = ModerationLlmAutoRunner.selectChunkImageInputs(new ObjectMapper(), chunkText, 10L, metaJson);
+        var imgs = ModerationLlmAutoRunner.selectChunkImageInputs(new ObjectMapper(), chunkText, metaJson);
         assertEquals(2, imgs.size());
         assertEquals(10L, imgs.get(0).getFileAssetId());
         assertEquals("http://x/a.png", imgs.get(0).getUrl());
@@ -33,7 +33,7 @@ class ModerationLlmAutoRunnerChunkImageSelectionTest {
         String metaJson = """
                 { "extractedImages": [ { "index": 1, "url": "http://x/a.png", "mimeType": "image/png" } ] }
                 """;
-        var imgs = ModerationLlmAutoRunner.selectChunkImageInputs(new ObjectMapper(), "no images here", 10L, metaJson);
+        var imgs = ModerationLlmAutoRunner.selectChunkImageInputs(new ObjectMapper(), "no images here", metaJson);
         assertEquals(0, imgs.size());
     }
 }

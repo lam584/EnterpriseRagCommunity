@@ -17,7 +17,6 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -294,13 +293,11 @@ public class RagPostIndexBuildService {
                             }
                             cleared = true;
                             clearedOk = true;
-                            clearPending = false;
                         } catch (Exception ex) {
                             try {
                                 deleteIndexViaHttp(indexName);
                                 cleared = true;
                                 clearedOk = true;
-                                clearPending = false;
                             } catch (Exception fallback) {
                                 cleared = false;
                                 clearError = "delete-index failed: " + ex.getMessage() + " | fallback http-delete-index failed: " + fallback.getMessage();
@@ -311,7 +308,6 @@ public class RagPostIndexBuildService {
                         }
                     }
                     indexService.ensureIndex(indexName, fallbackDims);
-                    ensured = true;
                 } catch (Exception ex) {
                     log.warn("Ensure ES index failed without embedding inference. index={}, err={}", indexName, ex.getMessage());
                 }
@@ -428,6 +424,109 @@ public class RagPostIndexBuildService {
         syncSinglePost(vectorIndexId, postId, null, null, null, null, null);
     }
 
+    private static Integer toInt(Object v) {
+        switch (v) {
+            case null -> {
+                return null;
+            }
+            case Number n -> {
+                return n.intValue();
+            }
+            case String s -> {
+                String t = s.trim();
+                if (t.isBlank()) return null;
+                try {
+                    return Integer.parseInt(t);
+                } catch (NumberFormatException ignored) {
+                    return null;
+                }
+            }
+            default -> {
+            }
+        }
+        return null;
+    }
+
+    private void deleteByQuery(String indexName, String body) {
+        if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
+        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
+
+        try {
+            URL url = new URL(endpoint + "/" + indexName.trim() + "/_delete_by_query?conflicts=proceed&refresh=true");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(30_000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
+
+            String payload = body == null ? "{\"query\":{\"match_all\":{}}}" : body;
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(payload.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int code = conn.getResponseCode();
+            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+            String json = is == null ? "" : new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            if (code < 200 || code >= 300) {
+                throw new IllegalStateException("ES delete_by_query HTTP " + code + ": " + json);
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("ES delete_by_query failed: " + e.getMessage(), e);
+        }
+    }
+
+    private void deleteIndexViaHttp(String indexName) {
+        if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
+        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
+
+        try {
+            String idx = URLEncoder.encode(indexName.trim(), StandardCharsets.UTF_8);
+            URL url = new URL(endpoint + "/" + idx + "?ignore_unavailable=true");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("DELETE");
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(30_000);
+            conn.setRequestProperty("Content-Type", "application/json");
+            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
+
+            int code = conn.getResponseCode();
+            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+            String json = is == null ? "" : new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            if ((code >= 200 && code < 300) || code == 404) return;
+            throw new IllegalStateException("ES delete index HTTP " + code + ": " + json);
+        } catch (Exception e) {
+            throw new IllegalStateException("ES delete index failed: " + e.getMessage(), e);
+        }
+    }
+
+    private void touchMetadata(Long vectorIndexId, java.util.function.Consumer<Map<String, Object>> mutator) {
+        if (vectorIndexId == null) return;
+        VectorIndicesEntity vi = vectorIndicesRepository.findById(vectorIndexId).orElse(null);
+        if (vi == null) return;
+        Map<String, Object> meta0 = vi.getMetadata();
+        Map<String, Object> meta = meta0 == null ? new LinkedHashMap<>() : new LinkedHashMap<>(meta0);
+        if (mutator != null) mutator.accept(meta);
+        vi.setMetadata(meta);
+        vectorIndicesRepository.save(vi);
+    }
+
+    private static Long toLong(Object v) {
+        if (v == null) return null;
+        if (v instanceof Number n) return n.longValue();
+        if (v instanceof String s) {
+            String t = s.trim();
+            if (t.isBlank()) return null;
+            try {
+                return Long.parseLong(t);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
     public void syncSinglePost(Long vectorIndexId,
                                Long postId,
                                Integer chunkMaxChars,
@@ -476,7 +575,7 @@ public class RagPostIndexBuildService {
             providerToUse = overrideProviderId;
         } else if (fixedProviderId != null) {
             providerToUse = fixedProviderId;
-        } else if (overrideProviderId != null && overrideModel == null) {
+        } else if (overrideProviderId != null) {
             providerToUse = overrideProviderId;
         }
 
@@ -572,101 +671,6 @@ public class RagPostIndexBuildService {
             esTemplate.indexOps(IndexCoordinates.of(indexName)).refresh();
         } catch (Exception ignored) {
         }
-    }
-
-    private void deleteByQuery(String indexName, String body) {
-        if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
-        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
-
-        try {
-            URL url = new URL(endpoint + "/" + indexName.trim() + "/_delete_by_query?conflicts=proceed&refresh=true");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(30_000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
-
-            String payload = body == null ? "{\"query\":{\"match_all\":{}}}" : body;
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(payload.getBytes(StandardCharsets.UTF_8));
-            }
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String json = is == null ? "" : new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("ES delete_by_query HTTP " + code + ": " + json);
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("ES delete_by_query failed: " + e.getMessage(), e);
-        }
-    }
-
-    private void deleteIndexViaHttp(String indexName) {
-        if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
-        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
-
-        try {
-            String idx = URLEncoder.encode(indexName.trim(), StandardCharsets.UTF_8);
-            URL url = new URL(endpoint + "/" + idx + "?ignore_unavailable=true");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("DELETE");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(30_000);
-            conn.setRequestProperty("Content-Type", "application/json");
-            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String json = is == null ? "" : new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            if ((code >= 200 && code < 300) || code == 404) return;
-            throw new IllegalStateException("ES delete index HTTP " + code + ": " + json);
-        } catch (Exception e) {
-            throw new IllegalStateException("ES delete index failed: " + e.getMessage(), e);
-        }
-    }
-
-    private void touchMetadata(Long vectorIndexId, java.util.function.Consumer<Map<String, Object>> mutator) {
-        if (vectorIndexId == null) return;
-        VectorIndicesEntity vi = vectorIndicesRepository.findById(vectorIndexId).orElse(null);
-        if (vi == null) return;
-        Map<String, Object> meta0 = vi.getMetadata();
-        Map<String, Object> meta = meta0 == null ? new LinkedHashMap<>() : new LinkedHashMap<>(meta0);
-        if (mutator != null) mutator.accept(meta);
-        vi.setMetadata(meta);
-        vectorIndicesRepository.save(vi);
-    }
-
-    private static Long toLong(Object v) {
-        if (v == null) return null;
-        if (v instanceof Number n) return n.longValue();
-        if (v instanceof String s) {
-            String t = s.trim();
-            if (t.isBlank()) return null;
-            try {
-                return Long.parseLong(t);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    private static Integer toInt(Object v) {
-        if (v == null) return null;
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s) {
-            String t = s.trim();
-            if (t.isBlank()) return null;
-            try {
-                return Integer.parseInt(t);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
     }
 
     private static String toNonBlankString(Object v) {

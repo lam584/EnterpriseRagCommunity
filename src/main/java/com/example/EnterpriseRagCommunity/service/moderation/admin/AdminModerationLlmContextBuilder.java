@@ -221,68 +221,14 @@ class AdminModerationLlmContextBuilder {
         return null;
     }
 
-    String buildQueueTraceLine(LlmModerationTestRequest req) {
-        if (req == null || req.getQueueId() == null) return null;
-        ModerationQueueEntity q = queueRepository.findById(req.getQueueId()).orElse(null);
-        if (q == null) return null;
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
+    }
 
-        Long postId = null;
-        List<Long> fileAssetIds = new ArrayList<>();
-
-        if (q.getContentType() == ContentType.POST) {
-            postId = q.getContentId();
-            org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
-                    0,
-                    50,
-                    org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.asc("createdAt"), org.springframework.data.domain.Sort.Order.asc("id"))
-            );
-            var page = postAttachmentsRepository.findByPostId(postId, pageable);
-            if (page != null && page.getContent() != null) {
-                for (var a : page.getContent()) {
-                    if (a == null || a.getFileAssetId() == null) continue;
-                    fileAssetIds.add(a.getFileAssetId());
-                }
-            }
-        }
-
-        Map<Long, String> extractionStatusById = new HashMap<>();
-        Map<Long, Integer> extractedCharsById = new HashMap<>();
-        if (!fileAssetIds.isEmpty()) {
-            try {
-                for (var ex : fileAssetExtractionsRepository.findAllById(fileAssetIds)) {
-                    if (ex == null || ex.getFileAssetId() == null) continue;
-                    String st = ex.getExtractStatus() == null ? null : ex.getExtractStatus().name();
-                    extractionStatusById.put(ex.getFileAssetId(), st == null ? "UNKNOWN" : st);
-                    String t = ex.getExtractedText();
-                    if (t == null) t = "";
-                    extractedCharsById.put(ex.getFileAssetId(), t.length());
-                }
-            } catch (Exception ignore) {
-            }
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("TRACE queueId=").append(q.getId());
-        if (postId != null) sb.append(" postId=").append(postId);
-        if (!fileAssetIds.isEmpty()) sb.append(" fileAssetIds=").append(fileAssetIds);
-        if (!fileAssetIds.isEmpty()) {
-            sb.append(" fileAssets=");
-            int take = Math.min(20, fileAssetIds.size());
-            sb.append('[');
-            for (int i = 0; i < take; i++) {
-                Long id = fileAssetIds.get(i);
-                if (id == null) continue;
-                String st = extractionStatusById.get(id);
-                if (st == null) st = "MISSING";
-                Integer chars = extractedCharsById.get(id);
-                if (chars == null) chars = 0;
-                if (i > 0) sb.append(',');
-                sb.append("{id=").append(id).append(",st=").append(st).append(",chars=").append(chars).append('}');
-            }
-            if (fileAssetIds.size() > take) sb.append(",...");
-            sb.append(']');
-        }
-        return sb.toString();
+    private static String buildSyntheticSnapshotId(ModerationQueueEntity q) {
+        if (q == null || q.getId() == null || q.getContentType() == null || q.getContentId() == null) return null;
+        String t = q.getUpdatedAt() == null ? "" : q.getUpdatedAt().toString();
+        return "moderation:" + q.getContentType().name().toLowerCase(Locale.ROOT) + ":" + q.getContentId() + ":queue:" + q.getId() + (t.isBlank() ? "" : (":at:" + t));
     }
 
     String buildPolicyContextBlock(LlmModerationTestRequest req, boolean useQueue) {
@@ -307,34 +253,6 @@ class AdminModerationLlmContextBuilder {
         }
         sb.append("policy_json=").append(json);
         return sb.toString();
-    }
-
-    String buildReportsBlock(ReportTargetType targetType, Long targetId) {
-        if (targetType == null || targetId == null) return null;
-        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
-                0,
-                10,
-                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.desc("createdAt"), org.springframework.data.domain.Sort.Order.desc("id"))
-        );
-        var page = reportsRepository.findByTargetTypeAndTargetId(targetType, targetId, pageable);
-        if (page == null || page.getContent() == null || page.getContent().isEmpty()) return null;
-
-        List<String> lines = new ArrayList<>();
-        for (var r : page.getContent()) {
-            if (r == null) continue;
-            if (r.getStatus() != ReportStatus.PENDING && r.getStatus() != ReportStatus.REVIEWING) continue;
-            String code = r.getReasonCode() == null ? "" : r.getReasonCode().trim();
-            String text = r.getReasonText() == null ? "" : r.getReasonText().trim();
-            if (code.isEmpty() && text.isEmpty()) continue;
-            if (!text.isEmpty()) {
-                lines.add("- " + code + ": " + text);
-            } else {
-                lines.add("- " + code);
-            }
-            if (lines.size() >= 3) break;
-        }
-        if (lines.isEmpty()) return null;
-        return ("[REPORTS]\n" + String.join("\n", lines)).trim();
     }
 
     QueueCtx resolveQueueCtx(LlmModerationTestRequest req, boolean useQueue) {
@@ -381,42 +299,69 @@ class AdminModerationLlmContextBuilder {
         return uc.isEmpty() ? null : uc;
     }
 
-    List<Map<String, Object>> resolveRelatedOcr(QueueCtx ctx) {
-        if (ctx == null || ctx.queue() == null) return List.of();
-        Long contentId = ctx.queue().getContentId();
-        if (contentId == null) return List.of();
+    String buildQueueTraceLine(LlmModerationTestRequest req) {
+        if (req == null || req.getQueueId() == null) return null;
+        ModerationQueueEntity q = queueRepository.findById(req.getQueueId()).orElse(null);
+        if (q == null) return null;
 
-        List<Map<String, Object>> ocrs = new ArrayList<>();
+        Long postId = null;
+        List<Long> fileAssetIds = new ArrayList<>();
 
-        if (ctx.queue().getContentType() == ContentType.POST) {
+        if (q.getContentType() == ContentType.POST) {
+            postId = q.getContentId();
+            org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                    0,
+                    50,
+                    org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.asc("createdAt"), org.springframework.data.domain.Sort.Order.asc("id"))
+            );
+            var page = postAttachmentsRepository.findByPostId(postId, pageable);
+            if (page != null) {
+                page.getContent();
+                for (var a : page.getContent()) {
+                    if (a == null || a.getFileAssetId() == null) continue;
+                    fileAssetIds.add(a.getFileAssetId());
+                }
+            }
+        }
+
+        Map<Long, String> extractionStatusById = new HashMap<>();
+        Map<Long, Integer> extractedCharsById = new HashMap<>();
+        if (!fileAssetIds.isEmpty()) {
             try {
-                var page = postAttachmentsRepository.findByPostId(
-                        contentId,
-                        PageRequest.of(0, 50, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")))
-                );
-                if (page != null && page.getContent() != null) {
-                    List<Long> faIds = new ArrayList<>();
-                    for (var a : page.getContent()) {
-                        if (a != null && a.getFileAssetId() != null) faIds.add(a.getFileAssetId());
-                    }
-                    if (!faIds.isEmpty()) {
-                        for (var ex : fileAssetExtractionsRepository.findAllById(faIds)) {
-                            if (ex == null) continue;
-                            String t = ex.getExtractedText();
-                            if (t != null && !t.isBlank()) {
-                                Map<String, Object> ocr = new LinkedHashMap<>();
-                                ocr.put("image_id", String.valueOf(ex.getFileAssetId()));
-                                ocr.put("ocr_text", t.trim());
-                                ocr.put("ocr_confidence", 1.0);
-                                ocrs.add(ocr);
-                            }
-                        }
-                    }
+                for (var ex : fileAssetExtractionsRepository.findAllById(fileAssetIds)) {
+                    if (ex == null || ex.getFileAssetId() == null) continue;
+                    String st = enumName(ex.getExtractStatus());
+                    extractionStatusById.put(ex.getFileAssetId(), st == null ? "UNKNOWN" : st);
+                    String t = ex.getExtractedText();
+                    if (t == null) t = "";
+                    extractedCharsById.put(ex.getFileAssetId(), t.length());
                 }
             } catch (Exception ignore) {
             }
         }
-        return ocrs;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("TRACE queueId=").append(q.getId());
+        if (postId != null) sb.append(" postId=").append(postId);
+        if (!fileAssetIds.isEmpty()) sb.append(" fileAssetIds=").append(fileAssetIds);
+        if (!fileAssetIds.isEmpty()) {
+            sb.append(" fileAssets=");
+            int take = Math.min(20, fileAssetIds.size());
+            sb.append('[');
+            for (int i = 0; i < take; i++) {
+                Long id = fileAssetIds.get(i);
+                if (id == null) continue;
+                String st = extractionStatusById.get(id);
+                if (st == null) st = "MISSING";
+                Integer chars = extractedCharsById.get(id);
+                if (chars == null) chars = 0;
+                if (i > 0) sb.append(',');
+                sb.append("{id=").append(id).append(",st=").append(st).append(",chars=").append(chars).append('}');
+            }
+            if (fileAssetIds.size() > take) sb.append(",...");
+            sb.append(']');
+        }
+        return sb.toString();
     }
 
     private List<RiskTagItem> resolveActiveRiskTagItems() {
@@ -724,6 +669,126 @@ class AdminModerationLlmContextBuilder {
         return out.isEmpty() ? null : out;
     }
 
+    String buildReportsBlock(ReportTargetType targetType, Long targetId) {
+        if (targetType == null || targetId == null) return null;
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(
+                0,
+                10,
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.desc("createdAt"), org.springframework.data.domain.Sort.Order.desc("id"))
+        );
+        var page = reportsRepository.findByTargetTypeAndTargetId(targetType, targetId, pageable);
+        if (page.getContent().isEmpty()) return null;
+
+        List<String> lines = new ArrayList<>();
+        for (var r : page.getContent()) {
+            if (r == null) continue;
+            if (r.getStatus() != ReportStatus.PENDING && r.getStatus() != ReportStatus.REVIEWING) continue;
+            String code = r.getReasonCode() == null ? "" : r.getReasonCode().trim();
+            String text = r.getReasonText() == null ? "" : r.getReasonText().trim();
+            if (code.isEmpty() && text.isEmpty()) continue;
+            if (!text.isEmpty()) {
+                lines.add("- " + code + ": " + text);
+            } else {
+                lines.add("- " + code);
+            }
+            if (lines.size() >= 3) break;
+        }
+        if (lines.isEmpty()) return null;
+        return ("[REPORTS]\n" + String.join("\n", lines)).trim();
+    }
+
+    List<Map<String, Object>> resolveRelatedOcr(QueueCtx ctx) {
+        if (ctx == null || ctx.queue() == null) return List.of();
+        Long contentId = ctx.queue().getContentId();
+        if (contentId == null) return List.of();
+
+        List<Map<String, Object>> ocrs = new ArrayList<>();
+
+        if (ctx.queue().getContentType() == ContentType.POST) {
+            try {
+                var page = postAttachmentsRepository.findByPostId(
+                        contentId,
+                        PageRequest.of(0, 50, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")))
+                );
+                if (page != null) {
+                    page.getContent();
+                    List<Long> faIds = new ArrayList<>();
+                    for (var a : page.getContent()) {
+                        if (a != null && a.getFileAssetId() != null) faIds.add(a.getFileAssetId());
+                    }
+                    if (!faIds.isEmpty()) {
+                        for (var ex : fileAssetExtractionsRepository.findAllById(faIds)) {
+                            if (ex == null) continue;
+                            String t = ex.getExtractedText();
+                            if (t != null && !t.isBlank()) {
+                                Map<String, Object> ocr = new LinkedHashMap<>();
+                                ocr.put("image_id", String.valueOf(ex.getFileAssetId()));
+                                ocr.put("ocr_text", t.trim());
+                                ocr.put("ocr_confidence", 1.0);
+                                ocrs.add(ocr);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+        }
+        return ocrs;
+    }
+
+    private String resolveSnapshotId(ModerationQueueEntity q) {
+        if (q == null || q.getId() == null) return null;
+        try {
+            var actions = moderationActionsRepository.findAllByQueueId(q.getId());
+            if (actions != null) {
+                String best = null;
+                LocalDateTime bestAt = null;
+                for (var a : actions) {
+                    if (a == null || a.getSnapshot() == null) continue;
+                    Object id = a.getSnapshot().get("content_snapshot_id");
+                    if (id == null) continue;
+                    String sid = String.valueOf(id).trim();
+                    if (sid.isBlank()) continue;
+                    LocalDateTime at = a.getCreatedAt();
+                    if (bestAt == null || (at != null && at.isAfter(bestAt))) {
+                        bestAt = at;
+                        best = sid;
+                    }
+                }
+                if (best != null) return best;
+            }
+        } catch (Exception ignore) {
+        }
+        return buildSyntheticSnapshotId(q);
+    }
+
+    private Map<String, Object> resolveReportProfileSnapshotFields(ModerationQueueEntity q) {
+        if (q == null || q.getId() == null) return null;
+        try {
+            var actions = moderationActionsRepository.findAllByQueueId(q.getId());
+            if (actions == null || actions.isEmpty()) return null;
+            com.example.EnterpriseRagCommunity.entity.moderation.ModerationActionsEntity best = null;
+            LocalDateTime bestAt = null;
+            for (var a : actions) {
+                if (a == null) continue;
+                if (a.getSnapshot() == null) continue;
+                if (a.getReason() == null || !a.getReason().equalsIgnoreCase("REPORT_SNAPSHOT")) continue;
+                Map<String, Object> snap = a.getSnapshot();
+                Map<String, Object> target = asMap(snap.get("target_snapshot"));
+                if (target == null || target.isEmpty()) continue;
+                LocalDateTime at = a.getCreatedAt();
+                if (bestAt == null || (at != null && at.isAfter(bestAt))) {
+                    bestAt = at;
+                    best = a;
+                }
+            }
+            if (best == null) return null;
+            return asMap(best.getSnapshot().get("target_snapshot"));
+        } catch (Exception ignore) {
+            return null;
+        }
+    }
+
     private Map<String, Object> buildReportContext(ReportTargetType targetType, Long targetId, QueueCtx ctx, String reviewStage) {
         if (targetType == null || targetId == null) return null;
         if (reviewStage == null || !reviewStage.equalsIgnoreCase("reported")) return null;
@@ -742,7 +807,7 @@ class AdminModerationLlmContextBuilder {
                 org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Order.desc("createdAt"), org.springframework.data.domain.Sort.Order.desc("id"))
         );
         var page = reportsRepository.findByTargetTypeAndTargetId(targetType, targetId, pageable);
-        if (page == null || page.getContent() == null || page.getContent().isEmpty()) return null;
+        if (page.getContent().isEmpty()) return null;
 
         LocalDateTime windowStart = LocalDateTime.now().minusMinutes(windowMinutes);
         LinkedHashSet<Long> uniqueReporters = new LinkedHashSet<>();
@@ -803,65 +868,6 @@ class AdminModerationLlmContextBuilder {
         return out;
     }
 
-    private String resolveSnapshotId(ModerationQueueEntity q) {
-        if (q == null || q.getId() == null) return null;
-        try {
-            var actions = moderationActionsRepository.findAllByQueueId(q.getId());
-            if (actions != null) {
-                String best = null;
-                LocalDateTime bestAt = null;
-                for (var a : actions) {
-                    if (a == null || a.getSnapshot() == null) continue;
-                    Object id = a.getSnapshot().get("content_snapshot_id");
-                    if (id == null) continue;
-                    String sid = String.valueOf(id).trim();
-                    if (sid.isBlank()) continue;
-                    LocalDateTime at = a.getCreatedAt();
-                    if (bestAt == null || (at != null && at.isAfter(bestAt))) {
-                        bestAt = at;
-                        best = sid;
-                    }
-                }
-                if (best != null) return best;
-            }
-        } catch (Exception ignore) {
-        }
-        return buildSyntheticSnapshotId(q);
-    }
-
-    private Map<String, Object> resolveReportProfileSnapshotFields(ModerationQueueEntity q) {
-        if (q == null || q.getId() == null) return null;
-        try {
-            var actions = moderationActionsRepository.findAllByQueueId(q.getId());
-            if (actions == null || actions.isEmpty()) return null;
-            com.example.EnterpriseRagCommunity.entity.moderation.ModerationActionsEntity best = null;
-            LocalDateTime bestAt = null;
-            for (var a : actions) {
-                if (a == null) continue;
-                if (a.getSnapshot() == null) continue;
-                if (a.getReason() == null || !a.getReason().equalsIgnoreCase("REPORT_SNAPSHOT")) continue;
-                Map<String, Object> snap = a.getSnapshot();
-                Map<String, Object> target = asMap(snap.get("target_snapshot"));
-                if (target == null || target.isEmpty()) continue;
-                LocalDateTime at = a.getCreatedAt();
-                if (bestAt == null || (at != null && at.isAfter(bestAt))) {
-                    bestAt = at;
-                    best = a;
-                }
-            }
-            if (best == null) return null;
-            return asMap(best.getSnapshot().get("target_snapshot"));
-        } catch (Exception ignore) {
-            return null;
-        }
-    }
-
-    private static String buildSyntheticSnapshotId(ModerationQueueEntity q) {
-        if (q == null || q.getId() == null || q.getContentType() == null || q.getContentId() == null) return null;
-        String t = q.getUpdatedAt() == null ? "" : q.getUpdatedAt().toString();
-        return "moderation:" + q.getContentType().name().toLowerCase(Locale.ROOT) + ":" + q.getContentId() + ":queue:" + q.getId() + (t.isBlank() ? "" : (":at:" + t));
-    }
-
     private String buildPostFilesBlock(Long postId) {
         if (postId == null) return null;
         try {
@@ -869,7 +875,7 @@ class AdminModerationLlmContextBuilder {
                     postId,
                     PageRequest.of(0, 50, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")))
             );
-            if (page == null || page.getContent() == null || page.getContent().isEmpty()) return null;
+            if (page.getContent().isEmpty()) return null;
             LinkedHashMap<Long, String> fileNameById = new LinkedHashMap<>();
             for (var a : page.getContent()) {
                 if (a == null || a.getFileAssetId() == null) continue;
@@ -893,7 +899,7 @@ class AdminModerationLlmContextBuilder {
                 String name = entry.getValue();
                 var ex = exById.get(faId);
                 if (ex == null) continue;
-                if (ex.getExtractStatus() == null || ex.getExtractStatus().name() == null) continue;
+                if (ex.getExtractStatus() == null) continue;
                 String status = ex.getExtractStatus().name();
                 String t = ex.getExtractedText();
                 if (t == null) t = "";
@@ -927,48 +933,6 @@ class AdminModerationLlmContextBuilder {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private String buildPostWebBlock(Long postId, String postContent) {
-        if (postId == null) return null;
-        StringBuilder scan = new StringBuilder();
-        if (postContent != null && !postContent.isBlank()) {
-            scan.append(postContent).append('\n');
-        }
-
-        int budget = 500_000;
-        try {
-            var page = postAttachmentsRepository.findByPostId(
-                    postId,
-                    PageRequest.of(0, 50, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")))
-            );
-            if (page != null && page.getContent() != null && !page.getContent().isEmpty()) {
-                LinkedHashSet<Long> ids = new LinkedHashSet<>();
-                for (var a : page.getContent()) {
-                    if (a == null || a.getFileAssetId() == null) continue;
-                    ids.add(a.getFileAssetId());
-                }
-                if (!ids.isEmpty()) {
-                    for (var ex : fileAssetExtractionsRepository.findAllById(ids)) {
-                        if (ex == null) continue;
-                        String t = ex.getExtractedText();
-                        if (t == null || t.isBlank()) continue;
-                        String trimmed = t.trim();
-                        int take = Math.min(trimmed.length(), Math.max(0, budget));
-                        if (take <= 0) break;
-                        scan.append(trimmed, 0, take).append('\n');
-                        budget -= take;
-                        if (budget <= 0) break;
-                    }
-                }
-            }
-        } catch (Exception ignore) {
-        }
-
-        List<String> urls = webContentFetchService.extractUrls(scan.toString());
-        if (urls == null || urls.isEmpty()) return null;
-        Map<String, Object> meta = webContentFetchService.fetchUrlsToMeta(urls);
-        return webContentFetchService.buildWebBlock(meta);
     }
 
     private static Object deepGet(Map<String, Object> root, String path) {
@@ -1047,5 +1011,50 @@ class AdminModerationLlmContextBuilder {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private String buildPostWebBlock(Long postId, String postContent) {
+        if (postId == null) return null;
+        StringBuilder scan = new StringBuilder();
+        if (postContent != null && !postContent.isBlank()) {
+            scan.append(postContent).append('\n');
+        }
+
+        int budget = 500_000;
+        try {
+            var page = postAttachmentsRepository.findByPostId(
+                    postId,
+                    PageRequest.of(0, 50, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")))
+            );
+            if (page != null) {
+                page.getContent();
+                if (!page.getContent().isEmpty()) {
+                    LinkedHashSet<Long> ids = new LinkedHashSet<>();
+                    for (var a : page.getContent()) {
+                        if (a == null || a.getFileAssetId() == null) continue;
+                        ids.add(a.getFileAssetId());
+                    }
+                    if (!ids.isEmpty()) {
+                        for (var ex : fileAssetExtractionsRepository.findAllById(ids)) {
+                            if (ex == null) continue;
+                            String t = ex.getExtractedText();
+                            if (t == null || t.isBlank()) continue;
+                            String trimmed = t.trim();
+                            int take = Math.clamp(budget, 0, trimmed.length());
+                            if (take <= 0) break;
+                            scan.append(trimmed, 0, take).append('\n');
+                            budget -= take;
+                            if (budget <= 0) break;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignore) {
+        }
+
+        List<String> urls = webContentFetchService.extractUrls(scan.toString());
+        if (urls == null || urls.isEmpty()) return null;
+        Map<String, Object> meta = webContentFetchService.fetchUrlsToMeta(urls);
+        return webContentFetchService.buildWebBlock(meta);
     }
 }

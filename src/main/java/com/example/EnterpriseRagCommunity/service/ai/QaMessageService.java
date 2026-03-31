@@ -171,12 +171,16 @@ public class QaMessageService {
         if (m == null) return out;
         out.put("id", m.getId());
         out.put("sessionId", m.getSessionId());
-        out.put("role", m.getRole() == null ? null : m.getRole().name());
+        out.put("role", enumName(m.getRole()));
         out.put("contentLen", m.getContent() == null ? 0 : m.getContent().length());
         out.put("model", m.getModel());
         out.put("tokensIn", m.getTokensIn());
         out.put("tokensOut", m.getTokensOut());
         out.put("isFavorite", m.getIsFavorite());
         return out;
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 }

@@ -3,7 +3,7 @@ export function normalizeCitationContext(text: string): string {
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/`[^`]*`/g, ' ')
     .replace(/!\[[^\]]*]\([^)]*\)/g, ' ')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]+)]\([^)]*\)/g, '$1')
     .replace(/[#>*_~]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -16,7 +16,7 @@ export type CitationSnippetLike = {
 
 const FENCED_CODE_RE = /```[\s\S]*?```/g;
 const INLINE_CODE_RE = /`[^`\n]+`/g;
-const QUOTED_CITATION_RE = /(?:\\)?([“"「『])([^“"”「」『』\n]{2,120}?)(?:\\)?([”"」』])((?:\s*\[(\d{1,3})\](?!\())+)/g;
+const QUOTED_CITATION_RE = /\\?([“"「『])([^“"”「」『』\n]{2,120}?)\\?([”"」』])((?:\s*\[(\d{1,3})](?!\())+)/g;
 const ANSWER_HIGHLIGHT_CLASS = 'rounded bg-yellow-200 px-0.5';
 
 function escapeRegExp(s: string): string {
@@ -166,7 +166,7 @@ export function buildCitationExactQuoteTerms(md: string): Map<number, string[]> 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   const collect = (txt: string) => {
-    for (const m of txt.matchAll(/\[(\d{1,3})\](?!\()/g)) {
+    for (const m of txt.matchAll(/\[(\d{1,3})](?!\()/g)) {
       const idx = Number(m[1]);
       if (!Number.isFinite(idx) || idx <= 0) continue;
       const pos = m.index ?? 0;

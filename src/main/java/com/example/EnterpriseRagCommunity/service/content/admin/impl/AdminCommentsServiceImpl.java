@@ -216,7 +216,9 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
             }
 
             if (!predicates.isEmpty()) {
-                query.where(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+                if (query != null) {
+                    query.where(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+                }
             }
             return query.getRestriction();
         };

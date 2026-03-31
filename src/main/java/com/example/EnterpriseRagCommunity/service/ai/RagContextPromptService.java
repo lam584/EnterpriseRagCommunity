@@ -252,7 +252,7 @@ public class RagContextPromptService {
                     bestIdx = i;
                 }
             }
-            if (best == null || bestIdx < 0) break;
+            if (best == null) break;
             remaining.remove(bestIdx);
             int tok = best.tokens == null ? 0 : best.tokens;
             int remainingBudget = Math.max(0, budgetTokens - used);
@@ -394,7 +394,7 @@ public class RagContextPromptService {
         Map<String, Object> stats = new HashMap<>();
         stats.put("budgetTokens", r.getBudgetTokens());
         stats.put("usedTokens", r.getUsedTokens());
-        stats.put("policy", r.getPolicy() == null ? null : r.getPolicy().name());
+        stats.put("policy", enumName(r.getPolicy()));
         return Map.of(
                 "ids", ids,
                 "items", items,
@@ -433,6 +433,10 @@ public class RagContextPromptService {
         String extra = "引用来源时请尽量使用短引文并保持与来源原文逐字一致；每条引文必须使用成对中文引号“”包裹，不要混用半角双引号或转义反斜杠，再在引文后紧跟对应编号（例如：“原文片段”[1]）。";
         if (base.contains("逐字一致") && base.contains("中文引号“”")) return base;
         return base + "\n" + extra;
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     static String renderSourcesText(CitationConfigDTO cfg, List<CitationSource> sources) {

@@ -45,7 +45,7 @@ public class UserRoleLinksEntity {
     @Column(name = "assigned_by")
     private Long assignedBy;
 
-    @Column(name = "assigned_reason", length = 255)
+    @Column(name = "assigned_reason")
     private String assignedReason;
 
     @Column(name = "created_at")

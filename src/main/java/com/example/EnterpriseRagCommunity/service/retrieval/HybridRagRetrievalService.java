@@ -189,7 +189,6 @@ public class HybridRagRetrievalService {
                 out.setRerankDegraded(true);
                 out.setRerankDegradeReason(e.getMessage());
                 log.warn("HybridRag rerank degraded, fallback to fused ranking: reason={}", e.getMessage());
-                finalHits = fused;
             } finally {
                 out.setRerankLatencyMs((int) (System.currentTimeMillis() - t3));
             }

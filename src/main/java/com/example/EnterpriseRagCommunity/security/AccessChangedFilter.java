@@ -7,6 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -52,7 +53,7 @@ public class AccessChangedFilter extends OncePerRequestFilter {
     private long checkIntervalMs;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(@NonNull HttpServletRequest request, jakarta.servlet.http.@NonNull HttpServletResponse response, @NonNull FilterChain filterChain)
             throws ServletException, IOException {
 
         if (!enabled) {
@@ -98,7 +99,7 @@ public class AccessChangedFilter extends OncePerRequestFilter {
             Object inv = session.getAttribute(SESSION_INVALIDATED_TS_KEY);
             long sessionInvalidatedTs = (inv instanceof Number) ? ((Number) inv).longValue() : 0L;
 
-            if (dbInvalidatedTs > 0L && dbInvalidatedTs != sessionInvalidatedTs && dbInvalidatedTs > sessionInvalidatedTs) {
+            if (dbInvalidatedTs > 0L && dbInvalidatedTs > sessionInvalidatedTs) {
                 try {
                     session.invalidate();
                 } catch (IllegalStateException ignored) {
@@ -108,10 +109,6 @@ public class AccessChangedFilter extends OncePerRequestFilter {
                 response.setContentType("application/json;charset=UTF-8");
                 response.getWriter().write("{\"message\":\"登录状态已失效，请重新登录\"}");
                 return;
-            }
-
-            if (dbInvalidatedTs > 0L && sessionInvalidatedTs == 0L) {
-                session.setAttribute(SESSION_INVALIDATED_TS_KEY, dbInvalidatedTs);
             }
 
             Object verRaw = session.getAttribute(SESSION_ACCESS_VER_KEY);

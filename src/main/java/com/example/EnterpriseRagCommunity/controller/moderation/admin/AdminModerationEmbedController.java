@@ -105,16 +105,15 @@ public class AdminModerationEmbedController {
 
         Map<String, Object> before = summarizeConfig(cfg);
         cfg.setEnabled(enabled);
-        if (payload != null) {
-            if (payload.getEmbeddingModel() != null) {
-                String m = payload.getEmbeddingModel().trim();
-                cfg.setEmbeddingModel(m.isBlank() ? null : m);
-            }
-            if (payload.getEmbeddingDims() != null) cfg.setEmbeddingDims(Math.max(0, payload.getEmbeddingDims()));
-            if (payload.getMaxInputChars() != null) cfg.setMaxInputChars(Math.max(0, payload.getMaxInputChars()));
-            if (payload.getDefaultTopK() != null) cfg.setDefaultTopK(Math.max(1, Math.min(50, payload.getDefaultTopK())));
-            if (payload.getDefaultNumCandidates() != null) cfg.setDefaultNumCandidates(Math.max(0, payload.getDefaultNumCandidates()));
+        if (payload.getEmbeddingModel() != null) {
+            String m = payload.getEmbeddingModel().trim();
+            cfg.setEmbeddingModel(m.isBlank() ? null : m);
         }
+        if (payload.getEmbeddingDims() != null) cfg.setEmbeddingDims(Math.max(0, payload.getEmbeddingDims()));
+        if (payload.getMaxInputChars() != null) cfg.setMaxInputChars(Math.max(0, payload.getMaxInputChars()));
+        if (payload.getDefaultTopK() != null) cfg.setDefaultTopK(Math.clamp(payload.getDefaultTopK(), 1, 50));
+        if (payload.getDefaultNumCandidates() != null)
+            cfg.setDefaultNumCandidates(Math.max(0, payload.getDefaultNumCandidates()));
         cfg.setUpdatedAt(LocalDateTime.now());
         cfg = configRepository.save(cfg);
 

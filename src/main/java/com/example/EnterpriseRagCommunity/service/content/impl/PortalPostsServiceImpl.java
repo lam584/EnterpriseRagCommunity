@@ -115,12 +115,22 @@ public class PortalPostsServiceImpl implements PortalPostsService {
     private PostDetailDTO enrichDisplay(PostDetailDTO dto, UsersEntity author, BoardsEntity board) {
         if (author != null) {
             String name = author.getUsername();
-            dto.setAuthorName(name == null || name.trim().isEmpty() ? null : name.trim());
+            if (name == null) {
+                dto.setAuthorName(null);
+            } else {
+                String trimmed = name.trim();
+                dto.setAuthorName(trimmed.isEmpty() ? null : trimmed);
+            }
             dto.setAuthorAvatarUrl(readProfileString(author, "avatarUrl"));
         }
         if (board != null) {
             String name = board.getName();
-            dto.setBoardName(name == null || name.trim().isEmpty() ? null : name.trim());
+            if (name == null) {
+                dto.setBoardName(null);
+            } else {
+                String trimmed = name.trim();
+                dto.setBoardName(trimmed.isEmpty() ? null : trimmed);
+            }
         }
         return dto;
     }
@@ -221,10 +231,9 @@ public class PortalPostsServiceImpl implements PortalPostsService {
                 var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
                 if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
                     String email = auth.getName();
-                    me = administratorService.findByUsername(email).map(x -> x.getId()).orElse(null);
+                    me = administratorService.findByUsername(email).map(UsersEntity::getId).orElse(null);
                 }
             } catch (Exception ignored) {
-                me = null;
             }
 
             boolean isAuthor = me != null && e.getAuthorId() != null && me.equals(e.getAuthorId());
@@ -255,12 +264,10 @@ public class PortalPostsServiceImpl implements PortalPostsService {
         try {
             if (e.getAuthorId() != null) author = usersRepository.findByIdAndIsDeletedFalse(e.getAuthorId()).orElse(null);
         } catch (Exception ignored) {
-            author = null;
         }
         try {
             if (e.getBoardId() != null) board = boardsRepository.findById(e.getBoardId()).orElse(null);
         } catch (Exception ignored) {
-            board = null;
         }
 
         return enrichAggregates(enrichDisplay(toBaseDto(e), author, board));
@@ -293,12 +300,10 @@ public class PortalPostsServiceImpl implements PortalPostsService {
                     try {
                         if (dto.getAuthorId() != null) author = usersRepository.findByIdAndIsDeletedFalse(dto.getAuthorId()).orElse(null);
                     } catch (Exception ignored) {
-                        author = null;
                     }
                     try {
                         if (dto.getBoardId() != null) board = boardsRepository.findById(dto.getBoardId()).orElse(null);
                     } catch (Exception ignored) {
-                        board = null;
                     }
                     return enrichDisplay(dto, author, board);
                 })

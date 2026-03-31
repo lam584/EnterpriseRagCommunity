@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.moderation.admin;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -133,7 +132,7 @@ public class AdminModerationLlmService {
         LlmModerationTestResponse.LabelTaxonomy labelTaxonomy = resolveRiskLabelTaxonomy();
 
         String allowedLabelsHint = null;
-        if (labelTaxonomy != null && labelTaxonomy.getAllowedLabels() != null && !labelTaxonomy.getAllowedLabels().isEmpty()) {
+        if (labelTaxonomy.getAllowedLabels() != null && !labelTaxonomy.getAllowedLabels().isEmpty()) {
             String joined = String.join(", ", labelTaxonomy.getAllowedLabels());
             if (joined.length() > 1200) joined = joined.substring(0, 1200);
             allowedLabelsHint = "label_taxonomy.allowed_labels (labels/riskTags must come from this list): " + joined;
@@ -189,15 +188,15 @@ public class AdminModerationLlmService {
         String textDecision = resolveStageDecision(textStage, textRejectThreshold, humanThreshold, textHitTag);
         stages.getText().setDecision(textDecision);
 
-        if (images == null || images.isEmpty() || "REJECT".equalsIgnoreCase(textDecision)) {
-            List<String> finalReasons = textStage == null || textStage.reasons() == null
+        if (images.isEmpty() || "REJECT".equalsIgnoreCase(textDecision)) {
+            List<String> finalReasons = textStage.reasons() == null
                 ? new ArrayList<>()
                 : new ArrayList<>(textStage.reasons());
             if (finalReasons.isEmpty()) {
             finalReasons.add("Text moderation decision finalized from primary stage output");
             }
             return finalizeMultiStage(
-                textDecision == null ? "APPROVE" : textDecision.toUpperCase(Locale.ROOT),
+                    textDecision.toUpperCase(Locale.ROOT),
                 ts,
                 finalReasons,
                 textStage.riskTags(),
@@ -247,8 +246,8 @@ public class AdminModerationLlmService {
         String finalDecision = combineStageDecision(textDecision, imageDecision);
         double finalScore = Math.max(ts, is);
         List<String> finalReasons = new ArrayList<>();
-        if (textStage != null && textStage.reasons() != null) finalReasons.addAll(textStage.reasons());
-        if (imageStage != null && imageStage.reasons() != null) {
+        if (textStage.reasons() != null) finalReasons.addAll(textStage.reasons());
+        if (imageStage.reasons() != null) {
             for (String reason : imageStage.reasons()) {
                 if (reason != null && !reason.isBlank() && !finalReasons.contains(reason)) {
                     finalReasons.add(reason);

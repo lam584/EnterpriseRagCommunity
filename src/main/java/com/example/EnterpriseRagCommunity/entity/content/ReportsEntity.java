@@ -32,7 +32,7 @@ public class ReportsEntity {
     @Column(name = "reason_code", nullable = false, length = 64)
     private String reasonCode;
 
-    @Column(name = "reason_text", length = 255)
+    @Column(name = "reason_text")
     private String reasonText;
 
     @Enumerated(EnumType.STRING)
@@ -45,7 +45,7 @@ public class ReportsEntity {
     @Column(name = "handled_at")
     private LocalDateTime handledAt;
 
-    @Column(name = "resolution", length = 255)
+    @Column(name = "resolution")
     private String resolution;
 
     // 由数据库默认值填充，禁止插入/更新覆盖，仍需显式映射

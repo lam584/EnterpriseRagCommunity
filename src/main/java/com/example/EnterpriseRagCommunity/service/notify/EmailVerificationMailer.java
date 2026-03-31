@@ -24,12 +24,8 @@ public class EmailVerificationMailer {
         return appSettingsService.getLongOrDefault("email_enabled", 1L) == 1L;
     }
 
-    public void sendVerificationCode(String to, String code, EmailVerificationPurpose purpose) {
-        if (!isEnabled()) throw new IllegalStateException("邮箱服务未启用");
-        EmailTransportConfig transport = loadTransportConfig();
-        String subject = buildSubject(purpose);
-        String text = buildBody(code, purpose);
-        emailSenderService.sendPlainText(transport, to, subject, text, purpose == null ? null : purpose.name());
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     public EmailTransportConfig loadTransportConfig() {
@@ -100,5 +96,13 @@ public class EmailVerificationMailer {
         if (ttlSeconds > 3600L) ttlSeconds = 3600L;
         String ttlText = (ttlSeconds % 60L == 0L) ? (ttlSeconds / 60L) + " 分钟" : ttlSeconds + " 秒";
         return "您的验证码是：" + (code == null ? "" : code) + "\n\n用途：" + purposeText + "\n时间：" + now + "\n\n该验证码 " + ttlText + "内有效，请勿泄露给他人。";
+    }
+
+    public void sendVerificationCode(String to, String code, EmailVerificationPurpose purpose) {
+        if (!isEnabled()) throw new IllegalStateException("邮箱服务未启用");
+        EmailTransportConfig transport = loadTransportConfig();
+        String subject = buildSubject(purpose);
+        String text = buildBody(code, purpose);
+        emailSenderService.sendPlainText(transport, to, subject, text, enumName(purpose));
     }
 }

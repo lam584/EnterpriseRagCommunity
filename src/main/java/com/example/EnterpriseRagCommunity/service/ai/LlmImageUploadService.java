@@ -436,6 +436,41 @@ public class LlmImageUploadService {
         os.write("\r\n".getBytes(StandardCharsets.UTF_8));
     }
 
+    private static String toBase64Preview(BufferedImage image, String mimeType) {
+        try {
+            int w = image.getWidth();
+            int h = image.getHeight();
+            BufferedImage preview = image;
+            if (w > 400 || h > 400) {
+                double ratio = Math.min((double) 400 / w, (double) 400 / h);
+                int nw = Math.max(1, (int) Math.round(w * ratio));
+                int nh = Math.max(1, (int) Math.round(h * ratio));
+                preview = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
+                preview.getGraphics().drawImage(image, 0, 0, nw, nh, null);
+            }
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            String formatName = "jpeg";
+            if (mimeType != null && mimeType.contains("png")) formatName = "png";
+            ImageIO.write(preview, formatName, bos);
+            String base64 = java.util.Base64.getEncoder().encodeToString(bos.toByteArray());
+            String dataPrefix = "data:" + (formatName.equals("png") ? "image/png" : "image/jpeg") + ";base64,";
+            return dataPrefix + base64;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private static String guessImageMimeType(String path) {
+        if (path == null) return "image/jpeg";
+        String lower = path.toLowerCase();
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".bmp")) return "image/bmp";
+        if (lower.endsWith(".tif") || lower.endsWith(".tiff")) return "image/tiff";
+        return "image/jpeg";
+    }
+
     /**
      * 测试压缩：读取本地文件并返回原始/压缩后的信息与 Base64 预览。
      */
@@ -462,13 +497,13 @@ public class LlmImageUploadService {
         int compH = compressedImage != null ? compressedImage.getHeight() : origH;
 
         // Limit Base64 preview size: resize preview images to max 400px for response
-        String originalBase64 = toBase64Preview(originalImage, mimeType, 400);
+        String originalBase64 = toBase64Preview(originalImage, mimeType);
         String compressedBase64 = wasCompressed && compressedImage != null
-                ? toBase64Preview(compressedImage, "image/jpeg", 400)
+                ? toBase64Preview(compressedImage, "image/jpeg")
                 : originalBase64;
 
-        double ratio = original.length > 0 ? (double) compressed.length / original.length : 1.0;
-        String format = mimeType != null ? mimeType : "unknown";
+        double ratio = (double) compressed.length / original.length;
+        String format = mimeType;
 
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("originalSize", original.length);
@@ -483,40 +518,5 @@ public class LlmImageUploadService {
         result.put("originalBase64", originalBase64);
         result.put("compressedBase64", compressedBase64);
         return result;
-    }
-
-    private static String guessImageMimeType(String path) {
-        if (path == null) return "image/jpeg";
-        String lower = path.toLowerCase();
-        if (lower.endsWith(".png")) return "image/png";
-        if (lower.endsWith(".gif")) return "image/gif";
-        if (lower.endsWith(".webp")) return "image/webp";
-        if (lower.endsWith(".bmp")) return "image/bmp";
-        if (lower.endsWith(".tif") || lower.endsWith(".tiff")) return "image/tiff";
-        return "image/jpeg";
-    }
-
-    private static String toBase64Preview(BufferedImage image, String mimeType, int maxDim) {
-        try {
-            int w = image.getWidth();
-            int h = image.getHeight();
-            BufferedImage preview = image;
-            if (w > maxDim || h > maxDim) {
-                double ratio = Math.min((double) maxDim / w, (double) maxDim / h);
-                int nw = Math.max(1, (int) Math.round(w * ratio));
-                int nh = Math.max(1, (int) Math.round(h * ratio));
-                preview = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
-                preview.getGraphics().drawImage(image, 0, 0, nw, nh, null);
-            }
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            String formatName = "jpeg";
-            if (mimeType != null && mimeType.contains("png")) formatName = "png";
-            ImageIO.write(preview, formatName, bos);
-            String base64 = java.util.Base64.getEncoder().encodeToString(bos.toByteArray());
-            String dataPrefix = "data:" + (formatName.equals("png") ? "image/png" : "image/jpeg") + ";base64,";
-            return dataPrefix + base64;
-        } catch (Exception e) {
-            return "";
-        }
     }
 }

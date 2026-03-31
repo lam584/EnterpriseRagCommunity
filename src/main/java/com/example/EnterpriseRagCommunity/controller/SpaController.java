@@ -24,6 +24,7 @@ package com.example.EnterpriseRagCommunity.controller;
 //}
 
 
+import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -39,7 +40,7 @@ import java.nio.file.Paths;
 public class SpaController implements WebMvcConfigurer {
 
     @Override
-    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+    public void addResourceHandlers(@NonNull ResourceHandlerRegistry registry) {
         Path viteDist = Paths.get("my-vite-app", "dist").toAbsolutePath().normalize();
         String viteDistLocation = viteDist.toUri().toString();
         if (!viteDistLocation.endsWith("/")) {
@@ -59,8 +60,8 @@ public class SpaController implements WebMvcConfigurer {
 
     static class SpaFallbackResourceResolver extends PathResourceResolver {
         @Override
-        protected Resource getResource(String resourcePath, Resource location) throws IOException {
-            String normalized = resourcePath == null ? "" : resourcePath;
+        protected Resource getResource(@NonNull String resourcePath, @NonNull Resource location) throws IOException {
+            String normalized = resourcePath;
             while (normalized.startsWith("/")) {
                 normalized = normalized.substring(1);
             }

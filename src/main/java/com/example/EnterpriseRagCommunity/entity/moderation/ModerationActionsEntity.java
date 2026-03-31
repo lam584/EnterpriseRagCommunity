@@ -28,7 +28,7 @@ public class ModerationActionsEntity {
     @Column(name = "action", nullable = false, length = 16)
     private ActionType action;
 
-    @Column(name = "reason", length = 255)
+    @Column(name = "reason")
     private String reason;
 
     @Convert(converter = com.example.EnterpriseRagCommunity.entity.converter.JsonConverter.class)

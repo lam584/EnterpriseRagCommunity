@@ -26,7 +26,7 @@ public class SystemEventsEntity {
     @Column(name = "category", length = 64, nullable = false)
     private String category;
 
-    @Column(name = "message", length = 255, nullable = false)
+    @Column(name = "message", nullable = false)
     private String message;
 
     @Convert(converter = JsonConverter.class)

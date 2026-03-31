@@ -40,7 +40,6 @@ public class PortalChatConfigService {
             try {
                 parsed = objectMapper.readValue(raw, PortalChatConfigDTO.class);
             } catch (Exception ignored) {
-                parsed = null;
             }
         }
         return normalizeAndValidate(parsed, false);
@@ -58,6 +57,32 @@ public class PortalChatConfigService {
         return normalized;
     }
 
+    private static Double normalizeOptionalNumber(Double v, double max, String field, boolean strict) {
+        if (v == null) return null;
+        if (!Double.isFinite(v)) {
+            if (strict) throw new IllegalArgumentException(field + " 不是有效数字");
+            return null;
+        }
+        if (v < 0.0 || v > max) {
+            if (strict) throw new IllegalArgumentException(field + " 超出范围");
+            return Math.max(0.0, Math.min(max, v));
+        }
+        return v;
+    }
+
+    private static String normalizeOptionalString(String v) {
+        if (v == null) return null;
+        String t = v.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    private static Integer normalizeOptionalInt(Integer v, int max, int defaultValue) {
+        if (v == null) return defaultValue;
+        if (v < 1) return 1;
+        if (v > max) return max;
+        return v;
+    }
+
     private PortalChatConfigDTO normalizeAndValidate(PortalChatConfigDTO input, boolean strict) {
         PortalChatConfigDTO out = new PortalChatConfigDTO();
 
@@ -65,13 +90,13 @@ public class PortalChatConfigService {
         PortalChatConfigDTO.AssistantChatConfigDTO ia = input == null ? null : input.getAssistantChat();
         a.setProviderId(normalizeOptionalString(ia == null ? null : ia.getProviderId()));
         a.setModel(normalizeOptionalString(ia == null ? null : ia.getModel()));
-        a.setTemperature(normalizeOptionalNumber(ia == null ? null : ia.getTemperature(), 0.0, 2.0, "assistantChat.temperature", strict));
-        a.setTopP(normalizeOptionalNumber(ia == null ? null : ia.getTopP(), 0.0, 1.0, "assistantChat.topP", strict));
-        a.setHistoryLimit(normalizeOptionalInt(ia == null ? null : ia.getHistoryLimit(), 1, 200, DEFAULT_ASSISTANT_HISTORY_LIMIT));
-        a.setDefaultDeepThink(ia == null || ia.getDefaultDeepThink() == null ? Boolean.FALSE : Boolean.TRUE.equals(ia.getDefaultDeepThink()));
-        a.setDefaultUseRag(ia == null || ia.getDefaultUseRag() == null ? Boolean.TRUE : Boolean.TRUE.equals(ia.getDefaultUseRag()));
-        a.setRagTopK(normalizeOptionalInt(ia == null ? null : ia.getRagTopK(), 1, 50, DEFAULT_RAG_TOP_K));
-        a.setDefaultStream(ia == null || ia.getDefaultStream() == null ? Boolean.TRUE : Boolean.TRUE.equals(ia.getDefaultStream()));
+        a.setTemperature(normalizeOptionalNumber(ia == null ? null : ia.getTemperature(), 2.0, "assistantChat.temperature", strict));
+        a.setTopP(normalizeOptionalNumber(ia == null ? null : ia.getTopP(), 1.0, "assistantChat.topP", strict));
+        a.setHistoryLimit(normalizeOptionalInt(ia == null ? null : ia.getHistoryLimit(), 200, DEFAULT_ASSISTANT_HISTORY_LIMIT));
+        a.setDefaultDeepThink(ia == null || ia.getDefaultDeepThink() == null ? Boolean.FALSE : ia.getDefaultDeepThink());
+        a.setDefaultUseRag(ia == null || ia.getDefaultUseRag() == null ? Boolean.TRUE : ia.getDefaultUseRag());
+        a.setRagTopK(normalizeOptionalInt(ia == null ? null : ia.getRagTopK(), 50, DEFAULT_RAG_TOP_K));
+        a.setDefaultStream(ia == null || ia.getDefaultStream() == null ? Boolean.TRUE : ia.getDefaultStream());
         a.setSystemPromptCode(normalizeRequiredString(
                 ia == null ? null : ia.getSystemPromptCode(),
                 DEFAULT_ASSISTANT_SYSTEM_PROMPT_CODE,
@@ -90,10 +115,10 @@ public class PortalChatConfigService {
         PortalChatConfigDTO.PostComposeAssistantConfigDTO ip = input == null ? null : input.getPostComposeAssistant();
         p.setProviderId(normalizeOptionalString(ip == null ? null : ip.getProviderId()));
         p.setModel(normalizeOptionalString(ip == null ? null : ip.getModel()));
-        p.setTemperature(normalizeOptionalNumber(ip == null ? null : ip.getTemperature(), 0.0, 2.0, "postComposeAssistant.temperature", strict));
-        p.setTopP(normalizeOptionalNumber(ip == null ? null : ip.getTopP(), 0.0, 1.0, "postComposeAssistant.topP", strict));
-        p.setChatHistoryLimit(normalizeOptionalInt(ip == null ? null : ip.getChatHistoryLimit(), 1, 200, DEFAULT_POST_COMPOSE_HISTORY_LIMIT));
-        p.setDefaultDeepThink(ip == null || ip.getDefaultDeepThink() == null ? Boolean.FALSE : Boolean.TRUE.equals(ip.getDefaultDeepThink()));
+        p.setTemperature(normalizeOptionalNumber(ip == null ? null : ip.getTemperature(), 2.0, "postComposeAssistant.temperature", strict));
+        p.setTopP(normalizeOptionalNumber(ip == null ? null : ip.getTopP(), 1.0, "postComposeAssistant.topP", strict));
+        p.setChatHistoryLimit(normalizeOptionalInt(ip == null ? null : ip.getChatHistoryLimit(), 200, DEFAULT_POST_COMPOSE_HISTORY_LIMIT));
+        p.setDefaultDeepThink(ip == null || ip.getDefaultDeepThink() == null ? Boolean.FALSE : ip.getDefaultDeepThink());
         p.setSystemPromptCode(normalizeRequiredString(
                 ip == null ? null : ip.getSystemPromptCode(),
                 DEFAULT_POST_COMPOSE_SYSTEM_PROMPT_CODE,
@@ -115,32 +140,6 @@ public class PortalChatConfigService {
         out.setPostComposeAssistant(p);
 
         return out;
-    }
-
-    private static String normalizeOptionalString(String v) {
-        if (v == null) return null;
-        String t = v.trim();
-        return t.isEmpty() ? null : t;
-    }
-
-    private static Double normalizeOptionalNumber(Double v, double min, double max, String field, boolean strict) {
-        if (v == null) return null;
-        if (!Double.isFinite(v)) {
-            if (strict) throw new IllegalArgumentException(field + " 不是有效数字");
-            return null;
-        }
-        if (v < min || v > max) {
-            if (strict) throw new IllegalArgumentException(field + " 超出范围");
-            return Math.max(min, Math.min(max, v));
-        }
-        return v;
-    }
-
-    private static Integer normalizeOptionalInt(Integer v, int min, int max, int defaultValue) {
-        if (v == null) return defaultValue;
-        if (v < min) return min;
-        if (v > max) return max;
-        return v;
     }
 
     private static String normalizeRequiredString(String v, String defaultValue, String field, boolean strict) {

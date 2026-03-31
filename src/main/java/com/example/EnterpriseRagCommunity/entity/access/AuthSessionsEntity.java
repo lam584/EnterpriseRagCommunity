@@ -22,7 +22,7 @@ public class AuthSessionsEntity {
     @Column(name = "refresh_token_hash", nullable = false, length = 191)
     private String refreshTokenHash;
 
-    @Column(name = "user_agent", length = 255)
+    @Column(name = "user_agent")
     private String userAgent;
 
     @Column(name = "ip", length = 64)

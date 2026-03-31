@@ -63,6 +63,10 @@ public class AdminRetrievalVectorIndexController {
         return ResponseEntity.ok(vectorIndicesRepository.findAll(PageRequest.of(p, ps, Sort.by(Sort.Direction.DESC, "id"))));
     }
 
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
+    }
+
     @PostMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<VectorIndicesEntity> create(@RequestBody @Valid VectorIndicesCreateDTO dto, Principal principal) {
@@ -75,54 +79,13 @@ public class AdminRetrievalVectorIndexController {
         e.setMetadata(dto.getMetadata());
         VectorIndicesEntity saved = vectorIndicesRepository.save(e);
         Map<String, Object> details = new LinkedHashMap<>();
-        details.put("provider", saved.getProvider() == null ? null : saved.getProvider().name());
+        details.put("provider", enumName(saved.getProvider()));
         details.put("collectionName", saved.getCollectionName());
         details.put("metric", saved.getMetric());
         details.put("dim", saved.getDim());
         auditLogWriter.write(null, principal == null ? null : principal.getName(),
                 "RETRIEVAL_VECTOR_INDEX_CREATE", "VECTOR_INDEX", saved.getId(), AuditResult.SUCCESS, null, null,
                 details);
-        return ResponseEntity.ok(saved);
-    }
-
-    @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
-    public ResponseEntity<VectorIndicesEntity> update(@PathVariable("id") Long id,
-                                                      @RequestBody(required = false) @Valid VectorIndicesUpdateDTO dto,
-                                                      Principal principal) {
-        if (id == null) throw new IllegalArgumentException("id is required");
-        if (dto == null) throw new IllegalArgumentException("payload is required");
-        if (dto.getId() == null || !id.equals(dto.getId())) throw new IllegalArgumentException("id mismatch");
-
-        VectorIndicesEntity e = vectorIndicesRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("vector index not found: " + id));
-
-        Map<String, Object> before = new LinkedHashMap<>();
-        before.put("provider", e.getProvider() == null ? null : e.getProvider().name());
-        before.put("collectionName", e.getCollectionName());
-        before.put("metric", e.getMetric());
-        before.put("dim", e.getDim());
-        before.put("status", e.getStatus() == null ? null : e.getStatus().name());
-
-        if (dto.isHasProvider()) e.setProvider(dto.getProvider());
-        if (dto.isHasCollectionName()) e.setCollectionName(dto.getCollectionName());
-        if (dto.isHasMetric()) e.setMetric(dto.getMetric());
-        if (dto.isHasDim()) e.setDim(dto.getDim());
-        if (dto.isHasStatus()) e.setStatus(dto.getStatus());
-        if (dto.isHasMetadata()) e.setMetadata(dto.getMetadata());
-
-        VectorIndicesEntity saved = vectorIndicesRepository.save(e);
-
-        Map<String, Object> after = new LinkedHashMap<>();
-        after.put("provider", saved.getProvider() == null ? null : saved.getProvider().name());
-        after.put("collectionName", saved.getCollectionName());
-        after.put("metric", saved.getMetric());
-        after.put("dim", saved.getDim());
-        after.put("status", saved.getStatus() == null ? null : saved.getStatus().name());
-
-        auditLogWriter.write(null, principal == null ? null : principal.getName(),
-                "RETRIEVAL_VECTOR_INDEX_UPDATE", "VECTOR_INDEX", saved.getId(), AuditResult.SUCCESS, null, null, auditDiffBuilder.build(before, after));
-
         return ResponseEntity.ok(saved);
     }
 
@@ -532,5 +495,46 @@ public class AdminRetrievalVectorIndexController {
                     "RETRIEVAL_RAG_TEST_QUERY", "VECTOR_INDEX", id, AuditResult.FAIL, e.getMessage(), null, null);
             throw e;
         }
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
+    public ResponseEntity<VectorIndicesEntity> update(@PathVariable("id") Long id,
+                                                      @RequestBody(required = false) @Valid VectorIndicesUpdateDTO dto,
+                                                      Principal principal) {
+        if (id == null) throw new IllegalArgumentException("id is required");
+        if (dto == null) throw new IllegalArgumentException("payload is required");
+        if (dto.getId() == null || !id.equals(dto.getId())) throw new IllegalArgumentException("id mismatch");
+
+        VectorIndicesEntity e = vectorIndicesRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("vector index not found: " + id));
+
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("provider", enumName(e.getProvider()));
+        before.put("collectionName", e.getCollectionName());
+        before.put("metric", e.getMetric());
+        before.put("dim", e.getDim());
+        before.put("status", enumName(e.getStatus()));
+
+        if (dto.isHasProvider()) e.setProvider(dto.getProvider());
+        if (dto.isHasCollectionName()) e.setCollectionName(dto.getCollectionName());
+        if (dto.isHasMetric()) e.setMetric(dto.getMetric());
+        if (dto.isHasDim()) e.setDim(dto.getDim());
+        if (dto.isHasStatus()) e.setStatus(dto.getStatus());
+        if (dto.isHasMetadata()) e.setMetadata(dto.getMetadata());
+
+        VectorIndicesEntity saved = vectorIndicesRepository.save(e);
+
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("provider", enumName(saved.getProvider()));
+        after.put("collectionName", saved.getCollectionName());
+        after.put("metric", saved.getMetric());
+        after.put("dim", saved.getDim());
+        after.put("status", enumName(saved.getStatus()));
+
+        auditLogWriter.write(null, principal == null ? null : principal.getName(),
+                "RETRIEVAL_VECTOR_INDEX_UPDATE", "VECTOR_INDEX", saved.getId(), AuditResult.SUCCESS, null, null, auditDiffBuilder.build(before, after));
+
+        return ResponseEntity.ok(saved);
     }
 }

@@ -126,7 +126,6 @@ public class ModerationVecAutoRunner {
                 );
                 vecStepId = step.getId();
             } catch (Exception ignore) {
-                vecStepId = -1;
             }
         }
 
@@ -144,7 +143,6 @@ public class ModerationVecAutoRunner {
             ModerationPolicyConfigEntity policy = policyConfigRepository.findByContentType(q.getContentType()).orElse(null);
             policyConfig = policy == null ? null : policy.getConfig();
         } catch (Exception ignore) {
-            policyConfig = null;
         }
 
         Boolean vecEnabled = deepGetBool(policyConfig, "precheck.vec.enabled");
@@ -155,24 +153,28 @@ public class ModerationVecAutoRunner {
         Double vecThreshold = deepGetDouble(policyConfig, "precheck.vec.threshold");
         if (vecThreshold == null) vecThreshold = 0.2;
 
-        if (!Boolean.TRUE.equals(vecEnabled)) {
+        if (!vecEnabled) {
             // skip VEC -> decide miss action
             if ("REJECT".equals(normalizeAction(vecMissAction))) {
                 queueService.autoReject(q.getId(), "相似检测关闭且未命中策略为拒绝", run == null ? null : run.getTraceId());
                 if (vecStepId > 0) {
-                    pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, Map.of("reason", "vec disabled", "action", vecMissAction));
+                    if (vecMissAction != null) {
+                        pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, Map.of("reason", "vec disabled", "action", vecMissAction));
+                    }
                 }
                 if (run != null) {
                     pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
-                    auditLogWriter.writeSystem(
-                            "VEC_DECISION",
-                            "MODERATION_QUEUE",
-                            q.getId(),
-                            AuditResult.SUCCESS,
-                            "VEC disabled -> REJECT",
-                            run.getTraceId(),
-                            Map.of("runId", run.getId(), "stage", "VEC", "decision", "REJECT", "action", vecMissAction)
-                    );
+                    if (vecMissAction != null) {
+                        auditLogWriter.writeSystem(
+                                "VEC_DECISION",
+                                "MODERATION_QUEUE",
+                                q.getId(),
+                                AuditResult.SUCCESS,
+                                "VEC disabled -> REJECT",
+                                run.getTraceId(),
+                                Map.of("runId", run.getId(), "stage", "VEC", "decision", "REJECT", "action", vecMissAction)
+                        );
+                    }
                 }
                 return;
             }
@@ -204,19 +206,23 @@ public class ModerationVecAutoRunner {
             if ("REJECT".equals(normalizeAction(vecMissAction))) {
                 queueService.autoReject(q.getId(), "相似检测空文本且未命中策略为拒绝", run == null ? null : run.getTraceId());
                 if (vecStepId > 0) {
-                    pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, Map.of("reason", "empty text", "action", vecMissAction));
+                    if (vecMissAction != null) {
+                        pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, Map.of("reason", "empty text", "action", vecMissAction));
+                    }
                 }
                 if (run != null) {
                     pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
-                    auditLogWriter.writeSystem(
-                            "VEC_DECISION",
-                            "MODERATION_QUEUE",
-                            q.getId(),
-                            AuditResult.SUCCESS,
-                            "VEC empty text -> REJECT",
-                            run.getTraceId(),
-                            Map.of("runId", run.getId(), "stage", "VEC", "decision", "REJECT", "action", vecMissAction)
-                    );
+                    if (vecMissAction != null) {
+                        auditLogWriter.writeSystem(
+                                "VEC_DECISION",
+                                "MODERATION_QUEUE",
+                                q.getId(),
+                                AuditResult.SUCCESS,
+                                "VEC empty text -> REJECT",
+                                run.getTraceId(),
+                                Map.of("runId", run.getId(), "stage", "VEC", "decision", "REJECT", "action", vecMissAction)
+                        );
+                    }
                 }
                 return;
             }
@@ -246,7 +252,7 @@ public class ModerationVecAutoRunner {
         req.setText(text);
         req.setContentType(q.getContentType());
         req.setContentId(q.getContentId());
-        if (vecThreshold != null) req.setThreshold(vecThreshold);
+        req.setThreshold(vecThreshold);
 
         SimilarityCheckResponse resp = similarityService.check(req);
 

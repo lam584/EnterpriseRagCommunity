@@ -25,66 +25,8 @@ public class EmailSenderService {
     private final SystemConfigurationService systemConfigurationService;
     private final AuditLogWriter auditLogWriter;
 
-    public void sendPlainText(EmailTransportConfig cfg, String to, String subject, String text, String purpose) {
-        if (cfg == null) throw new IllegalArgumentException("mail transport config is required");
-        if (to == null || to.isBlank()) throw new IllegalArgumentException("to is required");
-        if (subject == null) subject = "";
-        if (text == null) text = "";
-
-        String username = getConfig("APP_MAIL_USERNAME", appMailProperties.getUsername());
-        String password = getConfig("APP_MAIL_PASSWORD", appMailProperties.getPassword());
-        String fromAddress = getConfig("APP_MAIL_FROM_ADDRESS", appMailProperties.getFromAddress());
-        String fromName = getConfig("APP_MAIL_FROM_NAME", appMailProperties.getFromName());
-
-        if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            throw new IllegalStateException("app.mail.username 和 app.mail.password 必须配置");
-        }
-        if (fromAddress == null || fromAddress.isBlank()) {
-            throw new IllegalStateException("app.mail.from-address is required");
-        }
-
-        JavaMailSenderImpl sender = buildSender(cfg, username, password, fromAddress);
-
-        String safeUser = mask(username);
-        long startNs = System.nanoTime();
-        log.info("Email send start purpose={} to={} via {}:{} enc={} user={}",
-                safe(purpose), to.trim(), safe(cfg.host()), cfg.port(), cfg.encryption(), safeUser);
-
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("purpose", safe(purpose));
-        details.put("to", to.trim());
-        details.put("host", safe(cfg.host()));
-        details.put("port", cfg.port());
-        details.put("encryption", cfg.encryption() == null ? null : cfg.encryption().name());
-
-        try {
-            var msg = sender.createMimeMessage();
-            var helper = new MimeMessageHelper(msg, false, StandardCharsets.UTF_8.name());
-
-            if (fromName != null && !fromName.isBlank()) {
-                helper.setFrom(fromAddress.trim(), fromName.trim());
-            } else {
-                helper.setFrom(fromAddress.trim());
-            }
-
-            helper.setTo(to.trim());
-            helper.setSubject(subject);
-            helper.setText(text, false);
-
-            sender.send(msg);
-
-            long costMs = (System.nanoTime() - startNs) / 1_000_000;
-            details.put("costMs", costMs);
-            auditLogWriter.writeSystem("EMAIL_SEND", "EMAIL", null, AuditResult.SUCCESS, "邮件发送成功", null, details);
-            log.info("Email send success purpose={} to={} costMs={}", safe(purpose), to.trim(), costMs);
-        } catch (Exception e) {
-            long costMs = (System.nanoTime() - startNs) / 1_000_000;
-            details.put("costMs", costMs);
-            details.put("error", safe(e.getMessage()));
-            auditLogWriter.writeSystem("EMAIL_SEND", "EMAIL", null, AuditResult.FAIL, "邮件发送失败", null, details);
-            log.warn("Email send fail purpose={} to={} costMs={} err={}", safe(purpose), to.trim(), costMs, safe(e.getMessage()));
-            throw new IllegalStateException("邮件发送失败: " + e.getMessage(), e);
-        }
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     private JavaMailSenderImpl buildSender(EmailTransportConfig cfg, String username, String password, String fromAddress) {
@@ -161,5 +103,67 @@ public class EmailSenderService {
         int keepStart = Math.min(2, t.length());
         int keepEnd = Math.min(2, t.length() - keepStart);
         return t.substring(0, keepStart) + "****" + t.substring(t.length() - keepEnd);
+    }
+
+    public void sendPlainText(EmailTransportConfig cfg, String to, String subject, String text, String purpose) {
+        if (cfg == null) throw new IllegalArgumentException("mail transport config is required");
+        if (to == null || to.isBlank()) throw new IllegalArgumentException("to is required");
+        if (subject == null) subject = "";
+        if (text == null) text = "";
+
+        String username = getConfig("APP_MAIL_USERNAME", appMailProperties.getUsername());
+        String password = getConfig("APP_MAIL_PASSWORD", appMailProperties.getPassword());
+        String fromAddress = getConfig("APP_MAIL_FROM_ADDRESS", appMailProperties.getFromAddress());
+        String fromName = getConfig("APP_MAIL_FROM_NAME", appMailProperties.getFromName());
+
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            throw new IllegalStateException("app.mail.username 和 app.mail.password 必须配置");
+        }
+        if (fromAddress == null || fromAddress.isBlank()) {
+            throw new IllegalStateException("app.mail.from-address is required");
+        }
+
+        JavaMailSenderImpl sender = buildSender(cfg, username, password, fromAddress);
+
+        String safeUser = mask(username);
+        long startNs = System.nanoTime();
+        log.info("Email send start purpose={} to={} via {}:{} enc={} user={}",
+                safe(purpose), to.trim(), safe(cfg.host()), cfg.port(), cfg.encryption(), safeUser);
+
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("purpose", safe(purpose));
+        details.put("to", to.trim());
+        details.put("host", safe(cfg.host()));
+        details.put("port", cfg.port());
+        details.put("encryption", enumName(cfg.encryption()));
+
+        try {
+            var msg = sender.createMimeMessage();
+            var helper = new MimeMessageHelper(msg, false, StandardCharsets.UTF_8.name());
+
+            if (fromName != null && !fromName.isBlank()) {
+                helper.setFrom(fromAddress.trim(), fromName.trim());
+            } else {
+                helper.setFrom(fromAddress.trim());
+            }
+
+            helper.setTo(to.trim());
+            helper.setSubject(subject);
+            helper.setText(text, false);
+
+            sender.send(msg);
+
+            long costMs = (System.nanoTime() - startNs) / 1_000_000;
+            details.put("costMs", costMs);
+            auditLogWriter.writeSystem("EMAIL_SEND", "EMAIL", null, AuditResult.SUCCESS, "邮件发送成功", null, details);
+            log.info("Email send success purpose={} to={} costMs={}", safe(purpose), to.trim(), costMs);
+        } catch (Exception e) {
+            long costMs = (System.nanoTime() - startNs) / 1_000_000;
+            details.put("costMs", costMs);
+            details.put("error", safe(e.getMessage()));
+            auditLogWriter.writeSystem("EMAIL_SEND", "EMAIL", null, AuditResult.FAIL, "邮件发送失败", null, details);
+            log.warn("Email send fail purpose={} to={} costMs={} err={}", safe(purpose), to.trim(), costMs, safe(e.getMessage()));
+            throw new IllegalStateException("邮件发送失败: " + e.getMessage(), e);
+        }
     }
 }

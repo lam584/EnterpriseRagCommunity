@@ -27,45 +27,8 @@ public class AdminLlmRoutingMonitorController {
     private final LlmRoutingService llmRoutingService;
     private final LlmRoutingTelemetryService llmRoutingTelemetryService;
 
-    @GetMapping("/api/admin/metrics/llm-routing/state")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public AdminLlmRoutingStateResponseDTO state(
-            @RequestParam(value = "taskType", required = false) String taskType
-    ) {
-        LlmQueueTaskType tt = parseTaskType(taskType);
-        LlmRoutingService.RuntimeSnapshot snap = llmRoutingService.snapshot(tt);
-
-        AdminLlmRoutingStateResponseDTO out = new AdminLlmRoutingStateResponseDTO();
-        out.setCheckedAtMs(snap.checkedAtMs());
-        out.setTaskType(tt.name());
-        out.setStrategy(snap.policy() == null || snap.policy().strategy() == null ? null : snap.policy().strategy().name());
-        out.setMaxAttempts(snap.policy() == null ? null : snap.policy().maxAttempts());
-        out.setFailureThreshold(snap.policy() == null ? null : snap.policy().failureThreshold());
-        out.setCooldownMs(snap.policy() == null ? null : snap.policy().cooldownMs());
-
-        long nowMs = snap.checkedAtMs();
-        List<AdminLlmRoutingStateItemDTO> items = new ArrayList<>();
-        for (LlmRoutingService.RuntimeTargetState it : snap.items()) {
-            if (it == null) continue;
-            AdminLlmRoutingStateItemDTO row = new AdminLlmRoutingStateItemDTO();
-            row.setTaskType(it.taskType());
-            row.setProviderId(it.providerId());
-            row.setModelName(it.modelName());
-            row.setWeight(it.weight());
-            row.setPriority(it.priority());
-            row.setQps(it.qps());
-            row.setRunningCount(it.runningCount());
-            row.setConsecutiveFailures(it.consecutiveFailures());
-            row.setCooldownUntilMs(it.cooldownUntilMs());
-            row.setCooldownRemainingMs(Math.max(0L, it.cooldownUntilMs() - nowMs));
-            row.setCurrentWeight(it.currentWeight());
-            row.setLastDispatchAtMs(it.lastDispatchAtMs());
-            row.setRateTokens(it.rateTokens());
-            row.setLastRefillAtMs(it.lastRefillAtMs());
-            items.add(row);
-        }
-        out.setItems(items);
-        return out;
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     @GetMapping("/api/admin/metrics/llm-routing/decisions")
@@ -149,5 +112,46 @@ public class AdminLlmRoutingMonitorController {
             if (t.name().equals(up)) return t;
         }
         return LlmQueueTaskType.MULTIMODAL_CHAT;
+    }
+
+    @GetMapping("/api/admin/metrics/llm-routing/state")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
+    public AdminLlmRoutingStateResponseDTO state(
+            @RequestParam(value = "taskType", required = false) String taskType
+    ) {
+        LlmQueueTaskType tt = parseTaskType(taskType);
+        LlmRoutingService.RuntimeSnapshot snap = llmRoutingService.snapshot(tt);
+
+        AdminLlmRoutingStateResponseDTO out = new AdminLlmRoutingStateResponseDTO();
+        out.setCheckedAtMs(snap.checkedAtMs());
+        out.setTaskType(tt.name());
+        out.setStrategy(snap.policy() == null ? null : enumName(snap.policy().strategy()));
+        out.setMaxAttempts(snap.policy() == null ? null : snap.policy().maxAttempts());
+        out.setFailureThreshold(snap.policy() == null ? null : snap.policy().failureThreshold());
+        out.setCooldownMs(snap.policy() == null ? null : snap.policy().cooldownMs());
+
+        long nowMs = snap.checkedAtMs();
+        List<AdminLlmRoutingStateItemDTO> items = new ArrayList<>();
+        for (LlmRoutingService.RuntimeTargetState it : snap.items()) {
+            if (it == null) continue;
+            AdminLlmRoutingStateItemDTO row = new AdminLlmRoutingStateItemDTO();
+            row.setTaskType(it.taskType());
+            row.setProviderId(it.providerId());
+            row.setModelName(it.modelName());
+            row.setWeight(it.weight());
+            row.setPriority(it.priority());
+            row.setQps(it.qps());
+            row.setRunningCount(it.runningCount());
+            row.setConsecutiveFailures(it.consecutiveFailures());
+            row.setCooldownUntilMs(it.cooldownUntilMs());
+            row.setCooldownRemainingMs(Math.max(0L, it.cooldownUntilMs() - nowMs));
+            row.setCurrentWeight(it.currentWeight());
+            row.setLastDispatchAtMs(it.lastDispatchAtMs());
+            row.setRateTokens(it.rateTokens());
+            row.setLastRefillAtMs(it.lastRefillAtMs());
+            items.add(row);
+        }
+        out.setItems(items);
+        return out;
     }
 }

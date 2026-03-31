@@ -27,7 +27,7 @@ public class ModerationRuleHitsEntity {
     @Column(name = "rule_id", nullable = false)
     private Long ruleId;
 
-    @Column(name = "snippet", length = 255)
+    @Column(name = "snippet")
     private String snippet;
 
     @Column(name = "matched_at", nullable = false)

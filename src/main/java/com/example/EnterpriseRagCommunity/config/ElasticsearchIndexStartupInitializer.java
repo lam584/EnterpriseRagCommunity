@@ -131,7 +131,6 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
             String indexName = e.getKey();
             Integer dims = e.getValue();
             if (dims == null || dims <= 0) continue;
-            if (dims == -1) continue;
 
             try {
                 String sourceType = resolveSourceType(list, indexName);

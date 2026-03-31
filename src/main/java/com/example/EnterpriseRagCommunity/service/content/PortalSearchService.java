@@ -38,6 +38,112 @@ public class PortalSearchService {
     private final FileAssetsRepository fileAssetsRepository;
     private final BoardAccessControlService boardAccessControlService;
 
+    private static boolean containsAnyTerm(List<String> queryTerms, String... texts) {
+        if (queryTerms == null || queryTerms.isEmpty()) return false;
+        if (texts == null || texts.length == 0) return false;
+        StringBuilder sb = new StringBuilder();
+        for (String t : texts) {
+            if (t == null || t.isBlank()) continue;
+            if (!sb.isEmpty()) sb.append(' ');
+            sb.append(t.toLowerCase(Locale.ROOT));
+        }
+        if (sb.isEmpty()) return false;
+        String haystack = sb.toString();
+        for (String term : queryTerms) {
+            if (term == null || term.isBlank()) continue;
+            if (haystack.contains(term)) return true;
+        }
+        return false;
+    }
+
+    private static void applyRanking(List<ScoredHit> scored) {
+        if (scored == null || scored.isEmpty()) return;
+
+        double postMin = Double.POSITIVE_INFINITY;
+        double postMax = Double.NEGATIVE_INFINITY;
+        double commentMin = Double.POSITIVE_INFINITY;
+        double commentMax = Double.NEGATIVE_INFINITY;
+
+        for (ScoredHit h : scored) {
+            if (h == null) continue;
+            if ("COMMENT".equalsIgnoreCase(h.dto.getType())) {
+                commentMin = Math.min(commentMin, h.sim);
+                commentMax = Math.max(commentMax, h.sim);
+            } else {
+                postMin = Math.min(postMin, h.sim);
+                postMax = Math.max(postMax, h.sim);
+            }
+        }
+
+        for (ScoredHit h : scored) {
+            if (h == null) continue;
+            boolean isComment = "COMMENT".equalsIgnoreCase(h.dto.getType());
+            double min = isComment ? commentMin : postMin;
+            double max = isComment ? commentMax : postMax;
+            double normSim = normalizeMinMax(h.sim, min, max);
+
+            double recency = h.recency;
+            double wSim = isComment ? 0.9 : 0.85;
+            double wTime = isComment ? 0.1 : 0.15;
+            h.finalScore = wSim * normSim + wTime * recency;
+            h.dto.setScore(h.finalScore);
+        }
+    }
+
+    private static double normalizeMinMax(double v, double min, double max) {
+        if (Double.isInfinite(min) || Double.isInfinite(max)) return 0.0;
+        if (max <= min) return 1.0;
+        double x = (v - min) / (max - min);
+        if (x < 0) x = 0;
+        if (x > 1) x = 1;
+        return x;
+    }
+
+    private static int clampPageSize(int pageSize) {
+        int ps = pageSize <= 0 ? 20 : pageSize;
+        return Math.min(ps, 50);
+    }
+
+    private static double safeDouble(Double v) {
+        if (v == null) return 0.0;
+        if (Double.isNaN(v) || Double.isInfinite(v)) return 0.0;
+        return v;
+    }
+
+    private static String pickSnippet(String preferred, String fallback, int maxChars) {
+        String s = (preferred == null || preferred.isBlank()) ? (fallback == null ? "" : fallback) : preferred;
+        s = s.replaceAll("[\\r\\n\\t]+", " ").trim();
+        if (s.length() <= maxChars) return s;
+        return s.substring(0, maxChars) + "...";
+    }
+
+    private static String normalizeHighlighted(String highlighted) {
+        if (highlighted == null || highlighted.isBlank()) return null;
+        return highlighted.replaceAll("[\\r\\n\\t]+", " ").trim();
+    }
+
+    private static List<String> buildQueryTerms(String queryText) {
+        String q = queryText == null ? "" : queryText.trim().toLowerCase(Locale.ROOT);
+        if (q.isBlank()) return List.of();
+        LinkedHashSet<String> terms = new LinkedHashSet<>();
+        terms.add(q);
+        String[] parts = q.split("[\\s,，。！？!?:：;；、/\\\\|]+");
+        for (String part : parts) {
+            if (part == null) continue;
+            String t = part.trim();
+            if (t.length() >= 2) terms.add(t);
+        }
+        return new ArrayList<>(terms);
+    }
+
+    private static boolean isRelevantByTextOrScore(List<String> queryTerms, double maxScore, Double score, String... texts) {
+        if (containsAnyTerm(queryTerms, texts)) return true;
+        double s = safeDouble(score);
+        if (maxScore <= 0.0) return s > 0.0;
+        double ratio = s / maxScore;
+        return ratio >= 0.92;
+    }
+
     public Page<PortalSearchHitDTO> search(String queryText, Long boardId, int page, int pageSize) {
         String q = queryText == null ? "" : queryText.trim();
         if (q.isBlank()) {
@@ -66,7 +172,7 @@ public class PortalSearchService {
         }
 
         List<String> queryTerms = buildQueryTerms(q);
-        int commentTopK = Math.min(200, Math.max(50, fetchLimit));
+        int commentTopK = Math.clamp(fetchLimit, 50, 200);
         List<RagCommentChatRetrievalService.Hit> commentHits = ragCommentChatRetrievalService.retrieve(q, commentTopK);
 
         LinkedHashMap<Long, RagCommentChatRetrievalService.Hit> bestCommentHitById = new LinkedHashMap<>();
@@ -76,14 +182,13 @@ public class PortalSearchService {
             if (bestCommentHitById.size() >= fetchLimit) break;
         }
 
-        Set<Long> postIds = new LinkedHashSet<>();
-        postIds.addAll(bestPostHitById.keySet());
+        Set<Long> postIds = new LinkedHashSet<>(bestPostHitById.keySet());
         for (RagCommentChatRetrievalService.Hit h : bestCommentHitById.values()) {
             if (h == null || h.getPostId() == null) continue;
             postIds.add(h.getPostId());
         }
 
-        int fileTopK = Math.min(200, Math.max(50, fetchLimit));
+        int fileTopK = Math.clamp(fetchLimit, 50, 200);
         List<RagFileAssetChatRetrievalService.Hit> fileHits = ragFileAssetChatRetrievalService.retrieve(q, fileTopK);
         LinkedHashMap<Long, RagFileAssetChatRetrievalService.Hit> bestFileHitById = new LinkedHashMap<>();
         for (RagFileAssetChatRetrievalService.Hit h : fileHits) {
@@ -253,112 +358,6 @@ public class PortalSearchService {
         boolean hasMore = scored.size() > end;
         long totalElements = hasMore ? (long) offset + content.size() + 1 : (long) offset + content.size();
         return new PageImpl<>(content, PageRequest.of(safePage - 1, safePageSize), totalElements);
-    }
-
-    private static void applyRanking(List<ScoredHit> scored) {
-        if (scored == null || scored.isEmpty()) return;
-
-        double postMin = Double.POSITIVE_INFINITY;
-        double postMax = Double.NEGATIVE_INFINITY;
-        double commentMin = Double.POSITIVE_INFINITY;
-        double commentMax = Double.NEGATIVE_INFINITY;
-
-        for (ScoredHit h : scored) {
-            if (h == null) continue;
-            if ("COMMENT".equalsIgnoreCase(h.dto.getType())) {
-                commentMin = Math.min(commentMin, h.sim);
-                commentMax = Math.max(commentMax, h.sim);
-            } else {
-                postMin = Math.min(postMin, h.sim);
-                postMax = Math.max(postMax, h.sim);
-            }
-        }
-
-        for (ScoredHit h : scored) {
-            if (h == null) continue;
-            boolean isComment = "COMMENT".equalsIgnoreCase(h.dto.getType());
-            double min = isComment ? commentMin : postMin;
-            double max = isComment ? commentMax : postMax;
-            double normSim = normalizeMinMax(h.sim, min, max);
-
-            double recency = h.recency;
-            double wSim = isComment ? 0.9 : 0.85;
-            double wTime = isComment ? 0.1 : 0.15;
-            h.finalScore = wSim * normSim + wTime * recency;
-            h.dto.setScore(h.finalScore);
-        }
-    }
-
-    private static double normalizeMinMax(double v, double min, double max) {
-        if (Double.isInfinite(min) || Double.isInfinite(max)) return 0.0;
-        if (max <= min) return 1.0;
-        double x = (v - min) / (max - min);
-        if (x < 0) x = 0;
-        if (x > 1) x = 1;
-        return x;
-    }
-
-    private static int clampPageSize(int pageSize) {
-        int ps = pageSize <= 0 ? 20 : pageSize;
-        return Math.min(ps, 50);
-    }
-
-    private static double safeDouble(Double v) {
-        if (v == null) return 0.0;
-        if (Double.isNaN(v) || Double.isInfinite(v)) return 0.0;
-        return v;
-    }
-
-    private static String pickSnippet(String preferred, String fallback, int maxChars) {
-        String s = (preferred == null || preferred.isBlank()) ? (fallback == null ? "" : fallback) : preferred;
-        s = s.replaceAll("[\\r\\n\\t]+", " ").trim();
-        if (s.length() <= maxChars) return s;
-        return s.substring(0, maxChars) + "...";
-    }
-
-    private static String normalizeHighlighted(String highlighted) {
-        if (highlighted == null || highlighted.isBlank()) return null;
-        return highlighted.replaceAll("[\\r\\n\\t]+", " ").trim();
-    }
-
-    private static List<String> buildQueryTerms(String queryText) {
-        String q = queryText == null ? "" : queryText.trim().toLowerCase(Locale.ROOT);
-        if (q.isBlank()) return List.of();
-        LinkedHashSet<String> terms = new LinkedHashSet<>();
-        terms.add(q);
-        String[] parts = q.split("[\\s,，。！？!?:：;；、/\\\\|]+");
-        for (String part : parts) {
-            if (part == null) continue;
-            String t = part.trim();
-            if (t.length() >= 2) terms.add(t);
-        }
-        return new ArrayList<>(terms);
-    }
-
-    private static boolean isRelevantByTextOrScore(List<String> queryTerms, double maxScore, Double score, String... texts) {
-        if (containsAnyTerm(queryTerms, texts)) return true;
-        double s = safeDouble(score);
-        if (maxScore <= 0.0) return s > 0.0;
-        double ratio = s / maxScore;
-        return ratio >= 0.92;
-    }
-
-    private static boolean containsAnyTerm(List<String> queryTerms, String... texts) {
-        if (queryTerms == null || queryTerms.isEmpty()) return false;
-        if (texts == null || texts.length == 0) return false;
-        StringBuilder sb = new StringBuilder();
-        for (String t : texts) {
-            if (t == null || t.isBlank()) continue;
-            if (sb.length() > 0) sb.append(' ');
-            sb.append(t.toLowerCase(Locale.ROOT));
-        }
-        if (sb.length() == 0) return false;
-        String haystack = sb.toString();
-        for (String term : queryTerms) {
-            if (term == null || term.isBlank()) continue;
-            if (haystack.contains(term)) return true;
-        }
-        return false;
     }
 
     private static double findMaxScore(List<Double> scores) {

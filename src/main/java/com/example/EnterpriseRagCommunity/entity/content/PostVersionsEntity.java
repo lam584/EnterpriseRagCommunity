@@ -35,7 +35,7 @@ public class PostVersionsEntity {
     @Column(name = "content", nullable = false)
     private String content;
 
-    @Column(name = "reason", length = 255)
+    @Column(name = "reason")
     private String reason;
 
     @Column(name = "created_at", nullable = false)

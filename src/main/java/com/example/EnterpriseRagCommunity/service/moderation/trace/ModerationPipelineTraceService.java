@@ -132,34 +132,8 @@ public class ModerationPipelineTraceService {
         stepRepository.save(step);
     }
 
-    @Transactional
-    public void finishRunSuccess(Long runId, ModerationPipelineRunEntity.FinalDecision finalDecision) {
-        ModerationPipelineRunEntity run = runRepository.findById(runId)
-                .orElseThrow(() -> new IllegalArgumentException("run not found: " + runId));
-
-        LocalDateTime now = LocalDateTime.now();
-        run.setStatus(ModerationPipelineRunEntity.RunStatus.SUCCESS);
-        run.setFinalDecision(finalDecision);
-        run.setEndedAt(now);
-        run.setTotalMs(Duration.between(run.getStartedAt(), now).toMillis());
-        runRepository.save(run);
-
-        try {
-            Map<String, Object> details = new LinkedHashMap<>();
-            details.put("runId", run.getId());
-            details.put("finalDecision", finalDecision == null ? null : finalDecision.name());
-            details.put("totalMs", run.getTotalMs());
-            auditLogWriter.writeSystem(
-                    "QUEUE_DECISION",
-                    "MODERATION_QUEUE",
-                    run.getQueueId(),
-                    AuditResult.SUCCESS,
-                    "审核流程完成：" + (finalDecision == null ? "UNKNOWN" : finalDecision.name()),
-                    run.getTraceId(),
-                    details
-            );
-        } catch (Exception ignore) {
-        }
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     @Transactional
@@ -206,5 +180,35 @@ public class ModerationPipelineTraceService {
         if (v == null) return null;
         // valueOf avoids many binary floating point surprises compared to new BigDecimal(double)
         return BigDecimal.valueOf(v);
+    }
+
+    @Transactional
+    public void finishRunSuccess(Long runId, ModerationPipelineRunEntity.FinalDecision finalDecision) {
+        ModerationPipelineRunEntity run = runRepository.findById(runId)
+                .orElseThrow(() -> new IllegalArgumentException("run not found: " + runId));
+
+        LocalDateTime now = LocalDateTime.now();
+        run.setStatus(ModerationPipelineRunEntity.RunStatus.SUCCESS);
+        run.setFinalDecision(finalDecision);
+        run.setEndedAt(now);
+        run.setTotalMs(Duration.between(run.getStartedAt(), now).toMillis());
+        runRepository.save(run);
+
+        try {
+            Map<String, Object> details = new LinkedHashMap<>();
+            details.put("runId", run.getId());
+            details.put("finalDecision", enumName(finalDecision));
+            details.put("totalMs", run.getTotalMs());
+            auditLogWriter.writeSystem(
+                    "QUEUE_DECISION",
+                    "MODERATION_QUEUE",
+                    run.getQueueId(),
+                    AuditResult.SUCCESS,
+                    "审核流程完成：" + (enumName(finalDecision) == null ? "UNKNOWN" : enumName(finalDecision)),
+                    run.getTraceId(),
+                    details
+            );
+        } catch (Exception ignore) {
+        }
     }
 }

@@ -56,7 +56,7 @@ function parseAdmonitionFromBlockquoteChildren(
   const lineParts = brIndex >= 0 ? firstParts.slice(0, brIndex) : firstParts;
   const lineText = nodeText(lineParts).trim();
 
-  const match = lineText.match(/^\[!(TIP|NOTE|IMPORTANT|WARNING|CAUTION)\](?:\s+(.*))?$/i);
+  const match = lineText.match(/^\[!(TIP|NOTE|IMPORTANT|WARNING|CAUTION)](?:\s+(.*))?$/i);
   if (!match) return null;
 
   const kind = match[1].toUpperCase();

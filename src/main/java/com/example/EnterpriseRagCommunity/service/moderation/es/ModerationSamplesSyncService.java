@@ -208,7 +208,7 @@ public class ModerationSamplesSyncService {
                                                          boolean clearIndexBefore, boolean cleanupOrphansAfter) {
         boolean onlyEn = onlyEnabled != null ? onlyEnabled : Boolean.TRUE;
         int bs = batchSize != null ? batchSize : 200;
-        bs = Math.min(Math.max(bs, 1), 1000);
+        bs = Math.clamp(bs, 1, 1000);
 
         long total = 0;
         long success = 0;
@@ -341,12 +341,12 @@ public class ModerationSamplesSyncService {
             q.addFields("id");
 
             var hits = template.search(q, Document.class, idx);
-            if (hits == null || hits.isEmpty()) break;
+            if (hits.isEmpty()) break;
 
             long maxSeen = lastId;
             for (var h : hits) {
                 Document doc = h.getContent();
-                Object idObj = doc == null ? null : doc.get("id");
+                Object idObj = doc.get("id");
                 Long id;
                 try {
                     id = idObj == null ? null : Long.valueOf(String.valueOf(idObj));

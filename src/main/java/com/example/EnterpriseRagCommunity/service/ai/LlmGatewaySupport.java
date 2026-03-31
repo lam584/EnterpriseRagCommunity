@@ -365,14 +365,14 @@ final class LlmGatewaySupport {
             if (t < p) {
                 c = t;
                 t = p + c;
-            } else if ((c == null || c <= 0) && (t - p) > 0) {
+            } else if (c <= 0 && t - p > 0) {
                 c = t - p;
             } else {
                 t = p + c;
             }
         } else if (p != null && c != null) {
             t = p + c;
-        } else if (p != null && c == null && t != null) {
+        } else if (p != null && t != null) {
             if (t >= p) {
                 c = t - p;
             } else {
@@ -409,27 +409,33 @@ final class LlmGatewaySupport {
             String role = m.role();
             Object content = m.content();
             if (role != null) chars += role.length();
-            if (content == null) continue;
-            if (content instanceof String s) {
-                chars += s.length();
-                continue;
-            }
-            if (content instanceof List<?> parts) {
-                for (Object p : parts) {
-                    if (p == null) continue;
-                    if (p instanceof Map<?, ?> pm) {
-                        Object t = pm.get("text");
-                        if (t instanceof String ts) chars += ts.length();
-                        Object iu = pm.get("image_url");
-                        if (iu instanceof Map<?, ?> ium) {
-                            Object u = ium.get("url");
-                            if (u instanceof String us) chars += us.length();
-                        }
-                    } else {
-                        chars += String.valueOf(p).length();
-                    }
+            switch (content) {
+                case null -> {
+                    continue;
                 }
-                continue;
+                case String s -> {
+                    chars += s.length();
+                    continue;
+                }
+                case List<?> parts -> {
+                    for (Object p : parts) {
+                        if (p == null) continue;
+                        if (p instanceof Map<?, ?> pm) {
+                            Object t = pm.get("text");
+                            if (t instanceof String ts) chars += ts.length();
+                            Object iu = pm.get("image_url");
+                            if (iu instanceof Map<?, ?> ium) {
+                                Object u = ium.get("url");
+                                if (u instanceof String us) chars += us.length();
+                            }
+                        } else {
+                            chars += String.valueOf(p).length();
+                        }
+                    }
+                    continue;
+                }
+                default -> {
+                }
             }
             chars += String.valueOf(content).length();
         }
@@ -443,9 +449,17 @@ final class LlmGatewaySupport {
         String trimmed = t.trim();
         if (trimmed.isEmpty()) return t;
         String lower = trimmed.toLowerCase(Locale.ROOT);
-        if (lower.equals("reasoning_content")) return "";
-        if (lower.equals("<reasoning_content>") || lower.equals("</reasoning_content>")) return "";
-        if (lower.equals("&lt;reasoning_content&gt;") || lower.equals("&lt;/reasoning_content&gt;")) return "";
+        switch (lower) {
+            case "reasoning_content" -> {
+                return "";
+            }
+            case "<reasoning_content>", "</reasoning_content>" -> {
+                return "";
+            }
+            case "&lt;reasoning_content&gt;", "&lt;/reasoning_content&gt;" -> {
+                return "";
+            }
+        }
         if (lower.startsWith("reasoning_content") && removeMarkerWordIgnoreCase(trimmed, "reasoning_content").trim().isEmpty())
             return "";
         return t;

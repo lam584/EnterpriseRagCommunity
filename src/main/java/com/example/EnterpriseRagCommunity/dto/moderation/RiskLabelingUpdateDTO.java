@@ -8,7 +8,6 @@ import jakarta.validation.constraints.*;
 import lombok.Data;
 
 import java.math.BigDecimal;
-import java.util.Optional;
 import java.time.LocalDateTime;
 
 @Data
@@ -31,13 +30,13 @@ public class RiskLabelingUpdateDTO {
     private Long tagId;
 
     @ApiModelProperty(value = "来源（可选）", example = "HUMAN")
-    private Optional<Source> source = Optional.empty();
+    private Source source;
 
     @ApiModelProperty(value = "置信度（0-1，可选）", example = "0.85")
     @DecimalMin("0.0")
     @DecimalMax("1.0")
     @Digits(integer = 1, fraction = 4)
-    private Optional<BigDecimal> confidence = Optional.empty();
+    private BigDecimal confidence;
 
     @ApiModelProperty(value = "创建时间（只读）", example = "2025-01-01T00:00:00")
     @JsonIgnore

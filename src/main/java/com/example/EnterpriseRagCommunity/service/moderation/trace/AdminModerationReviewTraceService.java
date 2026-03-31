@@ -48,6 +48,121 @@ public class AdminModerationReviewTraceService {
     private final ModerationChunkReviewService chunkReviewService;
     private final AuditLogsService auditLogsService;
 
+    private static AdminModerationReviewTraceChunkSetDTO toChunkSetDto(ModerationChunkSetEntity s) {
+        if (s == null) return null;
+        return new AdminModerationReviewTraceChunkSetDTO(
+                s.getId(),
+                s.getQueueId(),
+                enumName(s.getCaseType()),
+                enumName(s.getContentType()),
+                s.getContentId(),
+                enumName(s.getStatus()),
+                s.getChunkThresholdChars(),
+                s.getChunkSizeChars(),
+                s.getOverlapChars(),
+                s.getTotalChunks(),
+                s.getCompletedChunks(),
+                s.getFailedChunks(),
+                s.getConfigJson(),
+                s.getMemoryJson(),
+                s.getCreatedAt(),
+                s.getUpdatedAt()
+        );
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
+    }
+
+    public static LocalDateTime parseLocalDateTimeOrNull(String raw) {
+        if (!StringUtils.hasText(raw)) return null;
+        String t = raw.trim();
+        try {
+            return LocalDateTime.parse(t);
+        } catch (DateTimeParseException ignore) {
+            return null;
+        }
+    }
+
+    private static ModerationPipelineStepEntity findStage(List<ModerationPipelineStepEntity> steps, ModerationPipelineStepEntity.Stage stage) {
+        if (steps == null || steps.isEmpty() || stage == null) return null;
+        for (ModerationPipelineStepEntity s : steps) {
+            if (s != null && stage.equals(s.getStage())) return s;
+        }
+        return null;
+    }
+
+    private static boolean shouldIncludeRuleDetails(ModerationPipelineStepEntity step) {
+        if (step == null || step.getDetailsJson() == null) return false;
+        Object hit = step.getDetailsJson().get("antiSpamHit");
+        if (hit instanceof Boolean b) return b;
+        return hit != null && "true".equalsIgnoreCase(String.valueOf(hit));
+    }
+
+    private static AdminModerationReviewTraceStageSummaryDTO toStageSummary(String stage, ModerationPipelineStepEntity step, boolean includeDetails) {
+        if (step == null) return new AdminModerationReviewTraceStageSummaryDTO(stage, null, null, null, null, null);
+        return new AdminModerationReviewTraceStageSummaryDTO(
+                stage,
+                step.getDecision(),
+                step.getScore(),
+                step.getThreshold(),
+                step.getCostMs(),
+                includeDetails ? step.getDetailsJson() : null
+        );
+    }
+
+    private static AdminModerationReviewTraceChunkSummaryDTO toChunkSummary(ModerationPipelineStepEntity llmStep, ModerationChunkSetEntity set) {
+        boolean chunked = false;
+        Long chunkSetId = null;
+        Integer total = null;
+        Integer completed = null;
+        Integer failed = null;
+        BigDecimal maxScore = null;
+
+        if (llmStep != null && llmStep.getDetailsJson() != null) {
+            Object c = llmStep.getDetailsJson().get("chunked");
+            if (c instanceof Boolean b && b) chunked = true;
+            else if (c != null && "true".equalsIgnoreCase(String.valueOf(c))) chunked = true;
+            Object cs = llmStep.getDetailsJson().get("chunkSetId");
+            if (cs instanceof Number n) chunkSetId = n.longValue();
+            else if (cs != null) {
+                try {
+                    chunkSetId = Long.parseLong(String.valueOf(cs));
+                } catch (Exception ignore) {
+                }
+            }
+        }
+
+        if (set != null) {
+            if (chunkSetId == null) chunkSetId = set.getId();
+            total = set.getTotalChunks();
+            completed = set.getCompletedChunks();
+            failed = set.getFailedChunks();
+            maxScore = readBigDecimal(set.getMemoryJson(), "maxScore");
+        }
+
+        Long avgMs = null;
+        if (Boolean.TRUE.equals(chunked) && llmStep != null && llmStep.getCostMs() != null) {
+            int denom = total == null || total <= 0 ? 0 : total;
+            if (denom > 0) avgMs = Math.max(0L, llmStep.getCostMs() / denom);
+        }
+
+        return new AdminModerationReviewTraceChunkSummaryDTO(chunked, chunkSetId, total, completed, failed, maxScore, avgMs);
+    }
+
+    private static BigDecimal readBigDecimal(Map<String, Object> map, String key) {
+        if (map == null || key == null) return null;
+        Object v = map.get(key);
+        if (v == null) return null;
+        if (v instanceof BigDecimal b) return b;
+        if (v instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
+        try {
+            return new BigDecimal(String.valueOf(v));
+        } catch (Exception ignore) {
+            return null;
+        }
+    }
+
     @Transactional(readOnly = true)
     public AdminModerationReviewTraceTaskPageDTO listTasks(
             Long queueId,
@@ -91,7 +206,7 @@ public class AdminModerationReviewTraceService {
         };
 
         Page<ModerationQueueEntity> queues = queueRepository.findAll(spec, pageable);
-        List<ModerationQueueEntity> items = queues.getContent() == null ? List.of() : queues.getContent();
+        List<ModerationQueueEntity> items = queues.getContent();
         if (items.isEmpty()) {
             return new AdminModerationReviewTraceTaskPageDTO(List.of(), queues.getTotalPages(), queues.getTotalElements(), p, ps);
         }
@@ -190,12 +305,12 @@ public class AdminModerationReviewTraceService {
                     q.getId(),
                     q.getContentType(),
                     q.getContentId(),
-                    q.getStatus() == null ? null : q.getStatus().name(),
-                    q.getCurrentStage() == null ? null : q.getCurrentStage().name(),
+                    enumName(q.getStatus()),
+                    enumName(q.getCurrentStage()),
                     q.getUpdatedAt(),
                     run == null ? null : run.getId(),
-                    run == null || run.getStatus() == null ? null : run.getStatus().name(),
-                    run == null || run.getFinalDecision() == null ? null : run.getFinalDecision().name(),
+                    run == null ? null : enumName(run.getStatus()),
+                    run == null ? null : enumName(run.getFinalDecision()),
                     run == null ? null : run.getTraceId(),
                     run == null ? null : run.getStartedAt(),
                     run == null ? null : run.getEndedAt(),
@@ -232,123 +347,12 @@ public class AdminModerationReviewTraceService {
         List<AuditLogsViewDTO> auditLogs;
         try {
             var page = auditLogsService.query(1, 200, null, null, null, null, null, "MODERATION_QUEUE", queueId, null, null, null, null, "createdAt,desc");
-            auditLogs = page == null || page.getContent() == null ? List.of() : page.getContent();
+            auditLogs = page == null ? List.of() : page.getContent();
         } catch (Exception e) {
             auditLogs = List.of();
         }
 
         return new AdminModerationReviewTraceTaskDetailDTO(queue, latestRun, history, chunkSet, progress, auditLogs);
-    }
-
-    public static LocalDateTime parseLocalDateTimeOrNull(String raw) {
-        if (!StringUtils.hasText(raw)) return null;
-        String t = raw.trim();
-        try {
-            return LocalDateTime.parse(t);
-        } catch (DateTimeParseException ignore) {
-            return null;
-        }
-    }
-
-    private static ModerationPipelineStepEntity findStage(List<ModerationPipelineStepEntity> steps, ModerationPipelineStepEntity.Stage stage) {
-        if (steps == null || steps.isEmpty() || stage == null) return null;
-        for (ModerationPipelineStepEntity s : steps) {
-            if (s != null && stage.equals(s.getStage())) return s;
-        }
-        return null;
-    }
-
-    private static boolean shouldIncludeRuleDetails(ModerationPipelineStepEntity step) {
-        if (step == null || step.getDetailsJson() == null) return false;
-        Object hit = step.getDetailsJson().get("antiSpamHit");
-        if (hit instanceof Boolean b) return b;
-        return hit != null && "true".equalsIgnoreCase(String.valueOf(hit));
-    }
-
-    private static AdminModerationReviewTraceStageSummaryDTO toStageSummary(String stage, ModerationPipelineStepEntity step, boolean includeDetails) {
-        if (step == null) return new AdminModerationReviewTraceStageSummaryDTO(stage, null, null, null, null, null);
-        return new AdminModerationReviewTraceStageSummaryDTO(
-                stage,
-                step.getDecision(),
-                step.getScore(),
-                step.getThreshold(),
-                step.getCostMs(),
-                includeDetails ? step.getDetailsJson() : null
-        );
-    }
-
-    private static AdminModerationReviewTraceChunkSummaryDTO toChunkSummary(ModerationPipelineStepEntity llmStep, ModerationChunkSetEntity set) {
-        boolean chunked = false;
-        Long chunkSetId = null;
-        Integer total = null;
-        Integer completed = null;
-        Integer failed = null;
-        BigDecimal maxScore = null;
-
-        if (llmStep != null && llmStep.getDetailsJson() != null) {
-            Object c = llmStep.getDetailsJson().get("chunked");
-            if (c instanceof Boolean b && b) chunked = true;
-            else if (c != null && "true".equalsIgnoreCase(String.valueOf(c))) chunked = true;
-            Object cs = llmStep.getDetailsJson().get("chunkSetId");
-            if (cs instanceof Number n) chunkSetId = n.longValue();
-            else if (cs != null) {
-                try {
-                    chunkSetId = Long.parseLong(String.valueOf(cs));
-                } catch (Exception ignore) {
-                }
-            }
-        }
-
-        if (set != null) {
-            if (chunkSetId == null) chunkSetId = set.getId();
-            total = set.getTotalChunks();
-            completed = set.getCompletedChunks();
-            failed = set.getFailedChunks();
-            maxScore = readBigDecimal(set.getMemoryJson(), "maxScore");
-        }
-
-        Long avgMs = null;
-        if (Boolean.TRUE.equals(chunked) && llmStep != null && llmStep.getCostMs() != null) {
-            int denom = total == null || total <= 0 ? 0 : total;
-            if (denom > 0) avgMs = Math.max(0L, llmStep.getCostMs() / denom);
-        }
-
-        return new AdminModerationReviewTraceChunkSummaryDTO(chunked, chunkSetId, total, completed, failed, maxScore, avgMs);
-    }
-
-    private static BigDecimal readBigDecimal(Map<String, Object> map, String key) {
-        if (map == null || key == null) return null;
-        Object v = map.get(key);
-        if (v == null) return null;
-        if (v instanceof BigDecimal b) return b;
-        if (v instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
-        try {
-            return new BigDecimal(String.valueOf(v));
-        } catch (Exception ignore) {
-            return null;
-        }
-    }
-
-    private static AdminModerationReviewTraceChunkSetDTO toChunkSetDto(ModerationChunkSetEntity s) {
-        if (s == null) return null;
-        return new AdminModerationReviewTraceChunkSetDTO(
-                s.getId(),
-                s.getQueueId(),
-                s.getCaseType() == null ? null : s.getCaseType().name(),
-                s.getContentType() == null ? null : s.getContentType().name(),
-                s.getContentId(),
-                s.getStatus() == null ? null : s.getStatus().name(),
-                s.getChunkThresholdChars(),
-                s.getChunkSizeChars(),
-                s.getOverlapChars(),
-                s.getTotalChunks(),
-                s.getCompletedChunks(),
-                s.getFailedChunks(),
-                s.getConfigJson(),
-                s.getMemoryJson(),
-                s.getCreatedAt(),
-                s.getUpdatedAt()
-        );
     }
 }
 

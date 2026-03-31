@@ -193,7 +193,7 @@ public class RagFileAssetIndexBuildService {
 
                 String raw0 = ex.getExtractedText();
                 if (raw0 != null && !raw0.isBlank()) {
-                    raw0 = raw0.replaceAll("\\[\\[IMAGE_\\d+\\]\\]", " ");
+                    raw0 = raw0.replaceAll("\\[\\[IMAGE_\\d+]]", " ");
                 }
                 String raw = ModerationSampleTextUtils.normalize(raw0);
                 if (raw == null || raw.isBlank()) continue;
@@ -451,18 +451,16 @@ public class RagFileAssetIndexBuildService {
             providerToUse = fixedProviderId;
         }
 
-        if (modelToUse == null) {
-            LlmRoutingService.RouteTarget target = (providerToUse == null)
-                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
-                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
-            if (target == null) {
-                throw new IllegalStateException(providerToUse == null
-                        ? "no eligible embedding target (please check embedding routing config)"
-                        : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
-            }
-            providerToUse = target.providerId();
-            modelToUse = target.modelName();
+        LlmRoutingService.RouteTarget target = (providerToUse == null)
+                ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
+                : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
+        if (target == null) {
+            throw new IllegalStateException(providerToUse == null
+                    ? "no eligible embedding target (please check embedding routing config)"
+                    : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
         }
+        providerToUse = target.providerId();
+        modelToUse = target.modelName();
 
         Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
         if (configuredDims == null) {
@@ -471,7 +469,7 @@ public class RagFileAssetIndexBuildService {
         }
 
         String raw = ModerationSampleTextUtils.normalize(ex.getExtractedText());
-        if (raw == null || raw.isBlank()) return;
+        if (raw.isBlank()) return;
 
         String header = "";
         String fileName = fa.getOriginalName();

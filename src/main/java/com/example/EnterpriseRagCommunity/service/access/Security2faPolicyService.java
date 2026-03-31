@@ -6,7 +6,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -82,39 +81,21 @@ public class Security2faPolicyService {
     private final UsersRepository usersRepository;
     private final EmailVerificationMailer emailVerificationMailer;
 
-    @Transactional(readOnly = true)
-    public Security2faPolicySettingsDTO getAdminSettingsOrDefault() {
-        Security2faPolicySettingsDTO dto = new Security2faPolicySettingsDTO();
-        EnablePolicy totpPolicy = EnablePolicy.parseOrDefault(
-                appSettingsService.getString(KEY_TOTP_POLICY).orElse(null),
-                EnablePolicy.ALLOW_ALL
-        );
-        EnablePolicy emailPolicy = EnablePolicy.parseOrDefault(
-                appSettingsService.getString(KEY_EMAIL_OTP_POLICY).orElse(null),
-                EnablePolicy.ALLOW_ALL
-        );
-        Login2faMode login2faMode = Login2faMode.parseOrDefault(
-                appSettingsService.getString(KEY_LOGIN2FA_MODE).orElse(null),
-                Login2faMode.EMAIL_OR_TOTP
-        );
-        EnablePolicy login2faScopePolicy = EnablePolicy.parseOrDefault(
-                appSettingsService.getString(KEY_LOGIN2FA_SCOPE_POLICY).orElse(null),
-                EnablePolicy.ALLOW_ALL
-        );
-
-        dto.setTotpPolicy(totpPolicy.name());
-        dto.setTotpRoleIds(parseIdList(appSettingsService.getString(KEY_TOTP_ROLE_IDS)));
-        dto.setTotpUserIds(parseIdList(appSettingsService.getString(KEY_TOTP_USER_IDS)));
-
-        dto.setEmailOtpPolicy(emailPolicy.name());
-        dto.setEmailOtpRoleIds(parseIdList(appSettingsService.getString(KEY_EMAIL_OTP_ROLE_IDS)));
-        dto.setEmailOtpUserIds(parseIdList(appSettingsService.getString(KEY_EMAIL_OTP_USER_IDS)));
-
-        dto.setLogin2faMode(login2faMode.name());
-        dto.setLogin2faScopePolicy(login2faScopePolicy.name());
-        dto.setLogin2faRoleIds(parseIdList(appSettingsService.getString(KEY_LOGIN2FA_ROLE_IDS)));
-        dto.setLogin2faUserIds(parseIdList(appSettingsService.getString(KEY_LOGIN2FA_USER_IDS)));
-        return normalizeAdminSettings(dto);
+    private static List<Long> parseIdList(String raw) {
+        String v = raw == null ? "" : raw;
+        if (v.isBlank()) return List.of();
+        String[] parts = v.split(",");
+        List<Long> out = new ArrayList<>();
+        for (String p : parts) {
+            String s = p.trim();
+            if (s.isEmpty()) continue;
+            try {
+                long n = Long.parseLong(s);
+                if (n > 0) out.add(n);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return normalizeIdList(out);
     }
 
     @Transactional
@@ -321,22 +302,39 @@ public class Security2faPolicyService {
         };
     }
 
-    private static List<Long> parseIdList(Optional<String> raw) {
-        if (raw == null) return List.of();
-        String v = raw.orElse("");
-        if (v.isBlank()) return List.of();
-        String[] parts = v.split(",");
-        List<Long> out = new ArrayList<>();
-        for (String p : parts) {
-            String s = p == null ? "" : p.trim();
-            if (s.isEmpty()) continue;
-            try {
-                long n = Long.parseLong(s);
-                if (n > 0) out.add(n);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return normalizeIdList(out);
+    @Transactional(readOnly = true)
+    public Security2faPolicySettingsDTO getAdminSettingsOrDefault() {
+        Security2faPolicySettingsDTO dto = new Security2faPolicySettingsDTO();
+        EnablePolicy totpPolicy = EnablePolicy.parseOrDefault(
+                appSettingsService.getString(KEY_TOTP_POLICY).orElse(null),
+                EnablePolicy.ALLOW_ALL
+        );
+        EnablePolicy emailPolicy = EnablePolicy.parseOrDefault(
+                appSettingsService.getString(KEY_EMAIL_OTP_POLICY).orElse(null),
+                EnablePolicy.ALLOW_ALL
+        );
+        Login2faMode login2faMode = Login2faMode.parseOrDefault(
+                appSettingsService.getString(KEY_LOGIN2FA_MODE).orElse(null),
+                Login2faMode.EMAIL_OR_TOTP
+        );
+        EnablePolicy login2faScopePolicy = EnablePolicy.parseOrDefault(
+                appSettingsService.getString(KEY_LOGIN2FA_SCOPE_POLICY).orElse(null),
+                EnablePolicy.ALLOW_ALL
+        );
+
+        dto.setTotpPolicy(totpPolicy.name());
+        dto.setTotpRoleIds(parseIdList(appSettingsService.getString(KEY_TOTP_ROLE_IDS).orElse(null)));
+        dto.setTotpUserIds(parseIdList(appSettingsService.getString(KEY_TOTP_USER_IDS).orElse(null)));
+
+        dto.setEmailOtpPolicy(emailPolicy.name());
+        dto.setEmailOtpRoleIds(parseIdList(appSettingsService.getString(KEY_EMAIL_OTP_ROLE_IDS).orElse(null)));
+        dto.setEmailOtpUserIds(parseIdList(appSettingsService.getString(KEY_EMAIL_OTP_USER_IDS).orElse(null)));
+
+        dto.setLogin2faMode(login2faMode.name());
+        dto.setLogin2faScopePolicy(login2faScopePolicy.name());
+        dto.setLogin2faRoleIds(parseIdList(appSettingsService.getString(KEY_LOGIN2FA_ROLE_IDS).orElse(null)));
+        dto.setLogin2faUserIds(parseIdList(appSettingsService.getString(KEY_LOGIN2FA_USER_IDS).orElse(null)));
+        return normalizeAdminSettings(dto);
     }
 
     private static List<Long> normalizeIdList(List<Long> list) {

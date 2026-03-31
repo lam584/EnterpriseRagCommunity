@@ -4,8 +4,6 @@ import io.swagger.annotations.ApiModelProperty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
-import java.util.Optional;
-
 @Data
 public class CommentsClosureUpdateDTO {
     @NotNull
@@ -17,5 +15,5 @@ public class CommentsClosureUpdateDTO {
     private Long descendantId;
 
     @ApiModelProperty(value = "深度（自身为0）")
-    private Optional<Integer> depth = Optional.empty();
+    private Integer depth;
 }

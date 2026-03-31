@@ -91,7 +91,9 @@ public class UserService {
         if (role != null && !role.isBlank()) {
             String like = "%" + role.trim() + "%";
             specs.add((root, query, cb) -> {
-                query.distinct(true);
+                if (query != null) {
+                    query.distinct(true);
+                }
                 var rolesJoin = root.join("roles"); // 假设关联关系已正确映射
                 return cb.like(cb.lower(rolesJoin.get("name")), like.toLowerCase());
             });

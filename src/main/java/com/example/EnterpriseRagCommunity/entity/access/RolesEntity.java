@@ -18,7 +18,7 @@ public class RolesEntity {
     @Column(name = "role_name", nullable = false, length = 128)
     private String roleName;
 
-    @Column(name = "description", length = 255)
+    @Column(name = "description")
     private String description;
 
     @Column(name = "risk_level", nullable = false, length = 16)

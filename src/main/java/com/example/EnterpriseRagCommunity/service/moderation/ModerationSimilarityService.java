@@ -50,7 +50,7 @@ public class ModerationSimilarityService {
         ModerationSimilarityConfigEntity cfg = loadConfigOrNull();
 
         int topK = firstNonNull(req.getTopK(), cfg == null ? null : cfg.getDefaultTopK(), 5);
-        topK = Math.min(Math.max(topK, 1), 50);
+        topK = Math.clamp(topK, 1, 50);
 
         double threshold = resolveThreshold(req.getThreshold(), req.getContentType());
         if (threshold < 0) threshold = 0;
@@ -60,11 +60,11 @@ public class ModerationSimilarityService {
         if (numCandidates0 == null || numCandidates0 <= 0) {
             numCandidates = Math.max(100, topK * 10);
         } else {
-            numCandidates = Math.max(10, Math.min(10_000, numCandidates0));
+            numCandidates = Math.clamp(numCandidates0, 10, 10_000);
         }
 
         Integer maxInputChars0 = firstNonNull(req.getMaxInputChars(), cfg == null ? null : cfg.getMaxInputChars(), 0);
-        int maxInputChars = Math.max(0, maxInputChars0 == null ? 0 : maxInputChars0);
+        int maxInputChars = Math.max(0, maxInputChars0);
 
         String modelToUse = toNonBlank(req.getEmbeddingModel());
         boolean reqHasModel = modelToUse != null;
@@ -121,11 +121,11 @@ public class ModerationSimilarityService {
         resp.setTopK(topK);
         resp.setNumCandidates(numCandidates);
         resp.setEmbeddingDims(dimsToUse);
-        resp.setEmbeddingModel(er == null ? null : er.model());
+        resp.setEmbeddingModel(er.model());
         resp.setMaxInputChars(maxInputChars);
         resp.setHits(hits);
 
-        Double best = hits.isEmpty() ? null : hits.get(0).getDistance();
+        Double best = hits.isEmpty() ? null : hits.getFirst().getDistance();
         resp.setBestDistance(best);
         resp.setHit(best != null && best <= threshold);
 

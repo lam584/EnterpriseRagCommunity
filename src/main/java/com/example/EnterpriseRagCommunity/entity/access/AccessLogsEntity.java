@@ -63,7 +63,7 @@ public class AccessLogsEntity {
     @Column(name = "scheme", length = 16)
     private String scheme;
 
-    @Column(name = "host", length = 255)
+    @Column(name = "host")
     private String host;
 
     @Column(name = "request_id", length = 64)

@@ -7,7 +7,6 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class QaMessagesUpdateDTO {
@@ -16,25 +15,25 @@ public class QaMessagesUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "会话ID")
-    private Optional<Long> sessionId = Optional.empty();
+    private Long sessionId;
 
     @ApiModelProperty(value = "消息角色", example = "USER")
-    private Optional<MessageRole> role = Optional.empty();
+    private MessageRole role;
 
     @ApiModelProperty(value = "消息内容")
-    private Optional<String> content = Optional.empty();
+    private String content;
 
     @ApiModelProperty(value = "生成模型")
-    private Optional<String> model = Optional.empty();
+    private String model;
 
     @ApiModelProperty(value = "输入Token")
-    private Optional<Integer> tokensIn = Optional.empty();
+    private Integer tokensIn;
 
     @ApiModelProperty(value = "输出Token")
-    private Optional<Integer> tokensOut = Optional.empty();
+    private Integer tokensOut;
 
     @ApiModelProperty(value = "创建时间（不允许修改）")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }
 

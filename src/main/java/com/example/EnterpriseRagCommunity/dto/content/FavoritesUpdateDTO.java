@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class FavoritesUpdateDTO {
@@ -15,13 +14,13 @@ public class FavoritesUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "用户ID", example = "200")
-    private Optional<Long> userId = Optional.empty();
+    private Long userId;
 
     @ApiModelProperty(value = "帖子ID", example = "1000")
-    private Optional<Long> postId = Optional.empty();
+    private Long postId;
 
     @ApiModelProperty(value = "收藏时间（不允许修改）")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }
 

@@ -16,7 +16,6 @@ import org.apache.commons.compress.archivers.ArchiveException;
 import org.apache.commons.compress.archivers.ArchiveInputStream;
 import org.apache.commons.compress.archivers.ArchiveStreamFactory;
 import org.apache.commons.compress.compressors.CompressorException;
-import org.apache.commons.compress.compressors.CompressorInputStream;
 import org.apache.commons.compress.compressors.CompressorStreamFactory;
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
 import org.apache.commons.compress.archivers.sevenz.SevenZFile;
@@ -28,9 +27,6 @@ import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
-import org.apache.pdfbox.text.PDFTextStripper;
-import org.apache.poi.extractor.ExtractorFactory;
-import org.apache.poi.extractor.POITextExtractor;
 import org.apache.poi.hslf.usermodel.HSLFPictureData;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -41,7 +37,6 @@ import org.apache.poi.xslf.usermodel.XSLFPictureData;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
 import org.apache.poi.xwpf.usermodel.XWPFPictureData;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import org.apache.tika.Tika;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.metadata.TikaCoreProperties;
 import org.apache.tika.parser.AutoDetectParser;
@@ -52,7 +47,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import org.xml.sax.helpers.DefaultHandler;
 
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
@@ -431,7 +425,6 @@ public class FileAssetExtractionAsyncService {
                 bis.reset();
             } catch (Exception ignore) {
             }
-            decompressed = bis;
         }
 
         BufferedInputStream aisBuf = new BufferedInputStream(decompressed);

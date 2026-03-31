@@ -9,7 +9,6 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 
 @Data
 public class ModerationActionsUpdateDTO {
@@ -18,19 +17,19 @@ public class ModerationActionsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "所属队列ID", example = "100")
-    private Optional<Long> queueId = Optional.empty();
+    private Long queueId;
 
     @ApiModelProperty(value = "操作者用户ID", example = "200")
-    private Optional<Long> actorUserId = Optional.empty();
+    private Long actorUserId;
 
     @ApiModelProperty(value = "动作类型", example = "APPROVE")
-    private Optional<ActionType> action = Optional.empty();
+    private ActionType action;
 
     @ApiModelProperty(value = "理由/备注", example = "违规内容")
-    private Optional<@Size(max = 255) String> reason = Optional.empty();
+    private @Size(max = 255) String reason;
 
     @ApiModelProperty(value = "快照(JSON)")
-    private Optional<Map<String, Object>> snapshot = Optional.empty();
+    private Map<String, Object> snapshot;
 
     @ApiModelProperty(value = "创建时间(不可修改)")
     @JsonIgnore

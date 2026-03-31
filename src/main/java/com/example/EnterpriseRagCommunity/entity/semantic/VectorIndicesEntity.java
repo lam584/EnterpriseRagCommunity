@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.entity.semantic;
 
-import com.example.EnterpriseRagCommunity.entity.converter.JsonConverter;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexProvider;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.VectorIndexStatus;
 import jakarta.persistence.*;
@@ -37,6 +36,6 @@ public class VectorIndicesEntity {
     private VectorIndexStatus status;
 
     @Convert(converter = com.example.EnterpriseRagCommunity.entity.converter.MapJsonConverter.class)
-    @Column(name = "metadata", columnDefinition = "json", nullable = true)
+    @Column(name = "metadata", columnDefinition = "json")
     private Map<String, Object> metadata;
 }

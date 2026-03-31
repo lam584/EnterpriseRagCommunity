@@ -37,7 +37,7 @@ public class UserRolesEntity {
     @Column(name = "can_comment", nullable = false)
     private Boolean canComment;
 
-    @Column(name = "notes", length = 255)
+    @Column(name = "notes")
     private String notes;
 
     @Column(name = "created_at", nullable = false)

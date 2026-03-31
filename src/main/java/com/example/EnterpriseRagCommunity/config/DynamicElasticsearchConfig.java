@@ -68,10 +68,8 @@ public class DynamicElasticsearchConfig {
         currentClient.set(newClient);
         
         try {
-            if (oldClient != null) {
-                oldClient.close();
-                log.info("Closed old RestClient.");
-            }
+            oldClient.close();
+            log.info("Closed old RestClient.");
         } catch (Exception e) {
             log.warn("Error closing old RestClient: {}", e.getMessage());
         }

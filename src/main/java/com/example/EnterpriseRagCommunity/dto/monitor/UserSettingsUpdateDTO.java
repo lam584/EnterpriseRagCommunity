@@ -6,7 +6,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.util.Map;
-import java.util.Optional;
 
 @Data
 public class UserSettingsUpdateDTO {
@@ -15,11 +14,11 @@ public class UserSettingsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "用户ID")
-    private Optional<Long> userId = Optional.empty();
+    private Long userId;
 
     @ApiModelProperty(value = "设置键")
-    private Optional<@Size(max = 64) String> k = Optional.empty();
+    private @Size(max = 64) String k;
 
     @ApiModelProperty(value = "设置值(JSON)")
-    private Optional<Map<String, Object>> v = Optional.empty();
+    private Map<String, Object> v;
 }

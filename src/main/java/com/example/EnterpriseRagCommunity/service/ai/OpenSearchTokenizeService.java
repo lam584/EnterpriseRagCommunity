@@ -59,7 +59,7 @@ public class OpenSearchTokenizeService {
                 if (m == null) continue;
                 String c = m.get("content");
                 if (c == null || c.isBlank()) continue;
-                if (sb.length() > 0) sb.append('\n');
+                if (!sb.isEmpty()) sb.append('\n');
                 sb.append(c);
             }
         }

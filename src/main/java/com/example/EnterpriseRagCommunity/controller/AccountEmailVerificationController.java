@@ -69,7 +69,7 @@ public class AccountEmailVerificationController {
                 notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在确认一次高权限操作，验证码已发送。");
             } else if (purpose == EmailVerificationPurpose.TOTP_ENABLE) {
                 notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在进入修改 TOTP 流程，验证码已发送。");
-            } else if (purpose == EmailVerificationPurpose.TOTP_DISABLE) {
+            } else {
                 notificationsService.createNotification(user.getId(), "SECURITY", "账号安全通知", "你正在进入停用 TOTP 流程，验证码已发送。");
             }
         } catch (Exception ignore) {

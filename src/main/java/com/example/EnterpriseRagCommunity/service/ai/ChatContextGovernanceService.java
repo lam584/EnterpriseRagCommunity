@@ -37,101 +37,10 @@ public class ChatContextGovernanceService {
         private Map<String, Object> detail;
     }
 
-    @Transactional
-    public ApplyResult apply(Long userId, Long sessionId, Long questionMessageId, List<ChatMessage> input) {
-        ChatContextGovernanceConfigDTO cfg = configService.getConfigOrDefault();
-        ApplyResult out = new ApplyResult();
-        if (input == null) input = List.of();
-        List<ChatMessage> messages = new ArrayList<>(input);
-
-        int beforeTokens = approxTokensOfMessages(messages, DEFAULT_IMAGE_TOKENS);
-        int beforeChars = approxCharsOfMessages(messages);
-        out.setBeforeTokens(beforeTokens);
-        out.setBeforeChars(beforeChars);
-
-        boolean enabled = cfg == null || cfg.getEnabled() == null || cfg.getEnabled();
-        if (!enabled || messages.isEmpty()) {
-            out.setMessages(messages);
-            out.setChanged(false);
-            out.setReason("disabled");
-            out.setAfterTokens(beforeTokens);
-            out.setAfterChars(beforeChars);
-            return out;
-        }
-
-        long startedAt = System.currentTimeMillis();
-
-        Map<String, Object> detail = new LinkedHashMap<>();
-        detail.put("ops", new ArrayList<String>());
-        detail.put("beforeTokens", beforeTokens);
-        detail.put("beforeChars", beforeChars);
-
-        int systemPrefix = countLeadingSystemMessages(messages);
-        boolean hasUserTail = !messages.isEmpty() && "user".equalsIgnoreCase(messages.get(messages.size() - 1).role());
-
-        boolean compressed = false;
-        if (Boolean.TRUE.equals(cfg.getCompressionEnabled())) {
-            int trigger = cfg.getCompressionTriggerTokens() == null ? 0 : Math.max(0, cfg.getCompressionTriggerTokens());
-            if (trigger > 0 && beforeTokens > trigger) {
-                int keep = cfg.getCompressionKeepLastMessages() == null ? 0 : Math.max(0, cfg.getCompressionKeepLastMessages());
-                compressed = compressHistory(messages, systemPrefix, hasUserTail, keep, cfg, detail);
-            }
-        }
-
-        boolean clipped = clipToBudget(messages, systemPrefix, hasUserTail, cfg, detail);
-
-        int afterTokens = approxTokensOfMessages(messages, DEFAULT_IMAGE_TOKENS);
-        int afterChars = approxCharsOfMessages(messages);
-
-        out.setMessages(messages);
-        out.setAfterTokens(afterTokens);
-        out.setAfterChars(afterChars);
-
-        boolean changed = compressed || clipped || afterTokens != beforeTokens || afterChars != beforeChars;
-        out.setChanged(changed);
-        out.setReason(buildReason(compressed, clipped, beforeTokens, afterTokens, beforeChars, afterChars));
-        out.setDetail(detail);
-
-        if (changed && cfg != null && Boolean.TRUE.equals(cfg.getLogEnabled())) {
-            double p = cfg.getLogSampleRate() == null ? 1.0 : cfg.getLogSampleRate();
-            p = Math.max(0.0, Math.min(1.0, p));
-            if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= p) {
-                AiChatContextEventsEntity e = new AiChatContextEventsEntity();
-                e.setUserId(userId);
-                e.setSessionId(sessionId);
-                e.setQuestionMessageId(questionMessageId);
-                e.setKind("CHAT");
-                e.setReason(out.getReason());
-                e.setTargetPromptTokens(cfg.getMaxPromptTokens());
-                e.setReserveAnswerTokens(cfg.getReserveAnswerTokens());
-                e.setBeforeTokens(beforeTokens);
-                e.setAfterTokens(afterTokens);
-                e.setBeforeChars(beforeChars);
-                e.setAfterChars(afterChars);
-                e.setLatencyMs((int) Math.max(0, System.currentTimeMillis() - startedAt));
-                detail.put("afterTokens", afterTokens);
-                detail.put("afterChars", afterChars);
-                e.setDetailJson(detail);
-                e.setCreatedAt(LocalDateTime.now());
-                eventsRepository.save(e);
-            }
-        }
-
-        return out;
-    }
-
-    private static String buildReason(boolean compressed, boolean clipped, int beforeTokens, int afterTokens, int beforeChars, int afterChars) {
-        if (compressed && clipped) return "compress+clip";
-        if (compressed) return "compress";
-        if (clipped) return "clip";
-        if (afterTokens != beforeTokens || afterChars != beforeChars) return "adjust";
-        return "nochange";
-    }
-
     private static boolean compressHistory(List<ChatMessage> messages, int systemPrefix, boolean hasUserTail, int keepLast, ChatContextGovernanceConfigDTO cfg, Map<String, Object> detail) {
         int lastIdx = hasUserTail ? messages.size() - 1 : messages.size();
         int start = Math.min(systemPrefix, lastIdx);
-        int end = Math.max(start, lastIdx);
+        int end = lastIdx;
         int available = end - start;
         if (available <= keepLast) return false;
 
@@ -148,8 +57,7 @@ public class ChatContextGovernanceService {
         List<String> ops = getOps(detail);
         ops.add(String.format(Locale.ROOT, "compressHistory: %d msgs -> 1 summary", toCompress.size()));
 
-        List<ChatMessage> next = new ArrayList<>();
-        next.addAll(messages.subList(0, start));
+        List<ChatMessage> next = new ArrayList<>(messages.subList(0, start));
         next.add(ChatMessage.system(summary));
         next.addAll(keep);
         if (hasUserTail && lastIdx < messages.size()) {
@@ -164,25 +72,12 @@ public class ChatContextGovernanceService {
         return true;
     }
 
-    private static String buildSummary(List<ChatMessage> msgs, int snippetChars, int maxChars) {
-        if (msgs == null || msgs.isEmpty()) return null;
-        StringBuilder sb = new StringBuilder();
-        sb.append("以下为较早历史消息摘要（自动压缩，仅供参考，必要时请向用户确认）：\n");
-        for (ChatMessage m : msgs) {
-            if (m == null) continue;
-            String role = m.role() == null ? "" : m.role().trim().toLowerCase(Locale.ROOT);
-            if ("system".equals(role)) continue;
-            String text = extractText(m);
-            if (text == null || text.isBlank()) continue;
-            String oneLine = text.replace('\r', ' ').replace('\n', ' ').trim();
-            if (oneLine.length() > snippetChars) oneLine = oneLine.substring(0, snippetChars);
-            String prefix = "user".equals(role) ? "U: " : ("assistant".equals(role) ? "A: " : (role + ": "));
-            sb.append("- ").append(prefix).append(oneLine).append('\n');
-            if (sb.length() >= maxChars) break;
-        }
-        String s = sb.toString().trim();
-        if (s.length() > maxChars) s = s.substring(0, maxChars);
-        return s;
+    private static String buildReason(boolean compressed, boolean clipped, int beforeTokens, int afterTokens, int beforeChars, int afterChars) {
+        if (compressed && clipped) return "compress+clip";
+        if (compressed) return "compress";
+        if (clipped) return "clip";
+        if (afterTokens != beforeTokens || afterChars != beforeChars) return "adjust";
+        return "nochange";
     }
 
     private static boolean clipToBudget(List<ChatMessage> messages, int systemPrefix, boolean hasUserTail, ChatContextGovernanceConfigDTO cfg, Map<String, Object> detail) {
@@ -206,7 +101,7 @@ public class ChatContextGovernanceService {
         if (keepLast > 0) {
             int lastIdx = hasUserTail ? messages.size() - 1 : messages.size();
             int start = Math.min(systemPrefix, lastIdx);
-            int end = Math.max(start, lastIdx);
+            int end = lastIdx;
             int available = end - start;
             if (available > keepLast) {
                 int drop = available - keepLast;
@@ -247,7 +142,7 @@ public class ChatContextGovernanceService {
             }
         }
 
-        boolean allowDropSystem = cfg.getAllowDropRagContext() == null || Boolean.TRUE.equals(cfg.getAllowDropRagContext());
+        boolean allowDropSystem = cfg.getAllowDropRagContext() == null || cfg.getAllowDropRagContext();
         if (budgetTokens > 0) {
             List<Map<String, Object>> dropped = new ArrayList<>();
             while (approxTokensOfMessages(messages, DEFAULT_IMAGE_TOKENS) > budgetTokens) {
@@ -301,6 +196,110 @@ public class ChatContextGovernanceService {
         meta.put("beforeChars", beforeChars);
         meta.put("afterChars", afterChars);
         return changed;
+    }
+
+    private static String buildSummary(List<ChatMessage> msgs, int snippetChars, int maxChars) {
+        if (msgs == null || msgs.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("以下为较早历史消息摘要（自动压缩，仅供参考，必要时请向用户确认）：\n");
+        for (ChatMessage m : msgs) {
+            if (m == null) continue;
+            String role = m.role() == null ? "" : m.role().trim().toLowerCase(Locale.ROOT);
+            if ("system".equals(role)) continue;
+            String text = extractText(m);
+            if (text == null || text.isBlank()) continue;
+            String oneLine = text.replace('\r', ' ').replace('\n', ' ').trim();
+            if (oneLine.length() > snippetChars) oneLine = oneLine.substring(0, snippetChars);
+            String prefix = "user".equals(role) ? "U: " : ("assistant".equals(role) ? "A: " : (role + ": "));
+            sb.append("- ").append(prefix).append(oneLine).append('\n');
+            if (sb.length() >= maxChars) break;
+        }
+        String s = sb.toString().trim();
+        if (s.length() > maxChars) s = s.substring(0, maxChars);
+        return s;
+    }
+
+    @Transactional
+    public ApplyResult apply(Long userId, Long sessionId, Long questionMessageId, List<ChatMessage> input) {
+        ChatContextGovernanceConfigDTO cfg = configService.getConfigOrDefault();
+        ApplyResult out = new ApplyResult();
+        if (input == null) input = List.of();
+        List<ChatMessage> messages = new ArrayList<>(input);
+
+        int beforeTokens = approxTokensOfMessages(messages, DEFAULT_IMAGE_TOKENS);
+        int beforeChars = approxCharsOfMessages(messages);
+        out.setBeforeTokens(beforeTokens);
+        out.setBeforeChars(beforeChars);
+
+        boolean enabled = cfg == null || cfg.getEnabled() == null || cfg.getEnabled();
+        if (!enabled || messages.isEmpty()) {
+            out.setMessages(messages);
+            out.setChanged(false);
+            out.setReason("disabled");
+            out.setAfterTokens(beforeTokens);
+            out.setAfterChars(beforeChars);
+            return out;
+        }
+
+        long startedAt = System.currentTimeMillis();
+
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("ops", new ArrayList<String>());
+        detail.put("beforeTokens", beforeTokens);
+        detail.put("beforeChars", beforeChars);
+
+        int systemPrefix = countLeadingSystemMessages(messages);
+        boolean hasUserTail = !messages.isEmpty() && "user".equalsIgnoreCase(messages.getLast().role());
+
+        boolean compressed = false;
+        if (cfg != null && Boolean.TRUE.equals(cfg.getCompressionEnabled())) {
+            int trigger = cfg.getCompressionTriggerTokens() == null ? 0 : Math.max(0, cfg.getCompressionTriggerTokens());
+            if (trigger > 0 && beforeTokens > trigger) {
+                int keep = cfg.getCompressionKeepLastMessages() == null ? 0 : Math.max(0, cfg.getCompressionKeepLastMessages());
+                compressed = compressHistory(messages, systemPrefix, hasUserTail, keep, cfg, detail);
+            }
+        }
+
+        boolean clipped = clipToBudget(messages, systemPrefix, hasUserTail, cfg, detail);
+
+        int afterTokens = approxTokensOfMessages(messages, DEFAULT_IMAGE_TOKENS);
+        int afterChars = approxCharsOfMessages(messages);
+
+        out.setMessages(messages);
+        out.setAfterTokens(afterTokens);
+        out.setAfterChars(afterChars);
+
+        boolean changed = compressed || clipped || afterTokens != beforeTokens || afterChars != beforeChars;
+        out.setChanged(changed);
+        out.setReason(buildReason(compressed, clipped, beforeTokens, afterTokens, beforeChars, afterChars));
+        out.setDetail(detail);
+
+        if (cfg != null && changed && Boolean.TRUE.equals(cfg.getLogEnabled())) {
+            double p = cfg.getLogSampleRate() == null ? 1.0 : cfg.getLogSampleRate();
+            p = Math.clamp(p, 0.0, 1.0);
+            if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= p) {
+                AiChatContextEventsEntity e = new AiChatContextEventsEntity();
+                e.setUserId(userId);
+                e.setSessionId(sessionId);
+                e.setQuestionMessageId(questionMessageId);
+                e.setKind("CHAT");
+                e.setReason(out.getReason());
+                e.setTargetPromptTokens(cfg.getMaxPromptTokens());
+                e.setReserveAnswerTokens(cfg.getReserveAnswerTokens());
+                e.setBeforeTokens(beforeTokens);
+                e.setAfterTokens(afterTokens);
+                e.setBeforeChars(beforeChars);
+                e.setAfterChars(afterChars);
+                e.setLatencyMs((int) Math.max(0, System.currentTimeMillis() - startedAt));
+                detail.put("afterTokens", afterTokens);
+                detail.put("afterChars", afterChars);
+                e.setDetailJson(detail);
+                e.setCreatedAt(LocalDateTime.now());
+                eventsRepository.save(e);
+            }
+        }
+
+        return out;
     }
 
     private static int countLeadingSystemMessages(List<ChatMessage> messages) {

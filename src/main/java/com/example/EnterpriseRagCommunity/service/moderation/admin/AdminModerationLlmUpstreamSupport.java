@@ -614,7 +614,7 @@ class AdminModerationLlmUpstreamSupport {
             if (c == null) continue;
             if (c instanceof String s) {
                 sb.append(s);
-                if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
+                if (!sb.isEmpty() && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
                 continue;
             }
             if (c instanceof List<?> parts) {
@@ -625,7 +625,7 @@ class AdminModerationLlmUpstreamSupport {
                     if (!"text".equals(type)) continue;
                     Object text = p.get("text");
                     if (text != null) sb.append(text);
-                    if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
+                    if (!sb.isEmpty() && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
                 }
             }
         }
@@ -881,7 +881,6 @@ class AdminModerationLlmUpstreamSupport {
         }
         if (!riskTagsList.isEmpty()) out.riskTags = riskTagsList;
         else out.riskTags = out.labels == null ? List.of() : out.labels;
-        if (out.riskTags == null) out.riskTags = List.of();
 
         out.severity = firstTextOrNull(root, List.of("severity"));
         if (root.path("uncertainty").isNumber()) out.uncertainty = root.path("uncertainty").asDouble();
@@ -1188,7 +1187,7 @@ class AdminModerationLlmUpstreamSupport {
         if (before == null || before.isBlank()) return null;
 
         if (auditText == null || auditText.isBlank()) return null;
-        String r = extractBetweenAnchorsByRegex(auditText, before, after, 500);
+        String r = extractBetweenAnchorsByRegex(auditText, before, after);
         return r == null || r.isBlank() ? null : r;
     }
 
@@ -1251,9 +1250,9 @@ class AdminModerationLlmUpstreamSupport {
         return normText.length() >= 6 && !normSection.contains(normText);
     }
 
-    private static String extractBetweenAnchorsByRegex(String text, String before, String after, int maxLen) {
+    private static String extractBetweenAnchorsByRegex(String text, String before, String after) {
         if (text == null || text.isEmpty() || before == null || before.isBlank()) return null;
-        int cap = Math.max(20, Math.min(2000, maxLen));
+        int cap = Math.clamp(500, 20, 2000);
 
         String normText = normalizeForAnchorRegex(text);
         String normBefore = normalizeForAnchorRegex(before);
@@ -1265,7 +1264,7 @@ class AdminModerationLlmUpstreamSupport {
 
         Pattern p;
         if (a.isEmpty()) {
-            String boundary = "(?:(?:\\r\\n)|\\r|\\n|。|！|？|;|!|\\?|$)";
+            String boundary = "\\r\\n|\\r|\\n|。|！|？|;|!|\\?|$";
             p = Pattern.compile(b + "(.{0," + cap + "}?)" + "(?=" + boundary + ")", Pattern.DOTALL);
         } else {
             p = Pattern.compile(b + "(.{0," + cap + "}?)" + a, Pattern.DOTALL);
@@ -1306,7 +1305,7 @@ class AdminModerationLlmUpstreamSupport {
         for (int i = 0; i < parts.length; i++) {
             String p = parts[i];
             if (p == null || p.isEmpty()) continue;
-            if (sb.length() > 0) sb.append("\\s+");
+            if (!sb.isEmpty()) sb.append("\\s+");
             sb.append(Pattern.quote(p));
         }
         return sb.toString();

@@ -7,7 +7,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class PostAttachmentsUpdateDTO {
@@ -16,29 +15,29 @@ public class PostAttachmentsUpdateDTO {
     private Long id;
 
     @ApiModelProperty("帖子ID")
-    private Optional<Long> postId = Optional.empty();
+    private Long postId;
 
     @ApiModelProperty("附件URL")
-    private Optional<@Size(max = 512) String> url = Optional.empty();
+    private @Size(max = 512) String url;
 
     @ApiModelProperty("文件名")
-    private Optional<@Size(max = 512) String> fileName = Optional.empty();
+    private @Size(max = 512) String fileName;
 
     @ApiModelProperty("MIME类型")
-    private Optional<@Size(max = 64) String> mimeType = Optional.empty();
+    private @Size(max = 64) String mimeType;
 
     @ApiModelProperty("文件大小字节")
-    private Optional<Long> sizeBytes = Optional.empty();
+    private Long sizeBytes;
 
     @ApiModelProperty("宽度")
-    private Optional<Integer> width = Optional.empty();
+    private Integer width;
 
     @ApiModelProperty("高度")
-    private Optional<Integer> height = Optional.empty();
+    private Integer height;
 
     // 审计字段定义但不可修改
     @ApiModelProperty("创建时间（不可修改）")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }
 

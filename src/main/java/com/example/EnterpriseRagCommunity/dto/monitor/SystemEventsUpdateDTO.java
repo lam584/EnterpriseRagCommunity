@@ -9,7 +9,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 
 @Data
 public class SystemEventsUpdateDTO {
@@ -18,18 +17,18 @@ public class SystemEventsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "事件级别(可选)")
-    private Optional<SystemEventLevel> level = Optional.empty();
+    private SystemEventLevel level;
 
     @ApiModelProperty(value = "分类(可选)")
     @Size(max = 64)
-    private Optional<String> category = Optional.empty();
+    private String category;
 
     @ApiModelProperty(value = "消息内容(可选)")
     @Size(max = 255)
-    private Optional<String> message = Optional.empty();
+    private String message;
 
     @ApiModelProperty(value = "额外信息(JSON)(可选)")
-    private Optional<Map<String, Object>> extra = Optional.empty();
+    private Map<String, Object> extra;
 
     @ApiModelProperty(value = "创建时间(不可修改)")
     @JsonIgnore

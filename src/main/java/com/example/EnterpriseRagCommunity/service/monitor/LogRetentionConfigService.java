@@ -15,12 +15,26 @@ public class LogRetentionConfigService {
 
     private final AppSettingsService appSettingsService;
 
+    private static long normalizeKeepDays(long keepDays) {
+        long v = keepDays <= 0 ? 90 : keepDays;
+        return Math.clamp(v, 1, 3650);
+    }
+
+    private static LogRetentionMode parseMode(String raw) {
+        if (raw == null || raw.isBlank()) return LogRetentionMode.ARCHIVE_TABLE;
+        try {
+            return LogRetentionMode.valueOf(raw.trim().toUpperCase());
+        } catch (Exception e) {
+            return LogRetentionMode.ARCHIVE_TABLE;
+        }
+    }
+
     @Transactional(readOnly = true)
     public LogRetentionConfigDTO getConfig() {
         boolean enabled = Boolean.parseBoolean(appSettingsService.getString(KEY_ENABLED).orElse("false"));
         long keepDays = appSettingsService.getLongOrDefault(KEY_KEEP_DAYS, 90);
         String modeRaw = appSettingsService.getString(KEY_MODE).orElse(LogRetentionMode.ARCHIVE_TABLE.name());
-        LogRetentionMode mode = parseMode(modeRaw, LogRetentionMode.ARCHIVE_TABLE);
+        LogRetentionMode mode = parseMode(modeRaw);
         keepDays = normalizeKeepDays(keepDays);
         return new LogRetentionConfigDTO(enabled, keepDays, mode);
     }
@@ -31,24 +45,10 @@ public class LogRetentionConfigService {
         long keepDays = normalizeKeepDays(payload.keepDays());
         LogRetentionMode mode = payload.mode() == null ? LogRetentionMode.ARCHIVE_TABLE : payload.mode();
 
-        appSettingsService.upsertString(KEY_ENABLED, payload.enabled() ? "true" : "false");
+        appSettingsService.upsertString(KEY_ENABLED, Boolean.toString(payload.enabled()));
         appSettingsService.upsertString(KEY_KEEP_DAYS, Long.toString(keepDays));
         appSettingsService.upsertString(KEY_MODE, mode.name());
         return new LogRetentionConfigDTO(payload.enabled(), keepDays, mode);
-    }
-
-    private static long normalizeKeepDays(long keepDays) {
-        long v = keepDays <= 0 ? 90 : keepDays;
-        return Math.max(1, Math.min(3650, v));
-    }
-
-    private static LogRetentionMode parseMode(String raw, LogRetentionMode defaultMode) {
-        if (raw == null || raw.isBlank()) return defaultMode;
-        try {
-            return LogRetentionMode.valueOf(raw.trim().toUpperCase());
-        } catch (Exception e) {
-            return defaultMode;
-        }
     }
 }
 

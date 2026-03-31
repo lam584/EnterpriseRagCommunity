@@ -114,7 +114,7 @@ public class AdminRetrievalHybridController {
         }
 
         HybridRetrievalConfigDTO cfg;
-        if (req == null || Boolean.TRUE.equals(req.getUseSavedConfig()) || req.getConfig() == null) {
+        if (Boolean.TRUE.equals(req.getUseSavedConfig()) || req.getConfig() == null) {
             cfg = hybridRetrievalConfigService.getConfigOrDefault();
         } else {
             cfg = hybridRetrievalConfigService.normalizeConfig(req.getConfig());

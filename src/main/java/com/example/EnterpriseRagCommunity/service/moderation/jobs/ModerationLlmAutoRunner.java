@@ -37,7 +37,6 @@ import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineSt
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPolicyConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ChunkSourceType;
-import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.Source;
@@ -57,7 +56,6 @@ import com.example.EnterpriseRagCommunity.service.ai.LlmCallQueueService;
 import com.example.EnterpriseRagCommunity.service.ai.TokenCountService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkReviewService;
-import com.example.EnterpriseRagCommunity.service.moderation.ModerationFallbackDecisionService;
 import com.example.EnterpriseRagCommunity.service.moderation.RiskLabelingService;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmService;
 import com.example.EnterpriseRagCommunity.service.moderation.trace.ModerationPipelineTraceService;
@@ -169,6 +167,16 @@ public class ModerationLlmAutoRunner {
         handleOne(q, cfg);
     }
 
+    static List<LlmModerationTestRequest.ImageInput> selectChunkImageInputs(ObjectMapper objectMapper,
+                                                                            String chunkText,
+                                                                            String extractedMetadataJson) {
+        return refsToImageInputs(selectChunkImageRefs(objectMapper, chunkText, 10L, extractedMetadataJson), 10L);
+    }
+
+    static Object sanitizeModerationResponseForQueueOutput(ObjectMapper objectMapper, LlmModerationTestResponse res) {
+        return ModerationLlmAutoRunnerSupport.sanitizeModerationResponseForQueueOutput(objectMapper, res);
+    }
+
     private void handleOne(ModerationQueueEntity q, ModerationLlmConfigEntity llmCfg) {
         if (q == null || q.getId() == null) return;
         Long queueId = q.getId();
@@ -194,7 +202,6 @@ public class ModerationLlmAutoRunner {
                     lockExpiredBefore
             );
         } catch (Exception ignore) {
-            locked = 0;
         }
         if (locked <= 0) return;
 
@@ -591,11 +598,11 @@ public class ModerationLlmAutoRunner {
         }
 
         try {
-            Map<String, Object> thresholds = fb == null ? null : fb.getThresholds();
+            Map<String, Object> thresholds = fb.getThresholds();
             boolean upgradeEnable = asBooleanRequired(thresholds == null ? null : thresholds.get("llm.text.upgrade.enable"), "llm.text.upgrade.enable");
-            double grayMin = clamp01Strict(asDoubleRequired(thresholds == null ? null : thresholds.get("llm.text.upgrade.scoreMin"), "llm.text.upgrade.scoreMin"));
-            double grayMax = clamp01Strict(asDoubleRequired(thresholds == null ? null : thresholds.get("llm.text.upgrade.scoreMax"), "llm.text.upgrade.scoreMax"));
-            double uncertaintyMin = clamp01Strict(asDoubleRequired(thresholds == null ? null : thresholds.get("llm.text.upgrade.uncertaintyMin"), "llm.text.upgrade.uncertaintyMin"));
+            double grayMin = clamp01Strict(asDoubleRequired(thresholds.get("llm.text.upgrade.scoreMin"), "llm.text.upgrade.scoreMin"));
+            double grayMax = clamp01Strict(asDoubleRequired(thresholds.get("llm.text.upgrade.scoreMax"), "llm.text.upgrade.scoreMax"));
+            double uncertaintyMin = clamp01Strict(asDoubleRequired(thresholds.get("llm.text.upgrade.uncertaintyMin"), "llm.text.upgrade.uncertaintyMin"));
             if (grayMin > grayMax) grayMin = grayMax;
 
             boolean textOnly = res == null || res.getImages() == null || res.getImages().isEmpty();
@@ -826,9 +833,9 @@ public class ModerationLlmAutoRunner {
                             g.put("imageDescription", imageRes.getStages().getImage().getDescription());
                         }
                     }
-                    double imageStrongRejectThreshold = clamp01Strict(fb.getLlmStrongRejectThreshold());
+                    double imageStrongRejectThreshold = clamp01Strict(fb == null ? 1.0 : fb.getLlmStrongRejectThreshold());
                     try {
-                        Object v = fb.getThresholds() == null ? null : fb.getThresholds().get("chunk.withImages.imageStrongRejectThreshold");
+                        Object v = fb == null || fb.getThresholds() == null ? null : fb.getThresholds().get("chunk.withImages.imageStrongRejectThreshold");
                         if (v != null) imageStrongRejectThreshold = clamp01Strict(asDoubleRequired(v, "chunk.withImages.imageStrongRejectThreshold"));
                     } catch (Exception ignore) {
                     }
@@ -953,7 +960,6 @@ public class ModerationLlmAutoRunner {
         try {
             pendingOrFailed = chunkReviewService.countPendingOrFailed(chunkSetId);
         } catch (Exception ignore) {
-            pendingOrFailed = 0L;
         }
         if (pendingOrFailed > 0L) {
             var chunkCfg0 = chunkReviewService.getConfig();
@@ -1015,13 +1021,12 @@ public class ModerationLlmAutoRunner {
                             } catch (Exception ignore) {
                                 raw = "";
                             }
-                            Integer chunkIndex = c.chunkIndex() == null ? 0 : c.chunkIndex();
+                            int chunkIndex = c.chunkIndex() == null ? 0 : c.chunkIndex();
                             int prevSummaryMaxChars = 200;
                             try {
                                 Object v = fb == null || fb.getThresholds() == null ? null : fb.getThresholds().get("chunk.prevSummary.maxChars");
                                 prevSummaryMaxChars = (int) clampLong(asLongOrDefault(v, prevSummaryMaxChars), 0L, 2000L);
                             } catch (Exception ignore) {
-                                prevSummaryMaxChars = 200;
                             }
                             String normalizedRaw = normalizeForPrompt(raw);
                             String summaryForNext = normalizedRaw;
@@ -1053,10 +1058,7 @@ public class ModerationLlmAutoRunner {
                                         FileAssetExtractionsEntity ex = fileAssetExtractionsRepository.findById(c.fileAssetId()).orElse(null);
                                         String metaJson = ex == null ? null : ex.getExtractedMetadataJson();
                                         candidateChunkImageRefs = selectChunkImageRefs(objectMapper, raw, c.fileAssetId(), metaJson);
-                                    } else if (c.sourceType() == ChunkSourceType.POST_TEXT
-                                            && q != null
-                                            && q.getContentType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType.POST
-                                            && q.getContentId() != null) {
+                                    } else if (c.sourceType() == ChunkSourceType.POST_TEXT && q.getContentType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType.POST && q.getContentId() != null) {
                                         candidateChunkImageRefs = selectPostImageRefs(q.getContentId());
                                     }
                                 } catch (Exception ignore) {
@@ -1096,13 +1098,6 @@ public class ModerationLlmAutoRunner {
                                     promptImageRefs = chunkImageRefs;
                                 }
 
-                                if (chunkImageRefs == null) chunkImageRefs = List.of();
-                                if (chunkImages == null) chunkImages = List.of();
-                                if (promptImageRefs == null) promptImageRefs = List.of();
-                                if (candidateChunkImageRefs == null) candidateChunkImageRefs = List.of();
-                                if (evidenceSourceChunks == null) evidenceSourceChunks = List.of();
-                                if (evidencePlaceholdersUsed == null) evidencePlaceholdersUsed = List.of();
-
                                 try {
                                     if (!sendImagesOnlyWhenInEvidence) {
                                         evidencePlaceholdersUsed = extractPlaceholdersFromRefs(chunkImageRefs);
@@ -1112,7 +1107,7 @@ public class ModerationLlmAutoRunner {
                                 }
                                 String promptText = buildChunkPromptText(q, c, raw, chunkCfg0, mem, promptImageRefs);
                                 req.setText(promptText);
-                                if (chunkImages != null && !chunkImages.isEmpty()) {
+                                if (!chunkImages.isEmpty()) {
                                     req.setImages(chunkImages);
                                 }
 
@@ -1121,7 +1116,7 @@ public class ModerationLlmAutoRunner {
                                     Map<String, Object> combinedInput = new LinkedHashMap<>();
                                     combinedInput.put("meta", metaMap);
                                     combinedInput.put("request", req);
-                                    if (req != null && req.getText() != null) {
+                                    if (req.getText() != null) {
                                         combinedInput.put("prompt", req.getText());
                                     }
                                     combinedInput.put("trace_id", metaMap.get("trace_id"));
@@ -1146,16 +1141,16 @@ public class ModerationLlmAutoRunner {
                                     if (res.getSeverity() != null) labels.put("severity", res.getSeverity());
                                     if (res.getUncertainty() != null) labels.put("uncertainty", res.getUncertainty());
                                     PolicyEval policyEval = evaluatePolicyVerdict(policyConfig, reviewStage, res, resolveRiskTagThresholdsCached(), false, false);
-                                    if (policyEval != null && policyEval.verdict != null) {
+                                    if (policyEval.verdict != null) {
                                         labels.put("policyVerdict", policyEval.verdict.name());
                                     }
-                                    Verdict policyVerdict = policyEval == null ? null : policyEval.verdict;
-                                        boolean keepEvidence = policyVerdict == Verdict.REJECT || policyVerdict == Verdict.REVIEW;
-                                        List<String> evidenceBeforeNormalize = filterChunkEvidence(res == null ? null : res.getEvidence());
-                                        List<String> evidence = keepEvidence
-                                                ? normalizeChunkEvidenceForLabels(objectMapper, res == null ? null : res.getEvidence(), raw, actualChunkImageRefs)
+                                    Verdict policyVerdict = policyEval.verdict;
+                                    boolean keepEvidence = policyVerdict == Verdict.REJECT || policyVerdict == Verdict.REVIEW;
+                                    List<String> evidenceBeforeNormalize = filterChunkEvidence(res.getEvidence());
+                                    List<String> evidence = keepEvidence
+                                            ? normalizeChunkEvidenceForLabels(objectMapper, res.getEvidence(), raw, actualChunkImageRefs)
                                             : List.of();
-                                    if (evidence != null && !evidence.isEmpty()) {
+                                    if (!evidence.isEmpty()) {
                                         int take = Math.min(10, evidence.size());
                                         labels.put("evidence", evidence.subList(0, take));
                                     }
@@ -1164,8 +1159,8 @@ public class ModerationLlmAutoRunner {
                                         if (!replay.isEmpty()) {
                                             labels.put("evidenceNormalizeReplay", replay);
                                             log.info("chunk evidence normalized: queueId={}, chunkId={}, replay={}",
-                                                    q == null ? null : q.getId(),
-                                                    c == null ? null : c.chunkId(),
+                                                    q.getId(),
+                                                    c.chunkId(),
                                                     replay);
                                         }
                                     }
@@ -1176,14 +1171,14 @@ public class ModerationLlmAutoRunner {
                                         labels.put("hasUpgradeStage", res.getStages().getUpgrade() != null);
                                     }
                                 }
-                                if (chunkImages != null && !chunkImages.isEmpty()) labels.put("imagesSent", chunkImages.size());
-                                if (candidateChunkImageRefs != null && !candidateChunkImageRefs.isEmpty()) {
+                                if (!chunkImages.isEmpty()) labels.put("imagesSent", chunkImages.size());
+                                if (!candidateChunkImageRefs.isEmpty()) {
                                     labels.put("imagesCandidate", candidateChunkImageRefs.size());
                                 }
-                                if (evidenceSourceChunks != null && !evidenceSourceChunks.isEmpty()) {
+                                if (!evidenceSourceChunks.isEmpty()) {
                                     labels.put("evidenceSourceChunks", evidenceSourceChunks);
                                 }
-                                if (evidencePlaceholdersUsed != null && !evidencePlaceholdersUsed.isEmpty()) {
+                                if (!evidencePlaceholdersUsed.isEmpty()) {
                                     labels.put("evidencePlaceholdersUsed", evidencePlaceholdersUsed);
                                 }
                                 labels.put("tokenDiagnostics", buildTokenDiagnostics(
@@ -1191,14 +1186,14 @@ public class ModerationLlmAutoRunner {
                                         chunkImages,
                                         res,
                                         null,
-                                        candidateChunkImageRefs == null ? 0 : candidateChunkImageRefs.size(),
+                                        candidateChunkImageRefs.size(),
                                         evidenceSourceChunks,
                                         evidencePlaceholdersUsed
                                 ));
                                 labels.put("chunkIndex", chunkIndex);
                                 labels.put("summaryForNext", summaryForNext);
                                 labels.put("chunkTextSnippet", snippet);
-                                if (entities != null && !entities.isEmpty()) labels.put("entities", entities);
+                                if (!entities.isEmpty()) labels.put("entities", entities);
                                 Integer tokensIn = res == null || res.getUsage() == null ? null : res.getUsage().getPromptTokens();
                                 Integer tokensOut = res == null || res.getUsage() == null ? null : res.getUsage().getCompletionTokens();
                                 chunkReviewService.markChunkSuccess(c.chunkId(), res == null ? null : res.getModel(), v, res == null ? null : res.getScore(), labels, tokensIn, tokensOut, false);
@@ -1252,7 +1247,7 @@ public class ModerationLlmAutoRunner {
             progress = null;
         }
         if (progress == null || progress.getTotalChunks() == null || progress.getTotalChunks() <= 0) return;
-        int total = progress.getTotalChunks() == null ? 0 : progress.getTotalChunks();
+        int total = progress.getTotalChunks();
         int completed = progress.getCompletedChunks() == null ? 0 : progress.getCompletedChunks();
         int failed = progress.getFailedChunks() == null ? 0 : progress.getFailedChunks();
         int running = progress.getRunningChunks() == null ? 0 : progress.getRunningChunks();
@@ -1286,9 +1281,9 @@ public class ModerationLlmAutoRunner {
         try {
             Map<String, Object> thresholds = fb == null ? null : fb.getThresholds();
             boolean enableFinalReview = asBooleanRequired(thresholds == null ? null : thresholds.get("chunk.finalReview.enable"), "chunk.finalReview.enable");
-            double triggerScoreMin = clamp01Strict(asDoubleRequired(thresholds == null ? null : thresholds.get("chunk.finalReview.triggerScoreMin"), "chunk.finalReview.triggerScoreMin"));
-            long triggerRiskTagCount = clampLong(asLongRequired(thresholds == null ? null : thresholds.get("chunk.finalReview.triggerRiskTagCount"), "chunk.finalReview.triggerRiskTagCount"), 0L, 1000L);
-            boolean triggerOpenQuestions = asBooleanRequired(thresholds == null ? null : thresholds.get("chunk.finalReview.triggerOpenQuestions"), "chunk.finalReview.triggerOpenQuestions");
+            double triggerScoreMin = clamp01Strict(asDoubleRequired(thresholds.get("chunk.finalReview.triggerScoreMin"), "chunk.finalReview.triggerScoreMin"));
+            long triggerRiskTagCount = clampLong(asLongRequired(thresholds.get("chunk.finalReview.triggerRiskTagCount"), "chunk.finalReview.triggerRiskTagCount"), 0L, 1000L);
+            boolean triggerOpenQuestions = asBooleanRequired(thresholds.get("chunk.finalReview.triggerOpenQuestions"), "chunk.finalReview.triggerOpenQuestions");
 
             Map<String, Object> mem = Map.of();
             try {
@@ -1319,7 +1314,6 @@ public class ModerationLlmAutoRunner {
                 finalReviewVerdict = verdictFromDecisionAndScore(d, sc, rejectT, humanT);
             }
         } catch (Exception ignore) {
-            finalReviewVerdict = null;
             finalReviewRes = null;
         }
 
@@ -1455,20 +1449,8 @@ public class ModerationLlmAutoRunner {
         details.put("chunkProgressFinal", chunkProgressFinal);
         details.put("thresholdSource", aggregateThresholds.source);
         details.put("thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow, "T_reject", aggregateThresholds.tReject));
-        if (memoryGuardDetails != null && !memoryGuardDetails.isEmpty()) details.putAll(memoryGuardDetails);
+        if (!memoryGuardDetails.isEmpty()) details.putAll(memoryGuardDetails);
         writeChunkedDecisionAuditLog(q, run, llmStepId, chunkSetId, "HUMAN", globalRes, details);
-    }
-
-
-    static Object sanitizeModerationResponseForQueueOutput(ObjectMapper objectMapper, LlmModerationTestResponse res) {
-        return ModerationLlmAutoRunnerSupport.sanitizeModerationResponseForQueueOutput(objectMapper, res);
-    }
-
-    static List<LlmModerationTestRequest.ImageInput> selectChunkImageInputs(ObjectMapper objectMapper,
-                                                                            String chunkText,
-                                                                            Long fileAssetId,
-                                                                            String extractedMetadataJson) {
-        return refsToImageInputs(selectChunkImageRefs(objectMapper, chunkText, fileAssetId, extractedMetadataJson), fileAssetId);
     }
 
     static List<ChunkImageRef> selectChunkImageRefs(ObjectMapper objectMapper,
@@ -1961,11 +1943,9 @@ public class ModerationLlmAutoRunner {
         List<Long> fileAssetIds = new ArrayList<>();
         try {
             var page = postAttachmentsRepository.findByPostId(postId, pageable);
-            if (page != null && page.getContent() != null) {
-                for (PostAttachmentsEntity a : page.getContent()) {
-                    if (a == null || a.getFileAssetId() == null) continue;
-                    if (!fileAssetIds.contains(a.getFileAssetId())) fileAssetIds.add(a.getFileAssetId());
-                }
+            for (PostAttachmentsEntity a : page.getContent()) {
+                if (a == null || a.getFileAssetId() == null) continue;
+                if (!fileAssetIds.contains(a.getFileAssetId())) fileAssetIds.add(a.getFileAssetId());
             }
         } catch (Exception ignore) {
         }
@@ -2012,11 +1992,9 @@ public class ModerationLlmAutoRunner {
         List<Long> fileAssetIds = new ArrayList<>();
         try {
             var page = postAttachmentsRepository.findByPostId(postId, pageable);
-            if (page != null && page.getContent() != null) {
-                for (PostAttachmentsEntity a : page.getContent()) {
-                    if (a == null || a.getFileAssetId() == null) continue;
-                    if (!fileAssetIds.contains(a.getFileAssetId())) fileAssetIds.add(a.getFileAssetId());
-                }
+            for (PostAttachmentsEntity a : page.getContent()) {
+                if (a == null || a.getFileAssetId() == null) continue;
+                if (!fileAssetIds.contains(a.getFileAssetId())) fileAssetIds.add(a.getFileAssetId());
             }
         } catch (Exception ignore) {
         }
@@ -2135,7 +2113,7 @@ public class ModerationLlmAutoRunner {
         List<PostAttachmentsEntity> atts;
         try {
             var page = postAttachmentsRepository.findByPostId(postId, pageable);
-            atts = page == null ? List.of() : (page.getContent() == null ? List.of() : page.getContent());
+            atts = page.getContent();
         } catch (Exception ignore) {
             atts = List.of();
         }

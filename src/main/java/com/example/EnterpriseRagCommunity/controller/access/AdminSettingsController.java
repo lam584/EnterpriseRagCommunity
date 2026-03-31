@@ -137,22 +137,16 @@ public class AdminSettingsController {
     private static final String KEY_EMAIL_INBOX_FOLDER = "email_inbox_folder";
     private static final String KEY_EMAIL_SENT_FOLDER = "email_sent_folder";
 
-    @GetMapping("/totp")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
-    public ResponseEntity<TotpAdminSettingsDTO> getTotp() {
-        TotpAdminSettingsDTO dto = new TotpAdminSettingsDTO();
-        dto.setIssuer(appSettingsService.getString(KEY_TOTP_ISSUER).orElse("EnterpriseRagCommunity"));
-
-        dto.setAllowedAlgorithms(parseStringList(appSettingsService.getString(KEY_TOTP_ALLOWED_ALG)).orElse(List.of("SHA1", "SHA256", "SHA512")));
-        dto.setAllowedDigits(parseIntList(appSettingsService.getString(KEY_TOTP_ALLOWED_DIGITS)).orElse(List.of(6, 8)));
-        dto.setAllowedPeriodSeconds(parseIntList(appSettingsService.getString(KEY_TOTP_ALLOWED_PERIOD)).orElse(List.of(30)));
-        dto.setMaxSkew((int) appSettingsService.getLongOrDefault(KEY_TOTP_MAX_SKEW, 1L));
-
-        dto.setDefaultAlgorithm(appSettingsService.getString(KEY_TOTP_DEFAULT_ALG).orElse("SHA1"));
-        dto.setDefaultDigits((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_DIGITS, 6L));
-        dto.setDefaultPeriodSeconds((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_PERIOD, 30L));
-        dto.setDefaultSkew((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_SKEW, 1L));
-        return ResponseEntity.ok(dto);
+    private static Optional<List<String>> parseStringList(String raw) {
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        List<String> out = new ArrayList<>();
+        for (String s : raw.split(",")) {
+            String t = s.trim();
+            if (t.isEmpty()) continue;
+            out.add(t);
+        }
+        if (out.isEmpty()) return Optional.empty();
+        return Optional.of(out);
     }
 
     @PutMapping("/totp")
@@ -642,27 +636,11 @@ public class AdminSettingsController {
         return out;
     }
 
-    private static Optional<List<String>> parseStringList(Optional<String> v) {
-        if (v == null || v.isEmpty()) return Optional.empty();
-        String raw = v.get();
-        if (raw == null || raw.isBlank()) return Optional.empty();
-        List<String> out = new ArrayList<>();
-        for (String s : raw.split(",")) {
-            String t = s == null ? "" : s.trim();
-            if (t.isEmpty()) continue;
-            out.add(t);
-        }
-        if (out.isEmpty()) return Optional.empty();
-        return Optional.of(out);
-    }
-
-    private static Optional<List<Integer>> parseIntList(Optional<String> v) {
-        if (v == null || v.isEmpty()) return Optional.empty();
-        String raw = v.get();
+    private static Optional<List<Integer>> parseIntList(String raw) {
         if (raw == null || raw.isBlank()) return Optional.empty();
         List<Integer> out = new ArrayList<>();
         for (String s : raw.split(",")) {
-            String t = s == null ? "" : s.trim();
+            String t = s.trim();
             if (t.isEmpty()) continue;
             try {
                 out.add(Integer.parseInt(t));
@@ -679,9 +657,27 @@ public class AdminSettingsController {
         for (int i = 0; i < list.size(); i++) {
             Integer v = list.get(i);
             if (v == null) continue;
-            if (sb.length() > 0) sb.append(',');
+            if (!sb.isEmpty()) sb.append(',');
             sb.append(v);
         }
         return sb.toString();
+    }
+
+    @GetMapping("/totp")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
+    public ResponseEntity<TotpAdminSettingsDTO> getTotp() {
+        TotpAdminSettingsDTO dto = new TotpAdminSettingsDTO();
+        dto.setIssuer(appSettingsService.getString(KEY_TOTP_ISSUER).orElse("EnterpriseRagCommunity"));
+
+        dto.setAllowedAlgorithms(parseStringList(appSettingsService.getString(KEY_TOTP_ALLOWED_ALG).orElse(null)).orElse(List.of("SHA1", "SHA256", "SHA512")));
+        dto.setAllowedDigits(parseIntList(appSettingsService.getString(KEY_TOTP_ALLOWED_DIGITS).orElse(null)).orElse(List.of(6, 8)));
+        dto.setAllowedPeriodSeconds(parseIntList(appSettingsService.getString(KEY_TOTP_ALLOWED_PERIOD).orElse(null)).orElse(List.of(30)));
+        dto.setMaxSkew((int) appSettingsService.getLongOrDefault(KEY_TOTP_MAX_SKEW, 1L));
+
+        dto.setDefaultAlgorithm(appSettingsService.getString(KEY_TOTP_DEFAULT_ALG).orElse("SHA1"));
+        dto.setDefaultDigits((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_DIGITS, 6L));
+        dto.setDefaultPeriodSeconds((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_PERIOD, 30L));
+        dto.setDefaultSkew((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_SKEW, 1L));
+        return ResponseEntity.ok(dto);
     }
 }

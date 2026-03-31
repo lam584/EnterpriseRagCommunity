@@ -258,7 +258,7 @@ public class AdminRetrievalIndexSyncStatusService {
             CriteriaQuery q = new CriteriaQuery(new Criteria(field).is(value));
             q.setPageable(PageRequest.of(0, 1));
             SearchHits<Document> hits = elasticsearchOperations.search(q, Document.class, IndexCoordinates.of(indexName));
-            out.count = hits == null ? 0L : hits.getTotalHits();
+            out.count = hits.getTotalHits();
             return out;
         } catch (Exception ex) {
             out.error = ex.getMessage();

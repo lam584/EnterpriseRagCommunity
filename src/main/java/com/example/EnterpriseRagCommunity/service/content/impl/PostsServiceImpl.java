@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -392,7 +391,7 @@ public class PostsServiceImpl implements PostsService {
         s = s.replaceAll("[\\r\\n\\t]+", " ").trim();
         if (s.isEmpty()) return null;
         if (s.length() > 96) s = s.substring(0, 96);
-        return s.trim().isEmpty() ? null : s.trim();
+        return s;
     }
 
     @Override

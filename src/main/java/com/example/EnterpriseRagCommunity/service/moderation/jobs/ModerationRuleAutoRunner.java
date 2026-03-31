@@ -104,6 +104,65 @@ public class ModerationRuleAutoRunner {
         handleOne(q);
     }
 
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
+    }
+
+    private static QueueStage mapNextStage(String action) {
+        String a = normalizeAction(action);
+        if (a == null) return QueueStage.HUMAN;
+        return switch (a) {
+            case "LLM" -> QueueStage.LLM;
+            case "VEC" -> QueueStage.VEC;
+            case "HUMAN", "REJECT" -> QueueStage.HUMAN;
+            default -> QueueStage.HUMAN;
+        };
+    }
+
+    private static String normalizeAction(String action) {
+        String a = action == null ? null : action.trim().toUpperCase(Locale.ROOT);
+        if (a == null || a.isBlank()) return null;
+        return a;
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        String x = a == null ? null : a.trim();
+        if (x != null && !x.isBlank()) return x;
+        String y = b == null ? null : b.trim();
+        if (y != null && !y.isBlank()) return y;
+        return null;
+    }
+
+    private static Boolean deepGetBool(Map<String, Object> m, String path) {
+        Object v = deepGet(m, path);
+        if (v instanceof Boolean b) return b;
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        if (s.equalsIgnoreCase("true")) return Boolean.TRUE;
+        if (s.equalsIgnoreCase("false")) return Boolean.FALSE;
+        return null;
+    }
+
+    private static String deepGetString(Map<String, Object> m, String path) {
+        Object v = deepGet(m, path);
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    private static Object deepGet(Map<String, Object> m, String path) {
+        if (m == null || path == null || path.isBlank()) return null;
+        String[] segs = path.split("\\.");
+        Object cur = m;
+        for (String seg : segs) {
+            if (seg == null || seg.isBlank()) continue;
+            if (!(cur instanceof Map<?, ?> mm)) return null;
+            cur = mm.get(seg);
+        }
+        return cur;
+    }
+
     private void handleOne(ModerationQueueEntity q) {
         if (q == null || q.getId() == null) return;
         if (q.getStatus() != QueueStatus.PENDING) return;
@@ -260,7 +319,7 @@ public class ModerationRuleAutoRunner {
             }
 
             List<ModerationRulesEntity> rules = rulesRepository.findAll();
-            if (rules == null || rules.isEmpty()) {
+            if (rules.isEmpty()) {
                 q.setCurrentStage(QueueStage.VEC);
                 queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
 
@@ -322,7 +381,7 @@ public class ModerationRuleAutoRunner {
                 hitCount++;
                 Map<String, Object> hd = new LinkedHashMap<>();
                 hd.put("ruleId", r.getId());
-                hd.put("severity", r.getSeverity() == null ? null : r.getSeverity().name());
+                hd.put("severity", enumName(r.getSeverity()));
                 hd.put("pattern", r.getPattern());
                 hd.put("snippet", snippet);
                 hitDetails.add(hd);
@@ -434,61 +493,6 @@ public class ModerationRuleAutoRunner {
             } catch (Exception ignore) {
             }
         }
-    }
-
-    private static QueueStage mapNextStage(String action) {
-        String a = normalizeAction(action);
-        if (a == null) return QueueStage.HUMAN;
-        return switch (a) {
-            case "LLM" -> QueueStage.LLM;
-            case "VEC" -> QueueStage.VEC;
-            case "HUMAN", "REJECT" -> QueueStage.HUMAN;
-            default -> QueueStage.HUMAN;
-        };
-    }
-
-    private static String normalizeAction(String action) {
-        String a = action == null ? null : action.trim().toUpperCase(Locale.ROOT);
-        if (a == null || a.isBlank()) return null;
-        return a;
-    }
-
-    private static String firstNonBlank(String a, String b) {
-        String x = a == null ? null : a.trim();
-        if (x != null && !x.isBlank()) return x;
-        String y = b == null ? null : b.trim();
-        if (y != null && !y.isBlank()) return y;
-        return null;
-    }
-
-    private static Boolean deepGetBool(Map<String, Object> m, String path) {
-        Object v = deepGet(m, path);
-        if (v instanceof Boolean b) return b;
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        if (s.isEmpty()) return null;
-        if (s.equalsIgnoreCase("true")) return Boolean.TRUE;
-        if (s.equalsIgnoreCase("false")) return Boolean.FALSE;
-        return null;
-    }
-
-    private static String deepGetString(Map<String, Object> m, String path) {
-        Object v = deepGet(m, path);
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isEmpty() ? null : s;
-    }
-
-    private static Object deepGet(Map<String, Object> m, String path) {
-        if (m == null || path == null || path.isBlank()) return null;
-        String[] segs = path.split("\\.");
-        Object cur = m;
-        for (String seg : segs) {
-            if (seg == null || seg.isBlank()) continue;
-            if (!(cur instanceof Map<?, ?> mm)) return null;
-            cur = mm.get(seg);
-        }
-        return cur;
     }
 
     private AntiSpamDecision evaluateAntiSpam(ModerationQueueEntity q, Map<String, Object> policyConfig) {

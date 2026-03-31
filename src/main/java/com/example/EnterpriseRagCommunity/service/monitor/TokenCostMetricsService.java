@@ -50,10 +50,8 @@ public class TokenCostMetricsService {
         return query(start, end, source, LlmPricing.Mode.DEFAULT);
     }
 
-    @Transactional(readOnly = true)
-    public AdminTokenMetricsResponseDTO query(LocalDateTime start, LocalDateTime end, TokenMetricsSource source, LlmPricing.Mode pricingMode) {
-        String s = source == null ? null : source.name();
-        return query(start, end, s, pricingMode);
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     @Transactional(readOnly = true)
@@ -155,9 +153,9 @@ public class TokenCostMetricsService {
     }
 
     @Transactional(readOnly = true)
-    public AdminTokenTimelineResponseDTO queryTimeline(LocalDateTime start, LocalDateTime end, TokenMetricsSource source, TimelineBucket bucket) {
-        String s = source == null ? null : source.name();
-        return queryTimeline(start, end, s, bucket);
+    public AdminTokenMetricsResponseDTO query(LocalDateTime start, LocalDateTime end, TokenMetricsSource source, LlmPricing.Mode pricingMode) {
+        String s = enumName(source);
+        return query(start, end, s, pricingMode);
     }
 
     @Transactional(readOnly = true)
@@ -615,6 +613,12 @@ public class TokenCostMetricsService {
             return "STR_TO_DATE(DATE_FORMAT(" + col + ", '%Y-%m-%d 00:00:00'), '%Y-%m-%d %H:%i:%s')";
         }
         return "STR_TO_DATE(DATE_FORMAT(" + col + ", '%Y-%m-%d %H:00:00'), '%Y-%m-%d %H:%i:%s')";
+    }
+
+    @Transactional(readOnly = true)
+    public AdminTokenTimelineResponseDTO queryTimeline(LocalDateTime start, LocalDateTime end, TokenMetricsSource source, TimelineBucket bucket) {
+        String s = enumName(source);
+        return queryTimeline(start, end, s, bucket);
     }
 
     private record UsageRow(

@@ -156,7 +156,7 @@ function imageIdLookupKeys(imageId: string): string[] {
   add(id0.toLowerCase());
 
   const mImg = /^img[\s_-]*(\d+)$/i.exec(id0);
-  const mPh = /^\[\[image_(\d+)\]\]$/i.exec(id0);
+  const mPh = /^\[\[image_(\d+)]]$/i.exec(id0);
   const n = mImg?.[1] ?? mPh?.[1] ?? null;
   if (n) {
     add(`img_${n}`);

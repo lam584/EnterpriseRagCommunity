@@ -92,7 +92,6 @@ public class LlmLoadBalanceMonitorService {
             try {
                 n = Long.parseLong(r.substring(0, i));
             } catch (NumberFormatException ignored) {
-                n = 0L;
             }
             unit = r.substring(i).trim();
             if (unit.isEmpty()) unit = "h";
@@ -109,15 +108,17 @@ public class LlmLoadBalanceMonitorService {
 
     private static long toMs(long n, String unit) {
         String u = unit == null ? "" : unit.trim().toLowerCase();
-        if (u.equals("ms")) return n;
-        if (u.equals("s")) return n * 1000L;
-        if (u.equals("m")) return n * 60_000L;
-        if (u.equals("h")) return n * 3600_000L;
-        if (u.equals("d")) return n * 24L * 3600_000L;
-        if (u.equals("1h")) return n * 3600_000L;
-        if (u.equals("6h")) return n * 3600_000L;
-        if (u.equals("24h")) return n * 3600_000L;
-        return -1L;
+        return switch (u) {
+            case "ms" -> n;
+            case "s" -> n * 1000L;
+            case "m" -> n * 60_000L;
+            case "h" -> n * 3600_000L;
+            case "d" -> n * 24L * 3600_000L;
+            case "1h" -> n * 3600_000L;
+            case "6h" -> n * 3600_000L;
+            case "24h" -> n * 3600_000L;
+            default -> -1L;
+        };
     }
 
     private static String normalizeLabel(long ms, long parsedN, String parsedUnit) {

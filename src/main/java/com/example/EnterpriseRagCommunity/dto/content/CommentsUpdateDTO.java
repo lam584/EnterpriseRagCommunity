@@ -7,7 +7,6 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class CommentsUpdateDTO {
@@ -16,30 +15,30 @@ public class CommentsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "帖子ID", example = "1000")
-    private Optional<Long> postId = Optional.empty();
+    private Long postId;
 
     @ApiModelProperty(value = "父评论ID", example = "0")
-    private Optional<Long> parentId = Optional.empty();
+    private Long parentId;
 
     @ApiModelProperty(value = "作者ID，不可变，保留一致性", example = "200")
     @JsonIgnore
-    private Optional<Long> authorId = Optional.empty();
+    private Long authorId;
 
     @ApiModelProperty(value = "评论内容")
-    private Optional<String> content = Optional.empty();
+    private String content;
 
     @ApiModelProperty(value = "评论状态", example = "VISIBLE")
-    private Optional<CommentStatus> status = Optional.empty();
+    private CommentStatus status;
 
     @ApiModelProperty(value = "软删除标记")
-    private Optional<Boolean> isDeleted = Optional.empty();
+    private Boolean isDeleted;
 
     @JsonIgnore
     @ApiModelProperty(value = "创建时间，不可修改")
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 
     @JsonIgnore
     @ApiModelProperty(value = "更新时间，系统生成")
-    private Optional<LocalDateTime> updatedAt = Optional.empty();
+    private LocalDateTime updatedAt;
 }
 

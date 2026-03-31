@@ -8,7 +8,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Minimal OpenAI-compatible SSE client for DashScope.
@@ -51,7 +50,7 @@ public class BailianOpenAiSseClient {
         conn.setDoOutput(true);
         conn.setConnectTimeout(DEFAULT_CONNECT_TIMEOUT_MS);
         conn.setReadTimeout(DEFAULT_READ_TIMEOUT_MS);
-        if (apiKey != null && !apiKey.isBlank()) {
+        if (!apiKey.isBlank()) {
             conn.setRequestProperty("Authorization", "Bearer " + apiKey);
         }
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");

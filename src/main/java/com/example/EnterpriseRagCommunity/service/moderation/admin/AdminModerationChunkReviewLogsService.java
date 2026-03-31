@@ -37,50 +37,43 @@ public class AdminModerationChunkReviewLogsService {
     private final PostAttachmentsRepository postAttachmentsRepository;
     private final ObjectMapper objectMapper;
 
-    private static final Pattern IMAGE_PLACEHOLDER = Pattern.compile("\\[\\[IMAGE_(\\d+)\\]\\]");
+    private static final Pattern IMAGE_PLACEHOLDER = Pattern.compile("\\[\\[IMAGE_(\\d+)]]");
 
-    public List<AdminModerationChunkLogItemDTO> listRecent(int limit,
-                                                          Long queueId,
-                                                          ChunkStatus status,
-                                                          Verdict verdict,
-                                                          ChunkSourceType sourceType,
-                                                          Long fileAssetId,
-                                                          String keyword) {
-        int lim = Math.max(1, Math.min(limit, 200));
-        String kw = keyword == null ? null : keyword.trim();
-        if (kw != null && kw.isBlank()) kw = null;
-
-        List<ModerationChunkEntity> chunks = chunkRepository.findRecentForAdmin(
-                queueId,
-                status,
-                verdict,
-                sourceType,
-                fileAssetId,
-                kw,
-                PageRequest.of(0, lim)
-        );
-
-        Set<Long> setIds = new LinkedHashSet<>();
-        for (ModerationChunkEntity c : chunks) {
-            if (c == null || c.getChunkSetId() == null) continue;
-            setIds.add(c.getChunkSetId());
+    private static AdminModerationChunkLogItemDTO toItemDTO(ModerationChunkEntity c, ModerationChunkSetEntity s) {
+        AdminModerationChunkLogItemDTO dto = new AdminModerationChunkLogItemDTO();
+        dto.setId(c.getId());
+        dto.setChunkSetId(c.getChunkSetId());
+        if (s != null) {
+            dto.setQueueId(s.getQueueId());
+            dto.setCaseType(enumName(s.getCaseType()));
+            dto.setContentType(enumName(s.getContentType()));
+            dto.setContentId(s.getContentId());
         }
 
-        Map<Long, ModerationChunkSetEntity> setMap = new HashMap<>();
-        if (!setIds.isEmpty()) {
-            for (ModerationChunkSetEntity s : chunkSetRepository.findAllById(setIds)) {
-                if (s == null || s.getId() == null) continue;
-                setMap.put(s.getId(), s);
-            }
+        dto.setSourceType(enumName(c.getSourceType()));
+        dto.setSourceKey(c.getSourceKey());
+        dto.setFileAssetId(c.getFileAssetId());
+        dto.setFileName(c.getFileName());
+        dto.setChunkIndex(c.getChunkIndex());
+        dto.setStartOffset(c.getStartOffset());
+        dto.setEndOffset(c.getEndOffset());
+
+        dto.setStatus(enumName(c.getStatus()));
+        dto.setVerdict(enumName(c.getVerdict()));
+        dto.setConfidence(toDoubleOrNull(c.getConfidence()));
+        dto.setAttempts(c.getAttempts());
+        dto.setLastError(c.getLastError());
+        dto.setModel(c.getModel());
+        dto.setTokensIn(c.getTokensIn());
+        dto.setTokensOut(c.getTokensOut());
+        if (s != null) {
+            dto.setBudgetConvergenceLog(extractBudgetConvergenceLog(s.getConfigJson()));
         }
 
-        List<AdminModerationChunkLogItemDTO> out = new ArrayList<>();
-        for (ModerationChunkEntity c : chunks) {
-            if (c == null) continue;
-            ModerationChunkSetEntity s = c.getChunkSetId() == null ? null : setMap.get(c.getChunkSetId());
-            out.add(toItemDTO(c, s));
-        }
-        return out;
+        dto.setDecidedAt(c.getDecidedAt());
+        dto.setCreatedAt(c.getCreatedAt());
+        dto.setUpdatedAt(c.getUpdatedAt());
+        return dto;
     }
 
     public AdminModerationChunkLogDetailDTO getDetail(long chunkId) {
@@ -97,51 +90,36 @@ public class AdminModerationChunkReviewLogsService {
         return dto;
     }
 
-    public AdminModerationChunkContentPreviewDTO getContentPreview(long chunkId) {
-        ModerationChunkEntity c = chunkRepository.findById(chunkId)
-                .orElseThrow(() -> new ResourceNotFoundException("分片记录不存在"));
-        ModerationChunkSetEntity s = c.getChunkSetId() == null ? null : chunkSetRepository.findById(c.getChunkSetId()).orElse(null);
-        if (s == null) {
-            throw new ResourceNotFoundException("分片集合不存在");
-        }
+    private static AdminModerationChunkLogDetailDTO.Chunk toChunkDetailDTO(ModerationChunkEntity c, ModerationChunkSetEntity s) {
+        AdminModerationChunkLogDetailDTO.Chunk dto = new AdminModerationChunkLogDetailDTO.Chunk();
+        dto.setId(c.getId());
+        dto.setChunkSetId(c.getChunkSetId());
+        dto.setQueueId(s.getQueueId());
+        dto.setCaseType(enumName(s.getCaseType()));
+        dto.setContentType(enumName(s.getContentType()));
+        dto.setContentId(s.getContentId());
 
-        AdminModerationChunkContentPreviewDTO dto = new AdminModerationChunkContentPreviewDTO();
-        AdminModerationChunkContentPreviewDTO.Source src = new AdminModerationChunkContentPreviewDTO.Source();
-        src.setChunkId(c.getId());
-        src.setQueueId(s.getQueueId());
-        src.setContentType(s.getContentType() == null ? null : s.getContentType().name());
-        src.setContentId(s.getContentId());
-        src.setSourceType(c.getSourceType() == null ? null : c.getSourceType().name());
-        src.setFileAssetId(c.getFileAssetId());
-        src.setStartOffset(c.getStartOffset());
-        src.setEndOffset(c.getEndOffset());
-        dto.setSource(src);
-        dto.setText("");
+        dto.setSourceType(enumName(c.getSourceType()));
+        dto.setSourceKey(c.getSourceKey());
+        dto.setFileAssetId(c.getFileAssetId());
+        dto.setFileName(c.getFileName());
+        dto.setChunkIndex(c.getChunkIndex());
+        dto.setStartOffset(c.getStartOffset());
+        dto.setEndOffset(c.getEndOffset());
 
-        if (c.getSourceType() == null) {
-            dto.setReason("缺少 sourceType");
-            return dto;
-        }
+        dto.setStatus(enumName(c.getStatus()));
+        dto.setAttempts(c.getAttempts());
+        dto.setLastError(c.getLastError());
+        dto.setModel(c.getModel());
+        dto.setVerdict(enumName(c.getVerdict()));
+        dto.setConfidence(toDoubleOrNull(c.getConfidence()));
+        dto.setLabels(c.getLabels());
+        dto.setTokensIn(c.getTokensIn());
+        dto.setTokensOut(c.getTokensOut());
 
-        int start = safeOffset(c.getStartOffset());
-        int end = safeOffset(c.getEndOffset());
-        if (end < start) {
-            int tmp = start;
-            start = end;
-            end = tmp;
-        }
-
-        Optional<String> text = chunkReviewService.loadChunkText(s.getQueueId(), c.getSourceType(), c.getFileAssetId(), start, end);
-        if (text.isPresent()) dto.setText(text.get());
-        else dto.setReason("无法定位来源文本");
-
-        if (c.getSourceType() == ChunkSourceType.FILE_TEXT) {
-            dto.setImages(resolveFileTextImages(dto.getText(), c.getFileAssetId()));
-            if ((dto.getReason() == null || dto.getReason().isBlank()) && c.getFileAssetId() == null) dto.setReason("缺少 fileAssetId");
-        } else if (c.getSourceType() == ChunkSourceType.POST_TEXT) {
-            dto.setImages(resolvePostTextImages(s));
-        }
-
+        dto.setDecidedAt(c.getDecidedAt());
+        dto.setCreatedAt(c.getCreatedAt());
+        dto.setUpdatedAt(c.getUpdatedAt());
         return dto;
     }
 
@@ -184,32 +162,29 @@ public class AdminModerationChunkReviewLogsService {
         return out;
     }
 
-    private List<AdminModerationChunkContentPreviewDTO.Image> resolvePostTextImages(ModerationChunkSetEntity s) {
-        if (s == null || s.getContentType() != ContentType.POST || s.getContentId() == null) return List.of();
-        List<PostAttachmentsEntity> atts = postAttachmentsRepository.findByPostId(s.getContentId(), PageRequest.of(0, 200)).getContent();
-        if (atts == null || atts.isEmpty()) return List.of();
-        atts = new ArrayList<>(atts);
-        List<AdminModerationChunkContentPreviewDTO.Image> out = new ArrayList<>();
-        atts.sort(Comparator.nullsLast(Comparator.comparing(PostAttachmentsEntity::getId, Comparator.nullsLast(Long::compareTo))));
-        int idx = 0;
-        for (PostAttachmentsEntity a : atts) {
-            if (a == null || a.getFileAsset() == null) continue;
-            String mt = a.getFileAsset().getMimeType() == null ? "" : a.getFileAsset().getMimeType().trim().toLowerCase(Locale.ROOT);
-            if (!mt.startsWith("image/")) continue;
-            idx += 1;
-            AdminModerationChunkContentPreviewDTO.Image img = new AdminModerationChunkContentPreviewDTO.Image();
-            img.setIndex(idx);
-            img.setPlaceholder("[[IMAGE_" + idx + "]]");
-            img.setUrl(a.getFileAsset().getUrl());
-            img.setMimeType(a.getFileAsset().getMimeType());
-            img.setFileName(a.getFileAsset().getOriginalName());
-            img.setSizeBytes(a.getFileAsset().getSizeBytes());
-            img.setFileAssetId(a.getFileAssetId());
-            img.setWidth(a.getWidth());
-            img.setHeight(a.getHeight());
-            out.add(img);
-        }
-        return out;
+    private static AdminModerationChunkLogDetailDTO.ChunkSet toChunkSetDetailDTO(ModerationChunkSetEntity s) {
+        AdminModerationChunkLogDetailDTO.ChunkSet dto = new AdminModerationChunkLogDetailDTO.ChunkSet();
+        dto.setId(s.getId());
+        dto.setQueueId(s.getQueueId());
+        dto.setCaseType(enumName(s.getCaseType()));
+        dto.setContentType(enumName(s.getContentType()));
+        dto.setContentId(s.getContentId());
+        dto.setStatus(enumName(s.getStatus()));
+
+        dto.setChunkThresholdChars(s.getChunkThresholdChars());
+        dto.setChunkSizeChars(s.getChunkSizeChars());
+        dto.setOverlapChars(s.getOverlapChars());
+
+        dto.setTotalChunks(s.getTotalChunks());
+        dto.setCompletedChunks(s.getCompletedChunks());
+        dto.setFailedChunks(s.getFailedChunks());
+
+        dto.setConfigJson(s.getConfigJson());
+        dto.setMemoryJson(s.getMemoryJson());
+
+        dto.setCreatedAt(s.getCreatedAt());
+        dto.setUpdatedAt(s.getUpdatedAt());
+        return dto;
     }
 
     private static Set<Integer> parseUsedImageIndices(String text) {
@@ -270,104 +245,134 @@ public class AdminModerationChunkReviewLogsService {
         return s.isBlank() ? null : s;
     }
 
-    private static AdminModerationChunkLogItemDTO toItemDTO(ModerationChunkEntity c, ModerationChunkSetEntity s) {
-        AdminModerationChunkLogItemDTO dto = new AdminModerationChunkLogItemDTO();
-        dto.setId(c.getId());
-        dto.setChunkSetId(c.getChunkSetId());
-        if (s != null) {
-            dto.setQueueId(s.getQueueId());
-            dto.setCaseType(s.getCaseType() == null ? null : s.getCaseType().name());
-            dto.setContentType(s.getContentType() == null ? null : s.getContentType().name());
-            dto.setContentId(s.getContentId());
-        }
-
-        dto.setSourceType(c.getSourceType() == null ? null : c.getSourceType().name());
-        dto.setSourceKey(c.getSourceKey());
-        dto.setFileAssetId(c.getFileAssetId());
-        dto.setFileName(c.getFileName());
-        dto.setChunkIndex(c.getChunkIndex());
-        dto.setStartOffset(c.getStartOffset());
-        dto.setEndOffset(c.getEndOffset());
-
-        dto.setStatus(c.getStatus() == null ? null : c.getStatus().name());
-        dto.setVerdict(c.getVerdict() == null ? null : c.getVerdict().name());
-        dto.setConfidence(toDoubleOrNull(c.getConfidence()));
-        dto.setAttempts(c.getAttempts());
-        dto.setLastError(c.getLastError());
-        dto.setModel(c.getModel());
-        dto.setTokensIn(c.getTokensIn());
-        dto.setTokensOut(c.getTokensOut());
-        if (s != null) {
-            dto.setBudgetConvergenceLog(extractBudgetConvergenceLog(s.getConfigJson()));
-        }
-
-        dto.setDecidedAt(c.getDecidedAt());
-        dto.setCreatedAt(c.getCreatedAt());
-        dto.setUpdatedAt(c.getUpdatedAt());
-        return dto;
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
-    private static AdminModerationChunkLogDetailDTO.Chunk toChunkDetailDTO(ModerationChunkEntity c, ModerationChunkSetEntity s) {
-        AdminModerationChunkLogDetailDTO.Chunk dto = new AdminModerationChunkLogDetailDTO.Chunk();
-        dto.setId(c.getId());
-        dto.setChunkSetId(c.getChunkSetId());
-        dto.setQueueId(s.getQueueId());
-        dto.setCaseType(s.getCaseType() == null ? null : s.getCaseType().name());
-        dto.setContentType(s.getContentType() == null ? null : s.getContentType().name());
-        dto.setContentId(s.getContentId());
+    public List<AdminModerationChunkLogItemDTO> listRecent(int limit,
+                                                           Long queueId,
+                                                           ChunkStatus status,
+                                                           Verdict verdict,
+                                                           ChunkSourceType sourceType,
+                                                           Long fileAssetId,
+                                                           String keyword) {
+        int lim = Math.clamp(limit, 1, 200);
+        String kw = keyword == null ? null : keyword.trim();
+        if (kw != null && kw.isBlank()) kw = null;
 
-        dto.setSourceType(c.getSourceType() == null ? null : c.getSourceType().name());
-        dto.setSourceKey(c.getSourceKey());
-        dto.setFileAssetId(c.getFileAssetId());
-        dto.setFileName(c.getFileName());
-        dto.setChunkIndex(c.getChunkIndex());
-        dto.setStartOffset(c.getStartOffset());
-        dto.setEndOffset(c.getEndOffset());
+        List<ModerationChunkEntity> chunks = chunkRepository.findRecentForAdmin(
+                queueId,
+                status,
+                verdict,
+                sourceType,
+                fileAssetId,
+                kw,
+                PageRequest.of(0, lim)
+        );
 
-        dto.setStatus(c.getStatus() == null ? null : c.getStatus().name());
-        dto.setAttempts(c.getAttempts());
-        dto.setLastError(c.getLastError());
-        dto.setModel(c.getModel());
-        dto.setVerdict(c.getVerdict() == null ? null : c.getVerdict().name());
-        dto.setConfidence(toDoubleOrNull(c.getConfidence()));
-        dto.setLabels(c.getLabels());
-        dto.setTokensIn(c.getTokensIn());
-        dto.setTokensOut(c.getTokensOut());
+        Set<Long> setIds = new LinkedHashSet<>();
+        for (ModerationChunkEntity c : chunks) {
+            if (c == null || c.getChunkSetId() == null) continue;
+            setIds.add(c.getChunkSetId());
+        }
 
-        dto.setDecidedAt(c.getDecidedAt());
-        dto.setCreatedAt(c.getCreatedAt());
-        dto.setUpdatedAt(c.getUpdatedAt());
-        return dto;
+        Map<Long, ModerationChunkSetEntity> setMap = new HashMap<>();
+        if (!setIds.isEmpty()) {
+            for (ModerationChunkSetEntity s : chunkSetRepository.findAllById(setIds)) {
+                if (s == null || s.getId() == null) continue;
+                setMap.put(s.getId(), s);
+            }
+        }
+
+        List<AdminModerationChunkLogItemDTO> out = new ArrayList<>();
+        for (ModerationChunkEntity c : chunks) {
+            if (c == null) continue;
+            ModerationChunkSetEntity s = c.getChunkSetId() == null ? null : setMap.get(c.getChunkSetId());
+            out.add(toItemDTO(c, s));
+        }
+        return out;
     }
 
-    private static AdminModerationChunkLogDetailDTO.ChunkSet toChunkSetDetailDTO(ModerationChunkSetEntity s) {
-        AdminModerationChunkLogDetailDTO.ChunkSet dto = new AdminModerationChunkLogDetailDTO.ChunkSet();
-        dto.setId(s.getId());
-        dto.setQueueId(s.getQueueId());
-        dto.setCaseType(s.getCaseType() == null ? null : s.getCaseType().name());
-        dto.setContentType(s.getContentType() == null ? null : s.getContentType().name());
-        dto.setContentId(s.getContentId());
-        dto.setStatus(s.getStatus() == null ? null : s.getStatus().name());
+    public AdminModerationChunkContentPreviewDTO getContentPreview(long chunkId) {
+        ModerationChunkEntity c = chunkRepository.findById(chunkId)
+                .orElseThrow(() -> new ResourceNotFoundException("分片记录不存在"));
+        ModerationChunkSetEntity s = c.getChunkSetId() == null ? null : chunkSetRepository.findById(c.getChunkSetId()).orElse(null);
+        if (s == null) {
+            throw new ResourceNotFoundException("分片集合不存在");
+        }
 
-        dto.setChunkThresholdChars(s.getChunkThresholdChars());
-        dto.setChunkSizeChars(s.getChunkSizeChars());
-        dto.setOverlapChars(s.getOverlapChars());
+        AdminModerationChunkContentPreviewDTO dto = new AdminModerationChunkContentPreviewDTO();
+        AdminModerationChunkContentPreviewDTO.Source src = new AdminModerationChunkContentPreviewDTO.Source();
+        src.setChunkId(c.getId());
+        src.setQueueId(s.getQueueId());
+        src.setContentType(enumName(s.getContentType()));
+        src.setContentId(s.getContentId());
+        src.setSourceType(enumName(c.getSourceType()));
+        src.setFileAssetId(c.getFileAssetId());
+        src.setStartOffset(c.getStartOffset());
+        src.setEndOffset(c.getEndOffset());
+        dto.setSource(src);
+        dto.setText("");
 
-        dto.setTotalChunks(s.getTotalChunks());
-        dto.setCompletedChunks(s.getCompletedChunks());
-        dto.setFailedChunks(s.getFailedChunks());
+        if (c.getSourceType() == null) {
+            dto.setReason("缺少 sourceType");
+            return dto;
+        }
 
-        dto.setConfigJson(s.getConfigJson());
-        dto.setMemoryJson(s.getMemoryJson());
+        int start = safeOffset(c.getStartOffset());
+        int end = safeOffset(c.getEndOffset());
+        if (end < start) {
+            int tmp = start;
+            start = end;
+            end = tmp;
+        }
 
-        dto.setCreatedAt(s.getCreatedAt());
-        dto.setUpdatedAt(s.getUpdatedAt());
+        Optional<String> text = chunkReviewService.loadChunkText(s.getQueueId(), c.getSourceType(), c.getFileAssetId(), start, end);
+        if (text.isPresent()) dto.setText(text.get());
+        else dto.setReason("无法定位来源文本");
+
+        if (c.getSourceType() == ChunkSourceType.FILE_TEXT) {
+            dto.setImages(resolveFileTextImages(dto.getText(), c.getFileAssetId()));
+            if ((dto.getReason() == null || dto.getReason().isBlank()) && c.getFileAssetId() == null)
+                dto.setReason("缺少 fileAssetId");
+        } else if (c.getSourceType() == ChunkSourceType.POST_TEXT) {
+            dto.setImages(resolvePostTextImages(s));
+        }
+
         return dto;
     }
 
     private static Double toDoubleOrNull(BigDecimal v) {
         if (v == null) return null;
         return v.doubleValue();
+    }
+
+    private List<AdminModerationChunkContentPreviewDTO.Image> resolvePostTextImages(ModerationChunkSetEntity s) {
+        if (s == null || s.getContentType() != ContentType.POST || s.getContentId() == null) return List.of();
+        List<PostAttachmentsEntity> atts = postAttachmentsRepository.findByPostId(s.getContentId(), PageRequest.of(0, 200)).getContent();
+        if (atts.isEmpty()) return List.of();
+        atts = new ArrayList<>(atts);
+        List<AdminModerationChunkContentPreviewDTO.Image> out = new ArrayList<>();
+        atts.sort(Comparator.nullsLast(Comparator.comparing(PostAttachmentsEntity::getId, Comparator.nullsLast(Long::compareTo))));
+        int idx = 0;
+        for (PostAttachmentsEntity a : atts) {
+            if (a == null || a.getFileAsset() == null) continue;
+            String mt = a.getFileAsset().getMimeType() == null ? "" : a.getFileAsset().getMimeType().trim().toLowerCase(Locale.ROOT);
+            if (!mt.startsWith("image/")) continue;
+            idx += 1;
+            AdminModerationChunkContentPreviewDTO.Image img = new AdminModerationChunkContentPreviewDTO.Image();
+            img.setIndex(idx);
+            img.setPlaceholder("[[IMAGE_" + idx + "]]");
+            img.setUrl(a.getFileAsset().getUrl());
+            img.setMimeType(a.getFileAsset().getMimeType());
+            img.setFileName(a.getFileAsset().getOriginalName());
+            img.setSizeBytes(a.getFileAsset().getSizeBytes());
+            img.setFileAssetId(a.getFileAssetId());
+            img.setWidth(a.getWidth());
+            img.setHeight(a.getHeight());
+            out.add(img);
+        }
+        return out;
     }
 
     private static Map<String, Object> extractBudgetConvergenceLog(Map<String, Object> configJson) {

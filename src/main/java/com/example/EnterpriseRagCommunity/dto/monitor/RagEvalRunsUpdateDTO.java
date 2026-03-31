@@ -7,7 +7,6 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 
 @Data
 public class RagEvalRunsUpdateDTO {
@@ -16,16 +15,16 @@ public class RagEvalRunsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "评测批次名称(可选更新)")
-    private Optional<String> name = Optional.empty();
+    private String name;
 
     @ApiModelProperty(value = "评测配置（JSON）(可选更新)")
-    private Optional<Map<String, Object>> config = Optional.empty();
+    private Map<String, Object> config;
 
     @ApiModelProperty(value = "是否基线(可选更新)")
-    private Optional<Boolean> isBaseline = Optional.empty();
+    private Boolean isBaseline;
 
     @JsonIgnore
     @ApiModelProperty(value = "创建时间（只读，不允许更新）")
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }
 

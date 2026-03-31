@@ -8,7 +8,6 @@ import lombok.Data;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class ModerationSimilarHitsUpdateDTO {
@@ -17,23 +16,23 @@ public class ModerationSimilarHitsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "内容类型", required = false, example = "POST")
-    private Optional<ContentType> contentType = Optional.empty();
+    private ContentType contentType;
 
     @ApiModelProperty(value = "内容ID", required = false, example = "456")
-    private Optional<Long> contentId = Optional.empty();
+    private Long contentId;
 
     @ApiModelProperty(value = "相似样本/参考ID", required = false)
-    private Optional<Long> candidateId = Optional.empty();
+    private Long candidateId;
 
     @ApiModelProperty(value = "相似距离", required = false, example = "0.312")
-    private Optional<@DecimalMin("0.0") Double> distance = Optional.empty();
+    private @DecimalMin("0.0") Double distance;
 
     @ApiModelProperty(value = "距离阈值", required = false, example = "0.500")
-    private Optional<@DecimalMin("0.0") Double> threshold = Optional.empty();
+    private @DecimalMin("0.0") Double threshold;
 
     @ApiModelProperty(value = "命中时间(只读)")
     @JsonIgnore
-    private Optional<LocalDateTime> matchedAt = Optional.empty();
+    private LocalDateTime matchedAt;
 }
 
 /**

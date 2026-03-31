@@ -113,7 +113,7 @@ public class AiRerankService {
                         } else {
                             String providerType = provider == null ? "" : (provider.type() == null ? "" : provider.type().trim().toUpperCase(Locale.ROOT));
                             boolean localOpenAiCompat = "LOCAL_OPENAI_COMPAT".equals(providerType);
-                            String epLower = rerankEndpointPathFinal == null ? "" : rerankEndpointPathFinal.trim().toLowerCase(Locale.ROOT);
+                            String epLower = rerankEndpointPathFinal.trim().toLowerCase(Locale.ROOT);
                             boolean responsesStyleOk = false;
                             boolean preferResponsesStyleRerank = epLower.contains("/v1/rerank") && !epLower.contains("/reranks");
                             if (preferResponsesStyleRerank) {
@@ -167,7 +167,6 @@ public class AiRerankService {
                                         if (!dashscopeCompatFailed) throw ioe;
                                         upstreamRaw = null;
                                         usage = null;
-                                        rawForParse = null;
                                     }
                                 }
 

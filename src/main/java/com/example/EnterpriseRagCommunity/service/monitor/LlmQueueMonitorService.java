@@ -106,7 +106,7 @@ public class LlmQueueMonitorService {
         if (running > 0 && prevAt > 0 && now > prevAt) {
             long delta = runningTokensOutSum - prevSum;
             long dtMs = now - prevAt;
-            if (delta > 0 && dtMs > 0) runningTps = (delta * 1000.0) / dtMs;
+            if (delta > 0) runningTps = (delta * 1000.0) / dtMs;
         }
 
         if (runningTps > 0) instantTps = runningTps;
@@ -150,17 +150,17 @@ public class LlmQueueMonitorService {
     }
 
     public AdminLlmQueueStatusDTO query(Integer windowSec, Integer limitRunning, Integer limitPending, Integer limitCompleted) {
-        int win = windowSec == null ? 300 : Math.max(10, Math.min(3600, windowSec));
-        Integer runIn = limitRunning == null ? 50 : limitRunning;
-        Integer pendIn = limitPending == null ? 200 : limitPending;
+        int win = windowSec == null ? 300 : Math.clamp(windowSec, 10, 3600);
+        int runIn = limitRunning == null ? 50 : limitRunning;
+        int pendIn = limitPending == null ? 200 : limitPending;
         Integer doneIn = limitCompleted;
 
-        int runLim = Math.max(0, Math.min(MAX_LIMIT_RUNNING, Math.max(0, runIn)));
-        int pendLim = Math.max(0, Math.min(MAX_LIMIT_PENDING, Math.max(0, pendIn)));
+        int runLim = Math.clamp(Math.max(0, runIn), 0, MAX_LIMIT_RUNNING);
+        int pendLim = Math.clamp(Math.max(0, pendIn), 0, MAX_LIMIT_PENDING);
         int defaultDoneLim = llmQueueProperties.getKeepCompleted();
         if (defaultDoneLim <= 0) defaultDoneLim = 200;
         int doneLim = doneIn == null ? defaultDoneLim : doneIn;
-        doneLim = Math.max(1, Math.min(MAX_LIMIT_COMPLETED, doneLim));
+        doneLim = Math.clamp(doneLim, 1, MAX_LIMIT_COMPLETED);
 
         boolean stale = false;
         long snapshotAtMs = 0L;
@@ -182,9 +182,8 @@ public class LlmQueueMonitorService {
         AdminLlmQueueStatusDTO out = new AdminLlmQueueStatusDTO();
         out.setSnapshotAtMs(snapshotAtMs > 0 ? snapshotAtMs : null);
         out.setStale(stale);
-        boolean truncated = false;
-        if (runIn != null && runIn > MAX_LIMIT_RUNNING) truncated = true;
-        if (pendIn != null && pendIn > MAX_LIMIT_PENDING) truncated = true;
+        boolean truncated = runIn > MAX_LIMIT_RUNNING;
+        if (pendIn > MAX_LIMIT_PENDING) truncated = true;
         if (doneIn != null && doneIn > MAX_LIMIT_COMPLETED) truncated = true;
         out.setMaxConcurrent(snap.maxConcurrent());
         out.setRunningCount(snap.runningCount());

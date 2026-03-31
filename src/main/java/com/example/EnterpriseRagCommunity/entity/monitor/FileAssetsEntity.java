@@ -29,13 +29,13 @@ public class FileAssetsEntity {
     @Column(name = "url", length = 512, nullable = false)
     private String url;
 
-    @Column(name = "original_name", length = 255)
+    @Column(name = "original_name")
     private String originalName;
 
     @Column(name = "size_bytes", nullable = false)
     private Long sizeBytes;
 
-    @Column(name = "mime_type", length = 255, nullable = false)
+    @Column(name = "mime_type", nullable = false)
     private String mimeType;
 
     @Column(name = "sha256", length = 64, nullable = false)

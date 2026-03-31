@@ -173,12 +173,12 @@ public class AiProvidersConfigService {
 
     @Transactional(readOnly = true)
     public ResolvedProvider resolveActiveProvider() {
-        return resolveFromDbOrLegacyOrProperties(ENV_DEFAULT, null);
+        return resolveFromDbOrLegacyOrProperties(null);
     }
 
     @Transactional(readOnly = true)
     public ResolvedProvider resolveProvider(String providerId) {
-        return resolveFromDbOrLegacyOrProperties(ENV_DEFAULT, providerId);
+        return resolveFromDbOrLegacyOrProperties(providerId);
     }
 
     @Transactional(readOnly = true)
@@ -198,7 +198,7 @@ public class AiProvidersConfigService {
         }
 
         AiProvidersConfigDTO legacy = loadLegacyOrDefault();
-        List<AiProviderDTO> providers = legacy == null ? List.of() : (legacy.getProviders() == null ? List.of() : legacy.getProviders());
+        List<AiProviderDTO> providers = legacy.getProviders() == null ? List.of() : legacy.getProviders();
         Set<String> seen = new HashSet<>();
         for (AiProviderDTO p : providers) {
             if (p == null) continue;
@@ -210,13 +210,13 @@ public class AiProvidersConfigService {
         return out;
     }
 
-    private ResolvedProvider resolveFromDbOrLegacyOrProperties(String env, String providerId) {
-        List<LlmProviderEntity> providers = llmProviderRepository.findByEnvOrderByPriorityAscIdAsc(env);
+    private ResolvedProvider resolveFromDbOrLegacyOrProperties(String providerId) {
+        List<LlmProviderEntity> providers = llmProviderRepository.findByEnvOrderByPriorityAscIdAsc(AiProvidersConfigService.ENV_DEFAULT);
         if (providers.isEmpty()) {
             AiProvidersConfigDTO legacy = loadLegacyOrDefault();
             return resolveFromDto(legacy, providerId);
         }
-        return resolveFromDb(env, providerId, providers);
+        return resolveFromDb(AiProvidersConfigService.ENV_DEFAULT, providerId, providers);
     }
 
     private ResolvedProvider resolveFromDb(String env, String providerId, List<LlmProviderEntity> providers) {
@@ -354,7 +354,7 @@ public class AiProvidersConfigService {
             if (drm != null) meta.put("defaultRerankModel", drm);
             String rep = toNonBlank(selected.getRerankEndpointPath());
             if (rep != null) meta.put("rerankEndpointPath", rep);
-            if (selected.getSupportsVision() != null) meta.put("supportsVision", Boolean.TRUE.equals(selected.getSupportsVision()));
+            if (selected.getSupportsVision() != null) meta.put("supportsVision", selected.getSupportsVision());
             metadata = meta.isEmpty() ? Map.of() : Map.copyOf(meta);
         }
         return new ResolvedProvider(id, type, baseUrl, apiKey, chatModel, embModel, metadata, headers, connectTimeoutMs, readTimeoutMs);

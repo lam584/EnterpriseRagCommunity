@@ -28,6 +28,16 @@ public class AdminLlmModelStatusController {
     private final LlmCallQueueService llmCallQueueService;
     private static final Pattern HTTP_CODE = Pattern.compile("\\bHTTP\\s+(\\d{3})\\b", Pattern.CASE_INSENSITIVE);
 
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
+    }
+
+    private static String trim(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','read'))")
     public AdminLlmModelStatusResponseDTO status(
@@ -79,8 +89,8 @@ public class AdminLlmModelStatusController {
             if (list.size() >= per) continue;
             AdminLlmModelCallRecordDTO r = new AdminLlmModelCallRecordDTO();
             r.setTaskId(t.getId());
-            r.setTaskType(t.getType() == null ? null : t.getType().name());
-            r.setStatus(t.getStatus() == null ? null : t.getStatus().name());
+            r.setTaskType(enumName(t.getType()));
+            r.setStatus(enumName(t.getStatus()));
             boolean ok = t.getStatus() != null && t.getStatus() == com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskStatus.DONE;
             r.setOk(ok);
             r.setTsMs(t.getFinishedAtMs());
@@ -106,12 +116,6 @@ public class AdminLlmModelStatusController {
         out.setPerModel(per);
         out.setModels(items);
         return out;
-    }
-
-    private static String trim(String s) {
-        if (s == null) return null;
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
     }
 
     private static String extractErrorCode(String message) {

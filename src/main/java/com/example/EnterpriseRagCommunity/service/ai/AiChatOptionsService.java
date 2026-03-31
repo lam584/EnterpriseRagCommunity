@@ -45,18 +45,18 @@ public class AiChatOptionsService {
             dto.setDefaultChatModel(toNonBlank(p.getDefaultChatModel()));
 
             List<AiChatModelOptionDTO> models = loadChatModels(pid);
-            if ((models == null || models.isEmpty()) && toNonBlank(dto.getDefaultChatModel()) != null) {
+            if (models.isEmpty() && toNonBlank(dto.getDefaultChatModel()) != null) {
                 AiChatModelOptionDTO fallback = new AiChatModelOptionDTO();
                 fallback.setName(dto.getDefaultChatModel());
                 fallback.setIsDefault(true);
                 models = List.of(fallback);
             }
-            dto.setChatModels(models == null ? List.of() : models);
+            dto.setChatModels(models);
             outProviders.add(dto);
         }
 
         if (activeProviderId == null && !outProviders.isEmpty()) {
-            activeProviderId = toNonBlank(outProviders.get(0).getId());
+            activeProviderId = toNonBlank(outProviders.getFirst().getId());
         } else if (activeProviderId != null) {
             boolean exists = false;
             for (AiChatProviderOptionDTO p : outProviders) {
@@ -65,7 +65,7 @@ public class AiChatOptionsService {
                     break;
                 }
             }
-            if (!exists && !outProviders.isEmpty()) activeProviderId = toNonBlank(outProviders.get(0).getId());
+            if (!exists && !outProviders.isEmpty()) activeProviderId = toNonBlank(outProviders.getFirst().getId());
         }
 
         AiChatOptionsDTO out = new AiChatOptionsDTO();

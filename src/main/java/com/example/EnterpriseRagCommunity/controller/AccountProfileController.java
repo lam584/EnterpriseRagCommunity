@@ -82,33 +82,8 @@ public class AccountProfileController {
     private final ModerationAutoKickService moderationAutoKickService;
     private final ModerationRuleAutoRunner moderationRuleAutoRunner;
 
-    @GetMapping("/profile")
-    public ResponseEntity<?> getMyProfileView() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            return unauthorized();
-        }
-
-        String email = auth.getName();
-        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        UsersDTO dto = toSafeDTO(user);
-        Map<String, Object> md0 = dto.getMetadata();
-        Map<String, Object> md = md0 == null ? new LinkedHashMap<>() : new LinkedHashMap<>(md0);
-
-        ModerationQueueEntity q = moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.PROFILE, user.getId()).orElse(null);
-        if (q != null) {
-            Map<String, Object> pm = new LinkedHashMap<>();
-            pm.put("caseType", "CONTENT");
-            pm.put("queueId", q.getId());
-            pm.put("status", q.getStatus() == null ? null : q.getStatus().name());
-            pm.put("stage", q.getCurrentStage() == null ? null : q.getCurrentStage().name());
-            pm.put("updatedAt", q.getUpdatedAt() == null ? null : q.getUpdatedAt().toString());
-            md.put("profileModeration", pm);
-        }
-        dto.setMetadata(md);
-        return ResponseEntity.ok(dto);
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     @GetMapping("/security-2fa-policy")
@@ -709,5 +684,34 @@ public class AccountProfileController {
         String t = s.trim();
         if (t.length() <= 256) return t;
         return t.substring(0, 256);
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<?> getMyProfileView() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return unauthorized();
+        }
+
+        String email = auth.getName();
+        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        UsersDTO dto = toSafeDTO(user);
+        Map<String, Object> md0 = dto.getMetadata();
+        Map<String, Object> md = md0 == null ? new LinkedHashMap<>() : new LinkedHashMap<>(md0);
+
+        ModerationQueueEntity q = moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.PROFILE, user.getId()).orElse(null);
+        if (q != null) {
+            Map<String, Object> pm = new LinkedHashMap<>();
+            pm.put("caseType", "CONTENT");
+            pm.put("queueId", q.getId());
+            pm.put("status", enumName(q.getStatus()));
+            pm.put("stage", enumName(q.getCurrentStage()));
+            pm.put("updatedAt", q.getUpdatedAt() == null ? null : q.getUpdatedAt().toString());
+            md.put("profileModeration", pm);
+        }
+        dto.setMetadata(md);
+        return ResponseEntity.ok(dto);
     }
 }

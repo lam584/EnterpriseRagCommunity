@@ -3,7 +3,6 @@ package com.example.EnterpriseRagCommunity.service.retrieval;
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType;
-import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;

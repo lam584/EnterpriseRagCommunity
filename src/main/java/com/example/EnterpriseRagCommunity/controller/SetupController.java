@@ -182,7 +182,7 @@ public class SetupController {
                     }
                 }
                 if (files.length > 20) fileList.append("... (total ").append(files.length).append(")");
-                logger.info("Files in {}: [{}]", currentDir.getName(), fileList.toString());
+                logger.info("Files in {}: [{}]", currentDir.getName(), fileList);
             } else {
                 logger.warn("Failed to list files in {}", currentDir.getAbsolutePath());
             }

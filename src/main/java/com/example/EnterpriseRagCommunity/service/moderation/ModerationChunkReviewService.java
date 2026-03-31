@@ -148,25 +148,8 @@ public class ModerationChunkReviewService {
         }
     }
 
-    @Transactional
-    public ModerationChunkSetEntity ensureChunkSetForQueue(ModerationQueueEntity q) {
-        if (q == null || q.getId() == null) throw new IllegalArgumentException("queue is required");
-        return chunkSetRepository.findByQueueId(q.getId()).orElseGet(() -> {
-            ModerationChunkSetEntity created = null;
-            try {
-                created = requiresNewTx().execute((status) -> {
-                    try {
-                        return createChunkSet(q);
-                    } catch (DataIntegrityViolationException e) {
-                        return chunkSetRepository.findByQueueId(q.getId()).orElse(null);
-                    }
-                });
-            } catch (DataIntegrityViolationException e) {
-                created = chunkSetRepository.findByQueueId(q.getId()).orElse(null);
-            }
-            if (created != null) return created;
-            return chunkSetRepository.findByQueueId(q.getId()).orElseThrow(() -> new IllegalStateException("chunkSet create failed"));
-        });
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     @Transactional
@@ -190,244 +173,200 @@ public class ModerationChunkReviewService {
         if (!chunks.isEmpty()) chunkRepository.saveAll(chunks);
     }
 
-    @Transactional(readOnly = true)
-    public Map<Long, ProgressSummary> loadProgressSummaries(Collection<Long> queueIds) {
-        if (queueIds == null || queueIds.isEmpty()) return Map.of();
-        List<ModerationChunkSetEntity> sets = chunkSetRepository.findAllByQueueIds(queueIds);
-        if (sets == null || sets.isEmpty()) return Map.of();
-        Map<Long, ProgressSummary> map = new HashMap<>();
-        for (ModerationChunkSetEntity s : sets) {
-            if (s == null || s.getQueueId() == null) continue;
-            ProgressSummary ps = new ProgressSummary();
-            ps.queueId = s.getQueueId();
-            ps.status = s.getStatus() == null ? null : s.getStatus().name();
-            ps.total = safeInt(s.getTotalChunks());
-            ps.completed = safeInt(s.getCompletedChunks());
-            ps.failed = safeInt(s.getFailedChunks());
-            ps.updatedAt = s.getUpdatedAt();
-            map.put(s.getQueueId(), ps);
-        }
-        return map;
+    private static String normalizeForEvidenceFingerprint(String s) {
+        if (s == null) return "";
+        String x = s.trim();
+        if (x.isEmpty()) return "";
+        x = x.replaceAll("\\[\\[IMAGE_\\d+]]", " ");
+        x = x.replace('“', '"').replace('”', '"')
+                .replace('‘', '\'').replace('’', '\'');
+        x = x.replaceAll("\\s+", " ").trim();
+        return x.toLowerCase();
     }
 
-    @Transactional(readOnly = true)
-    public AdminModerationChunkProgressDTO getProgress(Long queueId, boolean includeChunks, int chunkLimit) {
-        if (queueId == null) throw new IllegalArgumentException("queueId 不能为空");
-        ModerationChunkSetEntity set = chunkSetRepository.findByQueueId(queueId).orElse(null);
-        if (set == null) {
-            AdminModerationChunkProgressDTO dto = new AdminModerationChunkProgressDTO();
-            dto.setQueueId(queueId);
-            dto.setStatus("NONE");
-            dto.setTotalChunks(0);
-            dto.setCompletedChunks(0);
-            dto.setFailedChunks(0);
-            dto.setRunningChunks(0);
-            dto.setUpdatedAt(null);
-            dto.setChunks(List.of());
-            return dto;
+    private static void enforceMemoryMaxChars(Map<String, Object> mem, int maxChars) throws Exception {
+        if (mem == null) return;
+        int limit = Math.clamp(maxChars, 500, 200_000);
+        String json = MAPPER.writeValueAsString(mem);
+        int guard = 0;
+        while (json.length() > limit && guard < 200) {
+            guard += 1;
+            Object snippetByChunk = mem.get("chunkTextSnippetByChunk");
+            if (snippetByChunk instanceof Map<?, ?> m && !m.isEmpty()) {
+                LinkedHashMap<String, Object> c = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> en : m.entrySet()) {
+                    if (en == null || en.getKey() == null) continue;
+                    c.put(String.valueOf(en.getKey()), en.getValue());
+                }
+                if (!c.isEmpty()) {
+                    String last = null;
+                    for (String k : c.keySet()) last = k;
+                    if (last != null) c.remove(last);
+                    if (c.isEmpty()) mem.remove("chunkTextSnippetByChunk");
+                    else mem.put("chunkTextSnippetByChunk", c);
+                    json = MAPPER.writeValueAsString(mem);
+                    continue;
+                }
+            }
+            List<?> evidence = mem.get("evidence") instanceof List<?> l ? l : null;
+            if (evidence != null && !evidence.isEmpty()) {
+                ArrayList<Object> c = new ArrayList<>(evidence);
+                c.removeLast();
+                if (c.isEmpty()) mem.remove("evidence");
+                else mem.put("evidence", c);
+                json = MAPPER.writeValueAsString(mem);
+                continue;
+            }
+            List<?> entities = mem.get("entities") instanceof List<?> l ? l : null;
+            if (entities != null && !entities.isEmpty()) {
+                ArrayList<Object> c = new ArrayList<>(entities);
+                c.removeLast();
+                if (c.isEmpty()) mem.remove("entities");
+                else mem.put("entities", c);
+                json = MAPPER.writeValueAsString(mem);
+                continue;
+            }
+            Object prev = mem.get("prevSummary");
+            if (prev != null) {
+                String s = String.valueOf(prev);
+                if (s.length() > 20) {
+                    s = s.substring(0, s.length() / 2);
+                    mem.put("prevSummary", s);
+                    json = MAPPER.writeValueAsString(mem);
+                    continue;
+                }
+                mem.remove("prevSummary");
+                json = MAPPER.writeValueAsString(mem);
+                continue;
+            }
+            Object summary = mem.get("summary");
+            if (summary != null) {
+                mem.remove("summary");
+                json = MAPPER.writeValueAsString(mem);
+                continue;
+            }
+            Object summaries = mem.get("summaries");
+            if (summaries instanceof Map<?, ?> m && !m.isEmpty()) {
+                LinkedHashMap<String, Object> c = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> en : m.entrySet()) {
+                    if (en == null || en.getKey() == null) continue;
+                    c.put(String.valueOf(en.getKey()), en.getValue());
+                }
+                if (!c.isEmpty()) {
+                    String last = null;
+                    for (String k : c.keySet()) last = k;
+                    if (last != null) c.remove(last);
+                    if (c.isEmpty()) mem.remove("summaries");
+                    else mem.put("summaries", c);
+                    json = MAPPER.writeValueAsString(mem);
+                    continue;
+                }
+            }
+            Object llmEvidenceByChunk = mem.get("llmEvidenceByChunk");
+            if (llmEvidenceByChunk instanceof Map<?, ?> m && !m.isEmpty()) {
+                LinkedHashMap<String, Object> c = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> en : m.entrySet()) {
+                    if (en == null || en.getKey() == null) continue;
+                    c.put(String.valueOf(en.getKey()), en.getValue());
+                }
+                if (!c.isEmpty()) {
+                    String last = null;
+                    for (String k : c.keySet()) last = k;
+                    if (last != null) c.remove(last);
+                    if (c.isEmpty()) mem.remove("llmEvidenceByChunk");
+                    else mem.put("llmEvidenceByChunk", c);
+                    json = MAPPER.writeValueAsString(mem);
+                    continue;
+                }
+            }
+            List<?> riskTags = mem.get("riskTags") instanceof List<?> l ? l : null;
+            if (riskTags != null && !riskTags.isEmpty()) {
+                ArrayList<Object> c = new ArrayList<>(riskTags);
+                c.removeLast();
+                if (c.isEmpty()) mem.remove("riskTags");
+                else mem.put("riskTags", c);
+                json = MAPPER.writeValueAsString(mem);
+                continue;
+            }
+            List<?> openQuestions = mem.get("openQuestions") instanceof List<?> l ? l : null;
+            if (openQuestions != null && !openQuestions.isEmpty()) {
+                ArrayList<Object> c = new ArrayList<>(openQuestions);
+                c.removeLast();
+                if (c.isEmpty()) mem.remove("openQuestions");
+                else mem.put("openQuestions", c);
+                json = MAPPER.writeValueAsString(mem);
+                continue;
+            }
+            break;
         }
-
-        AdminModerationChunkProgressDTO dto = new AdminModerationChunkProgressDTO();
-        dto.setQueueId(queueId);
-        int total = safeInt(set.getTotalChunks());
-        long done = chunkRepository.countByChunkSetIdAndStatusIn(set.getId(), List.of(ChunkStatus.SUCCESS, ChunkStatus.CANCELLED));
-        long failed = chunkRepository.countByChunkSetIdAndStatusIn(set.getId(), List.of(ChunkStatus.FAILED));
-        long running = chunkRepository.countByChunkSetIdAndStatusIn(set.getId(), List.of(ChunkStatus.RUNNING));
-
-        dto.setTotalChunks(total);
-        dto.setCompletedChunks((int) Math.min(Integer.MAX_VALUE, done));
-        dto.setFailedChunks((int) Math.min(Integer.MAX_VALUE, failed));
-        dto.setUpdatedAt(set.getUpdatedAt());
-
-        dto.setRunningChunks((int) Math.min(Integer.MAX_VALUE, running));
-        if (set.getStatus() == ChunkSetStatus.CANCELLED) {
-            dto.setStatus(ChunkSetStatus.CANCELLED.name());
-        } else if (total > 0 && (done + failed) >= (long) total) {
-            dto.setStatus(ChunkSetStatus.DONE.name());
-        } else {
-            dto.setStatus(ChunkSetStatus.RUNNING.name());
-        }
-
-        if (!includeChunks) {
-            dto.setChunks(List.of());
-            return dto;
-        }
-
-        List<ModerationChunkEntity> chunks = chunkRepository.findAllByChunkSetIdOrderBySourceKeyAscChunkIndexAsc(set.getId());
-        int take = Math.max(0, Math.min(chunkLimit, chunks == null ? 0 : chunks.size()));
-        List<AdminModerationChunkProgressDTO.ChunkItem> items = new ArrayList<>();
-        for (int i = 0; i < take; i++) {
-            ModerationChunkEntity c = chunks.get(i);
-            if (c == null) continue;
-            AdminModerationChunkProgressDTO.ChunkItem it = new AdminModerationChunkProgressDTO.ChunkItem();
-            it.setId(c.getId());
-            it.setSourceType(c.getSourceType() == null ? null : c.getSourceType().name());
-            it.setFileAssetId(c.getFileAssetId());
-            it.setFileName(c.getFileName());
-            it.setChunkIndex(c.getChunkIndex());
-            it.setStartOffset(c.getStartOffset());
-            it.setEndOffset(c.getEndOffset());
-            it.setStatus(c.getStatus() == null ? null : c.getStatus().name());
-            it.setVerdict(c.getVerdict() == null ? null : c.getVerdict().name());
-            Double conf = c.getConfidence() == null ? null : c.getConfidence().doubleValue();
-            it.setConfidence(conf);
-            it.setScore(conf);
-            it.setRiskScore(conf);
-            it.setAttempts(c.getAttempts());
-            it.setLastError(c.getLastError());
-            it.setDecidedAt(c.getDecidedAt());
-            java.time.LocalDateTime start = c.getCreatedAt();
-            java.time.LocalDateTime end = c.getDecidedAt() != null ? c.getDecidedAt() : c.getUpdatedAt();
-            Long elapsed = (start != null && end != null) ? java.time.Duration.between(start, end).toMillis() : null;
-            it.setElapsedMs(elapsed);
-            items.add(it);
-        }
-        dto.setChunks(items);
-        return dto;
     }
 
-    @Transactional
-    public ChunkWorkResult prepareChunksIfNeeded(ModerationQueueEntity q) {
-        if (q == null || q.getId() == null) throw new IllegalArgumentException("queue is required");
+    private static List<Span> chunkSemantic(String text, Integer chunkSizeChars, Integer overlapChars, Integer maxChunksTotal) {
+        if (text == null || text.isEmpty()) return List.of();
+        int len = text.length();
+        int size = chunkSizeChars == null ? 4000 : Math.max(500, chunkSizeChars);
+        int overlap = overlapChars == null ? 0 : Math.max(0, overlapChars);
+        if (overlap >= size) overlap = Math.max(0, size / 10);
+        int maxChunks = maxChunksTotal == null ? 300 : Math.max(1, maxChunksTotal);
 
-        ModerationChunkReviewConfigDTO cfg = configService.getConfig();
-        if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return ChunkWorkResult.disabled();
-
-        if (q.getContentType() != ContentType.POST) return ChunkWorkResult.notChunked();
-
-        PostsEntity p = postsRepository.findById(q.getContentId()).orElse(null);
-        if (p == null || Boolean.TRUE.equals(p.getIsDeleted())) return ChunkWorkResult.notChunked();
-
-        ModerationConfidenceFallbackConfigEntity fb = fallbackConfigRepository.findFirstByOrderByUpdatedAtDescIdDesc().orElse(null);
-        int threshold = resolveChunkThreshold(cfg, fb);
-        boolean postChunked = p.getContentLength() != null && p.getContentLength() > threshold;
-        if (Boolean.TRUE.equals(p.getIsChunkedReview())) postChunked = true;
-
-        List<PostAttachmentsEntity> atts = safeLoadAttachments(p.getId());
-        List<FileAssetExtractionsEntity> exts = safeLoadExtractions(atts);
-
-        boolean anyFileChunked = false;
-        for (FileAssetExtractionsEntity e : exts) {
-            if (e == null) continue;
-            if (!"READY".equalsIgnoreCase(String.valueOf(e.getExtractStatus()))) continue;
-            String t = e.getExtractedText();
-            if (t != null && t.length() > threshold) {
-                anyFileChunked = true;
-                break;
+        List<Integer> breaks = new ArrayList<>();
+        breaks.add(0);
+        for (int i = 0; i < len; i++) {
+            char c = text.charAt(i);
+            // Paragraphs and sentences separators
+            if (c == '\n' || c == '\r' || c == '.' || c == '?' || c == '!' || c == '。' || c == '？' || c == '！' || c == ';') {
+                breaks.add(i + 1);
             }
         }
+        if (breaks.getLast() != len) {
+            breaks.add(len);
+        }
 
-        boolean need = postChunked || anyFileChunked;
-        if (!need) return ChunkWorkResult.notChunked();
+        List<Span> spans = new ArrayList<>();
+        int cursor = 0;
+        while (cursor < len && spans.size() < maxChunks) {
+            int targetEnd = cursor + size;
+            int end;
+            boolean hardCut = false;
 
-        ModerationChunkSetEntity set = ensureChunkSetForQueue(q);
-        if (set == null) return ChunkWorkResult.notChunked();
-        if (set.getStatus() == ChunkSetStatus.CANCELLED) return ChunkWorkResult.cancelled(set);
-        if (set.getTotalChunks() != null && set.getTotalChunks() > 0) return ChunkWorkResult.ready(set);
-        if (set.getId() != null) {
-            List<ModerationChunkSetEntity> locked = chunkSetRepository.findByIdForUpdate(set.getId());
-            if (locked != null && !locked.isEmpty() && locked.get(0) != null) {
-                set = locked.get(0);
+            if (targetEnd >= len) {
+                end = len;
+            } else {
+                int idx = Collections.binarySearch(breaks, targetEnd);
+                if (idx < 0) idx = -idx - 2;
+                int bestBp = (idx >= 0 && idx < breaks.size()) ? breaks.get(idx) : -1;
+
+                if (bestBp > cursor) {
+                    end = bestBp;
+                } else {
+                    end = targetEnd;
+                    hardCut = true;
+                }
             }
-        }
-        if (set == null) return ChunkWorkResult.notChunked();
-        if (set.getStatus() == ChunkSetStatus.CANCELLED) return ChunkWorkResult.cancelled(set);
-        if (set.getTotalChunks() != null && set.getTotalChunks() > 0) return ChunkWorkResult.ready(set);
 
-        LocalDateTime now = LocalDateTime.now();
-        ChunkSizingDecision sizingDecision = resolveChunkSizingDecision(cfg);
-        int effectiveChunkSizeChars = sizingDecision.effectiveChunkSizeChars();
-        int effectiveOverlapChars = cfg.getOverlapChars() == null ? 0 : Math.max(0, cfg.getOverlapChars());
-        if (effectiveOverlapChars >= effectiveChunkSizeChars) effectiveOverlapChars = Math.max(0, effectiveChunkSizeChars / 10);
+            spans.add(new Span(cursor, end));
+            if (end >= len) break;
 
-        set.setChunkThresholdChars(threshold);
-        set.setChunkSizeChars(effectiveChunkSizeChars);
-        set.setOverlapChars(effectiveOverlapChars);
-        set.setStatus(ChunkSetStatus.RUNNING);
-        set.setUpdatedAt(now);
-        set.setConfigJson(configSnapshot(cfg, effectiveChunkSizeChars, effectiveOverlapChars, sizingDecision.budgetConvergenceLog()));
-        chunkSetRepository.save(set);
+            int targetStart = end - overlap;
+            int nextCursor;
+            if (hardCut) {
+                nextCursor = targetStart;
+            } else {
+                int idx = Collections.binarySearch(breaks, targetStart);
+                if (idx < 0) idx = -idx - 2;
+                int bestBp = (idx >= 0 && idx < breaks.size()) ? breaks.get(idx) : -1;
 
-        List<ModerationChunkEntity> chunks = new ArrayList<>();
-        
-        boolean semantic = "SEMANTIC".equalsIgnoreCase(cfg.getChunkMode());
-
-        String postContent = p.getContent() == null ? "" : p.getContent();
-        if (!postContent.isBlank() && postContent.length() > threshold) {
-            List<Span> spans = semantic
-                    ? chunkSemantic(postContent, effectiveChunkSizeChars, effectiveOverlapChars, cfg.getMaxChunksTotal())
-                    : chunkSpans(postContent.length(), effectiveChunkSizeChars, effectiveOverlapChars, cfg.getMaxChunksTotal());
-
-            for (int i = 0; i < spans.size(); i++) {
-                Span sp = spans.get(i);
-                ModerationChunkEntity c = new ModerationChunkEntity();
-                c.setChunkSetId(set.getId());
-                c.setSourceType(ChunkSourceType.POST_TEXT);
-                c.setSourceKey("POST");
-                c.setFileAssetId(null);
-                c.setFileName(null);
-                c.setChunkIndex(i);
-                c.setStartOffset(sp.start);
-                c.setEndOffset(sp.end);
-                c.setStatus(ChunkStatus.PENDING);
-                c.setAttempts(0);
-                c.setCreatedAt(now);
-                c.setUpdatedAt(now);
-                c.setVersion(0);
-                chunks.add(c);
+                if (bestBp > cursor) {
+                    nextCursor = bestBp;
+                } else {
+                    nextCursor = targetStart;
+                }
             }
+
+            if (nextCursor <= cursor) nextCursor = cursor + 1;
+            cursor = nextCursor;
         }
-
-        Map<Long, String> fileNameById = new HashMap<>();
-        for (PostAttachmentsEntity a : atts) {
-            if (a == null || a.getFileAssetId() == null) continue;
-            String fn = a.getFileAsset() != null ? a.getFileAsset().getOriginalName() : null;
-            fileNameById.putIfAbsent(a.getFileAssetId(), fn);
-        }
-
-        for (FileAssetExtractionsEntity e : exts) {
-            if (e == null || e.getFileAssetId() == null) continue;
-            if (!"READY".equalsIgnoreCase(String.valueOf(e.getExtractStatus()))) continue;
-            String t = e.getExtractedText();
-            if (t == null) t = "";
-            if (t.isBlank() || t.length() <= threshold) continue;
-            
-            List<Span> spans = semantic
-                    ? chunkSemantic(t, effectiveChunkSizeChars, effectiveOverlapChars, cfg.getMaxChunksTotal())
-                    : chunkSpans(t.length(), effectiveChunkSizeChars, effectiveOverlapChars, cfg.getMaxChunksTotal());
-
-            for (int i = 0; i < spans.size(); i++) {
-                Span sp = spans.get(i);
-                ModerationChunkEntity c = new ModerationChunkEntity();
-                c.setChunkSetId(set.getId());
-                c.setSourceType(ChunkSourceType.FILE_TEXT);
-                c.setSourceKey("FILE:" + e.getFileAssetId());
-                c.setFileAssetId(e.getFileAssetId());
-                c.setFileName(fileNameById.get(e.getFileAssetId()));
-                c.setChunkIndex(i);
-                c.setStartOffset(sp.start);
-                c.setEndOffset(sp.end);
-                c.setStatus(ChunkStatus.PENDING);
-                c.setAttempts(0);
-                c.setCreatedAt(now);
-                c.setUpdatedAt(now);
-                c.setVersion(0);
-                chunks.add(c);
-            }
-        }
-
-        if (!chunks.isEmpty()) {
-            chunkRepository.saveAll(chunks);
-        }
-
-        int total = chunks.size();
-        set.setTotalChunks(total);
-        set.setCompletedChunks(0);
-        set.setFailedChunks(0);
-        set.setUpdatedAt(now);
-        chunkSetRepository.save(set);
-
-        return ChunkWorkResult.ready(set);
+        return spans;
     }
 
     static int resolveChunkThreshold(ModerationChunkReviewConfigDTO cfg, ModerationConfidenceFallbackConfigEntity fb) {
@@ -439,82 +378,25 @@ public class ModerationChunkReviewService {
         return t;
     }
 
-    private ChunkSizingDecision resolveChunkSizingDecision(ModerationChunkReviewConfigDTO cfg) {
-        int baseChunkChars = cfg == null || cfg.getChunkSizeChars() == null ? 4000 : Math.max(500, cfg.getChunkSizeChars());
-
-        ModerationLlmConfigEntity llm = null;
-        try {
-            llm = llmConfigRepository.findAll().stream().findFirst().orElse(null);
-        } catch (Exception ignore) {
-            llm = null;
-        }
-
-        PromptsEntity visionPrompt = null;
-        if (llm != null && llm.getMultimodalPromptCode() != null) {
+    @Transactional
+    public ModerationChunkSetEntity ensureChunkSetForQueue(ModerationQueueEntity q) {
+        if (q == null || q.getId() == null) throw new IllegalArgumentException("queue is required");
+        return chunkSetRepository.findByQueueId(q.getId()).orElseGet(() -> {
+            ModerationChunkSetEntity created;
             try {
-                visionPrompt = promptsRepository.findByPromptCode(llm.getMultimodalPromptCode()).orElse(null);
-            } catch (Exception ignore) {
-                visionPrompt = null;
+                created = requiresNewTx().execute((status) -> {
+                    try {
+                        return createChunkSet(q);
+                    } catch (DataIntegrityViolationException e) {
+                        return chunkSetRepository.findByQueueId(q.getId()).orElse(null);
+                    }
+                });
+            } catch (DataIntegrityViolationException e) {
+                created = chunkSetRepository.findByQueueId(q.getId()).orElse(null);
             }
-        }
-
-        int imageTokenBudget = visionPrompt == null || visionPrompt.getVisionImageTokenBudget() == null ? 50_000 : clampInt(visionPrompt.getVisionImageTokenBudget(), 1, 300_000);
-        int maxImagesPerRequest = visionPrompt == null || visionPrompt.getVisionMaxImagesPerRequest() == null ? 10 : clampInt(visionPrompt.getVisionMaxImagesPerRequest(), 1, 50);
-        boolean highRes = visionPrompt != null && Boolean.TRUE.equals(visionPrompt.getVisionHighResolutionImages());
-        int maxPixels = visionPrompt == null || visionPrompt.getVisionMaxPixels() == null ? 2_621_440 : Math.max(1, visionPrompt.getVisionMaxPixels());
-
-        int tokenGridSide = 32;
-        int tokenPixels = tokenGridSide * tokenGridSide;
-        long maxPixelsEffective = highRes ? (16384L * tokenPixels) : (long) maxPixels;
-        int perImageTokens = (int) Math.max(4L, Math.min(16386L, (maxPixelsEffective / tokenPixels) + 2L));
-        long estimatedImageTokens = (long) perImageTokens * (long) maxImagesPerRequest;
-
-        int charsPerToken = 4;
-        int baseTextTokens = Math.max(128, baseChunkChars / charsPerToken);
-        long totalBudget = (long) baseTextTokens + (long) imageTokenBudget;
-
-        int effectiveTextTokens = baseTextTokens;
-        int minTextTokens = 128;
-        List<Map<String, Object>> rounds = new ArrayList<>();
-        rounds.add(Map.of(
-                "round", 0,
-                "textTokenBudget", effectiveTextTokens,
-                "chunkSizeChars", baseChunkChars,
-                "estimatedTotalRequestTokens", effectiveTextTokens + estimatedImageTokens
-        ));
-        int round = 0;
-        while (((long) effectiveTextTokens + estimatedImageTokens) > totalBudget && effectiveTextTokens > minTextTokens) {
-            round += 1;
-            int next = (int) Math.floor(effectiveTextTokens * 0.8);
-            effectiveTextTokens = Math.max(minTextTokens, next);
-            int nextChunkChars = Math.max(500, effectiveTextTokens * charsPerToken);
-            rounds.add(Map.of(
-                    "round", round,
-                    "textTokenBudget", effectiveTextTokens,
-                    "chunkSizeChars", nextChunkChars,
-                    "estimatedTotalRequestTokens", effectiveTextTokens + estimatedImageTokens
-            ));
-        }
-
-        int effectiveChars = Math.max(500, effectiveTextTokens * charsPerToken);
-        int finalChunkChars = Math.min(baseChunkChars, effectiveChars);
-
-        Map<String, Object> budgetConvergenceLog = new LinkedHashMap<>();
-        budgetConvergenceLog.put("baseChunkSizeChars", baseChunkChars);
-        budgetConvergenceLog.put("effectiveChunkSizeChars", finalChunkChars);
-        budgetConvergenceLog.put("baseTextTokenBudget", baseTextTokens);
-        budgetConvergenceLog.put("effectiveTextTokenBudget", effectiveTextTokens);
-        budgetConvergenceLog.put("totalBudgetTokens", totalBudget);
-        budgetConvergenceLog.put("imageTokenBudget", imageTokenBudget);
-        budgetConvergenceLog.put("estimatedImageTokens", estimatedImageTokens);
-        budgetConvergenceLog.put("maxImagesPerRequest", maxImagesPerRequest);
-        budgetConvergenceLog.put("perImageTokenEstimate", perImageTokens);
-        budgetConvergenceLog.put("highResolutionImages", highRes);
-        budgetConvergenceLog.put("maxPixels", maxPixels);
-        budgetConvergenceLog.put("triggeredResharding", finalChunkChars < baseChunkChars);
-        budgetConvergenceLog.put("rounds", rounds);
-
-        return new ChunkSizingDecision(finalChunkChars, budgetConvergenceLog);
+            if (created != null) return created;
+            return chunkSetRepository.findByQueueId(q.getId()).orElseThrow(() -> new IllegalStateException("chunkSet create failed"));
+        });
     }
 
     private static int clampInt(int v, int min, int max) {
@@ -1094,15 +976,24 @@ public class ModerationChunkReviewService {
         return x;
     }
 
-    private static String normalizeForEvidenceFingerprint(String s) {
-        if (s == null) return "";
-        String x = s.trim();
-        if (x.isEmpty()) return "";
-        x = x.replaceAll("\\[\\[IMAGE_\\d+\\]\\]", " ");
-        x = x.replace('\u201c', '"').replace('\u201d', '"')
-                .replace('\u2018', '\'').replace('\u2019', '\'');
-        x = x.replaceAll("\\s+", " ").trim();
-        return x.toLowerCase();
+    @Transactional(readOnly = true)
+    public Map<Long, ProgressSummary> loadProgressSummaries(Collection<Long> queueIds) {
+        if (queueIds == null || queueIds.isEmpty()) return Map.of();
+        List<ModerationChunkSetEntity> sets = chunkSetRepository.findAllByQueueIds(queueIds);
+        if (sets == null || sets.isEmpty()) return Map.of();
+        Map<Long, ProgressSummary> map = new HashMap<>();
+        for (ModerationChunkSetEntity s : sets) {
+            if (s == null || s.getQueueId() == null) continue;
+            ProgressSummary ps = new ProgressSummary();
+            ps.queueId = s.getQueueId();
+            ps.status = enumName(s.getStatus());
+            ps.total = safeInt(s.getTotalChunks());
+            ps.completed = safeInt(s.getCompletedChunks());
+            ps.failed = safeInt(s.getFailedChunks());
+            ps.updatedAt = s.getUpdatedAt();
+            map.put(s.getQueueId(), ps);
+        }
+        return map;
     }
 
     private static String asString(Object v) {
@@ -1110,131 +1001,224 @@ public class ModerationChunkReviewService {
         return String.valueOf(v).trim();
     }
 
-    private static void enforceMemoryMaxChars(Map<String, Object> mem, int maxChars) throws Exception {
-        if (mem == null) return;
-        int limit = Math.max(500, Math.min(200_000, maxChars));
-        String json = MAPPER.writeValueAsString(mem);
-        int guard = 0;
-        while (json.length() > limit && guard < 200) {
-            guard += 1;
-            Object snippetByChunk = mem.get("chunkTextSnippetByChunk");
-            if (snippetByChunk instanceof Map<?, ?> m && !m.isEmpty()) {
-                LinkedHashMap<String, Object> c = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> en : m.entrySet()) {
-                    if (en == null || en.getKey() == null) continue;
-                    c.put(String.valueOf(en.getKey()), en.getValue());
-                }
-                if (!c.isEmpty()) {
-                    String last = null;
-                    for (String k : c.keySet()) last = k;
-                    if (last != null) c.remove(last);
-                    if (c.isEmpty()) mem.remove("chunkTextSnippetByChunk");
-                    else mem.put("chunkTextSnippetByChunk", c);
-                    json = MAPPER.writeValueAsString(mem);
-                    continue;
-                }
+    @Transactional
+    public ChunkWorkResult prepareChunksIfNeeded(ModerationQueueEntity q) {
+        if (q == null || q.getId() == null) throw new IllegalArgumentException("queue is required");
+
+        ModerationChunkReviewConfigDTO cfg = configService.getConfig();
+        if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return ChunkWorkResult.disabled();
+
+        if (q.getContentType() != ContentType.POST) return ChunkWorkResult.notChunked();
+
+        PostsEntity p = postsRepository.findById(q.getContentId()).orElse(null);
+        if (p == null || Boolean.TRUE.equals(p.getIsDeleted())) return ChunkWorkResult.notChunked();
+
+        ModerationConfidenceFallbackConfigEntity fb = fallbackConfigRepository.findFirstByOrderByUpdatedAtDescIdDesc().orElse(null);
+        int threshold = resolveChunkThreshold(cfg, fb);
+        boolean postChunked = p.getContentLength() != null && p.getContentLength() > threshold;
+        if (Boolean.TRUE.equals(p.getIsChunkedReview())) postChunked = true;
+
+        List<PostAttachmentsEntity> atts = safeLoadAttachments(p.getId());
+        List<FileAssetExtractionsEntity> exts = safeLoadExtractions(atts);
+
+        boolean anyFileChunked = false;
+        for (FileAssetExtractionsEntity e : exts) {
+            if (e == null) continue;
+            if (!"READY".equalsIgnoreCase(String.valueOf(e.getExtractStatus()))) continue;
+            String t = e.getExtractedText();
+            if (t != null && t.length() > threshold) {
+                anyFileChunked = true;
+                break;
             }
-            List<?> evidence = mem.get("evidence") instanceof List<?> l ? l : null;
-            if (evidence != null && !evidence.isEmpty()) {
-                ArrayList<Object> c = new ArrayList<>(evidence);
-                c.remove(c.size() - 1);
-                if (c.isEmpty()) mem.remove("evidence");
-                else mem.put("evidence", c);
-                json = MAPPER.writeValueAsString(mem);
-                continue;
-            }
-            List<?> entities = mem.get("entities") instanceof List<?> l ? l : null;
-            if (entities != null && !entities.isEmpty()) {
-                ArrayList<Object> c = new ArrayList<>(entities);
-                c.remove(c.size() - 1);
-                if (c.isEmpty()) mem.remove("entities");
-                else mem.put("entities", c);
-                json = MAPPER.writeValueAsString(mem);
-                continue;
-            }
-            Object prev = mem.get("prevSummary");
-            if (prev != null) {
-                String s = String.valueOf(prev);
-                if (s.length() > 20) {
-                    s = s.substring(0, s.length() / 2);
-                    mem.put("prevSummary", s);
-                    json = MAPPER.writeValueAsString(mem);
-                    continue;
-                }
-                mem.remove("prevSummary");
-                json = MAPPER.writeValueAsString(mem);
-                continue;
-            }
-            Object summary = mem.get("summary");
-            if (summary != null) {
-                mem.remove("summary");
-                json = MAPPER.writeValueAsString(mem);
-                continue;
-            }
-            Object summaries = mem.get("summaries");
-            if (summaries instanceof Map<?, ?> m && !m.isEmpty()) {
-                LinkedHashMap<String, Object> c = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> en : m.entrySet()) {
-                    if (en == null || en.getKey() == null) continue;
-                    c.put(String.valueOf(en.getKey()), en.getValue());
-                }
-                if (!c.isEmpty()) {
-                    String last = null;
-                    for (String k : c.keySet()) last = k;
-                    if (last != null) c.remove(last);
-                    if (c.isEmpty()) mem.remove("summaries");
-                    else mem.put("summaries", c);
-                    json = MAPPER.writeValueAsString(mem);
-                    continue;
-                }
-            }
-            Object llmEvidenceByChunk = mem.get("llmEvidenceByChunk");
-            if (llmEvidenceByChunk instanceof Map<?, ?> m && !m.isEmpty()) {
-                LinkedHashMap<String, Object> c = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> en : m.entrySet()) {
-                    if (en == null || en.getKey() == null) continue;
-                    c.put(String.valueOf(en.getKey()), en.getValue());
-                }
-                if (!c.isEmpty()) {
-                    String last = null;
-                    for (String k : c.keySet()) last = k;
-                    if (last != null) c.remove(last);
-                    if (c.isEmpty()) mem.remove("llmEvidenceByChunk");
-                    else mem.put("llmEvidenceByChunk", c);
-                    json = MAPPER.writeValueAsString(mem);
-                    continue;
-                }
-            }
-            List<?> riskTags = mem.get("riskTags") instanceof List<?> l ? l : null;
-            if (riskTags != null && !riskTags.isEmpty()) {
-                ArrayList<Object> c = new ArrayList<>(riskTags);
-                c.remove(c.size() - 1);
-                if (c.isEmpty()) mem.remove("riskTags");
-                else mem.put("riskTags", c);
-                json = MAPPER.writeValueAsString(mem);
-                continue;
-            }
-            List<?> openQuestions = mem.get("openQuestions") instanceof List<?> l ? l : null;
-            if (openQuestions != null && !openQuestions.isEmpty()) {
-                ArrayList<Object> c = new ArrayList<>(openQuestions);
-                c.remove(c.size() - 1);
-                if (c.isEmpty()) mem.remove("openQuestions");
-                else mem.put("openQuestions", c);
-                json = MAPPER.writeValueAsString(mem);
-                continue;
-            }
-            break;
         }
+
+        boolean need = postChunked || anyFileChunked;
+        if (!need) return ChunkWorkResult.notChunked();
+
+        ModerationChunkSetEntity set = ensureChunkSetForQueue(q);
+        if (set == null) return ChunkWorkResult.notChunked();
+        if (set.getStatus() == ChunkSetStatus.CANCELLED) return ChunkWorkResult.cancelled(set);
+        if (set.getTotalChunks() != null && set.getTotalChunks() > 0) return ChunkWorkResult.ready(set);
+        if (set.getId() != null) {
+            List<ModerationChunkSetEntity> locked = chunkSetRepository.findByIdForUpdate(set.getId());
+            if (locked != null && !locked.isEmpty() && locked.getFirst() != null) {
+                set = locked.getFirst();
+            }
+        }
+        if (set == null) return ChunkWorkResult.notChunked();
+        if (set.getStatus() == ChunkSetStatus.CANCELLED) return ChunkWorkResult.cancelled(set);
+        if (set.getTotalChunks() != null && set.getTotalChunks() > 0) return ChunkWorkResult.ready(set);
+
+        LocalDateTime now = LocalDateTime.now();
+        ChunkSizingDecision sizingDecision = resolveChunkSizingDecision(cfg);
+        int effectiveChunkSizeChars = sizingDecision.effectiveChunkSizeChars();
+        int effectiveOverlapChars = cfg.getOverlapChars() == null ? 0 : Math.max(0, cfg.getOverlapChars());
+        if (effectiveOverlapChars >= effectiveChunkSizeChars) effectiveOverlapChars = Math.max(0, effectiveChunkSizeChars / 10);
+
+        set.setChunkThresholdChars(threshold);
+        set.setChunkSizeChars(effectiveChunkSizeChars);
+        set.setOverlapChars(effectiveOverlapChars);
+        set.setStatus(ChunkSetStatus.RUNNING);
+        set.setUpdatedAt(now);
+        set.setConfigJson(configSnapshot(cfg, effectiveChunkSizeChars, effectiveOverlapChars, sizingDecision.budgetConvergenceLog()));
+        chunkSetRepository.save(set);
+
+        List<ModerationChunkEntity> chunks = new ArrayList<>();
+
+        boolean semantic = "SEMANTIC".equalsIgnoreCase(cfg.getChunkMode());
+
+        String postContent = p.getContent() == null ? "" : p.getContent();
+        if (!postContent.isBlank() && postContent.length() > threshold) {
+            List<Span> spans = semantic
+                    ? chunkSemantic(postContent, effectiveChunkSizeChars, effectiveOverlapChars, cfg.getMaxChunksTotal())
+                    : chunkSpans(postContent.length(), effectiveChunkSizeChars, effectiveOverlapChars, cfg.getMaxChunksTotal());
+
+            for (int i = 0; i < spans.size(); i++) {
+                Span sp = spans.get(i);
+                ModerationChunkEntity c = new ModerationChunkEntity();
+                c.setChunkSetId(set.getId());
+                c.setSourceType(ChunkSourceType.POST_TEXT);
+                c.setSourceKey("POST");
+                c.setFileAssetId(null);
+                c.setFileName(null);
+                c.setChunkIndex(i);
+                c.setStartOffset(sp.start);
+                c.setEndOffset(sp.end);
+                c.setStatus(ChunkStatus.PENDING);
+                c.setAttempts(0);
+                c.setCreatedAt(now);
+                c.setUpdatedAt(now);
+                c.setVersion(0);
+                chunks.add(c);
+            }
+        }
+
+        Map<Long, String> fileNameById = new HashMap<>();
+        for (PostAttachmentsEntity a : atts) {
+            if (a == null || a.getFileAssetId() == null) continue;
+            String fn = a.getFileAsset() != null ? a.getFileAsset().getOriginalName() : null;
+            fileNameById.putIfAbsent(a.getFileAssetId(), fn);
+        }
+
+        for (FileAssetExtractionsEntity e : exts) {
+            if (e == null || e.getFileAssetId() == null) continue;
+            if (!"READY".equalsIgnoreCase(String.valueOf(e.getExtractStatus()))) continue;
+            String t = e.getExtractedText();
+            if (t == null) t = "";
+            if (t.isBlank() || t.length() <= threshold) continue;
+
+            List<Span> spans = semantic
+                    ? chunkSemantic(t, effectiveChunkSizeChars, effectiveOverlapChars, cfg.getMaxChunksTotal())
+                    : chunkSpans(t.length(), effectiveChunkSizeChars, effectiveOverlapChars, cfg.getMaxChunksTotal());
+
+            for (int i = 0; i < spans.size(); i++) {
+                Span sp = spans.get(i);
+                ModerationChunkEntity c = new ModerationChunkEntity();
+                c.setChunkSetId(set.getId());
+                c.setSourceType(ChunkSourceType.FILE_TEXT);
+                c.setSourceKey("FILE:" + e.getFileAssetId());
+                c.setFileAssetId(e.getFileAssetId());
+                c.setFileName(fileNameById.get(e.getFileAssetId()));
+                c.setChunkIndex(i);
+                c.setStartOffset(sp.start);
+                c.setEndOffset(sp.end);
+                c.setStatus(ChunkStatus.PENDING);
+                c.setAttempts(0);
+                c.setCreatedAt(now);
+                c.setUpdatedAt(now);
+                c.setVersion(0);
+                chunks.add(c);
+            }
+        }
+
+        if (!chunks.isEmpty()) {
+            chunkRepository.saveAll(chunks);
+        }
+
+        int total = chunks.size();
+        set.setTotalChunks(total);
+        set.setCompletedChunks(0);
+        set.setFailedChunks(0);
+        set.setUpdatedAt(now);
+        chunkSetRepository.save(set);
+
+        return ChunkWorkResult.ready(set);
     }
 
-    private List<PostAttachmentsEntity> safeLoadAttachments(Long postId, int max) {
-        try {
-            var page = postAttachmentsRepository.findByPostId(postId, PageRequest.of(0, max, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"))));
-            if (page == null || page.getContent() == null) return List.of();
-            return page.getContent();
-        } catch (Exception e) {
-            return List.of();
+    @Transactional(readOnly = true)
+    public AdminModerationChunkProgressDTO getProgress(Long queueId, boolean includeChunks, int chunkLimit) {
+        if (queueId == null) throw new IllegalArgumentException("queueId 不能为空");
+        ModerationChunkSetEntity set = chunkSetRepository.findByQueueId(queueId).orElse(null);
+        if (set == null) {
+            AdminModerationChunkProgressDTO dto = new AdminModerationChunkProgressDTO();
+            dto.setQueueId(queueId);
+            dto.setStatus("NONE");
+            dto.setTotalChunks(0);
+            dto.setCompletedChunks(0);
+            dto.setFailedChunks(0);
+            dto.setRunningChunks(0);
+            dto.setUpdatedAt(null);
+            dto.setChunks(List.of());
+            return dto;
         }
+
+        AdminModerationChunkProgressDTO dto = new AdminModerationChunkProgressDTO();
+        dto.setQueueId(queueId);
+        int total = safeInt(set.getTotalChunks());
+        long done = chunkRepository.countByChunkSetIdAndStatusIn(set.getId(), List.of(ChunkStatus.SUCCESS, ChunkStatus.CANCELLED));
+        long failed = chunkRepository.countByChunkSetIdAndStatusIn(set.getId(), List.of(ChunkStatus.FAILED));
+        long running = chunkRepository.countByChunkSetIdAndStatusIn(set.getId(), List.of(ChunkStatus.RUNNING));
+
+        dto.setTotalChunks(total);
+        dto.setCompletedChunks((int) Math.min(Integer.MAX_VALUE, done));
+        dto.setFailedChunks((int) Math.min(Integer.MAX_VALUE, failed));
+        dto.setUpdatedAt(set.getUpdatedAt());
+
+        dto.setRunningChunks((int) Math.min(Integer.MAX_VALUE, running));
+        if (set.getStatus() == ChunkSetStatus.CANCELLED) {
+            dto.setStatus(ChunkSetStatus.CANCELLED.name());
+        } else if (total > 0 && (done + failed) >= (long) total) {
+            dto.setStatus(ChunkSetStatus.DONE.name());
+        } else {
+            dto.setStatus(ChunkSetStatus.RUNNING.name());
+        }
+
+        if (!includeChunks) {
+            dto.setChunks(List.of());
+            return dto;
+        }
+
+        List<ModerationChunkEntity> chunks = chunkRepository.findAllByChunkSetIdOrderBySourceKeyAscChunkIndexAsc(set.getId());
+        int take = Math.max(0, Math.min(chunkLimit, chunks == null ? 0 : chunks.size()));
+        List<AdminModerationChunkProgressDTO.ChunkItem> items = new ArrayList<>();
+        for (int i = 0; i < take; i++) {
+            ModerationChunkEntity c = chunks.get(i);
+            if (c == null) continue;
+            AdminModerationChunkProgressDTO.ChunkItem it = new AdminModerationChunkProgressDTO.ChunkItem();
+            it.setId(c.getId());
+            it.setSourceType(enumName(c.getSourceType()));
+            it.setFileAssetId(c.getFileAssetId());
+            it.setFileName(c.getFileName());
+            it.setChunkIndex(c.getChunkIndex());
+            it.setStartOffset(c.getStartOffset());
+            it.setEndOffset(c.getEndOffset());
+            it.setStatus(enumName(c.getStatus()));
+            it.setVerdict(enumName(c.getVerdict()));
+            Double conf = c.getConfidence() == null ? null : c.getConfidence().doubleValue();
+            it.setConfidence(conf);
+            it.setScore(conf);
+            it.setRiskScore(conf);
+            it.setAttempts(c.getAttempts());
+            it.setLastError(c.getLastError());
+            it.setDecidedAt(c.getDecidedAt());
+            java.time.LocalDateTime start = c.getCreatedAt();
+            java.time.LocalDateTime end = c.getDecidedAt() != null ? c.getDecidedAt() : c.getUpdatedAt();
+            Long elapsed = (start != null && end != null) ? java.time.Duration.between(start, end).toMillis() : null;
+            it.setElapsedMs(elapsed);
+            items.add(it);
+        }
+        dto.setChunks(items);
+        return dto;
     }
 
     private List<PostAttachmentsEntity> safeLoadAttachments(Long postId) {
@@ -1277,72 +1261,80 @@ public class ModerationChunkReviewService {
         return spans;
     }
 
-    private static List<Span> chunkSemantic(String text, Integer chunkSizeChars, Integer overlapChars, Integer maxChunksTotal) {
-        if (text == null || text.isEmpty()) return List.of();
-        int len = text.length();
-        int size = chunkSizeChars == null ? 4000 : Math.max(500, chunkSizeChars);
-        int overlap = overlapChars == null ? 0 : Math.max(0, overlapChars);
-        if (overlap >= size) overlap = Math.max(0, size / 10);
-        int maxChunks = maxChunksTotal == null ? 300 : Math.max(1, maxChunksTotal);
+    private ChunkSizingDecision resolveChunkSizingDecision(ModerationChunkReviewConfigDTO cfg) {
+        int baseChunkChars = cfg == null || cfg.getChunkSizeChars() == null ? 4000 : Math.max(500, cfg.getChunkSizeChars());
 
-        List<Integer> breaks = new ArrayList<>();
-        breaks.add(0);
-        for (int i = 0; i < len; i++) {
-            char c = text.charAt(i);
-            // Paragraphs and sentences separators
-            if (c == '\n' || c == '\r' || c == '.' || c == '?' || c == '!' || c == '。' || c == '？' || c == '！' || c == ';') {
-                breaks.add(i + 1);
-            }
-        }
-        if (breaks.get(breaks.size() - 1) != len) {
-            breaks.add(len);
+        ModerationLlmConfigEntity llm = null;
+        try {
+            llm = llmConfigRepository.findAll().stream().findFirst().orElse(null);
+        } catch (Exception ignore) {
         }
 
-        List<Span> spans = new ArrayList<>();
-        int cursor = 0;
-        while (cursor < len && spans.size() < maxChunks) {
-            int targetEnd = cursor + size;
-            int end;
-            boolean hardCut = false;
-
-            if (targetEnd >= len) {
-                end = len;
-            } else {
-                int idx = Collections.binarySearch(breaks, targetEnd);
-                if (idx < 0) idx = -idx - 2;
-                int bestBp = (idx >= 0 && idx < breaks.size()) ? breaks.get(idx) : -1;
-
-                if (bestBp > cursor) {
-                    end = bestBp;
-                } else {
-                    end = targetEnd;
-                    hardCut = true;
-                }
+        PromptsEntity visionPrompt = null;
+        if (llm != null && llm.getMultimodalPromptCode() != null) {
+            try {
+                visionPrompt = promptsRepository.findByPromptCode(llm.getMultimodalPromptCode()).orElse(null);
+            } catch (Exception ignore) {
             }
-
-            spans.add(new Span(cursor, end));
-            if (end >= len) break;
-
-            int targetStart = end - overlap;
-            int nextCursor;
-            if (hardCut) {
-                nextCursor = targetStart;
-            } else {
-                int idx = Collections.binarySearch(breaks, targetStart);
-                if (idx < 0) idx = -idx - 2;
-                int bestBp = (idx >= 0 && idx < breaks.size()) ? breaks.get(idx) : -1;
-
-                if (bestBp > cursor) {
-                    nextCursor = bestBp;
-                } else {
-                    nextCursor = targetStart;
-                }
-            }
-
-            if (nextCursor <= cursor) nextCursor = cursor + 1;
-            cursor = nextCursor;
         }
-        return spans;
+
+        int imageTokenBudget = visionPrompt == null || visionPrompt.getVisionImageTokenBudget() == null ? 50_000 : clampInt(visionPrompt.getVisionImageTokenBudget(), 1, 300_000);
+        int maxImagesPerRequest = visionPrompt == null || visionPrompt.getVisionMaxImagesPerRequest() == null ? 10 : clampInt(visionPrompt.getVisionMaxImagesPerRequest(), 1, 50);
+        boolean highRes = visionPrompt != null && Boolean.TRUE.equals(visionPrompt.getVisionHighResolutionImages());
+        int maxPixels = visionPrompt == null || visionPrompt.getVisionMaxPixels() == null ? 2_621_440 : Math.max(1, visionPrompt.getVisionMaxPixels());
+
+        int tokenGridSide = 32;
+        int tokenPixels = tokenGridSide * tokenGridSide;
+        long maxPixelsEffective = highRes ? (16384L * tokenPixels) : (long) maxPixels;
+        int perImageTokens = (int) Math.clamp((maxPixelsEffective / tokenPixels) + 2L, 4L, 16386L);
+        long estimatedImageTokens = (long) perImageTokens * (long) maxImagesPerRequest;
+
+        int charsPerToken = 4;
+        int baseTextTokens = Math.max(128, baseChunkChars / charsPerToken);
+        long totalBudget = (long) baseTextTokens + (long) imageTokenBudget;
+
+        int effectiveTextTokens = baseTextTokens;
+        int minTextTokens = 128;
+        List<Map<String, Object>> rounds = new ArrayList<>();
+        rounds.add(Map.of(
+                "round", 0,
+                "textTokenBudget", effectiveTextTokens,
+                "chunkSizeChars", baseChunkChars,
+                "estimatedTotalRequestTokens", effectiveTextTokens + estimatedImageTokens
+        ));
+        int round = 0;
+        while (((long) effectiveTextTokens + estimatedImageTokens) > totalBudget && effectiveTextTokens > minTextTokens) {
+            round += 1;
+            int next = (int) Math.floor(effectiveTextTokens * 0.8);
+            effectiveTextTokens = Math.max(minTextTokens, next);
+            int nextChunkChars = Math.max(500, effectiveTextTokens * charsPerToken);
+            rounds.add(Map.of(
+                    "round", round,
+                    "textTokenBudget", effectiveTextTokens,
+                    "chunkSizeChars", nextChunkChars,
+                    "estimatedTotalRequestTokens", effectiveTextTokens + estimatedImageTokens
+            ));
+        }
+
+        int effectiveChars = Math.max(500, effectiveTextTokens * charsPerToken);
+        int finalChunkChars = Math.min(baseChunkChars, effectiveChars);
+
+        Map<String, Object> budgetConvergenceLog = new LinkedHashMap<>();
+        budgetConvergenceLog.put("baseChunkSizeChars", baseChunkChars);
+        budgetConvergenceLog.put("effectiveChunkSizeChars", finalChunkChars);
+        budgetConvergenceLog.put("baseTextTokenBudget", baseTextTokens);
+        budgetConvergenceLog.put("effectiveTextTokenBudget", effectiveTextTokens);
+        budgetConvergenceLog.put("totalBudgetTokens", totalBudget);
+        budgetConvergenceLog.put("imageTokenBudget", imageTokenBudget);
+        budgetConvergenceLog.put("estimatedImageTokens", estimatedImageTokens);
+        budgetConvergenceLog.put("maxImagesPerRequest", maxImagesPerRequest);
+        budgetConvergenceLog.put("perImageTokenEstimate", perImageTokens);
+        budgetConvergenceLog.put("highResolutionImages", highRes);
+        budgetConvergenceLog.put("maxPixels", maxPixels);
+        budgetConvergenceLog.put("triggeredResharding", finalChunkChars < baseChunkChars);
+        budgetConvergenceLog.put("rounds", rounds);
+
+        return new ChunkSizingDecision(finalChunkChars, budgetConvergenceLog);
     }
 
     private static String sliceSafe(String text, int start, int end) {
@@ -1356,6 +1348,16 @@ public class ModerationChunkReviewService {
 
     private static int safeInt(Integer v) {
         return v == null ? 0 : Math.max(0, v);
+    }
+
+    private List<PostAttachmentsEntity> safeLoadAttachments(Long postId, int max) {
+        try {
+            var page = postAttachmentsRepository.findByPostId(postId, PageRequest.of(0, max, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id"))));
+            if (page.getContent().isEmpty()) return List.of();
+            return page.getContent();
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     private static double clamp01(double v) {

@@ -15,7 +15,6 @@ import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationTarget
 import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 import com.example.EnterpriseRagCommunity.repository.semantic.GenerationJobsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
-import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,7 +28,6 @@ import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -208,7 +206,7 @@ public class AiSemanticTranslateService {
                 String translatedTitle = null;
                 String translatedMarkdown = fullText;
 
-                if (finalNormalizedTitle != null && !finalNormalizedTitle.isEmpty()) {
+                if (!finalNormalizedTitle.isEmpty()) {
                     int firstNl = fullText.indexOf('\n');
                     if (firstNl > 0) {
                         translatedTitle = fullText.substring(0, firstNl).trim();

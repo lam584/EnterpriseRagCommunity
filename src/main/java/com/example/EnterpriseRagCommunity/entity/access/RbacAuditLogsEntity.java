@@ -28,7 +28,7 @@ public class RbacAuditLogsEntity {
     @Column(name = "target_id", length = 191)
     private String targetId;
 
-    @Column(name = "reason", length = 255)
+    @Column(name = "reason")
     private String reason;
 
     @Lob
@@ -38,7 +38,7 @@ public class RbacAuditLogsEntity {
     @Column(name = "request_ip", length = 64)
     private String requestIp;
 
-    @Column(name = "user_agent", length = 255)
+    @Column(name = "user_agent")
     private String userAgent;
 
     @Column(name = "request_id", length = 128)

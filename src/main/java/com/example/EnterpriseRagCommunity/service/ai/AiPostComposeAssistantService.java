@@ -53,139 +53,15 @@ public class AiPostComposeAssistantService {
     @Value("${app.upload.url-prefix:/uploads}")
     private String urlPrefix;
 
-    public void streamComposeEdit(AiPostComposeStreamRequest req, Long currentUserId, HttpServletResponse response) throws IOException {
-        PostComposeAiSnapshotsEntity snap = snapshotsRepository.findByIdAndUserId(req.getSnapshotId(), currentUserId)
-                .orElseThrow(() -> new IllegalArgumentException("快照不存在或无权访问"));
-        if (snap.getStatus() != PostComposeAiSnapshotStatus.PENDING) {
-            throw new IllegalStateException("快照已处理");
+    private static String joinSystemPrompts(String... parts) {
+        StringBuilder sb = new StringBuilder();
+        if (parts == null) return "";
+        for (String p : parts) {
+            if (!StringUtils.hasText(p)) continue;
+            if (!sb.isEmpty()) sb.append("\n\n");
+            sb.append(p.trim());
         }
-        if (snap.getExpiresAt() != null && snap.getExpiresAt().isBefore(LocalDateTime.now())) {
-            throw new IllegalStateException("快照已过期");
-        }
-
-        response.setCharacterEncoding("UTF-8");
-        response.setContentType("text/event-stream;charset=UTF-8");
-        response.setHeader("Cache-Control", "no-cache");
-        response.setHeader("Connection", "keep-alive");
-        PrintWriter out = response.getWriter();
-
-        out.write("event: meta\n");
-        out.write("data: {\"snapshotId\":" + snap.getId() + "}\n\n");
-        out.flush();
-
-        PortalChatConfigDTO.PostComposeAssistantConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getPostComposeAssistant();
-        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
-        
-        String baseSystemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
-        String baseSystemPrompt = resolvePromptText(baseSystemPromptCode);
-
-        String userDefaultSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
-
-        String composeSystemPromptCode = portalCfg.getComposeSystemPromptCode();
-        String composeSystemPrompt = resolvePromptText(composeSystemPromptCode);
-
-        String instruction = firstNonBlank(req.getInstruction(), snap.getInstruction());
-        if (!StringUtils.hasText(instruction)) {
-            instruction = "请将正文改写为更适合发布的 Markdown，包含清晰的小标题与要点列表。";
-        }
-
-        String effectiveTitle = StringUtils.hasText(req.getCurrentTitle()) ? req.getCurrentTitle() : snap.getBeforeTitle();
-        String effectiveContent = req.getCurrentContent() != null ? req.getCurrentContent() : snap.getBeforeContent();
-        String userMsg = buildUserMessage(effectiveTitle, effectiveContent, instruction);
-
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(joinSystemPrompts(baseSystemPrompt, userDefaultSystemPrompt, composeSystemPrompt)));
-        int chatHistoryLimit = portalCfg.getChatHistoryLimit() == null ? 20 : Math.max(1, Math.min(200, portalCfg.getChatHistoryLimit()));
-        List<AiPostComposeStreamRequest.ChatHistoryMessage> history = req.getChatHistory();
-        if (history != null && !history.isEmpty()) {
-            int from = Math.max(0, history.size() - chatHistoryLimit);
-            for (int i = from; i < history.size(); i++) {
-                AiPostComposeStreamRequest.ChatHistoryMessage m = history.get(i);
-                if (m == null) continue;
-                String role = m.getRole() == null ? "" : m.getRole().trim().toLowerCase();
-                String content = m.getContent();
-                if (!StringUtils.hasText(content)) continue;
-                if ("assistant".equals(role)) {
-                    messages.add(ChatMessage.assistant(content));
-                } else {
-                    messages.add(ChatMessage.user(content));
-                }
-            }
-        }
-
-        String providerId = firstNonBlank(req.getProviderId(), snap.getProviderId(), portalCfg.getProviderId());
-        String model = firstNonBlank(req.getModel(), snap.getModel(), portalCfg.getModel());
-        Double temperature = req.getTemperature() != null ? req.getTemperature() : (snap.getTemperature() != null ? snap.getTemperature() : portalCfg.getTemperature());
-        if (temperature == null && deepThink) temperature = 0.2;
-        Double topP = req.getTopP() != null ? req.getTopP() : (snap.getTopP() != null ? snap.getTopP() : portalCfg.getTopP());
-
-        List<AiPostComposeStreamRequest.ImageInput> images = resolveImages(req, snap);
-        boolean hasImages = images != null && !images.isEmpty();
-        LlmQueueTaskType chatTaskType = LlmQueueTaskType.MULTIMODAL_CHAT;
-        try {
-            ensureMultimodalModelForRequest(chatTaskType, providerId, model);
-        } catch (Exception e) {
-            out.write("event: error\n");
-            out.write("data: {\"message\":\"" + jsonEscape(String.valueOf(e.getMessage() == null ? "请求失败" : e.getMessage())) + "\"}\n\n");
-            out.write("event: done\n");
-            out.write("data: {}\n\n");
-            out.flush();
-            return;
-        }
-        List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
-        if (hasImages) {
-            List<Map<String, Object>> parts = new ArrayList<>();
-            parts.add(Map.of("type", "text", "text", userMsg));
-            for (AiPostComposeStreamRequest.ImageInput img : images) {
-                String url = encodeImageUrlForUpstream(img);
-                if (!StringUtils.hasText(url)) continue;
-                parts.add(Map.of("type", "image_url", "image_url", Map.of("url", url)));
-            }
-            messagesMultimodal.add(ChatMessage.userParts(parts));
-        } else {
-            messagesMultimodal.add(ChatMessage.user(userMsg));
-        }
-
-        StringBuilder assistantAccum = new StringBuilder();
-        long startedAt = System.currentTimeMillis();
-        boolean[] gotDelta = new boolean[] {false};
-        try {
-            llmGateway.chatStreamRouted(
-                    chatTaskType,
-                    providerId,
-                    model,
-                    messagesMultimodal,
-                    temperature,
-                    topP,
-                    deepThink,
-                    null,
-                    line -> {
-                        if (line == null || line.isBlank()) return;
-                        if (!line.startsWith("data:")) return;
-                        String data = line.substring("data:".length()).trim();
-                        if ("[DONE]".equals(data)) return;
-                        String content = extractDeltaContent(data);
-                        if (!StringUtils.hasText(content)) return;
-                        gotDelta[0] = true;
-                        assistantAccum.append(content);
-                        out.write("event: delta\n");
-                        out.write("data: {\"content\":\"" + jsonEscape(content) + "\"}\n\n");
-                        out.flush();
-                    }
-            );
-        } catch (Exception ex) {
-            out.write("event: error\n");
-            out.write("data: {\"message\":\"" + jsonEscape("上游AI调用失败：" + String.valueOf(ex.getMessage())) + "\"}\n\n");
-            out.write("event: done\n");
-            out.write("data: {}\n\n");
-            out.flush();
-            return;
-        }
-
-        long latency = Math.max(0, System.currentTimeMillis() - startedAt);
-        out.write("event: done\n");
-        out.write("data: {\"latencyMs\":" + latency + "}\n\n");
-        out.flush();
+        return sb.toString();
     }
 
     private String resolvePromptText(String code) {
@@ -325,7 +201,6 @@ public class AiPostComposeAssistantService {
                             try {
                                 fileAssetId = Long.valueOf(String.valueOf(idObj));
                             } catch (Exception ignored) {
-                                fileAssetId = null;
                             }
                         }
                         AiPostComposeStreamRequest.ImageInput in = new AiPostComposeStreamRequest.ImageInput();
@@ -465,15 +340,139 @@ public class AiPostComposeAssistantService {
         return cc.isEmpty() ? null : cc;
     }
 
-    private static String joinSystemPrompts(String... parts) {
-        StringBuilder sb = new StringBuilder();
-        if (parts == null) return "";
-        for (String p : parts) {
-            if (!StringUtils.hasText(p)) continue;
-            if (sb.length() > 0) sb.append("\n\n");
-            sb.append(p.trim());
+    public void streamComposeEdit(AiPostComposeStreamRequest req, Long currentUserId, HttpServletResponse response) throws IOException {
+        PostComposeAiSnapshotsEntity snap = snapshotsRepository.findByIdAndUserId(req.getSnapshotId(), currentUserId)
+                .orElseThrow(() -> new IllegalArgumentException("快照不存在或无权访问"));
+        if (snap.getStatus() != PostComposeAiSnapshotStatus.PENDING) {
+            throw new IllegalStateException("快照已处理");
         }
-        return sb.toString();
+        if (snap.getExpiresAt() != null && snap.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new IllegalStateException("快照已过期");
+        }
+
+        response.setCharacterEncoding("UTF-8");
+        response.setContentType("text/event-stream;charset=UTF-8");
+        response.setHeader("Cache-Control", "no-cache");
+        response.setHeader("Connection", "keep-alive");
+        PrintWriter out = response.getWriter();
+
+        out.write("event: meta\n");
+        out.write("data: {\"snapshotId\":" + snap.getId() + "}\n\n");
+        out.flush();
+
+        PortalChatConfigDTO.PostComposeAssistantConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getPostComposeAssistant();
+        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+
+        String baseSystemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
+        String baseSystemPrompt = resolvePromptText(baseSystemPromptCode);
+
+        String userDefaultSystemPrompt = loadUserDefaultSystemPrompt(currentUserId);
+
+        String composeSystemPromptCode = portalCfg.getComposeSystemPromptCode();
+        String composeSystemPrompt = resolvePromptText(composeSystemPromptCode);
+
+        String instruction = firstNonBlank(req.getInstruction(), snap.getInstruction());
+        if (!StringUtils.hasText(instruction)) {
+            instruction = "请将正文改写为更适合发布的 Markdown，包含清晰的小标题与要点列表。";
+        }
+
+        String effectiveTitle = StringUtils.hasText(req.getCurrentTitle()) ? req.getCurrentTitle() : snap.getBeforeTitle();
+        String effectiveContent = req.getCurrentContent() != null ? req.getCurrentContent() : snap.getBeforeContent();
+        String userMsg = buildUserMessage(effectiveTitle, effectiveContent, instruction);
+
+        List<ChatMessage> messages = new ArrayList<>();
+        messages.add(ChatMessage.system(joinSystemPrompts(baseSystemPrompt, userDefaultSystemPrompt, composeSystemPrompt)));
+        int chatHistoryLimit = portalCfg.getChatHistoryLimit() == null ? 20 : Math.max(1, Math.min(200, portalCfg.getChatHistoryLimit()));
+        List<AiPostComposeStreamRequest.ChatHistoryMessage> history = req.getChatHistory();
+        if (history != null && !history.isEmpty()) {
+            int from = Math.max(0, history.size() - chatHistoryLimit);
+            for (int i = from; i < history.size(); i++) {
+                AiPostComposeStreamRequest.ChatHistoryMessage m = history.get(i);
+                if (m == null) continue;
+                String role = m.getRole() == null ? "" : m.getRole().trim().toLowerCase();
+                String content = m.getContent();
+                if (!StringUtils.hasText(content)) continue;
+                if ("assistant".equals(role)) {
+                    messages.add(ChatMessage.assistant(content));
+                } else {
+                    messages.add(ChatMessage.user(content));
+                }
+            }
+        }
+
+        String providerId = firstNonBlank(req.getProviderId(), snap.getProviderId(), portalCfg.getProviderId());
+        String model = firstNonBlank(req.getModel(), snap.getModel(), portalCfg.getModel());
+        Double temperature = req.getTemperature() != null ? req.getTemperature() : (snap.getTemperature() != null ? snap.getTemperature() : portalCfg.getTemperature());
+        if (temperature == null && deepThink) temperature = 0.2;
+        Double topP = req.getTopP() != null ? req.getTopP() : (snap.getTopP() != null ? snap.getTopP() : portalCfg.getTopP());
+
+        List<AiPostComposeStreamRequest.ImageInput> images = resolveImages(req, snap);
+        boolean hasImages = !images.isEmpty();
+        LlmQueueTaskType chatTaskType = LlmQueueTaskType.MULTIMODAL_CHAT;
+        try {
+            ensureMultimodalModelForRequest(chatTaskType, providerId, model);
+        } catch (Exception e) {
+            out.write("event: error\n");
+            out.write("data: {\"message\":\"" + jsonEscape(String.valueOf(e.getMessage() == null ? "请求失败" : e.getMessage())) + "\"}\n\n");
+            out.write("event: done\n");
+            out.write("data: {}\n\n");
+            out.flush();
+            return;
+        }
+        List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
+        if (hasImages) {
+            List<Map<String, Object>> parts = new ArrayList<>();
+            parts.add(Map.of("type", "text", "text", userMsg));
+            for (AiPostComposeStreamRequest.ImageInput img : images) {
+                String url = encodeImageUrlForUpstream(img);
+                if (!StringUtils.hasText(url)) continue;
+                parts.add(Map.of("type", "image_url", "image_url", Map.of("url", url)));
+            }
+            messagesMultimodal.add(ChatMessage.userParts(parts));
+        } else {
+            messagesMultimodal.add(ChatMessage.user(userMsg));
+        }
+
+        StringBuilder assistantAccum = new StringBuilder();
+        long startedAt = System.currentTimeMillis();
+        boolean[] gotDelta = new boolean[]{false};
+        try {
+            llmGateway.chatStreamRouted(
+                    chatTaskType,
+                    providerId,
+                    model,
+                    messagesMultimodal,
+                    temperature,
+                    topP,
+                    deepThink,
+                    null,
+                    line -> {
+                        if (line == null || line.isBlank()) return;
+                        if (!line.startsWith("data:")) return;
+                        String data = line.substring("data:".length()).trim();
+                        if ("[DONE]".equals(data)) return;
+                        String content = extractDeltaContent(data);
+                        if (!StringUtils.hasText(content)) return;
+                        gotDelta[0] = true;
+                        assistantAccum.append(content);
+                        out.write("event: delta\n");
+                        out.write("data: {\"content\":\"" + jsonEscape(content) + "\"}\n\n");
+                        out.flush();
+                    }
+            );
+        } catch (Exception ex) {
+            out.write("event: error\n");
+            out.write("data: {\"message\":\"" + jsonEscape("上游AI调用失败：" + String.valueOf(ex.getMessage())) + "\"}\n\n");
+            out.write("event: done\n");
+            out.write("data: {}\n\n");
+            out.flush();
+            return;
+        }
+
+        long latency = Math.max(0, System.currentTimeMillis() - startedAt);
+        out.write("event: done\n");
+        out.write("data: {\"latencyMs\":" + latency + "}\n\n");
+        out.flush();
     }
 
     private static String toNonBlank(String s) {

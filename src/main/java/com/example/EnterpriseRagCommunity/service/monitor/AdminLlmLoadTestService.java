@@ -234,7 +234,7 @@ public class AdminLlmLoadTestService {
 
         double tps = 0.0;
         if (s != null && s.getSamples() != null && !s.getSamples().isEmpty()) {
-            var last = s.getSamples().get(s.getSamples().size() - 1);
+            var last = s.getSamples().getLast();
             if (last != null && last.getTokensPerSec() != null) tps = Math.max(0.0, last.getTokensPerSec());
         }
         if (tps > 0) {
@@ -296,7 +296,7 @@ public class AdminLlmLoadTestService {
                 dto.setFinishedAtMs(finishedAt);
                 dto.setError(e instanceof TimeoutException ? "timeout" : safeMessage(e));
                 st.pushResult(dto);
-                st.pushDetail(buildDetailEntity(st, dto, st.cfg.providerId, prepared == null ? null : prepared.requestJson, null));
+                st.pushDetail(buildDetailEntity(st, dto, st.cfg.providerId, prepared.requestJson, null));
                 st.failed.incrementAndGet();
             } finally {
                 st.done.incrementAndGet();

@@ -125,12 +125,12 @@ export function linkifyCitations(md: string, anchorPrefix = 'cite-'): string {
     let match: RegExpExecArray | null;
     while ((match = re.exec(md)) !== null) {
         const before = md.slice(lastIndex, match.index);
-        parts.push(before.replace(/\[(\d{1,3})\](?!\()/g, (_m, n) => `[[${n}]](#${anchorPrefix}${n})`));
+        parts.push(before.replace(/\[(\d{1,3})](?!\()/g, (_m, n) => `[[${n}]](#${anchorPrefix}${n})`));
         parts.push(match[0]);
         lastIndex = match.index + match[0].length;
     }
     const tail = md.slice(lastIndex);
-    parts.push(tail.replace(/\[(\d{1,3})\](?!\()/g, (_m, n) => `[[${n}]](#${anchorPrefix}${n})`));
+    parts.push(tail.replace(/\[(\d{1,3})](?!\()/g, (_m, n) => `[[${n}]](#${anchorPrefix}${n})`));
     return parts.join('');
 }
 
@@ -141,7 +141,7 @@ export function extractCitationIndexes(md: string): Set<number> {
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     const extractFromText = (txt: string) => {
-        for (const m of txt.matchAll(/\[(\d{1,3})\](?!\()/g)) {
+        for (const m of txt.matchAll(/\[(\d{1,3})](?!\()/g)) {
             const n = Number(m[1]);
             if (Number.isFinite(n) && n > 0) out.add(n);
         }

@@ -425,14 +425,14 @@ public class AuthController {
             logger.warn("login failed email={} msg={}", loginRequest.getEmail(), e.getMessage(), e);
             auditLogWriter.write(
                     null,
-                    loginRequest == null ? null : loginRequest.getEmail(),
+                    loginRequest.getEmail(),
                     "AUTH_LOGIN_FAIL",
                     "SESSION",
                     null,
                     AuditResult.FAIL,
                     safeText(e.getMessage(), 512),
                     null,
-                    Map.of("email", loginRequest == null ? null : loginRequest.getEmail())
+                    Map.of("email", loginRequest.getEmail())
             );
             Map<String, String> errorResponse = new HashMap<>();
             errorResponse.put("message", "邮箱或密码错误");

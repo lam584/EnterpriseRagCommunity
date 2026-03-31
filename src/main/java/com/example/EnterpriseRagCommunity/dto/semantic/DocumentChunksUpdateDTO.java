@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class DocumentChunksUpdateDTO {
@@ -16,33 +15,33 @@ public class DocumentChunksUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "文档ID")
-    private Optional<Long> documentId = Optional.empty();
+    private Long documentId;
 
     @ApiModelProperty(value = "分片序号(从0开始)")
-    private Optional<Integer> chunkIndex = Optional.empty();
+    private Integer chunkIndex;
 
     @ApiModelProperty(value = "分片文本内容")
-    private Optional<String> contentText = Optional.empty();
+    private String contentText;
 
     @ApiModelProperty(value = "分片Token计数")
-    private Optional<Integer> contentTokens = Optional.empty();
+    private Integer contentTokens;
 
     @ApiModelProperty(value = "嵌入提供方/模型")
     @Size(max = 64)
-    private Optional<String> embeddingProvider = Optional.empty();
+    private String embeddingProvider;
 
     @ApiModelProperty(value = "嵌入维度")
-    private Optional<Integer> embeddingDim = Optional.empty();
+    private Integer embeddingDim;
 
     @ApiModelProperty(value = "向量数据(BLOB)")
-    private Optional<byte[]> embeddingVector = Optional.empty();
+    private byte[] embeddingVector;
 
     @ApiModelProperty(value = "内容哈希(去重)")
     @Size(min = 64, max = 64)
-    private Optional<String> contentHash = Optional.empty();
+    private String contentHash;
 
     @ApiModelProperty(value = "创建时间，审计字段，禁止更新")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }
 

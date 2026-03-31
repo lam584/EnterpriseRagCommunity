@@ -9,7 +9,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class ReportsUpdateDTO {
@@ -32,24 +31,24 @@ public class ReportsUpdateDTO {
 
     @Size(max = 64)
     @ApiModelProperty(value = "原因编码", example = "SPAM")
-    private Optional<String> reasonCode = Optional.empty();
+    private String reasonCode;
 
     @Size(max = 255)
     @ApiModelProperty(value = "原因描述", example = "Repeated spam content")
-    private Optional<String> reasonText = Optional.empty();
+    private String reasonText;
 
     @ApiModelProperty(value = "处理状态", example = "RESOLVED")
-    private Optional<ReportStatus> status = Optional.empty();
+    private ReportStatus status;
 
     @Size(max = 255)
     @ApiModelProperty(value = "处理说明", example = "Content removed due to violation")
-    private Optional<String> resolution = Optional.empty();
+    private String resolution;
 
     @ApiModelProperty(value = "处理人ID", example = "2")
-    private Optional<Long> handledById = Optional.empty();
+    private Long handledById;
 
     @ApiModelProperty(value = "处理时间，不传则由系统填充", example = "2025-11-06T10:00:00")
-    private Optional<LocalDateTime> handledAt = Optional.empty();
+    private LocalDateTime handledAt;
 
     @ApiModelProperty(value = "创建时间（不可修改）", example = "2025-11-06T10:00:00")
     @JsonIgnore

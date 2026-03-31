@@ -6,7 +6,6 @@ import lombok.Data;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class PostVersionsUpdateDTO {
@@ -15,25 +14,25 @@ public class PostVersionsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "帖子ID", example = "1000")
-    private Optional<Long> postId = Optional.empty();
+    private Long postId;
 
     @ApiModelProperty(value = "版本号", example = "2")
-    private Optional<Integer> version = Optional.empty();
+    private Integer version;
 
     @ApiModelProperty(value = "编辑人ID", example = "2")
-    private Optional<Long> editorId = Optional.empty();
+    private Long editorId;
 
     @ApiModelProperty(value = "标题", example = "修订后的标题")
-    private Optional<String> title = Optional.empty();
+    private String title;
 
     @ApiModelProperty(value = "内容", example = "修订后的内容")
-    private Optional<String> content = Optional.empty();
+    private String content;
 
     @ApiModelProperty(value = "编辑原因", example = "修复错别字")
-    private Optional<String> reason = Optional.empty();
+    private String reason;
 
     @ApiModelProperty(value = "创建时间（不可修改）", example = "2025-01-01T12:00:00")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }
 

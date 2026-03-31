@@ -97,7 +97,7 @@ class AdminModerationLlmImageSupport {
                     q.getContentId(),
                     PageRequest.of(0, 50, Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")))
             );
-            if (page == null || page.getContent() == null) return List.of();
+            if (page.getContent().isEmpty()) return List.of();
             LinkedHashSet<Long> fileAssetIds = new LinkedHashSet<>();
             for (var a : page.getContent()) {
                 if (a == null) continue;

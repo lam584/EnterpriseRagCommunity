@@ -1,7 +1,6 @@
 package com.example.EnterpriseRagCommunity.entity.content;
 
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostTagSource;
-import io.swagger.annotations.ApiModelProperty;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;

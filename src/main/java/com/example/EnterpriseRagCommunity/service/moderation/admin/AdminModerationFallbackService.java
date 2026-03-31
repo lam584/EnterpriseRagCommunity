@@ -198,7 +198,7 @@ public class AdminModerationFallbackService {
                 continue;
             }
             if (v instanceof Map<?, ?> m) {
-                out.put(key, new LinkedHashMap<>(castMapStringObject(key, m)));
+                out.put(key, new LinkedHashMap<>(castMapStringObject(m)));
                 continue;
             }
             if (v instanceof List<?> l) {
@@ -210,7 +210,7 @@ public class AdminModerationFallbackService {
         return out;
     }
 
-    private static Map<String, Object> castMapStringObject(String key, Map<?, ?> in) {
+    private static Map<String, Object> castMapStringObject(Map<?, ?> in) {
         LinkedHashMap<String, Object> out = new LinkedHashMap<>();
         for (Map.Entry<?, ?> en : in.entrySet()) {
             if (en == null) continue;
@@ -227,7 +227,7 @@ public class AdminModerationFallbackService {
         if (v instanceof String s) {
             try {
                 return Long.parseLong(s.trim());
-            } catch (Exception e) {
+            } catch (Exception ignored) {
             }
         }
         throw new IllegalArgumentException("thresholds key=" + key + " must be integer");
@@ -238,7 +238,7 @@ public class AdminModerationFallbackService {
         if (v instanceof String s) {
             try {
                 return Double.parseDouble(s.trim());
-            } catch (Exception e) {
+            } catch (Exception ignored) {
             }
         }
         throw new IllegalArgumentException("thresholds key=" + key + " must be number");
@@ -257,8 +257,7 @@ public class AdminModerationFallbackService {
 
     private static long clampLong(long v, long min, long max) {
         if (v < min) return min;
-        if (v > max) return max;
-        return v;
+        return Math.min(v, max);
     }
 
     private static double clamp01(double v) {

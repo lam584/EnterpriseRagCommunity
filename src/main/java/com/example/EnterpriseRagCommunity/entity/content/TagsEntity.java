@@ -32,7 +32,7 @@ public class TagsEntity {
     @Column(name = "slug", nullable = false, length = 96)
     private String slug;
 
-    @Column(name = "description", length = 255)
+    @Column(name = "description")
     private String description;
 
     @Column(name = "is_system", nullable = false)

@@ -10,6 +10,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.core.Ordered;
@@ -56,7 +57,7 @@ public class CrudAuditFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain)
             throws ServletException, IOException {
 
         long startMs = System.currentTimeMillis();
@@ -90,7 +91,7 @@ public class CrudAuditFilter extends OncePerRequestFilter {
                 String entityType = deriveEntityType(path);
                 Long entityId = deriveEntityId(request, path);
 
-                int latencyMs = (int) Math.min(Integer.MAX_VALUE, Math.max(0L, System.currentTimeMillis() - startMs));
+                int latencyMs = (int) Math.clamp(System.currentTimeMillis() - startMs, 0L, Integer.MAX_VALUE);
 
                 Map<String, Object> details = new LinkedHashMap<>();
                 details.put("autoCrud", true);

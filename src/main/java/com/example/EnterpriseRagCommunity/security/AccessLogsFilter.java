@@ -13,6 +13,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletResponseWrapper;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.security.core.Authentication;
@@ -72,7 +73,6 @@ public class AccessLogsFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        if (request == null) return false;
         String path = request.getRequestURI();
         if (path == null || path.isBlank()) return false;
         for (String prefix : EXCLUDED_PATH_PREFIXES) {
@@ -81,136 +81,22 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         return false;
     }
 
-    @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-            throws ServletException, IOException {
-
-        long startMs = System.currentTimeMillis();
-
-        int safeMaxBodyBytes = clampMaxBodyBytes(maxBodyBytes);
-
-        String requestId = firstNonBlank(
-                request.getHeader("X-Request-Id"),
-                request.getHeader("X-Correlation-Id"),
-                request.getHeader("X-Trace-Id")
-        );
-        if (requestId == null) {
-            requestId = UUID.randomUUID().toString().replace("-", "");
+    private static String sanitizeQueryString(String qs) {
+        if (qs == null || qs.isBlank()) return null;
+        String[] pairs = qs.split("&");
+        StringBuilder out = new StringBuilder();
+        for (String pair : pairs) {
+            if (pair.isBlank()) continue;
+            int idx = pair.indexOf('=');
+            String k = idx >= 0 ? pair.substring(0, idx) : pair;
+            String v = idx >= 0 ? pair.substring(idx + 1) : "";
+            String key = urlDecodeSafe(k).toLowerCase();
+            boolean sensitive = key.contains("password") || key.contains("passwd") || key.contains("token") || key.contains("secret") || key.contains("code");
+            String val = sensitive ? "***" : urlDecodeSafe(v);
+            if (!out.isEmpty()) out.append('&');
+            out.append(urlEncodeSafe(k)).append('=').append(urlEncodeSafe(val));
         }
-        response.setHeader("X-Request-Id", requestId);
-
-        String traceId = firstNonBlank(request.getHeader("X-Trace-Id"), requestId);
-
-        String clientIp = clientIpResolver.resolveClientIp(request);
-        Integer clientPort = safeInt(request.getRemotePort());
-        String serverIp = safeString(request.getLocalAddr(), 64);
-        Integer serverPort = safeInt(request.getLocalPort());
-
-        String method = safeString(request.getMethod(), 16);
-        String path = safeString(request.getRequestURI(), 512);
-        String scheme = safeString(request.getScheme(), 16);
-        String host = safeString(request.getHeader("Host"), 255);
-
-        String referer = safeString(request.getHeader("Referer"), 512);
-        String userAgent = safeString(request.getHeader("User-Agent"), 512);
-
-        String queryString = sanitizeQueryString(request.getQueryString());
-        queryString = safeString(queryString, 1024);
-
-        Map<String, Object> reqDetails = new LinkedHashMap<>();
-        putIfNotBlank(reqDetails, "forwarded", safeString(request.getHeader("Forwarded"), 1024));
-        putIfNotBlank(reqDetails, "xForwardedFor", safeString(request.getHeader("X-Forwarded-For"), 1024));
-        putIfNotBlank(reqDetails, "xRealIp", safeString(request.getHeader("X-Real-IP"), 64));
-        putIfNotBlank(reqDetails, "acceptLanguage", safeString(request.getHeader("Accept-Language"), 256));
-        putIfNotBlank(reqDetails, "secChUa", safeString(request.getHeader("Sec-CH-UA"), 256));
-        putIfNotBlank(reqDetails, "secChUaPlatform", safeString(request.getHeader("Sec-CH-UA-Platform"), 256));
-        putIfNotBlank(reqDetails, "secChUaMobile", safeString(request.getHeader("Sec-CH-UA-Mobile"), 64));
-        putIfNotBlank(reqDetails, "clientFingerprint", safeString(request.getHeader("X-Client-Fingerprint"), 256));
-        Map<String, Object> headerSnapshot = extractHeaderSnapshot(request, requestId, traceId);
-        if (!headerSnapshot.isEmpty()) reqDetails.put("headers", headerSnapshot);
-
-        HttpSession session = request.getSession(false);
-        if (session != null) {
-            reqDetails.put("sessionIdHash", sha256Hex(session.getId()));
-        }
-
-        HttpServletRequest reqForChain = request;
-        HttpServletResponse respForChain = response;
-        ContentCachingRequestWrapper cachingRequest = null;
-        LimitedCaptureResponseWrapper cachingResponse = null;
-        if (captureBodyEnabled && shouldWrapRequest(request)) {
-            cachingRequest = new ContentCachingRequestWrapper(request, safeMaxBodyBytes);
-            reqForChain = cachingRequest;
-        }
-        if (captureBodyEnabled && captureResponseBodyEnabled && shouldWrapResponse(request)) {
-            cachingResponse = new LimitedCaptureResponseWrapper(response, safeMaxBodyBytes);
-            respForChain = cachingResponse;
-        }
-
-        RequestAuditContextHolder.set(new RequestAuditContextHolder.RequestAuditContext(
-                requestId,
-                traceId,
-                clientIp,
-                clientPort,
-                serverIp,
-                serverPort,
-                method,
-                path,
-                scheme,
-                host,
-                userAgent,
-                referer,
-                reqDetails
-        ));
-
-        Integer statusCode = null;
-        Integer latencyMs = null;
-        try {
-            filterChain.doFilter(reqForChain, respForChain);
-        } finally {
-            try {
-                statusCode = respForChain.getStatus();
-                long cost = System.currentTimeMillis() - startMs;
-                latencyMs = (int) Math.min(Integer.MAX_VALUE, Math.max(0, cost));
-
-                if (captureBodyEnabled) {
-                    Map<String, Object> reqBody = extractRequestBody(cachingRequest, request, safeMaxBodyBytes);
-                    if (reqBody != null && !reqBody.isEmpty()) reqDetails.put("reqBody", reqBody);
-                    Map<String, Object> resBody = extractResponseBody(cachingResponse, respForChain, safeMaxBodyBytes);
-                    if (resBody != null && !resBody.isEmpty()) reqDetails.put("resBody", resBody);
-                }
-
-                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-                Long userId = resolveUserId(auth);
-                String username = resolveUsername(auth);
-
-                accessLogWriter.write(
-                        null,
-                        userId,
-                        username,
-                        method,
-                        path,
-                        queryString,
-                        statusCode,
-                        latencyMs,
-                        clientIp,
-                        clientPort,
-                        serverIp,
-                        serverPort,
-                        scheme,
-                        host,
-                        requestId,
-                        traceId,
-                        userAgent,
-                        referer,
-                        reqDetails
-                );
-            } catch (Exception ignored) {
-                // ignore
-            } finally {
-                RequestAuditContextHolder.clear();
-            }
-        }
+        return out.toString();
     }
 
     private Long resolveUserId(Authentication auth) {
@@ -235,22 +121,49 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         return name == null || name.isBlank() ? null : name.trim();
     }
 
-    private static String sanitizeQueryString(String qs) {
-        if (qs == null || qs.isBlank()) return null;
-        String[] pairs = qs.split("&");
-        StringBuilder out = new StringBuilder();
-        for (String pair : pairs) {
-            if (pair.isBlank()) continue;
-            int idx = pair.indexOf('=');
-            String k = idx >= 0 ? pair.substring(0, idx) : pair;
-            String v = idx >= 0 ? pair.substring(idx + 1) : "";
-            String key = urlDecodeSafe(k).toLowerCase();
-            boolean sensitive = key.contains("password") || key.contains("passwd") || key.contains("token") || key.contains("secret") || key.contains("code");
-            String val = sensitive ? "***" : urlDecodeSafe(v);
-            if (out.length() > 0) out.append('&');
-            out.append(urlEncodeSafe(k)).append('=').append(urlEncodeSafe(val));
+    private static Map<String, Object> extractRequestBody(ContentCachingRequestWrapper cachingRequest, HttpServletRequest rawRequest, int maxBytes) {
+        if (cachingRequest == null) return null;
+        if (rawRequest == null) return null;
+        String contentType = safeLower(rawRequest.getContentType());
+        if (contentType == null) return null;
+        if (contentType.startsWith("multipart/form-data")) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("contentType", rawRequest.getContentType());
+            out.put("captured", false);
+            out.put("reason", "multipart");
+            return out;
         }
-        return out.toString();
+        if (contentType.startsWith("application/octet-stream") || contentType.startsWith("image/")) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("contentType", rawRequest.getContentType());
+            out.put("captured", false);
+            out.put("reason", "binary");
+            return out;
+        }
+
+        byte[] bytes = cachingRequest.getContentAsByteArray();
+        if (bytes.length == 0) return null;
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("contentType", safeString(rawRequest.getContentType(), 128));
+        out.put("capturedBytes", bytes.length);
+        out.put("limitBytes", maxBytes);
+        out.put("sha256", sha256Hex(bytes));
+
+        String encoding = rawRequest.getCharacterEncoding();
+        if (encoding == null || encoding.isBlank()) encoding = StandardCharsets.UTF_8.name();
+
+        String bodyText = safeDecode(bytes, encoding);
+        bodyText = sanitizeBodyText(contentType, bodyText);
+        BodySnippet snippet = snippet(bodyText, maxBytes);
+        boolean declaredTooLarge = false;
+        try {
+            if (maxBytes > 0 && rawRequest.getContentLengthLong() > maxBytes) declaredTooLarge = true;
+        } catch (Exception ignored) {
+        }
+        out.put("truncated", snippet.truncated() || declaredTooLarge);
+        out.put("body", snippet.text());
+        return out;
     }
 
     private static String urlDecodeSafe(String s) {
@@ -349,50 +262,6 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         return out;
     }
 
-    private static Map<String, Object> extractRequestBody(ContentCachingRequestWrapper cachingRequest, HttpServletRequest rawRequest, int maxBytes) {
-        if (cachingRequest == null) return null;
-        String contentType = safeLower(rawRequest == null ? null : rawRequest.getContentType());
-        if (contentType == null) return null;
-        if (contentType.startsWith("multipart/form-data")) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("contentType", rawRequest.getContentType());
-            out.put("captured", false);
-            out.put("reason", "multipart");
-            return out;
-        }
-        if (contentType.startsWith("application/octet-stream") || contentType.startsWith("image/")) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("contentType", rawRequest.getContentType());
-            out.put("captured", false);
-            out.put("reason", "binary");
-            return out;
-        }
-
-        byte[] bytes = cachingRequest.getContentAsByteArray();
-        if (bytes == null || bytes.length == 0) return null;
-
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("contentType", safeString(rawRequest.getContentType(), 128));
-        out.put("capturedBytes", bytes.length);
-        out.put("limitBytes", maxBytes);
-        out.put("sha256", sha256Hex(bytes));
-
-        String encoding = rawRequest == null ? null : rawRequest.getCharacterEncoding();
-        if (encoding == null || encoding.isBlank()) encoding = StandardCharsets.UTF_8.name();
-
-        String bodyText = safeDecode(bytes, encoding);
-        bodyText = sanitizeBodyText(contentType, bodyText);
-        BodySnippet snippet = snippet(bodyText, maxBytes);
-        boolean declaredTooLarge = false;
-        try {
-            if (rawRequest != null && maxBytes > 0 && rawRequest.getContentLengthLong() > maxBytes) declaredTooLarge = true;
-        } catch (Exception ignored) {
-        }
-        out.put("truncated", snippet.truncated() || declaredTooLarge);
-        out.put("body", snippet.text());
-        return out;
-    }
-
     private static Map<String, Object> extractResponseBody(LimitedCaptureResponseWrapper cachingResponse, HttpServletResponse response, int maxBytes) {
         if (cachingResponse == null || response == null) return null;
         String contentType = safeLower(response.getContentType());
@@ -403,7 +272,7 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         }
 
         byte[] bytes = cachingResponse.getCapturedAsByteArray();
-        if (bytes == null || bytes.length == 0) {
+        if (bytes.length == 0) {
             Map<String, Object> out = new LinkedHashMap<>();
             if (response.getContentType() != null) out.put("contentType", safeString(response.getContentType(), 128));
             out.put("capturedBytes", 0);
@@ -427,6 +296,24 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         out.put("body", snippet.text());
         out.put("status", response.getStatus());
         return out;
+    }
+
+    private static String sanitizeUrlEncodedBody(String bodyText) {
+        if (bodyText == null || bodyText.isBlank()) return bodyText;
+        String[] pairs = bodyText.split("&");
+        StringBuilder out = new StringBuilder();
+        for (String pair : pairs) {
+            if (pair.isBlank()) continue;
+            int idx = pair.indexOf('=');
+            String k = idx >= 0 ? pair.substring(0, idx) : pair;
+            String v = idx >= 0 ? pair.substring(idx + 1) : "";
+            String key = urlDecodeSafe(k).toLowerCase();
+            boolean sensitive = isSensitiveKey(key);
+            String val = sensitive ? "***" : urlDecodeSafe(v);
+            if (!out.isEmpty()) out.append('&');
+            out.append(urlEncodeSafe(k)).append('=').append(urlEncodeSafe(val));
+        }
+        return out.toString();
     }
 
     private static String safeLower(String s) {
@@ -456,22 +343,17 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         return bodyText;
     }
 
-    private static String sanitizeUrlEncodedBody(String bodyText) {
-        if (bodyText == null || bodyText.isBlank()) return bodyText;
-        String[] pairs = bodyText.split("&");
-        StringBuilder out = new StringBuilder();
-        for (String pair : pairs) {
-            if (pair.isBlank()) continue;
-            int idx = pair.indexOf('=');
-            String k = idx >= 0 ? pair.substring(0, idx) : pair;
-            String v = idx >= 0 ? pair.substring(idx + 1) : "";
-            String key = urlDecodeSafe(k).toLowerCase();
-            boolean sensitive = isSensitiveKey(key);
-            String val = sensitive ? "***" : urlDecodeSafe(v);
-            if (out.length() > 0) out.append('&');
-            out.append(urlEncodeSafe(k)).append('=').append(urlEncodeSafe(val));
+    private static BodySnippet snippet(String text, int maxBytes) {
+        if (text == null) return new BodySnippet(null, false);
+        if (maxBytes <= 0) return new BodySnippet("", true);
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length <= maxBytes) return new BodySnippet(text, false);
+        int end = Math.min(text.length(), Math.max(0, maxBytes));
+        String cut = text.substring(0, end);
+        while (cut.getBytes(StandardCharsets.UTF_8).length > maxBytes && !cut.isEmpty()) {
+            cut = cut.substring(0, cut.length() - 1);
         }
-        return out.toString();
+        return new BodySnippet(cut, true);
     }
 
     private static String maskJsonIfPossible(String jsonText) {
@@ -525,17 +407,136 @@ public class AccessLogsFilter extends OncePerRequestFilter {
     private record BodySnippet(String text, boolean truncated) {
     }
 
-    private static BodySnippet snippet(String text, int maxBytes) {
-        if (text == null) return new BodySnippet(null, false);
-        if (maxBytes <= 0) return new BodySnippet("", true);
-        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length <= maxBytes) return new BodySnippet(text, false);
-        int end = Math.min(text.length(), Math.max(0, maxBytes));
-        String cut = text.substring(0, end);
-        while (cut.getBytes(StandardCharsets.UTF_8).length > maxBytes && cut.length() > 0) {
-            cut = cut.substring(0, cut.length() - 1);
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain)
+            throws ServletException, IOException {
+
+        long startMs = System.currentTimeMillis();
+
+        int safeMaxBodyBytes = clampMaxBodyBytes(maxBodyBytes);
+
+        String requestId = firstNonBlank(
+                request.getHeader("X-Request-Id"),
+                request.getHeader("X-Correlation-Id"),
+                request.getHeader("X-Trace-Id")
+        );
+        if (requestId == null) {
+            requestId = UUID.randomUUID().toString().replace("-", "");
         }
-        return new BodySnippet(cut, true);
+        response.setHeader("X-Request-Id", requestId);
+
+        String traceId = firstNonBlank(request.getHeader("X-Trace-Id"), requestId);
+
+        String clientIp = clientIpResolver.resolveClientIp(request);
+        Integer clientPort = safeInt(request.getRemotePort());
+        String serverIp = safeString(request.getLocalAddr(), 64);
+        Integer serverPort = safeInt(request.getLocalPort());
+
+        String method = safeString(request.getMethod(), 16);
+        String path = safeString(request.getRequestURI(), 512);
+        String scheme = safeString(request.getScheme(), 16);
+        String host = safeString(request.getHeader("Host"), 255);
+
+        String referer = safeString(request.getHeader("Referer"), 512);
+        String userAgent = safeString(request.getHeader("User-Agent"), 512);
+
+        String queryString = sanitizeQueryString(request.getQueryString());
+        queryString = safeString(queryString, 1024);
+
+        Map<String, Object> reqDetails = new LinkedHashMap<>();
+        putIfNotBlank(reqDetails, "forwarded", safeString(request.getHeader("Forwarded"), 1024));
+        putIfNotBlank(reqDetails, "xForwardedFor", safeString(request.getHeader("X-Forwarded-For"), 1024));
+        putIfNotBlank(reqDetails, "xRealIp", safeString(request.getHeader("X-Real-IP"), 64));
+        putIfNotBlank(reqDetails, "acceptLanguage", safeString(request.getHeader("Accept-Language"), 256));
+        putIfNotBlank(reqDetails, "secChUa", safeString(request.getHeader("Sec-CH-UA"), 256));
+        putIfNotBlank(reqDetails, "secChUaPlatform", safeString(request.getHeader("Sec-CH-UA-Platform"), 256));
+        putIfNotBlank(reqDetails, "secChUaMobile", safeString(request.getHeader("Sec-CH-UA-Mobile"), 64));
+        putIfNotBlank(reqDetails, "clientFingerprint", safeString(request.getHeader("X-Client-Fingerprint"), 256));
+        Map<String, Object> headerSnapshot = extractHeaderSnapshot(request, requestId, traceId);
+        if (!headerSnapshot.isEmpty()) reqDetails.put("headers", headerSnapshot);
+
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            reqDetails.put("sessionIdHash", sha256Hex(session.getId()));
+        }
+
+        HttpServletRequest reqForChain = request;
+        HttpServletResponse respForChain = response;
+        ContentCachingRequestWrapper cachingRequest = null;
+        LimitedCaptureResponseWrapper cachingResponse = null;
+        if (captureBodyEnabled && shouldWrapRequest(request)) {
+            cachingRequest = new ContentCachingRequestWrapper(request, safeMaxBodyBytes);
+            reqForChain = cachingRequest;
+        }
+        if (captureBodyEnabled && captureResponseBodyEnabled && shouldWrapResponse(request)) {
+            cachingResponse = new LimitedCaptureResponseWrapper(response, safeMaxBodyBytes);
+            respForChain = cachingResponse;
+        }
+
+        RequestAuditContextHolder.set(new RequestAuditContextHolder.RequestAuditContext(
+                requestId,
+                traceId,
+                clientIp,
+                clientPort,
+                serverIp,
+                serverPort,
+                method,
+                path,
+                scheme,
+                host,
+                userAgent,
+                referer,
+                reqDetails
+        ));
+
+        Integer statusCode = null;
+        Integer latencyMs = null;
+        try {
+            filterChain.doFilter(reqForChain, respForChain);
+        } finally {
+            try {
+                statusCode = respForChain.getStatus();
+                long cost = System.currentTimeMillis() - startMs;
+                latencyMs = (int) Math.clamp(cost, 0, Integer.MAX_VALUE);
+
+                if (captureBodyEnabled) {
+                    Map<String, Object> reqBody = extractRequestBody(cachingRequest, request, safeMaxBodyBytes);
+                    if (reqBody != null && !reqBody.isEmpty()) reqDetails.put("reqBody", reqBody);
+                    Map<String, Object> resBody = extractResponseBody(cachingResponse, respForChain, safeMaxBodyBytes);
+                    if (resBody != null && !resBody.isEmpty()) reqDetails.put("resBody", resBody);
+                }
+
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                Long userId = resolveUserId(auth);
+                String username = resolveUsername(auth);
+
+                accessLogWriter.write(
+                        null,
+                        userId,
+                        username,
+                        method,
+                        path,
+                        queryString,
+                        statusCode,
+                        latencyMs,
+                        clientIp,
+                        clientPort,
+                        serverIp,
+                        serverPort,
+                        scheme,
+                        host,
+                        requestId,
+                        traceId,
+                        userAgent,
+                        referer,
+                        reqDetails
+                );
+            } catch (Exception ignored) {
+                // ignore
+            } finally {
+                RequestAuditContextHolder.clear();
+            }
+        }
     }
 
     private static String sha256Hex(byte[] bytes) {

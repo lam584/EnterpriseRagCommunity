@@ -8,7 +8,6 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class PostTagUpdateDTO {
@@ -25,10 +24,10 @@ public class PostTagUpdateDTO {
     private PostTagSource source;
 
     @ApiModelProperty(value = "置信度")
-    private Optional<BigDecimal> confidence = Optional.empty();
+    private BigDecimal confidence;
 
     @JsonIgnore
     @ApiModelProperty(value = "创建时间，不可修改")
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
 }
 

@@ -493,8 +493,6 @@ public class LlmCallQueueService {
     private static <T> T await(CompletableFuture<T> f) throws Exception {
         try {
             return f.get();
-        } catch (InterruptedException ie) {
-            throw ie;
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause();
             if (cause instanceof Exception ex) throw ex;
@@ -584,23 +582,7 @@ public class LlmCallQueueService {
     }
 
     private static Integer asIntLoose(JsonNode n) {
-        if (n == null || n.isMissingNode() || n.isNull()) return null;
-        if (n.isNumber()) return n.asInt();
-        if (n.isTextual()) {
-            String s = n.asText();
-            if (s == null) return null;
-            String t = s.trim();
-            if (t.isEmpty()) return null;
-            try {
-                return Integer.parseInt(t);
-            } catch (Exception ignore) {
-            }
-            try {
-                return (int) Double.parseDouble(t);
-            } catch (Exception ignore) {
-            }
-        }
-        return null;
+        return LlmGatewaySupport.asIntLoose(n);
     }
 
     private static Integer pickIntLoose(JsonNode obj, String... keys) {
@@ -625,14 +607,14 @@ public class LlmCallQueueService {
             if (t < p) {
                 c = t;
                 t = p + c;
-            } else if ((c == null || c <= 0) && (t - p) > 0) {
+            } else if (c <= 0 && t - p > 0) {
                 c = t - p;
             } else {
                 t = p + c;
             }
         } else if (p != null && c != null) {
             t = p + c;
-        } else if (p != null && c == null && t != null) {
+        } else if (p != null && t != null) {
             if (t >= p) {
                 c = t - p;
             } else {
@@ -730,7 +712,7 @@ public class LlmCallQueueService {
                 drained.add(t);
                 pendingSnaps.add(t.toSnapshot());
             }
-            for (Task t : drained) pending.add(t);
+            pending.addAll(drained);
         }
 
         List<TaskSnapshot> completedSnaps;
@@ -815,7 +797,7 @@ public class LlmCallQueueService {
     ) {
         ensureDispatcherStarted();
         CompletableFuture<Object> future = new CompletableFuture<>();
-        CheckedTaskSupplier<Object> sup = (TaskHandle t) -> supplier.get(t);
+        CheckedTaskSupplier<Object> sup = supplier::get;
         ResultMetricsExtractor<Object> mex = metricsExtractor == null ? null : (Object r) -> {
             @SuppressWarnings("unchecked")
             T casted = (T) r;
@@ -891,7 +873,7 @@ public class LlmCallQueueService {
             return reused;
         }
 
-        CheckedTaskSupplier<Object> sup = (TaskHandle t) -> supplier.get(t);
+        CheckedTaskSupplier<Object> sup = supplier::get;
         ResultMetricsExtractor<Object> mex = metricsExtractor == null ? null : (Object r) -> {
             @SuppressWarnings("unchecked")
             T casted = (T) r;
@@ -1019,7 +1001,6 @@ public class LlmCallQueueService {
                 try {
                     metrics = task.metricsExtractor.extract(result);
                 } catch (Exception ignore) {
-                    metrics = null;
                 }
             }
             finishSuccess(task, metrics);
@@ -1103,7 +1084,7 @@ public class LlmCallQueueService {
         completedDetailOrder.addFirst(task.id);
         while (completedDetailOrder.size() > keep) {
             String old = completedDetailOrder.removeLast();
-            if (old != null) completedDetails.remove(old);
+            completedDetails.remove(old);
         }
     }
 
@@ -1117,7 +1098,7 @@ public class LlmCallQueueService {
             recentDedupOrder.addFirst(new DedupEntry(key, future));
             while (recentDedupOrder.size() > keep) {
                 DedupEntry old = recentDedupOrder.removeLast();
-                if (old != null) recentDedup.remove(old.key(), old.future());
+                recentDedup.remove(old.key(), old.future());
             }
         } finally {
             lock.unlock();

@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 final class ModerationLlmAutoRunnerSupport {
 
-    private static final java.util.regex.Pattern IMAGE_PLACEHOLDER = java.util.regex.Pattern.compile("\\[\\[IMAGE_(\\d+)\\]\\]");
+    private static final java.util.regex.Pattern IMAGE_PLACEHOLDER = java.util.regex.Pattern.compile("\\[\\[IMAGE_(\\d+)]]");
     private static final ObjectMapper EVIDENCE_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> STRING_OBJECT_MAP_TYPE = new TypeReference<>() {
     };
@@ -449,7 +449,7 @@ final class ModerationLlmAutoRunnerSupport {
             if (oq != null) sb.append("openQuestions: ").append(String.valueOf(oq)).append('\n');
             Object prev = null;
             try {
-                int idx = c == null || c.chunkIndex() == null ? 0 : c.chunkIndex();
+                int idx = c.chunkIndex() == null ? 0 : c.chunkIndex();
                 Object sm = mem.get("summaries");
                 if (idx > 0 && sm instanceof Map<?, ?> m) {
                     Object v = m.get(String.valueOf(idx - 1));
@@ -457,7 +457,6 @@ final class ModerationLlmAutoRunnerSupport {
                     if (v != null && !String.valueOf(v).isBlank()) prev = v;
                 }
             } catch (Exception ignore) {
-                prev = null;
             }
             if (prev == null) prev = mem.get("prevSummary");
             if (prev != null && !String.valueOf(prev).isBlank()) {
@@ -859,7 +858,7 @@ final class ModerationLlmAutoRunnerSupport {
         if (keys.isEmpty()) return List.of();
         keys.sort(Comparator.naturalOrder());
 
-        int limit = Math.max(1, Math.min(100, maxItems));
+        int limit = Math.clamp(maxItems, 1, 100);
         ArrayList<String> out = new ArrayList<>();
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         for (Integer idx : keys) {
@@ -872,7 +871,7 @@ final class ModerationLlmAutoRunnerSupport {
                 String text = String.valueOf(item).trim();
                 if (text.isEmpty()) continue;
                 String fp = fingerprintAggregateEvidenceItem(text);
-                if (fp == null || fp.isBlank()) fp = "raw|" + normalizeForAnchorMatch(text);
+                if (fp.isBlank()) fp = "raw|" + normalizeForAnchorMatch(text);
                 if (!seen.add(fp)) continue;
                 out.add(text);
                 if (out.size() >= limit) return out;
@@ -1275,7 +1274,7 @@ final class ModerationLlmAutoRunnerSupport {
         for (int i = 0; i < parts.length; i++) {
             String p = parts[i];
             if (p == null || p.isEmpty()) continue;
-            if (sb.length() > 0) sb.append("\\\\s+");
+            if (!sb.isEmpty()) sb.append("\\\\s+");
             sb.append(java.util.regex.Pattern.quote(p));
         }
         return sb.toString();
@@ -1357,7 +1356,7 @@ final class ModerationLlmAutoRunnerSupport {
             normalized = normalizeImageEvidenceToTextAnchor(normalized, chunkText);
             normalized = ensureAnchorEvidenceContainsText(objectMapper, normalized, chunkText);
             String key = evidenceFingerprint(objectMapper, normalized);
-            if (key == null || key.isBlank()) key = "raw|" + normalized;
+            if (key.isBlank()) key = "raw|" + normalized;
             if (!seen.add(key)) continue;
             out.add(normalized);
         }

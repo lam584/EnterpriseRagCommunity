@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
@@ -54,9 +55,9 @@ public class IpPathRateLimitFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain)
             throws ServletException, IOException {
-        if (!enabled || request == null) {
+        if (!enabled) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -116,7 +117,7 @@ public class IpPathRateLimitFilter extends OncePerRequestFilter {
             old.lastSeenEpochSecond = windowStart;
             return old;
         });
-        boolean allowed = bucket != null && bucket.count <= limit;
+        boolean allowed = bucket.count <= limit;
         return new CounterDecision(allowed);
     }
 

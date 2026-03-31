@@ -428,7 +428,7 @@ public class QaHistoryService {
         for (String p : parts) {
             if (p.isBlank()) continue;
             String token = p
-                    .replaceAll("[+\\-~<>*()\\\"@]", " ") // remove boolean operators / special chars
+                    .replaceAll("[+\\-~<>*()\"@]", " ") // remove boolean operators / special chars
                     .trim();
             if (token.isEmpty()) continue;
             if (!sb.isEmpty()) sb.append(' ');

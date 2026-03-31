@@ -11,7 +11,6 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Update DTO: id 必填，其余字段 Optional 支持部分更新；审计不可修改字段 @JsonIgnore
@@ -23,40 +22,40 @@ public class GenerationJobsUpdateDTO {
     private Long id;
 
     @ApiModelProperty(value = "任务类型")
-    private Optional<GenerationJobType> jobType = Optional.empty();
+    private GenerationJobType jobType;
 
     @ApiModelProperty(value = "目标类型")
-    private Optional<GenerationTargetType> targetType = Optional.empty();
+    private GenerationTargetType targetType;
 
     @ApiModelProperty(value = "目标ID")
-    private Optional<Long> targetId = Optional.empty();
+    private Long targetId;
 
     @ApiModelProperty(value = "任务状态")
-    private Optional<GenerationJobStatus> status = Optional.empty();
+    private GenerationJobStatus status;
 
     @ApiModelProperty(value = "提示词模板ID")
-    private Optional<Long> promptId = Optional.empty();
+    private Long promptId;
 
     @ApiModelProperty(value = "模型名称")
-    private Optional<@Size(max = 64) String> model = Optional.empty();
+    private @Size(max = 64) String model;
 
     @ApiModelProperty(value = "任务参数(JSON)")
-    private Optional<Map<String, Object>> params = Optional.empty();
+    private Map<String, Object> params;
 
     @ApiModelProperty(value = "生成结果(JSON)")
-    private Optional<Map<String, Object>> resultJson = Optional.empty();
+    private Map<String, Object> resultJson;
 
     @ApiModelProperty(value = "输入Tokens")
-    private Optional<Integer> tokensIn = Optional.empty();
+    private Integer tokensIn;
 
     @ApiModelProperty(value = "输出Tokens")
-    private Optional<Integer> tokensOut = Optional.empty();
+    private Integer tokensOut;
 
     @ApiModelProperty(value = "成本(分)")
-    private Optional<Integer> costCents = Optional.empty();
+    private Integer costCents;
 
     @ApiModelProperty(value = "错误信息")
-    private Optional<String> errorMessage = Optional.empty();
+    private String errorMessage;
 
     @ApiModelProperty(value = "创建时间(不可修改)")
     @JsonIgnore
