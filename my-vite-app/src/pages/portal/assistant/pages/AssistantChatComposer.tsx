@@ -71,7 +71,7 @@ export function AssistantChatComposer(props: AssistantChatComposerProps) {
             <input
                 ref={fileInputRef}
                 type="file"
-                accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.pdf,.txt,.md,.html,.htm,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+                accept=".png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.pdf,.txt,.md,.html,.htm,.epub,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
                 multiple
                 className="hidden"
                 onChange={(e) => {

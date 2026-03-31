@@ -105,17 +105,14 @@ tasks.named('bootRun') {
 dependencies {
     // 核心 Web + 内嵌 Tomcat
     implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-log4j2'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-mail'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.security:spring-security-taglibs'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
-    runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-jasper:10.1.52'              // JSP 引擎
     runtimeOnly 'org.apache.tomcat.embed:tomcat-embed-el:10.1.52'                 // EL 引擎
-    runtimeOnly 'jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api:3.0.2'
-    runtimeOnly 'org.glassfish.web:jakarta.servlet.jsp.jstl:3.0.1'
     implementation 'org.flywaydb:flyway-mysql:12.0.2'
     implementation 'org.flywaydb:flyway-core:12.0.2'
     runtimeOnly 'com.mysql:mysql-connector-j:9.4.0'
@@ -137,11 +134,14 @@ dependencies {
     implementation 'org.apache.pdfbox:pdfbox-io:3.0.7'
     implementation 'org.apache.pdfbox:pdfbox-tools:3.0.7'
     implementation 'org.apache.pdfbox:xmpbox:3.0.7'
-    implementation 'com.github.junrar:junrar:7.5.8'
     implementation 'org.apache.commons:commons-compress:1.26.2'
     implementation 'org.apache.commons:commons-lang3:3.18.0'
     implementation 'org.apache.tika:tika-core:3.2.2'
-    implementation 'org.apache.tika:tika-parsers-standard-package:3.2.2'
+}
+
+configurations.configureEach {
+    // Use Apache-2.0 Log4j2 stack instead of Logback (EPL/LGPL).
+    exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
 }
 
 tasks.named('test') {
@@ -358,6 +358,62 @@ tasks.register('jacocoAllCoverageVerification', JacocoCoverageVerification) {
 
 tasks.named('check') {
     dependsOn tasks.named('jacocoAllCoverageVerification')
+}
+
+tasks.register('checkLicenseWhitelist') {
+    group = 'verification'
+    description = 'Checks testdata/thirdPartySoftwareList.md against an allowlist (Apache-2.0, MIT).'
+    doLast {
+        File report = file('testdata/thirdPartySoftwareList.md')
+        if (!report.exists()) {
+            throw new GradleException("License report not found: ${report}")
+        }
+
+        Set<String> allowed = ['Apache-2.0', 'MIT'] as Set
+        List<String> offenders = []
+
+        report.eachLine { line, num ->
+            if (line == null) return
+            String trimmed = line.trim()
+            if (!trimmed.startsWith('|') || trimmed.startsWith('|---')) return
+            if (trimmed.contains('| Dependency ') && trimmed.contains('| Version ')) return
+
+            List<String> cols = line.split('\\|', -1).collect { it.trim() }
+            if (cols.size() < 4) return
+
+            String dep = cols[1]
+            String ver = cols[2]
+            String licCell = cols[3]
+            if (!dep || !licCell) return
+
+            Set<String> found = [] as Set
+            (licCell =~ /\[([^]]+)]/).findAll().each { m ->
+                String lic = (m[1 as String] as String).trim()
+                if (lic) found.add(lic)
+            }
+            if (found.isEmpty()) {
+                String plain = licCell.replace('<br/>', ' ').replaceAll(/\s+/, ' ').trim()
+                if (plain) found.add(plain)
+            }
+
+            if (!found.isEmpty() && found.every { !allowed.contains(it) }) {
+                offenders.add("line ${num}: ${dep}@${ver} -> ${found.join(', ')}")
+            }
+        }
+
+        if (!offenders.isEmpty()) {
+            throw new GradleException(
+                    "Non-whitelisted licenses detected (${offenders.size()}):\n" + offenders.join('\n') +
+                            "\n\nAllowed: ${allowed.sort().join(', ')}"
+            )
+        }
+    }
+}
+
+if (providers.gradleProperty('enforceLicenseWhitelist').map { Boolean.parseBoolean(it) }.orElse(false).get()) {
+    tasks.named('check') {
+        dependsOn tasks.named('checkLicenseWhitelist')
+    }
 }
 
 dependencyCheck {

@@ -67,6 +67,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import java.util.zip.ZipInputStream;
 
 @Service
 @RequiredArgsConstructor
@@ -248,7 +249,10 @@ public class FileAssetExtractionAsyncService {
         if (e.equals("html") || e.equals("htm")) {
             return extractHtml(path, maxChars);
         }
-        if (e.equals("epub") || e.equals("mobi")) {
+        if (e.equals("epub")) {
+            return extractEpubText(path, maxChars, meta);
+        }
+        if (e.equals("mobi")) {
             try {
                 return extractWithTika(path, maxChars, meta);
             } catch (Exception ex) {
@@ -1266,7 +1270,10 @@ public class FileAssetExtractionAsyncService {
             String html = truncate(new String(bytes, StandardCharsets.UTF_8), maxChars * 2);
             return truncate(stripHtmlToText(html), maxChars);
         }
-        if (e.equals("epub") || e.equals("mobi")) {
+        if (e.equals("epub")) {
+            return extractEpubText(bytes, maxChars);
+        }
+        if (e.equals("mobi")) {
             return extractWithTika(new ByteArrayInputStream(bytes), maxChars, null);
         }
         if (isOfficeExt(e)) {
@@ -1276,7 +1283,104 @@ public class FileAssetExtractionAsyncService {
     }
 
     private String extractSingleBytesAsText(String name, byte[] bytes, int maxChars) throws Exception {
+        String ext = extLowerOrNull(name);
+        if ("epub".equals(ext)) {
+            return extractEpubText(bytes, maxChars);
+        }
         return extractWithTika(new ByteArrayInputStream(bytes), maxChars, null);
+    }
+
+    private String extractEpubText(Path path, int maxChars, Map<String, Object> meta) {
+        if (path == null) return "";
+        try (ZipFile zf = new ZipFile(path.toFile())) {
+            List<? extends ZipEntry> entries = zf.stream()
+                    .filter(en -> en != null && !en.isDirectory())
+                    .sorted(Comparator.comparing(ZipEntry::getName, String.CASE_INSENSITIVE_ORDER))
+                    .toList();
+            return extractEpubTextFromEntries(entries, maxChars, meta, en -> zf.getInputStream(en));
+        } catch (Exception ex) {
+            if (meta != null) meta.put("epubParseError", safeMsg(ex));
+            return "";
+        }
+    }
+
+    private String extractEpubText(byte[] bytes, int maxChars) {
+        if (bytes == null || bytes.length == 0) return "";
+        StringBuilder out = new StringBuilder();
+        int parsedEntries = 0;
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(bytes), StandardCharsets.UTF_8)) {
+            ZipEntry en;
+            while ((en = zis.getNextEntry()) != null) {
+                if (en.isDirectory()) continue;
+                String name = en.getName();
+                String ext = extLowerOrNull(name);
+                if (!isEpubTextExt(ext)) continue;
+                byte[] data = zis.readNBytes(1024 * 1024);
+                String piece = normalizeEpubEntryText(data, ext, maxChars - out.length());
+                if (!piece.isBlank()) {
+                    appendExtractedFileBlock(out, name, piece);
+                    parsedEntries++;
+                }
+                if (out.length() >= maxChars) break;
+            }
+        } catch (Exception ignored) {
+            return "";
+        }
+        if (parsedEntries == 0) return "";
+        return truncate(out.toString().trim(), maxChars);
+    }
+
+    private interface ZipEntryStreamSupplier {
+        InputStream open(ZipEntry entry) throws Exception;
+    }
+
+    private String extractEpubTextFromEntries(
+            List<? extends ZipEntry> entries,
+            int maxChars,
+            Map<String, Object> meta,
+            ZipEntryStreamSupplier supplier
+    ) throws Exception {
+        StringBuilder out = new StringBuilder();
+        int parsedEntries = 0;
+        for (ZipEntry en : entries) {
+            if (en == null || en.isDirectory()) continue;
+            String name = en.getName();
+            String ext = extLowerOrNull(name);
+            if (!isEpubTextExt(ext)) continue;
+            try (InputStream is = supplier.open(en)) {
+                if (is == null) continue;
+                byte[] data = is.readNBytes(1024 * 1024);
+                String piece = normalizeEpubEntryText(data, ext, maxChars - out.length());
+                if (!piece.isBlank()) {
+                    appendExtractedFileBlock(out, name, piece);
+                    parsedEntries++;
+                }
+            }
+            if (out.length() >= maxChars) break;
+        }
+        if (meta != null) {
+            meta.put("epubTextEntries", parsedEntries);
+            if (parsedEntries > 0) meta.put("epubTextMode", "ZIP_XHTML");
+        }
+        if (parsedEntries == 0) return "";
+        return truncate(out.toString().trim(), maxChars);
+    }
+
+    private boolean isEpubTextExt(String ext) {
+        if (ext == null || ext.isBlank()) return false;
+        return ext.equals("xhtml") || ext.equals("html") || ext.equals("htm")
+                || ext.equals("xml") || ext.equals("opf") || ext.equals("ncx")
+                || ext.equals("txt") || ext.equals("md") || ext.equals("markdown");
+    }
+
+    private String normalizeEpubEntryText(byte[] data, String ext, int maxChars) {
+        if (data == null || data.length == 0 || maxChars <= 0) return "";
+        String raw = new String(data, StandardCharsets.UTF_8);
+        String e = ext == null ? "" : ext.toLowerCase(Locale.ROOT);
+        if (e.equals("xhtml") || e.equals("html") || e.equals("htm") || e.equals("xml") || e.equals("opf") || e.equals("ncx")) {
+            return truncate(stripHtmlToText(raw), maxChars);
+        }
+        return truncate(raw, maxChars);
     }
 
     private static String stripHtmlToText(String html) {

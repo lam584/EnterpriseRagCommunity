@@ -87,7 +87,6 @@ public class UploadFormatsConfigService {
         rules.add(rule("HTML", true, List.of("html", "htm"), null, true));
         rules.add(rule("MD", true, List.of("md", "markdown"), null, true));
         rules.add(rule("EPUB", true, List.of("epub"), null, true));
-        rules.add(rule("MOBI", true, List.of("mobi"), null, true));
         rules.add(rule("ARCHIVE", true, List.of("zip", "jar", "war", "ear", "7z", "tar", "tgz", "gz", "bz2", "tbz2", "xz", "txz"), null, true));
         rules.add(rule("IMAGE", true, List.of("bmp", "png", "jpg", "jpeg", "gif", "webp"), 10L * 1024 * 1024, true));
         dto.setFormats(rules);
