@@ -403,8 +403,7 @@ public class RagContextPromptService {
     }
 
     private static String renderHeader(String tpl, int idx, Item item, boolean showPostId, boolean showChunkIndex, boolean showScore, boolean showTitle) {
-        String t = tpl;
-        if (t == null || t.isBlank()) {
+        if (tpl == null || tpl.isBlank()) {
             if (!showPostId && !showChunkIndex && !showScore && !showTitle) return "";
             StringBuilder sb = new StringBuilder();
             sb.append('[').append(idx).append("] ");
@@ -421,7 +420,7 @@ public class RagContextPromptService {
         vars.put("{chunkIndex}", showChunkIndex ? Objects.toString(item.getChunkIndex(), "") : "");
         vars.put("{score}", showScore && item.getScore() != null ? String.format(Locale.ROOT, "%.4f", item.getScore()) : "");
         vars.put("{title}", showTitle ? Objects.toString(item.getTitle(), "") : "");
-        String out = t;
+        String out = tpl;
         for (Map.Entry<String, String> e : vars.entrySet()) {
             out = out.replace(e.getKey(), e.getValue());
         }

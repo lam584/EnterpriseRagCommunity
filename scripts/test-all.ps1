@@ -132,7 +132,7 @@ if (-not $SkipPerf) {
 }
 
 if (-not $SkipSecurity) {
-    Invoke-Step -Name 'Backend Dependency Scan' -Command '.\gradlew.bat dependencyCheckAnalyze --no-daemon' -TargetName 'security-dependency-check' -Sources @('build/reports/dependency-check')
+    Invoke-Step -Name 'Backend Dependency Scan' -Command '.\gradlew.bat dependencyCheckAnalyze --no-daemon --no-problems-report --warning-mode=none' -TargetName 'security-dependency-check' -Sources @('build/reports/dependency-check')
     Invoke-Step -Name 'Frontend Dependency Audit' -Command 'npm --prefix .\my-vite-app audit --json > .\test-reports\npm-audit.json' -TargetName 'security-reports' -Sources @('test-reports/npm-audit.json')
 }
 

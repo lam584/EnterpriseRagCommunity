@@ -104,12 +104,12 @@ public class AdminRetrievalVectorIndexController {
         before.put("dim", e.getDim());
         before.put("status", e.getStatus() == null ? null : e.getStatus().name());
 
-        if (dto.getProvider() != null && dto.getProvider().isPresent()) e.setProvider(dto.getProvider().get());
-        if (dto.getCollectionName() != null && dto.getCollectionName().isPresent()) e.setCollectionName(dto.getCollectionName().get());
-        if (dto.getMetric() != null && dto.getMetric().isPresent()) e.setMetric(dto.getMetric().get());
-        if (dto.getDim() != null && dto.getDim().isPresent()) e.setDim(dto.getDim().get());
-        if (dto.getStatus() != null && dto.getStatus().isPresent()) e.setStatus(dto.getStatus().get());
-        if (dto.getMetadata() != null && dto.getMetadata().isPresent()) e.setMetadata(dto.getMetadata().get());
+        if (dto.isHasProvider()) e.setProvider(dto.getProvider());
+        if (dto.isHasCollectionName()) e.setCollectionName(dto.getCollectionName());
+        if (dto.isHasMetric()) e.setMetric(dto.getMetric());
+        if (dto.isHasDim()) e.setDim(dto.getDim());
+        if (dto.isHasStatus()) e.setStatus(dto.getStatus());
+        if (dto.isHasMetadata()) e.setMetadata(dto.getMetadata());
 
         VectorIndicesEntity saved = vectorIndicesRepository.save(e);
 

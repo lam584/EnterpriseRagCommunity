@@ -154,11 +154,7 @@ public class RagCommentTestQueryService {
     }
 
     private JsonNode postSearch(String indexName, String body) {
-        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-        String endpoint = elasticsearchUris;
-        if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
-        if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
-        if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
             URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
@@ -169,10 +165,7 @@ public class RagCommentTestQueryService {
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
 
-            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
-            if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
-            }
+            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
 
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(body.getBytes(StandardCharsets.UTF_8));

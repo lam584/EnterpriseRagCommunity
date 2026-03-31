@@ -86,7 +86,7 @@ public class BoardServiceImplAuditTest {
         BoardServiceImpl svc = new BoardServiceImpl(repo, auditLogWriter, auditDiffBuilder);
         BoardsUpdateDTO dto = new BoardsUpdateDTO();
         dto.setId(102L);
-        dto.setName(java.util.Optional.of("b2"));
+        dto.setName("b2");
 
         svc.updateBoard(dto);
 

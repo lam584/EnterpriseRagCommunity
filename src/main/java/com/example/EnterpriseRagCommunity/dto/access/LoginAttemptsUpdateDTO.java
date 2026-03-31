@@ -7,7 +7,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class LoginAttemptsUpdateDTO {
@@ -16,21 +15,49 @@ public class LoginAttemptsUpdateDTO {
     private Long id;
 
     @ApiModelProperty("用户ID（若可识别）")
-    private Optional<Long> userId = Optional.empty();
+    private Long userId;
+    @JsonIgnore
+    private boolean hasUserId;
 
     @ApiModelProperty("来源IP")
     @Size(max = 64)
-    private Optional<String> ip = Optional.empty();
+    private String ip;
+    @JsonIgnore
+    private boolean hasIp;
 
     @ApiModelProperty("是否成功")
-    private Optional<Boolean> success = Optional.empty();
+    private Boolean success;
+    @JsonIgnore
+    private boolean hasSuccess;
 
     @ApiModelProperty("失败原因/备注")
     @Size(max = 64)
-    private Optional<String> reason = Optional.empty();
+    private String reason;
+    @JsonIgnore
+    private boolean hasReason;
 
     @ApiModelProperty("发生时间（不可修改，数据库维护）")
     @JsonIgnore
     private LocalDateTime occurredAt;
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
+        this.hasUserId = true;
+    }
+
+    public void setIp(String ip) {
+        this.ip = ip;
+        this.hasIp = true;
+    }
+
+    public void setSuccess(Boolean success) {
+        this.success = success;
+        this.hasSuccess = true;
+    }
+
+    public void setReason(String reason) {
+        this.reason = reason;
+        this.hasReason = true;
+    }
 }
 

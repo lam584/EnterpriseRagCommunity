@@ -8,7 +8,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class EmailVerificationsUpdateDTO {
@@ -17,23 +16,58 @@ public class EmailVerificationsUpdateDTO {
     private Long id;
 
     @ApiModelProperty("用户ID")
-    private Optional<Long> userId = Optional.empty();
+    private Long userId;
+    @JsonIgnore
+    private boolean hasUserId;
 
     @ApiModelProperty("验证码")
     @Size(max = 64)
-    private Optional<String> code = Optional.empty();
+    private String code;
+    @JsonIgnore
+    private boolean hasCode;
 
     @ApiModelProperty("用途")
-    private Optional<EmailVerificationPurpose> purpose = Optional.empty();
+    private EmailVerificationPurpose purpose;
+    @JsonIgnore
+    private boolean hasPurpose;
 
     @ApiModelProperty("过期时间")
-    private Optional<LocalDateTime> expiresAt = Optional.empty();
+    private LocalDateTime expiresAt;
+    @JsonIgnore
+    private boolean hasExpiresAt;
 
     @ApiModelProperty("使用时间")
-    private Optional<LocalDateTime> consumedAt = Optional.empty();
+    private LocalDateTime consumedAt;
+    @JsonIgnore
+    private boolean hasConsumedAt;
 
     @ApiModelProperty("创建时间（只读，不允许修改）")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
+        this.hasUserId = true;
+    }
+
+    public void setCode(String code) {
+        this.code = code;
+        this.hasCode = true;
+    }
+
+    public void setPurpose(EmailVerificationPurpose purpose) {
+        this.purpose = purpose;
+        this.hasPurpose = true;
+    }
+
+    public void setExpiresAt(LocalDateTime expiresAt) {
+        this.expiresAt = expiresAt;
+        this.hasExpiresAt = true;
+    }
+
+    public void setConsumedAt(LocalDateTime consumedAt) {
+        this.consumedAt = consumedAt;
+        this.hasConsumedAt = true;
+    }
 }
 

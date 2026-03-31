@@ -70,8 +70,8 @@ public class ChatRagAugmentConfigService {
         ChatRagAugmentConfigDTO dto = (in == null) ? new ChatRagAugmentConfigDTO() : in;
         ChatRagAugmentConfigDTO def = defaultConfig();
 
-        dto.setEnabled(dto.getEnabled() == null || Boolean.TRUE.equals(dto.getEnabled()));
-        dto.setCommentsEnabled(dto.getCommentsEnabled() == null || Boolean.TRUE.equals(dto.getCommentsEnabled()));
+        dto.setEnabled(dto.getEnabled() == null || dto.getEnabled());
+        dto.setCommentsEnabled(dto.getCommentsEnabled() == null || dto.getCommentsEnabled());
         dto.setCommentTopK(clampInt(dto.getCommentTopK(), 1, 200, def.getCommentTopK()));
 
         dto.setMaxPosts(clampInt(dto.getMaxPosts(), 1, 100, def.getMaxPosts()));

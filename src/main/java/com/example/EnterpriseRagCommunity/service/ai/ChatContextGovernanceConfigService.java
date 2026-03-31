@@ -76,16 +76,16 @@ public class ChatContextGovernanceConfigService {
         ChatContextGovernanceConfigDTO dto = in == null ? new ChatContextGovernanceConfigDTO() : in;
         ChatContextGovernanceConfigDTO def = defaultConfig();
 
-        dto.setEnabled(dto.getEnabled() == null || Boolean.TRUE.equals(dto.getEnabled()));
+        dto.setEnabled(dto.getEnabled() == null || dto.getEnabled());
 
         dto.setMaxPromptTokens(clampInt(dto.getMaxPromptTokens(), 1000, 1_000_000, def.getMaxPromptTokens()));
         dto.setReserveAnswerTokens(clampInt(dto.getReserveAnswerTokens(), 0, 1_000_000, def.getReserveAnswerTokens()));
         dto.setMaxPromptChars(clampInt(dto.getMaxPromptChars(), 1000, 2_000_000, def.getMaxPromptChars()));
         dto.setPerMessageMaxTokens(clampInt(dto.getPerMessageMaxTokens(), 100, 200_000, def.getPerMessageMaxTokens()));
         dto.setKeepLastMessages(clampInt(dto.getKeepLastMessages(), 0, 200, def.getKeepLastMessages()));
-        dto.setAllowDropRagContext(dto.getAllowDropRagContext() == null || Boolean.TRUE.equals(dto.getAllowDropRagContext()));
+        dto.setAllowDropRagContext(dto.getAllowDropRagContext() == null || dto.getAllowDropRagContext());
 
-        dto.setCompressionEnabled(dto.getCompressionEnabled() == null || Boolean.TRUE.equals(dto.getCompressionEnabled()));
+        dto.setCompressionEnabled(dto.getCompressionEnabled() == null || dto.getCompressionEnabled());
         dto.setCompressionTriggerTokens(clampInt(dto.getCompressionTriggerTokens(), 500, 1_000_000, def.getCompressionTriggerTokens()));
         dto.setCompressionKeepLastMessages(clampInt(dto.getCompressionKeepLastMessages(), 0, 200, def.getCompressionKeepLastMessages()));
         dto.setCompressionPerMessageSnippetChars(clampInt(dto.getCompressionPerMessageSnippetChars(), 10, 10000, def.getCompressionPerMessageSnippetChars()));
@@ -95,7 +95,7 @@ public class ChatContextGovernanceConfigService {
         dto.setPerFileMaxChars(clampInt(dto.getPerFileMaxChars(), 100, 200000, def.getPerFileMaxChars()));
         dto.setTotalFilesMaxChars(clampInt(dto.getTotalFilesMaxChars(), 100, 2_000_000, def.getTotalFilesMaxChars()));
 
-        dto.setLogEnabled(dto.getLogEnabled() == null || Boolean.TRUE.equals(dto.getLogEnabled()));
+        dto.setLogEnabled(dto.getLogEnabled() == null || dto.getLogEnabled());
         dto.setLogSampleRate(clampDouble(dto.getLogSampleRate(), 0.0, 1.0, def.getLogSampleRate()));
         dto.setLogMaxDays(clampInt(dto.getLogMaxDays(), 1, 3650, def.getLogMaxDays()));
         return dto;

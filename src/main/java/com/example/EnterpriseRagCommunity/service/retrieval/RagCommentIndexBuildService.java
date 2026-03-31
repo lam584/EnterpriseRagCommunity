@@ -558,11 +558,7 @@ public class RagCommentIndexBuildService {
     }
 
     private JsonNode postSearch(String indexName, String body, String filterPath) {
-        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-        String endpoint = elasticsearchUris;
-        if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
-        if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
-        if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         String fp = filterPath == null || filterPath.isBlank() ? null : filterPath.trim();
         String url = endpoint + "/" + indexName + "/_search";
@@ -577,11 +573,7 @@ public class RagCommentIndexBuildService {
             conn.setReadTimeout(10_000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
-
-            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
-            if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
-            }
+            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
 
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(body.getBytes(StandardCharsets.UTF_8));
@@ -600,11 +592,7 @@ public class RagCommentIndexBuildService {
 
     private void deleteByQuery(String indexName, String body) {
         if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
-        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-        String endpoint = elasticsearchUris;
-        if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
-        if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
-        if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
             URL url = new URL(endpoint + "/" + indexName.trim() + "/_delete_by_query?conflicts=proceed&refresh=true");
@@ -614,11 +602,7 @@ public class RagCommentIndexBuildService {
             conn.setReadTimeout(30_000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
-
-            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
-            if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
-            }
+            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
 
             String payload = body == null ? "{\"query\":{\"match_all\":{}}}" : body;
             try (OutputStream os = conn.getOutputStream()) {
@@ -638,11 +622,7 @@ public class RagCommentIndexBuildService {
 
     private void deleteIndexViaHttp(String indexName) {
         if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
-        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-        String endpoint = elasticsearchUris;
-        if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
-        if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
-        if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
             String idx = URLEncoder.encode(indexName.trim(), StandardCharsets.UTF_8);
@@ -652,11 +632,7 @@ public class RagCommentIndexBuildService {
             conn.setConnectTimeout(2000);
             conn.setReadTimeout(30_000);
             conn.setRequestProperty("Content-Type", "application/json");
-
-            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
-            if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
-            }
+            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
 
             int code = conn.getResponseCode();
             InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();

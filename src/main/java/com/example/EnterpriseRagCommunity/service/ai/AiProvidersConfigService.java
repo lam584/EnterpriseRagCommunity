@@ -111,7 +111,7 @@ public class AiProvidersConfigService {
 
             e.setConnectTimeoutMs(positiveOrNull(p.getConnectTimeoutMs()));
             e.setReadTimeoutMs(positiveOrNull(p.getReadTimeoutMs()));
-            e.setEnabled(p.getEnabled() == null || Boolean.TRUE.equals(p.getEnabled()));
+            e.setEnabled(p.getEnabled() == null || p.getEnabled());
             e.setPriority(ord * 10);
             e.setUpdatedAt(now);
             e.setUpdatedBy(actorUserId);

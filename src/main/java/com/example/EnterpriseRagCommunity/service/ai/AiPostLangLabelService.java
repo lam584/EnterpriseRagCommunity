@@ -154,10 +154,9 @@ public class AiPostLangLabelService {
     }
 
     private static String renderPrompt(String template, String title, String content) {
-        String safeTemplate = (template == null || template.isBlank())
+        String out = (template == null || template.isBlank())
                 ? ""
                 : template;
-        String out = safeTemplate;
         out = out.replace("{{title}}", title == null ? "" : title.trim());
         out = out.replace("{{content}}", content == null ? "" : content.trim());
         return out;

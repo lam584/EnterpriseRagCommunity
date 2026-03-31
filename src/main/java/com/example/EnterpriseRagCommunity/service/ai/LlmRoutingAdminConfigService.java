@@ -188,7 +188,7 @@ public class LlmRoutingAdminConfigService {
                     e.setIsDefault(Boolean.FALSE);
                 }
 
-                e.setEnabled(t.getEnabled() == null || Boolean.TRUE.equals(t.getEnabled()));
+                e.setEnabled(t.getEnabled() == null || t.getEnabled());
                 e.setWeight(t.getWeight() == null ? 0 : t.getWeight());
                 e.setPriority(t.getPriority() == null ? 0 : t.getPriority());
                 e.setSortIndex(t.getSortIndex() == null ? 0 : t.getSortIndex());

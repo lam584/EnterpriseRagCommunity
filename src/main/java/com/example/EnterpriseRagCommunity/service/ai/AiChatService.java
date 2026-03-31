@@ -321,295 +321,6 @@ public class AiChatService {
         return AiChatCitationSupport.extractCitationIndexes(text, maxIndex);
     }
 
-    private static String normalizeCitationQuoteFormatting(String text) {
-        return AiChatCitationSupport.normalizeCitationQuoteFormatting(text);
-    }
-
-    private static int findCitationQuoteClose(String text, int start) {
-        int n = text == null ? 0 : text.length();
-        for (int i = Math.max(0, start); i < n; i++) {
-            char c = text.charAt(i);
-            if (c == '\n' || c == '\r') return -1;
-            if (c == '\\' && i + 1 < n && isCitationQuote(text.charAt(i + 1))) {
-                return i + 1;
-            }
-            if (c == '"' || c == '”' || c == '」' || c == '』') {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    private static boolean isCitationQuote(char c) {
-        return c == '"' || c == '“' || c == '”' || c == '「' || c == '」' || c == '『' || c == '』';
-    }
-
-    private static boolean isCitationOpenQuote(char c) {
-        return c == '"' || c == '“' || c == '「' || c == '『';
-    }
-
-    /**
-     * Extremely small extractor to avoid adding JSON deps.
-     * It looks for "\"content\":\"...\"" under choices[0].delta.
-     *
-     * This is not a full JSON parser but works for common OpenAI-compatible SSE frames.
-     */
-    static String extractDeltaContent(String json) {
-        return AiChatSseSupport.extractDeltaContent(json);
-    }
-
-    static String extractDeltaReasoningContent(String json) {
-        return AiChatSseSupport.extractDeltaReasoningContent(json);
-    }
-
-    static String extractDeltaStringField(String json, String field) {
-        return AiChatSseSupport.extractDeltaStringField(json, field);
-    }
-
-    private QaSessionsEntity ensureSession(Long sessionId, Long currentUserId, boolean dryRun) {
-        if (sessionId != null) {
-            QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, currentUserId)
-                    .orElseThrow(() -> new ResourceNotFoundException("session not found"));
-            if (Boolean.FALSE.equals(s.getIsActive())) {
-                throw new IllegalArgumentException("session inactive");
-            }
-            return s;
-        }
-
-        QaSessionsEntity s = new QaSessionsEntity();
-        s.setUserId(currentUserId);
-        s.setTitle(null);
-        s.setContextStrategy(ContextStrategy.RECENT_N);
-        s.setIsActive(true);
-        s.setCreatedAt(LocalDateTime.now());
-
-        if (dryRun) {
-            s.setId(-System.currentTimeMillis());
-            return s;
-        }
-        return qaSessionsRepository.save(s);
-    }
-
-    private static String decodeEscapedContent(String text) {
-        return AiChatSseSupport.decodeEscapedContent(text);
-    }
-
-    private static List<AiChatStreamRequest.ImageInput> resolveImages(AiChatStreamRequest req) {
-        return AiChatInputSupport.resolveImages(req);
-    }
-
-    private static List<AiChatStreamRequest.FileInput> resolveFiles(AiChatStreamRequest req) {
-        return AiChatInputSupport.resolveFiles(req);
-    }
-
-    private static List<AiChatStreamRequest.FileInput> extractFilesFromHistoryText(String text) {
-        return AiChatInputSupport.extractFilesFromHistoryText(text);
-    }
-
-    private String resolveModelNameForThinkDirective(String providerId, String modelOverride) {
-        String m = toNonBlank(modelOverride);
-        if (m != null) return m;
-        try {
-            AiProvidersConfigService.ResolvedProvider p = llmGateway.resolve(providerId);
-            m = toNonBlank(p == null ? null : p.defaultChatModel());
-            if (m != null) return m;
-        } catch (Exception ignored) {
-        }
-        return null;
-    }
-
-    private static String applyThinkingDirective(String content, boolean deepThink, String modelName) {
-        String text = content == null ? "" : content;
-        if (!supportsThinkingDirectiveModel(modelName)) return text;
-        String lower = text.toLowerCase(Locale.ROOT);
-        if (lower.contains("/no_think") || lower.contains("/think")) return text;
-        String directive = deepThink ? "/think" : "/no_think";
-        if (text.endsWith("\n") || text.endsWith("\r")) return text + directive;
-        return text + "\n" + directive;
-    }
-
-    @SuppressWarnings("unchecked")
-    private String loadUserDefaultSystemPrompt(Long userId) {
-        if (userId == null) return null;
-        UsersEntity u = usersRepository.findById(userId).orElse(null);
-        if (u == null) return null;
-        Map<String, Object> metadata = u.getMetadata();
-        if (metadata == null) return null;
-        Object prefs = metadata.get("preferences");
-        if (!(prefs instanceof Map)) return null;
-        Object assistant = ((Map<String, Object>) prefs).get("assistant");
-        if (!(assistant instanceof Map)) return null;
-        Object v = ((Map<String, Object>) assistant).get("defaultSystemPrompt");
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return StringUtils.hasText(s) ? s : null;
-    }
-
-    private static boolean supportsThinkingDirectiveModel(String modelName) {
-        String raw = modelName == null ? "" : modelName.trim().toLowerCase(Locale.ROOT);
-        if (raw.isEmpty()) return false;
-
-        String base = raw;
-        int slash = base.lastIndexOf('/');
-        if (slash >= 0 && slash + 1 < base.length()) base = base.substring(slash + 1);
-        int colon = base.lastIndexOf(':');
-        if (colon >= 0 && colon + 1 < base.length()) base = base.substring(colon + 1);
-
-        if (raw.contains("thinking") || base.contains("thinking")) return false;
-        if (base.startsWith("qwen3-") || raw.startsWith("qwen3-")) return true;
-        return base.startsWith("qwen-plus-2025-04-28")
-                || base.startsWith("qwen-turbo-2025-04-28")
-                || raw.startsWith("qwen-plus-2025-04-28")
-                || raw.startsWith("qwen-turbo-2025-04-28");
-    }
-
-    private static String toNonBlank(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? null : s;
-    }
-
-    private void ensureMultimodalModelForRequest(LlmQueueTaskType taskType, String providerId, String modelOverride) {
-        if (taskType != LlmQueueTaskType.MULTIMODAL_CHAT) return;
-
-        String mo = toNonBlank(modelOverride);
-        String pid = toNonBlank(providerId);
-
-        if (mo != null) {
-            String effectiveProviderId = pid;
-            if (effectiveProviderId == null) {
-                try {
-                    var p = llmGateway.resolve(null);
-                    effectiveProviderId = p == null ? null : toNonBlank(p.id());
-                } catch (Exception ignored) {
-                }
-            }
-            if (effectiveProviderId == null) {
-                throw new IllegalArgumentException("未指定模型提供商(providerId)，无法发送多模态请求");
-            }
-            if (!isEnabledMultimodalChatModel(effectiveProviderId, mo)) {
-                throw new IllegalArgumentException("当前选择的模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
-            }
-            return;
-        }
-
-        if (pid != null) {
-            try {
-                var p = llmGateway.resolve(pid);
-                String effectiveProviderId = p == null ? null : toNonBlank(p.id());
-                String effectiveModel = p == null ? null : toNonBlank(p.defaultChatModel());
-                if (effectiveProviderId == null || effectiveModel == null) {
-                    throw new IllegalArgumentException("未配置可用的默认模型，无法发送多模态请求");
-                }
-                if (!isEnabledMultimodalChatModel(effectiveProviderId, effectiveModel)) {
-                    throw new IllegalArgumentException("当前选择的默认模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
-                }
-            } catch (RuntimeException e) {
-                throw e;
-            } catch (Exception e) {
-                throw new IllegalArgumentException("模型提供商解析失败，无法发送多模态请求");
-            }
-            return;
-        }
-
-        if (llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, "MULTIMODAL_CHAT").isEmpty()) {
-            throw new IllegalArgumentException("未配置“多模态聊天(MULTIMODAL_CHAT)”模型池，请先在管理端配置场景模型");
-        }
-    }
-
-    private boolean isEnabledMultimodalChatModel(String providerId, String modelName) {
-        String pid = toNonBlank(providerId);
-        String mn = toNonBlank(modelName);
-        if (pid == null || mn == null) return false;
-        return llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, "MULTIMODAL_CHAT", mn)
-                .filter((e) -> !Boolean.FALSE.equals(e.getEnabled()))
-                .isPresent();
-    }
-
-    private static boolean isLikelyImageUrl(String url) {
-        return AiChatInputSupport.isLikelyImageUrl(url);
-    }
-
-    private static String appendImagesAsText(String userMsg, List<AiChatStreamRequest.ImageInput> images) {
-        return AiChatInputSupport.appendImagesAsText(userMsg, images);
-    }
-
-    private static String appendFilesAsText(String userMsg, List<AiChatStreamRequest.FileInput> files) {
-        return AiChatInputSupport.appendFilesAsText(userMsg, files);
-    }
-
-    static String jsonEscape(String s) {
-        return AiChatJsonSupport.jsonEscape(s);
-    }
-
-    private static List<RagPostChatRetrievalService.Hit> toRagHits(List<HybridRagRetrievalService.DocHit> hits) {
-        return AiChatRetrievalSupport.toRagHits(hits);
-    }
-
-    private static void appendStageHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<HybridRagRetrievalService.DocHit> hits) {
-        AiChatRetrievalSupport.appendStageHits(out, eventId, type, hits);
-    }
-
-    private static void appendChatHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<RagPostChatRetrievalService.Hit> hits) {
-        AiChatRetrievalSupport.appendChatHits(out, eventId, type, hits);
-    }
-
-    private String encodeImageUrlForUpstream(AiChatStreamRequest.ImageInput img) {
-        if (img == null) return null;
-        String url = toNonBlank(img.getUrl());
-        if (url == null) return null;
-
-        if (url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://")) {
-            return url;
-        }
-
-        byte[] bytes = readLocalUploadBytes(img.getFileAssetId(), url);
-        if (bytes == null || bytes.length == 0) return url;
-        if (bytes.length > 4_000_000) return url;
-
-        String mimeType = toNonBlank(img.getMimeType());
-        if (!StringUtils.hasText(mimeType) && img.getFileAssetId() != null) {
-            var fa = fileAssetsRepository.findById(img.getFileAssetId()).orElse(null);
-            mimeType = fa == null ? null : toNonBlank(fa.getMimeType());
-        }
-        if (!StringUtils.hasText(mimeType)) mimeType = "application/octet-stream";
-
-        return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
-    }
-
-    private byte[] readLocalUploadBytes(Long fileAssetId, String url) {
-        try {
-            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
-            String u = toNonBlank(url);
-            if (u != null && !prefix.isEmpty() && u.startsWith(prefix + "/")) {
-                int q = u.indexOf('?');
-                if (q >= 0) u = u.substring(0, q);
-                String rel = u.substring(prefix.length());
-                while (rel.startsWith("/")) rel = rel.substring(1);
-
-                Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
-                Path p = root.resolve(rel).normalize();
-                if (p.startsWith(root) && Files.exists(p) && Files.isRegularFile(p)) {
-                    return Files.readAllBytes(p);
-                }
-            }
-
-            if (fileAssetId != null) {
-                var fa = fileAssetsRepository.findById(fileAssetId).orElse(null);
-                if (fa != null && fa.getPath() != null && !fa.getPath().isBlank()) {
-                    Path p = Paths.get(fa.getPath()).toAbsolutePath().normalize();
-                    if (Files.exists(p) && Files.isRegularFile(p)) {
-                        return Files.readAllBytes(p);
-                    }
-                }
-            }
-
-            return null;
-        } catch (Exception ignored) {
-            return null;
-        }
-    }
-
     public void streamChat(AiChatStreamRequest req, Long currentUserId, HttpServletResponse response) throws IOException {
         if (currentUserId == null) {
             throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
@@ -1062,6 +773,33 @@ public class AiChatService {
         }
     }
 
+    private static String normalizeCitationQuoteFormatting(String text) {
+        return AiChatCitationSupport.normalizeCitationQuoteFormatting(text);
+    }
+
+    private static boolean isCitationQuote(char c) {
+        return c == '"' || c == '“' || c == '”' || c == '「' || c == '」' || c == '『' || c == '』';
+    }
+
+    private static boolean isCitationOpenQuote(char c) {
+        return c == '"' || c == '“' || c == '「' || c == '『';
+    }
+
+    private static int findCitationQuoteClose(String text, int start) {
+        int n = text == null ? 0 : text.length();
+        for (int i = Math.max(0, start); i < n; i++) {
+            char c = text.charAt(i);
+            if (c == '\n' || c == '\r') return -1;
+            if (c == '\\' && i + 1 < n && isCitationQuote(text.charAt(i + 1))) {
+                return i + 1;
+            }
+            if (c == '"' || c == '”' || c == '」' || c == '』') {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     private boolean providerSupportsVision(String providerId) {
         String pid = toNonBlank(providerId);
         if (pid == null) return false;
@@ -1472,6 +1210,126 @@ public class AiChatService {
         return dto;
     }
 
+    /**
+     * Extremely small extractor to avoid adding JSON deps.
+     * It looks for "\"content\":\"...\"" under choices[0].delta.
+     * <p>
+     * This is not a full JSON parser but works for common OpenAI-compatible SSE frames.
+     */
+    static String extractDeltaContent(String json) {
+        return AiChatSseSupport.extractDeltaContent(json);
+    }
+
+    static String extractDeltaReasoningContent(String json) {
+        return AiChatSseSupport.extractDeltaReasoningContent(json);
+    }
+
+    static String extractDeltaStringField(String json, String field) {
+        return AiChatSseSupport.extractDeltaStringField(json, field);
+    }
+
+    private static String decodeEscapedContent(String text) {
+        return AiChatSseSupport.decodeEscapedContent(text);
+    }
+
+    private static String applyThinkingDirective(String content, boolean deepThink, String modelName) {
+        String text = content == null ? "" : content;
+        if (!supportsThinkingDirectiveModel(modelName)) return text;
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.contains("/no_think") || lower.contains("/think")) return text;
+        String directive = deepThink ? "/think" : "/no_think";
+        if (text.endsWith("\n") || text.endsWith("\r")) return text + directive;
+        return text + "\n" + directive;
+    }
+
+    private static boolean supportsThinkingDirectiveModel(String modelName) {
+        String raw = modelName == null ? "" : modelName.trim().toLowerCase(Locale.ROOT);
+        if (raw.isEmpty()) return false;
+
+        String base = raw;
+        int slash = base.lastIndexOf('/');
+        if (slash >= 0 && slash + 1 < base.length()) base = base.substring(slash + 1);
+        int colon = base.lastIndexOf(':');
+        if (colon >= 0 && colon + 1 < base.length()) base = base.substring(colon + 1);
+
+        if (raw.contains("thinking") || base.contains("thinking")) return false;
+        if (base.startsWith("qwen3-") || raw.startsWith("qwen3-")) return true;
+        return base.startsWith("qwen-plus-2025-04-28")
+                || base.startsWith("qwen-turbo-2025-04-28")
+                || raw.startsWith("qwen-plus-2025-04-28")
+                || raw.startsWith("qwen-turbo-2025-04-28");
+    }
+
+    private static String toNonBlank(Object v) {
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isBlank() ? null : s;
+    }
+
+    private static List<AiChatStreamRequest.ImageInput> resolveImages(AiChatStreamRequest req) {
+        return AiChatInputSupport.resolveImages(req);
+    }
+
+    private static List<AiChatStreamRequest.FileInput> resolveFiles(AiChatStreamRequest req) {
+        return AiChatInputSupport.resolveFiles(req);
+    }
+
+    private static List<AiChatStreamRequest.FileInput> extractFilesFromHistoryText(String text) {
+        return AiChatInputSupport.extractFilesFromHistoryText(text);
+    }
+
+    private static boolean isLikelyImageUrl(String url) {
+        return AiChatInputSupport.isLikelyImageUrl(url);
+    }
+
+    private static String appendImagesAsText(String userMsg, List<AiChatStreamRequest.ImageInput> images) {
+        return AiChatInputSupport.appendImagesAsText(userMsg, images);
+    }
+
+    private static String appendFilesAsText(String userMsg, List<AiChatStreamRequest.FileInput> files) {
+        return AiChatInputSupport.appendFilesAsText(userMsg, files);
+    }
+
+    static String jsonEscape(String s) {
+        return AiChatJsonSupport.jsonEscape(s);
+    }
+
+    private static List<RagPostChatRetrievalService.Hit> toRagHits(List<HybridRagRetrievalService.DocHit> hits) {
+        return AiChatRetrievalSupport.toRagHits(hits);
+    }
+
+    private static void appendStageHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<HybridRagRetrievalService.DocHit> hits) {
+        AiChatRetrievalSupport.appendStageHits(out, eventId, type, hits);
+    }
+
+    private static void appendChatHits(List<RetrievalHitsEntity> out, Long eventId, RetrievalHitType type, List<RagPostChatRetrievalService.Hit> hits) {
+        AiChatRetrievalSupport.appendChatHits(out, eventId, type, hits);
+    }
+
+    private QaSessionsEntity ensureSession(Long sessionId, Long currentUserId, boolean dryRun) {
+        if (sessionId != null) {
+            QaSessionsEntity s = qaSessionsRepository.findByIdAndUserId(sessionId, currentUserId)
+                    .orElseThrow(() -> new ResourceNotFoundException("session not found"));
+            if (Boolean.FALSE.equals(s.getIsActive())) {
+                throw new IllegalArgumentException("session inactive");
+            }
+            return s;
+        }
+
+        QaSessionsEntity s = new QaSessionsEntity();
+        s.setUserId(currentUserId);
+        s.setTitle(null);
+        s.setContextStrategy(ContextStrategy.RECENT_N);
+        s.setIsActive(true);
+        s.setCreatedAt(LocalDateTime.now());
+
+        if (dryRun) {
+            s.setId(-System.currentTimeMillis());
+            return s;
+        }
+        return qaSessionsRepository.save(s);
+    }
+
     private String buildFilesBlockForModel(List<AiChatStreamRequest.FileInput> files, Long currentUserId, ChatContextGovernanceConfigDTO cfg) {
         if (files == null || files.isEmpty() || currentUserId == null) return null;
         int maxFiles = cfg == null || cfg.getMaxFiles() == null ? 10 : Math.clamp(cfg.getMaxFiles(), 0, 50);
@@ -1559,6 +1417,148 @@ public class AiChatService {
             take += 1;
         }
         return sb.toString().trim();
+    }
+
+    private String resolveModelNameForThinkDirective(String providerId, String modelOverride) {
+        String m = toNonBlank(modelOverride);
+        if (m != null) return m;
+        try {
+            AiProvidersConfigService.ResolvedProvider p = llmGateway.resolve(providerId);
+            m = toNonBlank(p == null ? null : p.defaultChatModel());
+            if (m != null) return m;
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String loadUserDefaultSystemPrompt(Long userId) {
+        if (userId == null) return null;
+        UsersEntity u = usersRepository.findById(userId).orElse(null);
+        if (u == null) return null;
+        Map<String, Object> metadata = u.getMetadata();
+        if (metadata == null) return null;
+        Object prefs = metadata.get("preferences");
+        if (!(prefs instanceof Map)) return null;
+        Object assistant = ((Map<String, Object>) prefs).get("assistant");
+        if (!(assistant instanceof Map)) return null;
+        Object v = ((Map<String, Object>) assistant).get("defaultSystemPrompt");
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return StringUtils.hasText(s) ? s : null;
+    }
+
+    private void ensureMultimodalModelForRequest(LlmQueueTaskType taskType, String providerId, String modelOverride) {
+        if (taskType != LlmQueueTaskType.MULTIMODAL_CHAT) return;
+
+        String mo = toNonBlank(modelOverride);
+        String pid = toNonBlank(providerId);
+
+        if (mo != null) {
+            String effectiveProviderId = pid;
+            if (effectiveProviderId == null) {
+                try {
+                    var p = llmGateway.resolve(null);
+                    effectiveProviderId = p == null ? null : toNonBlank(p.id());
+                } catch (Exception ignored) {
+                }
+            }
+            if (effectiveProviderId == null) {
+                throw new IllegalArgumentException("未指定模型提供商(providerId)，无法发送多模态请求");
+            }
+            if (!isEnabledMultimodalChatModel(effectiveProviderId, mo)) {
+                throw new IllegalArgumentException("当前选择的模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
+            }
+            return;
+        }
+
+        if (pid != null) {
+            try {
+                var p = llmGateway.resolve(pid);
+                String effectiveProviderId = p == null ? null : toNonBlank(p.id());
+                String effectiveModel = p == null ? null : toNonBlank(p.defaultChatModel());
+                if (effectiveProviderId == null || effectiveModel == null) {
+                    throw new IllegalArgumentException("未配置可用的默认模型，无法发送多模态请求");
+                }
+                if (!isEnabledMultimodalChatModel(effectiveProviderId, effectiveModel)) {
+                    throw new IllegalArgumentException("当前选择的默认模型未加入多模态聊天模型池，请切换为“自动”或在管理端配置该模型");
+                }
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new IllegalArgumentException("模型提供商解析失败，无法发送多模态请求");
+            }
+            return;
+        }
+
+        if (llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, "MULTIMODAL_CHAT").isEmpty()) {
+            throw new IllegalArgumentException("未配置“多模态聊天(MULTIMODAL_CHAT)”模型池，请先在管理端配置场景模型");
+        }
+    }
+
+    private boolean isEnabledMultimodalChatModel(String providerId, String modelName) {
+        String pid = toNonBlank(providerId);
+        String mn = toNonBlank(modelName);
+        if (pid == null || mn == null) return false;
+        return llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, "MULTIMODAL_CHAT", mn)
+                .filter((e) -> !Boolean.FALSE.equals(e.getEnabled()))
+                .isPresent();
+    }
+
+    private String encodeImageUrlForUpstream(AiChatStreamRequest.ImageInput img) {
+        if (img == null) return null;
+        String url = toNonBlank(img.getUrl());
+        if (url == null) return null;
+
+        if (url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://")) {
+            return url;
+        }
+
+        byte[] bytes = readLocalUploadBytes(img.getFileAssetId(), url);
+        if (bytes == null || bytes.length == 0) return url;
+        if (bytes.length > 4_000_000) return url;
+
+        String mimeType = toNonBlank(img.getMimeType());
+        if (!StringUtils.hasText(mimeType) && img.getFileAssetId() != null) {
+            var fa = fileAssetsRepository.findById(img.getFileAssetId()).orElse(null);
+            mimeType = fa == null ? null : toNonBlank(fa.getMimeType());
+        }
+        if (!StringUtils.hasText(mimeType)) mimeType = "application/octet-stream";
+
+        return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+    }
+
+    private byte[] readLocalUploadBytes(Long fileAssetId, String url) {
+        try {
+            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
+            String u = toNonBlank(url);
+            if (u != null && !prefix.isEmpty() && u.startsWith(prefix + "/")) {
+                int q = u.indexOf('?');
+                if (q >= 0) u = u.substring(0, q);
+                String rel = u.substring(prefix.length());
+                while (rel.startsWith("/")) rel = rel.substring(1);
+
+                Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
+                Path p = root.resolve(rel).normalize();
+                if (p.startsWith(root) && Files.exists(p) && Files.isRegularFile(p)) {
+                    return Files.readAllBytes(p);
+                }
+            }
+
+            if (fileAssetId != null) {
+                var fa = fileAssetsRepository.findById(fileAssetId).orElse(null);
+                if (fa != null && fa.getPath() != null && !fa.getPath().isBlank()) {
+                    Path p = Paths.get(fa.getPath()).toAbsolutePath().normalize();
+                    if (Files.exists(p) && Files.isRegularFile(p)) {
+                        return Files.readAllBytes(p);
+                    }
+                }
+            }
+
+            return null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private AiChatResponseDTO regenerateOnceInternal(Long questionMessageId, AiChatRegenerateStreamRequest req, Long currentUserId) {

@@ -494,6 +494,22 @@ public class LlmGateway {
 
     private record ChatOnceInternalResult(String text, LlmCallQueueService.UsageMetrics usage) {}
 
+    private static Map<String, String> mergeHeaders(Map<String, String> base, Map<String, String> extra) {
+        return LlmGatewaySupport.mergeHeaders(base, extra);
+    }
+
+    private static long elapsedMs(long startedNs) {
+        return LlmGatewaySupport.elapsedMs(startedNs);
+    }
+
+    private static String safeErrorCode(Throwable e) {
+        return LlmGatewaySupport.safeErrorCode(e);
+    }
+
+    private static String safeErrorMessage(Throwable e) {
+        return LlmGatewaySupport.safeErrorMessage(e);
+    }
+
     private static List<ChatMessage> applyThinkingDirectiveToMessages(List<ChatMessage> messages, Boolean enableThinking, String modelName) {
         return LlmGatewaySupport.applyThinkingDirectiveToMessages(messages, enableThinking, modelName);
     }
@@ -524,22 +540,6 @@ public class LlmGateway {
 
     private static String removeClosedThinkBlocks(String text) {
         return LlmGatewaySupport.removeClosedThinkBlocks(text);
-    }
-
-    private static Map<String, String> mergeHeaders(Map<String, String> base, Map<String, String> extra) {
-        return LlmGatewaySupport.mergeHeaders(base, extra);
-    }
-
-    private static long elapsedMs(long startedNs) {
-        return LlmGatewaySupport.elapsedMs(startedNs);
-    }
-
-    private static String safeErrorCode(Throwable e) {
-        return LlmGatewaySupport.safeErrorCode(e);
-    }
-
-    private static String safeErrorMessage(Throwable e) {
-        return LlmGatewaySupport.safeErrorMessage(e);
     }
 
     private static final class ThinkStripper {
@@ -953,14 +953,6 @@ public class LlmGateway {
         Thread.sleep(sleepMs);
     }
 
-    private static boolean isUsageIncomplete(LlmCallQueueService.UsageMetrics usage) {
-        return LlmGatewaySupport.isUsageIncomplete(usage);
-    }
-
-    private static Integer usageTotalOrFallback(LlmCallQueueService.UsageMetrics usage, Integer fallbackTotal) {
-        return LlmGatewaySupport.usageTotalOrFallback(usage, fallbackTotal);
-    }
-
     private static int estimateTokens(long chars) {
         return LlmGatewaySupport.estimateTokens(chars);
     }
@@ -1274,6 +1266,14 @@ public class LlmGateway {
             Exception ex = last == null ? e : last;
             throw new IllegalStateException(upstreamCallFailedPrefix() + ": " + ex.getMessage(), ex);
         }
+    }
+
+    private static boolean isUsageIncomplete(LlmCallQueueService.UsageMetrics usage) {
+        return LlmGatewaySupport.isUsageIncomplete(usage);
+    }
+
+    private static Integer usageTotalOrFallback(LlmCallQueueService.UsageMetrics usage, Integer fallbackTotal) {
+        return LlmGatewaySupport.usageTotalOrFallback(usage, fallbackTotal);
     }
 
     private void extractStreamChunkStats(
@@ -1732,7 +1732,7 @@ public class LlmGateway {
                 provider.apiKey(),
                 provider.baseUrl(),
                 model,
-            patchedMessages,
+                patchedMessages,
                 temperature,
                 topP,
                 maxTokens,

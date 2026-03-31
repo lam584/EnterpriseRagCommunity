@@ -35,7 +35,7 @@ ext['log4j2.version'] = '2.25.3'
 // Pin patched lines while staying on Boot 3.5.x (avoid risky major upgrade to Boot 4 / Framework 7).
 ext['spring-framework.version'] = '6.2.17'
 ext['spring-security.version'] = '6.5.9'
-ext['jackson.version'] = '2.21.1'
+ext['jackson.version'] = '2.19.4'
 
 java {
     toolchain {

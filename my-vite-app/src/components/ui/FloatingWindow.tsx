@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {readJsonFromStorage} from '../../utils/storage';
 
 type Rect = { x: number; y: number; width: number; height: number };
 type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
@@ -24,15 +25,6 @@ type FloatingWindowProps = {
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
-}
-
-function safeParseJson<T>(s: string | null): T | null {
-  if (!s) return null;
-  try {
-    return JSON.parse(s) as T;
-  } catch {
-    return null;
-  }
 }
 
 function computeAnchoredXY(args: {
@@ -108,7 +100,7 @@ export default function FloatingWindow(props: FloatingWindowProps) {
   } | null>(null);
 
   useEffect(() => {
-    const saved = safeParseJson<{ rect?: Rect; collapsed?: boolean; expandedRect?: Rect }>(localStorage.getItem(storageKey));
+      const saved = readJsonFromStorage<{ rect?: Rect; collapsed?: boolean; expandedRect?: Rect }>(storageKey);
     const nextCollapsed =
       typeof initialCollapsed === 'boolean'
         ? initialCollapsed

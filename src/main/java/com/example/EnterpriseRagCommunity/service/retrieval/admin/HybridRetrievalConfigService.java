@@ -98,7 +98,7 @@ public class HybridRetrievalConfigService {
 
         int bm25K = clampInt(dto.getBm25K(), 0, 1000, 50);
         int vecK = clampInt(dto.getVecK(), 0, 1000, 50);
-        boolean fileVecEnabled = dto.getFileVecEnabled() == null || Boolean.TRUE.equals(dto.getFileVecEnabled());
+        boolean fileVecEnabled = dto.getFileVecEnabled() == null || dto.getFileVecEnabled();
         int fileVecK = clampInt(dto.getFileVecK(), 0, 1000, 30);
         if (!fileVecEnabled) fileVecK = 0;
         int hybridK = clampInt(dto.getHybridK(), 1, 1000, 30);

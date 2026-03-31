@@ -29,6 +29,66 @@ final class ModerationLlmAutoRunnerSupport {
     private ModerationLlmAutoRunnerSupport() {
     }
 
+    static final class PolicyEval {
+        final Verdict verdict;
+        final Map<String, Object> details;
+
+        PolicyEval(Verdict verdict, Map<String, Object> details) {
+            this.verdict = verdict;
+            this.details = details;
+        }
+
+        Verdict verdict() {
+            return verdict;
+        }
+
+        Map<String, Object> details() {
+            return details;
+        }
+    }
+
+    static final class Thresholds {
+        final double tAllow;
+        final double tReject;
+        final String source;
+
+        Thresholds(double tAllow, double tReject, String source) {
+            this.tAllow = tAllow;
+            this.tReject = tReject;
+            this.source = source;
+        }
+
+        double tAllow() {
+            return tAllow;
+        }
+
+        double tReject() {
+            return tReject;
+        }
+
+        String source() {
+            return source;
+        }
+    }
+
+    static final class ChunkedVerdict {
+        final Verdict verdict;
+        final Thresholds thresholds;
+
+        ChunkedVerdict(Verdict verdict, Thresholds thresholds) {
+            this.verdict = verdict;
+            this.thresholds = thresholds;
+        }
+
+        Verdict verdict() {
+            return verdict;
+        }
+
+        Thresholds thresholds() {
+            return thresholds;
+        }
+    }
+
     static PolicyEval evaluatePolicyVerdict(
             Map<String, Object> policyConfig,
             String reviewStage,
@@ -624,6 +684,18 @@ final class ModerationLlmAutoRunnerSupport {
         }
     }
 
+    static final class EvidenceImageSelection {
+        final List<ChunkImageRef> selectedRefs;
+        final List<Integer> sourceChunkIndexes;
+        final List<String> placeholders;
+
+        EvidenceImageSelection(List<ChunkImageRef> selectedRefs, List<Integer> sourceChunkIndexes, List<String> placeholders) {
+            this.selectedRefs = selectedRefs == null ? List.of() : selectedRefs;
+            this.sourceChunkIndexes = sourceChunkIndexes == null ? List.of() : sourceChunkIndexes;
+            this.placeholders = placeholders == null ? List.of() : placeholders;
+        }
+    }
+
     static EvidenceImageSelection selectEvidenceDrivenChunkImages(
             Map<String, Object> mem,
             Integer chunkIndex,
@@ -835,6 +907,22 @@ final class ModerationLlmAutoRunnerSupport {
         if (fileAssetId == null) return List.of();
         List<ChunkImageRef> refs = selectChunkImageRefs(objectMapper, chunkText, fileAssetId, extractedMetadataJson);
         return refsToImageInputs(refs, fileAssetId);
+    }
+
+    static final class ChunkImageRef {
+        final Integer index;
+        final String placeholder;
+        final String url;
+        final String mimeType;
+        final Long fileAssetId;
+
+        ChunkImageRef(Integer index, String placeholder, String url, String mimeType, Long fileAssetId) {
+            this.index = index;
+            this.placeholder = placeholder;
+            this.url = url;
+            this.mimeType = mimeType;
+            this.fileAssetId = fileAssetId;
+        }
     }
 
     static List<ChunkImageRef> selectChunkImageRefs(ObjectMapper objectMapper,
@@ -1052,6 +1140,18 @@ final class ModerationLlmAutoRunnerSupport {
         int max = Math.max(20, maxChars);
         if (t.length() <= max) return t;
         return t.substring(0, max);
+    }
+
+    static final class AnchoredSnippet {
+        final String beforeContext;
+        final String text;
+        final String afterContext;
+
+        AnchoredSnippet(String beforeContext, String text, String afterContext) {
+            this.beforeContext = beforeContext;
+            this.text = text;
+            this.afterContext = afterContext;
+        }
     }
 
     static AnchoredSnippet buildAnchoredSnippetFromChunk(String chunkText, String snippet, int anchorChars) {
@@ -1628,106 +1728,6 @@ final class ModerationLlmAutoRunnerSupport {
         String out = sb.toString();
         if (out.length() > 4000) out = out.substring(0, 4000);
         return out;
-    }
-
-    static final class PolicyEval {
-        final Verdict verdict;
-        final Map<String, Object> details;
-
-        PolicyEval(Verdict verdict, Map<String, Object> details) {
-            this.verdict = verdict;
-            this.details = details;
-        }
-
-        Verdict verdict() {
-            return verdict;
-        }
-
-        Map<String, Object> details() {
-            return details;
-        }
-    }
-
-    static final class Thresholds {
-        final double tAllow;
-        final double tReject;
-        final String source;
-
-        Thresholds(double tAllow, double tReject, String source) {
-            this.tAllow = tAllow;
-            this.tReject = tReject;
-            this.source = source;
-        }
-
-        double tAllow() {
-            return tAllow;
-        }
-
-        double tReject() {
-            return tReject;
-        }
-
-        String source() {
-            return source;
-        }
-    }
-
-    static final class ChunkedVerdict {
-        final Verdict verdict;
-        final Thresholds thresholds;
-
-        ChunkedVerdict(Verdict verdict, Thresholds thresholds) {
-            this.verdict = verdict;
-            this.thresholds = thresholds;
-        }
-
-        Verdict verdict() {
-            return verdict;
-        }
-
-        Thresholds thresholds() {
-            return thresholds;
-        }
-    }
-
-    static final class EvidenceImageSelection {
-        final List<ChunkImageRef> selectedRefs;
-        final List<Integer> sourceChunkIndexes;
-        final List<String> placeholders;
-
-        EvidenceImageSelection(List<ChunkImageRef> selectedRefs, List<Integer> sourceChunkIndexes, List<String> placeholders) {
-            this.selectedRefs = selectedRefs == null ? List.of() : selectedRefs;
-            this.sourceChunkIndexes = sourceChunkIndexes == null ? List.of() : sourceChunkIndexes;
-            this.placeholders = placeholders == null ? List.of() : placeholders;
-        }
-    }
-
-    static final class ChunkImageRef {
-        final Integer index;
-        final String placeholder;
-        final String url;
-        final String mimeType;
-        final Long fileAssetId;
-
-        ChunkImageRef(Integer index, String placeholder, String url, String mimeType, Long fileAssetId) {
-            this.index = index;
-            this.placeholder = placeholder;
-            this.url = url;
-            this.mimeType = mimeType;
-            this.fileAssetId = fileAssetId;
-        }
-    }
-
-    static final class AnchoredSnippet {
-        final String beforeContext;
-        final String text;
-        final String afterContext;
-
-        AnchoredSnippet(String beforeContext, String text, String afterContext) {
-            this.beforeContext = beforeContext;
-            this.text = text;
-            this.afterContext = afterContext;
-        }
     }
 
 }

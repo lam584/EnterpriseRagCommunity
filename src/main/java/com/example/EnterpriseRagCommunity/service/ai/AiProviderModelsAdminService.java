@@ -54,7 +54,7 @@ public class AiProviderModelsAdminService {
             AiProviderModelDTO m = new AiProviderModelDTO();
             m.setPurpose(purpose);
             m.setModelName(name);
-            m.setEnabled(e.getEnabled() == null || Boolean.TRUE.equals(e.getEnabled()));
+            m.setEnabled(e.getEnabled() == null || e.getEnabled());
             out.add(m);
         }
 

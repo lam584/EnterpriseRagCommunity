@@ -11,7 +11,6 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -72,7 +71,16 @@ public class TagsController {
 
     private TagsDTO toDTO(TagsEntity entity, Long usageCount) {
         TagsDTO dto = new TagsDTO();
-        BeanUtils.copyProperties(entity, dto);
+        dto.setId(entity.getId());
+        dto.setTenantId(entity.getTenantId());
+        dto.setType(entity.getType());
+        dto.setName(entity.getName());
+        dto.setSlug(entity.getSlug());
+        dto.setDescription(entity.getDescription());
+        dto.setIsSystem(entity.getIsSystem());
+        dto.setIsActive(entity.getIsActive());
+        dto.setThreshold(entity.getThreshold());
+        dto.setCreatedAt(entity.getCreatedAt());
         dto.setUsageCount(usageCount == null ? 0L : usageCount);
         return dto;
     }

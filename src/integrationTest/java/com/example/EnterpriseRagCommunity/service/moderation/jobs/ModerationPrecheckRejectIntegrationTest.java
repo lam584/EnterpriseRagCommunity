@@ -28,8 +28,8 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueR
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationRulesRepository;
 import com.example.EnterpriseRagCommunity.testsupport.MySqlTestcontainersBase;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.TestConstructor;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -40,7 +40,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@TestConstructor(autowireMode = TestConstructor.AutowireMode.ALL)
 class ModerationPrecheckRejectIntegrationTest extends MySqlTestcontainersBase {
 
     private final ModerationRuleAutoRunner ruleRunner;
@@ -54,6 +53,7 @@ class ModerationPrecheckRejectIntegrationTest extends MySqlTestcontainersBase {
     private final CommentsRepository commentsRepository;
     private final ModerationPipelineStepRepository pipelineStepRepository;
 
+    @Autowired
     ModerationPrecheckRejectIntegrationTest(
             ModerationRuleAutoRunner ruleRunner,
             ModerationVecAutoRunner vecRunner,
@@ -271,3 +271,4 @@ class ModerationPrecheckRejectIntegrationTest extends MySqlTestcontainersBase {
         policyConfigRepository.save(policy);
     }
 }
+

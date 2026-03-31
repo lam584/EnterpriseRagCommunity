@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.time.LocalDateTime;
-import java.util.Optional;
 
 @Data
 public class PasswordResetTokensUpdateDTO {
@@ -16,20 +15,48 @@ public class PasswordResetTokensUpdateDTO {
     private Long id;
 
     @ApiModelProperty("用户ID")
-    private Optional<Long> userId = Optional.empty();
+    private Long userId;
+    @JsonIgnore
+    private boolean hasUserId;
 
     @ApiModelProperty("重置令牌哈希")
     @Size(max = 191)
-    private Optional<String> tokenHash = Optional.empty();
+    private String tokenHash;
+    @JsonIgnore
+    private boolean hasTokenHash;
 
     @ApiModelProperty("过期时间")
-    private Optional<LocalDateTime> expiresAt = Optional.empty();
+    private LocalDateTime expiresAt;
+    @JsonIgnore
+    private boolean hasExpiresAt;
 
     @ApiModelProperty("使用时间")
-    private Optional<LocalDateTime> consumedAt = Optional.empty();
+    private LocalDateTime consumedAt;
+    @JsonIgnore
+    private boolean hasConsumedAt;
 
     @ApiModelProperty("创建时间（不可修改）")
     @JsonIgnore
-    private Optional<LocalDateTime> createdAt = Optional.empty();
+    private LocalDateTime createdAt;
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
+        this.hasUserId = true;
+    }
+
+    public void setTokenHash(String tokenHash) {
+        this.tokenHash = tokenHash;
+        this.hasTokenHash = true;
+    }
+
+    public void setExpiresAt(LocalDateTime expiresAt) {
+        this.expiresAt = expiresAt;
+        this.hasExpiresAt = true;
+    }
+
+    public void setConsumedAt(LocalDateTime consumedAt) {
+        this.consumedAt = consumedAt;
+        this.hasConsumedAt = true;
+    }
 }
 

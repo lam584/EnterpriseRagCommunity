@@ -594,11 +594,7 @@ public class RagFileAssetIndexBuildService {
     }
 
     private void deleteByQuery(String indexName, String jsonBody) {
-        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-        String endpoint = elasticsearchUris;
-        if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
-        if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
-        if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
             String idx = URLEncoder.encode(indexName, StandardCharsets.UTF_8);
@@ -609,11 +605,7 @@ public class RagFileAssetIndexBuildService {
             conn.setReadTimeout(20_000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
-
-            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
-            if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
-            }
+            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
 
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
@@ -632,11 +624,7 @@ public class RagFileAssetIndexBuildService {
     }
 
     private void deleteIndexViaHttp(String indexName) {
-        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-        String endpoint = elasticsearchUris;
-        if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
-        if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
-        if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
             String idx = URLEncoder.encode(indexName, StandardCharsets.UTF_8);
@@ -645,10 +633,7 @@ public class RagFileAssetIndexBuildService {
             conn.setRequestMethod("DELETE");
             conn.setConnectTimeout(2000);
             conn.setReadTimeout(10_000);
-            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
-            if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
-            }
+            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
             int code = conn.getResponseCode();
             if (code == 404) return;
             if (code < 200 || code >= 300) {

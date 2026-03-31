@@ -18,11 +18,10 @@ const Login: React.FC = () => {
     const { setCurrentUser, setIsAuthenticated } = useAuth();
     const [formData, setFormData] = useState<LoginFormData>(() => {
         const rememberedEmail = localStorage.getItem('rememberedEmail');
-        const rememberedPassword = localStorage.getItem('rememberedPassword');
         if (rememberedEmail) {
             return {
                 email: rememberedEmail,
-                password: rememberedPassword || '',
+                password: '',
                 rememberMe: true
             };
         }
@@ -180,10 +179,8 @@ const Login: React.FC = () => {
             if (formData.rememberMe) {
                 localStorage.setItem('userData', JSON.stringify(userData));
                 localStorage.setItem('rememberedEmail', formData.email);
-                localStorage.setItem('rememberedPassword', formData.password);
             } else {
                 localStorage.removeItem('rememberedEmail');
-                localStorage.removeItem('rememberedPassword');
             }
 
             // 导航到主页面

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
+import {readJsonFromStorage} from '../../../../utils/storage';
 
 /**
  * 右侧实时预览（放在发帖卡片之外）。
@@ -14,17 +15,8 @@ export default function PostsCreatePreviewSidebar() {
     const key = 'portal.posts.compose.preview';
 
     const read = () => {
-      try {
-        const raw = localStorage.getItem(key);
-        if (!raw) {
-          setMarkdown('');
-          return;
-        }
-        const parsed = JSON.parse(raw) as { markdown?: unknown };
-        setMarkdown(typeof parsed.markdown === 'string' ? parsed.markdown : '');
-      } catch {
-        setMarkdown('');
-      }
+        const parsed = readJsonFromStorage<{ markdown?: unknown }>(key);
+        setMarkdown(parsed && typeof parsed.markdown === 'string' ? parsed.markdown : '');
     };
 
     read();

@@ -109,12 +109,12 @@ public class AdminModerationRulesService {
                 .orElseThrow(() -> new RuntimeException("规则不存在: " + id));
         Map<String, Object> before = summarize(e);
 
-        if (dto.getName() != null && dto.getName().isPresent()) e.setName(dto.getName().get());
-        if (dto.getType() != null && dto.getType().isPresent()) e.setType(dto.getType().get());
-        if (dto.getPattern() != null && dto.getPattern().isPresent()) e.setPattern(dto.getPattern().get());
-        if (dto.getSeverity() != null && dto.getSeverity().isPresent()) e.setSeverity(dto.getSeverity().get());
-        if (dto.getEnabled() != null && dto.getEnabled().isPresent()) e.setEnabled(dto.getEnabled().get());
-        if (dto.getMetadata() != null && dto.getMetadata().isPresent()) e.setMetadata(dto.getMetadata().get());
+        if (dto.isHasName()) e.setName(dto.getName());
+        if (dto.isHasType()) e.setType(dto.getType());
+        if (dto.isHasPattern()) e.setPattern(dto.getPattern());
+        if (dto.isHasSeverity()) e.setSeverity(dto.getSeverity());
+        if (dto.isHasEnabled()) e.setEnabled(dto.getEnabled());
+        if (dto.isHasMetadata()) e.setMetadata(dto.getMetadata());
 
         ModerationRulesEntity saved = repository.save(e);
         auditLogWriter.write(

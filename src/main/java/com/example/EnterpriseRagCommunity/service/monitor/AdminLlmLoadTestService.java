@@ -720,7 +720,7 @@ public class AdminLlmLoadTestService {
         int totalRequests = clampInt(req == null ? null : req.getTotalRequests(), 1, 200_000, 100);
         int ratioChatStream = clampInt(req == null ? null : req.getRatioChatStream(), 0, 100, 70);
         int ratioModerationTest = clampInt(req == null ? null : req.getRatioModerationTest(), 0, 100, 30);
-        boolean stream = req == null || req.getStream() == null || Boolean.TRUE.equals(req.getStream());
+        boolean stream = req == null || req.getStream() == null || req.getStream();
         boolean enableThinking = req != null && Boolean.TRUE.equals(req.getEnableThinking());
         String providerId = trimToNull(req == null ? null : req.getProviderId());
         String model = trimToNull(req == null ? null : req.getModel());

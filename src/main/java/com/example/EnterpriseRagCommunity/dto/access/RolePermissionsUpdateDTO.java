@@ -1,10 +1,9 @@
 package com.example.EnterpriseRagCommunity.dto.access;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.annotations.ApiModelProperty;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
-
-import java.util.Optional;
 
 @Data
 public class RolePermissionsUpdateDTO {
@@ -17,5 +16,12 @@ public class RolePermissionsUpdateDTO {
     private Long permissionId;
 
     @ApiModelProperty("是否允许")
-    private Optional<Boolean> allow;
+    private Boolean allow;
+    @JsonIgnore
+    private boolean hasAllow;
+
+    public void setAllow(Boolean allow) {
+        this.allow = allow;
+        this.hasAllow = true;
+    }
 }

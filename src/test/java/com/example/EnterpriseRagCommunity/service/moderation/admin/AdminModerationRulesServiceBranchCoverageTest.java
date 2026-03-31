@@ -231,12 +231,12 @@ public class AdminModerationRulesServiceBranchCoverageTest {
 
         AdminModerationRulesService svc = new AdminModerationRulesService(repo, auditLogWriter, auditDiffBuilder);
         ModerationRulesUpdateDTO dto = new ModerationRulesUpdateDTO();
-        dto.setName(Optional.of("new-name"));
-        dto.setType(Optional.of(RuleType.PATTERN));
-        dto.setPattern(Optional.of("p2"));
-        dto.setSeverity(Optional.of(Severity.HIGH));
-        dto.setEnabled(Optional.of(false));
-        dto.setMetadata(Optional.of(Map.of("category", "updated")));
+        dto.setName("new-name");
+        dto.setType(RuleType.PATTERN);
+        dto.setPattern("p2");
+        dto.setSeverity(Severity.HIGH);
+        dto.setEnabled(false);
+        dto.setMetadata(Map.of("category", "updated"));
 
         ModerationRulesEntity out = svc.update(12L, dto);
 
@@ -260,7 +260,7 @@ public class AdminModerationRulesServiceBranchCoverageTest {
     }
 
     @Test
-    void updateShouldKeepValuesWhenOptionalsAreEmptyAndUsernameBlank() {
+    void updateShouldKeepValuesWhenNoFieldPresentAndUsernameBlank() {
         Authentication auth = mock(Authentication.class);
         when(auth.isAuthenticated()).thenReturn(true);
         when(auth.getPrincipal()).thenReturn("principal");
@@ -278,12 +278,6 @@ public class AdminModerationRulesServiceBranchCoverageTest {
 
         AdminModerationRulesService svc = new AdminModerationRulesService(repo, auditLogWriter, auditDiffBuilder);
         ModerationRulesUpdateDTO dto = new ModerationRulesUpdateDTO();
-        dto.setName(Optional.empty());
-        dto.setType(Optional.empty());
-        dto.setPattern(Optional.empty());
-        dto.setSeverity(Optional.empty());
-        dto.setEnabled(Optional.empty());
-        dto.setMetadata(Optional.empty());
 
         ModerationRulesEntity out = svc.update(13L, dto);
 

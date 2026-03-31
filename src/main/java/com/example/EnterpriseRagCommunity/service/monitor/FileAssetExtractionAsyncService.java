@@ -911,12 +911,9 @@ public class FileAssetExtractionAsyncService {
                 }
 
                 String ext = extLowerOrNull(norm);
-                boolean nestedArchive = false;
-                if (ext != null && !ext.isBlank()) {
-                    nestedArchive = isArchiveExt(ext);
-                } else {
-                    nestedArchive = looksLikeArchiveBytes(data);
-                }
+                boolean nestedArchive = ext != null && !ext.isBlank()
+                        ? isArchiveExt(ext)
+                        : looksLikeArchiveBytes(data);
                 try {
                     if (nestedArchive) {
                         if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
@@ -1012,12 +1009,9 @@ public class FileAssetExtractionAsyncService {
                 }
 
                 String ext = extLowerOrNull(norm);
-                boolean nestedArchive = false;
-                if (ext != null && !ext.isBlank()) {
-                    nestedArchive = isArchiveExt(ext);
-                } else {
-                    nestedArchive = looksLikeArchiveBytes(data);
-                }
+                boolean nestedArchive = ext != null && !ext.isBlank()
+                        ? isArchiveExt(ext)
+                        : looksLikeArchiveBytes(data);
                 try {
                     if (nestedArchive) {
                         if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
@@ -1111,12 +1105,9 @@ public class FileAssetExtractionAsyncService {
                 }
 
                 String ext = extLowerOrNull(norm);
-                boolean nestedArchive = false;
-                if (ext != null && !ext.isBlank()) {
-                    nestedArchive = isArchiveExt(ext);
-                } else {
-                    nestedArchive = looksLikeArchiveBytes(data);
-                }
+                boolean nestedArchive = ext != null && !ext.isBlank()
+                        ? isArchiveExt(ext)
+                        : looksLikeArchiveBytes(data);
                 try {
                     if (nestedArchive) {
                         if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();

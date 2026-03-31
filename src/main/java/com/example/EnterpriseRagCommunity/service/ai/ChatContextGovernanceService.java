@@ -49,7 +49,7 @@ public class ChatContextGovernanceService {
         out.setBeforeTokens(beforeTokens);
         out.setBeforeChars(beforeChars);
 
-        boolean enabled = cfg == null || cfg.getEnabled() == null || Boolean.TRUE.equals(cfg.getEnabled());
+        boolean enabled = cfg == null || cfg.getEnabled() == null || cfg.getEnabled();
         if (!enabled || messages.isEmpty()) {
             out.setMessages(messages);
             out.setChanged(false);

@@ -32,8 +32,7 @@ public class ElasticsearchIkAnalyzerProbe {
     }
 
     private boolean probeOnce() {
-        String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-        String endpoint = elasticsearchUris;
+        String endpoint = systemConfigurationService.getConfig("spring.elasticsearch.uris");
         if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
         if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);

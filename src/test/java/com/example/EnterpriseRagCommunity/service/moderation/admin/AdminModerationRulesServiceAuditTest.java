@@ -93,7 +93,7 @@ public class AdminModerationRulesServiceAuditTest {
 
         AdminModerationRulesService svc = new AdminModerationRulesService(repo, auditLogWriter, auditDiffBuilder);
         ModerationRulesUpdateDTO dto = new ModerationRulesUpdateDTO();
-        dto.setEnabled(Optional.of(false));
+        dto.setEnabled(false);
 
         svc.update(11L, dto);
 

@@ -12,7 +12,6 @@ import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.BeanUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -114,7 +113,12 @@ public class BoardServiceImpl implements BoardService {
     @Transactional
     public BoardsDTO createBoard(BoardsCreateDTO createDTO) {
         BoardsEntity entity = new BoardsEntity();
-        BeanUtils.copyProperties(createDTO, entity);
+        entity.setTenantId(createDTO.getTenantId());
+        entity.setParentId(createDTO.getParentId());
+        entity.setName(createDTO.getName());
+        entity.setDescription(createDTO.getDescription());
+        entity.setVisible(createDTO.getVisible());
+        entity.setSortOrder(createDTO.getSortOrder());
         entity.setCreatedAt(LocalDateTime.now());
         entity.setUpdatedAt(LocalDateTime.now());
 
@@ -148,32 +152,32 @@ public class BoardServiceImpl implements BoardService {
                 .orElseThrow(() -> new RuntimeException("Board not found with id: " + updateDTO.getId()));
         Map<String, Object> before = summarize(entity);
 
-        if (updateDTO.getTenantId() != null && updateDTO.getTenantId().isPresent()) {
-            entity.setTenantId(updateDTO.getTenantId().get());
+        if (updateDTO.isHasTenantId()) {
+            entity.setTenantId(updateDTO.getTenantId());
         }
-        if (updateDTO.getParentId() != null && updateDTO.getParentId().isPresent()) {
-            Long pid = updateDTO.getParentId().get();
-            entity.setParentId(pid == 0 ? null : pid);
+        if (updateDTO.isHasParentId()) {
+            Long pid = updateDTO.getParentId();
+            entity.setParentId(pid == null || pid == 0 ? null : pid);
         }
-        if (updateDTO.getName() != null && updateDTO.getName().isPresent()) {
-            String name = updateDTO.getName().get();
-            if (name.length() > 64) {
+        if (updateDTO.isHasName()) {
+            String name = updateDTO.getName();
+            if (name != null && name.length() > 64) {
                 throw new IllegalArgumentException("板块名称长度不能超过64个字符");
             }
             entity.setName(name);
         }
-        if (updateDTO.getDescription() != null && updateDTO.getDescription().isPresent()) {
-            String description = updateDTO.getDescription().get();
-            if (description.length() > 255) {
+        if (updateDTO.isHasDescription()) {
+            String description = updateDTO.getDescription();
+            if (description != null && description.length() > 255) {
                 throw new IllegalArgumentException("板块描述长度不能超过255个字符");
             }
             entity.setDescription(description);
         }
-        if (updateDTO.getVisible() != null && updateDTO.getVisible().isPresent()) {
-            entity.setVisible(updateDTO.getVisible().get());
+        if (updateDTO.isHasVisible()) {
+            entity.setVisible(updateDTO.getVisible());
         }
-        if (updateDTO.getSortOrder() != null && updateDTO.getSortOrder().isPresent()) {
-            entity.setSortOrder(updateDTO.getSortOrder().get());
+        if (updateDTO.isHasSortOrder()) {
+            entity.setSortOrder(updateDTO.getSortOrder());
         }
 
         entity.setUpdatedAt(LocalDateTime.now());
@@ -214,7 +218,15 @@ public class BoardServiceImpl implements BoardService {
 
     private BoardsDTO convertToDTO(BoardsEntity entity) {
         BoardsDTO dto = new BoardsDTO();
-        BeanUtils.copyProperties(entity, dto);
+        dto.setId(entity.getId());
+        dto.setTenantId(entity.getTenantId());
+        dto.setParentId(entity.getParentId());
+        dto.setName(entity.getName());
+        dto.setDescription(entity.getDescription());
+        dto.setVisible(entity.getVisible());
+        dto.setSortOrder(entity.getSortOrder());
+        dto.setCreatedAt(entity.getCreatedAt());
+        dto.setUpdatedAt(entity.getUpdatedAt());
         return dto;
     }
 

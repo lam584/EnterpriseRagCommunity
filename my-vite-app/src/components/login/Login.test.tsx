@@ -189,7 +189,7 @@ describe('Login', () => {
     expect(authContextMocks.setIsAuthenticated).toHaveBeenCalledWith(true);
 
     expect(localStorage.getItem('rememberedEmail')).toBe('test@example.com');
-    expect(localStorage.getItem('rememberedPassword')).toBe('123456');
+      expect(localStorage.getItem('rememberedPassword')).toBeNull();
   });
 
   it('shows error when csrf token fetch fails', async () => {
@@ -238,7 +238,7 @@ describe('Login', () => {
 
     expect(await screen.findByText('HOME')).not.toBeNull();
     expect(localStorage.getItem('rememberedEmail')).toBeNull();
-    expect(localStorage.getItem('rememberedPassword')).toBeNull();
+      expect(localStorage.getItem('rememberedPassword')).toBe('old');
   });
 
   it('enters verify mode for EMAIL_NOT_VERIFIED and supports verify success', async () => {
