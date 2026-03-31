@@ -14,6 +14,7 @@ plugins {
     id 'java'
     id 'war'
     id 'jacoco'
+    id 'com.github.jk1.dependency-license-report' version '2.5'
     id 'org.owasp.dependencycheck' version '12.2.0'
     id 'org.sonarqube' version '7.2.2.6593'
     id 'org.springframework.boot' version '3.5.12'
@@ -108,7 +109,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-log4j2'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-mail'
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation('org.springframework.boot:spring-boot-starter-data-jpa') {
+        exclude group: 'org.springframework', module: 'spring-aspects'
+    }
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
@@ -388,7 +391,7 @@ tasks.register('checkLicenseWhitelist') {
 
             Set<String> found = [] as Set
             (licCell =~ /\[([^]]+)]/).findAll().each { m ->
-                String lic = (m[1 as String] as String).trim()
+                String lic = (m[1] as String).trim()
                 if (lic) found.add(lic)
             }
             if (found.isEmpty()) {
@@ -396,8 +399,9 @@ tasks.register('checkLicenseWhitelist') {
                 if (plain) found.add(plain)
             }
 
-            if (!found.isEmpty() && found.every { !allowed.contains(it) }) {
-                offenders.add("line ${num}: ${dep}@${ver} -> ${found.join(', ')}")
+            Set<String> nonAllowed = found.findAll { !allowed.contains(it) } as Set
+            if (!nonAllowed.isEmpty()) {
+                offenders.add("line ${num}: ${dep}@${ver} -> ${nonAllowed.join(', ')}")
             }
         }
 
@@ -408,6 +412,19 @@ tasks.register('checkLicenseWhitelist') {
             )
         }
     }
+}
+
+licenseReport {
+    outputDir = "$projectDir/licenses"
+    configurations = ['runtimeClasspath']
+    renderers = [new com.github.jk1.license.render.TextReportRenderer('THIRD-PARTY-LICENSES.txt')]
+}
+
+tasks.register('licenseCompliance') {
+    group = 'verification'
+    description = 'Generates third-party license report and verifies strict whitelist policy.'
+    dependsOn tasks.named('generateLicenseReport')
+    dependsOn tasks.named('checkLicenseWhitelist')
 }
 
 if (providers.gradleProperty('enforceLicenseWhitelist').map { Boolean.parseBoolean(it) }.orElse(false).get()) {
