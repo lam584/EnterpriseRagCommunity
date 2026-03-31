@@ -211,9 +211,7 @@ public class AiPostTitleService {
 
         // normalize: dedup + limit
         LinkedHashSet<String> set = new LinkedHashSet<>();
-        for (String t : titles) {
-            set.add(t);
-        }
+        set.addAll(titles);
 
         List<String> out = new ArrayList<>(set);
         if (out.size() > expectedCount) {

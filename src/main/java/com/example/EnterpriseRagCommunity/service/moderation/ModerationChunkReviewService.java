@@ -399,10 +399,9 @@ public class ModerationChunkReviewService {
         });
     }
 
-    private static int clampInt(int v, int min, int max) {
-        if (v < min) return min;
-        if (v > max) return max;
-        return v;
+    private static int clampInt(int v, int max) {
+        if (v < 1) return 1;
+        return Math.min(v, max);
     }
 
     @Transactional
@@ -418,7 +417,7 @@ public class ModerationChunkReviewService {
                 PageRequest.of(0, 1, Sort.by(Sort.Order.asc("chunkIndex"), Sort.Order.asc("id")))
         );
         if (list == null || list.isEmpty()) return Optional.empty();
-        ModerationChunkEntity c = list.get(0);
+        ModerationChunkEntity c = list.getFirst();
         if (c == null) return Optional.empty();
         int attempts = c.getAttempts() == null ? 0 : c.getAttempts();
         if (attempts >= maxAttempts) return Optional.empty();
@@ -675,7 +674,6 @@ public class ModerationChunkReviewService {
         try {
             fb = fallbackConfigRepository.findFirstByOrderByUpdatedAtDescIdDesc().orElse(null);
         } catch (Exception ignore) {
-            fb = null;
         }
         Map<String, Object> thresholds = fb == null ? null : fb.getThresholds();
         int memoryMaxChars = (int) clampLong(asLong(thresholds == null ? null : thresholds.get("chunk.memory.maxChars"), 8000L), 500L, 200_000L);
@@ -774,7 +772,7 @@ public class ModerationChunkReviewService {
                                     String t = sanitizeEvidenceItemForMemory(String.valueOf(o), MAX_EVIDENCE_ITEM_CHARS);
                                     if (t == null || t.isEmpty()) continue;
                                     String fp = evidenceFingerprint(t);
-                                    if (fp == null || fp.isBlank()) fp = "raw|" + normalizeForEvidenceFingerprint(t);
+                                    if (fp.isBlank()) fp = "raw|" + normalizeForEvidenceFingerprint(t);
                                     if (!fingerprints.add(fp)) continue;
                                     out.add(t);
                                     if (out.size() >= 20) break;
@@ -792,7 +790,7 @@ public class ModerationChunkReviewService {
                                 String t = sanitizeEvidenceItemForMemory(s, MAX_EVIDENCE_ITEM_CHARS);
                                 if (t == null || t.isEmpty()) continue;
                                 String fp = evidenceFingerprint(t);
-                                if (fp == null || fp.isBlank()) fp = "raw|" + normalizeForEvidenceFingerprint(t);
+                                if (fp.isBlank()) fp = "raw|" + normalizeForEvidenceFingerprint(t);
                                 if (!fingerprints.add(fp)) continue;
                                 llmEvidence.add(t);
                                 if (llmEvidence.size() >= 20) break;
@@ -954,7 +952,7 @@ public class ModerationChunkReviewService {
         if (t.isEmpty()) return "";
         if (!(t.startsWith("{") && t.endsWith("}"))) return "raw|" + normalizeForEvidenceFingerprint(trimEvidenceNoiseTail(t));
         try {
-            Map<String, Object> node = MAPPER.readValue(t, Map.class);
+            Map node = MAPPER.readValue(t, Map.class);
             if (node == null) return "raw|" + normalizeForEvidenceFingerprint(trimEvidenceNoiseTail(t));
             String text = normalizeForEvidenceFingerprint(trimEvidenceNoiseTail(asString(node.get("text"))));
             if (!text.isBlank()) return "text|" + text;
@@ -1278,8 +1276,8 @@ public class ModerationChunkReviewService {
             }
         }
 
-        int imageTokenBudget = visionPrompt == null || visionPrompt.getVisionImageTokenBudget() == null ? 50_000 : clampInt(visionPrompt.getVisionImageTokenBudget(), 1, 300_000);
-        int maxImagesPerRequest = visionPrompt == null || visionPrompt.getVisionMaxImagesPerRequest() == null ? 10 : clampInt(visionPrompt.getVisionMaxImagesPerRequest(), 1, 50);
+        int imageTokenBudget = visionPrompt == null || visionPrompt.getVisionImageTokenBudget() == null ? 50_000 : clampInt(visionPrompt.getVisionImageTokenBudget(), 300_000);
+        int maxImagesPerRequest = visionPrompt == null || visionPrompt.getVisionMaxImagesPerRequest() == null ? 10 : clampInt(visionPrompt.getVisionMaxImagesPerRequest(), 50);
         boolean highRes = visionPrompt != null && Boolean.TRUE.equals(visionPrompt.getVisionHighResolutionImages());
         int maxPixels = visionPrompt == null || visionPrompt.getVisionMaxPixels() == null ? 2_621_440 : Math.max(1, visionPrompt.getVisionMaxPixels());
 

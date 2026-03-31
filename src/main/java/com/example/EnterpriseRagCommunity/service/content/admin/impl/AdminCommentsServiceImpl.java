@@ -157,7 +157,7 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
                         return cb.and(p3, cb.or(p1, p2));
                     })
                     .stream()
-                    .map(u -> u.getId())
+                    .map(com.example.EnterpriseRagCommunity.entity.access.UsersEntity::getId)
                     .toList();
             // no match -> return empty quickly
             if (authorIdsByName.isEmpty()) {
@@ -183,7 +183,7 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
                 predicates.add(cb.equal(root.get("status"), statusEnum));
             }
             if (isDeleted != null) {
-                if (Boolean.FALSE.equals(isDeleted)) {
+                if (!isDeleted) {
                     // 兼容历史数据 is_deleted = NULL
                     predicates.add(cb.or(cb.isNull(root.get("isDeleted")), cb.isFalse(root.get("isDeleted"))));
                 } else {
@@ -220,7 +220,10 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
                     query.where(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
                 }
             }
-            return query.getRestriction();
+            if (query != null) {
+                return query.getRestriction();
+            }
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
         };
 
         Page<CommentsEntity> entityPage = commentsRepository.findAll(spec, pageable);
@@ -327,7 +330,7 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
         String email = auth.getName();
-        return administratorService.findByUsername(email).map(x -> x.getId()).orElse(null);
+        return administratorService.findByUsername(email).map(com.example.EnterpriseRagCommunity.entity.access.UsersEntity::getId).orElse(null);
     }
 
     private String currentActorNameOrNull() {

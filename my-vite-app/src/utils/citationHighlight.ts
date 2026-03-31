@@ -42,7 +42,7 @@ function transformSkippingPattern(source: string, pattern: RegExp, mapper: (segm
 
 function extractCitationIndexesFromTail(text: string): number[] {
   const out: number[] = [];
-  for (const m of String(text ?? '').matchAll(/\[(\d{1,3})\](?!\()/g)) {
+  for (const m of String(text ?? '').matchAll(/\[(\d{1,3})](?!\()/g)) {
     const idx = Number(m[1]);
     if (!Number.isFinite(idx) || idx <= 0) continue;
     out.push(idx);
@@ -127,7 +127,7 @@ export function buildCitationFallbackTerms(md: string): Map<number, string[]> {
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   const collect = (txt: string) => {
-    for (const m of txt.matchAll(/\[(\d{1,3})\](?!\()/g)) {
+    for (const m of txt.matchAll(/\[(\d{1,3})](?!\()/g)) {
       const idx = Number(m[1]);
       if (!Number.isFinite(idx) || idx <= 0) continue;
       const pos = m.index ?? 0;

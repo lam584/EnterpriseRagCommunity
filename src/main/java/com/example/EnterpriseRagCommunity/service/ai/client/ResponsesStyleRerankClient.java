@@ -39,7 +39,7 @@ public class ResponsesStyleRerankClient {
     }
 
     public String rerankOnce(RerankRequest req) throws IOException {
-        String baseUrlWithV1 = normalizeBaseUrlWithV1(req.baseUrl(), null);
+        String baseUrlWithV1 = normalizeBaseUrlWithV1(req.baseUrl());
         String apiKey = normalizeString(req.apiKey(), null);
         String model = normalizeString(req.model(), null);
         if (model == null || model.isBlank()) throw new IllegalArgumentException("model 不能为空");
@@ -50,7 +50,7 @@ public class ResponsesStyleRerankClient {
         payload.put("query", req.query() == null ? "" : req.query());
         payload.put("documents", req.documents() == null ? List.of() : req.documents());
         if (req.topN() != null && req.topN() > 0) payload.put("top_n", req.topN());
-        if (req.returnDocuments() != null) payload.put("return_documents", Boolean.TRUE.equals(req.returnDocuments()));
+        if (req.returnDocuments() != null) payload.put("return_documents", req.returnDocuments());
         if (req.instruct() != null && !req.instruct().isBlank()) payload.put("instruct", req.instruct().trim());
 
         Map<String, Object> body = new LinkedHashMap<>();
@@ -119,8 +119,8 @@ public class ResponsesStyleRerankClient {
         return new String(is.readAllBytes(), StandardCharsets.UTF_8);
     }
 
-    private static String normalizeBaseUrlWithV1(String baseUrl, String fallback) {
-        String u = normalizeString(baseUrl, fallback);
+    private static String normalizeBaseUrlWithV1(String baseUrl) {
+        String u = normalizeString(baseUrl, null);
         if (u == null) return "";
         u = u.trim();
         if (u.endsWith("/")) u = u.substring(0, u.length() - 1);

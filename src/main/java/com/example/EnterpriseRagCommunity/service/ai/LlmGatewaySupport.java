@@ -75,7 +75,7 @@ final class LlmGatewaySupport {
         Object contentObj = lastUser == null ? null : lastUser.content();
         if (!(contentObj instanceof String content)) return messages;
 
-        String patched = applyThinkingDirective(content, Boolean.TRUE.equals(enableThinking), modelName);
+        String patched = applyThinkingDirective(content, enableThinking, modelName);
         if (patched.equals(content)) return messages;
 
         java.util.ArrayList<ChatMessage> next = new java.util.ArrayList<>(messages.size());
@@ -243,7 +243,7 @@ final class LlmGatewaySupport {
     static String safeErrorCode(Throwable e) {
         if (e == null) return "";
         String c = extractErrorCode(e);
-        return c == null ? "" : c;
+        return c;
     }
 
     static String safeErrorMessage(Throwable e) {

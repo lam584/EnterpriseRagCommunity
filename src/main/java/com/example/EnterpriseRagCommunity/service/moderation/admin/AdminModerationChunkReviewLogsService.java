@@ -130,7 +130,7 @@ public class AdminModerationChunkReviewLogsService {
         String metaJson = ex.getExtractedMetadataJson();
         if (metaJson == null || metaJson.isBlank()) return List.of();
 
-        Map<String, Object> meta;
+        Map meta;
         try {
             meta = objectMapper.readValue(metaJson, Map.class);
         } catch (Exception ignore) {

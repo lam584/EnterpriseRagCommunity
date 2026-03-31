@@ -3,7 +3,6 @@ package com.example.EnterpriseRagCommunity.controller.content.admin;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
-import com.example.EnterpriseRagCommunity.security.Permissions;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;

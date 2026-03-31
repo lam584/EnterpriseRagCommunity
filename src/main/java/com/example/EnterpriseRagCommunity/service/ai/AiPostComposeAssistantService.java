@@ -361,7 +361,7 @@ public class AiPostComposeAssistantService {
         out.flush();
 
         PortalChatConfigDTO.PostComposeAssistantConfigDTO portalCfg = portalChatConfigService.getConfigOrDefault().getPostComposeAssistant();
-        boolean deepThink = req.getDeepThink() != null ? Boolean.TRUE.equals(req.getDeepThink()) : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
+        boolean deepThink = req.getDeepThink() != null ? req.getDeepThink() : Boolean.TRUE.equals(portalCfg.getDefaultDeepThink());
 
         String baseSystemPromptCode = deepThink ? portalCfg.getDeepThinkSystemPromptCode() : portalCfg.getSystemPromptCode();
         String baseSystemPrompt = resolvePromptText(baseSystemPromptCode);
@@ -382,7 +382,7 @@ public class AiPostComposeAssistantService {
 
         List<ChatMessage> messages = new ArrayList<>();
         messages.add(ChatMessage.system(joinSystemPrompts(baseSystemPrompt, userDefaultSystemPrompt, composeSystemPrompt)));
-        int chatHistoryLimit = portalCfg.getChatHistoryLimit() == null ? 20 : Math.max(1, Math.min(200, portalCfg.getChatHistoryLimit()));
+        int chatHistoryLimit = portalCfg.getChatHistoryLimit() == null ? 20 : Math.clamp(portalCfg.getChatHistoryLimit(), 1, 200);
         List<AiPostComposeStreamRequest.ChatHistoryMessage> history = req.getChatHistory();
         if (history != null && !history.isEmpty()) {
             int from = Math.max(0, history.size() - chatHistoryLimit);
@@ -462,7 +462,7 @@ public class AiPostComposeAssistantService {
             );
         } catch (Exception ex) {
             out.write("event: error\n");
-            out.write("data: {\"message\":\"" + jsonEscape("上游AI调用失败：" + String.valueOf(ex.getMessage())) + "\"}\n\n");
+            out.write("data: {\"message\":\"" + jsonEscape("上游AI调用失败：" + ex.getMessage()) + "\"}\n\n");
             out.write("event: done\n");
             out.write("data: {}\n\n");
             out.flush();

@@ -1,7 +1,6 @@
 package com.example.EnterpriseRagCommunity.controller.moderation.admin;
 
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationConfidenceFallbackConfigDTO;
-import com.example.EnterpriseRagCommunity.security.Permissions;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationFallbackService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;

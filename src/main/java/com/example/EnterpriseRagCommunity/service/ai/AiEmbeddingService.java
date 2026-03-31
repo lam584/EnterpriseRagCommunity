@@ -165,12 +165,10 @@ public class AiEmbeddingService {
     }
 
     private static String buildBody(String model, String input) {
-        StringBuilder sb = new StringBuilder();
-        sb.append('{');
-        sb.append("\"model\":\"").append(escapeJson(model)).append("\"");
-        sb.append(",\"input\":\"").append(escapeJson(input)).append("\"");
-        sb.append('}');
-        return sb.toString();
+        return '{' +
+                "\"model\":\"" + escapeJson(model) + "\"" +
+                ",\"input\":\"" + escapeJson(input) + "\"" +
+                '}';
     }
 
     private static String escapeJson(String s) {

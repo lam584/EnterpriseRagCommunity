@@ -275,7 +275,7 @@ public class AccountProfileController {
         Map<String, Object> pending = pending0 == null ? new LinkedHashMap<>(publicProfile) : new LinkedHashMap<>(pending0);
         if (!pending.containsKey("username")) pending.put("username", user.getUsername());
 
-        if (reqUsername != null && StringUtils.hasText(reqUsername)) {
+        if (StringUtils.hasText(reqUsername)) {
             pending.put("username", reqUsername.trim());
         }
         if (req.isAvatarUrlPresent()) pending.put("avatarUrl", emptyToNull(req.getAvatarUrl()));
@@ -609,23 +609,20 @@ public class AccountProfileController {
         if (user == null) return m;
         m.put("userId", user.getId());
         Object md = user.getMetadata();
-        if (!(md instanceof Map)) {
+        if (!(md instanceof Map<?, ?> meta)) {
             m.put("login2faEnabled", null);
             return m;
         }
-        Map<?, ?> meta = (Map<?, ?>) md;
         Object prefsObj = meta.get("preferences");
-        if (!(prefsObj instanceof Map)) {
+        if (!(prefsObj instanceof Map<?, ?> prefs)) {
             m.put("login2faEnabled", null);
             return m;
         }
-        Map<?, ?> prefs = (Map<?, ?>) prefsObj;
         Object secObj = prefs.get("security");
-        if (!(secObj instanceof Map)) {
+        if (!(secObj instanceof Map<?, ?> sec)) {
             m.put("login2faEnabled", null);
             return m;
         }
-        Map<?, ?> sec = (Map<?, ?>) secObj;
         Object v = sec.get("login2faEnabled");
         m.put("login2faEnabled", v);
         return m;
@@ -636,12 +633,11 @@ public class AccountProfileController {
         if (user == null) return m;
         m.put("userId", user.getId());
         m.put("usernameLen", user.getUsername() == null ? 0 : user.getUsername().length());
-        Object md = user.getMetadata();
-        if (!(md instanceof Map)) return m;
-        Map<?, ?> meta = (Map<?, ?>) md;
+        Map<?, ?> md = user.getMetadata();
+        if (md == null) return m;
+        Map<?, ?> meta = md;
         Object profileObj = meta.get("profile");
-        if (!(profileObj instanceof Map)) return m;
-        Map<?, ?> profile = (Map<?, ?>) profileObj;
+        if (!(profileObj instanceof Map<?, ?> profile)) return m;
         m.put("avatarUrlLen", strLen(profile.get("avatarUrl")));
         m.put("bioLen", strLen(profile.get("bio")));
         m.put("locationLen", strLen(profile.get("location")));

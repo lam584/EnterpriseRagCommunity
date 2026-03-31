@@ -410,7 +410,7 @@ public class ModerationLlmAutoRunner {
                         AuditResult.SUCCESS,
                         "LLM skipped (disabled) -> auto approve",
                         run.getTraceId(),
-                        Map.of("runId", run.getId(), "stage", "LLM", "decision", "APPROVE", "llmEnabled", false, "ruleDecision", String.valueOf(ruleDecision), "vecDecision", String.valueOf(vecDecision))
+                        Map.of("runId", run.getId(), "stage", "LLM", "decision", "APPROVE", "llmEnabled", false, "ruleDecision", ruleDecision, "vecDecision", vecDecision)
                 );
                 return;
             }
@@ -607,9 +607,9 @@ public class ModerationLlmAutoRunner {
 
             boolean textOnly = res == null || res.getImages() == null || res.getImages().isEmpty();
             Double sc0 = res == null ? null : res.getScore();
-            double score0 = sc0 == null ? 0.0 : clamp01(sc0, 0.0);
+            double score0 = sc0 == null ? 0.0 : clamp01(sc0);
             Double un0 = res == null ? null : res.getUncertainty();
-            double uncertainty0 = (un0 == null || !Double.isFinite(un0)) ? 0.0 : clamp01(un0, 0.0);
+            double uncertainty0 = (un0 == null || !Double.isFinite(un0)) ? 0.0 : clamp01(un0);
 
             boolean inGrayZone = score0 >= grayMin && score0 <= grayMax;
             boolean uncertain = uncertainty0 >= uncertaintyMin;
@@ -833,14 +833,14 @@ public class ModerationLlmAutoRunner {
                             g.put("imageDescription", imageRes.getStages().getImage().getDescription());
                         }
                     }
-                    double imageStrongRejectThreshold = clamp01Strict(fb == null ? 1.0 : fb.getLlmStrongRejectThreshold());
+                    double imageStrongRejectThreshold = clamp01Strict(fb.getLlmStrongRejectThreshold());
                     try {
-                        Object v = fb == null || fb.getThresholds() == null ? null : fb.getThresholds().get("chunk.withImages.imageStrongRejectThreshold");
+                        Object v = fb.getThresholds() == null ? null : fb.getThresholds().get("chunk.withImages.imageStrongRejectThreshold");
                         if (v != null) imageStrongRejectThreshold = clamp01Strict(asDoubleRequired(v, "chunk.withImages.imageStrongRejectThreshold"));
                     } catch (Exception ignore) {
                     }
                     if (imageRes != null && imageRes.getScore() != null) {
-                        double s = clamp01(imageRes.getScore(), 0.0);
+                        double s = clamp01(imageRes.getScore());
                         if (s >= imageStrongRejectThreshold) {
                             if (llmStepId != null) {
                                 pipelineTraceService.finishStepOk(llmStepId, "REJECT", s, Map.of("chunkedFinalFromImageStage", true, "imageStrongRejectThreshold", imageStrongRejectThreshold, "chunkedImageStage", g));
@@ -1219,7 +1219,7 @@ public class ModerationLlmAutoRunner {
                                 return res;
                             } catch (Exception ex) {
                                 chunkReviewService.markChunkFailed(c.chunkId(), ex.getMessage(), false);
-                                task.reportOutput("{\"error\":\"" + String.valueOf(ex.getMessage()) + "\"}");
+                                task.reportOutput("{\"error\":\"" + ex.getMessage() + "\"}");
                                 throw ex;
                             } finally {
                                 try {
@@ -1475,7 +1475,7 @@ public class ModerationLlmAutoRunner {
         if (before == null || before.isBlank()) return null;
         Object afterObj = node.get("after_context");
         String after = afterObj == null ? null : String.valueOf(afterObj).trim();
-        String extracted = extractBetweenAnchorsByRegex(chunkText, before, after, 500);
+        String extracted = extractBetweenAnchorsByRegex(chunkText, before, after);
         if (extracted == null || extracted.isBlank()) return null;
         return extracted;
     }
@@ -1494,6 +1494,14 @@ public class ModerationLlmAutoRunner {
 
     static List<String> asStringList(Object v) {
         return ModerationLlmAutoRunnerSupport.asStringList(v);
+    }
+
+    public TokenCountService getTokenCountService() {
+        return tokenCountService;
+    }
+
+    public LlmQueueProperties getLlmQueueProperties() {
+        return llmQueueProperties;
     }
 
     // Backward-compatible static helpers for existing tests/callers.
@@ -1562,9 +1570,6 @@ public class ModerationLlmAutoRunner {
                                                                   List<ChunkImageRef> candidateRefs) {
         ModerationLlmAutoRunnerSupport.EvidenceImageSelection selection =
                 ModerationLlmAutoRunnerSupport.selectEvidenceDrivenChunkImages(mem, chunkIndex, toSupportRefs(candidateRefs));
-        if (selection == null) {
-            return new EvidenceImageSelection(List.of(), List.of(), List.of());
-        }
         return new EvidenceImageSelection(
                 fromSupportRefs(selection.selectedRefs),
                 selection.sourceChunkIndexes,
@@ -1761,11 +1766,11 @@ public class ModerationLlmAutoRunner {
     static String normalizeForAnchorRegex(String value) {
         if (value == null) return "";
         String out = value
-                .replace('\u201c', '"')
-                .replace('\u201d', '"')
-                .replace('\u2018', '\'')
-                .replace('\u2019', '\'');
-        out = out.replaceAll(" ?\\\" ?", "\\\"")
+                .replace('“', '"')
+                .replace('”', '"')
+                .replace('‘', '\'')
+                .replace('’', '\'');
+        out = out.replaceAll(" ?\" ?", "\"")
                 .replaceAll(" ?' ?", "'")
                 .replaceAll("\\s+", " ")
                 .trim();
@@ -1786,9 +1791,9 @@ public class ModerationLlmAutoRunner {
         return sb.toString();
     }
 
-    static String extractBetweenAnchorsByRegex(String text, String before, String after, int maxLen) {
+    static String extractBetweenAnchorsByRegex(String text, String before, String after) {
         if (text == null || text.isEmpty() || before == null || before.isBlank()) return null;
-        int cap = Math.max(20, Math.min(2000, maxLen));
+        int cap = Math.min(2000, 500);
 
         String normText = normalizeForAnchorRegex(text);
         String normBefore = normalizeForAnchorRegex(before);
@@ -1812,7 +1817,7 @@ public class ModerationLlmAutoRunner {
                     String mid = normText.substring(start, aIdx);
                     if (mid.length() > cap) mid = mid.substring(0, cap);
                     String cleaned = cleanExtractedSnippet(mid);
-                    cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}\\].*$", "").trim();
+                    cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}].*$", "").trim();
                     if (!cleaned.isBlank()) {
                         int len = cleaned.length();
                         if (len < bestLen) {
@@ -1826,7 +1831,7 @@ public class ModerationLlmAutoRunner {
                 String tail = normText.substring(start);
                 String candidate = fallbackViolationSnippet(tail, 0);
                 String cleaned = cleanExtractedSnippet(candidate);
-                cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}\\].*$", "").trim();
+                cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}].*$", "").trim();
                 if (!cleaned.isBlank()) {
                     if (cleaned.length() > cap) cleaned = cleaned.substring(0, cap);
                     int len = cleaned.length();
@@ -1847,7 +1852,7 @@ public class ModerationLlmAutoRunner {
         if (fallbackStart < 0) return null;
         String candidate = fallbackViolationSnippet(normText, fallbackStart + normBefore.length());
         String cleaned = cleanExtractedSnippet(candidate);
-        cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}\\].*$", "").trim();
+        cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}].*$", "").trim();
         return cleaned.isBlank() ? null : cleaned;
     }
 
@@ -1954,11 +1959,9 @@ public class ModerationLlmAutoRunner {
         Map<Long, FileAssetExtractionsEntity> extById = new HashMap<>();
         try {
             List<FileAssetExtractionsEntity> exts = fileAssetExtractionsRepository.findAllById(fileAssetIds);
-            if (exts != null) {
-                for (FileAssetExtractionsEntity e : exts) {
-                    if (e == null || e.getFileAssetId() == null) continue;
-                    extById.put(e.getFileAssetId(), e);
-                }
+            for (FileAssetExtractionsEntity e : exts) {
+                if (e == null || e.getFileAssetId() == null) continue;
+                extById.put(e.getFileAssetId(), e);
             }
         } catch (Exception ignore) {
         }
@@ -2029,7 +2032,7 @@ public class ModerationLlmAutoRunner {
                     Double th = t.getThreshold();
                     if (slug == null || slug.isBlank()) return;
                     if (th == null || !Double.isFinite(th)) return;
-                    map.put(slug.trim(), clamp01(th, 0.0));
+                    map.put(slug.trim(), clamp01(th));
                 });
             } catch (Exception ignore) {
             }

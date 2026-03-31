@@ -103,7 +103,7 @@ public class NotificationsServiceImpl implements NotificationsService {
 
     @Override
     @Transactional
-    public NotificationsEntity deleteMyNotification(Long id) {
+    public void deleteMyNotification(Long id) {
         if (id == null) throw new IllegalArgumentException("id 不能为空");
         Long me = currentUserIdOrThrow();
 
@@ -112,7 +112,6 @@ public class NotificationsServiceImpl implements NotificationsService {
         if (!me.equals(e.getUserId())) throw new org.springframework.security.access.AccessDeniedException("无权限");
 
         notificationsRepository.delete(e);
-        return e;
     }
 
     @Override

@@ -144,7 +144,6 @@ public class LlmImageUploadService {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, String> getDashscopeUploadPolicy(String apiKey, String model) throws Exception {
         URL url = URI.create("https://dashscope.aliyuncs.com/api/v1/uploads?action=getPolicy&model="
                 + java.net.URLEncoder.encode(model, StandardCharsets.UTF_8)).toURL();
@@ -170,7 +169,7 @@ public class LlmImageUploadService {
             return null;
         }
         java.util.HashMap<String, String> result = new java.util.HashMap<>();
-        data.fields().forEachRemaining(e -> result.put(e.getKey(), e.getValue().asText("")));
+        data.properties().forEach(e -> result.put(e.getKey(), e.getValue().asText("")));
         return result;
     }
 
@@ -375,18 +374,26 @@ public class LlmImageUploadService {
 
     private byte[] readLocalFile(String localPath) {
         try {
-            // Try as absolute path first
-            Path path = Paths.get(localPath);
-            if (Files.exists(path) && Files.isRegularFile(path)) {
-                return Files.readAllBytes(path);
+            Path root = Paths.get(uploadRoot).toAbsolutePath().normalize();
+
+            // Support values persisted as absolute disk path, /uploads/... URL path, or relative path.
+            Path candidate;
+            String p = localPath == null ? "" : localPath.trim();
+            if (p.startsWith("/uploads/")) {
+                candidate = root.resolve(p.substring("/uploads/".length())).normalize();
+            } else if (p.startsWith("uploads/")) {
+                candidate = root.resolve(p.substring("uploads/".length())).normalize();
+            } else {
+                Path raw = Paths.get(p);
+                candidate = raw.isAbsolute() ? raw.toAbsolutePath().normalize() : root.resolve(raw).normalize();
             }
-            // Try relative to upload root
-            String rel = localPath;
-            if (rel.startsWith("/uploads/")) rel = rel.substring("/uploads/".length());
-            else if (rel.startsWith("uploads/")) rel = rel.substring("uploads/".length());
-            Path rootPath = Paths.get(uploadRoot).resolve(rel);
-            if (Files.exists(rootPath) && Files.isRegularFile(rootPath)) {
-                return Files.readAllBytes(rootPath);
+
+            if (!candidate.startsWith(root)) {
+                logger.warn("Rejected local image path outside upload root: {}", localPath);
+                return null;
+            }
+            if (Files.exists(candidate) && Files.isRegularFile(candidate)) {
+                return Files.readAllBytes(candidate);
             }
             return null;
         } catch (Exception e) {
@@ -503,7 +510,6 @@ public class LlmImageUploadService {
                 : originalBase64;
 
         double ratio = (double) compressed.length / original.length;
-        String format = mimeType;
 
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put("originalSize", original.length);
@@ -513,7 +519,7 @@ public class LlmImageUploadService {
         result.put("compressedWidth", compW);
         result.put("compressedHeight", compH);
         result.put("compressionRatio", Math.round(ratio * 10000) / 10000.0);
-        result.put("format", format);
+        result.put("format", mimeType);
         result.put("wasCompressed", wasCompressed);
         result.put("originalBase64", originalBase64);
         result.put("compressedBase64", compressedBase64);

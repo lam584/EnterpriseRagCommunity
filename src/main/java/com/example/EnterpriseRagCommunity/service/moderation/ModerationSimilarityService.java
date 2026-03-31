@@ -222,7 +222,7 @@ public class ModerationSimilarityService {
             String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
 
             String endpoint = elasticsearchUris;
-            if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
+            if (endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
             // Support comma-separated uris; take the first one for now.
             if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
             if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
@@ -269,7 +269,7 @@ public class ModerationSimilarityService {
         sb.append(",\"query_vector\":[");
         for (int i = 0; i < vec.length; i++) {
             if (i > 0) sb.append(',');
-            sb.append(Float.toString(vec[i]));
+            sb.append(vec[i]);
         }
         sb.append(']');
         sb.append(",\"k\":").append(size);

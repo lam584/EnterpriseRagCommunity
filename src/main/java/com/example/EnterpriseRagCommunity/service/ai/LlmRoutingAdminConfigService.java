@@ -231,8 +231,7 @@ public class LlmRoutingAdminConfigService {
         int x = v;
         if (x <= 0) return null;
         if (x < min) return min;
-        if (x > max) return max;
-        return x;
+        return Math.min(x, max);
     }
 
     private static Double normalizePositiveDoubleOrNull(Double v, double min, double max) {
@@ -240,7 +239,6 @@ public class LlmRoutingAdminConfigService {
         double x = v;
         if (!(x > 0.0)) return null;
         if (x < min) return min;
-        if (x > max) return max;
-        return x;
+        return Math.min(x, max);
     }
 }

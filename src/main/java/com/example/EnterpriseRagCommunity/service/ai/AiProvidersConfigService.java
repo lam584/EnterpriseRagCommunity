@@ -106,7 +106,7 @@ public class AiProvidersConfigService {
             if (rerankEndpointPath == null) meta.remove("rerankEndpointPath");
             else meta.put("rerankEndpointPath", rerankEndpointPath);
             if (p.getSupportsVision() == null) meta.remove("supportsVision");
-            else meta.put("supportsVision", Boolean.TRUE.equals(p.getSupportsVision()));
+            else meta.put("supportsVision", p.getSupportsVision());
             e.setMetadata(meta.isEmpty() ? null : meta);
 
             e.setConnectTimeoutMs(positiveOrNull(p.getConnectTimeoutMs()));
@@ -347,7 +347,7 @@ public class AiProvidersConfigService {
         Integer connectTimeoutMs = selected.getConnectTimeoutMs();
         Integer readTimeoutMs = selected.getReadTimeoutMs();
 
-        Map<String, Object> metadata = Map.of();
+        Map<String, Object> metadata;
         {
             Map<String, Object> meta = new LinkedHashMap<>();
             String drm = toNonBlank(selected.getDefaultRerankModel());

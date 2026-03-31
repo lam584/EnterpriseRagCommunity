@@ -90,5 +90,21 @@ class BoardControllerTest {
         BoardsQueryDTO sent = captor.getValue();
         assertThat(sent.getVisible()).isEqualTo(false);
     }
+
+    @Test
+    void createBoard_shouldEscapeHtmlFieldsInResponse() throws Exception {
+        BoardsDTO dto = new BoardsDTO();
+        dto.setId(1L);
+        dto.setName("<img src=x onerror=alert(1)>");
+        dto.setDescription("<script>alert(1)</script>");
+        when(boardService.createBoard(any())).thenReturn(dto);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/boards")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"x\",\"description\":\"y\",\"visible\":true,\"sortOrder\":1}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("&lt;img src=x onerror=alert(1)&gt;"))
+                .andExpect(jsonPath("$.description").value("&lt;script&gt;alert(1)&lt;/script&gt;"));
+    }
 }
 

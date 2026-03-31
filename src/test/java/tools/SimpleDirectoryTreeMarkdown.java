@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class SimpleDirectoryTreeMarkdown {
 
@@ -38,39 +38,6 @@ public class SimpleDirectoryTreeMarkdown {
 
     private static final List<PatternDesc> PATH_PATTERN_LIST = List.of();
 
-    private static String globToRegex(String glob) {
-        if (!glob.contains("/") && !glob.contains("*")) {
-            glob = "**/" + glob;
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("^");
-        char[] chs = glob.toCharArray();
-        for (int i = 0; i < chs.length; ) {
-            char c = chs[i];
-            if (c == '*') {
-                if (i + 1 < chs.length && chs[i + 1] == '*') {
-                    sb.append(".*");
-                    i += 2;
-                } else {
-                    sb.append("[^/]*");
-                    i++;
-                }
-            } else if (c == '?') {
-                sb.append(".");
-                i++;
-            } else if (c == '/') {
-                sb.append("/");
-                i++;
-            } else {
-                sb.append(Pattern.quote(String.valueOf(c)));
-                i++;
-            }
-        }
-        sb.append("$");
-        return sb.toString();
-    }
-
     private static class Node {
         final List<Boolean> lastFlags;
         final boolean isDir;
@@ -88,13 +55,32 @@ public class SimpleDirectoryTreeMarkdown {
     }
 
     public static void main(String[] args) throws IOException {
-        Path projectRoot = args.length > 0 ? Paths.get(args[0]) : Paths.get(".");
+        Path projectRoot = resolveProjectRoot(args);
         if (!Files.isDirectory(projectRoot)) {
             System.err.println("无效的项目根目录: " + projectRoot);
             return;
         }
         generateDirectoryTreeMarkdown(projectRoot);
         System.out.println("完成 → " + projectRoot.resolve("tree.md"));
+    }
+
+    private static Path resolveProjectRoot(String[] args) {
+        Path workspace = Paths.get(".").toAbsolutePath().normalize();
+        if (args == null || args.length == 0 || args[0] == null || args[0].isBlank()) {
+            return workspace;
+        }
+        String raw = args[0].trim();
+        if (!raw.matches("[A-Za-z0-9_./\\\\:-]+")) {
+            throw new IllegalArgumentException("非法路径参数");
+        }
+        if (raw.startsWith("/") || raw.startsWith("\\") || raw.matches("^[A-Za-z]:.*")) {
+            throw new IllegalArgumentException("仅允许工作区内相对路径");
+        }
+        Path candidate = workspace.resolve(raw).normalize();
+        if (!candidate.startsWith(workspace)) {
+            throw new IllegalArgumentException("路径越界");
+        }
+        return candidate;
     }
 
     private static void generateDirectoryTreeMarkdown(Path root) throws IOException {
@@ -115,7 +101,7 @@ public class SimpleDirectoryTreeMarkdown {
                 StringBuilder line = new StringBuilder(np);
                 if (node.desc != null && !node.desc.isBlank()) {
                     int pad = maxLen - np.length() + 1;
-                    line.append(" ".repeat(Math.max(0, pad)));
+                    appendSpaces(line, pad);
                     line.append("- ").append(node.desc);
                 }
                 out.println(line);
@@ -140,21 +126,24 @@ public class SimpleDirectoryTreeMarkdown {
         boolean isLastDir = ancestorsLastFlags.isEmpty() || ancestorsLastFlags.getLast();
         nodes.add(new Node(new ArrayList<>(ancestorsLastFlags), true, dir.getFileName().toString(), dirDesc, isLastDir));
 
-        List<Path> all = Files.list(dir)
-                .filter(p -> {
-                    String name = p.getFileName().toString();
-                    if (Files.isDirectory(p)) {
-                        return !EXCLUDED_DIR_NAMES.contains(name.toLowerCase());
-                    } else {
-                        String ext = getExt(name).toLowerCase();
-                        return !EXCLUDED_FILE_EXTENSIONS.contains(ext);
-                    }
-                })
-                .sorted(Comparator.comparing(p -> p.getFileName().toString().toLowerCase()))
-                .collect(Collectors.toList());
+        List<Path> all;
+        try (Stream<Path> stream = Files.list(dir)) {
+            all = stream
+                    .filter(p -> {
+                        String name = p.getFileName().toString();
+                        if (Files.isDirectory(p)) {
+                            return !EXCLUDED_DIR_NAMES.contains(name.toLowerCase());
+                        } else {
+                            String ext = getExt(name).toLowerCase();
+                            return !EXCLUDED_FILE_EXTENSIONS.contains(ext);
+                        }
+                    })
+                    .sorted(Comparator.comparing(p -> p.getFileName().toString().toLowerCase()))
+                    .toList();
+        }
 
-        List<Path> dirs = all.stream().filter(Files::isDirectory).collect(Collectors.toList());
-        List<Path> files = all.stream().filter(p -> !Files.isDirectory(p)).collect(Collectors.toList());
+        List<Path> dirs = all.stream().filter(Files::isDirectory).toList();
+        List<Path> files = all.stream().filter(p -> !Files.isDirectory(p)).toList();
 
         for (int i = 0; i < dirs.size(); i++) {
             Path child = dirs.get(i);
@@ -202,6 +191,10 @@ public class SimpleDirectoryTreeMarkdown {
         }
         sb.append(node.isDir ? "📁 " : "📄 ").append(node.name);
         return sb.toString();
+    }
+
+    private static void appendSpaces(StringBuilder sb, int count) {
+        sb.repeat(' ', Math.max(0, count));
     }
 
     private static String getExt(String filename) {

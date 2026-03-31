@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.security.stepup;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.MediaType;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -15,7 +16,7 @@ public class AdminStepUpInterceptor implements HandlerInterceptor {
     public static final String SESSION_KEY_OK_UNTIL_EPOCH_MS = "admin.stepup.okUntilEpochMs";
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws IOException {
+    public boolean preHandle(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull Object handler) throws IOException {
         RequireAdminStepUp cfg = resolveConfig(handler);
         if (cfg == null) return true;
 

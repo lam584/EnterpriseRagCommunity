@@ -228,7 +228,7 @@ public class TokenCostMetricsService {
 
     private List<UsageRow> loadScenarioRows(LocalDateTime start, LocalDateTime end, String taskType) {
         @SuppressWarnings("unchecked")
-        List<Object[]> raw;
+        List raw;
         if (taskType != null) {
             raw = entityManager.createNativeQuery("""
                             SELECT h.model,
@@ -258,11 +258,11 @@ public class TokenCostMetricsService {
         }
 
         List<UsageRow> out = new ArrayList<>();
-        for (Object[] row : raw) {
+        for (Object row : raw) {
             out.add(new UsageRow(
-                    asString(row, 0),
-                    asLong(row, 1),
-                    asLong(row, 2)
+                    asString((Object[]) row, 0),
+                    asLong((Object[]) row, 1),
+                    asLong((Object[]) row, 2)
             ));
         }
         return out;
@@ -271,7 +271,7 @@ public class TokenCostMetricsService {
     private List<TimelineRow> loadScenarioTimelineRows(LocalDateTime start, LocalDateTime end, TimelineBucket bucket, String taskType) {
         String tcol = bucketExpr("h.finished_at", bucket);
         @SuppressWarnings("unchecked")
-        List<Object[]> raw;
+        List raw;
         if (taskType != null) {
             raw = entityManager.createNativeQuery("""
                             SELECT %s AS t,
@@ -305,11 +305,11 @@ public class TokenCostMetricsService {
         }
 
         List<TimelineRow> out = new ArrayList<>();
-        for (Object[] row : raw) {
+        for (Object row : raw) {
             out.add(new TimelineRow(
-                    asLocalDateTime(row, 0),
-                    asLong(row, 1),
-                    asLong(row, 2)
+                    asLocalDateTime((Object[]) row, 0),
+                    asLong((Object[]) row, 1),
+                    asLong((Object[]) row, 2)
             ));
         }
         return out;

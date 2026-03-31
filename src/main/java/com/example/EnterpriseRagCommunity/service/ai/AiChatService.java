@@ -187,7 +187,7 @@ public class AiChatService {
     private static String buildRagContextPrompt(List<RagPostChatRetrievalService.Hit> hits, HybridRetrievalConfigDTO cfg) {
         int maxItems = cfg == null || cfg.getHybridK() == null ? 10 : Math.max(1, cfg.getHybridK());
         int perDocMaxTokens = cfg == null || cfg.getPerDocMaxTokens() == null ? 300 : Math.max(1, cfg.getPerDocMaxTokens());
-        int perDocMaxChars = Math.clamp(perDocMaxTokens * 16, 32, 12_000);
+        int perDocMaxChars = Math.clamp(perDocMaxTokens * 16L, 32, 12_000);
 
         StringBuilder sb = new StringBuilder();
         sb.append("参考资料：\n");
@@ -427,13 +427,13 @@ public class AiChatService {
         Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
         int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.clamp(ragTopKOverride, 1, 50);
 
-        List<RagPostChatRetrievalService.Hit> ragHits = List.of();
+        List<RagPostChatRetrievalService.Hit> ragHits;
         Long retrievalEventId = null;
-        HybridRetrievalConfigDTO hybridCfg = null;
+        HybridRetrievalConfigDTO hybridCfg;
         HybridRagRetrievalService.RetrieveResult hybridResult = null;
-        ContextClipConfigDTO contextCfg = null;
+        ContextClipConfigDTO contextCfg;
         CitationConfigDTO citationCfg = null;
-        ChatRagAugmentConfigDTO chatRagCfg = null;
+        ChatRagAugmentConfigDTO chatRagCfg;
         RagContextPromptService.AssembleResult contextAssembled = null;
         List<RagContextPromptService.CitationSource> citedSourcesForPersist = null;
         try {
@@ -545,7 +545,9 @@ public class AiChatService {
                             if (contextAssembled != null) {
                                 cw.setPolicy(contextAssembled.getPolicy());
                             }
-                            cw.setBudgetTokens(contextAssembled.getBudgetTokens());
+                            if (contextAssembled != null) {
+                                cw.setBudgetTokens(contextAssembled.getBudgetTokens());
+                            }
                             cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
                             cw.setSelectedItems(contextAssembled.getSelected() == null ? 0 : contextAssembled.getSelected().size());
                             cw.setDroppedItems(contextAssembled.getDropped() == null ? 0 : contextAssembled.getDropped().size());
@@ -608,7 +610,7 @@ public class AiChatService {
         if (temperature == null && deepThink) temperature = 0.2;
         Double topP = req.getTopP() != null ? req.getTopP() : portalCfg.getTopP();
 
-        QaMessagesEntity assistantMsg = null;
+        QaMessagesEntity assistantMsg;
 
         try {
             OpenAiCompatClient.SseLineConsumer handler = line -> {
@@ -809,7 +811,7 @@ public class AiChatService {
             Object flag = metadata.get("supportsVision");
             if (flag instanceof Boolean b) return b;
             String s = toNonBlank(flag);
-            return s != null && "true".equalsIgnoreCase(s);
+            return "true".equalsIgnoreCase(s);
         } catch (Exception ignored) {
             return false;
         }
@@ -898,13 +900,13 @@ public class AiChatService {
         Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
         int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.clamp(ragTopKOverride, 1, 50);
 
-        List<RagPostChatRetrievalService.Hit> ragHits = List.of();
+        List<RagPostChatRetrievalService.Hit> ragHits;
         Long retrievalEventId = null;
-        HybridRetrievalConfigDTO hybridCfg = null;
-        HybridRagRetrievalService.RetrieveResult hybridResult = null;
-        ContextClipConfigDTO contextCfg = null;
+        HybridRetrievalConfigDTO hybridCfg;
+        HybridRagRetrievalService.RetrieveResult hybridResult;
+        ContextClipConfigDTO contextCfg;
         CitationConfigDTO citationCfg = null;
-        ChatRagAugmentConfigDTO chatRagCfg = null;
+        ChatRagAugmentConfigDTO chatRagCfg;
         RagContextPromptService.AssembleResult contextAssembled = null;
         try {
             contextCfg = contextClipConfigService.getConfigOrDefault();
@@ -1400,7 +1402,6 @@ public class AiChatService {
                         if (remain > 0) {
                             sb.append(t, 0, Math.min(remain, t.length()));
                             sb.append("\n\n");
-                            used += Math.min(remain, t.length());
                         }
                         break;
                     }
@@ -1652,13 +1653,13 @@ public class AiChatService {
         Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
         int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.clamp(ragTopKOverride, 1, 50);
 
-        List<RagPostChatRetrievalService.Hit> ragHits = List.of();
+        List<RagPostChatRetrievalService.Hit> ragHits;
         Long retrievalEventId = null;
-        HybridRetrievalConfigDTO hybridCfg = null;
-        HybridRagRetrievalService.RetrieveResult hybridResult = null;
-        ContextClipConfigDTO contextCfg = null;
+        HybridRetrievalConfigDTO hybridCfg;
+        HybridRagRetrievalService.RetrieveResult hybridResult;
+        ContextClipConfigDTO contextCfg;
         CitationConfigDTO citationCfg = null;
-        ChatRagAugmentConfigDTO chatRagCfg = null;
+        ChatRagAugmentConfigDTO chatRagCfg;
         RagContextPromptService.AssembleResult contextAssembled = null;
         List<RagCommentChatRetrievalService.Hit> commentHits = List.of();
         try {
@@ -1771,7 +1772,7 @@ public class AiChatService {
         messages = chatContextGovernanceService.apply(
                 currentUserId,
                 session.getId(),
-                questionMsg == null ? null : questionMsg.getId(),
+                questionMsg.getId(),
                 messages
         ).getMessages();
 
@@ -1855,7 +1856,7 @@ public class AiChatService {
                         : List.of();
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSourcesForDto);
-                if (sourcesText != null && !sourcesText.isBlank()) {
+                if (!sourcesText.isBlank()) {
                     assistantAccum.append("\n\n").append(sourcesText.trim());
                 }
             }
@@ -2020,13 +2021,13 @@ public class AiChatService {
         Integer ragTopKOverride = req.getRagTopK() != null ? req.getRagTopK() : portalCfg.getRagTopK();
         int safeRagTopKOverride = ragTopKOverride == null ? 0 : Math.clamp(ragTopKOverride, 1, 50);
 
-        List<RagPostChatRetrievalService.Hit> ragHits = List.of();
+        List<RagPostChatRetrievalService.Hit> ragHits;
         Long retrievalEventId = null;
-        HybridRetrievalConfigDTO hybridCfg = null;
+        HybridRetrievalConfigDTO hybridCfg;
         HybridRagRetrievalService.RetrieveResult hybridResult = null;
-        ContextClipConfigDTO contextCfg = null;
+        ContextClipConfigDTO contextCfg;
         CitationConfigDTO citationCfg = null;
-        ChatRagAugmentConfigDTO chatRagCfg = null;
+        ChatRagAugmentConfigDTO chatRagCfg;
         RagContextPromptService.AssembleResult contextAssembled = null;
         try {
             contextCfg = contextClipConfigService.getConfigOrDefault();
@@ -2154,7 +2155,7 @@ public class AiChatService {
         messages = chatContextGovernanceService.apply(
                 currentUserId,
                 session.getId(),
-                questionMsg == null ? null : questionMsg.getId(),
+                questionMsg.getId(),
                 messages
         ).getMessages();
 
@@ -2168,7 +2169,7 @@ public class AiChatService {
         if (temperature == null && deepThink) temperature = 0.2;
         Double topP = req.getTopP() != null ? req.getTopP() : portalCfg.getTopP();
 
-        QaMessagesEntity assistantMsg = null;
+        QaMessagesEntity assistantMsg;
 
         try {
             LlmGateway.RoutedChatStreamResult routed = llmGateway.chatStreamRouted(
@@ -2245,7 +2246,7 @@ public class AiChatService {
                         : List.of();
 
                 String sourcesText = RagContextPromptService.renderSourcesText(citationCfg, citedSources);
-                if (sourcesText != null && !sourcesText.isBlank()) {
+                if (!sourcesText.isBlank()) {
                     String delta = "\n\n" + sourcesText.trim();
                     assistantAccum.append(delta);
                     out.write("event: delta\n");

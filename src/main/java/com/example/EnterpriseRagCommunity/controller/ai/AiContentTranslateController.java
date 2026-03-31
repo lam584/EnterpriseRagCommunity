@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.controller.ai;
 
-import com.example.EnterpriseRagCommunity.dto.ai.SemanticTranslateResultDTO;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.AiSemanticTranslateService;
 import lombok.RequiredArgsConstructor;

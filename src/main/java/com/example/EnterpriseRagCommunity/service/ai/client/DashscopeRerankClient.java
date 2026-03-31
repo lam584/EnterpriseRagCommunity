@@ -90,7 +90,7 @@ public class DashscopeRerankClient {
 
         Map<String, Object> parameters = new LinkedHashMap<>();
         if (topN != null && topN > 0) parameters.put("top_n", topN);
-        if (returnDocuments != null) parameters.put("return_documents", Boolean.TRUE.equals(returnDocuments));
+        if (returnDocuments != null) parameters.put("return_documents", returnDocuments);
         if (instruct != null && !instruct.isBlank()) parameters.put("instruct", instruct);
         if (fps != null) parameters.put("fps", fps);
         if (!parameters.isEmpty()) body.put("parameters", parameters);

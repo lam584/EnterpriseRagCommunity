@@ -312,7 +312,7 @@ public class OpenAiCompatClient {
             sb.append(']');
         }
         if (enableThinking != null) {
-            sb.append(",\"enable_thinking\":").append(Boolean.TRUE.equals(enableThinking) ? "true" : "false");
+            sb.append(",\"enable_thinking\":").append(enableThinking);
         }
         if (thinkingBudget != null && thinkingBudget > 0) {
             sb.append(",\"thinking_budget\":").append(thinkingBudget);
@@ -341,7 +341,7 @@ public class OpenAiCompatClient {
                 } else if (v instanceof String s) {
                     sb.append('"').append(escapeJson(s)).append('"');
                 } else if (v instanceof Number || v instanceof Boolean) {
-                    sb.append(String.valueOf(v));
+                    sb.append(v);
                 } else {
                     try {
                         sb.append(objectMapper.writeValueAsString(v));

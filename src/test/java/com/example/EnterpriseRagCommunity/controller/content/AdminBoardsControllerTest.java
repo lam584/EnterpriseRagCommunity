@@ -40,7 +40,7 @@ class AdminBoardsControllerTest {
 
         mockMvc.perform(post("/api/admin/boards")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"x\",\"description\":\"y\"}"))
+                        .content("{\"name\":\"x\",\"description\":\"y\",\"visible\":true,\"sortOrder\":1}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("&lt;svg onload=alert(1)&gt;"))
                 .andExpect(jsonPath("$.description").value("&lt;b&gt;desc&lt;/b&gt;"));

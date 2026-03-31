@@ -39,7 +39,7 @@ public class ModerationRulesCreateDTO {
     private Map<String, Object> metadata;
 
     // createdAt 由后端生成，不允许客户端传入；因此不应对创建请求强制 @NotNull 校验
-    @ApiModelProperty(value = "创建时间(后端填充)", required = false, example = "2025-11-09T10:15:30")
+    @ApiModelProperty(value = "创建时间(后端填充)", example = "2025-11-09T10:15:30")
     @JsonIgnore // 不由前端传递，DB 默认值填充
     private LocalDateTime createdAt;
 }

@@ -338,8 +338,7 @@ public class PortalSearchService {
             LocalDateTime ta = a.createdAt;
             LocalDateTime tb = b.createdAt;
             if (ta != null && tb != null) {
-                int dt = tb.compareTo(ta);
-                if (dt != 0) return dt;
+                return tb.compareTo(ta);
             } else if (ta == null && tb != null) {
                 return 1;
             } else if (ta != null) {

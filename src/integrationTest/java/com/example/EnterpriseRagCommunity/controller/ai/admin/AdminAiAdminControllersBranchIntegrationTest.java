@@ -7,7 +7,6 @@ import com.example.EnterpriseRagCommunity.dto.ai.AdminLlmPriceConfigUpsertReques
 import com.example.EnterpriseRagCommunity.dto.ai.ChatContextGovernanceConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PromptBatchRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.PromptBatchResponse;
-import com.example.EnterpriseRagCommunity.dto.ai.PromptContentDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PromptContentUpdateRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.SupportedLanguageDTO;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;

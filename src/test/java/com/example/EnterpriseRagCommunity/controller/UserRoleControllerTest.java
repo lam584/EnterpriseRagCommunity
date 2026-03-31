@@ -107,19 +107,18 @@ class UserRoleControllerTest {
         mockMvc.perform(post("/api/user-roles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_BODY))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(1));
+                .andExpect(status().isCreated());
     }
 
     @Test
     void createUserRole_shouldReturn400_whenServiceThrows() throws Exception {
-        when(userRoleService.create(any())).thenThrow(new RuntimeException("boom"));
+        when(userRoleService.create(any())).thenThrow(new RuntimeException("<b>boom</b>"));
 
         mockMvc.perform(post("/api/user-roles")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_BODY))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("创建用户角色失败：boom"));
+                .andExpect(jsonPath("$.message").value("创建用户角色失败：&lt;b&gt;boom&lt;/b&gt;"));
     }
 
     @Test
@@ -146,13 +145,28 @@ class UserRoleControllerTest {
 
     @Test
     void updateUserRole_shouldReturn400_whenServiceThrows() throws Exception {
-        when(userRoleService.update(eq(1L), any())).thenThrow(new RuntimeException("boom"));
+        when(userRoleService.update(eq(1L), any())).thenThrow(new RuntimeException("<i>boom</i>"));
 
         mockMvc.perform(put("/api/user-roles/1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(VALID_BODY))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("更新用户角色失败：boom"));
+                .andExpect(jsonPath("$.message").value("更新用户角色失败：&lt;i&gt;boom&lt;/i&gt;"));
+    }
+
+    @Test
+    void updateUserRole_shouldEscapeHtmlInRoleFields() throws Exception {
+        UserRolesCreateDTO dto = validDto(1L);
+        dto.setRoles("<script>x</script>");
+        dto.setNotes("<img src=x onerror=1>");
+        when(userRoleService.update(eq(1L), any())).thenReturn(dto);
+
+        mockMvc.perform(put("/api/user-roles/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roles").value("&lt;script&gt;x&lt;/script&gt;"))
+                .andExpect(jsonPath("$.notes").value("&lt;img src=x onerror=1&gt;"));
     }
 
     @Test

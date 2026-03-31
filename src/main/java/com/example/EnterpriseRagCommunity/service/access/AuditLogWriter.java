@@ -99,27 +99,33 @@ public class AuditLogWriter {
     }
 
     private static Object sanitizeValue(String key, Object v) {
-        if (key != null && isSensitiveKey(key)) return MASK;
-        if (v == null) return null;
-        if (v instanceof Map<?, ?> m) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            for (var e : m.entrySet()) {
-                if (e.getKey() == null) continue;
-                String k = String.valueOf(e.getKey());
-                out.put(k, sanitizeValue(k, e.getValue()));
+        if (isSensitiveKey(key)) return MASK;
+        switch (v) {
+            case null -> {
+                return null;
             }
-            return out;
-        }
-        if (v instanceof List<?> list) {
-            List<Object> out = new ArrayList<>(list.size());
-            for (Object x : list) {
-                if (x instanceof Map<?, ?> || x instanceof List<?>) out.add(sanitizeValue(null, x));
-                else out.add(x);
+            case Map<?, ?> m -> {
+                Map<String, Object> out = new LinkedHashMap<>();
+                for (var e : m.entrySet()) {
+                    if (e.getKey() == null) continue;
+                    String k = String.valueOf(e.getKey());
+                    out.put(k, sanitizeValue(k, e.getValue()));
+                }
+                return out;
             }
-            return out;
-        }
-        if (v instanceof String s && key != null && key.toLowerCase(Locale.ROOT).contains("message")) {
-            return sanitizeMessage(s);
+            case List<?> list -> {
+                List<Object> out = new ArrayList<>(list.size());
+                for (Object x : list) {
+                    if (x instanceof Map<?, ?> || x instanceof List<?>) out.add(sanitizeValue(null, x));
+                    else out.add(x);
+                }
+                return out;
+            }
+            case String s when key != null && key.toLowerCase(Locale.ROOT).contains("message") -> {
+                return sanitizeMessage(s);
+            }
+            default -> {
+            }
         }
         return v;
     }

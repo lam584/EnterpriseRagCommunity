@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.service.ai;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 
@@ -240,7 +241,7 @@ public class SemanticTranslateConfigService {
         String t = text.replace("\r\n", "\n").replace("\r", "\n");
         String[] parts = t.split("\n");
         List<String> out = new ArrayList<>(parts.length);
-        for (String p : parts) out.add(p);
+        out.addAll(Arrays.asList(parts));
         return out;
     }
 

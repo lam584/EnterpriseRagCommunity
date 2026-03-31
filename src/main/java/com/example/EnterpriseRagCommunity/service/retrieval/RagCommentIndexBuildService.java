@@ -288,13 +288,11 @@ public class RagCommentIndexBuildService {
                             }
                             cleared = true;
                             clearedOk = true;
-                            clearPending = false;
                         } catch (Exception ex) {
                             try {
                                 deleteIndexViaHttp(indexName);
                                 cleared = true;
                                 clearedOk = true;
-                                clearPending = false;
                             } catch (Exception ex2) {
                                 cleared = false;
                                 clearError = summarizeException(ex2);
@@ -305,7 +303,6 @@ public class RagCommentIndexBuildService {
                         }
                     }
                     indexService.ensureIndex(indexName, fallbackDims);
-                    ensured = true;
                 } catch (Exception ex) {
                     log.warn("Ensure ES comment index failed without embedding inference. index={}, err={}", indexName, ex.getMessage());
                 }
@@ -426,7 +423,7 @@ public class RagCommentIndexBuildService {
             return;
         }
 
-        String modelToUse = null;
+        String modelToUse;
         String providerToUse = toNonBlankString(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingProviderId"));
         modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
 
@@ -443,7 +440,7 @@ public class RagCommentIndexBuildService {
             modelToUse = target.modelName();
         }
 
-        Integer configuredDims = null;
+        Integer configuredDims;
         Integer d = vi.getDim();
         configuredDims = d != null && d > 0 ? d : null;
 
@@ -531,7 +528,7 @@ public class RagCommentIndexBuildService {
         String body = "{\"size\":1,\"query\":{\"term\":{\"comment_id\":" + commentId + "}},\"_source\":[\"comment_floor\"]}";
         JsonNode root = postSearch(indexName, body, "hits.hits._source.comment_floor");
         JsonNode hits = root.path("hits").path("hits");
-        if (hits.isArray() && hits.size() > 0) {
+        if (hits.isArray() && !hits.isEmpty()) {
             JsonNode src = hits.get(0).path("_source");
             if (src.hasNonNull("comment_floor")) return src.path("comment_floor").asInt();
         }

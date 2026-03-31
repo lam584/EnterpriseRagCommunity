@@ -156,7 +156,7 @@ public class RagPostIndexBuildService {
         List<RagPostsBuildResponse.FailedDoc> failedDocs = new ArrayList<>();
         Long lastPostId = null;
 
-        Integer inferredDims = null;
+        int inferredDims;
         Integer dimsToUse = null;
         boolean ensured = false;
 
@@ -620,8 +620,8 @@ public class RagPostIndexBuildService {
 
         List<String> chunks = splitWithOverlap(text, maxChars, overlap);
         boolean ensured = false;
-        Integer inferredDims = null;
-        Integer dimsToUse = null;
+        int inferredDims;
+        int dimsToUse;
 
         for (int ci = 0; ci < chunks.size(); ci++) {
             String chunk = chunks.get(ci);

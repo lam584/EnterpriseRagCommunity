@@ -123,8 +123,7 @@ final class FileAssetExtractionSupport {
         if (b0 == 0x37 && b1 == 0x7A && b2 == 0xBC && b3 == 0xAF) return true;
         if (b0 == 0x1F && b1 == 0x8B) return true;
         if (b0 == 0x42 && b1 == 0x5A) return true;
-        if (b0 == 0xFD && b1 == 0x37 && b2 == 0x7A && b3 == 0x58) return true;
-        return false;
+        return b0 == 0xFD && b1 == 0x37 && b2 == 0x7A && b3 == 0x58;
     }
 
     static boolean isPathTraversal(String name) {

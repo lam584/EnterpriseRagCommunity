@@ -9,7 +9,9 @@ import com.example.EnterpriseRagCommunity.entity.access.UserRoleLinksEntity;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.UsersService;
 import jakarta.validation.Valid;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -161,6 +163,8 @@ public class UsersController {
     /**
      * 最小 DTO：仅用于前端分配角色（user_id, role_id）。
      */
+    @Setter
+    @Getter
     public static class RoleLinkDTO {
         private Long userId;
         private Long roleId;
@@ -168,15 +172,5 @@ public class UsersController {
         private Long scopeId;
         private java.time.LocalDateTime expiresAt;
 
-        public Long getUserId() { return userId; }
-        public void setUserId(Long userId) { this.userId = userId; }
-        public Long getRoleId() { return roleId; }
-        public void setRoleId(Long roleId) { this.roleId = roleId; }
-        public String getScopeType() { return scopeType; }
-        public void setScopeType(String scopeType) { this.scopeType = scopeType; }
-        public Long getScopeId() { return scopeId; }
-        public void setScopeId(Long scopeId) { this.scopeId = scopeId; }
-        public java.time.LocalDateTime getExpiresAt() { return expiresAt; }
-        public void setExpiresAt(java.time.LocalDateTime expiresAt) { this.expiresAt = expiresAt; }
     }
 }

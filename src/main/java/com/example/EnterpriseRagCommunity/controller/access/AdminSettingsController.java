@@ -475,8 +475,8 @@ public class AdminSettingsController {
         if (!protocol.equals("SMTP")) protocol = "SMTP";
 
         String host = dto.getHost() == null ? "" : dto.getHost().trim();
-        Integer portPlain = dto.getPortPlain() == null ? 25 : dto.getPortPlain();
-        Integer portEncrypted = dto.getPortEncrypted() == null ? 465 : dto.getPortEncrypted();
+        int portPlain = dto.getPortPlain() == null ? 25 : dto.getPortPlain();
+        int portEncrypted = dto.getPortEncrypted() == null ? 465 : dto.getPortEncrypted();
         boolean looksLikeImapDefaults = host.equalsIgnoreCase("imap.qiye.aliyun.com") && portPlain == 143 && portEncrypted == 993;
         boolean looksLikePop3Defaults = host.equalsIgnoreCase("pop.qiye.aliyun.com") && portPlain == 110 && portEncrypted == 995;
         if (looksLikeImapDefaults || looksLikePop3Defaults) {
@@ -569,8 +569,8 @@ public class AdminSettingsController {
         String host = dto.getHost() == null ? "" : dto.getHost().trim();
         if (host.isEmpty()) host = "imap.qiye.aliyun.com";
 
-        Integer portPlain = dto.getPortPlain() == null ? 143 : dto.getPortPlain();
-        Integer portEncrypted = dto.getPortEncrypted() == null ? 993 : dto.getPortEncrypted();
+        int portPlain = dto.getPortPlain() == null ? 143 : dto.getPortPlain();
+        int portEncrypted = dto.getPortEncrypted() == null ? 993 : dto.getPortEncrypted();
         if (portPlain <= 0 || portPlain > 65535) throw new IllegalArgumentException("portPlain 不合法");
         if (portEncrypted <= 0 || portEncrypted > 65535) throw new IllegalArgumentException("portEncrypted 不合法");
 

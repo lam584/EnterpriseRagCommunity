@@ -25,6 +25,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.file.*;
 import java.security.MessageDigest;
@@ -91,25 +92,6 @@ public class UploadServiceImpl implements UploadService {
         }
     }
 
-    private static String sha256Hex(Path file) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            try (InputStream is = Files.newInputStream(file)) {
-                byte[] buf = new byte[8192];
-                int n;
-                while ((n = is.read(buf)) > 0) {
-                    md.update(buf, 0, n);
-                }
-            }
-            byte[] d = md.digest();
-            StringBuilder sb = new StringBuilder(d.length * 2);
-            for (byte b : d) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (Exception e) {
-            throw new IllegalArgumentException("计算文件指纹失败");
-        }
-    }
-
     private static String sha256Hex(Path file, LongConsumer onBytesRead, BooleanSupplier shouldAbort) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -141,13 +123,59 @@ public class UploadServiceImpl implements UploadService {
 
     private static String safeFileName(String original) {
         String name = StringUtils.hasText(original) ? original : "file";
-        name = Paths.get(name).getFileName().toString();
-        name = name.replaceAll("[\\\\/]+", "_");
+        // Keep only the tail segment without invoking path parsers on user input.
+        int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
+        if (slash >= 0) {
+            name = name.substring(slash + 1);
+        }
+        name = name.replaceAll("[\\\\/:*?\"<>|]+", "_");
+        name = name.replaceAll("[\u0000-\u001F]+", "");
         name = name.replaceAll("\\s+", " ").trim();
+        if (name.equals(".") || name.equals("..") || name.isBlank()) {
+            name = "file";
+        }
         if (name.length() > 191) {
             name = name.substring(name.length() - 191);
         }
         return name;
+    }
+
+    private static String storedFileName() {
+        return UUID.randomUUID().toString().replace("-", "");
+    }
+
+    private record SavedFile(Path target, String url) {
+    }
+
+    private SavedFile saveBlobOrThrow(MultipartFile file) {
+        LocalDate now = LocalDate.now();
+        String subDir = String.format("%d/%02d", now.getYear(), now.getMonthValue());
+        String storedName = storedFileName();
+
+        Path root = uploadRootPathOrThrow();
+        Path dir = root.resolve(subDir).normalize();
+        Path target = dir.resolve(storedName).normalize();
+
+        if (!target.startsWith(root)) {
+            throw new IllegalArgumentException("非法文件路径");
+        }
+
+        try {
+            Files.createDirectories(dir);
+            try (InputStream in = file.getInputStream();
+                 OutputStream out = Files.newOutputStream(target,
+                         StandardOpenOption.CREATE,
+                         StandardOpenOption.TRUNCATE_EXISTING,
+                         StandardOpenOption.WRITE)) {
+                in.transferTo(out);
+            }
+        } catch (Exception e) {
+            throw new IllegalArgumentException("保存文件失败");
+        }
+
+        String normalizedPrefix = urlPrefix.endsWith("/") ? urlPrefix.substring(0, urlPrefix.length() - 1) : urlPrefix;
+        String url = normalizedPrefix + "/" + subDir + "/" + storedName;
+        return new SavedFile(target, url);
     }
 
     private UploadResultDTO toResult(FileAssetsEntity fa, String fallbackFileName) {
@@ -291,7 +319,7 @@ public class UploadServiceImpl implements UploadService {
     }
 
     private Path resumableDirOrThrow() {
-        Path root = Paths.get(uploadRoot).toAbsolutePath().normalize();
+        Path root = uploadRootPathOrThrow();
         Path dir = root.resolve("_resumable").normalize();
         if (!dir.startsWith(root)) throw new IllegalArgumentException("非法文件路径");
         try {
@@ -300,6 +328,14 @@ public class UploadServiceImpl implements UploadService {
             throw new IllegalArgumentException("创建上传目录失败");
         }
         return dir;
+    }
+
+    private Path uploadRootPathOrThrow() {
+        String rootRaw = StringUtils.hasText(uploadRoot) ? uploadRoot.trim() : "uploads";
+        if (!rootRaw.matches("[A-Za-z0-9_./\\\\:-]+")) {
+            throw new IllegalArgumentException("非法上传根目录");
+        }
+        return Paths.get(rootRaw).toAbsolutePath().normalize();
     }
 
     private Path resumableMetaPath(Path dir, String uploadId) {
@@ -486,7 +522,7 @@ public class UploadServiceImpl implements UploadService {
         Path partPath = resumablePartPath(dir, uploadId);
         if (!partPath.startsWith(dir)) throw new IllegalArgumentException("非法文件路径");
 
-        long maxAllowed = Math.min((long) meta.chunkSizeBytes, meta.totalBytes - offset);
+        long maxAllowed = Math.min(meta.chunkSizeBytes, meta.totalBytes - offset);
         if (maxAllowed <= 0) throw new IllegalArgumentException("无可上传内容");
 
         long written = 0L;
@@ -543,7 +579,7 @@ public class UploadServiceImpl implements UploadService {
 
         String sha256;
         try {
-            sha256 = sha256Hex(partPath, (read) -> {
+            sha256 = normalizeSha256OrThrow(sha256Hex(partPath, (read) -> {
                 long now = System.currentTimeMillis();
                 long deltaBytes = read - lastSaveBytes[0];
                 long deltaMs = now - lastSaveAtMs[0];
@@ -557,7 +593,7 @@ public class UploadServiceImpl implements UploadService {
                 saveResumableMetaOrThrow(meta);
                 lastSaveAtMs[0] = now;
                 lastSaveBytes[0] = read;
-            }, () -> !Files.exists(metaPath) || !Files.exists(partPath));
+            }, () -> !Files.exists(metaPath) || !Files.exists(partPath)));
         } catch (IllegalArgumentException e) {
             meta.phase = "ERROR";
             meta.updatedAtEpochMs = System.currentTimeMillis();
@@ -588,9 +624,9 @@ public class UploadServiceImpl implements UploadService {
 
             LocalDate now = LocalDate.now();
             String subDir = String.format("%d/%02d", now.getYear(), now.getMonthValue());
-            String storedName = sha256 + "_" + originalName;
+            String storedName = storedFileName();
 
-            Path root = Paths.get(uploadRoot).toAbsolutePath().normalize();
+            Path root = uploadRootPathOrThrow();
             Path finalDir = root.resolve(subDir).normalize();
             Path target = finalDir.resolve(storedName).normalize();
             if (!target.startsWith(root)) throw new IllegalArgumentException("非法文件路径");
@@ -659,6 +695,7 @@ public class UploadServiceImpl implements UploadService {
     @Override
     public void cancelResumable(String uploadId) {
         if (!StringUtils.hasText(uploadId)) return;
+        requireValidUploadId(uploadId);
         ResumableMeta meta = null;
         try {
             meta = loadResumableMetaOrThrow(uploadId);
@@ -688,8 +725,7 @@ public class UploadServiceImpl implements UploadService {
     private UploadResultDTO uploadInternal(MultipartFile file) {
         Long ownerId = currentUserIdOrThrow();
 
-        String sha256 = sha256Hex(file);
-        String originalName = safeFileName(file.getOriginalFilename());
+        String sha256 = normalizeSha256OrThrow(sha256Hex(file));
         String mime = (file.getContentType() == null || file.getContentType().isBlank())
                 ? "application/octet-stream"
                 : file.getContentType();
@@ -698,36 +734,18 @@ public class UploadServiceImpl implements UploadService {
         // This prevents 500 caused by UNIQUE KEY uk_file_sha (sha256).
         FileAssetsEntity existing = fileAssetsRepository.findBySha256(sha256).orElse(null);
         if (existing != null) {
+            String originalName = safeFileName(file.getOriginalFilename());
             fileAssetExtractionService.requestExtractionIfEnabled(existing);
             return toResult(existing, originalName);
         }
 
-        LocalDate now = LocalDate.now();
-        String subDir = String.format("%d/%02d", now.getYear(), now.getMonthValue());
-        String storedName = sha256 + "_" + originalName;
-
-        Path root = Paths.get(uploadRoot).toAbsolutePath().normalize();
-        Path dir = root.resolve(subDir).normalize();
-        Path target = dir.resolve(storedName).normalize();
-
-        if (!target.startsWith(root)) {
-            throw new IllegalArgumentException("非法文件路径");
-        }
-
-        try {
-            Files.createDirectories(dir);
-            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("保存文件失败");
-        }
-
-        String normalizedPrefix = urlPrefix.endsWith("/") ? urlPrefix.substring(0, urlPrefix.length() - 1) : urlPrefix;
-        String url = normalizedPrefix + "/" + subDir + "/" + storedName;
+        SavedFile saved = saveBlobOrThrow(file);
+        String originalName = safeFileName(file.getOriginalFilename());
 
         FileAssetsEntity fa = new FileAssetsEntity();
         fa.setOwner(administratorService.findById(ownerId).orElse(null));
-        fa.setPath(target.toString());
-        fa.setUrl(url);
+        fa.setPath(saved.target().toString());
+        fa.setUrl(saved.url());
         fa.setOriginalName(originalName);
         fa.setSizeBytes(file.getSize());
         fa.setMimeType(mime);

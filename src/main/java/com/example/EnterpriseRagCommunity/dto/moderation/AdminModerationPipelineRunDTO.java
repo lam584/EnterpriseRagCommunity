@@ -3,7 +3,6 @@ package com.example.EnterpriseRagCommunity.dto.moderation;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRunEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record AdminModerationPipelineRunDTO(

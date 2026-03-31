@@ -449,8 +449,6 @@ class AdminModerationLlmImageSupport {
     }
 
     private static String blankToNull(String s) {
-        if (s == null) return null;
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
+        return AdminModerationLlmConfigSupport.blankToNull(s);
     }
 }

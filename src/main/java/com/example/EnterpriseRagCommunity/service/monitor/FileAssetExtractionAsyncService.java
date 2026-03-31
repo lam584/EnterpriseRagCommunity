@@ -135,7 +135,7 @@ public class FileAssetExtractionAsyncService {
         UploadFormatsConfigDTO cfg = uploadFormatsConfigService.getConfig();
         long cfgMaxChars = cfg.getParseMaxChars() == null ? 200000L : cfg.getParseMaxChars();
         if (cfgMaxChars < 0L) cfgMaxChars = 0L;
-        int maxChars = (int) Math.min((long) Integer.MAX_VALUE, cfgMaxChars);
+        int maxChars = (int) Math.min(Integer.MAX_VALUE, cfgMaxChars);
         String ext = extLowerOrNull(fa.getOriginalName());
         if (ext == null) ext = extLowerOrNull(path.getFileName().toString());
 
@@ -534,7 +534,7 @@ public class FileAssetExtractionAsyncService {
         files.add(item);
         if (markTotalBytesLimitIfExceeded(c, archiveMaxTotalBytes)) return true;
         if (truncated) return false;
-        if (ext != null && isArchiveExt(ext)) {
+        if (isArchiveExt(ext)) {
             if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
             Path subDir = safeNestedUnpackDir(target, outDir);
             Files.createDirectories(subDir);
@@ -634,7 +634,7 @@ public class FileAssetExtractionAsyncService {
                             break;
                         }
                         if (kept < archiveMaxEntryBytes) {
-                            long can = Math.min((long) n, archiveMaxEntryBytes - kept);
+                            long can = Math.min(n, archiveMaxEntryBytes - kept);
                             if (can > 0) {
                                 os.write(buf, 0, (int) can);
                                 kept += can;
@@ -661,7 +661,7 @@ public class FileAssetExtractionAsyncService {
                 }
 
                 if (truncated) continue;
-                if (ext != null && isArchiveExt(ext)) {
+                if (isArchiveExt(ext)) {
                     if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
                     Path subDir = target.getParent().resolve(target.getFileName().toString() + "__unpacked").normalize();
                     if (!subDir.startsWith(outDir)) subDir = outDir.resolve("__unpacked_" + UUID.randomUUID()).normalize();
@@ -733,7 +733,7 @@ public class FileAssetExtractionAsyncService {
                             break;
                         }
                         if (kept < archiveMaxEntryBytes) {
-                            long can = Math.min((long) n, archiveMaxEntryBytes - kept);
+                            long can = Math.min(n, archiveMaxEntryBytes - kept);
                             if (can > 0) {
                                 os.write(buf, 0, (int) can);
                                 kept += can;
@@ -786,7 +786,7 @@ public class FileAssetExtractionAsyncService {
                 c.totalBytesRead += n;
                 if (c.totalBytesRead > archiveMaxTotalBytes) break;
                 if (kept < archiveMaxEntryBytes) {
-                    long can = Math.min((long) n, archiveMaxEntryBytes - kept);
+                    long can = Math.min(n, archiveMaxEntryBytes - kept);
                     if (can > 0) {
                         os.write(buf, 0, (int) can);
                         kept += can;
@@ -837,7 +837,6 @@ public class FileAssetExtractionAsyncService {
                 bis.reset();
             } catch (Exception ignore) {
             }
-            decompressed = bis;
         }
 
         BufferedInputStream aisBuf = new BufferedInputStream(decompressed);
@@ -873,9 +872,7 @@ public class FileAssetExtractionAsyncService {
         if (compression != null && !compression.isBlank()) {
             archiveMeta.putIfAbsent("compression", compression);
         }
-        ArchiveInputStream archiveIn = null;
-        try {
-            archiveIn = new ArchiveStreamFactory().createArchiveInputStream(archiveType, aisBuf);
+        try (ArchiveInputStream archiveIn = new ArchiveStreamFactory().createArchiveInputStream(archiveType, aisBuf)) {
             ArchiveEntry entry;
             while ((entry = archiveIn.getNextEntry()) != null) {
                 if (exceededArchiveBudget(c, startNs)) {
@@ -945,13 +942,6 @@ public class FileAssetExtractionAsyncService {
                 if (c.totalBytesRead > archiveMaxTotalBytes) {
                     c.truncatedReason = c.truncatedReason == null ? "TOTAL_BYTES_LIMIT" : c.truncatedReason;
                     break;
-                }
-            }
-        } finally {
-            if (archiveIn != null) {
-                try {
-                    archiveIn.close();
-                } catch (Exception ignore) {
                 }
             }
         }
@@ -1162,7 +1152,7 @@ public class FileAssetExtractionAsyncService {
             c.totalBytesRead += n;
             if (c.totalBytesRead > archiveMaxTotalBytes) break;
             if (kept < archiveMaxEntryBytes) {
-                long can = Math.min((long) n, archiveMaxEntryBytes - kept);
+                long can = Math.min(n, archiveMaxEntryBytes - kept);
                 if (can > 0) {
                     baos.write(buf, 0, (int) can);
                     kept += can;
@@ -1188,13 +1178,7 @@ public class FileAssetExtractionAsyncService {
     }
 
     private void appendArchiveEntryBlock(StringBuilder out, String entryPath, String text) {
-        if (out == null) return;
-        String p = entryPath == null ? "" : entryPath.trim();
-        String t = text == null ? "" : text.trim();
-        if (t.isBlank()) return;
-        out.append("FILE: ").append(p).append('\n');
-        out.append(t).append('\n');
-        out.append('\n');
+        FileAssetExtractionSupport.appendExtractedFileBlock(out, entryPath, text);
     }
 
     private boolean exceededArchiveBudget(ArchiveCounters c, long startNs) {
@@ -1215,7 +1199,7 @@ public class FileAssetExtractionAsyncService {
             c.totalBytesRead += n;
             if (c.totalBytesRead > archiveMaxTotalBytes) break;
             if (kept < archiveMaxEntryBytes) {
-                long can = Math.min((long) n, archiveMaxEntryBytes - kept);
+                long can = Math.min(n, archiveMaxEntryBytes - kept);
                 if (can > 0) {
                     baos.write(buf, 0, (int) can);
                     kept += can;
@@ -1442,9 +1426,8 @@ public class FileAssetExtractionAsyncService {
 
         boolean canAdd(long bytes) {
             long b = Math.max(0L, bytes);
-            if (maxCount > 0 && count >= maxCount) return false;
-            if (maxTotalBytes > 0 && totalBytes + b > maxTotalBytes) return false;
-            return true;
+            if (maxCount > 0 && count >= maxCount) return true;
+            return maxTotalBytes > 0 && totalBytes + b > maxTotalBytes;
         }
 
         int consume(long bytes) {
@@ -1455,7 +1438,6 @@ public class FileAssetExtractionAsyncService {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> takeList(Object v) {
         return FileAssetExtractionSupport.takeList(v);
     }
@@ -1512,34 +1494,36 @@ public class FileAssetExtractionAsyncService {
         String e = ext == null ? "" : ext.trim().toLowerCase(Locale.ROOT);
         if (e.isBlank()) return List.of();
         if (isImageExt(e)) return List.of();
-        if (e.equals("txt") || e.equals("md") || e.equals("markdown") || e.equals("html") || e.equals("htm")) {
-            meta.put("imagesExtractionMode", "NONE");
-            return List.of();
-        }
-        if (e.equals("csv") || e.equals("json")) {
-            meta.put("imagesExtractionMode", "NONE");
-            return List.of();
-        }
-        if (e.equals("pdf")) {
-            return extractPdfImages(path, meta, fileAssetId, extractedText, budget);
-        }
-        if (e.equals("docx")) {
-            return extractDocxImages(path, meta, fileAssetId, budget);
-        }
-        if (e.equals("xlsx")) {
-            return extractXlsxImages(path, meta, fileAssetId, budget);
-        }
-        if (e.equals("pptx")) {
-            return extractPptxImages(path, meta, fileAssetId, budget);
-        }
-        if (e.equals("ppt")) {
-            return extractPptImages(path, meta, fileAssetId, budget);
-        }
-        if (e.equals("epub")) {
-            return extractEpubImages(path, meta, fileAssetId, budget);
-        }
-        if (e.equals("mobi")) {
-            return extractMobiImagesWithTika(path, meta, fileAssetId, budget);
+        switch (e) {
+            case "txt", "md", "markdown", "html", "htm" -> {
+                meta.put("imagesExtractionMode", "NONE");
+                return List.of();
+            }
+            case "csv", "json" -> {
+                meta.put("imagesExtractionMode", "NONE");
+                return List.of();
+            }
+            case "pdf" -> {
+                return extractPdfImages(path, meta, fileAssetId, extractedText, budget);
+            }
+            case "docx" -> {
+                return extractDocxImages(path, meta, fileAssetId, budget);
+            }
+            case "xlsx" -> {
+                return extractXlsxImages(path, meta, fileAssetId, budget);
+            }
+            case "pptx" -> {
+                return extractPptxImages(path, meta, fileAssetId, budget);
+            }
+            case "ppt" -> {
+                return extractPptImages(path, meta, fileAssetId, budget);
+            }
+            case "epub" -> {
+                return extractEpubImages(path, meta, fileAssetId, budget);
+            }
+            case "mobi" -> {
+                return extractMobiImagesWithTika(path, meta, fileAssetId, budget);
+            }
         }
         meta.put("imagesExtractionMode", "UNSUPPORTED");
         return List.of();
@@ -1558,7 +1542,7 @@ public class FileAssetExtractionAsyncService {
                 if (pic == null) continue;
                 byte[] bytes = pic.getData();
                 if (bytes == null || bytes.length == 0) continue;
-                if (budget != null && !budget.canAdd(bytes.length)) break;
+                if (budget != null && budget.canAdd(bytes.length)) break;
                 int idx = budget == null ? (out.size() + 1) : budget.peekNextIndex();
                 String ext = pic.suggestFileExtension();
                 String name = (pic.getFileName() == null || pic.getFileName().isBlank())
@@ -1599,7 +1583,7 @@ public class FileAssetExtractionAsyncService {
                 if (pic == null) continue;
                 byte[] bytes = pic.getData();
                 if (bytes == null || bytes.length == 0) continue;
-                if (budget != null && !budget.canAdd(bytes.length)) break;
+                if (budget != null && budget.canAdd(bytes.length)) break;
                 int idx = budget == null ? (out.size() + 1) : budget.peekNextIndex();
                 String ext = pic.suggestFileExtension();
                 String name = "xlsx_image_" + idx + "." + (ext == null ? "png" : ext);
@@ -1630,7 +1614,7 @@ public class FileAssetExtractionAsyncService {
                 if (pic == null) continue;
                 byte[] bytes = pic.getData();
                 if (bytes == null || bytes.length == 0) continue;
-                if (budget != null && !budget.canAdd(bytes.length)) break;
+                if (budget != null && budget.canAdd(bytes.length)) break;
                 int idx = budget == null ? (out.size() + 1) : budget.peekNextIndex();
 
                 String ext = null;
@@ -1673,7 +1657,7 @@ public class FileAssetExtractionAsyncService {
                 if (pic == null) continue;
                 byte[] bytes = pic.getData();
                 if (bytes == null || bytes.length == 0) continue;
-                if (budget != null && !budget.canAdd(bytes.length)) break;
+                if (budget != null && budget.canAdd(bytes.length)) break;
                 int idx = budget == null ? (out.size() + 1) : budget.peekNextIndex();
 
                 String ext = null;
@@ -1710,19 +1694,19 @@ public class FileAssetExtractionAsyncService {
 
             boolean found = false;
             for (int i = 0; i < doc.getNumberOfPages(); i++) {
-                if (budget != null && !budget.canAdd(1)) break;
+                if (budget != null && budget.canAdd(1)) break;
                 PDPage page = doc.getPage(i);
                 PDResources res = page == null ? null : page.getResources();
                 if (res == null) continue;
                 for (var name : res.getXObjectNames()) {
-                    if (budget != null && !budget.canAdd(1)) break;
+                    if (budget != null && budget.canAdd(1)) break;
                     PDXObject xo = res.getXObject(name);
                     if (!(xo instanceof PDImageXObject img)) continue;
                     BufferedImage bi = img.getImage();
                     if (bi == null) continue;
                     byte[] bytes = bufferedImageToPng(bi);
                     if (bytes == null || bytes.length == 0) continue;
-                    if (budget != null && !budget.canAdd(bytes.length)) break;
+                    if (budget != null && budget.canAdd(bytes.length)) break;
                     int idx = budget == null ? (out.size() + 1) : budget.peekNextIndex();
                     Map<String, Object> saved = derivedUploadStorageService.saveDerivedImage(bytes, "pdf_image_" + idx + ".png", "image/png", fileAssetId);
                     if (saved == null) continue;
@@ -1755,11 +1739,11 @@ public class FileAssetExtractionAsyncService {
             PDFRenderer renderer = new PDFRenderer(doc);
             int dpi = Math.max(36, Math.min(600, pdfRenderDpi));
             for (int i = 0; i < toRender; i++) {
-                if (budget != null && !budget.canAdd(1)) break;
+                if (budget != null && budget.canAdd(1)) break;
                 BufferedImage bi = renderer.renderImageWithDPI(i, dpi);
                 byte[] bytes = bufferedImageToPng(bi);
                 if (bytes == null || bytes.length == 0) continue;
-                if (budget != null && !budget.canAdd(bytes.length)) break;
+                if (budget != null && budget.canAdd(bytes.length)) break;
                 int idx = budget == null ? (out.size() + 1) : budget.peekNextIndex();
                 Map<String, Object> saved = derivedUploadStorageService.saveDerivedImage(bytes, "pdf_page_" + (i + 1) + ".png", "image/png", fileAssetId);
                 if (saved == null) continue;
@@ -1787,17 +1771,17 @@ public class FileAssetExtractionAsyncService {
             }
             meta.put("imagesExtractionMode", "EPUB_ZIP");
             for (ZipEntry en : entries) {
-                if (budget != null && !budget.canAdd(0)) break;
+                if (budget != null && budget.canAdd(0)) break;
                 String name = en.getName();
                 String ext = extLowerOrNull(name);
                 if (!isImageExt(ext == null ? "" : ext)) continue;
                 long size = en.getSize();
                 if (size > 0 && derivedUploadStorageService.getMaxImageBytes() > 0 && size > derivedUploadStorageService.getMaxImageBytes()) continue;
-                if (size > 0 && budget != null && !budget.canAdd(size)) break;
+                if (size > 0 && budget != null && budget.canAdd(size)) break;
                 try (InputStream is = zf.getInputStream(en)) {
                     byte[] bytes = is.readAllBytes();
                     if (bytes.length == 0) continue;
-                    if (budget != null && !budget.canAdd(bytes.length)) break;
+                    if (budget != null && budget.canAdd(bytes.length)) break;
                     int idx = budget == null ? (out.size() + 1) : budget.peekNextIndex();
                     String mime = guessMimeFromExt(ext);
                     Map<String, Object> saved = derivedUploadStorageService.saveDerivedImage(bytes, "epub_" + Path.of(name).getFileName(), mime, fileAssetId);
@@ -1839,7 +1823,7 @@ public class FileAssetExtractionAsyncService {
                         String name = metadata == null ? null : metadata.get(TikaCoreProperties.RESOURCE_NAME_KEY);
                         int idx = budget == null ? (out.size() + 1) : budget.peekNextIndex();
                         String fallback = "mobi_image_" + idx + ".png";
-                        Map<String, Object> saved = derivedUploadStorageService.saveDerivedImage(bytes, String.valueOf(name == null ? fallback : name), ct, fileAssetId);
+                        Map<String, Object> saved = derivedUploadStorageService.saveDerivedImage(bytes, name == null ? fallback : name, ct, fileAssetId);
                         if (saved == null) return;
                         if (budget != null) idx = budget.consume(bytes.length);
                         out.add(derivedUploadStorageService.buildPlaceholder(idx, saved));
@@ -1863,12 +1847,12 @@ public class FileAssetExtractionAsyncService {
                                     .sorted(Comparator.comparing(ZipEntry::getName, String.CASE_INSENSITIVE_ORDER))
                                     .toList();
                             for (ZipEntry en : entries) {
-                                if (budget != null && !budget.canAdd(0)) break;
+                                if (budget != null && budget.canAdd(0)) break;
                                 String name = en.getName();
                                 String ext = extLowerOrNull(name);
                                 if (shouldSkipMobiZipEntry(en, ext)) continue;
                                 long size = en.getSize();
-                                if (size > 0 && budget != null && !budget.canAdd(size)) break;
+                                if (size > 0 && budget != null && budget.canAdd(size)) break;
                                 if (processMobiZipEntry(zf, en, ext, budget, fileAssetId, zipOut)) break;
                             }
                         }
@@ -1892,14 +1876,14 @@ public class FileAssetExtractionAsyncService {
     }
 
     private static boolean isBudgetExceeded(ImageBudget budget, long bytes) {
-        return budget != null && !budget.canAdd(bytes);
+        return budget != null && budget.canAdd(bytes);
     }
 
     private boolean shouldSkipMobiZipEntry(ZipEntry en, String ext) {
         if (!isImageExt(ext == null ? "" : ext)) return true;
         long size = en.getSize();
         long max = derivedUploadStorageService.getMaxImageBytes();
-        return size > 0 && max > 0 && size > max;
+        return max > 0 && size > max;
     }
 
     private boolean processMobiZipEntry(ZipFile zf, ZipEntry en, String ext, ImageBudget budget, Long fileAssetId, List<Map<String, Object>> zipOut) throws Exception {

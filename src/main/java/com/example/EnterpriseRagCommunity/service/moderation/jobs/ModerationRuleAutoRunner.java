@@ -1,14 +1,9 @@
 package com.example.EnterpriseRagCommunity.service.moderation.jobs;
 
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRunEntity;
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineStepEntity;
+import com.example.EnterpriseRagCommunity.entity.moderation.*;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.moderation.trace.ModerationPipelineTraceService;
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationConfidenceFallbackConfigEntity;
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationRuleHitsEntity;
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationRulesEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStage;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.QueueStatus;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.Severity;
@@ -184,7 +179,6 @@ public class ModerationRuleAutoRunner {
                     lockExpiredBefore
             );
         } catch (Exception ignore) {
-            locked = 0;
         }
         if (locked <= 0) return;
 
@@ -225,15 +219,14 @@ public class ModerationRuleAutoRunner {
 
             Map<String, Object> policyConfig = null;
             try {
-                policyConfig = policyConfigRepository.findByContentType(q.getContentType()).map(p -> p.getConfig()).orElse(null);
+                policyConfig = policyConfigRepository.findByContentType(q.getContentType()).map(ModerationPolicyConfigEntity::getConfig).orElse(null);
             } catch (Exception ignore) {
-                policyConfig = null;
             }
 
             Boolean ruleEnabled = deepGetBool(policyConfig, "precheck.rule.enabled");
             if (ruleEnabled == null) ruleEnabled = true;
 
-            if (!Boolean.TRUE.equals(ruleEnabled)) {
+            if (!ruleEnabled) {
                 q.setCurrentStage(QueueStage.VEC);
                 queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
 
@@ -425,30 +418,34 @@ public class ModerationRuleAutoRunner {
             if ("REJECT".equals(normalizeAction(action))) {
                 queueService.autoReject(q.getId(), "规则命中自动拒绝（" + maxSeverity.name() + "）", run.getTraceId());
                 if (ruleStepId > 0) {
-                    pipelineTraceService.finishStepOk(ruleStepId, "REJECT", null, Map.of(
-                            "hitCount", hitCount,
-                            "maxSeverity", maxSeverity.name(),
-                            "hits", hitDetails,
-                            "action", action
-                    ));
-                }
-                pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
-                auditLogWriter.writeSystem(
-                        "RULE_DECISION",
-                        "MODERATION_QUEUE",
-                        q.getId(),
-                        AuditResult.SUCCESS,
-                        "RULE reject (maxSeverity=" + maxSeverity.name() + ")",
-                        run.getTraceId(),
-                        Map.of(
-                                "runId", run.getId(),
-                                "stage", "RULE",
-                                "decision", "REJECT",
+                    if (action != null) {
+                        pipelineTraceService.finishStepOk(ruleStepId, "REJECT", null, Map.of(
                                 "hitCount", hitCount,
                                 "maxSeverity", maxSeverity.name(),
+                                "hits", hitDetails,
                                 "action", action
-                        )
-                );
+                        ));
+                    }
+                }
+                pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
+                if (action != null) {
+                    auditLogWriter.writeSystem(
+                            "RULE_DECISION",
+                            "MODERATION_QUEUE",
+                            q.getId(),
+                            AuditResult.SUCCESS,
+                            "RULE reject (maxSeverity=" + maxSeverity.name() + ")",
+                            run.getTraceId(),
+                            Map.of(
+                                    "runId", run.getId(),
+                                    "stage", "RULE",
+                                    "decision", "REJECT",
+                                    "hitCount", hitCount,
+                                    "maxSeverity", maxSeverity.name(),
+                                    "action", action
+                            )
+                    );
+                }
                 return;
             }
 
@@ -462,31 +459,35 @@ public class ModerationRuleAutoRunner {
             queueRepository.updateStageIfLockedBy(q.getId(), q.getCurrentStage(), locker, q.getUpdatedAt());
 
             if (ruleStepId > 0) {
-                pipelineTraceService.finishStepOk(ruleStepId, decision, null, Map.of(
-                        "hitCount", hitCount,
-                        "maxSeverity", maxSeverity.name(),
-                        "hits", hitDetails,
-                        "nextStage", String.valueOf(q.getCurrentStage()),
-                        "action", action
-                ));
-            }
-            auditLogWriter.writeSystem(
-                    "RULE_DECISION",
-                    "MODERATION_QUEUE",
-                    q.getId(),
-                    AuditResult.SUCCESS,
-                    "RULE hit (maxSeverity=" + maxSeverity.name() + ")",
-                    run.getTraceId(),
-                    Map.of(
-                            "runId", run.getId(),
-                            "stage", "RULE",
-                            "decision", decision,
+                if (action != null) {
+                    pipelineTraceService.finishStepOk(ruleStepId, decision, null, Map.of(
                             "hitCount", hitCount,
                             "maxSeverity", maxSeverity.name(),
+                            "hits", hitDetails,
                             "nextStage", String.valueOf(q.getCurrentStage()),
                             "action", action
-                    )
-            );
+                    ));
+                }
+            }
+            if (action != null) {
+                auditLogWriter.writeSystem(
+                        "RULE_DECISION",
+                        "MODERATION_QUEUE",
+                        q.getId(),
+                        AuditResult.SUCCESS,
+                        "RULE hit (maxSeverity=" + maxSeverity.name() + ")",
+                        run.getTraceId(),
+                        Map.of(
+                                "runId", run.getId(),
+                                "stage", "RULE",
+                                "decision", decision,
+                                "hitCount", hitCount,
+                                "maxSeverity", maxSeverity.name(),
+                                "nextStage", String.valueOf(q.getCurrentStage()),
+                                "action", action
+                        )
+                );
+            }
         } finally {
             try {
                 queueRepository.unlockAutoRun(queueId, locker, LocalDateTime.now());

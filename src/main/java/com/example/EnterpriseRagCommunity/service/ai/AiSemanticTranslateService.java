@@ -358,8 +358,8 @@ public class AiSemanticTranslateService {
 
         long started = System.currentTimeMillis();
         String rawJson;
-        String usedProviderId = null;
-        String usedModel = null;
+        String usedProviderId;
+        String usedModel;
         try {
             LlmGateway.RoutedChatOnceResult routed = llmGateway.chatOnceRouted(
                     LlmQueueTaskType.UNKNOWN,

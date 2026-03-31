@@ -21,7 +21,7 @@ public class ViteManifestService {
     private static final Logger logger = LoggerFactory.getLogger(ViteManifestService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     // 解析后的 manifest 数据，key：入口文件；value：构建后文件信息（包括 file、css 等）
-    private Map<String, JsonNode> manifest = new ConcurrentHashMap<>();
+    private final Map<String, JsonNode> manifest = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void init() {

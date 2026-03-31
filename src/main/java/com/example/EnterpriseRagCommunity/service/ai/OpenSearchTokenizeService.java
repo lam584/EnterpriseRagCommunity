@@ -105,8 +105,7 @@ public class OpenSearchTokenizeService {
         if (cp >= 0xF900 && cp <= 0xFAFF) return true;
         if (cp >= 0x2F800 && cp <= 0x2FA1F) return true;
         if (cp >= 0x3040 && cp <= 0x30FF) return true;
-        if (cp >= 0xAC00 && cp <= 0xD7AF) return true;
-        return false;
+        return cp >= 0xAC00 && cp <= 0xD7AF;
     }
 
     private static List<Map<String, String>> normalizeMessages(OpenSearchTokenizeRequest req) {

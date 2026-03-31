@@ -120,43 +120,4 @@ public class UpdateAssistantPreferencesRequest {
         this.defaultSystemPrompt = defaultSystemPrompt;
     }
 
-    public boolean isDefaultProviderIdPresent() {
-        return defaultProviderIdPresent;
-    }
-
-    public boolean isDefaultModelPresent() {
-        return defaultModelPresent;
-    }
-
-    public boolean isDefaultDeepThinkPresent() {
-        return defaultDeepThinkPresent;
-    }
-
-    public boolean isAutoLoadLastSessionPresent() {
-        return autoLoadLastSessionPresent;
-    }
-
-    public boolean isDefaultUseRagPresent() {
-        return defaultUseRagPresent;
-    }
-
-    public boolean isRagTopKPresent() {
-        return ragTopKPresent;
-    }
-
-    public boolean isStreamPresent() {
-        return streamPresent;
-    }
-
-    public boolean isTemperaturePresent() {
-        return temperaturePresent;
-    }
-
-    public boolean isTopPPresent() {
-        return topPPresent;
-    }
-
-    public boolean isDefaultSystemPromptPresent() {
-        return defaultSystemPromptPresent;
-    }
 }

@@ -4,6 +4,8 @@ import com.example.EnterpriseRagCommunity.dto.content.CommentCreateRequest;
 import com.example.EnterpriseRagCommunity.dto.content.CommentDTO;
 import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import jakarta.validation.Valid;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +31,8 @@ public class PostCommentsController {
         return commentsService.createForPost(postId, req);
     }
 
+    @Setter
+    @Getter
     public static class CountResponse {
         private long count;
 
@@ -36,13 +40,6 @@ public class PostCommentsController {
             this.count = count;
         }
 
-        public long getCount() {
-            return count;
-        }
-
-        public void setCount(long count) {
-            this.count = count;
-        }
     }
 
     @GetMapping("/{postId}/comments/count")

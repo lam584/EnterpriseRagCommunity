@@ -240,15 +240,13 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         if (contentType == null) return false;
         if (contentType.startsWith("multipart/form-data")) return false;
         if (contentType.startsWith("application/octet-stream")) return false;
-        if (contentType.startsWith("image/")) return false;
-        return true;
+        return !contentType.startsWith("image/");
     }
 
     private static boolean shouldWrapResponse(HttpServletRequest request) {
         if (request == null) return true;
         String accept = safeLower(request.getHeader("Accept"));
-        if (accept != null && accept.contains("text/event-stream")) return false;
-        return true;
+        return accept == null || !accept.contains("text/event-stream");
     }
 
     private static Map<String, Object> extractHeaderSnapshot(HttpServletRequest request, String requestId, String traceId) {
@@ -348,7 +346,7 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         if (maxBytes <= 0) return new BodySnippet("", true);
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         if (bytes.length <= maxBytes) return new BodySnippet(text, false);
-        int end = Math.min(text.length(), Math.max(0, maxBytes));
+        int end = Math.clamp(maxBytes, 0, text.length());
         String cut = text.substring(0, end);
         while (cut.getBytes(StandardCharsets.UTF_8).length > maxBytes && !cut.isEmpty()) {
             cut = cut.substring(0, cut.length() - 1);
@@ -368,25 +366,31 @@ public class AccessLogsFilter extends OncePerRequestFilter {
     }
 
     private static JsonNode maskJsonNode(JsonNode node) {
-        if (node == null) return null;
-        if (node.isObject()) {
-            ObjectNode obj = ((ObjectNode) node).deepCopy();
-            obj.fieldNames().forEachRemaining((String k) -> {
-                String kl = k == null ? "" : k.toLowerCase();
-                if (isSensitiveKey(kl)) {
-                    obj.put(k, "***");
-                } else {
-                    obj.set(k, maskJsonNode(obj.get(k)));
-                }
-            });
-            return obj;
-        }
-        if (node.isArray()) {
-            ArrayNode arr = ((ArrayNode) node).deepCopy();
-            for (int i = 0; i < arr.size(); i++) {
-                arr.set(i, maskJsonNode(arr.get(i)));
+        switch (node) {
+            case null -> {
+                return null;
             }
-            return arr;
+            case ObjectNode objNode -> {
+                ObjectNode obj = objNode.deepCopy();
+                obj.fieldNames().forEachRemaining((String k) -> {
+                    String kl = k == null ? "" : k.toLowerCase();
+                    if (isSensitiveKey(kl)) {
+                        obj.put(k, "***");
+                    } else {
+                        obj.set(k, maskJsonNode(obj.get(k)));
+                    }
+                });
+                return obj;
+            }
+            case ArrayNode arrNode -> {
+                ArrayNode arr = arrNode.deepCopy();
+                for (int i = 0; i < arr.size(); i++) {
+                    arr.set(i, maskJsonNode(arr.get(i)));
+                }
+                return arr;
+            }
+            default -> {
+            }
         }
         return node;
     }
@@ -489,15 +493,15 @@ public class AccessLogsFilter extends OncePerRequestFilter {
                 reqDetails
         ));
 
-        Integer statusCode = null;
-        Integer latencyMs = null;
+        int statusCode;
+        int latencyMs;
         try {
             filterChain.doFilter(reqForChain, respForChain);
         } finally {
             try {
                 statusCode = respForChain.getStatus();
                 long cost = System.currentTimeMillis() - startMs;
-                latencyMs = (int) Math.clamp(cost, 0, Integer.MAX_VALUE);
+                latencyMs = Math.clamp(cost, 0, Integer.MAX_VALUE);
 
                 if (captureBodyEnabled) {
                     Map<String, Object> reqBody = extractRequestBody(cachingRequest, request, safeMaxBodyBytes);
@@ -640,7 +644,7 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         }
 
         @Override
-        public void write(byte[] b, int off, int len) throws IOException {
+        public void write(@NonNull byte[] b, int off, int len) throws IOException {
             if (delegate != null) delegate.write(b, off, len);
             if (b == null || len <= 0) return;
             if (capture != null && captured < limitBytes) {

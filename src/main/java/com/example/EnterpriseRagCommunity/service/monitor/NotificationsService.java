@@ -20,7 +20,7 @@ public interface NotificationsService {
 
     int markMyNotificationsRead(List<Long> ids);
 
-    NotificationsEntity deleteMyNotification(Long id);
+    void deleteMyNotification(Long id);
 
     NotificationsEntity createNotification(Long userId, String type, String title, String content);
 }

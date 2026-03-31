@@ -15,19 +15,19 @@ public class ModerationSimilarHitsUpdateDTO {
     @NotNull
     private Long id;
 
-    @ApiModelProperty(value = "内容类型", required = false, example = "POST")
+    @ApiModelProperty(value = "内容类型", example = "POST")
     private ContentType contentType;
 
-    @ApiModelProperty(value = "内容ID", required = false, example = "456")
+    @ApiModelProperty(value = "内容ID", example = "456")
     private Long contentId;
 
-    @ApiModelProperty(value = "相似样本/参考ID", required = false)
+    @ApiModelProperty(value = "相似样本/参考ID")
     private Long candidateId;
 
-    @ApiModelProperty(value = "相似距离", required = false, example = "0.312")
+    @ApiModelProperty(value = "相似距离", example = "0.312")
     private @DecimalMin("0.0") Double distance;
 
-    @ApiModelProperty(value = "距离阈值", required = false, example = "0.500")
+    @ApiModelProperty(value = "距离阈值", example = "0.500")
     private @DecimalMin("0.0") Double threshold;
 
     @ApiModelProperty(value = "命中时间(只读)")

@@ -297,7 +297,7 @@ public class LlmRoutingService {
                     .thenComparing(RouteTarget::providerId)
                     .thenComparing(RouteTarget::modelName)
             );
-        return candidates.get(0);
+        return candidates.getFirst();
     }
 
     private RouteTarget pickWeightedRoundRobin(LlmQueueTaskType taskType, List<RouteTarget> candidates) {
@@ -520,8 +520,7 @@ public class LlmRoutingService {
         if (v == null) return def;
         int x = v;
         if (x < min) return min;
-        if (x > max) return max;
-        return x;
+        return Math.min(x, max);
     }
 
     public void resetRuntimeState() {

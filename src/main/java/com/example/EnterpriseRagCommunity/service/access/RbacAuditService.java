@@ -97,7 +97,7 @@ public class RbacAuditService {
     private Optional<HttpServletRequest> currentRequest() {
         var attrs = RequestContextHolder.getRequestAttributes();
         if (attrs instanceof ServletRequestAttributes sra) {
-            return Optional.ofNullable(sra.getRequest());
+            return Optional.of(sra.getRequest());
         }
         return Optional.empty();
     }

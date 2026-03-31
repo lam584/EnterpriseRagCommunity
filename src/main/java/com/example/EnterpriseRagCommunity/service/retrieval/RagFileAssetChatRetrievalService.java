@@ -168,7 +168,7 @@ public class RagFileAssetChatRetrievalService {
         sb.append(",\"query_vector\":[");
         for (int i = 0; i < vec.length; i++) {
             if (i > 0) sb.append(',');
-            sb.append(Float.toString(vec[i]));
+            sb.append(vec[i]);
         }
         sb.append(']');
         sb.append(",\"k\":").append(size);

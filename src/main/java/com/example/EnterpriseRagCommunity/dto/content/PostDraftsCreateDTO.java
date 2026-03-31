@@ -18,10 +18,10 @@ public class PostDraftsCreateDTO {
     private Long boardId;
 
     @Size(max = 191)
-    @ApiModelProperty(value = "标题(可选，草稿允许为空)", required = false)
+    @ApiModelProperty(value = "标题(可选，草稿允许为空)")
     private String title;
 
-    @ApiModelProperty(value = "内容(可选，草稿允许为空)", required = false)
+    @ApiModelProperty(value = "内容(可选，草稿允许为空)")
     private String content;
 
     @NotNull

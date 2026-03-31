@@ -97,8 +97,7 @@ public class ContentSafetyCircuitBreakerFilter extends OncePerRequestFilter {
         if (isStaticAssetPath(path)) return false;
         if (path.startsWith("/api/admin")) return false;
         if (path.startsWith("/api/auth")) return false;
-        if (path.startsWith("/api/public")) return false;
-        return true;
+        return !path.startsWith("/api/public");
     }
 
     private static boolean shouldBlockInS3(String path) {
@@ -150,11 +149,7 @@ public class ContentSafetyCircuitBreakerFilter extends OncePerRequestFilter {
         }
 
         Long userId = extractUserId(req);
-        if (userId != null && scope.getUserIds() != null && scope.getUserIds().contains(userId)) {
-            return true;
-        }
-
-        return false;
+        return userId != null && scope.getUserIds() != null && scope.getUserIds().contains(userId);
     }
 
     private static Long extractPostId(HttpServletRequest req) {
@@ -225,8 +220,7 @@ public class ContentSafetyCircuitBreakerFilter extends OncePerRequestFilter {
         if (path.startsWith("/assets/")) return true;
         if (path.startsWith("/fonts/")) return true;
         if (path.equals("/favicon.ico") || path.equals("/robots.txt") || path.equals("/vite-manifest.json")) return true;
-        if (path.startsWith("/css/") || path.startsWith("/js/") || path.startsWith("/images/") || path.startsWith("/webjars/")) return true;
-        return false;
+        return path.startsWith("/css/") || path.startsWith("/js/") || path.startsWith("/images/") || path.startsWith("/webjars/");
     }
 
     private static boolean isGet(String method) {

@@ -77,7 +77,7 @@ public class ContentSafetyCircuitBreakerService {
     }
 
     public List<ContentSafetyCircuitBreakerEventDTO> getRecentEvents(int limit) {
-        int n = Math.max(0, Math.min(200, limit));
+        int n = Math.clamp(limit, 0, 200);
         synchronized (eventLock) {
             if (n == 0 || recentEvents.isEmpty()) return List.of();
             List<ContentSafetyCircuitBreakerEventDTO> out = new ArrayList<>(n);
@@ -93,7 +93,7 @@ public class ContentSafetyCircuitBreakerService {
     }
 
     public void reloadFromDbIfPresent() {
-        String raw = null;
+        String raw;
         try {
             raw = appSettingsService.getString(KEY_CONFIG_JSON).orElse(null);
         } catch (Exception e) {
@@ -208,7 +208,7 @@ public class ContentSafetyCircuitBreakerService {
         com.example.EnterpriseRagCommunity.dto.safety.ContentSafetyCircuitBreakerRuntimeMetricsDTO m =
                 new com.example.EnterpriseRagCommunity.dto.safety.ContentSafetyCircuitBreakerRuntimeMetricsDTO();
         m.setBlockedTotal(blockedTotal.sum());
-        m.setBlockedLast60s(countBlockedLastSeconds(60));
+        m.setBlockedLast60s(countBlockedLast60Seconds());
 
         Map<String, Long> by = new java.util.LinkedHashMap<>();
         for (Map.Entry<String, LongAdder> e : blockedByEntrypoint.entrySet()) {
@@ -219,8 +219,8 @@ public class ContentSafetyCircuitBreakerService {
         return m;
     }
 
-    private long countBlockedLastSeconds(int seconds) {
-        int sec = Math.max(1, Math.min(120, seconds));
+    private long countBlockedLast60Seconds() {
+        int sec = 60;
         long nowSec = System.currentTimeMillis() / 1000L;
         long minSec = nowSec - (sec - 1L);
         long sum = 0L;
@@ -292,7 +292,7 @@ public class ContentSafetyCircuitBreakerService {
             nat.setEnabled(Boolean.TRUE.equals(at.getEnabled()));
             nat.setWindowSeconds(clampInt(at.getWindowSeconds(), 5, 3600, 60));
             nat.setThresholdCount(clampInt(at.getThresholdCount(), 1, 1_000_000, 10));
-            nat.setMinConfidence(clampDouble(at.getMinConfidence(), 0.0, 1.0, 0.90));
+            nat.setMinConfidence(clampConfidence(at.getMinConfidence()));
             nat.setVerdicts(at.getVerdicts() == null ? List.of("REJECT", "REVIEW") : List.copyOf(at.getVerdicts()));
             String triggerMode = safeUpper(at.getTriggerMode());
             if (!Objects.equals(triggerMode, MODE_S1) && !Objects.equals(triggerMode, MODE_S2) && !Objects.equals(triggerMode, MODE_S3)) {
@@ -319,18 +319,13 @@ public class ContentSafetyCircuitBreakerService {
 
     private static int clampInt(Integer v, int min, int max, int def) {
         if (v == null) return def;
-        int x = v;
-        if (x < min) return min;
-        if (x > max) return max;
-        return x;
+        return Math.clamp(v, min, max);
     }
 
-    private static double clampDouble(Double v, double min, double max, double def) {
-        if (v == null) return def;
+    private static double clampConfidence(Double v) {
+        if (v == null) return 0.90;
         double x = v;
-        if (Double.isNaN(x) || Double.isInfinite(x)) return def;
-        if (x < min) return min;
-        if (x > max) return max;
-        return x;
+        if (Double.isNaN(x) || Double.isInfinite(x)) return 0.90;
+        return Math.clamp(x, 0.0, 1.0);
     }
 }

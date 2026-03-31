@@ -91,13 +91,11 @@ public class LlmLoadBalanceTimeseriesService {
         final ConcurrentHashMap<ModelKey, MinuteAgg> byModel = new ConcurrentHashMap<>();
     }
 
-    private final LlmCallQueueService llmCallQueueService;
     private final ConcurrentHashMap<Long, MinuteBucket> minuteBuckets = new ConcurrentHashMap<>();
     private final java.util.concurrent.atomic.AtomicLong lastCleanupAtMs = new java.util.concurrent.atomic.AtomicLong(0L);
 
     public LlmLoadBalanceTimeseriesService(LlmCallQueueService llmCallQueueService) {
-        this.llmCallQueueService = llmCallQueueService;
-        this.llmCallQueueService.subscribeCompleted(this::onCompleted);
+        llmCallQueueService.subscribeCompleted(this::onCompleted);
     }
 
     private void onCompleted(LlmCallQueueService.TaskSnapshot t) {

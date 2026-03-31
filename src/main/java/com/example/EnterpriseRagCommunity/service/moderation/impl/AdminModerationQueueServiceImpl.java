@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
@@ -181,7 +182,10 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         }
         if (qBoardId != null) {
             spec = spec.and((root, q, cb) -> {
-                var sq = q.subquery(Long.class);
+                Subquery<Long> sq = null;
+                if (q != null) {
+                    sq = q.subquery(Long.class);
+                }
                 var p = sq.from(PostsEntity.class);
                 sq.select(p.get("id"))
                         .where(
@@ -617,7 +621,9 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         details.put("stage", enumName(detail.getCurrentStage()));
         details.put("assignedToId", detail.getAssignedToId());
         if (manual) {
-            auditLogWriter.write(actor.getId(), actorName(actor), action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, traceId, details);
+            if (actor != null) {
+                auditLogWriter.write(actor.getId(), actorName(actor), action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, traceId, details);
+            }
         } else {
             auditLogWriter.writeSystem(action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, ensureAutoTraceId(traceId), details);
         }
@@ -714,7 +720,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         int remaining = limit;
 
         // ---- posts ----
-        if (types.contains(ContentType.POST) && remaining > 0) {
+        if (types.contains(ContentType.POST)) {
             List<Long> ids = postsRepository.findIdsByStatusAndIsDeletedFalse(PostStatus.PENDING);
             resp.setScannedPosts(ids == null ? 0 : ids.size());
             if (ids != null) {
@@ -812,8 +818,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     private boolean withinWindow(LocalDateTime t, LocalDateTime from, LocalDateTime to) {
         if (t == null) return true;
         if (from != null && t.isBefore(from)) return false;
-        if (to != null && t.isAfter(to)) return false;
-        return true;
+        return to == null || !t.isAfter(to);
     }
 
     private Map<Long, PostsEntity> loadPostsByIds(Set<Long> ids) {
@@ -980,7 +985,9 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         details.put("stage", enumName(detail.getCurrentStage()));
         details.put("assignedToId", detail.getAssignedToId());
         if (manual) {
-            auditLogWriter.write(actor.getId(), actorName(actor), action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, traceId, details);
+            if (actor != null) {
+                auditLogWriter.write(actor.getId(), actorName(actor), action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, traceId, details);
+            }
         } else {
             auditLogWriter.writeSystem(action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, ensureAutoTraceId(traceId), details);
         }
@@ -1454,7 +1461,6 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         try {
             run = moderationPipelineRunRepository.findFirstByQueueIdOrderByCreatedAtDesc(queueId).orElse(null);
         } catch (Exception ignore) {
-            run = null;
         }
         if (run == null || run.getStatus() != ModerationPipelineRunEntity.RunStatus.RUNNING) return;
         try {

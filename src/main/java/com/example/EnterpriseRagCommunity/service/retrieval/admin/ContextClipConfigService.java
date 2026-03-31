@@ -190,7 +190,7 @@ public class ContextClipConfigService {
     }
 
     private static boolean boolOrDefault(Boolean v, boolean def) {
-        return v == null ? def : Boolean.TRUE.equals(v);
+        return v == null ? def : v;
     }
 
     private static String normalizeAblationMode(String mode, String def) {

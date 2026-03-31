@@ -123,10 +123,10 @@ public class HybridRagRetrievalService {
             return out;
         }
 
-        HybridRetrievalConfigDTO safe = cfg == null ? null : cfg;
+        HybridRetrievalConfigDTO safe = cfg;
         int bm25K = safe == null ? 0 : safe.getBm25K() == null ? 0 : safe.getBm25K();
         int vecK = safe == null ? 0 : safe.getVecK() == null ? 0 : safe.getVecK();
-        boolean fileVecEnabled = safe == null || safe.getFileVecEnabled() == null || Boolean.TRUE.equals(safe.getFileVecEnabled());
+        boolean fileVecEnabled = safe == null || safe.getFileVecEnabled() == null || safe.getFileVecEnabled();
         int fileVecK = safe == null ? 0 : safe.getFileVecK() == null ? 0 : safe.getFileVecK();
         int hybridK = safe == null ? 6 : safe.getHybridK() == null ? 6 : safe.getHybridK();
         int maxDocs = safe == null ? 500 : safe.getMaxDocs() == null ? 500 : safe.getMaxDocs();
@@ -237,7 +237,7 @@ public class HybridRagRetrievalService {
             throw new IllegalStateException("Ensure ES index failed: " + e.getMessage(), e);
         }
 
-        String body = buildKnnBody(k, Math.max(100, Math.min(20_000, k * 10)), boardId, vec);
+        String body = buildKnnBody(k, Math.clamp(k * 10L, 100, 20_000), boardId, vec);
         JsonNode root = postSearch(indexName, body);
         return filterVisibleHits(parseEsHits(root));
     }
@@ -590,8 +590,7 @@ public class HybridRagRetrievalService {
     private JsonNode postSearch(String indexName, String body) {
         dependencyIsolationGuard.requireElasticsearchAllowed();
         return dependencyCircuitBreakerService.run("ES", () -> {
-            String elasticsearchUris = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-            String endpoint = elasticsearchUris;
+            String endpoint = systemConfigurationService.getConfig("spring.elasticsearch.uris");
             if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
             if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
             if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
@@ -604,10 +603,7 @@ public class HybridRagRetrievalService {
                 conn.setReadTimeout(20_000);
                 conn.setDoOutput(true);
                 conn.setRequestProperty("Content-Type", "application/json");
-                String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
-                if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                    conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
-                }
+                ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
 
                 try (OutputStream os = conn.getOutputStream()) {
                     os.write(body.getBytes(StandardCharsets.UTF_8));
@@ -686,7 +682,7 @@ public class HybridRagRetrievalService {
         sb.append(",\"query_vector\":[");
         for (int i = 0; i < vec.length; i++) {
             if (i > 0) sb.append(',');
-            sb.append(Float.toString(vec[i]));
+            sb.append(vec[i]);
         }
         sb.append(']');
         sb.append(",\"k\":").append(size);
@@ -796,6 +792,14 @@ public class HybridRagRetrievalService {
         m.put("rerankDegraded", r.getRerankDegraded());
         m.put("rerankDegradeReason", r.getRerankDegradeReason());
         return m;
+    }
+
+    public AiEmbeddingService getEmbeddingService() {
+        return embeddingService;
+    }
+
+    public AiRerankService getAiRerankService() {
+        return aiRerankService;
     }
 
     @Data

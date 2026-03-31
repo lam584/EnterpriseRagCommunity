@@ -190,6 +190,28 @@ class LlmImageUploadServiceTest {
     }
 
     @Test
+    void resolveImageUrl_dashscopeMode_shouldRejectPathOutsideUploadRoot(@TempDir Path dir) throws Exception {
+        ImageStorageConfigService configService = mock(ImageStorageConfigService.class);
+        ImageUploadLogRepository repo = mock(ImageUploadLogRepository.class);
+        when(configService.getMode()).thenReturn(StorageMode.DASHSCOPE_TEMP);
+        when(configService.getDashscopeModel()).thenReturn("m1");
+        when(repo.findFirstByLocalPathAndModelNameAndStatusAndExpiresAtAfterOrderByUploadedAtDesc(
+                anyString(), anyString(), anyString(), any(LocalDateTime.class)
+        )).thenReturn(Optional.empty());
+
+        Path uploadRoot = dir.resolve("uploads");
+        Files.createDirectories(uploadRoot);
+        Path outside = dir.resolve("outside.png");
+        Files.write(outside, encodePng(noiseImage(8, 8, BufferedImage.TYPE_INT_RGB, 99)));
+
+        LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
+        setUploadRoot(svc, uploadRoot.toString());
+
+        assertNull(svc.resolveImageUrl(outside.toAbsolutePath().toString(), "image/png", "m1"));
+        verify(repo, never()).save(any());
+    }
+
+    @Test
     void resolveImageUrl_dashscopeMode_shouldReturnNull_whenApiKeyBlank(@TempDir Path dir) throws Exception {
         ImageStorageConfigService configService = mock(ImageStorageConfigService.class);
         ImageUploadLogRepository repo = mock(ImageUploadLogRepository.class);

@@ -86,7 +86,7 @@ public class BoardServiceImpl implements BoardService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        Sort sort = Sort.unsorted();
+        Sort sort;
         if (StringUtils.hasText(queryDTO.getSortBy())) {
             Sort.Direction direction = Sort.Direction.ASC;
             if ("desc".equalsIgnoreCase(queryDTO.getSortOrderDirection())) {

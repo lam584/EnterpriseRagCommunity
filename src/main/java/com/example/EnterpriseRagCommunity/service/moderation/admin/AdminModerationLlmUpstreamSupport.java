@@ -62,7 +62,7 @@ class AdminModerationLlmUpstreamSupport {
     private final AdminModerationLlmImageSupport imageSupport;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private static final Pattern IMAGE_PLACEHOLDER = Pattern.compile("\\[\\[IMAGE_(\\d+)\\]\\]");
+    private static final Pattern IMAGE_PLACEHOLDER = Pattern.compile("\\[\\[IMAGE_(\\d+)]]");
 
     StageCallResult callTextOnce(
             String systemPrompt,
@@ -391,7 +391,7 @@ class AdminModerationLlmUpstreamSupport {
         String json = inputJson == null ? null : inputJson.trim();
         if (json == null || json.isBlank()) return renderedPrompt;
         String out = renderedPrompt == null ? "" : renderedPrompt;
-        if ((promptTemplate != null && promptTemplate.contains("{{json}}") && out.contains("{{json}}")) || out.contains("{{json}}")) {
+        if (out.contains("{{json}}")) {
             return out.replace("{{json}}", json);
         }
         return (out + "\n\n" + json).trim();
@@ -579,8 +579,7 @@ class AdminModerationLlmUpstreamSupport {
             if (code == null || code.isBlank()) {
                 code = textOrNull(err.path("type"));
             }
-            boolean matched = false;
-            if (code != null && code.trim().equalsIgnoreCase("data_inspection_failed")) matched = true;
+            boolean matched = code != null && code.trim().equalsIgnoreCase("data_inspection_failed");
             if (!matched && message != null) {
                 String m = message.toLowerCase(Locale.ROOT);
                 if (m.contains("inappropriate content") || m.contains("inappropriate-content")) matched = true;
@@ -611,21 +610,27 @@ class AdminModerationLlmUpstreamSupport {
             if (m == null) continue;
             if (!"user".equalsIgnoreCase(m.role())) continue;
             Object c = m.content();
-            if (c == null) continue;
-            if (c instanceof String s) {
-                sb.append(s);
-                if (!sb.isEmpty() && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
-                continue;
-            }
-            if (c instanceof List<?> parts) {
-                for (Object it : parts) {
-                    if (!(it instanceof Map<?, ?> p)) continue;
-                    Object tv = p.get("type");
-                    String type = tv == null ? null : tv.toString();
-                    if (!"text".equals(type)) continue;
-                    Object text = p.get("text");
-                    if (text != null) sb.append(text);
+            switch (c) {
+                case null -> {
+                    continue;
+                }
+                case String s -> {
+                    sb.append(s);
                     if (!sb.isEmpty() && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
+                    continue;
+                }
+                case List<?> parts -> {
+                    for (Object it : parts) {
+                        if (!(it instanceof Map<?, ?> p)) continue;
+                        Object tv = p.get("type");
+                        String type = tv == null ? null : tv.toString();
+                        if (!"text".equals(type)) continue;
+                        Object text = p.get("text");
+                        if (text != null) sb.append(text);
+                        if (!sb.isEmpty() && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
+                    }
+                }
+                default -> {
                 }
             }
         }
@@ -726,8 +731,7 @@ class AdminModerationLlmUpstreamSupport {
         try {
             JsonNode n = objectMapper.readTree(json);
             if (n.isObject()) {
-                if (hasVerifiableEvidenceObject(inputText, n)) return true;
-                return false;
+                return hasVerifiableEvidenceObject(inputText, n);
             }
             if (n.isArray()) {
                 for (JsonNode it : n) {
@@ -1193,8 +1197,8 @@ class AdminModerationLlmUpstreamSupport {
 
     private static String normalizeForAnchorMatch(String s) {
         if (s == null) return "";
-        return s.replace('\u201c', '"').replace('\u201d', '"')
-                .replace('\u2018', '\'').replace('\u2019', '\'')
+        return s.replace('“', '"').replace('”', '"')
+                .replace('‘', '\'').replace('’', '\'')
                 .replaceAll("\\s+", " ")
                 .replaceAll(" ?\" ?", "\"")
                 .replaceAll(" ?' ?", "'");
@@ -1302,8 +1306,7 @@ class AdminModerationLlmUpstreamSupport {
         if (t.isEmpty()) return "";
         String[] parts = t.split("\\s+");
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < parts.length; i++) {
-            String p = parts[i];
+        for (String p : parts) {
             if (p == null || p.isEmpty()) continue;
             if (!sb.isEmpty()) sb.append("\\s+");
             sb.append(Pattern.quote(p));
@@ -1313,8 +1316,8 @@ class AdminModerationLlmUpstreamSupport {
 
     private static String normalizeForAnchorRegex(String s) {
         if (s == null) return "";
-        String x = s.replace('\u201c', '"').replace('\u201d', '"')
-                .replace('\u2018', '\'').replace('\u2019', '\'');
+        String x = s.replace('“', '"').replace('”', '"')
+                .replace('‘', '\'').replace('’', '\'');
         x = x.replaceAll(" ?\" ?", "\"")
                 .replaceAll(" ?' ?", "'");
         return x;

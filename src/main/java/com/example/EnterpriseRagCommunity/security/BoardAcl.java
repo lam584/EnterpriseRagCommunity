@@ -54,6 +54,6 @@ public class BoardAcl {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
         String email = auth.getName();
-        return administratorService.findByUsername(email).map(u -> (Long) u.getId()).orElse(null);
+        return administratorService.findByUsername(email).map(u -> u.getId()).orElse(null);
     }
 }

@@ -302,7 +302,7 @@ public class LlmCallQueueService {
         private final int priority;
         private final LlmQueueTaskType type;
         private final String label;
-        private volatile String providerId;
+        private final String providerId;
         private volatile String model;
         private final long createdAtMs;
         private volatile LlmQueueTaskStatus status = LlmQueueTaskStatus.PENDING;
@@ -806,7 +806,7 @@ public class LlmCallQueueService {
         Task task = createTask(type, providerId, model, priority, label, sup, mex, future);
         enqueuePending(task);
         @SuppressWarnings("unchecked")
-        CompletableFuture<T> out = (CompletableFuture<T>) (CompletableFuture<?>) future;
+        CompletableFuture<T> out = (CompletableFuture<T>) future;
         return out;
     }
 
@@ -855,13 +855,13 @@ public class LlmCallQueueService {
         CompletableFuture<Object> existing = inFlight.get(key);
         if (existing != null) {
             @SuppressWarnings("unchecked")
-            CompletableFuture<T> reused = (CompletableFuture<T>) (CompletableFuture<?>) existing;
+            CompletableFuture<T> reused = (CompletableFuture<T>) existing;
             return reused;
         }
         CompletableFuture<Object> done = recentDedup.get(key);
         if (done != null) {
             @SuppressWarnings("unchecked")
-            CompletableFuture<T> reused = (CompletableFuture<T>) (CompletableFuture<?>) done;
+            CompletableFuture<T> reused = (CompletableFuture<T>) done;
             return reused;
         }
 
@@ -869,7 +869,7 @@ public class LlmCallQueueService {
         existing = inFlight.putIfAbsent(key, mine);
         if (existing != null) {
             @SuppressWarnings("unchecked")
-            CompletableFuture<T> reused = (CompletableFuture<T>) (CompletableFuture<?>) existing;
+            CompletableFuture<T> reused = (CompletableFuture<T>) existing;
             return reused;
         }
 
@@ -886,7 +886,7 @@ public class LlmCallQueueService {
         });
         enqueuePending(task);
         @SuppressWarnings("unchecked")
-        CompletableFuture<T> out = (CompletableFuture<T>) (CompletableFuture<?>) mine;
+        CompletableFuture<T> out = (CompletableFuture<T>) mine;
         return out;
     }
 

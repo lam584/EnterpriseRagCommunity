@@ -227,7 +227,6 @@ public class PostsServiceImpl implements PostsService {
                         fileName = "file";
                     }
                     if (fileName.length() > 512) {
-                        fileName = fileName.substring(fileName.length() - 512);
                     }
 
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();
@@ -706,7 +705,6 @@ public class PostsServiceImpl implements PostsService {
                         fileName = "file";
                     }
                     if (fileName.length() > 512) {
-                        fileName = fileName.substring(fileName.length() - 512);
                     }
 
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();

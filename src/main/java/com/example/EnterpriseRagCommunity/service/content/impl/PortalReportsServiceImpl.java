@@ -444,7 +444,7 @@ public class PortalReportsServiceImpl implements PortalReportsService {
     }
 
     private static String normalizeReasonCode(String code) {
-        String s = String.valueOf(code == null ? "" : code).trim();
+        String s = (code == null ? "" : code).trim();
         if (s.isEmpty()) throw new IllegalArgumentException("reasonCode 不能为空");
         s = s.toUpperCase(Locale.ROOT);
         if (s.length() > 64) s = s.substring(0, 64);

@@ -708,7 +708,7 @@ public class LlmGateway {
                 sleepBackoff(i);
             }
         }
-        throw last == null ? new IllegalStateException("调用失败") : last;
+        throw last;
     }
 
     private ChatOnceInternalResult callChatOnceSingleNoQueue(
@@ -876,7 +876,7 @@ public class LlmGateway {
 
                     if (total == null) {
                         int out = (completion != null) ? completion : estTokensOut;
-                        total = (prompt != null ? prompt : 0) + out;
+                        total = prompt + out;
                     }
 
                     return new LlmCallQueueService.UsageMetrics(prompt, completion, total, estTokensOut);
@@ -1123,13 +1123,13 @@ public class LlmGateway {
                 sleepBackoff(i);
             }
         }
-        if (last != null) throw new StreamCallFailedException(last.getMessage(), last, false);
+        throw new StreamCallFailedException(last.getMessage(), last, false);
     }
 
     private static void sleepBackoff(int attempt) throws InterruptedException {
         long base = 200L;
         long cap = 2000L;
-        long exp = base * (1L << Math.min(4, Math.max(0, attempt - 1)));
+        long exp = base * (1L << Math.clamp(attempt - 1, 0, 4));
         long jitter = ThreadLocalRandom.current().nextLong(0, 120);
         long sleepMs = Math.min(cap, exp) + jitter;
         Thread.sleep(sleepMs);
@@ -1784,7 +1784,7 @@ public class LlmGateway {
                         TokenCountService.TokenDecision dec = tokenCountService.decideChatTokens(
                                 provider.id(),
                                 model,
-                                Boolean.TRUE.equals(enableThinking),
+                                enableThinking,
                                 usage,
                                 patchedMessages,
                                 assistantForTokens,
@@ -1821,14 +1821,14 @@ public class LlmGateway {
             TokenCountService.TokenDecision dec = tokenCountService.decideChatTokens(
                     provider.id(),
                     model,
-                    Boolean.TRUE.equals(enableThinking),
+                    enableThinking,
                     usage,
                     patchedMessages,
                     assistantForTokens,
                     true
             );
             if (dec != null) {
-                Integer estOut = usage == null ? null : usage.estimatedCompletionTokens();
+                Integer estOut = usage.estimatedCompletionTokens();
                 usage = new LlmCallQueueService.UsageMetrics(dec.tokensIn(), dec.tokensOut(), dec.totalTokens(), estOut);
             }
         }

@@ -147,7 +147,7 @@ public class RagFileAssetIndexBuildService {
         List<RagFilesBuildResponse.FailedDoc> failedDocs = new ArrayList<>();
         Long lastFileAssetId = null;
 
-        Integer inferredDims = null;
+        Integer inferredDims;
         Integer dimsToUse = null;
         boolean ensured = false;
 
@@ -445,7 +445,7 @@ public class RagFileAssetIndexBuildService {
         Map<String, Object> meta0ForDefaults = vi.getMetadata();
         String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
 
-        String modelToUse = null;
+        String modelToUse;
         String providerToUse = null;
         if (fixedProviderId != null) {
             providerToUse = fixedProviderId;

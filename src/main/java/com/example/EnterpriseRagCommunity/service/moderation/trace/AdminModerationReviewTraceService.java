@@ -138,11 +138,11 @@ public class AdminModerationReviewTraceService {
             total = set.getTotalChunks();
             completed = set.getCompletedChunks();
             failed = set.getFailedChunks();
-            maxScore = readBigDecimal(set.getMemoryJson(), "maxScore");
+            maxScore = readBigDecimal(set.getMemoryJson());
         }
 
         Long avgMs = null;
-        if (Boolean.TRUE.equals(chunked) && llmStep != null && llmStep.getCostMs() != null) {
+        if (chunked && llmStep.getCostMs() != null) {
             int denom = total == null || total <= 0 ? 0 : total;
             if (denom > 0) avgMs = Math.max(0L, llmStep.getCostMs() / denom);
         }
@@ -150,12 +150,22 @@ public class AdminModerationReviewTraceService {
         return new AdminModerationReviewTraceChunkSummaryDTO(chunked, chunkSetId, total, completed, failed, maxScore, avgMs);
     }
 
-    private static BigDecimal readBigDecimal(Map<String, Object> map, String key) {
-        if (map == null || key == null) return null;
-        Object v = map.get(key);
-        if (v == null) return null;
-        if (v instanceof BigDecimal b) return b;
-        if (v instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
+    private static BigDecimal readBigDecimal(Map<String, Object> map) {
+        if (map == null || "maxScore" == null) return null;
+        Object v = map.get("maxScore");
+        switch (v) {
+            case null -> {
+                return null;
+            }
+            case BigDecimal b -> {
+                return b;
+            }
+            case Number n -> {
+                return BigDecimal.valueOf(n.doubleValue());
+            }
+            default -> {
+            }
+        }
         try {
             return new BigDecimal(String.valueOf(v));
         } catch (Exception ignore) {
@@ -186,7 +196,7 @@ public class AdminModerationReviewTraceService {
         }
 
         int p = page == null ? 1 : Math.max(1, page);
-        int ps = pageSize == null ? 20 : Math.min(Math.max(pageSize, 1), 200);
+        int ps = pageSize == null ? 20 : Math.clamp(pageSize, 1, 200);
 
         Pageable pageable = PageRequest.of(p - 1, ps, Sort.by(Sort.Direction.DESC, "updatedAt"));
 

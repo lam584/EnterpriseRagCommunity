@@ -113,7 +113,7 @@ public class TokenCountService {
                             }
                         } else {
                             if (!sb.isEmpty()) sb.append('\n');
-                            sb.append(String.valueOf(p));
+                            sb.append(p);
                         }
                     }
                     mm.setContent(sb.toString());
@@ -220,7 +220,7 @@ public class TokenCountService {
 
     private static boolean isNvidiaProvider(String providerId) {
         String pid = providerId == null ? "" : providerId.trim().toLowerCase(Locale.ROOT);
-        return pid.equals("nvidia") || pid.startsWith("nvidia");
+        return pid.startsWith("nvidia");
     }
 
     private static boolean isQwen3Model(String model) {
@@ -234,26 +234,7 @@ public class TokenCountService {
     }
 
     private static int indexOfIgnoreCase(String haystack, String needle, int fromIndex) {
-        if (haystack == null || needle == null) return -1;
-        int start = Math.max(0, fromIndex);
-        if (needle.isEmpty()) return start <= haystack.length() ? start : -1;
-        int n = haystack.length();
-        int m = needle.length();
-        if (m > n) return -1;
-        for (int i = start; i + m <= n; i++) {
-            boolean ok = true;
-            for (int j = 0; j < m; j++) {
-                char a = haystack.charAt(i + j);
-                char b = needle.charAt(j);
-                if (a == b) continue;
-                if (Character.toLowerCase(a) != Character.toLowerCase(b)) {
-                    ok = false;
-                    break;
-                }
-            }
-            if (ok) return i;
-        }
-        return -1;
+        return LlmGatewaySupport.indexOfIgnoreCase(haystack, needle, fromIndex);
     }
 
     private static String removeMarkerWordIgnoreCase(String text, String marker) {

@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.dto.moderation;
 
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationConfidenceFallbackConfigEntity;
 import lombok.Data;
 
 import java.time.LocalDateTime;

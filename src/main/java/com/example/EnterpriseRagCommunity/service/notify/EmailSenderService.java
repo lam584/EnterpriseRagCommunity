@@ -100,7 +100,7 @@ public class EmailSenderService {
         String t = safe(v);
         if (t == null) return null;
         if (t.length() <= 2) return "**";
-        int keepStart = Math.min(2, t.length());
+        int keepStart = 2;
         int keepEnd = Math.min(2, t.length() - keepStart);
         return t.substring(0, keepStart) + "****" + t.substring(t.length() - keepEnd);
     }

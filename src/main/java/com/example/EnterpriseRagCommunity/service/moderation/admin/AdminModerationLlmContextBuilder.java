@@ -828,12 +828,12 @@ class AdminModerationLlmContextBuilder {
             uniqueReporters.add(r.getReporterId());
 
             if (!reporterTrustCache.containsKey(r.getReporterId())) {
-                Double ts = 0.5;
+                double ts = 0.5;
                 try {
                     var u = usersRepository.findById(r.getReporterId()).orElse(null);
                     if (u != null && u.getMetadata() != null) {
                         Object t = deepGet(u.getMetadata(), "trust_score");
-                        if (t instanceof Number n) ts = clamp01(n.doubleValue(), 0.5);
+                        if (t instanceof Number n) ts = clamp01(n.doubleValue());
                     }
                 } catch (Exception ignore) {
                 }
@@ -986,17 +986,15 @@ class AdminModerationLlmContextBuilder {
         return s == null ? "" : s;
     }
 
-    private static double clamp01(Double v, double def) {
-        if (v == null || !Double.isFinite(v)) return def;
+    private static double clamp01(Double v) {
+        if (v == null || !Double.isFinite(v)) return 0.5;
         if (v < 0) return 0.0;
         if (v > 1) return 1.0;
         return v;
     }
 
     private static String blankToNull(String s) {
-        if (s == null) return null;
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
+        return AdminModerationLlmConfigSupport.blankToNull(s);
     }
 
     private static String blankToNull(Object s) {

@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.controller;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -139,7 +140,7 @@ public class SetupController {
 
             path = sanitizeCodeSourcePath(path);
             
-            File jarFile = new File(java.net.URLDecoder.decode(path, java.nio.charset.StandardCharsets.UTF_8.name()));
+            File jarFile = new File(java.net.URLDecoder.decode(path, StandardCharsets.UTF_8));
             logger.info("Resolved Jar/Class file path: {}", jarFile.getAbsolutePath());
 
             File startDir = resolveStartDir(jarFile);
@@ -354,16 +355,13 @@ public class SetupController {
                 }
 
                 // 部分配置项不需要加密
-                boolean shouldEncrypt = true;
-                if (key.startsWith("spring.elasticsearch")
-                        || key.startsWith("APP_MAIL_HOST")
-                        || key.startsWith("APP_MAIL_PORT")
-                        || key.startsWith("APP_MAIL_FROM_ADDRESS")
-                        || key.equals("APP_SITE_COPYRIGHT")
-                        || key.equals("APP_SITE_BEIAN")
-                        || key.equals("APP_SITE_BEIAN_HREF")) {
-                    shouldEncrypt = false;
-                }
+                boolean shouldEncrypt = !key.startsWith("spring.elasticsearch")
+                        && !key.startsWith("APP_MAIL_HOST")
+                        && !key.startsWith("APP_MAIL_PORT")
+                        && !key.startsWith("APP_MAIL_FROM_ADDRESS")
+                        && !key.equals("APP_SITE_COPYRIGHT")
+                        && !key.equals("APP_SITE_BEIAN")
+                        && !key.equals("APP_SITE_BEIAN_HREF");
 
                 // User requested to encrypt all keys from the setup form
                 systemConfigurationService.saveConfig(key, value, shouldEncrypt, "Initialized via Setup Wizard");

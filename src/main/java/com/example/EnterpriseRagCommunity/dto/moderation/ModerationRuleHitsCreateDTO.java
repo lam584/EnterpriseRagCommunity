@@ -24,11 +24,11 @@ public class ModerationRuleHitsCreateDTO {
     private Long ruleId;
 
     @Size(max = 255)
-    @ApiModelProperty(value = "命中文本片段", required = false)
+    @ApiModelProperty(value = "命中文本片段")
     private String snippet;
 
     @NotNull
-    @ApiModelProperty(value = "命中时间(后端填充, 默认当前)", required = false)
+    @ApiModelProperty(value = "命中时间(后端填充, 默认当前)")
     @JsonIgnore // DB 默认值或服务层填充
     private LocalDateTime matchedAt;
 }

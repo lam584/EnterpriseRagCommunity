@@ -147,13 +147,21 @@ public class CrudAuditFilter extends OncePerRequestFilter {
 
         if (!includeReads && ("GET".equals(m) || "HEAD".equals(m) || "OPTIONS".equals(m))) return null;
 
-        if ("GET".equals(m) || "HEAD".equals(m)) return "CRUD_READ";
-        if ("POST".equals(m)) {
-            if (path != null && path.endsWith("/export.csv")) return "CRUD_READ";
-            return "CRUD_CREATE";
+        switch (m) {
+            case "GET", "HEAD" -> {
+                return "CRUD_READ";
+            }
+            case "POST" -> {
+                if (path != null && path.endsWith("/export.csv")) return "CRUD_READ";
+                return "CRUD_CREATE";
+            }
+            case "PUT", "PATCH" -> {
+                return "CRUD_UPDATE";
+            }
+            case "DELETE" -> {
+                return "CRUD_DELETE";
+            }
         }
-        if ("PUT".equals(m) || "PATCH".equals(m)) return "CRUD_UPDATE";
-        if ("DELETE".equals(m)) return "CRUD_DELETE";
         return null;
     }
 

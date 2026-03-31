@@ -163,7 +163,7 @@ public class LlmQueueMonitorService {
         doneLim = Math.clamp(doneLim, 1, MAX_LIMIT_COMPLETED);
 
         boolean stale = false;
-        long snapshotAtMs = 0L;
+        long snapshotAtMs;
         LlmCallQueueService.QueueSnapshot snap = llmCallQueueService.trySnapshot(runLim, pendLim, doneLim, SNAPSHOT_TRYLOCK_MS);
         if (snap != null) {
             snapshotAtMs = System.currentTimeMillis();
@@ -280,7 +280,7 @@ public class LlmQueueMonitorService {
             }
         }
 
-        int pageSize = Math.max(1, Math.min(MAX_DB_COMPLETED_FETCH, lim));
+        int pageSize = Math.clamp(lim, 1, MAX_DB_COMPLETED_FETCH);
         List<LlmQueueTaskHistoryEntity> db = llmQueueTaskHistoryRepository.findByFinishedAtIsNotNullOrderByFinishedAtDesc(
                 PageRequest.of(0, pageSize)
         );

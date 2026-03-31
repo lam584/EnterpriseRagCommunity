@@ -158,7 +158,7 @@ public class ModerationSamplesIndexService {
         if (mappings0 instanceof Map<?, ?> mm) {
             Object props1 = ((Map<String, Object>) mm).get("properties");
             dims = extractEmbeddingDimsFromProperties(props1);
-            if (dims != null) return dims;
+            return dims;
         }
         return null;
     }

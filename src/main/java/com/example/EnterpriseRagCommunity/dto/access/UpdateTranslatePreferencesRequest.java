@@ -64,23 +64,4 @@ public class UpdateTranslatePreferencesRequest {
         this.tagGenCount = tagGenCount;
     }
 
-    public boolean isTargetLanguagePresent() {
-        return targetLanguagePresent;
-    }
-
-    public boolean isAutoTranslatePostsPresent() {
-        return autoTranslatePostsPresent;
-    }
-
-    public boolean isAutoTranslateCommentsPresent() {
-        return autoTranslateCommentsPresent;
-    }
-
-    public boolean isTitleGenCountPresent() {
-        return titleGenCountPresent;
-    }
-
-    public boolean isTagGenCountPresent() {
-        return tagGenCountPresent;
-    }
 }

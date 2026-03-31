@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.controller.content;
 
 import java.util.Map;
 
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -78,14 +79,19 @@ public class PostReportsController {
             if (userId != null) {
                 try {
                     String title = "举报提交成功";
-                    String content = "目标：帖子#" + postId + "；原因：" + String.valueOf(req.getReasonCode())
-                            + (req.getReasonText() == null || req.getReasonText().isBlank() ? "" : ("；补充：" + req.getReasonText().trim()))
-                            + "；reportId=" + r.getReportId() + "；queueId=" + r.getQueueId();
+                    String content = null;
+                    if (r != null) {
+                        content = "目标：帖子#" + postId + "；原因：" + req.getReasonCode()
+                                + (req.getReasonText() == null || req.getReasonText().isBlank() ? "" : ("；补充：" + req.getReasonText().trim()))
+                                + "；reportId=" + r.getReportId() + "；queueId=" + r.getQueueId();
+                    }
                     notificationsService.createNotification(userId, "REPORT", title, content);
                 } catch (Exception ignore) {
                 }
             }
-            return Map.of("reportId", r.getReportId(), "queueId", r.getQueueId());
+            if (r != null) {
+                return Map.of("reportId", r.getReportId(), "queueId", r.getQueueId());
+            }
         } catch (RuntimeException ex) {
             if (userId != null) {
                 try {
@@ -116,19 +122,20 @@ public class PostReportsController {
                 try {
                     String title = "举报提交失败";
                     String msg = ex.getMessage() == null ? "举报失败" : ex.getMessage();
-                    notificationsService.createNotification(userId, "REPORT", title, "目标：帖子#" + postId + "；原因：" + String.valueOf(req.getReasonCode()) + "；失败原因：" + msg);
+                    notificationsService.createNotification(userId, "REPORT", title, "目标：帖子#" + postId + "；原因：" + req.getReasonCode() + "；失败原因：" + msg);
                 } catch (Exception ignore) {
                 }
             }
             throw ex;
         }
+        return Map.of();
     }
 
     private Long currentUserIdOrNull() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
         String email = auth.getName();
-        return administratorService.findByUsername(email).map(u -> (Long) u.getId()).orElse(null);
+        return administratorService.findByUsername(email).map(UsersEntity::getId).orElse(null);
     }
 
     private static String currentUsernameOrNull() {

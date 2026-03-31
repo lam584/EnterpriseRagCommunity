@@ -53,7 +53,7 @@ public class ContextClipTestService {
 
         CitationConfigDTO citationCfg = citationConfigService.getConfigOrDefault();
 
-        List<RagPostChatRetrievalService.Hit> ragHits = List.of();
+        List<RagPostChatRetrievalService.Hit> ragHits;
         try {
             HybridRetrievalConfigDTO hybridCfg = hybridRetrievalConfigService.getConfigOrDefault();
             if (hybridCfg != null && Boolean.TRUE.equals(hybridCfg.getEnabled())) {

@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.DoubleAccumulator;
 import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.locks.LockSupport;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -137,29 +138,53 @@ public class AdminLlmLoadTestService {
     }
 
     public ResponseEntity<StreamingResponseBody> export(String runId, String format) {
+        String safeRunId = safeRunId(runId);
+        if (safeRunId == null) {
+            return ResponseEntity.badRequest().build();
+        }
         String f = (format == null ? "json" : format.trim().toLowerCase(Locale.ROOT));
         boolean csv = "csv".equals(f);
 
-        boolean hasAny = llmLoadTestRunDetailRepository.existsByRunId(runId);
-        if (!hasAny && !llmLoadTestRunHistoryRepository.existsById(runId)) {
+        boolean hasAny = llmLoadTestRunDetailRepository.existsByRunId(safeRunId);
+        if (!hasAny && !llmLoadTestRunHistoryRepository.existsById(safeRunId)) {
             return ResponseEntity.notFound().build();
         }
 
-        String filename = csv ? ("llm-loadtest-" + runId + ".csv") : ("llm-loadtest-" + runId + ".json");
+        String filename = csv ? ("llm-loadtest-" + safeRunId + ".csv") : ("llm-loadtest-" + safeRunId + ".json");
         MediaType mt = csv ? MediaType.valueOf("text/csv; charset=UTF-8") : MediaType.APPLICATION_JSON;
 
         StreamingResponseBody body = outputStream -> {
             if (csv) {
-                writeCsvExport(runId, outputStream);
+                writeCsvExport(safeRunId, outputStream);
             } else {
-                writeJsonExport(runId, outputStream);
+                writeJsonExport(safeRunId, outputStream);
             }
         };
 
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, contentDispositionAttachment(filename))
                 .contentType(mt)
                 .body(body);
+    }
+
+    private static String safeRunId(String runId) {
+        if (runId == null) return null;
+        String id = runId.trim();
+        if (id.isEmpty() || id.length() > 64 || !id.matches("[A-Za-z0-9-]+")) return null;
+        return id;
+    }
+
+    private static String contentDispositionAttachment(String filename) {
+        String raw = filename == null ? "export.txt" : filename.trim();
+        String safe = raw.replaceAll("[\r\n\"]+", "_").replaceAll("[^A-Za-z0-9._-]+", "_");
+        if (safe.isBlank()) safe = "export.txt";
+        return "attachment; filename=\"" + safe + "\"";
+    }
+
+    private static void pauseMillis(long ms) throws InterruptedException {
+        if (ms <= 0) return;
+        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(ms));
+        if (Thread.interrupted()) throw new InterruptedException();
     }
 
     private void runInternal(RunState st) {
@@ -204,7 +229,7 @@ public class AdminLlmLoadTestService {
             }
 
             try {
-                Thread.sleep(1000);
+                pauseMillis(1000);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
@@ -212,7 +237,7 @@ public class AdminLlmLoadTestService {
         }
         if (st.cancelled.get()) return;
         try {
-            Thread.sleep(1100);
+            pauseMillis(1100);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             return;
@@ -295,6 +320,7 @@ public class AdminLlmLoadTestService {
                 dto.setStartedAtMs(startedAt);
                 dto.setFinishedAtMs(finishedAt);
                 dto.setError(e instanceof TimeoutException ? "timeout" : safeMessage(e));
+                st.recordError(dto.getError());
                 st.pushResult(dto);
                 st.pushDetail(buildDetailEntity(st, dto, st.cfg.providerId, prepared.requestJson, null));
                 st.failed.incrementAndGet();
@@ -316,7 +342,7 @@ public class AdminLlmLoadTestService {
                 if (attempt >= st.cfg.retries) break;
                 if (st.cfg.retryDelayMs > 0) {
                     try {
-                        Thread.sleep(st.cfg.retryDelayMs);
+                        pauseMillis(st.cfg.retryDelayMs);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
                         throw new InterruptedException("cancelled");
@@ -341,7 +367,7 @@ public class AdminLlmLoadTestService {
         req.setText(prepared.moderationText);
 
         LlmModerationTestResponse resp = runWithTimeout(() -> adminModerationLlmService.test(req), st.cfg.timeoutMs);
-        Long latencyMs = resp == null || resp.getLatencyMs() == null ? null : resp.getLatencyMs().longValue();
+        Long latencyMs = resp == null ? null : resp.getLatencyMs();
         Integer tokens = null;
         Integer tokensIn = null;
         Integer tokensOut = null;
@@ -564,19 +590,18 @@ public class AdminLlmLoadTestService {
     private static String removeMarkerWordIgnoreCase(String text, String marker) {
         if (text == null || text.isBlank()) return text;
         if (marker == null || marker.isBlank()) return text;
-        String t = text;
         String m = marker.trim();
-        int first = indexOfIgnoreCase(t, m, 0);
-        if (first < 0) return t;
-        StringBuilder sb = new StringBuilder(t.length());
+        int first = indexOfIgnoreCase(text, m, 0);
+        if (first < 0) return text;
+        StringBuilder sb = new StringBuilder(text.length());
         int i = 0;
         while (true) {
-            int idx = indexOfIgnoreCase(t, m, i);
+            int idx = indexOfIgnoreCase(text, m, i);
             if (idx < 0) {
-                sb.append(t, i, t.length());
+                sb.append(text, i, text.length());
                 break;
             }
-            sb.append(t, i, idx);
+            sb.append(text, i, idx);
             i = idx + m.length();
         }
         return sb.toString();
@@ -612,10 +637,6 @@ public class AdminLlmLoadTestService {
         }
         String content = extractDeltaStringField(raw, "content");
         return content != null ? content : raw;
-    }
-
-    private static String extractDeltaContent(String json) {
-        return extractDeltaStringField(json, "content");
     }
 
     private static String extractDeltaText(String json, boolean includeReasoning) {
@@ -711,7 +732,7 @@ public class AdminLlmLoadTestService {
         int b = Math.max(0, cfg.weightModeration);
         int sum = a + b;
         if (sum <= 0) return RequestKind.MODERATION_TEST;
-        int u = (int) Math.floorMod(counter, sum);
+        int u = Math.floorMod(counter, sum);
         return u < a ? RequestKind.CHAT_STREAM : RequestKind.MODERATION_TEST;
     }
 
@@ -754,9 +775,7 @@ public class AdminLlmLoadTestService {
 
     private static int clampInt(Integer v, int min, int max, int def) {
         int x = v == null ? def : v;
-        if (x < min) return min;
-        if (x > max) return max;
-        return x;
+        return Math.clamp(x, min, max);
     }
 
     private static String trimToNull(String s) {
@@ -904,9 +923,14 @@ public class AdminLlmLoadTestService {
             this.id = id;
             this.createdAtMs = createdAtMs;
             this.cfg = cfg;
-            this.okLatencies = new long[Math.max(1, cfg.totalRequests)];
-            int cap = Math.min(20_000, Math.max(1_000, cfg.concurrency * 200));
+            this.okLatencies = new long[Math.clamp(cfg.totalRequests, 1, Integer.MAX_VALUE)];
+            this.error = "";
+            int cap = Math.clamp(cfg.concurrency * 200L, 1_000, 20_000);
             this.detailQueue = new ArrayBlockingQueue<>(cap);
+        }
+
+        private void recordError(String message) {
+            this.error = message;
         }
 
         private void cancel() {
@@ -1006,9 +1030,9 @@ public class AdminLlmLoadTestService {
             peak.setTokensPerSecAvg(cnt > 0 ? (sum / cnt) : 0.0);
             out.setQueuePeak(peak);
 
-            List<AdminLlmLoadTestResultDTO> list = new ArrayList<>();
+            List<AdminLlmLoadTestResultDTO> list;
             synchronized (resultsLock) {
-                list.addAll(results);
+                list = new ArrayList<>(results);
             }
             out.setRecentResults(list);
             return out;
@@ -1279,7 +1303,7 @@ public class AdminLlmLoadTestService {
                     w.write(",");
                     w.write(csvEscape(e.getKind()));
                     w.write(",");
-                    w.write(csvEscape(Boolean.TRUE.equals(e.getOk()) ? "true" : "false"));
+                    w.write(csvEscape(Boolean.toString(Boolean.TRUE.equals(e.getOk()))));
                     w.write(",");
                     w.write(csvEscape(e.getStartedAt() == null ? "" : e.getStartedAt().toString()));
                     w.write(",");
@@ -1299,9 +1323,9 @@ public class AdminLlmLoadTestService {
                     w.write(",");
                     w.write(csvEscape(e.getError()));
                     w.write(",");
-                    w.write(csvEscape(Boolean.TRUE.equals(e.getRequestTruncated()) ? "true" : "false"));
+                    w.write(csvEscape(Boolean.toString(Boolean.TRUE.equals(e.getRequestTruncated()))));
                     w.write(",");
-                    w.write(csvEscape(Boolean.TRUE.equals(e.getResponseTruncated()) ? "true" : "false"));
+                    w.write(csvEscape(Boolean.toString(Boolean.TRUE.equals(e.getResponseTruncated()))));
                     w.write(",");
                     w.write(csvEscape(e.getRequestJson()));
                     w.write(",");
@@ -1342,6 +1366,14 @@ public class AdminLlmLoadTestService {
     private static String csvEscape(String v) {
         if (v == null) return "";
         String s = v;
+        int i = 0;
+        while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++;
+        if (i < s.length()) {
+            char c = s.charAt(i);
+            if (c == '=' || c == '+' || c == '-' || c == '@') {
+                s = "'" + s;
+            }
+        }
         boolean needQuote = s.contains("\"") || s.contains(",") || s.contains("\n") || s.contains("\r");
         if (!needQuote) return s;
         return "\"" + s.replace("\"", "\"\"") + "\"";
@@ -1360,10 +1392,8 @@ public class AdminLlmLoadTestService {
 
     private CostInfo computeCostInfo(Map<String, ModelAgg> aggByModel, LlmPricing.Mode pricingMode) {
         if (aggByModel == null || aggByModel.isEmpty()) return null;
-        Map<String, ModelAgg> byModel = aggByModel;
-
         Set<String> models = new HashSet<>();
-        for (String m : byModel.keySet()) {
+        for (String m : aggByModel.keySet()) {
             String nm = normalizeModel(m);
             if (nm != null) models.add(nm);
         }
@@ -1374,7 +1404,7 @@ public class AdminLlmLoadTestService {
         Set<String> currencies = new HashSet<>();
         boolean priceMissing = false;
 
-        for (Map.Entry<String, ModelAgg> en : byModel.entrySet()) {
+        for (Map.Entry<String, ModelAgg> en : aggByModel.entrySet()) {
             String model = normalizeModel(en.getKey());
             if (model == null) continue;
             ModelAgg agg = en.getValue();
@@ -1483,13 +1513,14 @@ public class AdminLlmLoadTestService {
     private static Double percentile(long[] sortedAsc, double p) {
         if (sortedAsc == null || sortedAsc.length == 0) return null;
         if (!Double.isFinite(p)) return null;
-        double q = Math.max(0.0, Math.min(1.0, p));
+        double q = Math.clamp(p, 0.0, 1.0);
         if (sortedAsc.length == 1) return (double) sortedAsc[0];
         double idx = (sortedAsc.length - 1) * q;
         int lo = (int) Math.floor(idx);
         int hi = (int) Math.ceil(idx);
-        long a = sortedAsc[Math.min(sortedAsc.length - 1, Math.max(0, lo))];
-        long b = sortedAsc[Math.min(sortedAsc.length - 1, Math.max(0, hi))];
+        int maxIdx = sortedAsc.length - 1;
+        long a = sortedAsc[Math.clamp(lo, 0, maxIdx)];
+        long b = sortedAsc[Math.clamp(hi, 0, maxIdx)];
         if (hi == lo) return (double) a;
         double t = idx - lo;
         return a + (b - a) * t;

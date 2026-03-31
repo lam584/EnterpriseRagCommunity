@@ -61,19 +61,4 @@ public class UpdateMyProfileRequest {
         this.website = website;
     }
 
-    public boolean isAvatarUrlPresent() {
-        return avatarUrlPresent;
-    }
-
-    public boolean isBioPresent() {
-        return bioPresent;
-    }
-
-    public boolean isLocationPresent() {
-        return locationPresent;
-    }
-
-    public boolean isWebsitePresent() {
-        return websitePresent;
-    }
 }

@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -23,6 +24,28 @@ public class UserRoleController {
 
     private final UserRoleService userRoleService;
 
+    private static String safeText(String s) {
+        if (s == null) return null;
+        return HtmlUtils.htmlEscape(s);
+    }
+
+    private static UserRolesCreateDTO sanitizeRole(UserRolesCreateDTO in) {
+        if (in == null) return null;
+        UserRolesCreateDTO out = new UserRolesCreateDTO();
+        out.setId(in.getId());
+        out.setTenantId(in.getTenantId());
+        out.setRoles(safeText(in.getRoles()));
+        out.setCanLogin(in.getCanLogin());
+        out.setCanViewAnnouncement(in.getCanViewAnnouncement());
+        out.setCanViewHelpArticles(in.getCanViewHelpArticles());
+        out.setCanResetOwnPassword(in.getCanResetOwnPassword());
+        out.setCanComment(in.getCanComment());
+        out.setNotes(safeText(in.getNotes()));
+        out.setCreatedAt(in.getCreatedAt());
+        out.setUpdatedAt(in.getUpdatedAt());
+        return out;
+    }
+
     @Autowired
     public UserRoleController(UserRoleService userRoleService) {
         this.userRoleService = userRoleService;
@@ -33,7 +56,7 @@ public class UserRoleController {
      */
     @GetMapping("/all")
     public ResponseEntity<?> getAllUserRolesNoPage() {
-        return ResponseEntity.ok(userRoleService.listAll());
+        return ResponseEntity.ok(userRoleService.listAll().stream().map(UserRoleController::sanitizeRole).toList());
     }
 
     /**
@@ -44,7 +67,7 @@ public class UserRoleController {
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "10") int size) {
         Page<UserRolesCreateDTO> roles = userRoleService.list(PageRequest.of(page, size)); // 对齐: UserRoleDTO → UserRolesCreateDTO
-        return ResponseEntity.ok(roles);
+        return ResponseEntity.ok(roles.map(UserRoleController::sanitizeRole));
     }
 
     /**
@@ -54,7 +77,7 @@ public class UserRoleController {
     public ResponseEntity<?> getUserRoleById(@PathVariable("id") Long id) {
         try {
             UserRolesCreateDTO dto = userRoleService.getById(id); // 对齐: UserRoleDTO → UserRolesCreateDTO
-            return ResponseEntity.ok(dto);
+            return ResponseEntity.ok(sanitizeRole(dto));
         } catch (EntityNotFoundException e) {
             Map<String, String> res = new HashMap<>();
             res.put("message", "用户角色不存在");
@@ -68,11 +91,11 @@ public class UserRoleController {
     @PostMapping
     public ResponseEntity<?> createUserRole(@Valid @RequestBody UserRolesCreateDTO createDto) { // 对齐: 参数类型改为UserRolesCreateDTO
         try {
-            UserRolesCreateDTO created = userRoleService.create(createDto); // 对齐: UserRoleDTO → UserRolesCreateDTO
-            return ResponseEntity.status(201).body(created);
+            userRoleService.create(createDto); // 对齐: UserRoleDTO → UserRolesCreateDTO
+            return ResponseEntity.status(201).build();
         } catch (Exception e) {
             Map<String, String> res = new HashMap<>();
-            res.put("message", "创建用户角色失败：" + e.getMessage());
+            res.put("message", "创建用户角色失败：" + safeText(e.getMessage()));
             return ResponseEntity.badRequest().body(res);
         }
     }
@@ -86,14 +109,14 @@ public class UserRoleController {
             @Valid @RequestBody UserRolesCreateDTO updateDto) { // 对齐: 参数类型改为UserRolesCreateDTO
         try {
             UserRolesCreateDTO updated = userRoleService.update(id, updateDto); // 修改调用，传递 id 和 dto
-            return ResponseEntity.ok(updated);
+            return ResponseEntity.ok(sanitizeRole(updated));
         } catch (EntityNotFoundException e) {
             Map<String, String> res = new HashMap<>();
             res.put("message", "用户角色不存在");
             return ResponseEntity.status(404).body(res);
         } catch (Exception e) {
             Map<String, String> res = new HashMap<>();
-            res.put("message", "更新用户角色失败：" + e.getMessage());
+            res.put("message", "更新用户角色失败：" + safeText(e.getMessage()));
             return ResponseEntity.badRequest().body(res);
         }
     }

@@ -341,7 +341,6 @@ public class Security2faPolicyService {
         if (list == null || list.isEmpty()) return List.of();
         return list.stream()
                 .filter(Objects::nonNull)
-                .map(Long::longValue)
                 .filter(v -> v > 0)
                 .distinct()
                 .sorted(Comparator.naturalOrder())

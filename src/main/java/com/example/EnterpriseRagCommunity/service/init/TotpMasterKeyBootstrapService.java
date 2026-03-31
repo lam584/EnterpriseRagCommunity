@@ -1,5 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.init;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -17,7 +19,7 @@ public class TotpMasterKeyBootstrapService {
     private final SecureRandom secureRandom = new SecureRandom();
 
     public Result generateAndPersistToOsEnv() {
-        String keyBase64 = generateKeyBase64(DEFAULT_KEY_BYTES);
+        String keyBase64 = generateKeyBase64();
         String osName = currentOsName();
 
         String preferredCommand = "setx /M " + ENV_NAME + " \"" + keyBase64 + "\"";
@@ -85,8 +87,8 @@ public class TotpMasterKeyBootstrapService {
         return execCmd(cmd).exitCode;
     }
 
-    private String generateKeyBase64(int bytes) {
-        byte[] raw = new byte[bytes];
+    private String generateKeyBase64() {
+        byte[] raw = new byte[TotpMasterKeyBootstrapService.DEFAULT_KEY_BYTES];
         secureRandom.nextBytes(raw);
         return Base64.getEncoder().encodeToString(raw);
     }
@@ -113,6 +115,8 @@ public class TotpMasterKeyBootstrapService {
 
     private record ExecResult(int exitCode, String output) {}
 
+    @Setter
+    @Getter
     public static class Result {
         private String envVarName;
         private String keyBase64;
@@ -124,76 +128,5 @@ public class TotpMasterKeyBootstrapService {
         private String message;
         private String error;
 
-        public String getEnvVarName() {
-            return envVarName;
-        }
-
-        public void setEnvVarName(String envVarName) {
-            this.envVarName = envVarName;
-        }
-
-        public String getKeyBase64() {
-            return keyBase64;
-        }
-
-        public void setKeyBase64(String keyBase64) {
-            this.keyBase64 = keyBase64;
-        }
-
-        public boolean isAttempted() {
-            return attempted;
-        }
-
-        public void setAttempted(boolean attempted) {
-            this.attempted = attempted;
-        }
-
-        public boolean isSucceeded() {
-            return succeeded;
-        }
-
-        public void setSucceeded(boolean succeeded) {
-            this.succeeded = succeeded;
-        }
-
-        public String getScope() {
-            return scope;
-        }
-
-        public void setScope(String scope) {
-            this.scope = scope;
-        }
-
-        public String getCommand() {
-            return command;
-        }
-
-        public void setCommand(String command) {
-            this.command = command;
-        }
-
-        public String getFallbackCommand() {
-            return fallbackCommand;
-        }
-
-        public void setFallbackCommand(String fallbackCommand) {
-            this.fallbackCommand = fallbackCommand;
-        }
-
-        public String getMessage() {
-            return message;
-        }
-
-        public void setMessage(String message) {
-            this.message = message;
-        }
-
-        public String getError() {
-            return error;
-        }
-
-        public void setError(String error) {
-            this.error = error;
-        }
     }
 }

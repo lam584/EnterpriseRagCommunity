@@ -10,6 +10,8 @@ import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import lombok.Getter;
+import lombok.Setter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -71,17 +73,12 @@ public class PostsController {
         return portalPostsService.getById(id);
     }
 
+    @Setter
+    @Getter
     public static class UpdateStatusRequest {
         @NotNull(message = "status 不能为空")
         private PostStatus status;
 
-        public PostStatus getStatus() {
-            return status;
-        }
-
-        public void setStatus(PostStatus status) {
-            this.status = status;
-        }
     }
 
     @PutMapping("/{id}/status")

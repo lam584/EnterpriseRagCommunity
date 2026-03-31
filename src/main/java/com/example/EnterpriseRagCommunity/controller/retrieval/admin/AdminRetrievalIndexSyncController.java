@@ -3,7 +3,6 @@ package com.example.EnterpriseRagCommunity.controller.retrieval.admin;
 import com.example.EnterpriseRagCommunity.dto.retrieval.AdminBatchIdsRequest;
 import com.example.EnterpriseRagCommunity.dto.retrieval.CommentIndexSyncStatusDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.PostIndexSyncStatusDTO;
-import com.example.EnterpriseRagCommunity.security.Permissions;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.AdminRetrievalIndexSyncStatusService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

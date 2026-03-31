@@ -31,7 +31,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.EnterpriseRagCommunity.config.AdminSetupManager;
-import com.example.EnterpriseRagCommunity.dto.access.UsersCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.access.UsersDTO;
 import com.example.EnterpriseRagCommunity.dto.access.Security2faPolicyStatusDTO;
 import com.example.EnterpriseRagCommunity.dto.access.request.Login2faVerifyRequest;
@@ -430,7 +429,7 @@ public class AuthController {
                     "SESSION",
                     null,
                     AuditResult.FAIL,
-                    safeText(e.getMessage(), 512),
+                    safeText(e.getMessage()),
                     null,
                     Map.of("email", loginRequest.getEmail())
             );
@@ -473,9 +472,9 @@ public class AuthController {
                     "codeTtlSeconds", emailVerificationService.getDefaultTtlSeconds()
             ));
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", safeText(e.getMessage())));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "发送失败：" + e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "发送失败：" + safeText(e.getMessage())));
         }
     }
 
@@ -620,11 +619,11 @@ public class AuthController {
                     "SESSION",
                     null,
                     AuditResult.FAIL,
-                    safeText(e.getMessage(), 512),
+                    safeText(e.getMessage()),
                     null,
                     Map.of("method", method)
             );
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", safeText(e.getMessage())));
         } catch (Exception e) {
             auditLogWriter.write(
                     userId,
@@ -633,11 +632,11 @@ public class AuthController {
                     "SESSION",
                     null,
                     AuditResult.FAIL,
-                    safeText(e.getMessage(), 512),
+                    safeText(e.getMessage()),
                     null,
                     Map.of("method", method)
             );
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "验证失败：" + e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "验证失败：" + safeText(e.getMessage())));
         }
     }
 
@@ -689,21 +688,21 @@ public class AuthController {
                     "SESSION",
                     null,
                     AuditResult.FAIL,
-                    safeText(e.getMessage(), 512),
+                    safeText(e.getMessage()),
                     null,
                     Map.of()
             );
             Map<String, String> response = new HashMap<>();
-            response.put("message", "退出登录失败: " + e.getMessage());
+            response.put("message", "退出登录失败: " + safeText(e.getMessage()));
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
         }
     }
 
-    private static String safeText(String s, int maxLen) {
+    private static String safeText(String s) {
         if (s == null) return null;
         String t = s.replaceAll("[\\r\\n\\t]+", " ").trim();
         if (t.isBlank()) return null;
-        if (maxLen <= 0) return "";
+        int maxLen = 512;
         return t.length() <= maxLen ? t : t.substring(0, maxLen);
     }
 
@@ -776,7 +775,7 @@ public class AuthController {
             UsersEntity savedUser = administratorService.save(user);
 
             // 2) 绑定一个最基础的 USER 角色（重构：不再使用 user_roles 表）
-            Long userRoleId = appSettingsService.getLongOrDefault(AppSettingsService.KEY_DEFAULT_REGISTER_ROLE_ID, 1L);
+            long userRoleId = appSettingsService.getLongOrDefault(AppSettingsService.KEY_DEFAULT_REGISTER_ROLE_ID, 1L);
             if (userRoleId <= 0) {
                 userRoleId = 1L;
             }
@@ -1019,12 +1018,12 @@ public class AuthController {
         }
 
         // 2) 退化：取第一条 tenant
-        if (!tenantOpt.isPresent()) {
+        if (tenantOpt.isEmpty()) {
             tenantOpt = tenantsRepository.findFirstByOrderByIdAsc();
         }
 
         // 3) 仍然没有：创建一个默认 tenant
-        if (!tenantOpt.isPresent()) {
+        if (tenantOpt.isEmpty()) {
             TenantsEntity tenant = new TenantsEntity();
             tenant.setCode((defaultTenantCode != null && !defaultTenantCode.trim().isEmpty()) ? defaultTenantCode.trim() : "DEFAULT");
             tenant.setName((defaultTenantName != null && !defaultTenantName.trim().isEmpty()) ? defaultTenantName.trim() : "Default Tenant");
@@ -1036,29 +1035,6 @@ public class AuthController {
         return tenantOpt.get();
     }
 
-    /**
-     * 将 UsersEntity 实体转换为 UsersCreateDTO
-     */
-    private UsersCreateDTO convertToUserDTO(UsersEntity user) { // 对齐: 参数和返回类型改为新类
-        UsersCreateDTO dto = new UsersCreateDTO();
-        // 注意: UsersCreateDTO 没有 setId, setCreatedAt, setUpdatedAt 方法，这些字段在 DTO 中不存在
-        // 只设置 UsersCreateDTO 中实际存在的字段
-        if (user.getTenantId() != null) {
-            dto.setTenantId(user.getTenantId().getId()); // 获取 TenantsEntity 的 ID 作为 tenantId
-        }
-        dto.setEmail(user.getEmail());
-        dto.setUsername(user.getUsername()); // 对齐: displayName → username
-        dto.setPasswordHash(user.getPasswordHash()); // 对齐: 添加passwordHash
-        dto.setStatus(user.getStatus());
-        // Note: 新的UsersCreateDTO没有avatarUrl字段，根据需求决定是否保留或映射到metadata
-        // UsersCreateDTO 没有 setLastLoginAt, setCreatedAt, setUpdatedAt 方法，跳过
-        dto.setIsDeleted(user.getIsDeleted()); // 对齐: 添加isDeleted
-        // Note: metadata字段未在旧代码中设置，此处留空或根据需求填充
-        // 转换角色信息 - 简化处理，假设通过其他服务获取
-        // 由于角色关联已重构，此处省略角色转换逻辑
-        // 如果需要，应调用UserRoleService获取用户角色
-        return dto;
-    }
 
     /**
      * Safe mapping for returning user to frontend (includes id, excludes passwordHash).

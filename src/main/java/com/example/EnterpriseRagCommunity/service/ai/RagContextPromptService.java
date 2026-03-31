@@ -116,7 +116,6 @@ public class RagContextPromptService {
                     applyCandidateScore(clipped, alpha, beta, gamma, ablationMode, clippedRed);
                     markTaken(clipped, st);
                     out.add(clipped);
-                    used += clipped.tokens == null ? 0 : clipped.tokens;
                     break;
                 }
                 c.item.setReason("budgetExceeded");
@@ -263,7 +262,6 @@ public class RagContextPromptService {
                     applyCandidateScore(clipped, alpha, beta, gamma, ablationMode, red);
                     markTaken(clipped, st);
                     out.add(clipped);
-                    used += clipped.tokens == null ? 0 : clipped.tokens;
                     break;
                 }
                 best.item.setReason("budgetExceeded");
@@ -306,7 +304,7 @@ public class RagContextPromptService {
         out.contentHash = c.contentHash;
         out.sourceKey = c.sourceKey;
         out.textKey = normalizeTextKey(clipped);
-        out.tokenSet = tokenizeSet(clipped, 80);
+        out.tokenSet = tokenizeSet(clipped);
         out.relScore = c.relScore;
         out.impScore = c.impScore;
         out.redScore = c.redScore;
@@ -483,7 +481,7 @@ public class RagContextPromptService {
     public AssembleResult assemble(String queryText, List<RagPostChatRetrievalService.Hit> hits, ContextClipConfigDTO cfg, CitationConfigDTO citationCfg) {
         ContextClipConfigDTO safe = cfg;
         if (safe == null) safe = new ContextClipConfigDTO();
-        boolean enabled = safe.getEnabled() == null || Boolean.TRUE.equals(safe.getEnabled());
+        boolean enabled = safe.getEnabled() == null || safe.getEnabled();
         if (!enabled) {
             AssembleResult out = new AssembleResult();
             out.setContextPrompt("");
@@ -518,20 +516,20 @@ public class RagContextPromptService {
         boolean dedupByPostId = Boolean.TRUE.equals(safe.getDedupByPostId());
         boolean dedupByTitle = Boolean.TRUE.equals(safe.getDedupByTitle());
         boolean dedupByContentHash = Boolean.TRUE.equals(safe.getDedupByContentHash());
-        boolean crossSourceDedup = safe.getCrossSourceDedup() == null || Boolean.TRUE.equals(safe.getCrossSourceDedup());
-        double alpha = clampDouble(safe.getAlpha(), 0.0, 10.0, 1.0);
-        double beta = clampDouble(safe.getBeta(), 0.0, 10.0, 1.0);
-        double gamma = clampDouble(safe.getGamma(), 0.0, 10.0, 1.0);
+        boolean crossSourceDedup = safe.getCrossSourceDedup() == null || safe.getCrossSourceDedup();
+        double alpha = clampDouble(safe.getAlpha());
+        double beta = clampDouble(safe.getBeta());
+        double gamma = clampDouble(safe.getGamma());
         String ablationMode = normalizeAblationMode(safe.getAblationMode());
 
-        String sectionTitle = trimOrDefault(safe.getSectionTitle(), "");
+        String sectionTitle = trimOrDefault(safe.getSectionTitle());
         String separator = safe.getSeparator() == null ? "\n\n" : safe.getSeparator();
-        String headerTpl = trimOrDefault(safe.getItemHeaderTemplate(), "");
+        String headerTpl = trimOrDefault(safe.getItemHeaderTemplate());
 
-        boolean showPostId = safe.getShowPostId() == null || Boolean.TRUE.equals(safe.getShowPostId());
-        boolean showChunkIndex = safe.getShowChunkIndex() == null || Boolean.TRUE.equals(safe.getShowChunkIndex());
-        boolean showScore = safe.getShowScore() == null || Boolean.TRUE.equals(safe.getShowScore());
-        boolean showTitle = safe.getShowTitle() == null || Boolean.TRUE.equals(safe.getShowTitle());
+        boolean showPostId = safe.getShowPostId() == null || safe.getShowPostId();
+        boolean showChunkIndex = safe.getShowChunkIndex() == null || safe.getShowChunkIndex();
+        boolean showScore = safe.getShowScore() == null || safe.getShowScore();
+        boolean showTitle = safe.getShowTitle() == null || safe.getShowTitle();
 
         List<Item> selected = new ArrayList<>();
         List<Item> dropped = new ArrayList<>();
@@ -547,7 +545,7 @@ public class RagContextPromptService {
         if (policy == ContextWindowPolicy.SLIDING || policy == ContextWindowPolicy.IMPORTANCE || policy == ContextWindowPolicy.HYBRID) {
             int scanLimit = Math.min(
                     hits == null ? 0 : hits.size(),
-                    Math.min(500, Math.max(maxItems * 8, 50))
+                    Math.clamp(maxItems * 8, 50, 500)
             );
 
             List<Candidate> candidates = new ArrayList<>();
@@ -608,7 +606,7 @@ public class RagContextPromptService {
                     c.contentHash = crc32(truncated);
                 }
                 c.textKey = normalizeTextKey(truncated);
-                c.tokenSet = tokenizeSet(truncated, 80);
+                c.tokenSet = tokenizeSet(truncated);
                 candidates.add(c);
             }
 
@@ -896,8 +894,8 @@ public class RagContextPromptService {
     private static double similarity(Candidate a, Candidate b) {
         if (a == null || b == null) return 0.0;
         double score = 0.0;
-        if (a.contentHash != null && b.contentHash != null && a.contentHash.equals(b.contentHash)) score = Math.max(score, 1.0);
-        if (a.textKey != null && b.textKey != null && a.textKey.equals(b.textKey)) score = Math.max(score, 1.0);
+        if (a.contentHash != null && b.contentHash != null && a.contentHash.equals(b.contentHash)) score = 1.0;
+        if (a.textKey != null && b.textKey != null && a.textKey.equals(b.textKey)) score = 1.0;
         if (a.titleKey != null && b.titleKey != null && a.titleKey.equals(b.titleKey)) score = Math.max(score, 0.85);
         if (a.item != null && b.item != null && a.item.getPostId() != null && a.item.getPostId().equals(b.item.getPostId())) score = Math.max(score, 0.75);
         if (a.tokenSet != null && !a.tokenSet.isEmpty() && b.tokenSet != null && !b.tokenSet.isEmpty()) {
@@ -911,11 +909,11 @@ public class RagContextPromptService {
                 score = Math.max(score, jac);
             }
         }
-        return Math.max(0.0, Math.min(1.0, score));
+        return Math.clamp(score, 0.0, 1.0);
     }
 
-    private static Set<String> tokenizeSet(String text, int maxTerms) {
-        if (text == null || text.isBlank() || maxTerms <= 0) return Collections.emptySet();
+    private static Set<String> tokenizeSet(String text) {
+        if (text == null || text.isBlank()) return Collections.emptySet();
         String normalized = text.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
         if (normalized.isBlank()) return Collections.emptySet();
         String[] arr = normalized.split("\\s+");
@@ -923,7 +921,7 @@ public class RagContextPromptService {
         for (String s : arr) {
             if (s == null || s.isBlank()) continue;
             out.add(s);
-            if (out.size() >= maxTerms) break;
+            if (out.size() >= 80) break;
         }
         return out;
     }
@@ -946,10 +944,10 @@ public class RagContextPromptService {
         return "DOC";
     }
 
-    private static String trimOrDefault(String s, String def) {
-        if (s == null) return def;
+    private static String trimOrDefault(String s) {
+        if (s == null) return "";
         String t = s.trim();
-        return t.isBlank() ? def : t;
+        return t.isBlank() ? "" : t;
     }
 
     private static String trimOrNull(String s) {
@@ -974,11 +972,11 @@ public class RagContextPromptService {
         return x;
     }
 
-    private static double clampDouble(Double v, double min, double max, double def) {
-        double x = v == null ? def : v;
-        if (Double.isNaN(x) || Double.isInfinite(x)) x = def;
-        if (x < min) x = min;
-        if (x > max) x = max;
+    private static double clampDouble(Double v) {
+        double x = v == null ? 1.0 : v;
+        if (Double.isNaN(x) || Double.isInfinite(x)) x = 1.0;
+        if (x < 0.0) x = 0.0;
+        if (x > 10.0) x = 10.0;
         return x;
     }
 

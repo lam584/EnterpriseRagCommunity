@@ -27,10 +27,30 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 public class AdminLlmLoadTestExportTest {
+
+    @Test
+    void export_shouldReturn400_whenRunIdInvalid() {
+        AdminLlmLoadTestService svc = new AdminLlmLoadTestService(
+                mock(LlmGateway.class),
+                mock(AdminModerationLlmService.class),
+                mock(LlmQueueMonitorService.class),
+                mock(TokenCountService.class),
+                new ObjectMapper(),
+                mock(LlmModelRepository.class),
+                mock(LlmPriceConfigRepository.class),
+                mock(LlmLoadTestRunDetailRepository.class),
+                mock(LlmLoadTestRunHistoryRepository.class),
+                mock(PromptsRepository.class)
+        );
+
+        ResponseEntity<StreamingResponseBody> res = svc.export("run\r\nX", "json");
+        assertEquals(400, res.getStatusCode().value());
+    }
 
     @Test
     void exportJson_containsSummaryAndPerCallRequestResponse() throws Exception {
@@ -165,5 +185,50 @@ public class AdminLlmLoadTestExportTest {
         assertTrue(csv.startsWith("\uFEFFrunId,index,kind"));
         assertTrue(csv.contains("你好，世界"));
         assertTrue(csv.contains("好的"));
+    }
+
+    @Test
+    void exportCsv_shouldNeutralizeFormulaCells() throws Exception {
+        String runId = "run-3";
+        LlmLoadTestRunDetailRepository detailRepo = mock(LlmLoadTestRunDetailRepository.class);
+        LlmLoadTestRunHistoryRepository historyRepo = mock(LlmLoadTestRunHistoryRepository.class);
+
+        LlmLoadTestRunDetailEntity d = new LlmLoadTestRunDetailEntity();
+        d.setRunId(runId);
+        d.setReqIndex(1);
+        d.setKind("CHAT_STREAM");
+        d.setOk(true);
+        d.setRequestJson("=HYPERLINK(\"http://evil\",\"x\")");
+        d.setResponseJson("@SUM(1,2)");
+
+        when(detailRepo.existsByRunId(runId)).thenReturn(true);
+        when(detailRepo.findByRunIdOrderByReqIndexAsc(runId, PageRequest.of(0, 2000)))
+                .thenReturn(new PageImpl<>(List.of(d), PageRequest.of(0, 2000), 1));
+        when(historyRepo.existsById(runId)).thenReturn(true);
+
+        AdminLlmLoadTestService svc = new AdminLlmLoadTestService(
+                mock(LlmGateway.class),
+                mock(AdminModerationLlmService.class),
+                mock(LlmQueueMonitorService.class),
+                mock(TokenCountService.class),
+                new ObjectMapper(),
+                mock(LlmModelRepository.class),
+                mock(LlmPriceConfigRepository.class),
+                detailRepo,
+                historyRepo,
+                mock(PromptsRepository.class)
+        );
+
+        ResponseEntity<StreamingResponseBody> res = svc.export(runId, "csv");
+        assertEquals(200, res.getStatusCode().value());
+        assertNotNull(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION));
+        assertFalse(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION).contains("\r"));
+        assertFalse(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION).contains("\n"));
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        res.getBody().writeTo(out);
+        String csv = out.toString(StandardCharsets.UTF_8);
+        assertTrue(csv.contains("'=HYPERLINK"));
+        assertTrue(csv.contains("'@SUM(1,2)"));
     }
 }

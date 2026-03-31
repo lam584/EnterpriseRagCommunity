@@ -147,7 +147,7 @@ public class AdminRetrievalHybridController {
             return out;
         }
 
-        int topN = req == null || req.getTopN() == null ? docsUsed.size() : Math.max(1, req.getTopN());
+        int topN = req.getTopN() == null ? docsUsed.size() : Math.max(1, req.getTopN());
         if (topN > docsUsed.size()) topN = docsUsed.size();
         out.setTopN(topN);
 

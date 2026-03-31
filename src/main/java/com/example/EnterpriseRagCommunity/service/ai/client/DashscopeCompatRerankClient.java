@@ -51,7 +51,7 @@ public class DashscopeCompatRerankClient {
         body.put("query", req.query() == null ? "" : req.query());
         body.put("documents", req.documents() == null ? List.of() : req.documents());
         if (req.topN() != null && req.topN() > 0) body.put("top_n", req.topN());
-        if (req.returnDocuments() != null) body.put("return_documents", Boolean.TRUE.equals(req.returnDocuments()));
+        if (req.returnDocuments() != null) body.put("return_documents", req.returnDocuments());
         if (req.instruct() != null && !req.instruct().isBlank()) body.put("instruct", req.instruct().trim());
 
         HttpURLConnection conn = openJsonPost(endpoint, apiKey, req.extraHeaders(), req.connectTimeoutMs(), req.readTimeoutMs());

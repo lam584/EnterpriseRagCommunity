@@ -107,7 +107,7 @@ final class ModerationLlmAutoRunnerSupport {
 
         String suggestion = normalizeSuggestion(res == null ? null : res.getDecisionSuggestion(), res == null ? null : res.getDecision());
         Double rs0 = res == null ? null : (res.getRiskScore() == null ? res.getScore() : res.getRiskScore());
-        double riskScore = rs0 == null ? 0.0 : clamp01(rs0, 0.0);
+        double riskScore = rs0 == null ? 0.0 : clamp01(rs0);
         List<String> labels = coalesceLabels(res);
         details.put("decision_suggestion", suggestion);
         details.put("risk_score", riskScore);
@@ -435,18 +435,18 @@ final class ModerationLlmAutoRunnerSupport {
         }
         List<String> hints = null;
         if (cfg != null && Boolean.TRUE.equals(cfg.getEnableTempIndexHints())) {
-            hints = extractKeywords(t, 12);
+            hints = extractKeywords(t);
         }
         if (cfg != null && Boolean.TRUE.equals(cfg.getEnableGlobalMemory()) && mem != null && !mem.isEmpty()) {
             sb.append("\\n[GLOBAL_MEMORY]\\n");
             Object r = mem.get("riskTags");
             Object s = mem.get("maxScore");
-            if (r != null) sb.append("riskTags: ").append(String.valueOf(r)).append('\n');
-            if (s != null) sb.append("maxScore: ").append(String.valueOf(s)).append('\n');
+            if (r != null) sb.append("riskTags: ").append(r).append('\n');
+            if (s != null) sb.append("maxScore: ").append(s).append('\n');
             Object ents = mem.get("entities");
-            if (ents != null) sb.append("entities: ").append(String.valueOf(ents)).append('\n');
+            if (ents != null) sb.append("entities: ").append(ents).append('\n');
             Object oq = mem.get("openQuestions");
-            if (oq != null) sb.append("openQuestions: ").append(String.valueOf(oq)).append('\n');
+            if (oq != null) sb.append("openQuestions: ").append(oq).append('\n');
             Object prev = null;
             try {
                 int idx = c.chunkIndex() == null ? 0 : c.chunkIndex();
@@ -494,8 +494,7 @@ final class ModerationLlmAutoRunnerSupport {
 
     static long clampLong(long v, long min, long max) {
         if (v < min) return min;
-        if (v > max) return max;
-        return v;
+        return Math.min(v, max);
     }
 
     static Map<String, Object> buildTokenDiagnostics(
@@ -512,7 +511,7 @@ final class ModerationLlmAutoRunnerSupport {
         int imageCount = images == null ? 0 : images.size();
         int maxImagesPerRequest = visionPrompt == null || visionPrompt.getVisionMaxImagesPerRequest() == null
                 ? 10
-                : clampInt(visionPrompt.getVisionMaxImagesPerRequest(), 1, 50);
+                : clampInt(visionPrompt.getVisionMaxImagesPerRequest());
         Integer imageTokenBudget = visionPrompt == null ? null : visionPrompt.getVisionImageTokenBudget();
         Boolean highResolutionImages = visionPrompt == null ? null : visionPrompt.getVisionHighResolutionImages();
         Integer maxPixels = visionPrompt == null ? null : visionPrompt.getVisionMaxPixels();
@@ -596,15 +595,13 @@ final class ModerationLlmAutoRunnerSupport {
         return Math.round(v * 1000.0d) / 1000.0d;
     }
 
-    static int clampInt(int v, int min, int max) {
-        if (v < min) return min;
-        if (v > max) return max;
-        return v;
+    static int clampInt(int v) {
+        return Math.toIntExact(clampLong(v, 1, 50));
     }
 
     static List<Map<String, Object>> extractEntitiesFromText(String text, int chunkIndex, int max) {
         if (text == null || text.isBlank()) return List.of();
-        int limit = Math.max(0, Math.min(200, max));
+        int limit = Math.clamp(max, 0, 200);
         if (limit == 0) return List.of();
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         ArrayList<Map<String, Object>> out = new ArrayList<>();
@@ -660,7 +657,7 @@ final class ModerationLlmAutoRunnerSupport {
         String t = text.trim();
         if (t.isEmpty()) return "";
         t = t.replaceAll("[ \\t\\x0B\\f\\r]+", " ");
-        t = t.replaceAll("\\n{3,}", "\\n\\n");
+        t = t.replaceAll("\\n{3,}", "nn");
         return t.trim();
     }
 
@@ -812,7 +809,7 @@ final class ModerationLlmAutoRunnerSupport {
         if (!(raw instanceof Map<?, ?> byChunk) || byChunk.isEmpty()) return List.of();
 
         int current = chunkIndex == null ? Integer.MAX_VALUE : chunkIndex;
-        int limit = Math.max(1, Math.min(20, maxLines));
+        int limit = Math.clamp(maxLines, 1, 20);
         List<Integer> keys = new ArrayList<>();
         for (Object k : byChunk.keySet()) {
             Integer idx = toInt(k);
@@ -1073,7 +1070,7 @@ final class ModerationLlmAutoRunnerSupport {
         if (snippet == null || snippet.isBlank()) return raw;
         if (!containsNormalizedText(chunkText, snippet)) return raw;
 
-        AnchoredSnippet anchored = buildAnchoredSnippetFromChunk(chunkText, snippet, 15);
+        AnchoredSnippet anchored = buildAnchoredSnippetFromChunk(chunkText, snippet);
         if (anchored == null || anchored.text == null || anchored.text.isBlank()) return raw;
 
         node.remove("image_id");
@@ -1104,14 +1101,14 @@ final class ModerationLlmAutoRunnerSupport {
         if (before == null || before.isBlank()) return null;
 
         if (chunkText == null || chunkText.isBlank()) return null;
-        String r = extractBetweenAnchorsByRegex(chunkText, before, after, 500);
+        String r = extractBetweenAnchorsByRegex(chunkText, before, after);
         return r == null || r.isBlank() ? null : r;
     }
 
     static String normalizeForAnchorMatch(String s) {
         if (s == null) return "";
-        return s.replace('\u201c', '"').replace('\u201d', '"')
-                .replace('\u2018', '\'').replace('\u2019', '\'')
+        return s.replace('“', '"').replace('”', '"')
+                .replace('‘', '\'').replace('’', '\'')
                 .replaceAll("\\s+", " ")
                 .replaceAll(" ?\" ?", "\"")
                 .replaceAll(" ?' ?", "'");
@@ -1153,7 +1150,7 @@ final class ModerationLlmAutoRunnerSupport {
         }
     }
 
-    static AnchoredSnippet buildAnchoredSnippetFromChunk(String chunkText, String snippet, int anchorChars) {
+    static AnchoredSnippet buildAnchoredSnippetFromChunk(String chunkText, String snippet) {
         String text = chunkText == null ? "" : chunkText;
         String needle = snippet == null ? "" : snippet.trim();
         if (text.isBlank() || needle.isBlank()) return null;
@@ -1161,7 +1158,7 @@ final class ModerationLlmAutoRunnerSupport {
         if (idx < 0) return null;
         int start = idx;
         int end = idx + needle.length();
-        int around = Math.max(6, Math.min(40, anchorChars));
+        int around = Math.clamp(15, 6, 40);
         String before = text.substring(Math.max(0, start - around), start).trim();
         String after = text.substring(end, Math.min(text.length(), end + around)).trim();
         String cleanedText = cleanExtractedSnippet(needle);
@@ -1172,7 +1169,7 @@ final class ModerationLlmAutoRunnerSupport {
     }
 
     static String firstNonBlank(String... values) {
-        if (values == null || values.length == 0) return null;
+        if (values == null) return null;
         for (String value : values) {
             String t = toStr(value);
             if (t != null) return t;
@@ -1219,9 +1216,9 @@ final class ModerationLlmAutoRunnerSupport {
         return cleaned;
     }
 
-    static String extractBetweenAnchorsByRegex(String text, String before, String after, int maxLen) {
+    static String extractBetweenAnchorsByRegex(String text, String before, String after) {
         if (text == null || text.isEmpty() || before == null || before.isBlank()) return null;
-        int cap = Math.max(20, Math.min(2000, maxLen));
+        int cap = Math.clamp(500, 20, 2000);
 
         String normText = normalizeForAnchorRegex(text);
         String normBefore = normalizeForAnchorRegex(before);
@@ -1233,7 +1230,7 @@ final class ModerationLlmAutoRunnerSupport {
 
         java.util.regex.Pattern p;
         if (a.isEmpty()) {
-            String boundary = "(?:(?:\\r\\n)|\\r|\\n|闂備線娼уΛ妤呭焵椤掆偓閻楁捇寮鍡欘洸闁告稑鐡ㄩ弲顒勬煟?|!|\\?|$)";
+            String boundary = "\\r\\n|\\r|\\n|闂備線娼уΛ妤呭焵椤掆偓閻楁捇寮\uE0A2\uE17C鍡欘洸闁告稑鐡ㄩ弲顒勬煟?|!|\\?|$";
             p = java.util.regex.Pattern.compile(b + "(.{0," + cap + "}?)" + "(?=" + boundary + ")", java.util.regex.Pattern.DOTALL);
         } else {
             p = java.util.regex.Pattern.compile(b + "(.{0," + cap + "}?)" + a, java.util.regex.Pattern.DOTALL);
@@ -1282,9 +1279,9 @@ final class ModerationLlmAutoRunnerSupport {
 
     static String normalizeForAnchorRegex(String s) {
         if (s == null) return "";
-        String x = s.replace('\u201c', '"').replace('\u201d', '"')
-                .replace('\u2018', '\'').replace('\u2019', '\'');
-        x = x.replaceAll(" ?\\\" ?", "\\\"")
+        String x = s.replace('“', '"').replace('”', '"')
+                .replace('‘', '\'').replace('’', '\'');
+        x = x.replaceAll(" ?\" ?", "\"")
                 .replaceAll(" ?' ?", "'");
         return x;
     }
@@ -1300,7 +1297,7 @@ final class ModerationLlmAutoRunnerSupport {
     static List<String> buildEvidenceNormalizeReplay(List<String> before, List<String> after, int maxItems) {
         List<String> b = before == null ? List.of() : before;
         List<String> a = after == null ? List.of() : after;
-        int max = Math.max(1, Math.min(10, maxItems));
+        int max = Math.clamp(maxItems, 1, 10);
         int n = Math.max(b.size(), a.size());
         ArrayList<String> out = new ArrayList<>();
         for (int i = 0; i < n; i++) {
@@ -1440,7 +1437,7 @@ final class ModerationLlmAutoRunnerSupport {
     static Integer toInt(Object v) {
         if (v == null) return null;
         if (v instanceof Integer i) return i;
-        if (v instanceof Long l) return (int) Math.min(Integer.MAX_VALUE, Math.max(Integer.MIN_VALUE, l));
+        if (v instanceof Long l) return (int) Math.clamp(l, Integer.MIN_VALUE, Integer.MAX_VALUE);
         if (v instanceof Number n) return n.intValue();
         try {
             String s = String.valueOf(v).trim();
@@ -1459,7 +1456,7 @@ final class ModerationLlmAutoRunnerSupport {
         return t.isEmpty() ? null : t;
     }
 
-    static List<String> extractKeywords(String text, int limit) {
+    static List<String> extractKeywords(String text) {
         if (text == null) return List.of();
         String t = text.trim();
         if (t.isEmpty()) return List.of();
@@ -1479,7 +1476,7 @@ final class ModerationLlmAutoRunnerSupport {
             if (c != 0) return c;
             return Integer.compare(b.getKey().length(), a.getKey().length());
         });
-        int take = Math.max(0, Math.min(limit, list.size()));
+        int take = Math.clamp(list.size(), 0, 12);
         List<String> out = new ArrayList<>();
         for (int i = 0; i < take; i++) out.add(list.get(i).getKey());
         return out;
@@ -1500,10 +1497,10 @@ final class ModerationLlmAutoRunnerSupport {
         if ("HUMAN".equalsIgnoreCase(decision) || "REVIEW".equalsIgnoreCase(decision)) return Verdict.REVIEW;
         if ("APPROVE".equalsIgnoreCase(decision)) {
             if (score == null) return Verdict.APPROVE;
-            return stricterVerdict(Verdict.APPROVE, verdictFromScore(clamp01(score, 0.0), rejectThreshold, humanThreshold));
+            return stricterVerdict(Verdict.APPROVE, verdictFromScore(clamp01(score), rejectThreshold, humanThreshold));
         }
         if (score == null) return Verdict.REVIEW;
-        return verdictFromScore(clamp01(score, 0.0), rejectThreshold, humanThreshold);
+        return verdictFromScore(clamp01(score), rejectThreshold, humanThreshold);
     }
 
     static Verdict stricterVerdict(Verdict a, Verdict b) {
@@ -1645,8 +1642,8 @@ final class ModerationLlmAutoRunnerSupport {
         }
     }
 
-    static double clamp01(Double v, double def) {
-        if (v == null || !Double.isFinite(v)) return def;
+    static double clamp01(Double v) {
+        if (v == null || !Double.isFinite(v)) return 0.0;
         if (v < 0) return 0.0;
         if (v > 1) return 1.0;
         return v;

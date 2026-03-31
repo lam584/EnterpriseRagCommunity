@@ -29,7 +29,7 @@ export function normalizeMarkdownForPreview(markdown: string): string {
 
 export function escapeMarkdownLinkText(text: string): string {
   if (!text) return text;
-  return text.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+  return text.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/]/g, '\\]');
 }
 
 export function escapeMarkdownLinkDestination(url: string): string {

@@ -4,7 +4,6 @@ import com.example.EnterpriseRagCommunity.dto.content.admin.CommentAdminDTO;
 import com.example.EnterpriseRagCommunity.dto.content.admin.CommentSetDeletedRequest;
 import com.example.EnterpriseRagCommunity.dto.content.admin.CommentUpdateStatusRequest;
 import com.example.EnterpriseRagCommunity.service.content.admin.AdminCommentsService;
-import com.example.EnterpriseRagCommunity.security.Permissions;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;

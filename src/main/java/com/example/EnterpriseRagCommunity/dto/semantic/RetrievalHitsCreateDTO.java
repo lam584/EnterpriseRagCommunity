@@ -30,7 +30,7 @@ public class RetrievalHitsCreateDTO {
 
     @ApiModelProperty(value = "得分", required = true, example = "0.876")
     @NotNull
-    @DecimalMin(value = "0.0", inclusive = true)
+    @DecimalMin(value = "0.0")
     private Double score; // score DOUBLE NOT NULL
 }
 
