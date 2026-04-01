@@ -78,6 +78,8 @@ public class AdminLlmLoadTestService {
     private static final int MAX_RUNS = 20;
     private static final int MAX_RESULTS = 5000;
     private static final int MAX_DETAIL_CHARS = 20_000;
+    private static final int QUEUE_SAMPLE_INTERVAL_MS = 1000;
+    private static final int FINAL_QUEUE_SAMPLE_DELAY_MS = 1100;
     private static final String TRUNC_SUFFIX = "\n...(truncated)...";
     private static final String ENV_DEFAULT = "default";
 
@@ -229,7 +231,7 @@ public class AdminLlmLoadTestService {
             }
 
             try {
-                pauseMillis(1000);
+                pauseMillis(QUEUE_SAMPLE_INTERVAL_MS);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
@@ -237,7 +239,7 @@ public class AdminLlmLoadTestService {
         }
         if (st.cancelled.get()) return;
         try {
-            pauseMillis(1100);
+            pauseMillis(FINAL_QUEUE_SAMPLE_DELAY_MS);
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             return;

@@ -135,8 +135,9 @@ public class ModerationVecAutoRunner {
             queueRepository.updateStageIfPendingOrReviewing(q.getId(), QueueStage.VEC, LocalDateTime.now());
         }
 
-        ModerationConfidenceFallbackConfigEntity cfg = fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc()
-                .orElseThrow(() -> new IllegalStateException("moderation_confidence_fallback_config not initialized"));
+        if (fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc().isEmpty()) {
+            throw new IllegalStateException("moderation_confidence_fallback_config not initialized");
+        }
 
         Map<String, Object> policyConfig = null;
         try {
@@ -145,106 +146,30 @@ public class ModerationVecAutoRunner {
         } catch (Exception ignore) {
         }
 
-        Boolean vecEnabled = deepGetBool(policyConfig, "precheck.vec.enabled");
+        Boolean vecEnabled = deepGetVecEnabled(policyConfig);
         if (vecEnabled == null) vecEnabled = true;
 
         String vecHitAction = firstNonBlank(deepGetString(policyConfig, "precheck.vec.hit_action"), "REJECT");
         String vecMissAction = firstNonBlank(deepGetString(policyConfig, "precheck.vec.miss_action"), "LLM");
-        Double vecThreshold = deepGetDouble(policyConfig, "precheck.vec.threshold");
+        Double vecThreshold = deepGetVecThreshold(policyConfig);
         if (vecThreshold == null) vecThreshold = 0.2;
 
         if (!vecEnabled) {
-            // skip VEC -> decide miss action
-            if ("REJECT".equals(normalizeAction(vecMissAction))) {
-                queueService.autoReject(q.getId(), "相似检测关闭且未命中策略为拒绝", run == null ? null : run.getTraceId());
-                if (vecStepId > 0) {
-                    if (vecMissAction != null) {
-                        pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, Map.of("reason", "vec disabled", "action", vecMissAction));
-                    }
-                }
-                if (run != null) {
-                    pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
-                    if (vecMissAction != null) {
-                        auditLogWriter.writeSystem(
-                                "VEC_DECISION",
-                                "MODERATION_QUEUE",
-                                q.getId(),
-                                AuditResult.SUCCESS,
-                                "VEC disabled -> REJECT",
-                                run.getTraceId(),
-                                Map.of("runId", run.getId(), "stage", "VEC", "decision", "REJECT", "action", vecMissAction)
-                        );
-                    }
-                }
-                return;
-            }
-
-            QueueStage next = mapNextStage(vecMissAction);
-            q.setCurrentStage(next);
-            queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
-
-            if (vecStepId > 0) {
-                pipelineTraceService.finishStepOk(vecStepId, "SKIP", null, Map.of("reason", "vec disabled", "nextStage", String.valueOf(next)));
-            }
-            if (run != null) {
-                auditLogWriter.writeSystem(
-                        "VEC_DECISION",
-                        "MODERATION_QUEUE",
-                        q.getId(),
-                        AuditResult.SUCCESS,
-                        "VEC skipped (disabled)",
-                        run.getTraceId(),
-                        Map.of("runId", run.getId(), "stage", "VEC", "decision", "SKIP", "nextStage", String.valueOf(next))
-                );
-            }
+            handleMissAction(q, run, vecStepId, vecMissAction,
+                    "vec disabled",
+                    "相似检测关闭且未命中策略为拒绝",
+                    "VEC disabled -> REJECT",
+                    "VEC skipped (disabled)");
             return;
         }
 
         String text = textLoader.load(q);
         if (text == null || text.isBlank()) {
-            // If no text, treat as miss
-            if ("REJECT".equals(normalizeAction(vecMissAction))) {
-                queueService.autoReject(q.getId(), "相似检测空文本且未命中策略为拒绝", run == null ? null : run.getTraceId());
-                if (vecStepId > 0) {
-                    if (vecMissAction != null) {
-                        pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, Map.of("reason", "empty text", "action", vecMissAction));
-                    }
-                }
-                if (run != null) {
-                    pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
-                    if (vecMissAction != null) {
-                        auditLogWriter.writeSystem(
-                                "VEC_DECISION",
-                                "MODERATION_QUEUE",
-                                q.getId(),
-                                AuditResult.SUCCESS,
-                                "VEC empty text -> REJECT",
-                                run.getTraceId(),
-                                Map.of("runId", run.getId(), "stage", "VEC", "decision", "REJECT", "action", vecMissAction)
-                        );
-                    }
-                }
-                return;
-            }
-
-            QueueStage next = mapNextStage(vecMissAction);
-            q.setCurrentStage(next);
-            queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
-
-            if (vecStepId > 0) {
-                pipelineTraceService.finishStepOk(vecStepId, "SKIP", null, Map.of("reason", "empty text", "nextStage", String.valueOf(next)));
-            }
-            if (run != null) {
-                auditLogWriter.writeSystem(
-                        "VEC_DECISION",
-                        "MODERATION_QUEUE",
-                        q.getId(),
-                        AuditResult.SUCCESS,
-                        "VEC skipped (empty text)",
-                        run.getTraceId(),
-                        Map.of("runId", run.getId(), "stage", "VEC", "decision", "SKIP", "nextStage", String.valueOf(next))
-                );
-            }
+            handleMissAction(q, run, vecStepId, vecMissAction,
+                    "empty text",
+                    "相似检测空文本且未命中策略为拒绝",
+                    "VEC empty text -> REJECT",
+                    "VEC skipped (empty text)");
             return;
         }
 
@@ -330,24 +255,72 @@ public class ModerationVecAutoRunner {
         }
     }
 
-    private static QueueStage mapAction(ModerationConfidenceFallbackConfigEntity.Action a) {
-        if (a == null) return QueueStage.HUMAN;
-        return switch (a) {
-            case HUMAN -> QueueStage.HUMAN;
-            case LLM -> QueueStage.LLM;
-            case REJECT -> QueueStage.HUMAN; // immediate reject needs actor/audit; fallback to HUMAN stage
-        };
-    }
-
     private static QueueStage mapNextStage(String action) {
         String a = normalizeAction(action);
         if (a == null) return QueueStage.HUMAN;
         return switch (a) {
             case "LLM" -> QueueStage.LLM;
             case "VEC" -> QueueStage.VEC;
-            case "HUMAN", "REJECT" -> QueueStage.HUMAN;
+            case "HUMAN" -> QueueStage.HUMAN;
             default -> QueueStage.HUMAN;
         };
+    }
+
+    private static QueueStage mapAction(ModerationConfidenceFallbackConfigEntity.Action action) {
+        if (action == null) return QueueStage.HUMAN;
+        return switch (action) {
+            case LLM -> QueueStage.LLM;
+            case HUMAN, REJECT -> QueueStage.HUMAN;
+        };
+    }
+
+    private void handleMissAction(ModerationQueueEntity q,
+                                  ModerationPipelineRunEntity run,
+                                  long vecStepId,
+                                  String vecMissAction,
+                                  String reason,
+                                  String rejectReason,
+                                  String rejectMessage,
+                                  String skipMessage) {
+        if ("REJECT".equals(normalizeAction(vecMissAction))) {
+            queueService.autoReject(q.getId(), rejectReason, run == null ? null : run.getTraceId());
+            if (vecStepId > 0 && vecMissAction != null) {
+                pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, Map.of("reason", reason, "action", vecMissAction));
+            }
+            if (run != null) {
+                pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
+                if (vecMissAction != null) {
+                    auditLogWriter.writeSystem(
+                            "VEC_DECISION",
+                            "MODERATION_QUEUE",
+                            q.getId(),
+                            AuditResult.SUCCESS,
+                            rejectMessage,
+                            run.getTraceId(),
+                            Map.of("runId", run.getId(), "stage", "VEC", "decision", "REJECT", "action", vecMissAction)
+                    );
+                }
+            }
+            return;
+        }
+
+        QueueStage next = mapNextStage(vecMissAction);
+        q.setCurrentStage(next);
+        queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
+        if (vecStepId > 0) {
+            pipelineTraceService.finishStepOk(vecStepId, "SKIP", null, Map.of("reason", reason, "nextStage", String.valueOf(next)));
+        }
+        if (run != null) {
+            auditLogWriter.writeSystem(
+                    "VEC_DECISION",
+                    "MODERATION_QUEUE",
+                    q.getId(),
+                    AuditResult.SUCCESS,
+                    skipMessage,
+                    run.getTraceId(),
+                    Map.of("runId", run.getId(), "stage", "VEC", "decision", "SKIP", "nextStage", String.valueOf(next))
+            );
+        }
     }
 
     private static String normalizeAction(String action) {
@@ -364,6 +337,21 @@ public class ModerationVecAutoRunner {
         return null;
     }
 
+    private static Boolean deepGetVecEnabled(Map<String, Object> m) {
+        return deepGetBool(m, "precheck.vec.enabled");
+    }
+
+    private static String deepGetString(Map<String, Object> m, String path) {
+        Object v = deepGet(m, path);
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        return s.isEmpty() ? null : s;
+    }
+
+    private static Double deepGetVecThreshold(Map<String, Object> m) {
+        return deepGetDouble(m, "precheck.vec.threshold");
+    }
+
     private static Boolean deepGetBool(Map<String, Object> m, String path) {
         Object v = deepGet(m, path);
         if (v instanceof Boolean bb) return bb;
@@ -373,13 +361,6 @@ public class ModerationVecAutoRunner {
         if (s.equalsIgnoreCase("true")) return Boolean.TRUE;
         if (s.equalsIgnoreCase("false")) return Boolean.FALSE;
         return null;
-    }
-
-    private static String deepGetString(Map<String, Object> m, String path) {
-        Object v = deepGet(m, path);
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isEmpty() ? null : s;
     }
 
     private static Double deepGetDouble(Map<String, Object> m, String path) {

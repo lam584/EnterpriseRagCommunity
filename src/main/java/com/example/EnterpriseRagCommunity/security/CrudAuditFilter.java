@@ -69,57 +69,48 @@ public class CrudAuditFilter extends OncePerRequestFilter {
             throw t;
         } finally {
             try {
-                if (!autoCrudEnabled) return;
-                if (AuditLogContextHolder.wasWritten()) return;
+                boolean shouldWrite = autoCrudEnabled && !AuditLogContextHolder.wasWritten();
+                String path = shouldWrite ? safeString(request.getRequestURI(), 512) : null;
+                shouldWrite = shouldWrite && path != null && path.startsWith("/api/") && !shouldExcludePath(path);
+                String method = shouldWrite ? safeString(request.getMethod(), 16) : null;
+                String action = shouldWrite ? mapAction(method, path) : null;
+                shouldWrite = shouldWrite && action != null;
+                Authentication auth = shouldWrite ? SecurityContextHolder.getContext().getAuthentication() : null;
+                String actorName = shouldWrite ? resolveUsername(auth) : null;
+                shouldWrite = shouldWrite && actorName != null;
+                if (shouldWrite) {
+                    Long actorId = resolveUserId(actorName);
+                    int status = response.getStatus();
+                    AuditResult result = (error == null && status < 400) ? AuditResult.SUCCESS : AuditResult.FAIL;
+                    String entityType = deriveEntityType(path);
+                    Long entityId = deriveEntityId(request, path);
+                    int latencyMs = (int) Math.clamp(System.currentTimeMillis() - startMs, 0L, Integer.MAX_VALUE);
 
-                String path = safeString(request.getRequestURI(), 512);
-                if (path == null || !path.startsWith("/api/")) return;
-                if (shouldExcludePath(path)) return;
+                    Map<String, Object> details = new LinkedHashMap<>();
+                    details.put("autoCrud", true);
+                    details.put("method", method);
+                    details.put("path", path);
+                    details.put("statusCode", status);
+                    details.put("latencyMs", latencyMs);
 
-                String method = safeString(request.getMethod(), 16);
-                String action = mapAction(method, path);
-                if (action == null) return;
+                    Object pattern = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
+                    if (pattern != null) details.put("pattern", String.valueOf(pattern));
+                    Object handler = request.getAttribute(HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE);
+                    if (handler != null) details.put("handler", String.valueOf(handler));
+                    if (error != null) details.put("error", safeString(error.getClass().getName(), 128));
 
-                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-                String actorName = resolveUsername(auth);
-                if (actorName == null) return;
-                Long actorId = resolveUserId(actorName);
-
-                int status = response.getStatus();
-                AuditResult result = (error == null && status < 400) ? AuditResult.SUCCESS : AuditResult.FAIL;
-
-                String entityType = deriveEntityType(path);
-                Long entityId = deriveEntityId(request, path);
-
-                int latencyMs = (int) Math.clamp(System.currentTimeMillis() - startMs, 0L, Integer.MAX_VALUE);
-
-                Map<String, Object> details = new LinkedHashMap<>();
-                details.put("autoCrud", true);
-                details.put("method", method);
-                details.put("path", path);
-                details.put("statusCode", status);
-                details.put("latencyMs", latencyMs);
-
-                Object pattern = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
-                if (pattern != null) details.put("pattern", String.valueOf(pattern));
-                Object handler = request.getAttribute(HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE);
-                if (handler != null) details.put("handler", String.valueOf(handler));
-
-                if (error != null) details.put("error", safeString(error.getClass().getName(), 128));
-
-                String message = method + " " + path;
-
-                auditLogWriter.write(
-                        actorId,
-                        actorName,
-                        action,
-                        entityType,
-                        entityId,
-                        result,
-                        message,
-                        null,
-                        details
-                );
+                    auditLogWriter.write(
+                            actorId,
+                            actorName,
+                            action,
+                            entityType,
+                            entityId,
+                            result,
+                            method + " " + path,
+                            null,
+                            details
+                    );
+                }
             } catch (Exception ignore) {
                 // ignore
             } finally {
@@ -136,8 +127,7 @@ public class CrudAuditFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/admin/log-retention")) return true;
         if (path.startsWith("/api/auth/")) return true;
 
-        if (matchesExcludePrefixes(path)) return true;
-        return false;
+        return matchesExcludePrefixes(path);
     }
 
     private String mapAction(String method, String path) {
@@ -229,14 +219,14 @@ public class CrudAuditFilter extends OncePerRequestFilter {
     }
 
     private static Long deriveEntityId(HttpServletRequest request, String path) {
-        Long fromParam = firstLongParam(request, "entityId", "id", "targetId");
+        Long fromParam = firstLongParam(request);
         if (fromParam != null) return fromParam;
         if (path == null) return null;
         String[] segs = path.split("/");
         for (int i = segs.length - 1; i >= 0; i--) {
             String s = segs[i];
             if (s == null || s.isBlank()) continue;
-            if (!isDigits(s)) continue;
+            if (isNotDigits(s)) continue;
             try {
                 return Long.parseLong(s);
             } catch (Exception ignore) {
@@ -246,15 +236,15 @@ public class CrudAuditFilter extends OncePerRequestFilter {
         return null;
     }
 
-    private static Long firstLongParam(HttpServletRequest request, String... keys) {
-        if (request == null || keys == null) return null;
-        for (String k : keys) {
-            if (k == null || k.isBlank()) continue;
+    private static Long firstLongParam(HttpServletRequest request) {
+        if (request == null) return null;
+        for (String k : new String[]{"entityId", "id", "targetId"}) {
+            if (k.isBlank()) continue;
             String v = request.getParameter(k);
             if (v == null) continue;
             String t = v.trim();
             if (t.isEmpty()) continue;
-            if (!isDigits(t)) continue;
+            if (isNotDigits(t)) continue;
             try {
                 return Long.parseLong(t);
             } catch (Exception ignore) {
@@ -285,13 +275,13 @@ public class CrudAuditFilter extends OncePerRequestFilter {
         return name == null || name.isBlank() ? null : name.trim();
     }
 
-    private static boolean isDigits(String s) {
-        if (s == null || s.isEmpty()) return false;
+    private static boolean isNotDigits(String s) {
+        if (s == null || s.isEmpty()) return true;
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            if (c < '0' || c > '9') return false;
+            if (c < '0' || c > '9') return true;
         }
-        return true;
+        return false;
     }
 
     private static String safeSeg(String[] segs, int idx) {

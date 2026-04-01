@@ -418,7 +418,7 @@ public class PortalReportsServiceImpl implements PortalReportsService {
             a.setAction(ActionType.NOTE);
             a.setReason("REPORT_SNAPSHOT");
             java.util.LinkedHashMap<String, Object> snap = new java.util.LinkedHashMap<>();
-            String snapshotId = "report:" + rep.getId() + (rep.getCreatedAt() == null ? "" : (":at:" + rep.getCreatedAt().toString()));
+            String snapshotId = "report:" + rep.getId() + (rep.getCreatedAt() == null ? "" : (":at:" + rep.getCreatedAt()));
             snap.put("content_snapshot_id", snapshotId);
             snap.put("report_id", rep.getId());
             snap.put("target_type", enumName(rep.getTargetType()));

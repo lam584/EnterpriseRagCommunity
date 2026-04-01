@@ -893,8 +893,7 @@ public class ModerationChunkReviewService {
 
     private static long clampLong(long v, long min, long max) {
         if (v < min) return min;
-        if (v > max) return max;
-        return v;
+        return Math.min(v, max);
     }
 
     private static List<Map<String, Object>> normalizeListOfMaps(Object v) {

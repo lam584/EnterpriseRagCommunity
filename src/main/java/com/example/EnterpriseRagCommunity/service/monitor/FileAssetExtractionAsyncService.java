@@ -760,7 +760,7 @@ public class FileAssetExtractionAsyncService {
                 }
 
                 if (truncated) continue;
-                if (ext != null && isArchiveExt(ext)) {
+                if (isArchiveExt(ext)) {
                     if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
                     Path subDir = target.getParent().resolve(target.getFileName().toString() + "__unpacked").normalize();
                     if (!subDir.startsWith(outDir)) subDir = outDir.resolve("__unpacked_" + UUID.randomUUID()).normalize();

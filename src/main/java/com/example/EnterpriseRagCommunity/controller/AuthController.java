@@ -788,15 +788,15 @@ public class AuthController {
             link.setRoleId(userRoleId);
             userRoleLinksRepository.save(link);
 
-            UsersDTO responseDTO = convertToUserSafeDTO(savedUser);
+            Map<String, Object> responseData = Map.of("userId", savedUser.getId());
             if (emailVerificationMailer.isEnabled()) {
                 String code = emailVerificationService.issueCode(savedUser.getId(), EmailVerificationPurpose.REGISTER);
                 emailVerificationMailer.sendVerificationCode(savedUser.getEmail(), code, EmailVerificationPurpose.REGISTER);
                 return ResponseEntity.status(HttpStatus.CREATED)
-                        .body(new ApiResponse<>(true, "注册成功，请查收邮箱验证码完成激活", responseDTO));
+                        .body(new ApiResponse<>(true, "注册成功，请查收邮箱验证码完成激活", responseData));
             }
             return ResponseEntity.status(HttpStatus.CREATED)
-                    .body(new ApiResponse<>(true, "注册成功", responseDTO));
+                    .body(new ApiResponse<>(true, "注册成功", responseData));
         } catch (IllegalArgumentException e) {
             TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)

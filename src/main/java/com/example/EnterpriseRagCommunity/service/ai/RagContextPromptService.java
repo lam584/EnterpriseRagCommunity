@@ -545,7 +545,7 @@ public class RagContextPromptService {
         if (policy == ContextWindowPolicy.SLIDING || policy == ContextWindowPolicy.IMPORTANCE || policy == ContextWindowPolicy.HYBRID) {
             int scanLimit = Math.min(
                     hits == null ? 0 : hits.size(),
-                    Math.clamp(maxItems * 8, 50, 500)
+                    Math.clamp(maxItems * 8L, 50, 500)
             );
 
             List<Candidate> candidates = new ArrayList<>();

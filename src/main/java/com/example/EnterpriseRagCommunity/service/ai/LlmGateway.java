@@ -202,6 +202,7 @@ public class LlmGateway {
         return LlmGatewaySupport.shouldPreferTokenizerIn(taskType);
     }
 
+    @SuppressWarnings("unused")
     public void chatStream(
             String providerId,
             String modelOverride,
@@ -238,6 +239,7 @@ public class LlmGateway {
         return chatStreamRouted(taskType, providerId, modelOverride, messages, temperature, null, enableThinking, thinkingBudget, consumer);
     }
 
+    @SuppressWarnings("unused")
     private static boolean supportsThinkingDirectiveModel(String modelName) {
         return LlmGatewaySupport.supportsThinkingDirectiveModel(modelName);
     }
@@ -321,7 +323,7 @@ public class LlmGateway {
                 return res;
             } catch (Exception e) {
                 last = e;
-                if (!isRetriable(e)) {
+                if (isNonRetriable(e)) {
                     if (e instanceof IOException ioe) throw ioe;
                     throw new IOException("Embedding failed: " + e.getMessage(), e);
                 }
@@ -434,7 +436,7 @@ public class LlmGateway {
                 return res;
             } catch (Exception e) {
                 last = e;
-                if (!isRetriable(e)) {
+                if (isNonRetriable(e)) {
                     if (e instanceof IOException ioe) throw ioe;
                     throw new IOException("Rerank failed: " + e.getMessage(), e);
                 }
@@ -461,6 +463,7 @@ public class LlmGateway {
         throw new IOException("Rerank failed: no eligible upstream target");
     }
 
+    @SuppressWarnings("unused")
     private static String applyThinkingDirective(String content, boolean enableThinking, String modelName) {
         return LlmGatewaySupport.applyThinkingDirective(content, enableThinking, modelName);
     }
@@ -522,10 +525,12 @@ public class LlmGateway {
         return LlmGatewaySupport.stripThinkBlocks(text);
     }
 
+    @SuppressWarnings("unused")
     private static String removeMarkerWordIgnoreCase(String text, String marker) {
         return LlmGatewaySupport.removeMarkerWordIgnoreCase(text, marker);
     }
 
+    @SuppressWarnings("unused")
     private static String removeClosedReasoningBlocks(String text) {
         return LlmGatewaySupport.removeClosedReasoningBlocks(text);
     }
@@ -534,6 +539,7 @@ public class LlmGateway {
         return LlmGatewaySupport.stripReasoningArtifacts(text);
     }
 
+    @SuppressWarnings("unused")
     private static String removeClosedThinkBlocks(String text) {
         return LlmGatewaySupport.removeClosedThinkBlocks(text);
     }
@@ -559,10 +565,6 @@ public class LlmGateway {
             return pos >= 0 && pos + 8 <= s.length() && indexOfIgnoreCase(s, "&lt;think", pos) == pos;
         }
 
-        private boolean isRawStartAt(String s, int pos) {
-            return pos >= 0 && pos + 6 <= s.length() && indexOfIgnoreCase(s, "<think", pos) == pos;
-        }
-
         private int findNextStart(String s, int from) {
             return minPositive(
                     indexOfIgnoreCase(s, "<think", from),
@@ -577,11 +579,12 @@ public class LlmGateway {
             );
         }
 
-        long accept(String chunk, StringBuilder out, int maxChars) {
+        long accept(String chunk, StringBuilder out) {
             if (chunk == null || chunk.isEmpty()) return 0L;
             String input = carry.isEmpty() ? chunk : (carry + chunk);
             carry = "";
             long produced = 0L;
+            int maxChars = 24_000;
             int i = 0;
             while (i < input.length()) {
                 if (!inThink) {
@@ -633,6 +636,7 @@ public class LlmGateway {
         return LlmGatewaySupport.shouldSendDashscopeThinking(provider);
     }
 
+    @SuppressWarnings("unused")
     private static void withStreamRetry(
             int maxAttempts,
             OpenAiCompatClient.ChatRequest req,
@@ -661,7 +665,7 @@ public class LlmGateway {
                 if (started.get()) {
                     throw e;
                 }
-                if (i >= attempts || !isRetriable(e)) {
+                if (i >= attempts || isNonRetriable(e)) {
                     throw e;
                 }
                 sleepBackoff(i);
@@ -674,14 +678,15 @@ public class LlmGateway {
         return LlmGatewaySupport.filterExtraBody(provider, extraBody);
     }
 
-    private static boolean isRetriable(Throwable e) {
-        return LlmGatewaySupport.isRetriable(e);
+    private static boolean isNonRetriable(Throwable e) {
+        return !LlmGatewaySupport.isRetriable(e);
     }
 
     private static String extractErrorCode(Throwable e) {
         return LlmGatewaySupport.extractErrorCode(e);
     }
 
+    @SuppressWarnings("unused")
     private static Integer asIntLoose(JsonNode n) {
         return LlmGatewaySupport.asIntLoose(n);
     }
@@ -702,7 +707,7 @@ public class LlmGateway {
                 return call.get();
             } catch (Exception e) {
                 last = e;
-                if (i >= attempts || !isRetriable(e)) {
+                if (i >= attempts || isNonRetriable(e)) {
                     throw e;
                 }
                 sleepBackoff(i);
@@ -731,13 +736,13 @@ public class LlmGateway {
         boolean stripThink = shouldStripThinkBlocks(enableThinking);
         boolean isDashscope = shouldSendDashscopeThinking(provider);
         Boolean enableThinkingToSend = isDashscope ? Boolean.FALSE : null;
-        Integer thinkingBudgetToSend = null;
+        Integer thinkingBudgetToSend = isDashscope ? thinkingBudget : null;
         Map<String, Object> extraBodyToSend = filterExtraBody(provider, extraBody);
         OpenAiCompatClient.ChatRequest req = new OpenAiCompatClient.ChatRequest(
                 provider.apiKey(),
                 provider.baseUrl(),
                 model,
-            patchedMessages,
+                patchedMessages,
                 temperature,
                 topP,
                 maxTokens,
@@ -758,8 +763,7 @@ public class LlmGateway {
         LlmCallQueueService.UsageMetrics usage = llmCallQueueService.parseOpenAiUsageFromJson(raw);
         if (isUsageIncomplete(usage)) {
             int estIn = estimateInputTokens(patchedMessages);
-            String assistantForTokens = assistant;
-            int estOut = estimateTokens(assistantForTokens == null ? 0 : assistantForTokens.length());
+            int estOut = estimateTokens(assistant == null ? 0 : assistant.length());
             Integer prompt = (usage != null && usage.promptTokens() != null) ? usage.promptTokens() : estIn;
             Integer completion = (usage != null && usage.completionTokens() != null) ? usage.completionTokens() : estOut;
             Integer total = usageTotalOrFallback(usage, prompt + completion);
@@ -799,7 +803,7 @@ public class LlmGateway {
         OpenAiCompatClient client = new OpenAiCompatClient();
         Boolean enableThinkingToSend = shouldSendDashscopeThinking(provider) ? enableThinking : null;
         Integer thinkingBudgetToSend = shouldSendDashscopeThinking(provider) ? thinkingBudget : null;
-        Map<String, Object> extraBodyToSend = filterExtraBody(provider, null);
+        Map<String, Object> extraBodyToSend = null;
         OpenAiCompatClient.ChatRequest req = new OpenAiCompatClient.ChatRequest(
                 provider.apiKey(),
                 provider.baseUrl(),
@@ -842,7 +846,7 @@ public class LlmGateway {
                                     String delta = extractStreamChunkText(payload, !stripThink);
                                     if (delta != null && !delta.isEmpty()) {
                                         if (stripThink) {
-                                            effectiveChars[0] += stripper.accept(delta, outText, 24000);
+                                            effectiveChars[0] += stripper.accept(delta, outText);
                                             task.reportEstimatedTokensOut(estimateTokens(effectiveChars[0]));
                                         } else {
                                             task.reportEstimatedTokensOut(estimateTokens(outChars[0]));
@@ -870,7 +874,7 @@ public class LlmGateway {
                     int estTokensOut = estimateTokens(stripThink ? effectiveChars[0] : outChars[0]);
                     int estTokensIn = estimateInputTokens(messages);
 
-                    Integer prompt = (u != null && u.promptTokens() != null) ? u.promptTokens() : estTokensIn;
+                    int prompt = (u != null && u.promptTokens() != null) ? u.promptTokens() : estTokensIn;
                     Integer completion = (u != null && u.completionTokens() != null) ? u.completionTokens() : null;
                     Integer total = (u != null && u.totalTokens() != null) ? u.totalTokens() : null;
 
@@ -902,11 +906,10 @@ public class LlmGateway {
 
         if (mo != null && !mo.isBlank()) {
             AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
-            String model = mo;
             try {
-                List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 2, null);
-                return new RoutedChatStreamResult(provider.id(), model, usage);
+                List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, mo);
+                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, mo, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 2, null);
+                return new RoutedChatStreamResult(provider.id(), mo, usage);
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
@@ -1000,7 +1003,7 @@ public class LlmGateway {
                 if (cause == null) {
                     cause = e;
                 }
-                if (!isRetriable(cause)) {
+                if (isNonRetriable(cause)) {
                     throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
                 }
                 llmRoutingService.recordFailure(tt, target, extractErrorCode(cause));
@@ -1020,7 +1023,7 @@ public class LlmGateway {
                 ));
             } catch (Exception e) {
                 last = e;
-                if (!isRetriable(e)) {
+                if (isNonRetriable(e)) {
                     throw new IllegalStateException(upstreamStreamFailedPrefix() + ": " + e.getMessage(), e);
                 }
                 llmRoutingService.recordFailure(tt, target, extractErrorCode(e));
@@ -1117,7 +1120,7 @@ public class LlmGateway {
                 if (started.get()) {
                     throw new StreamCallFailedException(e.getMessage(), e, true);
                 }
-                if (i >= attempts || !isRetriable(e)) {
+                if (i >= attempts || isNonRetriable(e)) {
                     throw new StreamCallFailedException(e.getMessage(), e, false);
                 }
                 sleepBackoff(i);
@@ -1167,10 +1170,9 @@ public class LlmGateway {
 
         if (mo != null && !mo.isBlank()) {
             AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
-            String model = mo;
             try {
-                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 3, null, extraRequestHeaders);
-                return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
+                ChatOnceInternalResult res = callChatOnceSingle(tt, provider, mo, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 3, null, extraRequestHeaders);
+                return new RoutedChatOnceResult(res.text(), provider.id(), mo, res.usage());
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
@@ -1254,7 +1256,7 @@ public class LlmGateway {
                 return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
             } catch (Exception e) {
                 last = e;
-                if (!isRetriable(e)) {
+                if (isNonRetriable(e)) {
                     throw new IllegalStateException(upstreamCallFailedPrefix() + ": " + e.getMessage(), e);
                 }
                 llmRoutingService.recordFailure(tt, target, extractErrorCode(e));
@@ -1301,7 +1303,22 @@ public class LlmGateway {
                     null,
                     "chatOnce"
             ));
-            ChatOnceInternalResult res = callChatOnceSingle(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 2, taskIdRef, extraRequestHeaders);
+            ChatOnceInternalResult res = callChatOnceSingle(
+                    tt,
+                    provider,
+                    model,
+                    messages,
+                    temperature,
+                    topP,
+                    maxTokens,
+                    stop,
+                    enableThinking,
+                    thinkingBudget,
+                    extraBody,
+                    1,
+                    taskIdRef,
+                    extraRequestHeaders
+            );
             llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                     System.currentTimeMillis(),
                     "FALLBACK_OK",
@@ -1345,10 +1362,9 @@ public class LlmGateway {
 
         if (mo != null && !mo.isBlank()) {
             AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
-            String model = mo;
             try {
-                ChatOnceInternalResult res = callChatOnceSingleNoQueue(tt, provider, model, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 3, extraRequestHeaders);
-                return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
+                ChatOnceInternalResult res = callChatOnceSingleNoQueue(tt, provider, mo, messages, temperature, topP, maxTokens, stop, enableThinking, thinkingBudget, extraBody, 3, extraRequestHeaders);
+                return new RoutedChatOnceResult(res.text(), provider.id(), mo, res.usage());
             } catch (RuntimeException e) {
                 throw e;
             } catch (Exception e) {
@@ -1401,7 +1417,7 @@ public class LlmGateway {
                 return new RoutedChatOnceResult(res.text(), provider.id(), model, res.usage());
             } catch (Exception e) {
                 last = e;
-                if (!isRetriable(e)) {
+                if (isNonRetriable(e)) {
                     throw new IllegalStateException(upstreamCallFailedPrefix() + ": " + e.getMessage(), e);
                 }
                 llmRoutingService.recordFailure(tt, target, extractErrorCode(e));
@@ -1492,6 +1508,7 @@ public class LlmGateway {
         }
     }
 
+    @SuppressWarnings("unused")
     private String extractStreamChunkText(String jsonPayload) {
         return extractStreamChunkText(jsonPayload, true);
     }
@@ -1537,6 +1554,12 @@ public class LlmGateway {
     ) {
         try {
             java.util.LinkedHashMap<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("providerId", providerId);
+            m.put("model", model);
+            m.put("stream", stream);
+            m.put("temperature", temperature);
+            m.put("enableThinking", enableThinking);
+            m.put("thinkingBudget", thinkingBudget);
             m.put("messages", sanitizeMessagesForTrace(messages));
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(m);
         } catch (Exception e) {

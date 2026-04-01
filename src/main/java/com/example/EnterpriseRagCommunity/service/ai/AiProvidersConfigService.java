@@ -511,13 +511,13 @@ public class AiProvidersConfigService {
             x.setExtraHeaders(normalizeHeaders(p.getExtraHeaders()));
             x.setConnectTimeoutMs(p.getConnectTimeoutMs() == null || p.getConnectTimeoutMs() <= 0 ? null : p.getConnectTimeoutMs());
             x.setReadTimeoutMs(p.getReadTimeoutMs() == null || p.getReadTimeoutMs() <= 0 ? null : p.getReadTimeoutMs());
-            x.setEnabled(p.getEnabled() == null || Boolean.TRUE.equals(p.getEnabled()));
+            x.setEnabled(p.getEnabled() == null || p.getEnabled());
             if (x.getId() == null) continue;
             out.add(x);
         }
         cfg.setProviders(out);
         String active = toNonBlank(cfg.getActiveProviderId());
-        if (active == null && !out.isEmpty()) active = out.get(0).getId();
+        if (active == null && !out.isEmpty()) active = out.getFirst().getId();
         cfg.setActiveProviderId(active);
         return cfg;
     }

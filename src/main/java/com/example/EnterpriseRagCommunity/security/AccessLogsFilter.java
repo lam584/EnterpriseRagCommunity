@@ -644,9 +644,9 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         }
 
         @Override
-        public void write(@NonNull byte[] b, int off, int len) throws IOException {
+        public void write(byte @NonNull [] b, int off, int len) throws IOException {
             if (delegate != null) delegate.write(b, off, len);
-            if (b == null || len <= 0) return;
+            if (len <= 0) return;
             if (capture != null && captured < limitBytes) {
                 int remain = limitBytes - captured;
                 int toWrite = Math.min(remain, len);

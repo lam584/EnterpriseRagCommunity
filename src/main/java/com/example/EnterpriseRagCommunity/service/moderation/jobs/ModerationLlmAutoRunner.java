@@ -62,17 +62,14 @@ import com.example.EnterpriseRagCommunity.service.moderation.trace.ModerationPip
 import com.example.EnterpriseRagCommunity.service.monitor.FileAssetExtractionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunnerSupport.ChunkedVerdict;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunnerSupport.PolicyEval;
-import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunnerSupport.Thresholds;
 
-/**
- * LLM 闂備胶鍘ч〃搴㈢濠婂嫭鍙忛柍鍝勫暊閸嬫捇宕楁径濠傗拤闂?runner闂? * - 濠电偛顕慨鎾箠鎼粹槄鑰?moderation_llm_config.auto_run=true 闂備礁鎼崯鍐测枖濞戙垹绠氶幖娣妽閸? * - decision=APPROVE/REJECT 闂備胶鍘ч〃搴㈢濠婂嫭鍙忛柍鍝勬噺婵即鏌﹀Ο渚Ш婵ǜ鍔嶉〃銉╂倷鐠鸿櫣鍘┑鐐村絻濞尖€愁嚕椤掑嫬绾ч悹鎭掑妿閹虫劙鏌?闂佽崵濮村ú銈団偓姘煎灦椤㈡瑩骞嬮敂钘変汗闂佺厧鎽滈。浠嬪磻閹惧鐟瑰┑鐘插閼扮笩ecision=HUMAN 闂佸搫顦遍崕鎰板礂濞戞褎寰勬繝搴℃櫊? * - 闂備礁鎲￠懝楣冨嫉椤掆偓椤啴宕掗悙鑼厬濠碉紕鍋熼崕鐢稿磻閹炬剚鐓ラ柛娑卞灡閻庮厽绻涢敐鍛闁逞屽墲濞呮洜绮堥埀顒勬⒒娓氬洤浜愰柛瀣崌閺岋繝宕煎┑鍥ㄥ創闂佺硶鏅滈〃濠囧垂閹€鏀介柛銉戝倻甯涢梻浣告啞鐢喖顢欓幇顔筋潟濞村吋娼欓惌妤併亜閺嶃劏澹樼憸鎵█濮?LLM 闂備胶鎳撻悺銊╂偋濡ゅ啠鍋撻崹顐ょ煉闁哄苯锕ら濂稿炊閳哄倻鈧參姊婚崒姘殭闁绘妫濋崺鈧い鎺戝暙椤ュ秶鎮▎鎾粹拺?score
- */
+
 @Component
 @RequiredArgsConstructor
+@SuppressWarnings({"unused", "SameParameterValue"})
 public class ModerationLlmAutoRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ModerationLlmAutoRunner.class);
@@ -89,6 +86,7 @@ public class ModerationLlmAutoRunner {
     private final com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository promptsRepository;
     private final AuditLogWriter auditLogWriter;
     private final RiskLabelingService riskLabelingService;
+    @Getter
     private final TokenCountService tokenCountService;
     private final ModerationChunkReviewService chunkReviewService;
     private final PostAttachmentsRepository postAttachmentsRepository;
@@ -101,8 +99,6 @@ public class ModerationLlmAutoRunner {
     private volatile long riskTagThresholdsLoadedAtMs = 0L;
     private volatile Map<String, Double> riskTagThresholdsCache = Map.of();
 
-    /**
-     * 婵?15 缂傚倷绀侀ˇ鎵暜濡や胶鐝堕柛灞剧〒閳绘棃鏌嶈閸撴瑩鍩㈡惔銊ョ叀闁告侗鍨抽ˇ顕€姊洪崨濠庢畷婵炲弶锕㈤、鏇熺附缁嬪灝鐝橀梺閫炲苯澧€垫澘瀚～婵嬵敆婢跺瑩鐔兼⒑?20 闂備礁鎼ˇ顐⑽ｉ崟顓燁潟婵犻潧顑嗛悞濂告煕椤垵鏋涢悽顖涘▕閹鎮界化鏇炰壕婵炴垶姘ㄩ幉顏勨攽閻愬瓨灏柟鐚溿倕鏆為梻浣规偠閸斿矂顢栨径鎰劦妞ゆ帒鍊告牎闂佹悶鍔嶅畝鎼佸箚婢舵劦鏁嗗ù锝堫嚃濡差垶姊洪崨濞掝亪顢栭崨顔藉弿闊洦绋戣繚?     */
     @Scheduled(fixedDelay = 15_000)
     public void runOnce() {
         ModerationLlmConfigEntity cfg = llmConfigRepository.findAll().stream().findFirst().orElse(null);
@@ -110,8 +106,6 @@ public class ModerationLlmAutoRunner {
 
         List<ModerationQueueEntity> pending = new ArrayList<>();
 
-        // 闁荤喐绮庢晶妤呭箰閸涘﹥娅犻柣妯煎仺娴滄粓鏌涢敂璇插箺缂佹劖顨婂娲箵閹烘洖顏梺鍛婄懃濡繂顫忔總鍛婂亜闁稿繐鐨烽弸鍡椻攽閻愯尙澧㈤柡浣藉吹閸掓帡顢涘鍕€涢梺闈涚墕濡瑧鐟?HUMAN闂備線娼уΛ妤呭磹妞嬪孩瀚婚柣鏂挎憸椤╂煡鏌涢埄鍐炬當闁诡喗鍨块幃妤呮偡閻楀牐纭€濡ょ姷鍋涘ú顓㈠箖閳哄啯濯奸柛锔诲幘閻?
-        // - 闂備胶顭堢换鎰版偋閹扮増鍎婃い鏍仜閻愬﹪鏌熼鍡楁湰琚╅梻?LLM stage闂?        // - 濠电姷顣介埀顒€鍟块埀顒€缍婇幃妯诲緞婵炵偓鐓㈤梺鏂ユ櫅閸燁垳绮婚幒妤佺叆婵炴垶顭堢€氫即鏌涢悢鎻掍壕闂備胶顭堢换鎴犲垝瀹€鈧懞閬嶆惞椤愩垻绐為梺鍛婃处閸樹粙宕?HUMAN stage闂備焦瀵х粙鎴︽偋閸℃哎浜圭憸搴☆嚗閸曨垰绀嬫い鎾跺枎閳?PENDING闂備焦瀵х粙鎴λ囬銏犵劦?
         try {
             List<ModerationQueueEntity> llmStage = queueRepository.findAllByCurrentStage(QueueStage.LLM);
             if (llmStage != null) {
@@ -135,7 +129,6 @@ public class ModerationLlmAutoRunner {
 
         if (pending.isEmpty()) return;
 
-        // priority DESC, createdAt ASC (闂?list() 闂備焦鐪归崝宀€鈧凹鍘鹃弫顕€骞樼€涙ê鍔呴棅顐㈡搐濞寸兘顢旈柆宥嗙厾?
         pending.sort(Comparator
                 .comparing(ModerationQueueEntity::getPriority, Comparator.nullsFirst(Comparator.reverseOrder()))
                 .thenComparing(ModerationQueueEntity::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())));
@@ -145,8 +138,8 @@ public class ModerationLlmAutoRunner {
             ModerationQueueEntity q = pending.get(i);
             try {
                 handleOne(q, cfg);
-            } catch (Exception ex) {
-                // 濠电姰鍨洪崕鑲╁垝閸撗勫枂闁挎梻鏅埢鏃傗偓骞垮劚椤︿即鍩㈡惔銊︾厸闁稿被鍊曢獮鏍煙椤旂瓔娈樼紒杈ㄥ浮椤㈡ê鈹戦崶褍绨ラ梻浣告啞閺屸€澄ｉ崟顓燁潟閺夊牄鍔庨埢鏃堟倵閿濆骸浜介柛瀣斿厾褰掑礂閸忚偐娈ら梺瑙勬尦椤ユ挾妲愰幒妤婃晣闁绘劕鐏氶娑㈡煟?                log.warn("LLM autorun handle queueId={} failed: {}", q.getId(), ex.getMessage());
+            } catch (Exception ignored) {
+
             }
         }
     }
@@ -374,8 +367,8 @@ public class ModerationLlmAutoRunner {
         if (!Boolean.TRUE.equals(fb.getLlmEnabled())) {
             List<ModerationPipelineStepEntity> rules = pipelineStepRepository.findAllByRunIdAndStageOrderByStepOrderAsc(run.getId(), ModerationPipelineStepEntity.Stage.RULE);
             List<ModerationPipelineStepEntity> vecs = pipelineStepRepository.findAllByRunIdAndStageOrderByStepOrderAsc(run.getId(), ModerationPipelineStepEntity.Stage.VEC);
-            ModerationPipelineStepEntity rule = rules.isEmpty() ? null : rules.get(rules.size() - 1);
-            ModerationPipelineStepEntity vec = vecs.isEmpty() ? null : vecs.get(vecs.size() - 1);
+            ModerationPipelineStepEntity rule = rules.isEmpty() ? null : rules.getLast();
+            ModerationPipelineStepEntity vec = vecs.isEmpty() ? null : vecs.getLast();
             String ruleDecision = rule == null ? null : rule.getDecision();
             String vecDecision = vec == null ? null : vec.getDecision();
 
@@ -443,8 +436,8 @@ public class ModerationLlmAutoRunner {
         {
             List<ModerationPipelineStepEntity> rules = pipelineStepRepository.findAllByRunIdAndStageOrderByStepOrderAsc(run.getId(), ModerationPipelineStepEntity.Stage.RULE);
             List<ModerationPipelineStepEntity> vecs = pipelineStepRepository.findAllByRunIdAndStageOrderByStepOrderAsc(run.getId(), ModerationPipelineStepEntity.Stage.VEC);
-            ModerationPipelineStepEntity rule = rules.isEmpty() ? null : rules.get(rules.size() - 1);
-            ModerationPipelineStepEntity vec = vecs.isEmpty() ? null : vecs.get(vecs.size() - 1);
+            ModerationPipelineStepEntity rule = rules.isEmpty() ? null : rules.getLast();
+            ModerationPipelineStepEntity vec = vecs.isEmpty() ? null : vecs.getLast();
             if (rule != null) prior.put("rule", rule.getDetailsJson());
             if (vec != null) prior.put("vec", vec.getDetailsJson());
         }
@@ -797,7 +790,7 @@ public class ModerationLlmAutoRunner {
         boolean enableChunkImageStage = asBooleanOrDefault(fbThresholds == null ? null : fbThresholds.get("chunk.imageStage.enable"), false);
         boolean enableChunkGlobal = asBooleanOrDefault(fbThresholds == null ? null : fbThresholds.get("chunk.global.enable"), false);
 
-        LlmModerationTestResponse imageRes = null;
+        LlmModerationTestResponse imageRes;
         if (enableChunkImageStage) {
             try {
                 boolean hasImageStage = false;
@@ -854,7 +847,6 @@ public class ModerationLlmAutoRunner {
                     }
                 }
             } catch (Exception ignore) {
-                imageRes = null;
             }
         }
 
@@ -963,7 +955,7 @@ public class ModerationLlmAutoRunner {
         }
         if (pendingOrFailed > 0L) {
             var chunkCfg0 = chunkReviewService.getConfig();
-            List<ModerationChunkReviewService.ChunkCandidate> candidates = List.of();
+            List<ModerationChunkReviewService.ChunkCandidate> candidates;
             try {
                 candidates = chunkReviewService.listEligibleChunks(chunkSetId);
             } catch (Exception ignore) {
@@ -971,7 +963,6 @@ public class ModerationLlmAutoRunner {
             }
             for (ModerationChunkReviewService.ChunkCandidate cand : candidates) {
                 if (cand == null || cand.chunkId() == null) continue;
-                ModerationChunkReviewService.ChunkCandidate cand0 = cand;
                 long chunkId = cand.chunkId();
                 int attempts = cand.attempts() == null ? 0 : Math.max(0, cand.attempts());
                 int nextAttempt = attempts + 1;
@@ -994,9 +985,9 @@ public class ModerationLlmAutoRunner {
                             metaMap.put("attempt", nextAttempt);
                             metaMap.put("debug_trace", "v3_fixed_" + System.currentTimeMillis());
                             metaMap.put("trace_id", UUID.randomUUID().toString());
-                            metaMap.put("sourceType", String.valueOf(cand0.sourceType()));
-                            if (cand0.fileAssetId() != null) metaMap.put("fileAssetId", cand0.fileAssetId());
-                            if (cand0.chunkIndex() != null) metaMap.put("chunkIndex", cand0.chunkIndex());
+                            metaMap.put("sourceType", String.valueOf(cand.sourceType()));
+                            if (cand.fileAssetId() != null) metaMap.put("fileAssetId", cand.fileAssetId());
+                            if (cand.chunkIndex() != null) metaMap.put("chunkIndex", cand.chunkIndex());
 
                             String meta = "";
                             try {
@@ -1006,7 +997,7 @@ public class ModerationLlmAutoRunner {
                                 task.reportInput("{\"error\":\"Meta build failed: " + e.getMessage() + "\"}");
                             }
 
-                            Optional<ModerationChunkReviewService.ChunkToProcess> claimed = Optional.empty();
+                            Optional<ModerationChunkReviewService.ChunkToProcess> claimed;
                             try {
                                 claimed = chunkReviewService.claimChunkById(chunkId);
                             } catch (Exception ignore) {
@@ -1015,7 +1006,7 @@ public class ModerationLlmAutoRunner {
                             if (claimed.isEmpty()) return null;
                             ModerationChunkReviewService.ChunkToProcess c = claimed.get();
 
-                            String raw = "";
+                            String raw;
                             try {
                                 raw = chunkReviewService.loadChunkText(q.getId(), c.sourceType(), c.fileAssetId(), c.startOffset(), c.endOffset()).orElse("");
                             } catch (Exception ignore) {
@@ -1048,8 +1039,8 @@ public class ModerationLlmAutoRunner {
                                 req.setReviewStage(reviewStage);
                                 req.setUseQueue(false);
 
-                                List<LlmModerationTestRequest.ImageInput> chunkImages = List.of();
-                                List<ChunkImageRef> chunkImageRefs = List.of();
+                                List<LlmModerationTestRequest.ImageInput> chunkImages;
+                                List<ChunkImageRef> chunkImageRefs;
                                 List<ChunkImageRef> candidateChunkImageRefs = List.of();
                                 List<Integer> evidenceSourceChunks = List.of();
                                 List<String> evidencePlaceholdersUsed = List.of();
@@ -1103,7 +1094,6 @@ public class ModerationLlmAutoRunner {
                                         evidencePlaceholdersUsed = extractPlaceholdersFromRefs(chunkImageRefs);
                                     }
                                 } catch (Exception ignore) {
-                                    chunkImageRefs = List.of();
                                 }
                                 String promptText = buildChunkPromptText(q, c, raw, chunkCfg0, mem, promptImageRefs);
                                 req.setText(promptText);
@@ -1285,7 +1275,7 @@ public class ModerationLlmAutoRunner {
             long triggerRiskTagCount = clampLong(asLongRequired(thresholds.get("chunk.finalReview.triggerRiskTagCount"), "chunk.finalReview.triggerRiskTagCount"), 0L, 1000L);
             boolean triggerOpenQuestions = asBooleanRequired(thresholds.get("chunk.finalReview.triggerOpenQuestions"), "chunk.finalReview.triggerOpenQuestions");
 
-            Map<String, Object> mem = Map.of();
+            Map<String, Object> mem;
             try {
                 mem = chunkReviewService.getMemory(chunkSetId);
             } catch (Exception ignore) {
@@ -1375,7 +1365,7 @@ public class ModerationLlmAutoRunner {
             return;
         }
 
-        Map<String, Object> aggregateMem = Map.of();
+        Map<String, Object> aggregateMem;
         try {
             aggregateMem = chunkReviewService.getMemory(chunkSetId);
         } catch (Exception ignore) {
@@ -1496,10 +1486,7 @@ public class ModerationLlmAutoRunner {
         return ModerationLlmAutoRunnerSupport.asStringList(v);
     }
 
-    public TokenCountService getTokenCountService() {
-        return tokenCountService;
-    }
-
+    @SuppressWarnings("unused")
     public LlmQueueProperties getLlmQueueProperties() {
         return llmQueueProperties;
     }
@@ -1854,6 +1841,13 @@ public class ModerationLlmAutoRunner {
         String cleaned = cleanExtractedSnippet(candidate);
         cleaned = cleaned.replaceFirst("\\s*\\[[A-Z_]{2,}].*$", "").trim();
         return cleaned.isBlank() ? null : cleaned;
+    }
+
+    static String extractBetweenAnchorsByRegex(String text, String before, String after, int maxChars) {
+        String extracted = extractBetweenAnchorsByRegex(text, before, after);
+        if (extracted == null) return null;
+        if (maxChars <= 0) return extracted;
+        return extracted.length() <= maxChars ? extracted : extracted.substring(0, maxChars);
     }
 
     static boolean isSuspiciousEvidenceText(String text, String chunkText) {

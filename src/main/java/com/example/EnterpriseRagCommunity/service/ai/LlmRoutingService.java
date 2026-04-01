@@ -11,7 +11,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.example.EnterpriseRagCommunity.entity.ai.LlmModelEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmRoutingPolicyEntity;
@@ -110,7 +109,6 @@ public class LlmRoutingService {
     private final Map<ProviderModelKey, RateState> rate = new ConcurrentHashMap<>();
     private final Map<ProviderModelKey, Object> rateLocks = new ConcurrentHashMap<>();
 
-    @Transactional(readOnly = true)
     public Policy getPolicy(String taskType) {
         String tt = normalizeTaskType(taskType);
         LlmRoutingPolicyEntity e;
@@ -129,12 +127,10 @@ public class LlmRoutingService {
         return new Policy(st, maxAttempts, failureThreshold, cooldownMs);
     }
 
-    @Transactional(readOnly = true)
     public Policy getPolicy(LlmQueueTaskType taskType) {
         return getPolicy(normalizeTaskType(taskType));
     }
 
-    @Transactional(readOnly = true)
     public List<RouteTarget> listEnabledTargets(String taskType) {
         String purpose = normalizeTaskType(taskType);
         List<LlmModelEntity> models = llmModelRepository.findByEnvAndPurposeAndEnabledTrueOrderBySortIndexAscPriorityDescWeightDescIsDefaultDescIdAsc(ENV_DEFAULT, purpose);
@@ -154,12 +150,10 @@ public class LlmRoutingService {
         return out;
     }
 
-    @Transactional(readOnly = true)
     public List<RouteTarget> listEnabledTargets(LlmQueueTaskType taskType) {
         return listEnabledTargets(normalizeTaskType(taskType));
     }
 
-    @Transactional(readOnly = true)
     public boolean isEnabledTarget(LlmQueueTaskType taskType, String providerId, String modelName) {
         String purpose = normalizeTaskType(taskType);
         String pid = toNonBlank(providerId);
@@ -175,12 +169,11 @@ public class LlmRoutingService {
         candidates.removeIf(t -> isExcludedOrCooling(taskType, t, exclude, nowMs));
         if (candidates.isEmpty()) return null;
 
-        Map<ProviderModelKey, Integer> running = runningByModel();
         List<RouteTarget> eligible = new ArrayList<>(candidates);
-        eligible.removeIf(t -> !isEligible(t, running, nowMs, true));
+        eligible.removeIf(t -> isIneligible(t, nowMs, true));
         if (eligible.isEmpty()) {
             eligible = new ArrayList<>(candidates);
-            eligible.removeIf(t -> !isEligible(t, running, nowMs, false));
+            eligible.removeIf(t -> isIneligible(t, nowMs, false));
         }
         if (eligible.isEmpty()) eligible = candidates;
 
@@ -193,7 +186,7 @@ public class LlmRoutingService {
             eligible.remove(best);
             if (eligible.isEmpty()) return best;
         }
-        return eligible.get(0);
+        return eligible.getFirst();
     }
 
     public RouteTarget pickNextInProvider(LlmQueueTaskType taskType, String providerId, Set<TargetId> exclude) {
@@ -207,12 +200,11 @@ public class LlmRoutingService {
         candidates.removeIf(t -> isExcludedOrCooling(taskType, t, exclude, nowMs));
         if (candidates.isEmpty()) return null;
 
-        Map<ProviderModelKey, Integer> running = runningByModel();
         List<RouteTarget> eligible = new ArrayList<>(candidates);
-        eligible.removeIf(t -> !isEligible(t, running, nowMs, true));
+        eligible.removeIf(t -> isIneligible(t, nowMs, true));
         if (eligible.isEmpty()) {
             eligible = new ArrayList<>(candidates);
-            eligible.removeIf(t -> !isEligible(t, running, nowMs, false));
+            eligible.removeIf(t -> isIneligible(t, nowMs, false));
         }
         if (eligible.isEmpty()) eligible = candidates;
 
@@ -225,7 +217,7 @@ public class LlmRoutingService {
             eligible.remove(best);
             if (eligible.isEmpty()) return best;
         }
-        return eligible.get(0);
+        return eligible.getFirst();
     }
 
     public RuntimeSnapshot snapshot(LlmQueueTaskType taskType) {
@@ -294,8 +286,8 @@ public class LlmRoutingService {
         candidates.sort(Comparator
                 .comparingInt(RouteTarget::priority).reversed()
                 .thenComparing(Comparator.comparingInt(RouteTarget::weight).reversed())
-                    .thenComparing(RouteTarget::providerId)
-                    .thenComparing(RouteTarget::modelName)
+                .thenComparing(RouteTarget::providerId, Comparator.nullsFirst(String::compareTo))
+                .thenComparing(RouteTarget::modelName, Comparator.nullsFirst(String::compareTo))
             );
         return candidates.getFirst();
     }
@@ -325,7 +317,7 @@ public class LlmRoutingService {
                 }
             }
 
-            if (best == null) return candidates.get(0);
+            if (best == null) return candidates.getFirst();
 
             RouteKey bk = toKey(taskType, best);
             WeightedState bst = weighted.computeIfAbsent(bk, kk -> new WeightedState());
@@ -361,7 +353,7 @@ public class LlmRoutingService {
             boolean throttled = "429".equals(code);
             if (throttled) {
                 st.consecutiveFailures = Math.max(st.consecutiveFailures, policy.failureThreshold());
-                int cd = Math.max(500, Math.min(policy.cooldownMs(), 15_000));
+                int cd = Math.clamp(policy.cooldownMs(), 500, 15_000);
                 st.cooldownUntilMs = Math.max(st.cooldownUntilMs, now + cd);
             } else if (st.consecutiveFailures >= policy.failureThreshold()) {
                 st.cooldownUntilMs = Math.max(st.cooldownUntilMs, now + Math.max(0, policy.cooldownMs()));
@@ -378,16 +370,16 @@ public class LlmRoutingService {
         return st != null && st.cooldownUntilMs > nowMs;
     }
 
-    private boolean isEligible(RouteTarget t, Map<ProviderModelKey, Integer> running, long nowMs, boolean strictRate) {
-        if (t == null) return false;
+    private boolean isIneligible(RouteTarget t, long nowMs, boolean strictRate) {
+        if (t == null) return true;
         String providerId = toNonBlank(t.providerId());
         String modelName = toNonBlank(t.modelName());
-        if (providerId == null || modelName == null) return false;
+        if (providerId == null || modelName == null) return true;
 
-        if (!strictRate) return true;
+        if (!strictRate) return false;
 
         Double qps = t.qps();
-        if (qps == null || !(qps > 0.0)) return true;
+        if (qps == null || qps <= 0.0) return false;
 
         ProviderModelKey key = new ProviderModelKey(providerId, modelName);
         Object lock = rateLocks.computeIfAbsent(key, _k -> new Object());
@@ -401,7 +393,7 @@ public class LlmRoutingService {
             });
 
             RateState peek = peekRefill(st, nowMs, qps);
-            return !(peek.tokens < 1.0);
+            return peek.tokens < 1.0;
         }
     }
 
@@ -413,7 +405,7 @@ public class LlmRoutingService {
         ProviderModelKey key = new ProviderModelKey(providerId, modelName);
 
         Double qps = t.qps();
-        if (qps == null || !(qps > 0.0)) return true;
+        if (qps == null || qps <= 0.0) return true;
 
         Object lock = rateLocks.computeIfAbsent(key, _k -> new Object());
         synchronized (lock) {

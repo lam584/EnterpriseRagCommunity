@@ -611,13 +611,9 @@ class AdminModerationLlmUpstreamSupport {
             if (!"user".equalsIgnoreCase(m.role())) continue;
             Object c = m.content();
             switch (c) {
-                case null -> {
-                    continue;
-                }
                 case String s -> {
                     sb.append(s);
                     if (!sb.isEmpty() && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
-                    continue;
                 }
                 case List<?> parts -> {
                     for (Object it : parts) {
@@ -630,7 +626,7 @@ class AdminModerationLlmUpstreamSupport {
                         if (!sb.isEmpty() && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
                     }
                 }
-                default -> {
+                case null, default -> {
                 }
             }
         }

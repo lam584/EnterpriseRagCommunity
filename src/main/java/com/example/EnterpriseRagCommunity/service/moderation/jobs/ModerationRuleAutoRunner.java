@@ -128,6 +128,17 @@ public class ModerationRuleAutoRunner {
         return null;
     }
 
+    private static Boolean deepGetBool(Map<String, Object> m) {
+        Object v = deepGet(m, "precheck.rule.enabled");
+        if (v instanceof Boolean b) return b;
+        if (v == null) return null;
+        String s = String.valueOf(v).trim();
+        if (s.isEmpty()) return null;
+        if (s.equalsIgnoreCase("true")) return Boolean.TRUE;
+        if (s.equalsIgnoreCase("false")) return Boolean.FALSE;
+        return null;
+    }
+
     private static Boolean deepGetBool(Map<String, Object> m, String path) {
         Object v = deepGet(m, path);
         if (v instanceof Boolean b) return b;
@@ -214,8 +225,9 @@ public class ModerationRuleAutoRunner {
                 queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.RULE, locker, LocalDateTime.now());
             }
 
-            ModerationConfidenceFallbackConfigEntity fb = fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc()
-                    .orElseThrow(() -> new IllegalStateException("moderation_confidence_fallback_config not initialized"));
+            if (fallbackRepository.findFirstByOrderByUpdatedAtDescIdDesc().isEmpty()) {
+                throw new IllegalStateException("moderation_confidence_fallback_config not initialized");
+            }
 
             Map<String, Object> policyConfig = null;
             try {
@@ -223,45 +235,17 @@ public class ModerationRuleAutoRunner {
             } catch (Exception ignore) {
             }
 
-            Boolean ruleEnabled = deepGetBool(policyConfig, "precheck.rule.enabled");
+            Boolean ruleEnabled = deepGetBool(policyConfig);
             if (ruleEnabled == null) ruleEnabled = true;
 
             if (!ruleEnabled) {
-                q.setCurrentStage(QueueStage.VEC);
-                queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
-
-                if (ruleStepId > 0) {
-                    pipelineTraceService.finishStepOk(ruleStepId, "SKIP", null, Map.of("reason", "rule disabled"));
-                }
-                auditLogWriter.writeSystem(
-                        "RULE_DECISION",
-                        "MODERATION_QUEUE",
-                        q.getId(),
-                        AuditResult.SUCCESS,
-                        "RULE skipped (disabled)",
-                        run.getTraceId(),
-                        Map.of("runId", run.getId(), "stage", "RULE", "decision", "SKIP")
-                );
+                skipToVec(q, locker, ruleStepId, run, "rule disabled", "RULE skipped (disabled)");
                 return;
             }
 
             String text = textLoader.load(q);
             if (text == null || text.isBlank()) {
-                q.setCurrentStage(QueueStage.VEC);
-                queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
-
-                if (ruleStepId > 0) {
-                    pipelineTraceService.finishStepOk(ruleStepId, "SKIP", null, Map.of("reason", "empty text"));
-                }
-                auditLogWriter.writeSystem(
-                        "RULE_DECISION",
-                        "MODERATION_QUEUE",
-                        q.getId(),
-                        AuditResult.SUCCESS,
-                        "RULE skipped (empty text)",
-                        run.getTraceId(),
-                        Map.of("runId", run.getId(), "stage", "RULE", "decision", "SKIP")
-                );
+                skipToVec(q, locker, ruleStepId, run, "empty text", "RULE skipped (empty text)");
                 return;
             }
 
@@ -312,22 +296,9 @@ public class ModerationRuleAutoRunner {
             }
 
             List<ModerationRulesEntity> rules = rulesRepository.findAll();
+            if (rules == null) rules = List.of();
             if (rules.isEmpty()) {
-                q.setCurrentStage(QueueStage.VEC);
-                queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
-
-                if (ruleStepId > 0) {
-                    pipelineTraceService.finishStepOk(ruleStepId, "SKIP", null, Map.of("reason", "no rules"));
-                }
-                auditLogWriter.writeSystem(
-                        "RULE_DECISION",
-                        "MODERATION_QUEUE",
-                        q.getId(),
-                        AuditResult.SUCCESS,
-                        "RULE skipped (no rules)",
-                        run.getTraceId(),
-                        Map.of("runId", run.getId(), "stage", "RULE", "decision", "SKIP")
-                );
+                skipToVec(q, locker, ruleStepId, run, "no rules", "RULE skipped (no rules)");
                 return;
             }
 
@@ -573,6 +544,28 @@ public class ModerationRuleAutoRunner {
         }
 
         return null;
+    }
+
+    private void skipToVec(ModerationQueueEntity q,
+                           String locker,
+                           long ruleStepId,
+                           ModerationPipelineRunEntity run,
+                           String reason,
+                           String auditMessage) {
+        q.setCurrentStage(QueueStage.VEC);
+        queueRepository.updateStageIfLockedBy(q.getId(), QueueStage.VEC, locker, LocalDateTime.now());
+        if (ruleStepId > 0) {
+            pipelineTraceService.finishStepOk(ruleStepId, "SKIP", null, Map.of("reason", reason));
+        }
+        auditLogWriter.writeSystem(
+                "RULE_DECISION",
+                "MODERATION_QUEUE",
+                q.getId(),
+                AuditResult.SUCCESS,
+                auditMessage,
+                run.getTraceId(),
+                Map.of("runId", run.getId(), "stage", "RULE", "decision", "SKIP")
+        );
     }
 
     private static Integer deepGetInt(Map<String, Object> m, String path) {

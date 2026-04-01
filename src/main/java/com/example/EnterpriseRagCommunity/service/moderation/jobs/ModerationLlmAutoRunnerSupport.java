@@ -169,7 +169,9 @@ final class ModerationLlmAutoRunnerSupport {
         return false;
     }
 
+    @SuppressWarnings("SameParameterValue")
     static Thresholds resolveThresholdsRequired(Map<String, Object> policyConfig, String reviewStage, List<String> labels) {
+        // Keep signature aligned with caller contract where label-aware thresholds may be introduced later.
         double tAllow = clamp01Strict(asDoubleRequired(deepGet(policyConfig, "thresholds.default.T_allow"), "thresholds.default.T_allow"));
         double tReject = clamp01Strict(asDoubleRequired(deepGet(policyConfig, "thresholds.default.T_reject"), "thresholds.default.T_reject"));
         String source = "policy.default";
@@ -229,7 +231,11 @@ final class ModerationLlmAutoRunnerSupport {
         String raw = (suggestion == null || suggestion.isBlank()) ? decisionFallback : suggestion;
         if (raw == null) return "ESCALATE";
         String d = raw.trim().toUpperCase(Locale.ROOT);
-        if (d.equals("ALLOW") || d.equals("REJECT") || d.equals("ESCALATE")) return d;
+        switch (d) {
+            case "ALLOW", "REJECT", "ESCALATE" -> {
+                return d;
+            }
+        }
         if (d.equals("APPROVE")) return "ALLOW";
         if (d.equals("HUMAN")) return "ESCALATE";
         if (raw.toLowerCase(Locale.ROOT).contains("allow")) return "ALLOW";
@@ -395,10 +401,7 @@ final class ModerationLlmAutoRunnerSupport {
         return m;
     }
 
-    static String buildChunkPromptText(com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity q, com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkReviewService.ChunkToProcess c, String raw) {
-        return buildChunkPromptText(q, c, raw, null, Map.of());
-    }
-
+    @SuppressWarnings("unused")
     static String buildChunkPromptText(
             com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity q,
             com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkReviewService.ChunkToProcess c,
@@ -426,7 +429,8 @@ final class ModerationLlmAutoRunnerSupport {
         if (c.fileAssetId() != null) sb.append("fileAssetId: ").append(c.fileAssetId()).append('\n');
         if (c.fileName() != null && !c.fileName().isBlank())
             sb.append("fileName: ").append(c.fileName().trim()).append('\n');
-        sb.append("chunkIndex: ").append(c.chunkIndex() == null ? 0 : c.chunkIndex()).append('\n');
+        int chunkIndex = c.chunkIndex() == null ? 0 : c.chunkIndex();
+        sb.append("chunkIndex: ").append(chunkIndex).append('\n');
         sb.append("range: ").append(c.startOffset()).append('-').append(c.endOffset()).append('\n');
         String t = raw == null ? "" : raw.trim();
 
@@ -449,11 +453,10 @@ final class ModerationLlmAutoRunnerSupport {
             if (oq != null) sb.append("openQuestions: ").append(oq).append('\n');
             Object prev = null;
             try {
-                int idx = c.chunkIndex() == null ? 0 : c.chunkIndex();
                 Object sm = mem.get("summaries");
-                if (idx > 0 && sm instanceof Map<?, ?> m) {
-                    Object v = m.get(String.valueOf(idx - 1));
-                    if (v == null) v = m.get(idx - 1);
+                if (chunkIndex > 0 && sm instanceof Map<?, ?> m) {
+                    Object v = m.get(String.valueOf(chunkIndex - 1));
+                    if (v == null) v = m.get(chunkIndex - 1);
                     if (v != null && !String.valueOf(v).isBlank()) prev = v;
                 }
             } catch (Exception ignore) {
@@ -785,7 +788,7 @@ final class ModerationLlmAutoRunnerSupport {
         ArrayList<ChunkImageRef> out = new ArrayList<>();
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         for (ChunkImageRef ref : primaryRefs == null ? List.<ChunkImageRef>of() : primaryRefs) {
-            if (appendChunkImageRef(out, seen, ref)) continue;
+            appendChunkImageRef(out, seen, ref);
         }
         for (ChunkImageRef ref : secondaryRefs == null ? List.<ChunkImageRef>of() : secondaryRefs) {
             appendChunkImageRef(out, seen, ref);
@@ -793,14 +796,13 @@ final class ModerationLlmAutoRunnerSupport {
         return out.isEmpty() ? List.of() : out;
     }
 
-    static boolean appendChunkImageRef(List<ChunkImageRef> out, Set<String> seen, ChunkImageRef ref) {
-        if (ref == null) return false;
+    static void appendChunkImageRef(List<ChunkImageRef> out, Set<String> seen, ChunkImageRef ref) {
+        if (ref == null) return;
         String placeholder = ref.placeholder == null ? "" : ref.placeholder.trim();
         String url = ref.url == null ? "" : ref.url.trim();
         String key = !placeholder.isEmpty() ? "ph|" + placeholder : (!url.isEmpty() ? "url|" + url : "");
-        if (key.isEmpty() || !seen.add(key)) return false;
+        if (key.isEmpty() || !seen.add(key)) return;
         out.add(ref);
-        return true;
     }
 
     static List<String> summarizeEvidenceMemory(Map<String, Object> mem, Integer chunkIndex, int maxLines) {
@@ -896,6 +898,7 @@ final class ModerationLlmAutoRunnerSupport {
         }
     }
 
+    @SuppressWarnings("unused")
     static List<LlmModerationTestRequest.ImageInput> selectChunkImageInputs(ObjectMapper objectMapper,
                                                                             String chunkText,
                                                                             Long fileAssetId,
@@ -1156,10 +1159,9 @@ final class ModerationLlmAutoRunnerSupport {
         if (text.isBlank() || needle.isBlank()) return null;
         int idx = text.indexOf(needle);
         if (idx < 0) return null;
-        int start = idx;
         int end = idx + needle.length();
         int around = Math.clamp(15, 6, 40);
-        String before = text.substring(Math.max(0, start - around), start).trim();
+        String before = text.substring(Math.max(0, idx - around), idx).trim();
         String after = text.substring(end, Math.min(text.length(), end + around)).trim();
         String cleanedText = cleanExtractedSnippet(needle);
         String cleanedBefore = cleanExtractedSnippet(before);
@@ -1178,8 +1180,7 @@ final class ModerationLlmAutoRunnerSupport {
     }
 
     static String fallbackViolationSnippet(String text, int violationStart) {
-        int hardEnd = Math.min(violationStart + 220, text.length());
-        int end = hardEnd;
+        int end = Math.min(violationStart + 220, text.length());
         int imageIdx = text.indexOf("[[IMAGE_", violationStart);
         if (imageIdx >= 0 && imageIdx < end) end = imageIdx;
         int sectionIdx = text.indexOf("\\n[", violationStart);
@@ -1268,8 +1269,7 @@ final class ModerationLlmAutoRunnerSupport {
         if (t.isEmpty()) return "";
         String[] parts = t.split("\\s+");
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < parts.length; i++) {
-            String p = parts[i];
+        for (String p : parts) {
             if (p == null || p.isEmpty()) continue;
             if (!sb.isEmpty()) sb.append("\\\\s+");
             sb.append(java.util.regex.Pattern.quote(p));
@@ -1434,10 +1434,15 @@ final class ModerationLlmAutoRunnerSupport {
         return toInt(m.group(1));
     }
 
+    @SuppressWarnings("IfCanBeSwitch")
     static Integer toInt(Object v) {
         if (v == null) return null;
         if (v instanceof Integer i) return i;
-        if (v instanceof Long l) return (int) Math.clamp(l, Integer.MIN_VALUE, Integer.MAX_VALUE);
+        if (v instanceof Long l) {
+            if (l < Integer.MIN_VALUE) return Integer.MIN_VALUE;
+            if (l > Integer.MAX_VALUE) return Integer.MAX_VALUE;
+            return l.intValue();
+        }
         if (v instanceof Number n) return n.intValue();
         try {
             String s = String.valueOf(v).trim();
@@ -1581,10 +1586,10 @@ final class ModerationLlmAutoRunnerSupport {
 
     static String normalizeOneLine(String s) {
         if (s == null) return "";
-        String t = s.trim().replaceAll("\\s+", " ");
-        return t;
+        return s.trim().replaceAll("\\s+", " ");
     }
 
+    @SuppressWarnings("IfCanBeSwitch")
     static boolean asBooleanRequired(Object v, String key) {
         if (v == null) throw new IllegalStateException("missing threshold: " + key);
         if (v instanceof Boolean b) return b;
@@ -1622,6 +1627,7 @@ final class ModerationLlmAutoRunnerSupport {
         return v;
     }
 
+    @SuppressWarnings("IfCanBeSwitch")
     static boolean asBooleanOrDefault(Object v, boolean def) {
         if (v == null) return def;
         if (v instanceof Boolean b) return b;
@@ -1697,30 +1703,30 @@ final class ModerationLlmAutoRunnerSupport {
         if (mem == null || mem.isEmpty()) return "[EMPTY_MEMORY]";
         StringBuilder sb = new StringBuilder();
         Object desc = mem.get("imageDescription");
-        if (desc != null && !String.valueOf(desc).isBlank()) {
+        if (desc != null && !desc.toString().isBlank()) {
             sb.append("[IMAGE_DESCRIPTION]\\n");
-            String t = String.valueOf(desc).trim();
+            String t = desc.toString().trim();
             if (t.length() > 1500) t = t.substring(0, 1500);
             sb.append(t).append("\\n\\n");
         }
         sb.append("[EVIDENCE_BOOK]\\n");
         Object risk = mem.get("riskTags");
-        if (risk != null) sb.append("riskTags: ").append(String.valueOf(risk)).append('\n');
+        if (risk != null) sb.append("riskTags: ").append(risk).append('\n');
         Object ms = mem.get("maxScore");
-        if (ms != null) sb.append("maxScore: ").append(String.valueOf(ms)).append('\n');
+        if (ms != null) sb.append("maxScore: ").append(ms).append('\n');
         Object ents = mem.get("entities");
-        if (ents != null) sb.append("entities: ").append(String.valueOf(ents)).append('\n');
+        if (ents != null) sb.append("entities: ").append(ents).append('\n');
         Object ev = mem.get("evidence");
         if (ev != null) {
-            sb.append("evidence: ").append(String.valueOf(ev)).append('\n');
+            sb.append("evidence: ").append(ev).append('\n');
         } else {
             List<String> fromChunk = collectChunkEvidenceForStepDetail(mem, 20);
             if (!fromChunk.isEmpty()) {
-                sb.append("evidence: ").append(String.valueOf(fromChunk)).append('\n');
+                sb.append("evidence: ").append(fromChunk).append('\n');
             }
         }
         Object oq = mem.get("openQuestions");
-        if (oq != null) sb.append("openQuestions: ").append(String.valueOf(oq)).append('\n');
+        if (oq != null) sb.append("openQuestions: ").append(oq).append('\n');
         String out = sb.toString();
         if (out.length() > 4000) out = out.substring(0, 4000);
         return out;
