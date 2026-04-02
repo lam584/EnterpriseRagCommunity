@@ -15,11 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -61,9 +57,9 @@ class ContentSafetyCircuitBreakerServiceTest {
         service.reloadFromDbIfPresent();
 
         ContentSafetyCircuitBreakerStatusDTO status = service.getStatus(5);
-        assertTrue(Boolean.TRUE.equals(status.getConfig().getEnabled()));
+        assertEquals(Boolean.TRUE, status.getConfig().getEnabled());
         assertEquals("S3", status.getConfig().getMode());
-        assertTrue(Boolean.TRUE.equals(status.getPersisted()));
+        assertEquals(Boolean.TRUE, status.getPersisted());
         assertNotNull(status.getLastPersistAt());
         assertFalse(status.getRecentEvents().isEmpty());
     }
@@ -87,7 +83,7 @@ class ContentSafetyCircuitBreakerServiceTest {
 
         ContentSafetyCircuitBreakerStatusDTO out = service.update(cfg, 7L, "tester", " reason ");
 
-        assertTrue(Boolean.TRUE.equals(out.getPersisted()));
+        assertEquals(Boolean.TRUE, out.getPersisted());
         assertEquals("tester", out.getUpdatedBy());
         assertEquals(7L, out.getUpdatedByUserId());
         assertFalse(out.getRecentEvents().isEmpty());
@@ -224,10 +220,10 @@ class ContentSafetyCircuitBreakerServiceTest {
         ContentSafetyCircuitBreakerConfigDTO out = ContentSafetyCircuitBreakerService.normalize(in);
         assertEquals("S1", out.getMode());
         assertNotNull(out.getMessage());
-        assertFalse(Boolean.TRUE.equals(out.getScope().getAll()));
+        assertNotEquals(Boolean.TRUE, out.getScope().getAll());
         assertEquals(0, out.getScope().getUserIds().size());
-        assertFalse(Boolean.TRUE.equals(out.getDependencyIsolation().getMysql()));
-        assertFalse(Boolean.TRUE.equals(out.getDependencyIsolation().getElasticsearch()));
+        assertNotEquals(Boolean.TRUE, out.getDependencyIsolation().getMysql());
+        assertNotEquals(Boolean.TRUE, out.getDependencyIsolation().getElasticsearch());
         assertEquals(5, out.getAutoTrigger().getWindowSeconds());
         assertEquals(1_000_000, out.getAutoTrigger().getThresholdCount());
         assertEquals(0.0, out.getAutoTrigger().getMinConfidence(), 1e-9);
@@ -343,7 +339,7 @@ class ContentSafetyCircuitBreakerServiceTest {
 
         service.addBlockedEvent("EP", "/p", "GET", " ");
 
-        assertEquals("请求被熔断拦截", service.getRecentEvents(1).get(0).getMessage());
+        assertEquals("请求被熔断拦截", service.getRecentEvents(1).getFirst().getMessage());
     }
 
     @Test
@@ -352,7 +348,7 @@ class ContentSafetyCircuitBreakerServiceTest {
 
         service.update(ContentSafetyCircuitBreakerService.defaultConfig(), null, null, "   ");
 
-        Map<String, Object> details = service.getRecentEvents(1).get(0).getDetails();
+        Map<String, Object> details = service.getRecentEvents(1).getFirst().getDetails();
         assertTrue(details.containsKey("reason"));
         assertNull(details.get("reason"));
     }

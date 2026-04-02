@@ -1,26 +1,8 @@
 package com.example.EnterpriseRagCommunity.service.monitor;
 
-import com.example.EnterpriseRagCommunity.dto.monitor.UploadFormatsConfigDTO;
-import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetExtractionsEntity;
-import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity;
-import com.example.EnterpriseRagCommunity.entity.monitor.enums.FileAssetExtractionStatus;
-import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
-import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
-import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
-import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
-import com.example.EnterpriseRagCommunity.service.ai.TokenCountService;
-import com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetIndexAsyncService;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,50 +11,16 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.zip.GZIPOutputStream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
-
-import javax.imageio.ImageIO;
-
-import org.apache.pdfbox.cos.COSName;
-import org.apache.commons.compress.archivers.ArchiveEntry;
-import org.apache.commons.compress.archivers.ArchiveException;
-import org.apache.commons.compress.archivers.ArchiveInputStream;
-import org.apache.commons.compress.archivers.ArchiveStreamFactory;
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
 import org.apache.commons.compress.archivers.sevenz.SevenZMethod;
 import org.apache.commons.compress.archivers.sevenz.SevenZMethodConfiguration;
 import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.PDResources;
-import org.apache.pdfbox.pdmodel.graphics.PDXObject;
-import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
-import org.apache.pdfbox.rendering.PDFRenderer;
-import org.apache.poi.hslf.usermodel.HSLFSlideShow;
-import org.apache.poi.hssf.usermodel.HSSFWorkbook;
-import org.apache.poi.hslf.usermodel.HSLFPictureData;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
-import org.apache.poi.sl.usermodel.PictureData;
-import org.apache.poi.util.Units;
-import org.apache.poi.xslf.usermodel.XSLFPictureData;
-import org.apache.poi.xslf.usermodel.XMLSlideShow;
-import org.apache.poi.xssf.usermodel.XSSFPictureData;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.poi.xwpf.usermodel.XWPFPictureData;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import org.apache.poi.xwpf.usermodel.Document;
 import org.apache.tika.Tika;
 import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.TikaCoreProperties;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
 
@@ -80,14 +28,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
-import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 

@@ -8,6 +8,7 @@ import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
 import org.apache.commons.compress.archivers.sevenz.SevenZMethod;
 import org.apache.commons.compress.archivers.sevenz.SevenZMethodConfiguration;
 import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile;
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.apache.commons.compress.compressors.CompressorException;
 import org.apache.commons.compress.compressors.CompressorStreamFactory;
@@ -39,9 +40,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
 
-    private static Object invokeInstance(Object target, String name, Class<?>[] types, Object... args) {
+    private static Object invokeInstance(Object target, Class<?>[] types, Object... args) {
         try {
-            Method m = target.getClass().getDeclaredMethod(name, types);
+            Method m = target.getClass().getDeclaredMethod("extractArchiveFromStream", types);
             m.setAccessible(true);
             return m.invoke(target, args);
         } catch (Exception e) {
@@ -111,7 +112,7 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
     }
 
     @Test
-    void extractArchiveFromStream_shouldCoverPlainFallbackNonEmptyBytes() throws Exception {
+    void extractArchiveFromStream_shouldCoverPlainFallbackNonEmptyBytes() {
         Object svc = new FileAssetExtractionAsyncService(null, null, null, null, null, null, null, null);
         setField(svc, "archiveMaxDepth", 6);
         setField(svc, "archiveMaxEntries", 20);
@@ -127,7 +128,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
             mockedArchive.when(() -> ArchiveStreamFactory.detect(Mockito.any(InputStream.class))).thenReturn(null);
             String out = String.valueOf(invokeInstance(
                     svc,
-                    "extractArchiveFromStream",
                     new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, counters.getClass(), long.class},
                     new ByteArrayInputStream("plain fallback text".getBytes(StandardCharsets.UTF_8)),
                     "plain.bin",
@@ -169,7 +169,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         Object counters = newInner("ArchiveCounters", new Class<?>[]{});
         String out = String.valueOf(invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, counters.getClass(), long.class},
                 new ByteArrayInputStream(baos.toByteArray()),
                 "mix.zip",
@@ -223,7 +222,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         Object cTime = newInner("ArchiveCounters", new Class<?>[]{});
         invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cTime.getClass(), long.class},
                 slow,
                 "slow.zip",
@@ -239,7 +237,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         setField(cTimePreset, "truncatedReason", "PRESET");
         invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cTimePreset.getClass(), long.class},
                 new InputStream() {
                     private final ByteArrayInputStream delegate = new ByteArrayInputStream(zipTwo);
@@ -278,7 +275,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         setField(cTextPreset, "truncatedReason", "PRESET");
         invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cTextPreset.getClass(), long.class},
                 new ByteArrayInputStream(zipBytes(List.of(Map.entry("a.txt", "abcdef".getBytes(StandardCharsets.UTF_8))))),
                 "char.zip",
@@ -295,7 +291,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         setField(cBytesPreset, "truncatedReason", "PRESET");
         invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cBytesPreset.getClass(), long.class},
                 new ByteArrayInputStream(zipBytes(List.of(Map.entry("a.txt", "0123456789".getBytes(StandardCharsets.UTF_8))))),
                 "bytes.zip",
@@ -330,7 +325,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         )) {
             invokeInstance(
                     svc,
-                    "extractArchiveFromStream",
                     new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cNullName.getClass(), long.class},
                     new ByteArrayInputStream(zip),
                     "a.zip",
@@ -349,7 +343,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         byte[] outer = zipBytes(List.of(Map.entry("nested.zip", nested)));
         assertThrows(IllegalStateException.class, () -> invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cDepth.getClass(), long.class},
                 new ByteArrayInputStream(outer),
                 "outer.zip",
@@ -366,7 +359,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         setField(cTotalPreset, "truncatedReason", "PRESET");
         invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cTotalPreset.getClass(), long.class},
                 new ByteArrayInputStream(zipBytes(List.of(Map.entry("a.txt", "0123456789abcdef".getBytes(StandardCharsets.UTF_8))))),
                 "overflow.zip",
@@ -397,7 +389,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         )) {
             String out = String.valueOf(invokeInstance(
                     svc,
-                    "extractArchiveFromStream",
                     new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cNullArchiveIn.getClass(), long.class},
                     new ByteArrayInputStream(zip),
                     "a.zip",
@@ -411,7 +402,7 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         }
 
         Object cCloseFail = newInner("ArchiveCounters", new Class<?>[]{});
-        ArchiveInputStream mockedIn = Mockito.spy(new ZipArchiveInputStream(new ByteArrayInputStream(zip), StandardCharsets.UTF_8.name(), true, true));
+        ArchiveInputStream<ZipArchiveEntry> mockedIn = Mockito.spy(new ZipArchiveInputStream(new ByteArrayInputStream(zip), StandardCharsets.UTF_8.name(), true, true));
         Mockito.doThrow(new IOException("mock-close-fail")).when(mockedIn).close();
         try (MockedConstruction<ArchiveStreamFactory> ignored = Mockito.mockConstruction(ArchiveStreamFactory.class, (mock, ctx) ->
                 Mockito.when(mock.createArchiveInputStream(Mockito.anyString(), Mockito.any(InputStream.class)))
@@ -419,7 +410,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         )) {
             String out = String.valueOf(invokeInstance(
                     svc,
-                    "extractArchiveFromStream",
                     new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cCloseFail.getClass(), long.class},
                     new ByteArrayInputStream(zip),
                     "a.zip",
@@ -447,7 +437,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         setField(counters, "truncatedReason", "PRESET");
         String out = String.valueOf(invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, counters.getClass(), long.class},
                 new ByteArrayInputStream(seven),
                 "x.7z",
@@ -475,7 +464,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
             mockedArchive.when(() -> ArchiveStreamFactory.detect(Mockito.any(InputStream.class))).thenReturn(null);
             String out = String.valueOf(invokeInstance(
                     svc,
-                    "extractArchiveFromStream",
                     new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, counters.getClass(), long.class},
                     new ByteArrayInputStream(new byte[0]),
                     "empty.bin",
@@ -505,7 +493,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         )) {
             invokeInstance(
                     svc,
-                    "extractArchiveFromStream",
                     new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cInnerNull.getClass(), long.class},
                     new ByteArrayInputStream(outerNested),
                     "outer.zip",
@@ -525,7 +512,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         )) {
             invokeInstance(
                     svc,
-                    "extractArchiveFromStream",
                     new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cTextNull.getClass(), long.class},
                     new ByteArrayInputStream(outerBin),
                     "bin.zip",
@@ -548,7 +534,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         )) {
             assertThrows(IllegalStateException.class, () -> invokeInstance(
                     svc,
-                    "extractArchiveFromStream",
                     new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cHardFail.getClass(), long.class},
                     new ByteArrayInputStream(outerBin),
                     "hard.zip",
@@ -573,7 +558,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         Object cZip = newInner("ArchiveCounters", new Class<?>[]{});
         invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cZip.getClass(), long.class},
                 new ByteArrayInputStream(zipBytes(List.of(Map.entry("a.txt", "0123456789abcdef".getBytes(StandardCharsets.UTF_8))))),
                 "overflow.zip",
@@ -589,7 +573,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         Object c7z = newInner("ArchiveCounters", new Class<?>[]{});
         String out7z = String.valueOf(invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, c7z.getClass(), long.class},
                 new ByteArrayInputStream(sevenZBytes(List.of(Map.entry("a.txt", "hello-7z-limit".getBytes(StandardCharsets.UTF_8))))),
                 "x.7z",
@@ -617,7 +600,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         setField(cZip, "totalBytesRead", 999L);
         invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, cZip.getClass(), long.class},
                 new ByteArrayInputStream(zipBytes(List.of(Map.entry("a.txt", "ok".getBytes(StandardCharsets.UTF_8))))),
                 "a.zip",
@@ -634,7 +616,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
         setField(c7z, "totalBytesRead", 999L);
         String out7z = String.valueOf(invokeInstance(
                 svc,
-                "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, c7z.getClass(), long.class},
                 new ByteArrayInputStream(sevenZBytes(List.of(Map.entry("a.txt", "ok".getBytes(StandardCharsets.UTF_8))))),
                 "a.7z",
@@ -668,7 +649,6 @@ class FileAssetExtractionAsyncServiceArchiveStreamBranchBoostTest {
             mockedDetect.when(() -> CompressorStreamFactory.detect(Mockito.any(InputStream.class))).thenReturn(" ");
             String out = String.valueOf(invokeInstance(
                     svc,
-                    "extractArchiveFromStream",
                     new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, counters.getClass(), long.class},
                     new ByteArrayInputStream(zip),
                     "blank-comp.zip",

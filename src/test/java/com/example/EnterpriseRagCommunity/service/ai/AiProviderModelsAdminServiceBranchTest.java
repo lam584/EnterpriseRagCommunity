@@ -20,17 +20,13 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -102,7 +98,7 @@ class AiProviderModelsAdminServiceBranchTest {
         assertEquals("p1", out.getProviderId());
         assertNotNull(out.getModels());
         assertEquals(2, out.getModels().size());
-        assertEquals("POST_EMBEDDING", out.getModels().get(0).getPurpose());
+        assertEquals("POST_EMBEDDING", out.getModels().getFirst().getPurpose());
         assertEquals("a-model", out.getModels().get(0).getModelName());
         assertEquals(true, out.getModels().get(0).getEnabled());
         assertEquals("TEXT_CHAT", out.getModels().get(1).getPurpose());
@@ -334,7 +330,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{\"data\":[{\"id\":\"b\"},{\"id\":\" a \"},{\"id\":\"\"},{}]}".getBytes(StandardCharsets.UTF_8)));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -353,7 +349,7 @@ class AiProviderModelsAdminServiceBranchTest {
             verify(conn).setReadTimeout(1);
             verify(conn).setRequestMethod("GET");
             verify(conn).setRequestProperty("Accept", "application/json");
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -365,7 +361,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{\"data\":[{\"id\":\"m\"}]}".getBytes(StandardCharsets.UTF_8)));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -378,7 +374,7 @@ class AiProviderModelsAdminServiceBranchTest {
             assertEquals(List.of("m"), out.get("models"));
             verify(conn).setConnectTimeout(10_000);
             verify(conn).setReadTimeout(60_000);
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -408,7 +404,7 @@ class AiProviderModelsAdminServiceBranchTest {
         ));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -420,7 +416,7 @@ class AiProviderModelsAdminServiceBranchTest {
             verify(conn).setReadTimeout(60_000);
             verify(conn).setRequestProperty("authorization", "Token x");
             verify(conn, never()).setRequestProperty("Authorization", "Bearer ak");
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -450,7 +446,7 @@ class AiProviderModelsAdminServiceBranchTest {
         ));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -462,7 +458,7 @@ class AiProviderModelsAdminServiceBranchTest {
             verify(conn).setReadTimeout(5678);
             verify(conn).setRequestProperty("X-Trace", "t1");
             verify(conn).setRequestProperty("Authorization", "Bearer ak");
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -496,7 +492,7 @@ class AiProviderModelsAdminServiceBranchTest {
         ));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -507,7 +503,7 @@ class AiProviderModelsAdminServiceBranchTest {
             verify(conn, never()).setRequestProperty(eq(" "), any(String.class));
             verify(conn, never()).setRequestProperty(eq("X-K"), any(String.class));
             verify(conn).setRequestProperty("Authorization", "Bearer ak");
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -519,7 +515,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{\"data\":{\"id\":\"x\"}}".getBytes(StandardCharsets.UTF_8)));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -531,7 +527,7 @@ class AiProviderModelsAdminServiceBranchTest {
 
             assertNotNull(out.get("models"));
             assertEquals(List.of(), out.get("models"));
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -543,7 +539,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{\"data\":[]}".getBytes(StandardCharsets.UTF_8)));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -556,7 +552,7 @@ class AiProviderModelsAdminServiceBranchTest {
 
             assertEquals(List.of(), out.get("models"));
             verify(conn, never()).setRequestProperty(eq("Authorization"), any(String.class));
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -604,7 +600,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{\"data\":[]}".getBytes(StandardCharsets.UTF_8)));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -615,7 +611,7 @@ class AiProviderModelsAdminServiceBranchTest {
             Map<String, Object> out = svc.previewUpstreamModels(req);
 
             assertEquals(List.of(), out.get("models"));
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -626,7 +622,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getResponseCode()).thenThrow(new RuntimeException("outer", new ConnectException("conn reset")));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -648,7 +644,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getInputStream()).thenThrow(new IllegalStateException("boom"));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -669,7 +665,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getResponseCode()).thenThrow(new RuntimeException(""));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -690,7 +686,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getErrorStream()).thenReturn(new ByteArrayInputStream("bad".getBytes(StandardCharsets.UTF_8)));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -700,7 +696,7 @@ class AiProviderModelsAdminServiceBranchTest {
 
             UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
             assertTrue(ex.getMessage().contains("HTTP 199"));
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -723,7 +719,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{}".getBytes(StandardCharsets.UTF_8)));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -734,7 +730,7 @@ class AiProviderModelsAdminServiceBranchTest {
             Map<String, Object> out = svc.previewUpstreamModels(req);
 
             assertEquals(List.of(), out.get("models"));
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -746,7 +742,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{\"data\":[null,{\"id\":\"z\"}]}".getBytes(StandardCharsets.UTF_8)));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -757,7 +753,7 @@ class AiProviderModelsAdminServiceBranchTest {
             Map<String, Object> out = svc.previewUpstreamModels(req);
 
             assertEquals(List.of("z"), out.get("models"));
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 
@@ -768,7 +764,7 @@ class AiProviderModelsAdminServiceBranchTest {
         when(conn.getResponseCode()).thenThrow(new RuntimeException((String) null));
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
+            String endpoint = String.valueOf(context.arguments().getFirst());
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -778,7 +774,7 @@ class AiProviderModelsAdminServiceBranchTest {
 
             UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
             assertTrue(ex.getMessage().contains("获取 /v1/models 失败: 未知错误"));
-            assertTrue(mockedUrls.constructed().size() >= 1);
+            assertFalse(mockedUrls.constructed().isEmpty());
         }
     }
 

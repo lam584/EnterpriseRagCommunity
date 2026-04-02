@@ -10,28 +10,19 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 
 class LlmGatewayPrivateHelpersCoverageTest {
@@ -445,11 +436,13 @@ class LlmGatewayPrivateHelpersCoverageTest {
         Object bad = Proxy.newProxyInstance(
                 supplierType.getClassLoader(),
                 new Class[]{supplierType},
-                (proxy, method, args) -> { throw new IllegalArgumentException("bad"); }
+                (proxy, method, args) -> {
+                    throw new IllegalArgumentException("bad");
+                }
         );
         try {
             withRetry.invoke(null, 2, bad);
-            assertTrue(false);
+            fail();
         } catch (Exception e) {
             assertTrue(String.valueOf(e.getCause()).contains("bad"));
         }
@@ -476,7 +469,8 @@ class LlmGatewayPrivateHelpersCoverageTest {
         callStreamWithRetry.setAccessible(true);
 
         OpenAiCompatClient.ChatRequest req = mock(OpenAiCompatClient.ChatRequest.class);
-        OpenAiCompatClient.SseLineConsumer sink = line -> {};
+        OpenAiCompatClient.SseLineConsumer sink = line -> {
+        };
 
         OpenAiCompatClient c1 = mock(OpenAiCompatClient.class);
         AtomicInteger n1 = new AtomicInteger(0);
@@ -494,7 +488,7 @@ class LlmGatewayPrivateHelpersCoverageTest {
         }).when(c2).chatCompletionsStream(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
         try {
             withStreamRetry.invoke(null, 2, req, c2, sink);
-            assertTrue(false);
+            fail();
         } catch (Exception e) {
             assertTrue(String.valueOf(e.getCause()).contains("HTTP 429"));
         }
@@ -507,17 +501,19 @@ class LlmGatewayPrivateHelpersCoverageTest {
         }).when(c3).chatCompletionsStream(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
         try {
             callStreamWithRetry.invoke(null, 2, req, c3, sink);
-            assertTrue(false);
+            fail();
         } catch (Exception e) {
             assertTrue(String.valueOf(e.getCause()).contains("HTTP 429"));
         }
 
         OpenAiCompatClient c4 = mock(OpenAiCompatClient.class);
-        doAnswer(inv -> { throw new IllegalArgumentException("bad"); })
+        doAnswer(inv -> {
+            throw new IllegalArgumentException("bad");
+        })
                 .when(c4).chatCompletionsStream(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
         try {
             callStreamWithRetry.invoke(null, 2, req, c4, sink);
-            assertTrue(false);
+            fail();
         } catch (Exception e) {
             assertTrue(String.valueOf(e.getCause()).contains("bad"));
         }
@@ -672,7 +668,8 @@ class LlmGatewayPrivateHelpersCoverageTest {
             return supplier.get(mock(LlmCallQueueService.TaskHandle.class));
         });
 
-        OpenAiCompatClient.SseLineConsumer sink = line -> {};
+        OpenAiCompatClient.SseLineConsumer sink = line -> {
+        };
         String payload = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"r\",\"content\":\"x\"}}],\"usage\":{\"input_tokens\":3,\"output_tokens\":2,\"total_tokens\":5}}";
 
         try (org.mockito.MockedConstruction<OpenAiCompatClient> mocked = org.mockito.Mockito.mockConstruction(

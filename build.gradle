@@ -193,11 +193,11 @@ def focusTestEnabled = providers.gradleProperty('focusTestEnabled')
 
 tasks.named('test', Test) {
     filter {
-        def patterns = new java.util.ArrayList()
+        def patterns = new ArrayList()
         if (focusTestEnabled) {
-            if (!focusTestSource.isEmpty() && !focusTestSourceLooksLikePath) patterns.add("*" + focusTestSource + "*");
-            if (!focusTestClass.isEmpty()) patterns.add(focusTestClass);
-            if (!extraFocusTestClass.isEmpty()) patterns.add(extraFocusTestClass);
+            if (!focusTestSource.isEmpty() && !focusTestSourceLooksLikePath) patterns.add("*" + focusTestSource + "*")
+            if (!focusTestClass.isEmpty()) patterns.add(focusTestClass)
+            if (!extraFocusTestClass.isEmpty()) patterns.add(extraFocusTestClass)
             if (!patterns.isEmpty()) setIncludePatterns(patterns.toArray(new String[0]))
         }
     }
@@ -205,7 +205,7 @@ tasks.named('test', Test) {
 
 tasks.named('compileTestJava', JavaCompile) {
     if (focusTestEnabled) {
-        def includes = new java.util.ArrayList()
+        def includes = new ArrayList()
         includes.add('com/example/EnterpriseRagCommunity/testsupport/**/*.java')
         includes.add('com/example/EnterpriseRagCommunity/testutil/**/*.java')
         if (focusTestSourceLooksLikePath) {

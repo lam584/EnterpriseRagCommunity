@@ -220,11 +220,10 @@ public class AiProviderModelsAdminService {
         return cur;
     }
 
-    private static String safeSnippet(String s, int maxChars) {
+    private static String safeSnippet(String s) {
         if (s == null) return "";
-        if (maxChars <= 0) return "";
-        if (s.length() <= maxChars) return s;
-        return s.substring(0, maxChars) + "...";
+        if (s.length() <= 2000) return s;
+        return s.substring(0, 2000) + "...";
     }
 
     private static void applyHeaders(HttpURLConnection conn, String apiKey, Map<String, String> extraHeaders) {
@@ -292,7 +291,7 @@ public class AiProviderModelsAdminService {
             byte[] raw = is.readAllBytes();
             String body = new String(raw, StandardCharsets.UTF_8);
             if (code < 200 || code >= 300) {
-                String snippet = safeSnippet(body, 2000);
+                String snippet = safeSnippet(body);
                 throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, "Upstream 返回 HTTP " + code + ": " + snippet);
             }
 

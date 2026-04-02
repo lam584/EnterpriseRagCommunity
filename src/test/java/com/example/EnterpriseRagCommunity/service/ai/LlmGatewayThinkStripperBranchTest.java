@@ -59,7 +59,7 @@ class LlmGatewayThinkStripperBranchTest {
         return ctor.newInstance();
     }
 
-    private static Object invoke(Object target, String name, Class<?>[] paramTypes, Object... args) throws Exception {
+    private static Object invoke(Object target, String name, Object... args) throws Exception {
         Method m = findCompatibleMethod(target.getClass(), name, args);
         m.setAccessible(true);
         return m.invoke(target, args);
@@ -75,37 +75,37 @@ class LlmGatewayThinkStripperBranchTest {
     void appendLimited_and_start_helpers_should_cover_key_branches() throws Exception {
         Object stripper = newStripper();
 
-        long p0 = (long) invoke(stripper, "appendLimited", new Class<?>[]{StringBuilder.class, String.class, int.class}, new StringBuilder(), null, 5);
+        long p0 = (long) invoke(stripper, "appendLimited", new StringBuilder(), null, 5);
         assertEquals(0L, p0);
-        long p0b = (long) invoke(stripper, "appendLimited", new Class<?>[]{StringBuilder.class, String.class, int.class}, new StringBuilder(), "", 5);
+        long p0b = (long) invoke(stripper, "appendLimited", new StringBuilder(), "", 5);
         assertEquals(0L, p0b);
 
         StringBuilder out = new StringBuilder("xy");
-        long p1 = (long) invoke(stripper, "appendLimited", new Class<?>[]{StringBuilder.class, String.class, int.class}, out, "abcd", 2);
+        long p1 = (long) invoke(stripper, "appendLimited", out, "abcd", 2);
         assertEquals(4L, p1);
         assertEquals("xy", out.toString());
 
         StringBuilder fullAppend = new StringBuilder();
-        long p1b = (long) invoke(stripper, "appendLimited", new Class<?>[]{StringBuilder.class, String.class, int.class}, fullAppend, "ab", 10);
+        long p1b = (long) invoke(stripper, "appendLimited", fullAppend, "ab", 10);
         assertEquals(2L, p1b);
         assertEquals("ab", fullAppend.toString());
 
         StringBuilder partialAppend = new StringBuilder("x");
-        long p1c = (long) invoke(stripper, "appendLimited", new Class<?>[]{StringBuilder.class, String.class, int.class}, partialAppend, "yz12", 3);
+        long p1c = (long) invoke(stripper, "appendLimited", partialAppend, "yz12", 3);
         assertEquals(4L, p1c);
         assertEquals("xyz", partialAppend.toString());
 
-        long p2 = (long) invoke(stripper, "appendLimited", new Class<?>[]{StringBuilder.class, String.class, int.class}, null, "abc", 10);
+        long p2 = (long) invoke(stripper, "appendLimited", null, "abc", 10);
         assertEquals(3L, p2);
 
-        boolean escFalse = (boolean) invoke(stripper, "isEscapedStartAt", new Class<?>[]{String.class, int.class}, "&lt;think&gt;", -1);
-        boolean escLenFalse = (boolean) invoke(stripper, "isEscapedStartAt", new Class<?>[]{String.class, int.class}, "&lt;t", 1);
-        boolean escTrue = (boolean) invoke(stripper, "isEscapedStartAt", new Class<?>[]{String.class, int.class}, "&lt;think&gt;", 0);
+        boolean escFalse = (boolean) invoke(stripper, "isEscapedStartAt", "&lt;think&gt;", -1);
+        boolean escLenFalse = (boolean) invoke(stripper, "isEscapedStartAt", "&lt;t", 1);
+        boolean escTrue = (boolean) invoke(stripper, "isEscapedStartAt", "&lt;think&gt;", 0);
         assertFalse(escFalse);
         assertFalse(escLenFalse);
         assertTrue(escTrue);
 
-        boolean escMismatchFalse = (boolean) invoke(stripper, "isEscapedStartAt", new Class<?>[]{String.class, int.class}, "&lt;thinx&gt;", 0);
+        boolean escMismatchFalse = (boolean) invoke(stripper, "isEscapedStartAt", "&lt;thinx&gt;", 0);
         assertFalse(escMismatchFalse);
     }
 
@@ -114,15 +114,15 @@ class LlmGatewayThinkStripperBranchTest {
         Object stripper = newStripper();
 
         StringBuilder out = new StringBuilder();
-        assertEquals(0L, (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, null, out));
-        assertEquals(0L, (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "", out));
+        assertEquals(0L, (long) invoke(stripper, "accept", null, out));
+        assertEquals(0L, (long) invoke(stripper, "accept", "", out));
 
-        long p = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "hello", out);
+        long p = (long) invoke(stripper, "accept", "hello", out);
         assertEquals(5L, p);
         assertEquals("hello", out.toString());
 
         StringBuilder noAppend = new StringBuilder("12");
-        long p2 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "345", noAppend);
+        long p2 = (long) invoke(stripper, "accept", "345", noAppend);
         assertEquals(3L, p2);
         assertEquals("12345", noAppend.toString());
     }
@@ -132,35 +132,35 @@ class LlmGatewayThinkStripperBranchTest {
         Object stripper = newStripper();
         StringBuilder out = new StringBuilder();
 
-        long p1 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "A<think>x</think>B", out);
-        long p2 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "C&lt;think&gt;y&lt;/think&gt;D", out);
+        long p1 = (long) invoke(stripper, "accept", "A<think>x</think>B", out);
+        long p2 = (long) invoke(stripper, "accept", "C&lt;think&gt;y&lt;/think&gt;D", out);
         assertEquals(4L, p1 + p2);
         assertEquals("ABCD", out.toString());
 
-        long p3 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "E<think", out);
+        long p3 = (long) invoke(stripper, "accept", "E<think", out);
         assertEquals(1L, p3);
         assertEquals("ABCD", out.substring(0, 4));
         assertTrue(((String) getField(stripper, "carry")).startsWith("<think"));
 
-        long p4 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, ">hidden</think>F", out);
+        long p4 = (long) invoke(stripper, "accept", ">hidden</think>F", out);
         assertEquals(1L, p4);
         assertEquals("ABCDEF", out.toString());
 
-        long p5 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "G&lt;think", out);
+        long p5 = (long) invoke(stripper, "accept", "G&lt;think", out);
         assertEquals(1L, p5);
         assertTrue(((String) getField(stripper, "carry")).startsWith("&lt;think"));
 
-        long p6 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "&gt;z&lt;/think&gt;H", out);
+        long p6 = (long) invoke(stripper, "accept", "&gt;z&lt;/think&gt;H", out);
         assertEquals(1L, p6);
         assertEquals("ABCDEFGH", out.toString());
 
-        long p7 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "I<think>tail-without-close", out);
+        long p7 = (long) invoke(stripper, "accept", "I<think>tail-without-close", out);
         assertEquals(1L, p7);
         assertTrue((boolean) getField(stripper, "inThink"));
         String tailCarry = (String) getField(stripper, "carry");
         assertTrue(tailCarry.length() <= 32);
 
-        long p8 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "</think>J", out);
+        long p8 = (long) invoke(stripper, "accept", "</think>J", out);
         assertEquals(1L, p8);
         assertFalse((boolean) getField(stripper, "inThink"));
         assertEquals("ABCDEFGHIJ", out.toString());
@@ -174,7 +174,6 @@ class LlmGatewayThinkStripperBranchTest {
         long p = (long) invoke(
                 stripper,
                 "accept",
-                new Class<?>[]{String.class, StringBuilder.class},
                 "P<think>a<think>b</think>c</think>Q",
                 out
         );
@@ -187,19 +186,19 @@ class LlmGatewayThinkStripperBranchTest {
     void find_helpers_should_cover_none_raw_escaped_and_min_selection() throws Exception {
         Object stripper = newStripper();
 
-        int noneStart = (int) invoke(stripper, "findNextStart", new Class<?>[]{String.class, int.class}, "abc", 0);
-        int rawStart = (int) invoke(stripper, "findNextStart", new Class<?>[]{String.class, int.class}, "a<think>x", 0);
-        int escapedStart = (int) invoke(stripper, "findNextStart", new Class<?>[]{String.class, int.class}, "a&lt;think&gt;x", 0);
-        int mixedStart = (int) invoke(stripper, "findNextStart", new Class<?>[]{String.class, int.class}, "a&lt;think&gt;b<think>c", 0);
+        int noneStart = (int) invoke(stripper, "findNextStart", "abc", 0);
+        int rawStart = (int) invoke(stripper, "findNextStart", "a<think>x", 0);
+        int escapedStart = (int) invoke(stripper, "findNextStart", "a&lt;think&gt;x", 0);
+        int mixedStart = (int) invoke(stripper, "findNextStart", "a&lt;think&gt;b<think>c", 0);
         assertEquals(-1, noneStart);
         assertEquals(1, rawStart);
         assertEquals(1, escapedStart);
         assertEquals(1, mixedStart);
 
-        int noneClose = (int) invoke(stripper, "findNextClose", new Class<?>[]{String.class, int.class}, "abc", 0);
-        int rawClose = (int) invoke(stripper, "findNextClose", new Class<?>[]{String.class, int.class}, "a</think>b", 0);
-        int escapedClose = (int) invoke(stripper, "findNextClose", new Class<?>[]{String.class, int.class}, "a&lt;/think&gt;b", 0);
-        int mixedClose = (int) invoke(stripper, "findNextClose", new Class<?>[]{String.class, int.class}, "a&lt;/think&gt;b</think>c", 0);
+        int noneClose = (int) invoke(stripper, "findNextClose", "abc", 0);
+        int rawClose = (int) invoke(stripper, "findNextClose", "a</think>b", 0);
+        int escapedClose = (int) invoke(stripper, "findNextClose", "a&lt;/think&gt;b", 0);
+        int mixedClose = (int) invoke(stripper, "findNextClose", "a&lt;/think&gt;b</think>c", 0);
         assertEquals(-1, noneClose);
         assertEquals(1, rawClose);
         assertEquals(1, escapedClose);
@@ -214,7 +213,6 @@ class LlmGatewayThinkStripperBranchTest {
         long p1 = (long) invoke(
                 stripper,
                 "accept",
-                new Class<?>[]{String.class, StringBuilder.class},
                 "AA<think>" + "x".repeat(48),
                 out
         );
@@ -228,7 +226,6 @@ class LlmGatewayThinkStripperBranchTest {
         long p2 = (long) invoke(
                 stripper,
                 "accept",
-                new Class<?>[]{String.class, StringBuilder.class},
                 "</think>",
                 out
         );

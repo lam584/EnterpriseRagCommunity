@@ -26,7 +26,7 @@ class RagContextPromptServiceBranchCoverage100Test {
     @Test
     void assemble_should_cover_citation_and_topk_additional_branches() {
         RagContextPromptService svc = new RagContextPromptService();
-        ContextClipConfigDTO cfg = baseCfg(ContextWindowPolicy.TOPK, 6, 200, 0, 5000);
+        ContextClipConfigDTO cfg = baseCfg();
         cfg.setRequireTitle(true);
         cfg.setDedupByPostId(true);
         cfg.setDedupByTitle(true);
@@ -35,11 +35,11 @@ class RagContextPromptServiceBranchCoverage100Test {
         cfg.setExtraInstruction("  ");
 
         List<RagPostChatRetrievalService.Hit> hits = List.of(
-                hit(null, 1, 1.0, null, "ok", "doc:1"),
-                hit(null, 2, 1.0, "t2", null, "doc:2"),
-                hit(null, 3, 1.0, "t3", "!!!", "doc:3"),
-                hit(null, 4, 1.0, "t4", "same text", "doc:4"),
-                hit(null, 5, 1.0, "t5", "same text", "doc:5")
+                hit(1, null, "ok", "doc:1"),
+                hit(2, "t2", null, "doc:2"),
+                hit(3, "t3", "!!!", "doc:3"),
+                hit(4, "t4", "same text", "doc:4"),
+                hit(5, "t5", "same text", "doc:5")
         );
 
         CitationConfigDTO c1 = new CitationConfigDTO();
@@ -303,19 +303,14 @@ class RagContextPromptServiceBranchCoverage100Test {
     }
 
     private static ContextClipConfigDTO baseCfg(
-            ContextWindowPolicy policy,
-            int maxItems,
-            int maxContextTokens,
-            int reserveAnswerTokens,
-            int perItemMaxTokens
-    ) {
+            ) {
         ContextClipConfigDTO cfg = new ContextClipConfigDTO();
         cfg.setEnabled(true);
-        cfg.setPolicy(policy);
-        cfg.setMaxItems(maxItems);
-        cfg.setMaxContextTokens(maxContextTokens);
-        cfg.setReserveAnswerTokens(reserveAnswerTokens);
-        cfg.setPerItemMaxTokens(perItemMaxTokens);
+        cfg.setPolicy(ContextWindowPolicy.TOPK);
+        cfg.setMaxItems(6);
+        cfg.setMaxContextTokens(200);
+        cfg.setReserveAnswerTokens(0);
+        cfg.setPerItemMaxTokens(5000);
         cfg.setMaxPromptChars(1000);
         cfg.setDedupByPostId(false);
         cfg.setDedupByTitle(false);
@@ -334,17 +329,15 @@ class RagContextPromptServiceBranchCoverage100Test {
     }
 
     private static RagPostChatRetrievalService.Hit hit(
-            Long postId,
             Integer chunkIndex,
-            Double score,
             String title,
             String content,
             String docId
     ) {
         RagPostChatRetrievalService.Hit h = new RagPostChatRetrievalService.Hit();
-        h.setPostId(postId);
+        h.setPostId(null);
         h.setChunkIndex(chunkIndex);
-        h.setScore(score);
+        h.setScore(1.0);
         h.setTitle(title);
         h.setContentText(content);
         h.setDocId(docId);

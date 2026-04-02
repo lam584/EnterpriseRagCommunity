@@ -56,7 +56,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         return null;
     }
 
-    private static Object callStatic(String name, Class<?>[] paramTypes, Object... args) throws Exception {
+    private static Object callStatic(String name, Object... args) throws Exception {
         Method m = findCompatibleMethod(LlmGateway.class, name, args);
         if (m == null) {
             m = findCompatibleMethod(LlmGatewaySupport.class, name, args);
@@ -66,7 +66,7 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         return m.invoke(null, args);
     }
 
-    private static Object callInstance(LlmGateway gateway, String name, Class<?>[] paramTypes, Object... args) throws Exception {
+    private static Object callInstance(LlmGateway gateway, String name, Object... args) throws Exception {
         Method m = findCompatibleMethod(LlmGateway.class, name, args);
         if (m == null) throw new NoSuchMethodException(name);
         m.setAccessible(true);
@@ -184,11 +184,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             Object r1 = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.1, null, null, null, Boolean.TRUE, null, Map.of(), 1,
                     null, Map.of()
@@ -198,11 +193,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             Object r2 = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.MODERATION_CHUNK, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.2, null, null, null, Boolean.FALSE, null, Map.of("x", 1), 1,
                     new AtomicReference<String>(), Map.of("x-h", "1")
@@ -276,11 +266,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             Object r1 = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.1, null, null, null, Boolean.TRUE, null, Map.of(), 1,
                     null, Map.of()
@@ -290,11 +275,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             Object r2 = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.2, null, null, null, Boolean.FALSE, null, Map.of(), 1,
                     null, Map.of()
@@ -304,11 +284,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             Object r3 = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.3, null, null, null, null, null, Map.of(), 1,
                     null, Map.of()
@@ -330,7 +305,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         callInstance(
                 gateway,
                 "extractStreamChunkStats",
-                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
                 "{\"promptTokens\":\"6\",\"completionTokens\":\"4\",\"choices\":[{\"delta\":{\"reasoning_content\":\"abc\",\"content\":\"xy\"},\"text\":\"z\"}]}", false, outChars, ref
         );
         assertNotNull(ref.get());
@@ -342,7 +316,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         callInstance(
                 gateway,
                 "extractStreamChunkStats",
-                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
                 "{\"usage\":{},\"choices\":[{\"delta\":{\"reasoning_content\":\"ab\",\"content\":\"cd\"},\"text\":\"e\"}]}", true, outChars, ref
         );
         assertEquals(8L, outChars[0]);
@@ -350,7 +323,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         callInstance(
                 gateway,
                 "extractStreamChunkStats",
-                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
                 "{\"choices\":[]}", true, outChars, ref
         );
         assertEquals(8L, outChars[0]);
@@ -358,7 +330,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         callInstance(
                 gateway,
                 "extractStreamChunkStats",
-                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
                 "{bad", true, outChars, ref
         );
         assertEquals(8L, outChars[0]);
@@ -368,34 +339,33 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
     void extractAssistantContent_and_sanitizeMarker_should_cover_text_fallback_invalid_json_and_marker_variants() throws Exception {
         LlmGateway gateway = gateway();
 
-        assertEquals("", callInstance(gateway, "extractAssistantContent", new Class[]{String.class}, (Object) null));
-        assertEquals("", callInstance(gateway, "extractAssistantContent", new Class[]{String.class}, "  "));
+        assertEquals("", callInstance(gateway, "extractAssistantContent", (Object) null));
+        assertEquals("", callInstance(gateway, "extractAssistantContent", "  "));
         assertEquals(
                 "txt-only",
                 callInstance(
                         gateway,
                         "extractAssistantContent",
-                        new Class[]{String.class},
                         "{\"choices\":[{\"message\":{},\"text\":\"txt-only\"}]}"
                 )
         );
         assertEquals(
                 "{bad",
-                callInstance(gateway, "extractAssistantContent", new Class[]{String.class}, "{bad")
+                callInstance(gateway, "extractAssistantContent", "{bad")
         );
 
-        assertEquals(" ", callStatic("sanitizeMarker", new Class[]{String.class}, " "));
-        assertEquals("", callStatic("sanitizeMarker", new Class[]{String.class}, " Reasoning_Content "));
-        assertEquals("", callStatic("sanitizeMarker", new Class[]{String.class}, "</reasoning_content>"));
-        assertEquals("", callStatic("sanitizeMarker", new Class[]{String.class}, "&lt;/reasoning_content&gt;"));
+        assertEquals(" ", callStatic("sanitizeMarker", " "));
+        assertEquals("", callStatic("sanitizeMarker", " Reasoning_Content "));
+        assertEquals("", callStatic("sanitizeMarker", "</reasoning_content>"));
+        assertEquals("", callStatic("sanitizeMarker", "&lt;/reasoning_content&gt;"));
     }
 
     @Test
     void sanitize_and_estimate_helpers_should_cover_null_empty_and_non_text_parts() throws Exception {
         LlmGateway gateway = gateway();
 
-        assertNull(callInstance(gateway, "sanitizeMessagesForTrace", new Class[]{List.class}, (Object) null));
-        assertEquals(List.of(), callInstance(gateway, "sanitizeMessagesForTrace", new Class[]{List.class}, List.of()));
+        assertNull(callInstance(gateway, "sanitizeMessagesForTrace", (Object) null));
+        assertEquals(List.of(), callInstance(gateway, "sanitizeMessagesForTrace", List.of()));
 
         List<ChatMessage> mixed = new ArrayList<>();
         mixed.add(null);
@@ -408,19 +378,18 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         )));
 
         @SuppressWarnings("unchecked")
-        List<ChatMessage> cleaned = (List<ChatMessage>) callInstance(gateway, "sanitizeMessagesForTrace", new Class[]{List.class}, mixed);
+        List<ChatMessage> cleaned = (List<ChatMessage>) callInstance(gateway, "sanitizeMessagesForTrace", mixed);
         assertEquals(3, cleaned.size());
         assertNull(cleaned.get(0).content());
         assertEquals(1234, cleaned.get(1).content());
 
-        assertNull(callInstance(gateway, "stripTraceLines", new Class[]{String.class}, (Object) null));
-        assertEquals(" ", callInstance(gateway, "stripTraceLines", new Class[]{String.class}, " "));
-        assertEquals("a\nb", callInstance(gateway, "stripTraceLines", new Class[]{String.class}, "TRACE x\na\nb"));
+        assertNull(callInstance(gateway, "stripTraceLines", (Object) null));
+        assertEquals(" ", callInstance(gateway, "stripTraceLines", " "));
+        assertEquals("a\nb", callInstance(gateway, "stripTraceLines", "TRACE x\na\nb"));
 
-        assertEquals(0, callStatic("estimateInputTokens", new Class[]{List.class}, (Object) null));
+        assertEquals(0, callStatic("estimateInputTokens", (Object) null));
         int tokens = (int) callStatic(
                 "estimateInputTokens",
-                new Class[]{List.class},
                 List.of(
                         new ChatMessage(null, null),
                         new ChatMessage("u", Arrays.asList(1, null, Map.of("image_url", "not-map"))),
@@ -481,11 +450,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             Object usage = callInstance(
                     gateway,
                     "callChatStreamSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Boolean.class, Integer.class,
-                            OpenAiCompatClient.SseLineConsumer.class, int.class, AtomicReference.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.1, null, Boolean.TRUE, null, (OpenAiCompatClient.SseLineConsumer) line -> {
                     }, 1, null
@@ -552,11 +516,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             Object r = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.2, null, null, null, null, null, Map.of(), 1, null, Map.of()
             );
@@ -629,33 +588,18 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, dashProvider, "m1", List.of(ChatMessage.user("hi")),
                     0.1, null, null, null, Boolean.TRUE, null, Map.of("vl_high_resolution_images", true), 1, null, Map.of()
             );
             callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, dashProvider, "m1", List.of(ChatMessage.user("hi")),
                     0.2, null, null, null, Boolean.TRUE, null, Map.of(), 1, null, Map.of()
             );
             callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, dashProvider, "m1", List.of(ChatMessage.user("hi")),
                     0.3, null, null, null, Boolean.FALSE, null, Map.of(), 1, null, Map.of()
             );
@@ -722,22 +666,12 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             Object r1 = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.MODERATION_CHUNK, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.2, null, null, null, Boolean.TRUE, null, Map.of(), 1, null, Map.of()
             );
             Object r2 = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.MODERATION_CHUNK, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.3, null, null, null, Boolean.TRUE, null, Map.of(), 1, null, Map.of()
             );
@@ -800,22 +734,12 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
             Object r1 = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.1, null, null, null, null, null, Map.of(), 1, null, Map.of()
             );
             Object r2 = callInstance(
                     gateway,
                     "callChatOnceSingle",
-                    new Class[]{
-                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
-                            int.class, AtomicReference.class, Map.class
-                    },
                     LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
                     0.2, null, null, null, null, null, Map.of(), 1, null, Map.of()
             );
@@ -888,7 +812,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         callInstance(
                 gateway,
                 "extractStreamChunkStats",
-                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
                 "{\"usage\":{},\"choices\":null}",
                 true,
                 outChars,
@@ -899,7 +822,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         callInstance(
                 gateway,
                 "extractStreamChunkStats",
-                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
                 "{\"usage\":{},\"choices\":[{\"delta\":{\"reasoning_content\":\"\",\"content\":\"q\"},\"text\":\"\"}]}",
                 true,
                 outChars,
@@ -910,7 +832,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         callInstance(
                 gateway,
                 "extractStreamChunkStats",
-                new Class[]{String.class, boolean.class, long[].class, AtomicReference.class},
                 "{\"usage\":{},\"choices\":[{\"delta\":null,\"text\":\"z\"}]}",
                 true,
                 outChars,
@@ -923,7 +844,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
     void normalize_and_directive_helpers_should_cover_remaining_edge_paths() throws Exception {
         LlmCallQueueService.UsageMetrics m1 = (LlmCallQueueService.UsageMetrics) callStatic(
                 "normalizeOpenAiCompatUsage",
-                new Class[]{Integer.class, Integer.class, Integer.class},
                 10, 1, 5
         );
         assertEquals(10, m1.promptTokens());
@@ -932,27 +852,25 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
 
         LlmCallQueueService.UsageMetrics m2 = (LlmCallQueueService.UsageMetrics) callStatic(
                 "normalizeOpenAiCompatUsage",
-                new Class[]{Integer.class, Integer.class, Integer.class},
                 null, 5, 3
         );
         assertNull(m2.promptTokens());
         assertEquals(5, m2.completionTokens());
         assertEquals(3, m2.totalTokens());
 
-        assertFalse((boolean) callStatic("shouldSendDashscopeThinking", new Class[]{AiProvidersConfigService.ResolvedProvider.class}, (Object) null));
+        assertFalse((boolean) callStatic("shouldSendDashscopeThinking", (Object) null));
         AiProvidersConfigService.ResolvedProvider blank = new AiProvidersConfigService.ResolvedProvider(
                 "p1", "OPENAI_COMPAT", " ", "k", "m", "e", Map.of(), Map.of(), 1000, 1000
         );
-        assertFalse((boolean) callStatic("shouldSendDashscopeThinking", new Class[]{AiProvidersConfigService.ResolvedProvider.class}, blank));
+        assertFalse((boolean) callStatic("shouldSendDashscopeThinking", blank));
         AiProvidersConfigService.ResolvedProvider intl = new AiProvidersConfigService.ResolvedProvider(
                 "p2", "OPENAI_COMPAT", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "k", "m", "e", Map.of(), Map.of(), 1000, 1000
         );
-        assertTrue((boolean) callStatic("shouldSendDashscopeThinking", new Class[]{AiProvidersConfigService.ResolvedProvider.class}, intl));
+        assertTrue((boolean) callStatic("shouldSendDashscopeThinking", intl));
 
         @SuppressWarnings("unchecked")
         List<ChatMessage> unchanged = (List<ChatMessage>) callStatic(
                 "applyThinkingDirectiveToMessages",
-                new Class[]{List.class, Boolean.class, String.class},
                 List.of(new ChatMessage("user", List.of(Map.of("type", "text", "text", "x")))),
                 Boolean.TRUE,
                 "qwen3-32b"
@@ -965,24 +883,24 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
     void removeLabelMapFromEmbeddedJson_should_cover_prefix_blank_and_invalid_suffix() throws Exception {
         LlmGateway gateway = gateway();
         String pureObj = "\n\n{\"label_taxonomy\":{\"label_map\":{\"x\":1},\"keep\":9},\"v\":1}";
-        String outObj = (String) callInstance(gateway, "removeLabelMapFromEmbeddedJson", new Class[]{String.class}, pureObj);
+        String outObj = (String) callInstance(gateway, "removeLabelMapFromEmbeddedJson", pureObj);
         assertTrue(outObj.contains("\"keep\":9"));
         assertFalse(outObj.contains("label_map"));
 
         String oneNewline = "prefix\n{\"label_taxonomy\":{\"label_map\":{\"x\":1},\"k\":1}}";
-        String out = (String) callInstance(gateway, "removeLabelMapFromEmbeddedJson", new Class[]{String.class}, oneNewline);
+        String out = (String) callInstance(gateway, "removeLabelMapFromEmbeddedJson", oneNewline);
         assertTrue(out.contains("prefix"));
         assertFalse(out.contains("label_map"));
 
         String arrOnly = "\n[{\"label_taxonomy\":{\"label_map\":{\"x\":1},\"k\":1}}]";
-        String outArrOnly = (String) callInstance(gateway, "removeLabelMapFromEmbeddedJson", new Class[]{String.class}, arrOnly);
+        String outArrOnly = (String) callInstance(gateway, "removeLabelMapFromEmbeddedJson", arrOnly);
         assertFalse(outArrOnly.contains("label_map"));
 
         String invalidJsonAfterPrefix = "prefix\n\n{bad-json";
-        assertEquals(invalidJsonAfterPrefix, callInstance(gateway, "removeLabelMapFromEmbeddedJson", new Class[]{String.class}, invalidJsonAfterPrefix));
+        assertEquals(invalidJsonAfterPrefix, callInstance(gateway, "removeLabelMapFromEmbeddedJson", invalidJsonAfterPrefix));
 
         String blankJsonPart = "prefix\n\n";
-        assertEquals(blankJsonPart, callInstance(gateway, "removeLabelMapFromEmbeddedJson", new Class[]{String.class}, blankJsonPart));
+        assertEquals(blankJsonPart, callInstance(gateway, "removeLabelMapFromEmbeddedJson", blankJsonPart));
     }
 
     @Test
@@ -1084,7 +1002,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         String picked = (String) callInstance(
                 gateway,
                 "pickFallbackProviderId",
-                new Class[]{java.util.function.Function.class},
                 (java.util.function.Function<AiProvidersConfigService.ResolvedProvider, String>) AiProvidersConfigService.ResolvedProvider::defaultChatModel
         );
         assertEquals("p-ok", picked);

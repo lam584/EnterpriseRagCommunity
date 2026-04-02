@@ -1369,5 +1369,9 @@ class LlmImageUploadServiceTest {
         @Override
         public void connect() {
         }
+
+        public String getMethod() {
+            return method;
+        }
     }
 }

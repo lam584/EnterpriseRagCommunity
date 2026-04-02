@@ -77,7 +77,7 @@ class AdminModerationChunkReviewLogsServiceTest {
         );
 
         assertEquals(1, out.size());
-        AdminModerationChunkLogItemDTO dto = out.get(0);
+        AdminModerationChunkLogItemDTO dto = out.getFirst();
         assertEquals(1L, dto.getId());
         assertNull(dto.getQueueId());
         assertNull(dto.getStatus());
@@ -132,7 +132,7 @@ class AdminModerationChunkReviewLogsServiceTest {
         );
 
         assertEquals(1, out.size());
-        AdminModerationChunkLogItemDTO dto = out.get(0);
+        AdminModerationChunkLogItemDTO dto = out.getFirst();
         assertEquals(22L, dto.getQueueId());
         assertEquals("FAILED", dto.getStatus());
         assertEquals("REJECT", dto.getVerdict());
@@ -446,7 +446,7 @@ class AdminModerationChunkReviewLogsServiceTest {
 
         AdminModerationChunkContentPreviewDTO out = service.getContentPreview(7L);
         assertEquals(1, out.getImages().size());
-        AdminModerationChunkContentPreviewDTO.Image img = out.getImages().get(0);
+        AdminModerationChunkContentPreviewDTO.Image img = out.getImages().getFirst();
         assertEquals(1, img.getIndex());
         assertEquals("[[IMAGE_1]]", img.getPlaceholder());
         assertEquals(78L, img.getFileAssetId());

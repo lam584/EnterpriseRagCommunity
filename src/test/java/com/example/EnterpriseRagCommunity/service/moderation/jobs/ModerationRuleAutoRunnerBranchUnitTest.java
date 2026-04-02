@@ -63,7 +63,6 @@ class ModerationRuleAutoRunnerBranchUnitTest {
     private AdminModerationQueueService queueService;
     private ModerationContentTextLoader textLoader;
     private ModerationPipelineTraceService pipelineTraceService;
-    private AuditLogWriter auditLogWriter;
     private ModerationRuleAutoRunner runner;
 
     @BeforeEach
@@ -78,7 +77,7 @@ class ModerationRuleAutoRunnerBranchUnitTest {
         queueService = mock(AdminModerationQueueService.class);
         textLoader = mock(ModerationContentTextLoader.class);
         pipelineTraceService = mock(ModerationPipelineTraceService.class);
-        auditLogWriter = mock(AuditLogWriter.class);
+        AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
         runner = new ModerationRuleAutoRunner(
                 queueRepository,
                 rulesRepository,
@@ -274,7 +273,6 @@ class ModerationRuleAutoRunnerBranchUnitTest {
     void evaluateAntiSpam_private_should_cover_profile_branches() throws Exception {
         ModerationQueueEntity qProfile = queue(40L, QueueStage.RULE, QueueStatus.PENDING, ContentType.PROFILE);
         Object windowHit = invokePrivate(
-                "evaluateAntiSpam",
                 new Class[]{ModerationQueueEntity.class, Map.class},
                 qProfile,
                 Map.of("anti_spam", Map.of("profile", Map.of("window_minutes", 30, "max_updates_per_window", 1)))
@@ -283,7 +281,6 @@ class ModerationRuleAutoRunnerBranchUnitTest {
 
         when(moderationActionsRepository.countByQueueIdAndReasonAndCreatedAtAfter(eq(40L), eq("PROFILE_PENDING_SNAPSHOT"), any())).thenReturn(3L);
         Object windowExceeded = invokePrivate(
-                "evaluateAntiSpam",
                 new Class[]{ModerationQueueEntity.class, Map.class},
                 qProfile,
                 Map.of("anti_spam", Map.of("profile", Map.of("window_minutes", 30, "max_updates_per_window", 1)))
@@ -292,7 +289,6 @@ class ModerationRuleAutoRunnerBranchUnitTest {
 
         when(moderationActionsRepository.countByQueueIdAndReasonAndCreatedAtBetween(eq(40L), eq("PROFILE_PENDING_SNAPSHOT"), any(), any())).thenReturn(2L);
         Object dayExceeded = invokePrivate(
-                "evaluateAntiSpam",
                 new Class[]{ModerationQueueEntity.class, Map.class},
                 qProfile,
                 Map.of("anti_spam", Map.of("profile", Map.of("max_updates_per_day", 1)))
@@ -300,7 +296,6 @@ class ModerationRuleAutoRunnerBranchUnitTest {
         assertEquals(true, invokeRecordBoolean(dayExceeded, "hit"));
 
         Object nullForUnknown = invokePrivate(
-                "evaluateAntiSpam",
                 new Class[]{ModerationQueueEntity.class, Map.class},
                 queue(41L, QueueStage.RULE, QueueStatus.PENDING, ContentType.POST),
                 Map.of()
@@ -406,8 +401,8 @@ class ModerationRuleAutoRunnerBranchUnitTest {
         m.invoke(runner, q);
     }
 
-    private Object invokePrivate(String name, Class<?>[] paramTypes, Object... args) throws Exception {
-        Method m = ModerationRuleAutoRunner.class.getDeclaredMethod(name, paramTypes);
+    private Object invokePrivate(Class<?>[] paramTypes, Object... args) throws Exception {
+        Method m = ModerationRuleAutoRunner.class.getDeclaredMethod("evaluateAntiSpam", paramTypes);
         m.setAccessible(true);
         return m.invoke(runner, args);
     }

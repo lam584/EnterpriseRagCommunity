@@ -1,21 +1,8 @@
 package com.example.EnterpriseRagCommunity.service.monitor;
 
-import com.example.EnterpriseRagCommunity.dto.monitor.UploadFormatsConfigDTO;
-import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetExtractionsEntity;
-import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity;
-import com.example.EnterpriseRagCommunity.entity.monitor.enums.FileAssetExtractionStatus;
-import com.example.EnterpriseRagCommunity.entity.semantic.VectorIndicesEntity;
-import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
-import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
-import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
-import com.example.EnterpriseRagCommunity.service.ai.TokenCountService;
-import com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetIndexAsyncService;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Constructor;
@@ -28,55 +15,31 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPOutputStream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
-
 import javax.imageio.ImageIO;
-
-import org.apache.pdfbox.cos.COSName;
-import org.apache.commons.compress.archivers.ArchiveEntry;
-import org.apache.commons.compress.archivers.ArchiveException;
-import org.apache.commons.compress.archivers.ArchiveInputStream;
-import org.apache.commons.compress.archivers.ArchiveStreamFactory;
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
 import org.apache.commons.compress.archivers.sevenz.SevenZMethod;
 import org.apache.commons.compress.archivers.sevenz.SevenZMethodConfiguration;
 import org.apache.commons.compress.archivers.sevenz.SevenZOutputFile;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
-import org.apache.pdfbox.pdmodel.PDResources;
-import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
-import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.poi.hslf.usermodel.HSLFSlideShow;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
-import org.apache.poi.hslf.usermodel.HSLFPictureData;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.sl.usermodel.PictureData;
 import org.apache.poi.util.Units;
-import org.apache.poi.xslf.usermodel.XSLFPictureData;
 import org.apache.poi.xslf.usermodel.XMLSlideShow;
-import org.apache.poi.xssf.usermodel.XSSFPictureData;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.apache.poi.xwpf.usermodel.XWPFPictureData;
-import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.Document;
-import org.apache.tika.Tika;
 import org.apache.tika.metadata.Metadata;
 import org.apache.tika.metadata.TikaCoreProperties;
 import org.apache.tika.parser.AutoDetectParser;
 import org.apache.tika.parser.ParseContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -84,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedConstruction;
-import org.mockito.MockedStatic;
+
 import org.mockito.Mockito;
 
 class FileAssetExtractionAsyncServiceUtilityBranchTest {
@@ -387,64 +350,24 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         Object budget = ctor.newInstance(10, 1024L * 1024L);
 
         Map<String, Object> blankMeta = new LinkedHashMap<>();
-        Object blankOut = invokeInstance(
-                svc,
-                "extractImages",
-                new Class<?>[]{Path.class, String.class, Map.class, Long.class, String.class, budgetClass},
-                Path.of("C:/tmp/a.txt"),
-                " ",
-                blankMeta,
-                1L,
-                "",
-                budget
-        );
+        Object blankOut = invokeInstance(svc, "extractImages", new Class<?>[]{Path.class, String.class, Map.class, Long.class, String.class, budgetClass}, Path.of("C:/tmp/a.txt"), " ", blankMeta, 1L, "", budget);
         assertTrue(blankOut instanceof List<?>);
         assertTrue(((List<?>) blankOut).isEmpty());
 
         Map<String, Object> txtMeta = new LinkedHashMap<>();
-        Object txtOut = invokeInstance(
-                svc,
-                "extractImages",
-                new Class<?>[]{Path.class, String.class, Map.class, Long.class, String.class, budgetClass},
-                Path.of("C:/tmp/a.txt"),
-                "txt",
-                txtMeta,
-                1L,
-                "",
-                budget
-        );
+        Object txtOut = invokeInstance(svc, "extractImages", new Class<?>[]{Path.class, String.class, Map.class, Long.class, String.class, budgetClass}, Path.of("C:/tmp/a.txt"), "txt", txtMeta, 1L, "", budget);
         assertTrue(txtOut instanceof List<?>);
         assertEquals("NONE", String.valueOf(txtMeta.get("imagesExtractionMode")));
 
         Map<String, Object> unsupportedMeta = new LinkedHashMap<>();
-        Object unsupportedOut = invokeInstance(
-                svc,
-                "extractImages",
-                new Class<?>[]{Path.class, String.class, Map.class, Long.class, String.class, budgetClass},
-                Path.of("C:/tmp/a.abc"),
-                "abc",
-                unsupportedMeta,
-                1L,
-                "",
-                budget
-        );
+        Object unsupportedOut = invokeInstance(svc, "extractImages", new Class<?>[]{Path.class, String.class, Map.class, Long.class, String.class, budgetClass}, Path.of("C:/tmp/a.abc"), "abc", unsupportedMeta, 1L, "", budget);
         assertTrue(unsupportedOut instanceof List<?>);
         assertEquals("UNSUPPORTED", String.valueOf(unsupportedMeta.get("imagesExtractionMode")));
 
         Path invalidDocx = Files.createTempFile("invalid-", ".docx");
         Files.writeString(invalidDocx, "not-a-docx");
         Map<String, Object> failedMeta = new LinkedHashMap<>();
-        Object failedOut = invokeInstance(
-                svc,
-                "extractImages",
-                new Class<?>[]{Path.class, String.class, Map.class, Long.class, String.class, budgetClass},
-                invalidDocx,
-                "docx",
-                failedMeta,
-                1L,
-                "",
-                budget
-        );
+        Object failedOut = invokeInstance(svc, "extractImages", new Class<?>[]{Path.class, String.class, Map.class, Long.class, String.class, budgetClass}, invalidDocx, "docx", failedMeta, 1L, "", budget);
         assertTrue(failedOut instanceof List<?>);
         assertEquals("FAILED", String.valueOf(failedMeta.get("imagesExtractionMode")));
         assertNotNull(failedMeta.get("imagesExtractionError"));
@@ -461,62 +384,23 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
 
         Object countersTime = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> archiveMetaTime = new LinkedHashMap<>();
-        Object t = invokeInstance(
-                svc,
-                "extractArchiveFromStream",
-                new Class<?>[]{java.io.InputStream.class, String.class, int.class, int.class, Map.class, countersTime.getClass(), long.class},
-                new ByteArrayInputStream("abc".getBytes(StandardCharsets.UTF_8)),
-                "a.txt",
-                0,
-                100,
-                archiveMetaTime,
-                countersTime,
-                System.nanoTime() - java.time.Duration.ofMillis(10).toNanos()
-        );
+        Object t = invokeInstance(svc, "extractArchiveFromStream", new Class<?>[]{java.io.InputStream.class, String.class, int.class, int.class, Map.class, countersTime.getClass(), long.class}, new ByteArrayInputStream("abc".getBytes(StandardCharsets.UTF_8)), "a.txt", 0, 100, archiveMetaTime, countersTime, System.nanoTime() - java.time.Duration.ofMillis(10).toNanos());
         assertEquals("", String.valueOf(t));
         assertEquals("TIME_LIMIT", String.valueOf(getField(countersTime, "truncatedReason")));
 
         setField(svc, "archiveMaxTotalMillis", 15000L);
         Object countersTraversal = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> archiveMetaTraversal = new LinkedHashMap<>();
-        byte[] z1 = zipBytes(List.of(
-                Map.entry("../evil.txt", "x".getBytes(StandardCharsets.UTF_8)),
-                Map.entry("ok.txt", "ok-body".getBytes(StandardCharsets.UTF_8))
-        ));
-        Object out1 = invokeInstance(
-                svc,
-                "extractArchiveFromStream",
-                new Class<?>[]{java.io.InputStream.class, String.class, int.class, int.class, Map.class, countersTraversal.getClass(), long.class},
-                new ByteArrayInputStream(z1),
-                "sample.zip",
-                0,
-                1000,
-                archiveMetaTraversal,
-                countersTraversal,
-                System.nanoTime()
-        );
+        byte[] z1 = zipBytes(List.of(Map.entry("../evil.txt", "x".getBytes(StandardCharsets.UTF_8)), Map.entry("ok.txt", "ok-body".getBytes(StandardCharsets.UTF_8))));
+        Object out1 = invokeInstance(svc, "extractArchiveFromStream", new Class<?>[]{java.io.InputStream.class, String.class, int.class, int.class, Map.class, countersTraversal.getClass(), long.class}, new ByteArrayInputStream(z1), "sample.zip", 0, 1000, archiveMetaTraversal, countersTraversal, System.nanoTime());
         assertTrue(String.valueOf(out1).contains("ok-body"));
         assertTrue(((Number) getField(countersTraversal, "pathTraversalDroppedCount")).longValue() >= 1L);
 
         setField(svc, "archiveMaxEntries", 1);
         Object countersLimit = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> archiveMetaLimit = new LinkedHashMap<>();
-        byte[] z2 = zipBytes(List.of(
-                Map.entry("a.txt", "a".getBytes(StandardCharsets.UTF_8)),
-                Map.entry("b.txt", "b".getBytes(StandardCharsets.UTF_8))
-        ));
-        invokeInstance(
-                svc,
-                "extractArchiveFromStream",
-                new Class<?>[]{java.io.InputStream.class, String.class, int.class, int.class, Map.class, countersLimit.getClass(), long.class},
-                new ByteArrayInputStream(z2),
-                "limit.zip",
-                0,
-                1000,
-                archiveMetaLimit,
-                countersLimit,
-                System.nanoTime()
-        );
+        byte[] z2 = zipBytes(List.of(Map.entry("a.txt", "a".getBytes(StandardCharsets.UTF_8)), Map.entry("b.txt", "b".getBytes(StandardCharsets.UTF_8))));
+        invokeInstance(svc, "extractArchiveFromStream", new Class<?>[]{java.io.InputStream.class, String.class, int.class, int.class, Map.class, countersLimit.getClass(), long.class}, new ByteArrayInputStream(z2), "limit.zip", 0, 1000, archiveMetaLimit, countersLimit, System.nanoTime());
         assertEquals("ENTRY_COUNT_LIMIT", String.valueOf(getField(countersLimit, "truncatedReason")));
     }
 
@@ -531,38 +415,13 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
 
         Object countersEmpty = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> archiveMetaEmpty = new LinkedHashMap<>();
-        Object empty = invokeInstance(
-                svc,
-                "extract7zFromBytes",
-                new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersEmpty.getClass(), long.class},
-                new byte[0],
-                "x.7z",
-                0,
-                200,
-                archiveMetaEmpty,
-                countersEmpty,
-                System.nanoTime()
-        );
+        Object empty = invokeInstance(svc, "extract7zFromBytes", new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersEmpty.getClass(), long.class}, new byte[0], "x.7z", 0, 200, archiveMetaEmpty, countersEmpty, System.nanoTime());
         assertEquals("", String.valueOf(empty));
 
         Object countersTraversal = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> archiveMetaTraversal = new LinkedHashMap<>();
-        byte[] z = sevenZBytes(List.of(
-                Map.entry("../evil.txt", "x".getBytes(StandardCharsets.UTF_8)),
-                Map.entry("ok.txt", "ok7z".getBytes(StandardCharsets.UTF_8))
-        ));
-        Object out = invokeInstance(
-                svc,
-                "extract7zFromBytes",
-                new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersTraversal.getClass(), long.class},
-                z,
-                "s.7z",
-                0,
-                1000,
-                archiveMetaTraversal,
-                countersTraversal,
-                System.nanoTime()
-        );
+        byte[] z = sevenZBytes(List.of(Map.entry("../evil.txt", "x".getBytes(StandardCharsets.UTF_8)), Map.entry("ok.txt", "ok7z".getBytes(StandardCharsets.UTF_8))));
+        Object out = invokeInstance(svc, "extract7zFromBytes", new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersTraversal.getClass(), long.class}, z, "s.7z", 0, 1000, archiveMetaTraversal, countersTraversal, System.nanoTime());
         assertTrue(String.valueOf(out).contains("ok7z"));
         assertTrue(((Number) getField(countersTraversal, "pathTraversalDroppedCount")).longValue() >= 1L);
 
@@ -571,18 +430,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         setField(svc, "archiveMaxDepth", 1);
         Object countersDepth = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> archiveMetaDepth = new LinkedHashMap<>();
-        assertThrows(IllegalStateException.class, () -> invokeInstance(
-                svc,
-                "extract7zFromBytes",
-                new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersDepth.getClass(), long.class},
-                outer,
-                "outer.7z",
-                0,
-                1000,
-                archiveMetaDepth,
-                countersDepth,
-                System.nanoTime()
-        ));
+        assertThrows(IllegalStateException.class, () -> invokeInstance(svc, "extract7zFromBytes", new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersDepth.getClass(), long.class}, outer, "outer.7z", 0, 1000, archiveMetaDepth, countersDepth, System.nanoTime()));
     }
 
     @Test
@@ -598,23 +446,9 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         Map<String, Object> archiveMeta = new LinkedHashMap<>();
         List<Map<String, Object>> files = new ArrayList<>();
         Path outDir = Files.createTempDirectory("fae-out-");
-        byte[] z = sevenZBytes(List.of(
-                Map.entry("big.txt", "abcdefghijklmnop".getBytes(StandardCharsets.UTF_8))
-        ));
+        byte[] z = sevenZBytes(List.of(Map.entry("big.txt", "abcdefghijklmnop".getBytes(StandardCharsets.UTF_8))));
 
-        invokeInstance(
-                svc,
-                "expand7zBytesToDisk",
-                new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, counters.getClass(), long.class, List.class},
-                z,
-                "",
-                0,
-                outDir,
-                archiveMeta,
-                counters,
-                System.nanoTime(),
-                files
-        );
+        invokeInstance(svc, "expand7zBytesToDisk", new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, counters.getClass(), long.class, List.class}, z, "", 0, outDir, archiveMeta, counters, System.nanoTime(), files);
 
         assertFalse(files.isEmpty());
         assertEquals("true", String.valueOf(files.get(0).get("extractionTruncated")));
@@ -632,71 +466,24 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         setField(svc, "archiveMaxTotalMillis", 15000L);
 
         Object countersNull = newInner("ArchiveCounters", new Class<?>[]{});
-        Object nullOut = invokeInstance(
-                svc,
-                "extract7zFromBytes",
-                new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersNull.getClass(), long.class},
-                (byte[]) null,
-                "null.7z",
-                0,
-                200,
-                new LinkedHashMap<>(),
-                countersNull,
-                System.nanoTime()
-        );
+        Object nullOut = invokeInstance(svc, "extract7zFromBytes", new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersNull.getClass(), long.class}, (byte[]) null, "null.7z", 0, 200, new LinkedHashMap<>(), countersNull, System.nanoTime());
         assertEquals("", String.valueOf(nullOut));
 
         Object countersCorrupt = newInner("ArchiveCounters", new Class<?>[]{});
-        assertThrows(IllegalStateException.class, () -> invokeInstance(
-                svc,
-                "extract7zFromBytes",
-                new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersCorrupt.getClass(), long.class},
-                "not-7z".getBytes(StandardCharsets.UTF_8),
-                "bad.7z",
-                0,
-                200,
-                new LinkedHashMap<>(),
-                countersCorrupt,
-                System.nanoTime()
-        ));
+        assertThrows(IllegalStateException.class, () -> invokeInstance(svc, "extract7zFromBytes", new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersCorrupt.getClass(), long.class}, "not-7z".getBytes(StandardCharsets.UTF_8), "bad.7z", 0, 200, new LinkedHashMap<>(), countersCorrupt, System.nanoTime()));
 
         byte[] one = sevenZBytes(List.of(Map.entry("a.txt", "one".getBytes(StandardCharsets.UTF_8))));
         setField(svc, "archiveMaxTotalMillis", 1L);
         Object countersTime = newInner("ArchiveCounters", new Class<?>[]{});
-        Object timeout = invokeInstance(
-                svc,
-                "extract7zFromBytes",
-                new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersTime.getClass(), long.class},
-                one,
-                "time.7z",
-                0,
-                200,
-                new LinkedHashMap<>(),
-                countersTime,
-                System.nanoTime() - java.time.Duration.ofMillis(20).toNanos()
-        );
+        Object timeout = invokeInstance(svc, "extract7zFromBytes", new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersTime.getClass(), long.class}, one, "time.7z", 0, 200, new LinkedHashMap<>(), countersTime, System.nanoTime() - java.time.Duration.ofMillis(20).toNanos());
         assertEquals("", String.valueOf(timeout));
         assertEquals("TIME_LIMIT", String.valueOf(getField(countersTime, "truncatedReason")));
 
         setField(svc, "archiveMaxTotalMillis", 15000L);
         setField(svc, "archiveMaxEntries", 1);
-        byte[] two = sevenZBytes(List.of(
-                Map.entry("a.txt", "A".getBytes(StandardCharsets.UTF_8)),
-                Map.entry("b.txt", "B".getBytes(StandardCharsets.UTF_8))
-        ));
+        byte[] two = sevenZBytes(List.of(Map.entry("a.txt", "A".getBytes(StandardCharsets.UTF_8)), Map.entry("b.txt", "B".getBytes(StandardCharsets.UTF_8))));
         Object countersLimit = newInner("ArchiveCounters", new Class<?>[]{});
-        Object limited = invokeInstance(
-                svc,
-                "extract7zFromBytes",
-                new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersLimit.getClass(), long.class},
-                two,
-                "limit.7z",
-                0,
-                500,
-                new LinkedHashMap<>(),
-                countersLimit,
-                System.nanoTime()
-        );
+        Object limited = invokeInstance(svc, "extract7zFromBytes", new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersLimit.getClass(), long.class}, two, "limit.7z", 0, 500, new LinkedHashMap<>(), countersLimit, System.nanoTime());
         assertTrue(String.valueOf(limited).contains("FILE: a.txt"));
         assertEquals("ENTRY_COUNT_LIMIT", String.valueOf(getField(countersLimit, "truncatedReason")));
     }
@@ -714,77 +501,26 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
 
         Object countersNull = newInner("ArchiveCounters", new Class<?>[]{});
         List<Map<String, Object>> filesNull = new ArrayList<>();
-        invokeInstance(
-                svc,
-                "expand7zBytesToDisk",
-                new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, countersNull.getClass(), long.class, List.class},
-                (byte[]) null,
-                "",
-                0,
-                outDir,
-                new LinkedHashMap<>(),
-                countersNull,
-                System.nanoTime(),
-                filesNull
-        );
+        invokeInstance(svc, "expand7zBytesToDisk", new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, countersNull.getClass(), long.class, List.class}, (byte[]) null, "", 0, outDir, new LinkedHashMap<>(), countersNull, System.nanoTime(), filesNull);
         assertTrue(filesNull.isEmpty());
 
         Object countersCorrupt = newInner("ArchiveCounters", new Class<?>[]{});
-        assertThrows(IllegalStateException.class, () -> invokeInstance(
-                svc,
-                "expand7zBytesToDisk",
-                new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, countersCorrupt.getClass(), long.class, List.class},
-                "bad7z".getBytes(StandardCharsets.UTF_8),
-                "",
-                0,
-                outDir,
-                new LinkedHashMap<>(),
-                countersCorrupt,
-                System.nanoTime(),
-                new ArrayList<>()
-        ));
+        assertThrows(IllegalStateException.class, () -> invokeInstance(svc, "expand7zBytesToDisk", new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, countersCorrupt.getClass(), long.class, List.class}, "bad7z".getBytes(StandardCharsets.UTF_8), "", 0, outDir, new LinkedHashMap<>(), countersCorrupt, System.nanoTime(), new ArrayList<>()));
 
         byte[] one = sevenZBytes(List.of(Map.entry("x.txt", "ok".getBytes(StandardCharsets.UTF_8))));
         setField(svc, "archiveMaxTotalMillis", 1L);
         Object countersTime = newInner("ArchiveCounters", new Class<?>[]{});
         List<Map<String, Object>> filesTime = new ArrayList<>();
-        invokeInstance(
-                svc,
-                "expand7zBytesToDisk",
-                new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, countersTime.getClass(), long.class, List.class},
-                one,
-                "",
-                0,
-                outDir,
-                new LinkedHashMap<>(),
-                countersTime,
-                System.nanoTime() - java.time.Duration.ofMillis(20).toNanos(),
-                filesTime
-        );
+        invokeInstance(svc, "expand7zBytesToDisk", new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, countersTime.getClass(), long.class, List.class}, one, "", 0, outDir, new LinkedHashMap<>(), countersTime, System.nanoTime() - java.time.Duration.ofMillis(20).toNanos(), filesTime);
         assertTrue(filesTime.isEmpty());
         assertEquals("TIME_LIMIT", String.valueOf(getField(countersTime, "truncatedReason")));
 
         setField(svc, "archiveMaxTotalMillis", 15000L);
         setField(svc, "archiveMaxEntries", 1);
-        byte[] two = sevenZBytes(List.of(
-                Map.entry("a.txt", "A".getBytes(StandardCharsets.UTF_8)),
-                Map.entry("b.txt", "B".getBytes(StandardCharsets.UTF_8))
-        ));
+        byte[] two = sevenZBytes(List.of(Map.entry("a.txt", "A".getBytes(StandardCharsets.UTF_8)), Map.entry("b.txt", "B".getBytes(StandardCharsets.UTF_8))));
         Object countersLimit = newInner("ArchiveCounters", new Class<?>[]{});
         List<Map<String, Object>> filesLimit = new ArrayList<>();
-        invokeInstance(
-                svc,
-                "expand7zBytesToDisk",
-                new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, countersLimit.getClass(), long.class, List.class},
-                two,
-                "",
-                0,
-                outDir,
-                new LinkedHashMap<>(),
-                countersLimit,
-                System.nanoTime(),
-                filesLimit
-        );
+        invokeInstance(svc, "expand7zBytesToDisk", new Class<?>[]{byte[].class, String.class, int.class, Path.class, Map.class, countersLimit.getClass(), long.class, List.class}, two, "", 0, outDir, new LinkedHashMap<>(), countersLimit, System.nanoTime(), filesLimit);
         assertEquals(1, filesLimit.size());
         assertEquals("ENTRY_COUNT_LIMIT", String.valueOf(getField(countersLimit, "truncatedReason")));
     }
@@ -816,61 +552,21 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
     @Test
     void extractEntryBytesAsText_shouldCoverTxtHtmlXmlPdfAndFallback() {
         Object svc = new FileAssetExtractionAsyncService(null, null, null, null, null, null, null, null);
-        Object txt = invokeInstance(
-                svc,
-                "extractEntryBytesAsText",
-                new Class<?>[]{String.class, String.class, byte[].class, int.class},
-                "a.txt",
-                "txt",
-                "hello".getBytes(StandardCharsets.UTF_8),
-                100
-        );
+        Object txt = invokeInstance(svc, "extractEntryBytesAsText", new Class<?>[]{String.class, String.class, byte[].class, int.class}, "a.txt", "txt", "hello".getBytes(StandardCharsets.UTF_8), 100);
         assertEquals("hello", String.valueOf(txt));
 
-        Object html = invokeInstance(
-                svc,
-                "extractEntryBytesAsText",
-                new Class<?>[]{String.class, String.class, byte[].class, int.class},
-                "a.html",
-                "html",
-                "<p>x</p>".getBytes(StandardCharsets.UTF_8),
-                100
-        );
+        Object html = invokeInstance(svc, "extractEntryBytesAsText", new Class<?>[]{String.class, String.class, byte[].class, int.class}, "a.html", "html", "<p>x</p>".getBytes(StandardCharsets.UTF_8), 100);
         assertTrue(String.valueOf(html).contains("x"));
 
-        Object xml = invokeInstance(
-                svc,
-                "extractEntryBytesAsText",
-                new Class<?>[]{String.class, String.class, byte[].class, int.class},
-                "a.xml",
-                "xml",
-                "<a>b</a>".getBytes(StandardCharsets.UTF_8),
-                100
-        );
+        Object xml = invokeInstance(svc, "extractEntryBytesAsText", new Class<?>[]{String.class, String.class, byte[].class, int.class}, "a.xml", "xml", "<a>b</a>".getBytes(StandardCharsets.UTF_8), 100);
         assertTrue(String.valueOf(xml).contains("<a>b</a>"));
 
         // PDF with bad content returns empty or fallback text instead of throwing
-        Object pdf = invokeInstance(
-                svc,
-                "extractEntryBytesAsText",
-                new Class<?>[]{String.class, String.class, byte[].class, int.class},
-                "a.pdf",
-                "pdf",
-                "bad".getBytes(StandardCharsets.UTF_8),
-                100
-        );
+        Object pdf = invokeInstance(svc, "extractEntryBytesAsText", new Class<?>[]{String.class, String.class, byte[].class, int.class}, "a.pdf", "pdf", "bad".getBytes(StandardCharsets.UTF_8), 100);
         assertNotNull(pdf);
 
         // Fallback returns the text as-is
-        Object fallback = invokeInstance(
-                svc,
-                "extractEntryBytesAsText",
-                new Class<?>[]{String.class, String.class, byte[].class, int.class},
-                "a.bin",
-                "bin",
-                "fallback".getBytes(StandardCharsets.UTF_8),
-                100
-        );
+        Object fallback = invokeInstance(svc, "extractEntryBytesAsText", new Class<?>[]{String.class, String.class, byte[].class, int.class}, "a.bin", "bin", "fallback".getBytes(StandardCharsets.UTF_8), 100);
         assertNotNull(fallback);
     }
 
@@ -901,36 +597,14 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
 
         Object counters = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> meta = new LinkedHashMap<>();
-        Object outTxt = invokeInstance(
-                svc,
-                "extract7zFromPath",
-                new Class<?>[]{Path.class, String.class, int.class, int.class, Map.class, counters.getClass(), long.class},
-                p,
-                "traversal.7z",
-                0,
-                1000,
-                meta,
-                counters,
-                System.nanoTime()
-        );
+        Object outTxt = invokeInstance(svc, "extract7zFromPath", new Class<?>[]{Path.class, String.class, int.class, int.class, Map.class, counters.getClass(), long.class}, p, "traversal.7z", 0, 1000, meta, counters, System.nanoTime());
         assertTrue(String.valueOf(outTxt).contains("ok7z"));
         assertTrue(((Number) getField(counters, "pathTraversalDroppedCount")).longValue() >= 1L);
 
         setField(svc, "archiveMaxEntries", 1);
         Object countersLimit = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> metaLimit = new LinkedHashMap<>();
-        invokeInstance(
-                svc,
-                "extract7zFromPath",
-                new Class<?>[]{Path.class, String.class, int.class, int.class, Map.class, countersLimit.getClass(), long.class},
-                p,
-                "limit.7z",
-                0,
-                1000,
-                metaLimit,
-                countersLimit,
-                System.nanoTime()
-        );
+        invokeInstance(svc, "extract7zFromPath", new Class<?>[]{Path.class, String.class, int.class, int.class, Map.class, countersLimit.getClass(), long.class}, p, "limit.7z", 0, 1000, metaLimit, countersLimit, System.nanoTime());
         assertEquals("ENTRY_COUNT_LIMIT", String.valueOf(getField(countersLimit, "truncatedReason")));
     }
 
@@ -996,47 +670,17 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         Map<String, Object> archiveMetaUnknown = new LinkedHashMap<>();
         List<Map<String, Object>> filesUnknown = new ArrayList<>();
         Path outUnknown = Files.createTempDirectory("exp-unknown-");
-        invokeInstance(
-                svc,
-                "expandArchiveStreamToDisk",
-                new Class<?>[]{java.io.InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersUnknown.getClass(), long.class, List.class},
-                new ByteArrayInputStream("plain-body".getBytes(StandardCharsets.UTF_8)),
-                "blob.bin",
-                "",
-                0,
-                outUnknown,
-                archiveMetaUnknown,
-                countersUnknown,
-                System.nanoTime(),
-                filesUnknown
-        );
+        invokeInstance(svc, "expandArchiveStreamToDisk", new Class<?>[]{java.io.InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersUnknown.getClass(), long.class, List.class}, new ByteArrayInputStream("plain-body".getBytes(StandardCharsets.UTF_8)), "blob.bin", "", 0, outUnknown, archiveMetaUnknown, countersUnknown, System.nanoTime(), filesUnknown);
         assertFalse(filesUnknown.isEmpty());
         assertEquals("blob.bin", String.valueOf(filesUnknown.get(0).get("path")));
 
-        byte[] zip = zipBytes(List.of(
-                Map.entry("../evil.txt", "x".getBytes(StandardCharsets.UTF_8)),
-                Map.entry("ok.txt", "ok".getBytes(StandardCharsets.UTF_8)),
-                Map.entry("more.txt", "more".getBytes(StandardCharsets.UTF_8))
-        ));
+        byte[] zip = zipBytes(List.of(Map.entry("../evil.txt", "x".getBytes(StandardCharsets.UTF_8)), Map.entry("ok.txt", "ok".getBytes(StandardCharsets.UTF_8)), Map.entry("more.txt", "more".getBytes(StandardCharsets.UTF_8))));
         setField(svc, "archiveMaxEntries", 1);
         Object countersZip = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> archiveMetaZip = new LinkedHashMap<>();
         List<Map<String, Object>> filesZip = new ArrayList<>();
         Path outZip = Files.createTempDirectory("exp-zip-");
-        invokeInstance(
-                svc,
-                "expandArchiveStreamToDisk",
-                new Class<?>[]{java.io.InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersZip.getClass(), long.class, List.class},
-                new ByteArrayInputStream(zip),
-                "a.zip",
-                "",
-                0,
-                outZip,
-                archiveMetaZip,
-                countersZip,
-                System.nanoTime(),
-                filesZip
-        );
+        invokeInstance(svc, "expandArchiveStreamToDisk", new Class<?>[]{java.io.InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersZip.getClass(), long.class, List.class}, new ByteArrayInputStream(zip), "a.zip", "", 0, outZip, archiveMetaZip, countersZip, System.nanoTime(), filesZip);
         assertTrue(((Number) getField(countersZip, "pathTraversalDroppedCount")).longValue() >= 1L);
         assertEquals("ENTRY_COUNT_LIMIT", String.valueOf(getField(countersZip, "truncatedReason")));
     }
@@ -1070,19 +714,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         Map<String, Object> archiveMeta = new LinkedHashMap<>();
         List<Map<String, Object>> files = new ArrayList<>();
         Path outDir = Files.createTempDirectory("exp-7z-");
-        invokeInstance(
-                svc,
-                "expand7zToDisk",
-                new Class<?>[]{Path.class, String.class, int.class, Path.class, Map.class, counters.getClass(), long.class, List.class},
-                seven,
-                "",
-                0,
-                outDir,
-                archiveMeta,
-                counters,
-                System.nanoTime(),
-                files
-        );
+        invokeInstance(svc, "expand7zToDisk", new Class<?>[]{Path.class, String.class, int.class, Path.class, Map.class, counters.getClass(), long.class, List.class}, seven, "", 0, outDir, archiveMeta, counters, System.nanoTime(), files);
         assertEquals("7z", String.valueOf(archiveMeta.get("archiveType")));
         assertTrue(((Number) getField(counters, "pathTraversalDroppedCount")).longValue() >= 1L);
         assertEquals("ENTRY_COUNT_LIMIT", String.valueOf(getField(counters, "truncatedReason")));
@@ -1117,10 +749,8 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
     @Test
     void extractPdfImages_shouldCoverXObjectEmbeddedNoneAndRenderSkipped() throws Exception {
         DerivedUploadStorageService storage = Mockito.mock(DerivedUploadStorageService.class);
-        Mockito.when(storage.saveDerivedImage(Mockito.any(byte[].class), Mockito.anyString(), Mockito.any(), Mockito.any()))
-                .thenReturn(Map.of("path", "/tmp/img.png"));
-        Mockito.when(storage.buildPlaceholder(Mockito.anyInt(), Mockito.anyMap()))
-                .thenAnswer(inv -> Map.of("placeholder", "[[IMAGE_" + inv.getArgument(0) + "]]"));
+        Mockito.when(storage.saveDerivedImage(Mockito.any(byte[].class), Mockito.anyString(), Mockito.any(), Mockito.any())).thenReturn(Map.of("path", "/tmp/img.png"));
+        Mockito.when(storage.buildPlaceholder(Mockito.anyInt(), Mockito.anyMap())).thenAnswer(inv -> Map.of("placeholder", "[[IMAGE_" + inv.getArgument(0) + "]]"));
         Object svc = new FileAssetExtractionAsyncService(null, null, null, null, null, null, null, storage);
         setField(svc, "pdfRenderMaxPages", 2);
         setField(svc, "pdfRenderDpi", 96);
@@ -1128,16 +758,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         Object budget = newBudget(10, 10 * 1024 * 1024L);
         Path withImage = createPdfWithImage();
         Map<String, Object> meta1 = new LinkedHashMap<>();
-        Object out1 = invokeInstance(
-                svc,
-                "extractPdfImages",
-                new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()},
-                withImage,
-                meta1,
-                1L,
-                "",
-                budget
-        );
+        Object out1 = invokeInstance(svc, "extractPdfImages", new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()}, withImage, meta1, 1L, "", budget);
         assertTrue(out1 instanceof List<?>);
         assertFalse(((List<?>) out1).isEmpty());
         assertEquals("PDF_XOBJECT", String.valueOf(meta1.get("imagesExtractionMode")));
@@ -1149,30 +770,12 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         }
         setField(svc, "pdfRenderMaxPages", 0);
         Map<String, Object> meta2 = new LinkedHashMap<>();
-        Object out2 = invokeInstance(
-                svc,
-                "extractPdfImages",
-                new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()},
-                blank,
-                meta2,
-                2L,
-                "",
-                newBudget(10, 10 * 1024 * 1024L)
-        );
+        Object out2 = invokeInstance(svc, "extractPdfImages", new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()}, blank, meta2, 2L, "", newBudget(10, 10 * 1024 * 1024L));
         assertTrue(((List<?>) out2).isEmpty());
         assertEquals("PDF_RENDER_SKIPPED", String.valueOf(meta2.get("imagesExtractionMode")));
 
         Map<String, Object> meta3 = new LinkedHashMap<>();
-        Object out3 = invokeInstance(
-                svc,
-                "extractPdfImages",
-                new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()},
-                blank,
-                meta3,
-                3L,
-                "has text",
-                newBudget(10, 10 * 1024 * 1024L)
-        );
+        Object out3 = invokeInstance(svc, "extractPdfImages", new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()}, blank, meta3, 3L, "has text", newBudget(10, 10 * 1024 * 1024L));
         assertTrue(((List<?>) out3).isEmpty());
         assertEquals("EMBEDDED_NONE", String.valueOf(meta3.get("imagesExtractionMode")));
     }
@@ -1181,10 +784,8 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
     void extractMobiImagesWithTika_shouldCoverZipFallbackAndEmbeddedNone() throws Exception {
         DerivedUploadStorageService storage = Mockito.mock(DerivedUploadStorageService.class);
         Mockito.when(storage.getMaxImageBytes()).thenReturn(5 * 1024 * 1024L);
-        Mockito.when(storage.saveDerivedImage(Mockito.any(byte[].class), Mockito.anyString(), Mockito.any(), Mockito.any()))
-                .thenReturn(Map.of("path", "/tmp/mobi.png"));
-        Mockito.when(storage.buildPlaceholder(Mockito.anyInt(), Mockito.anyMap()))
-                .thenAnswer(inv -> Map.of("placeholder", "[[IMAGE_" + inv.getArgument(0) + "]]"));
+        Mockito.when(storage.saveDerivedImage(Mockito.any(byte[].class), Mockito.anyString(), Mockito.any(), Mockito.any())).thenReturn(Map.of("path", "/tmp/mobi.png"));
+        Mockito.when(storage.buildPlaceholder(Mockito.anyInt(), Mockito.anyMap())).thenAnswer(inv -> Map.of("placeholder", "[[IMAGE_" + inv.getArgument(0) + "]]"));
         Object svc = new FileAssetExtractionAsyncService(null, null, null, null, null, null, null, storage);
         Object budget = newBudget(10, 10 * 1024 * 1024L);
 
@@ -1193,15 +794,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         Path mobiZip = Files.createTempFile("mobi-zip-", ".mobi");
         Files.write(mobiZip, zipMobi);
         Map<String, Object> meta1 = new LinkedHashMap<>();
-        Object out1 = invokeInstance(
-                svc,
-                "extractMobiImagesWithTika",
-                new Class<?>[]{Path.class, Map.class, Long.class, budget.getClass()},
-                mobiZip,
-                meta1,
-                1L,
-                budget
-        );
+        Object out1 = invokeInstance(svc, "extractMobiImagesWithTika", new Class<?>[]{Path.class, Map.class, Long.class, budget.getClass()}, mobiZip, meta1, 1L, budget);
         assertTrue(out1 instanceof List<?>);
         assertFalse(((List<?>) out1).isEmpty());
         assertEquals("MOBI_ZIP", String.valueOf(meta1.get("imagesExtractionMode")));
@@ -1210,15 +803,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         Path mobiPlain = Files.createTempFile("mobi-no-image-", ".mobi");
         Files.write(mobiPlain, zipNoImage);
         Map<String, Object> meta2 = new LinkedHashMap<>();
-        Object out2 = invokeInstance(
-                svc,
-                "extractMobiImagesWithTika",
-                new Class<?>[]{Path.class, Map.class, Long.class, budget.getClass()},
-                mobiPlain,
-                meta2,
-                2L,
-                newBudget(10, 10 * 1024 * 1024L)
-        );
+        Object out2 = invokeInstance(svc, "extractMobiImagesWithTika", new Class<?>[]{Path.class, Map.class, Long.class, budget.getClass()}, mobiPlain, meta2, 2L, newBudget(10, 10 * 1024 * 1024L));
         assertTrue(((List<?>) out2).isEmpty());
         assertEquals("EMBEDDED_NONE", String.valueOf(meta2.get("imagesExtractionMode")));
     }
@@ -1226,11 +811,8 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
     @Test
     void extractPdfImages_shouldCoverXObjectSaveNullAndRenderWithNullBudget() throws Exception {
         DerivedUploadStorageService storage = Mockito.mock(DerivedUploadStorageService.class);
-        Mockito.when(storage.saveDerivedImage(Mockito.any(byte[].class), Mockito.anyString(), Mockito.any(), Mockito.any()))
-                .thenReturn(null)
-                .thenReturn(Map.of("path", "/tmp/pdf-render-null-budget.png"));
-        Mockito.when(storage.buildPlaceholder(Mockito.anyInt(), Mockito.anyMap()))
-                .thenAnswer(inv -> Map.of("placeholder", "[[IMAGE_" + inv.getArgument(0) + "]]"));
+        Mockito.when(storage.saveDerivedImage(Mockito.any(byte[].class), Mockito.anyString(), Mockito.any(), Mockito.any())).thenReturn(null).thenReturn(Map.of("path", "/tmp/pdf-render-null-budget.png"));
+        Mockito.when(storage.buildPlaceholder(Mockito.anyInt(), Mockito.anyMap())).thenAnswer(inv -> Map.of("placeholder", "[[IMAGE_" + inv.getArgument(0) + "]]"));
         Object svc = new FileAssetExtractionAsyncService(null, null, null, null, null, null, null, storage);
         setField(svc, "pdfRenderMaxPages", 1);
         setField(svc, "pdfRenderDpi", 96);
@@ -1238,16 +820,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
 
         Path withImage = createPdfWithImage();
         Map<String, Object> meta1 = new LinkedHashMap<>();
-        Object out1 = invokeInstance(
-                svc,
-                "extractPdfImages",
-                new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()},
-                withImage,
-                meta1,
-                12L,
-                "has text",
-                budget
-        );
+        Object out1 = invokeInstance(svc, "extractPdfImages", new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()}, withImage, meta1, 12L, "has text", budget);
         assertTrue(((List<?>) out1).isEmpty());
         assertEquals("EMBEDDED_NONE", String.valueOf(meta1.get("imagesExtractionMode")));
 
@@ -1257,16 +830,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
             doc.save(blank.toFile());
         }
         Map<String, Object> meta2 = new LinkedHashMap<>();
-        Object out2 = invokeInstance(
-                svc,
-                "extractPdfImages",
-                new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()},
-                blank,
-                meta2,
-                13L,
-                "",
-                null
-        );
+        Object out2 = invokeInstance(svc, "extractPdfImages", new Class<?>[]{Path.class, Map.class, Long.class, String.class, budget.getClass()}, blank, meta2, 13L, "", null);
         assertFalse(((List<?>) out2).isEmpty());
         assertEquals("PDF_RENDER", String.valueOf(meta2.get("imagesExtractionMode")));
     }
@@ -1274,68 +838,33 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
     @Test
     void extractMobiImagesWithTika_shouldCoverTikaEmbeddedAndEmbeddedExtractorSaveNull() throws Exception {
         DerivedUploadStorageService storage = Mockito.mock(DerivedUploadStorageService.class);
-        Mockito.when(storage.saveDerivedImage(Mockito.any(byte[].class), Mockito.anyString(), Mockito.any(), Mockito.any()))
-                .thenReturn(Map.of("path", "/tmp/mobi-tika.png"))
-                .thenReturn(null);
-        Mockito.when(storage.buildPlaceholder(Mockito.anyInt(), Mockito.anyMap()))
-                .thenAnswer(inv -> Map.of("placeholder", "[[IMAGE_" + inv.getArgument(0) + "]]"));
+        Mockito.when(storage.saveDerivedImage(Mockito.any(byte[].class), Mockito.anyString(), Mockito.any(), Mockito.any())).thenReturn(Map.of("path", "/tmp/mobi-tika.png")).thenReturn(null);
+        Mockito.when(storage.buildPlaceholder(Mockito.anyInt(), Mockito.anyMap())).thenAnswer(inv -> Map.of("placeholder", "[[IMAGE_" + inv.getArgument(0) + "]]"));
         Object svc = new FileAssetExtractionAsyncService(null, null, null, null, null, null, null, storage);
         Object budget = newBudget(10, 10 * 1024 * 1024L);
         byte[] png = tinyPngBytes();
 
-        try (MockedConstruction<AutoDetectParser> mocked = Mockito.mockConstruction(
-                AutoDetectParser.class,
-                (mock, context) -> Mockito.doAnswer(inv -> {
-                    ParseContext parseContext = inv.getArgument(3);
-                    Object extractor = parseContext.get(
-                            Class.forName("org.apache.tika.extractor.EmbeddedDocumentExtractor")
-                    );
-                    Method parseEmbedded = extractor.getClass().getMethod(
-                            "parseEmbedded",
-                            InputStream.class,
-                            org.xml.sax.ContentHandler.class,
-                            Metadata.class,
-                            boolean.class
-                    );
-                    Metadata metadata = new Metadata();
-                    metadata.set(Metadata.CONTENT_TYPE, "image/png");
-                    metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, "cover.png");
-                    parseEmbedded.invoke(extractor, new ByteArrayInputStream(png), inv.getArgument(1), metadata, false);
-                    return null;
-                }).when(mock).parse(
-                        Mockito.any(InputStream.class),
-                        Mockito.any(org.xml.sax.ContentHandler.class),
-                        Mockito.any(Metadata.class),
-                        Mockito.any(ParseContext.class)
-                )
-        )) {
+        try (MockedConstruction<AutoDetectParser> mocked = Mockito.mockConstruction(AutoDetectParser.class, (mock, context) -> Mockito.doAnswer(inv -> {
+            ParseContext parseContext = inv.getArgument(3);
+            Object extractor = parseContext.get(Class.forName("org.apache.tika.extractor.EmbeddedDocumentExtractor"));
+            Method parseEmbedded = extractor.getClass().getMethod("parseEmbedded", InputStream.class, org.xml.sax.ContentHandler.class, Metadata.class, boolean.class);
+            Metadata metadata = new Metadata();
+            metadata.set(Metadata.CONTENT_TYPE, "image/png");
+            metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, "cover.png");
+            parseEmbedded.invoke(extractor, new ByteArrayInputStream(png), inv.getArgument(1), metadata, false);
+            return null;
+        }).when(mock).parse(Mockito.any(InputStream.class), Mockito.any(org.xml.sax.ContentHandler.class), Mockito.any(Metadata.class), Mockito.any(ParseContext.class)))) {
             Path mobi1 = Files.createTempFile("mobi-tika-embedded-", ".mobi");
             Files.writeString(mobi1, "mobi-body-1");
             Map<String, Object> meta1 = new LinkedHashMap<>();
-            Object out1 = invokeInstance(
-                    svc,
-                    "extractMobiImagesWithTika",
-                    new Class<?>[]{Path.class, Map.class, Long.class, budget.getClass()},
-                    mobi1,
-                    meta1,
-                    21L,
-                    budget
-            );
+            Object out1 = invokeInstance(svc, "extractMobiImagesWithTika", new Class<?>[]{Path.class, Map.class, Long.class, budget.getClass()}, mobi1, meta1, 21L, budget);
             assertFalse(((List<?>) out1).isEmpty());
             assertEquals("MOBI_TIKA_EMBEDDED", String.valueOf(meta1.get("imagesExtractionMode")));
 
             Path mobi2 = Files.createTempFile("mobi-tika-save-null-", ".mobi");
             Files.writeString(mobi2, "mobi-body-2");
             Map<String, Object> meta2 = new LinkedHashMap<>();
-            Object out2 = invokeInstance(
-                    svc,
-                    "extractMobiImagesWithTika",
-                    new Class<?>[]{Path.class, Map.class, Long.class, budget.getClass()},
-                    mobi2,
-                    meta2,
-                    22L,
-                    newBudget(10, 10 * 1024 * 1024L)
-            );
+            Object out2 = invokeInstance(svc, "extractMobiImagesWithTika", new Class<?>[]{Path.class, Map.class, Long.class, budget.getClass()}, mobi2, meta2, 22L, newBudget(10, 10 * 1024 * 1024L));
             assertTrue(((List<?>) out2).isEmpty());
             assertEquals("EMBEDDED_NONE", String.valueOf(meta2.get("imagesExtractionMode")));
             assertEquals(2, mocked.constructed().size());
@@ -1352,35 +881,13 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         setField(svc, "archiveMaxTotalMillis", 15000L);
 
         Object countersPlain = newInner("ArchiveCounters", new Class<?>[]{});
-        Object resultPlain = invokeInstance(
-                svc,
-                "extractArchiveFromStream",
-                new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, countersPlain.getClass(), long.class},
-                new ByteArrayInputStream("abcdef".getBytes(StandardCharsets.UTF_8)),
-                "a.txt",
-                0,
-                3,
-                new LinkedHashMap<>(),
-                countersPlain,
-                System.nanoTime()
-        );
+        Object resultPlain = invokeInstance(svc, "extractArchiveFromStream", new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, countersPlain.getClass(), long.class}, new ByteArrayInputStream("abcdef".getBytes(StandardCharsets.UTF_8)), "a.txt", 0, 3, new LinkedHashMap<>(), countersPlain, System.nanoTime());
         assertEquals("", String.valueOf(resultPlain));
 
         setField(svc, "archiveMaxTotalBytes", 1L);
         Object counters7z = newInner("ArchiveCounters", new Class<?>[]{});
         byte[] seven = sevenZBytes(List.of(Map.entry("a.txt", "hello".getBytes(StandardCharsets.UTF_8))));
-        Object out = invokeInstance(
-                svc,
-                "extractArchiveFromStream",
-                new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, counters7z.getClass(), long.class},
-                new ByteArrayInputStream(seven),
-                "a.7z",
-                0,
-                100,
-                new LinkedHashMap<>(),
-                counters7z,
-                System.nanoTime()
-        );
+        Object out = invokeInstance(svc, "extractArchiveFromStream", new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, counters7z.getClass(), long.class}, new ByteArrayInputStream(seven), "a.7z", 0, 100, new LinkedHashMap<>(), counters7z, System.nanoTime());
         assertEquals("", String.valueOf(out));
         String reason = String.valueOf(getField(counters7z, "truncatedReason"));
         assertTrue(reason == null || reason.equals("null") || reason.equals("TOTAL_BYTES_LIMIT"));
@@ -1397,18 +904,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
 
         Object counters = newInner("ArchiveCounters", new Class<?>[]{});
         setField(counters, "truncatedReason", "PRESET");
-        Object out = invokeInstance(
-                svc,
-                "extractArchiveFromStream",
-                new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, counters.getClass(), long.class},
-                new ByteArrayInputStream("body".getBytes(StandardCharsets.UTF_8)),
-                "note.txt",
-                0,
-                200,
-                new LinkedHashMap<>(),
-                counters,
-                System.nanoTime() - java.time.Duration.ofMillis(10).toNanos()
-        );
+        Object out = invokeInstance(svc, "extractArchiveFromStream", new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, counters.getClass(), long.class}, new ByteArrayInputStream("body".getBytes(StandardCharsets.UTF_8)), "note.txt", 0, 200, new LinkedHashMap<>(), counters, System.nanoTime() - java.time.Duration.ofMillis(10).toNanos());
         assertEquals("", String.valueOf(out));
         assertEquals("PRESET", String.valueOf(getField(counters, "truncatedReason")));
     }
@@ -1424,40 +920,14 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
 
         Object countersNull = newInner("ArchiveCounters", new Class<?>[]{});
         List<Map<String, Object>> filesNull = new ArrayList<>();
-        invokeInstance(
-                svc,
-                "expandArchiveStreamToDisk",
-                new Class<?>[]{InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersNull.getClass(), long.class, List.class},
-                new ByteArrayInputStream("plain".getBytes(StandardCharsets.UTF_8)),
-                "../evil.bin",
-                "",
-                0,
-                Files.createTempDirectory("exp-safe-"),
-                new LinkedHashMap<>(),
-                countersNull,
-                System.nanoTime(),
-                filesNull
-        );
+        invokeInstance(svc, "expandArchiveStreamToDisk", new Class<?>[]{InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersNull.getClass(), long.class, List.class}, new ByteArrayInputStream("plain".getBytes(StandardCharsets.UTF_8)), "../evil.bin", "", 0, Files.createTempDirectory("exp-safe-"), new LinkedHashMap<>(), countersNull, System.nanoTime(), filesNull);
         assertTrue(filesNull.isEmpty());
 
         Object counters7z = newInner("ArchiveCounters", new Class<?>[]{});
         Map<String, Object> archiveMeta = new LinkedHashMap<>();
         List<Map<String, Object>> files7z = new ArrayList<>();
         byte[] seven = sevenZBytes(List.of(Map.entry("ok.txt", "hello7".getBytes(StandardCharsets.UTF_8))));
-        invokeInstance(
-                svc,
-                "expandArchiveStreamToDisk",
-                new Class<?>[]{InputStream.class, String.class, String.class, int.class, Path.class, Map.class, counters7z.getClass(), long.class, List.class},
-                new ByteArrayInputStream(seven),
-                "a.7z",
-                "vp/",
-                0,
-                Files.createTempDirectory("exp-seven-"),
-                archiveMeta,
-                counters7z,
-                System.nanoTime(),
-                files7z
-        );
+        invokeInstance(svc, "expandArchiveStreamToDisk", new Class<?>[]{InputStream.class, String.class, String.class, int.class, Path.class, Map.class, counters7z.getClass(), long.class, List.class}, new ByteArrayInputStream(seven), "a.7z", "vp/", 0, Files.createTempDirectory("exp-seven-"), archiveMeta, counters7z, System.nanoTime(), files7z);
         assertFalse(files7z.isEmpty());
         assertEquals("7z", String.valueOf(archiveMeta.get("archiveType")));
     }
@@ -1474,20 +944,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         Object countersTimeout = newInner("ArchiveCounters", new Class<?>[]{});
         setField(countersTimeout, "truncatedReason", "PRESET");
         List<Map<String, Object>> timeoutFiles = new ArrayList<>();
-        invokeInstance(
-                svc,
-                "expandArchiveStreamToDisk",
-                new Class<?>[]{InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersTimeout.getClass(), long.class, List.class},
-                new ByteArrayInputStream("timeout".getBytes(StandardCharsets.UTF_8)),
-                "timeout.txt",
-                "",
-                0,
-                Files.createTempDirectory("exp-timeout-"),
-                new LinkedHashMap<>(),
-                countersTimeout,
-                System.nanoTime() - java.time.Duration.ofMillis(10).toNanos(),
-                timeoutFiles
-        );
+        invokeInstance(svc, "expandArchiveStreamToDisk", new Class<?>[]{InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersTimeout.getClass(), long.class, List.class}, new ByteArrayInputStream("timeout".getBytes(StandardCharsets.UTF_8)), "timeout.txt", "", 0, Files.createTempDirectory("exp-timeout-"), new LinkedHashMap<>(), countersTimeout, System.nanoTime() - java.time.Duration.ofMillis(10).toNanos(), timeoutFiles);
         assertTrue(timeoutFiles.isEmpty());
         assertEquals("PRESET", String.valueOf(getField(countersTimeout, "truncatedReason")));
 
@@ -1497,20 +954,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         List<Map<String, Object>> files = new ArrayList<>();
         byte[] zipped = zipBytes(List.of(Map.entry("a.txt", "GZIP-ZIP-CONTENT".getBytes(StandardCharsets.UTF_8))));
         byte[] tgz = gzipBytes(zipped);
-        invokeInstance(
-                svc,
-                "expandArchiveStreamToDisk",
-                new Class<?>[]{InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersTgz.getClass(), long.class, List.class},
-                new ByteArrayInputStream(tgz),
-                "bundle.zip.gz",
-                "vp/",
-                0,
-                Files.createTempDirectory("exp-tgz-"),
-                archiveMeta,
-                countersTgz,
-                System.nanoTime(),
-                files
-        );
+        invokeInstance(svc, "expandArchiveStreamToDisk", new Class<?>[]{InputStream.class, String.class, String.class, int.class, Path.class, Map.class, countersTgz.getClass(), long.class, List.class}, new ByteArrayInputStream(tgz), "bundle.zip.gz", "vp/", 0, Files.createTempDirectory("exp-tgz-"), archiveMeta, countersTgz, System.nanoTime(), files);
         assertFalse(files.isEmpty());
         String archiveType = String.valueOf(archiveMeta.get("archiveType"));
         assertFalse(archiveType == null || archiveType.equals("null") || archiveType.isBlank());
@@ -1530,34 +974,12 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         byte[] innerZip = zipBytes(List.of(Map.entry("a.txt", "inner-text".getBytes(StandardCharsets.UTF_8))));
         byte[] outer7z = sevenZBytes(List.of(Map.entry("payload", innerZip)));
         Object countersNested = newInner("ArchiveCounters", new Class<?>[]{});
-        String nested = String.valueOf(invokeInstance(
-                svc,
-                "extract7zFromBytes",
-                new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersNested.getClass(), long.class},
-                outer7z,
-                "outer.7z",
-                0,
-                1000,
-                new LinkedHashMap<>(),
-                countersNested,
-                System.nanoTime()
-        ));
+        String nested = String.valueOf(invokeInstance(svc, "extract7zFromBytes", new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersNested.getClass(), long.class}, outer7z, "outer.7z", 0, 1000, new LinkedHashMap<>(), countersNested, System.nanoTime()));
         assertTrue(nested.contains("inner-text"));
 
         byte[] txt7z = sevenZBytes(List.of(Map.entry("b.txt", "abcdef".getBytes(StandardCharsets.UTF_8))));
         Object countersLimit = newInner("ArchiveCounters", new Class<?>[]{});
-        String limited = String.valueOf(invokeInstance(
-                svc,
-                "extract7zFromBytes",
-                new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersLimit.getClass(), long.class},
-                txt7z,
-                "short.7z",
-                0,
-                1,
-                new LinkedHashMap<>(),
-                countersLimit,
-                System.nanoTime()
-        ));
+        String limited = String.valueOf(invokeInstance(svc, "extract7zFromBytes", new Class<?>[]{byte[].class, String.class, int.class, int.class, Map.class, countersLimit.getClass(), long.class}, txt7z, "short.7z", 0, 1, new LinkedHashMap<>(), countersLimit, System.nanoTime()));
         assertFalse(limited.isBlank());
         assertEquals("TEXT_CHAR_LIMIT", String.valueOf(getField(countersLimit, "truncatedReason")));
     }
@@ -1565,9 +987,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
     protected static Path docxWithImagePath() throws Exception {
         Path p = Files.createTempFile("with-img-", ".docx");
         byte[] png = tinyPngBytes();
-        try (org.apache.poi.xwpf.usermodel.XWPFDocument doc = new org.apache.poi.xwpf.usermodel.XWPFDocument();
-             OutputStream os = Files.newOutputStream(p);
-             ByteArrayInputStream bis = new ByteArrayInputStream(png)) {
+        try (org.apache.poi.xwpf.usermodel.XWPFDocument doc = new org.apache.poi.xwpf.usermodel.XWPFDocument(); OutputStream os = Files.newOutputStream(p); ByteArrayInputStream bis = new ByteArrayInputStream(png)) {
             var run = doc.createParagraph().createRun();
             run.addPicture(bis, Document.PICTURE_TYPE_PNG, "img.png", Units.toEMU(16), Units.toEMU(16));
             doc.write(os);
@@ -1618,10 +1038,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
     protected static Path epubWithImagePath() throws Exception {
         Path p = Files.createTempFile("with-img-", ".epub");
         byte[] png = tinyPngBytes();
-        byte[] epub = zipBytes(List.of(
-                Map.entry("images/cover.png", png),
-                Map.entry("text/ch1.txt", "chapter".getBytes(StandardCharsets.UTF_8))
-        ));
+        byte[] epub = zipBytes(List.of(Map.entry("images/cover.png", png), Map.entry("text/ch1.txt", "chapter".getBytes(StandardCharsets.UTF_8))));
         Files.write(p, epub);
         return p;
     }
