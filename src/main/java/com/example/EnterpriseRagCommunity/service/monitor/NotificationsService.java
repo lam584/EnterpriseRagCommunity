@@ -5,14 +5,13 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
  * 站内通知服务：面向当前登录用户。
  */
 public interface NotificationsService {
 
-    Page<NotificationsEntity> listMyNotifications(Optional<String> type, Optional<Boolean> unreadOnly, Pageable pageable);
+    Page<NotificationsEntity> listMyNotifications(String type, Boolean unreadOnly, Pageable pageable);
 
     long countMyUnread();
 

@@ -376,17 +376,32 @@ public class LlmImageUploadService {
         try {
             Path root = Paths.get(uploadRoot).toAbsolutePath().normalize();
 
-            // Support values persisted as absolute disk path, /uploads/... URL path, or relative path.
-            Path candidate;
             String p = localPath == null ? "" : localPath.trim();
-            if (p.startsWith("/uploads/")) {
-                candidate = root.resolve(p.substring("/uploads/".length())).normalize();
-            } else if (p.startsWith("uploads/")) {
-                candidate = root.resolve(p.substring("uploads/".length())).normalize();
-            } else {
-                Path raw = Paths.get(p);
-                candidate = raw.isAbsolute() ? raw.toAbsolutePath().normalize() : root.resolve(raw).normalize();
+            if (p.isEmpty() || p.indexOf('\0') >= 0 || p.startsWith("http://") || p.startsWith("https://")) {
+                return null;
             }
+
+            // Only allow upload-root-relative paths to avoid path traversal from user-provided paths.
+            String normalizedInput = p.replace('\\', '/');
+            String relative;
+            if (normalizedInput.startsWith("/uploads/")) {
+                relative = normalizedInput.substring("/uploads/".length());
+            } else if (normalizedInput.startsWith("uploads/")) {
+                relative = normalizedInput.substring("uploads/".length());
+            } else {
+                while (normalizedInput.startsWith("/")) {
+                    normalizedInput = normalizedInput.substring(1);
+                }
+                relative = normalizedInput;
+            }
+
+            Path relativePath = Paths.get(relative).normalize();
+            if (relativePath.isAbsolute() || relativePath.startsWith("..")) {
+                logger.warn("Rejected local image path with traversal risk: {}", localPath);
+                return null;
+            }
+
+            Path candidate = root.resolve(relativePath).normalize();
 
             if (!candidate.startsWith(root)) {
                 logger.warn("Rejected local image path outside upload root: {}", localPath);

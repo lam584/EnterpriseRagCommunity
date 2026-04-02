@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
@@ -54,34 +53,30 @@ public class AiEmbeddingService {
         }
 
         String providerKey = provider == null ? (providerId == null ? null : providerId.trim()) : provider.id();
-        String inputFinal = input;
-        String modelFinal = model;
-        String baseUrlFinal = baseUrl;
-        String apiKeyFinal = apiKey;
-        Map<String, String> extraHeadersFinal = extraHeaders;
+        String inputText = input;
         Integer connectTimeoutMsFinal = provider == null ? null : provider.connectTimeoutMs();
         Integer readTimeoutMsFinal = provider == null ? null : provider.readTimeoutMs();
 
         record EmbeddingCallResult(EmbeddingResult result, LlmCallQueueService.UsageMetrics usage) {}
 
         try {
-            String dedupKey = "input_sha256:" + sha256Hex(normalizeForDedup(inputFinal));
+            String dedupKey = "input_sha256:" + sha256Hex(normalizeForDedup(inputText));
             EmbeddingCallResult call = llmCallQueueService.callDedup(
                     taskType == null ? LlmQueueTaskType.EMBEDDING : taskType,
                     providerKey,
-                    modelFinal,
+                    model,
                     0,
                     dedupKey,
                     (task) -> {
                         try {
-                            task.reportInput("model: " + modelFinal + "\n\ninput:\n" + inputFinal);
+                            task.reportInput("model: " + model + "\n\ninput:\n" + inputText);
                         } catch (Exception ignore) {
                         }
-                        String endpoint = baseUrlFinal;
+                        String endpoint = baseUrl;
                         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
                         endpoint = endpoint + "/embeddings";
 
-                        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
+                        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
                         conn.setRequestMethod("POST");
                         Integer connectTimeoutMs = connectTimeoutMsFinal;
                         if (connectTimeoutMs == null || connectTimeoutMs <= 0) connectTimeoutMs = 10_000;
@@ -92,8 +87,8 @@ public class AiEmbeddingService {
                         conn.setDoOutput(true);
                         conn.setRequestProperty("Content-Type", "application/json");
                         boolean hasAuth = false;
-                        if (extraHeadersFinal != null && !extraHeadersFinal.isEmpty()) {
-                            for (Map.Entry<String, String> e : extraHeadersFinal.entrySet()) {
+                        if (extraHeaders != null && !extraHeaders.isEmpty()) {
+                            for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
                                 String k = e.getKey();
                                 String v = e.getValue();
                                 if (k == null || k.isBlank()) continue;
@@ -102,9 +97,9 @@ public class AiEmbeddingService {
                                 if ("authorization".equals(k.trim().toLowerCase(Locale.ROOT))) hasAuth = true;
                             }
                         }
-                        if (!hasAuth && apiKeyFinal != null && !apiKeyFinal.isBlank()) conn.setRequestProperty("Authorization", "Bearer " + apiKeyFinal);
+                        if (!hasAuth && apiKey != null && !apiKey.isBlank()) conn.setRequestProperty("Authorization", "Bearer " + apiKey);
 
-                        String body = buildBody(modelFinal, inputFinal);
+                        String body = buildBody(model, inputText);
                         try (OutputStream os = conn.getOutputStream()) {
                             os.write(body.getBytes(StandardCharsets.UTF_8));
                         }
@@ -152,7 +147,7 @@ public class AiEmbeddingService {
                         LlmCallQueueService.UsageMetrics usageMetrics = (promptTokens == null && totalTokens == null)
                                 ? null
                                 : new LlmCallQueueService.UsageMetrics(promptTokens, null, totalTokens, null);
-                        return new EmbeddingCallResult(new EmbeddingResult(vec, vec.length, modelFinal), usageMetrics);
+                        return new EmbeddingCallResult(new EmbeddingResult(vec, vec.length, model), usageMetrics);
                     },
                     (r) -> r == null ? null : r.usage()
             );

@@ -153,13 +153,12 @@ public class LlmQueueMonitorService {
         int win = windowSec == null ? 300 : Math.clamp(windowSec, 10, 3600);
         int runIn = limitRunning == null ? 50 : limitRunning;
         int pendIn = limitPending == null ? 200 : limitPending;
-        Integer doneIn = limitCompleted;
 
         int runLim = Math.clamp(Math.max(0, runIn), 0, MAX_LIMIT_RUNNING);
         int pendLim = Math.clamp(Math.max(0, pendIn), 0, MAX_LIMIT_PENDING);
         int defaultDoneLim = llmQueueProperties.getKeepCompleted();
         if (defaultDoneLim <= 0) defaultDoneLim = 200;
-        int doneLim = doneIn == null ? defaultDoneLim : doneIn;
+        int doneLim = limitCompleted == null ? defaultDoneLim : limitCompleted;
         doneLim = Math.clamp(doneLim, 1, MAX_LIMIT_COMPLETED);
 
         boolean stale = false;
@@ -184,7 +183,7 @@ public class LlmQueueMonitorService {
         out.setStale(stale);
         boolean truncated = runIn > MAX_LIMIT_RUNNING;
         if (pendIn > MAX_LIMIT_PENDING) truncated = true;
-        if (doneIn != null && doneIn > MAX_LIMIT_COMPLETED) truncated = true;
+        if (limitCompleted != null && limitCompleted > MAX_LIMIT_COMPLETED) truncated = true;
         out.setMaxConcurrent(snap.maxConcurrent());
         out.setRunningCount(snap.runningCount());
         out.setPendingCount(snap.pendingCount());

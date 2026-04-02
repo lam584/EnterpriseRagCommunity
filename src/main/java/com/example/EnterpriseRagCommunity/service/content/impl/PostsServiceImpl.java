@@ -226,8 +226,6 @@ public class PostsServiceImpl implements PostsService {
                     if (fileName.isBlank()) {
                         fileName = "file";
                     }
-                    if (fileName.length() > 512) {
-                    }
 
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();
                     pa.setPostId(post.getId());
@@ -703,8 +701,6 @@ public class PostsServiceImpl implements PostsService {
                     fileName = fileName.replaceAll("[\\\\/]+", "_");
                     if (fileName.isBlank()) {
                         fileName = "file";
-                    }
-                    if (fileName.length() > 512) {
                     }
 
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();

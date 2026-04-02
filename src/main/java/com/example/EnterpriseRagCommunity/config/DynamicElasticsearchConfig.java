@@ -54,13 +54,11 @@ public class DynamicElasticsearchConfig {
      * 刷新 RestClient，通常在配置变更后调用。
      * 这会关闭旧连接并创建新连接。
      */
-    public void refresh() {
+    public synchronized void refresh() {
         if (targetSource == null) {
-            restClient();
-        }
-        if (targetSource == null) {
-            log.warn("TargetSource is null, cannot refresh RestClient.");
-            return;
+            RestClient initialClient = createClient();
+            currentClient.set(initialClient);
+            this.targetSource = new HotSwappableTargetSource(initialClient);
         }
         log.info("Refreshing Elasticsearch RestClient...");
         RestClient newClient = createClient();

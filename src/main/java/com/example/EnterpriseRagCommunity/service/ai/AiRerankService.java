@@ -62,8 +62,6 @@ public class AiRerankService {
         List<String> docsFinal = documents == null ? List.of() : documents;
         Integer topNFinal = topN == null ? null : Math.max(1, topN);
         String instructFinal = (instruct == null || instruct.isBlank()) ? null : instruct.trim();
-        String apiKeyFinal = apiKeyResolved;
-        String baseUrlFinal = baseUrlResolved;
         final String rerankEndpointPathFinal = Objects.requireNonNullElse(
                 extractString(provider == null ? null : provider.metadata(), "rerankEndpointPath"),
                 "/compatible-api/v1/reranks"
@@ -89,14 +87,14 @@ public class AiRerankService {
                         } catch (Exception ignore) {
                         }
 
-                        boolean useDashscope = isDashscopeProvider(usedProviderId, baseUrlFinal);
+                        boolean useDashscope = isDashscopeProvider(usedProviderId, baseUrlResolved);
                         String upstreamRaw = null;
                         LlmCallQueueService.UsageMetrics usage = null;
                         String rawForParse = null;
                         if (useDashscope) {
                             upstreamRaw = dashscopeClient.rerankOnce(new DashscopeRerankClient.RerankRequest(
-                                    apiKeyFinal,
-                                    baseUrlFinal,
+                                    apiKeyResolved,
+                                    baseUrlResolved,
                                     modelFinal,
                                     queryFinal,
                                     docsFinal,
@@ -119,8 +117,8 @@ public class AiRerankService {
                             if (preferResponsesStyleRerank) {
                                 try {
                                     upstreamRaw = responsesStyleRerankClient.rerankOnce(new ResponsesStyleRerankClient.RerankRequest(
-                                            apiKeyFinal,
-                                            baseUrlFinal,
+                                            apiKeyResolved,
+                                            baseUrlResolved,
                                             rerankEndpointPathFinal,
                                             modelFinal,
                                             queryFinal,
@@ -147,8 +145,8 @@ public class AiRerankService {
                                 if (preferDashscopeCompat) {
                                     try {
                                         upstreamRaw = dashscopeCompatClient.rerankOnce(new DashscopeCompatRerankClient.RerankRequest(
-                                                apiKeyFinal,
-                                                baseUrlFinal,
+                                                apiKeyResolved,
+                                                baseUrlResolved,
                                                 rerankEndpointPathFinal,
                                                 modelFinal,
                                                 queryFinal,
@@ -175,8 +173,8 @@ public class AiRerankService {
                                     if (preferResponses) {
                                     upstreamRaw = rerankViaResponsesPromptOnce(
                                             openAiCompatClient,
-                                            apiKeyFinal,
-                                            resolveResponsesBaseUrl(baseUrlFinal, rerankEndpointPathFinal),
+                                            apiKeyResolved,
+                                            resolveResponsesBaseUrl(baseUrlResolved, rerankEndpointPathFinal),
                                             modelFinal,
                                             queryFinal,
                                             docsFinal,
@@ -191,8 +189,8 @@ public class AiRerankService {
                                     } else {
                                     try {
                                     upstreamRaw = localRerankClient.rerankOnce(new LocalRerankClient.RerankRequest(
-                                            apiKeyFinal,
-                                            baseUrlFinal,
+                                            apiKeyResolved,
+                                            baseUrlResolved,
                                             rerankEndpointPathFinal,
                                             modelFinal,
                                             queryFinal,
@@ -210,8 +208,8 @@ public class AiRerankService {
                                         try {
                                             upstreamRaw = rerankViaResponsesPromptOnce(
                                                     openAiCompatClient,
-                                                    apiKeyFinal,
-                                                    resolveResponsesBaseUrl(baseUrlFinal, rerankEndpointPathFinal),
+                                                    apiKeyResolved,
+                                                    resolveResponsesBaseUrl(baseUrlResolved, rerankEndpointPathFinal),
                                                     modelFinal,
                                                     queryFinal,
                                                     docsFinal,
@@ -227,8 +225,8 @@ public class AiRerankService {
                                             upstreamRaw = rerankViaChatPromptOnce(
                                                     openAiCompatClient,
                                                     usedProviderId,
-                                                    apiKeyFinal,
-                                                    baseUrlFinal,
+                                                    apiKeyResolved,
+                                                    baseUrlResolved,
                                                     modelFinal,
                                                     queryFinal,
                                                     docsFinal,
@@ -245,8 +243,8 @@ public class AiRerankService {
                                         upstreamRaw = rerankViaChatPromptOnce(
                                                 openAiCompatClient,
                                                 usedProviderId,
-                                                apiKeyFinal,
-                                                baseUrlFinal,
+                                                apiKeyResolved,
+                                                baseUrlResolved,
                                                 modelFinal,
                                                 queryFinal,
                                                 docsFinal,

@@ -183,8 +183,7 @@ public class AiProvidersConfigService {
 
     @Transactional(readOnly = true)
     public List<String> listEnabledProviderIds() {
-        String env = ENV_DEFAULT;
-        List<LlmProviderEntity> rows = llmProviderRepository.findByEnvAndEnabledTrueOrderByPriorityAscIdAsc(env);
+        List<LlmProviderEntity> rows = llmProviderRepository.findByEnvAndEnabledTrueOrderByPriorityAscIdAsc(ENV_DEFAULT);
         List<String> out = new ArrayList<>();
         if (!rows.isEmpty()) {
             Set<String> seen = new HashSet<>();

@@ -19,8 +19,7 @@ export interface GenerateTotpResponse {
 
 export interface CheckEnvResponse {
   exists: boolean;
-  content?: string;
-  error?: string;
+  message?: string;
 }
 
 export async function getSetupStatus(): Promise<SetupStatusResponse> {

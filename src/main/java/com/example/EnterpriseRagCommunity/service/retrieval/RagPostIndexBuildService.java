@@ -452,7 +452,7 @@ public class RagPostIndexBuildService {
         String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
-            URL url = new URL(endpoint + "/" + indexName.trim() + "/_delete_by_query?conflicts=proceed&refresh=true");
+            URL url = java.net.URI.create(endpoint + "/" + indexName.trim() + "/_delete_by_query?conflicts=proceed&refresh=true").toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);
@@ -483,7 +483,7 @@ public class RagPostIndexBuildService {
 
         try {
             String idx = URLEncoder.encode(indexName.trim(), StandardCharsets.UTF_8);
-            URL url = new URL(endpoint + "/" + idx + "?ignore_unavailable=true");
+            URL url = java.net.URI.create(endpoint + "/" + idx + "?ignore_unavailable=true").toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("DELETE");
             conn.setConnectTimeout(2000);

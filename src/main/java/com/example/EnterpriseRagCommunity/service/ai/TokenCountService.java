@@ -240,19 +240,18 @@ public class TokenCountService {
     private static String removeMarkerWordIgnoreCase(String text, String marker) {
         if (text == null || text.isBlank()) return text;
         if (marker == null || marker.isBlank()) return text;
-        String t = text;
         String m = marker.trim();
-        int first = indexOfIgnoreCase(t, m, 0);
-        if (first < 0) return t;
-        StringBuilder sb = new StringBuilder(t.length());
+        int first = indexOfIgnoreCase(text, m, 0);
+        if (first < 0) return text;
+        StringBuilder sb = new StringBuilder(text.length());
         int i = 0;
         while (true) {
-            int idx = indexOfIgnoreCase(t, m, i);
+            int idx = indexOfIgnoreCase(text, m, i);
             if (idx < 0) {
-                sb.append(t, i, t.length());
+                sb.append(text, i, text.length());
                 break;
             }
-            sb.append(t, i, idx);
+            sb.append(text, i, idx);
             i = idx + m.length();
         }
         return sb.toString();

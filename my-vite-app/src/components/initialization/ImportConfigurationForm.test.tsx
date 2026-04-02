@@ -1,5 +1,4 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import React from 'react';
 import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react';
 import ImportConfigurationForm from './ImportConfigurationForm';
 import type { CheckEnvResponse } from '../../services/setupService';
@@ -250,7 +249,7 @@ describe('ImportConfigurationForm', () => {
   });
 
   it('shows env file modal and can cancel without importing', async () => {
-    setupServiceMocks.checkEnvFile.mockResolvedValue({ exists: true, content: 'APP_AI_API_KEY=K' });
+    setupServiceMocks.checkEnvFile.mockResolvedValue({ exists: true });
     render(<ImportConfigurationForm />);
 
     await screen.findByText('检测到配置文件');
@@ -262,20 +261,8 @@ describe('ImportConfigurationForm', () => {
     expect(toastMocks.success).not.toHaveBeenCalledWith('配置导入成功');
   });
 
-  it('imports env file content, maps keys, and fills admin fields', async () => {
-    setupServiceMocks.checkEnvFile.mockResolvedValue({
-      exists: true,
-      content: [
-        'APP_AI_API_KEY=K1',
-        'BADLINE',
-        'A=',
-        '=B',
-        'APP_MAIL_FROM=from@example.com',
-        'ADMIN_EMAIL=a@b.com',
-        'ADMIN_USERNAME=u',
-        'ADMIN_PASSWORD=p',
-      ].join('\n'),
-    });
+  it('shows env file modal and requires local file import', async () => {
+    setupServiceMocks.checkEnvFile.mockResolvedValue({ exists: true });
     render(<ImportConfigurationForm />);
 
     await screen.findByText('检测到配置文件');
@@ -283,21 +270,8 @@ describe('ImportConfigurationForm', () => {
     if (!dialog) throw new Error('env file dialog not found');
     fireEvent.click(within(dialog).getByRole('button', { name: '导入配置' }));
 
-    expect(toastMocks.success).toHaveBeenCalledWith('配置导入成功');
-
-    const aiKey = getInputByKey('APP_AI_API_KEY');
-    expect(aiKey.value).toBe('K1');
-
-    const fromAddress = getInputByKey('APP_MAIL_FROM_ADDRESS');
-    expect(fromAddress.value).toBe('from@example.com');
-
-    fireEvent.click(screen.getByText('跳过'));
-    await screen.findByText('创建管理员账户');
-
-    expect((screen.getByPlaceholderText('请输入管理员邮箱') as HTMLInputElement).value).toBe('a@b.com');
-    expect((screen.getByPlaceholderText('请输入用户名') as HTMLInputElement).value).toBe('u');
-    expect((screen.getByPlaceholderText('请输入密码') as HTMLInputElement).value).toBe('p');
-    expect((screen.getByPlaceholderText('请再次输入密码') as HTMLInputElement).value).toBe('p');
+    expect(screen.queryByText('检测到配置文件')).toBeNull();
+    expect(toastMocks.success).not.toHaveBeenCalledWith('配置导入成功');
   });
 
   it('imports config via file input (FileReader)', async () => {

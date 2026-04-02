@@ -131,7 +131,7 @@ public class RagFileAssetChatRetrievalService {
         String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
-            URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source,hits.hits.highlight");
+            URL url = java.net.URI.create(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source,hits.hits.highlight").toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);

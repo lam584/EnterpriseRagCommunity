@@ -40,13 +40,12 @@ public class ChatContextGovernanceService {
     private static boolean compressHistory(List<ChatMessage> messages, int systemPrefix, boolean hasUserTail, int keepLast, ChatContextGovernanceConfigDTO cfg, Map<String, Object> detail) {
         int lastIdx = hasUserTail ? messages.size() - 1 : messages.size();
         int start = Math.min(systemPrefix, lastIdx);
-        int end = lastIdx;
-        int available = end - start;
+        int available = lastIdx - start;
         if (available <= keepLast) return false;
 
         int compressCount = available - keepLast;
         List<ChatMessage> toCompress = new ArrayList<>(messages.subList(start, start + compressCount));
-        List<ChatMessage> keep = new ArrayList<>(messages.subList(start + compressCount, end));
+        List<ChatMessage> keep = new ArrayList<>(messages.subList(start + compressCount, lastIdx));
 
         int snippetChars = cfg.getCompressionPerMessageSnippetChars() == null ? 200 : Math.max(10, cfg.getCompressionPerMessageSnippetChars());
         int maxChars = cfg.getCompressionMaxChars() == null ? 8000 : Math.max(200, cfg.getCompressionMaxChars());
@@ -101,8 +100,7 @@ public class ChatContextGovernanceService {
         if (keepLast > 0) {
             int lastIdx = hasUserTail ? messages.size() - 1 : messages.size();
             int start = Math.min(systemPrefix, lastIdx);
-            int end = lastIdx;
-            int available = end - start;
+            int available = lastIdx - start;
             if (available > keepLast) {
                 int drop = available - keepLast;
                 List<Map<String, Object>> dropped = new ArrayList<>();

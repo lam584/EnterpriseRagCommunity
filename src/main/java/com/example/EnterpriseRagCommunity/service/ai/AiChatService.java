@@ -538,7 +538,9 @@ public class AiChatService {
                         writeRagDebugEvent(out, chatRagCfg, req.getMessage(), ragHits, commentHits, contextAssembled);
                     }
                     if (shouldWriteContextWindow(req, retrievalEventId, contextAssembled, contextCfg)) {
-                        double p = contextCfg.getLogSampleRate() == null ? 1.0 : contextCfg.getLogSampleRate();
+                        double p = (contextCfg == null || contextCfg.getLogSampleRate() == null)
+                                ? 1.0
+                                : contextCfg.getLogSampleRate();
                         if (p >= 1.0 || ThreadLocalRandom.current().nextDouble() <= Math.clamp(p, 0.0, 1.0)) {
                             ContextWindowsEntity cw = new ContextWindowsEntity();
                             cw.setEventId(retrievalEventId);
@@ -548,10 +550,11 @@ public class AiChatService {
                             if (contextAssembled != null) {
                                 cw.setBudgetTokens(contextAssembled.getBudgetTokens());
                             }
-                            cw.setTotalTokens(contextAssembled.getUsedTokens() == null ? 0 : contextAssembled.getUsedTokens());
-                            cw.setSelectedItems(contextAssembled.getSelected() == null ? 0 : contextAssembled.getSelected().size());
-                            cw.setDroppedItems(contextAssembled.getDropped() == null ? 0 : contextAssembled.getDropped().size());
-                            cw.setChunkIds(contextAssembled.getChunkIds());
+                            Integer usedTokens = contextAssembled == null ? null : contextAssembled.getUsedTokens();
+                            cw.setTotalTokens(usedTokens == null ? 0 : usedTokens);
+                            cw.setSelectedItems(contextAssembled == null || contextAssembled.getSelected() == null ? 0 : contextAssembled.getSelected().size());
+                            cw.setDroppedItems(contextAssembled == null || contextAssembled.getDropped() == null ? 0 : contextAssembled.getDropped().size());
+                            cw.setChunkIds(contextAssembled == null ? null : contextAssembled.getChunkIds());
                             cw.setCreatedAt(LocalDateTime.now());
                             contextWindowsRepository.save(cw);
                         }

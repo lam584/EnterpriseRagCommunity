@@ -188,7 +188,7 @@ public class AiProviderModelsAdminService {
             int readTimeoutMs
     ) {
         try {
-            URL url = new URL(endpoint);
+            URL url = java.net.URI.create(endpoint).toURL();
             validateHttpUrl(url);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("GET");
@@ -241,7 +241,7 @@ public class AiProviderModelsAdminService {
         String reason = e == null || e.getMessage() == null || e.getMessage().isBlank() ? "Connection refused" : e.getMessage();
         boolean local = false;
         try {
-            URL url = new URL(endpoint);
+            URL url = java.net.URI.create(endpoint).toURL();
             String host = url.getHost();
             if (host != null) {
                 String h = host.trim().toLowerCase(Locale.ROOT);

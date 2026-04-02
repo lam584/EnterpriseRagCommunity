@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.*;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -45,7 +44,7 @@ public class BailianOpenAiSseClient {
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
         endpoint = endpoint + "/chat/completions";
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
         conn.setConnectTimeout(DEFAULT_CONNECT_TIMEOUT_MS);
@@ -95,7 +94,7 @@ public class BailianOpenAiSseClient {
         if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
         endpoint = endpoint + "/chat/completions";
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
         conn.setConnectTimeout(DEFAULT_CONNECT_TIMEOUT_MS);

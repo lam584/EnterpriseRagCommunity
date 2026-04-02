@@ -151,7 +151,7 @@ public class AdminModerationReviewTraceService {
     }
 
     private static BigDecimal readBigDecimal(Map<String, Object> map) {
-        if (map == null || "maxScore" == null) return null;
+        if (map == null) return null;
         Object v = map.get("maxScore");
         switch (v) {
             case null -> {

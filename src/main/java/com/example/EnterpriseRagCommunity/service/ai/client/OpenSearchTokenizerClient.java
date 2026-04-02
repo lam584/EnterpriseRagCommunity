@@ -9,7 +9,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 public class OpenSearchTokenizerClient {
@@ -36,7 +35,7 @@ public class OpenSearchTokenizerClient {
         endpoint = endpoint + "/v3/openapi/workspaces/" + urlPathEscape(workspaceName)
                 + "/text-generation/" + urlPathEscape(serviceId) + "/tokenizer";
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
         conn.setConnectTimeout(props.getConnectTimeoutMs());

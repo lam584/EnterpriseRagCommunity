@@ -123,13 +123,12 @@ public class HybridRagRetrievalService {
             return out;
         }
 
-        HybridRetrievalConfigDTO safe = cfg;
-        int bm25K = safe == null ? 0 : safe.getBm25K() == null ? 0 : safe.getBm25K();
-        int vecK = safe == null ? 0 : safe.getVecK() == null ? 0 : safe.getVecK();
-        boolean fileVecEnabled = safe == null || safe.getFileVecEnabled() == null || safe.getFileVecEnabled();
-        int fileVecK = safe == null ? 0 : safe.getFileVecK() == null ? 0 : safe.getFileVecK();
-        int hybridK = safe == null ? 6 : safe.getHybridK() == null ? 6 : safe.getHybridK();
-        int maxDocs = safe == null ? 500 : safe.getMaxDocs() == null ? 500 : safe.getMaxDocs();
+        int bm25K = cfg == null ? 0 : cfg.getBm25K() == null ? 0 : cfg.getBm25K();
+        int vecK = cfg == null ? 0 : cfg.getVecK() == null ? 0 : cfg.getVecK();
+        boolean fileVecEnabled = cfg == null || cfg.getFileVecEnabled() == null || cfg.getFileVecEnabled();
+        int fileVecK = cfg == null ? 0 : cfg.getFileVecK() == null ? 0 : cfg.getFileVecK();
+        int hybridK = cfg == null ? 6 : cfg.getHybridK() == null ? 6 : cfg.getHybridK();
+        int maxDocs = cfg == null ? 500 : cfg.getMaxDocs() == null ? 500 : cfg.getMaxDocs();
 
         bm25K = clampInt(bm25K, 0, Math.max(0, maxDocs));
         vecK = clampInt(vecK, 0, Math.max(0, maxDocs));
@@ -139,7 +138,7 @@ public class HybridRagRetrievalService {
         long t0 = System.currentTimeMillis();
         List<DocHit> bm25Hits = List.of();
         try {
-            if (bm25K > 0) bm25Hits = bm25Search(queryText, boardId, bm25K, safe);
+            if (bm25K > 0) bm25Hits = bm25Search(queryText, boardId, bm25K, cfg);
         } catch (Exception e) {
             out.setBm25Error(e.getMessage());
         }
@@ -167,20 +166,20 @@ public class HybridRagRetrievalService {
         out.setFileVecLatencyMs((int) (System.currentTimeMillis() - t1f));
 
         long t2 = System.currentTimeMillis();
-        List<DocHit> fused = fuse(bm25Hits, vecHits, fileVecHits, safe, maxDocs);
+        List<DocHit> fused = fuse(bm25Hits, vecHits, fileVecHits, cfg, maxDocs);
         out.setFusedHits(fused);
         out.setFuseLatencyMs((int) (System.currentTimeMillis() - t2));
 
         List<DocHit> finalHits = fused;
 
-        boolean rerankEnabled = safe != null && Boolean.TRUE.equals(safe.getRerankEnabled());
-        int rerankK = safe == null ? 0 : safe.getRerankK() == null ? 0 : safe.getRerankK();
+        boolean rerankEnabled = cfg != null && Boolean.TRUE.equals(cfg.getRerankEnabled());
+        int rerankK = cfg == null ? 0 : cfg.getRerankK() == null ? 0 : cfg.getRerankK();
         rerankK = clampInt(rerankK, 0, Math.min(maxDocs, fused.size()));
 
         if (rerankEnabled && rerankK > 0 && !fused.isEmpty()) {
             long t3 = System.currentTimeMillis();
             try {
-                List<DocHit> reranked = rerank(queryText, fused, rerankK, safe);
+                List<DocHit> reranked = rerank(queryText, fused, rerankK, cfg);
                 out.setRerankHits(reranked);
                 finalHits = reranked;
             } catch (Exception e) {
@@ -596,7 +595,7 @@ public class HybridRagRetrievalService {
             if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
 
             try {
-                URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source,hits.hits.highlight");
+                URL url = java.net.URI.create(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source,hits.hits.highlight").toURL();
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setConnectTimeout(2000);
@@ -794,13 +793,6 @@ public class HybridRagRetrievalService {
         return m;
     }
 
-    public AiEmbeddingService getEmbeddingService() {
-        return embeddingService;
-    }
-
-    public AiRerankService getAiRerankService() {
-        return aiRerankService;
-    }
 
     @Data
     public static class RetrieveResult {

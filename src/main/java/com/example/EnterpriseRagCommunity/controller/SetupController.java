@@ -1,9 +1,7 @@
 package com.example.EnterpriseRagCommunity.controller;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.Base64;
@@ -29,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest;
+import com.example.EnterpriseRagCommunity.config.AdminSetupManager;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
@@ -41,6 +40,10 @@ import jakarta.validation.Valid;
 public class SetupController {
 
     private static final Logger logger = LoggerFactory.getLogger(SetupController.class);
+    private static final String SETUP_ALREADY_COMPLETED_MESSAGE = "Setup already completed";
+    private static final String ES_CONNECTION_FAILED_MESSAGE = "Connection failed";
+    private static final String ES_CHECK_FAILED_MESSAGE = "Failed to connect to ES";
+    private static final String SAVE_CONFIG_FAILED_MESSAGE = "Failed to save config";
 
     @FunctionalInterface
     public interface RestClientFactory {
@@ -74,6 +77,9 @@ public class SetupController {
     @Autowired
     private com.example.EnterpriseRagCommunity.utils.AesGcmUtils aesGcmUtils;
 
+    @Autowired
+    private AdminSetupManager adminSetupManager;
+
     @org.springframework.beans.factory.annotation.Value("${APP_MASTER_KEY}")
     private String masterKey;
 
@@ -86,17 +92,24 @@ public class SetupController {
 
     @GetMapping("/check-env")
     public ResponseEntity<?> checkEnvFile() {
+        ResponseEntity<?> blocked = requireSetupInProgress();
+        if (blocked != null) {
+            return blocked;
+        }
         File envFile = findEnvFile();
         if (isExistingFile(envFile)) {
-            try {
-                String content = Files.readString(envFile.toPath());
-                return ResponseEntity.ok(Map.of("exists", true, "content", content));
-            } catch (IOException e) {
-                logger.error("Failed to read .env file", e);
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("exists", true, "error", "Failed to read file"));
-            }
+            // Security: only disclose existence, never return raw .env content.
+            return ResponseEntity.ok(Map.of("exists", true));
         }
         return ResponseEntity.ok(Map.of("exists", false));
+    }
+
+    private ResponseEntity<?> requireSetupInProgress() {
+        if (!adminSetupManager.isSetupRequired()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", SETUP_ALREADY_COMPLETED_MESSAGE));
+        }
+        return null;
     }
 
     static boolean isExistingFile(File file) {
@@ -170,23 +183,7 @@ public class SetupController {
                 break;
             }
             
-            logger.info("Checking for .env in directory: {}", currentDir.getAbsolutePath());
-            
-            // Debug: List files to see if .env is visible (handling hidden files concern)
-            File[] files = currentDir.listFiles();
-            if (files != null) {
-                StringBuilder fileList = new StringBuilder();
-                int count = 0;
-                for (File f : files) {
-                    if (count++ < 20) { // Limit log size
-                        fileList.append(f.getName()).append(", ");
-                    }
-                }
-                if (files.length > 20) fileList.append("... (total ").append(files.length).append(")");
-                logger.info("Files in {}: [{}]", currentDir.getName(), fileList);
-            } else {
-                logger.warn("Failed to list files in {}", currentDir.getAbsolutePath());
-            }
+            logger.debug("Checking for .env in directory: {}", currentDir.getAbsolutePath());
 
             File envFile = new File(currentDir, ".env");
             if (isExistingFile(envFile)) {
@@ -201,6 +198,10 @@ public class SetupController {
 
     @PostMapping("/generate-totp")
     public ResponseEntity<?> generateTotp() {
+        ResponseEntity<?> blocked = requireSetupInProgress();
+        if (blocked != null) {
+            return blocked;
+        }
         byte[] raw = new byte[32];
         new SecureRandom().nextBytes(raw);
         String key = Base64.getEncoder().encodeToString(raw);
@@ -209,6 +210,10 @@ public class SetupController {
 
     @PostMapping("/encrypt")
     public ResponseEntity<?> encrypt(@RequestBody Map<String, String> payload) {
+        ResponseEntity<?> blocked = requireSetupInProgress();
+        if (blocked != null) {
+            return blocked;
+        }
         String value = payload.get("value");
         if (value == null || value.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Value is required"));
@@ -223,6 +228,10 @@ public class SetupController {
 
     @PostMapping("/test-es")
     public ResponseEntity<?> testEsConnection(@RequestBody Map<String, String> config) {
+        ResponseEntity<?> blocked = requireSetupInProgress();
+        if (blocked != null) {
+            return blocked;
+        }
         String uris = config.get("spring.elasticsearch.uris");
         String apiKey = config.get("APP_ES_API_KEY");
 
@@ -239,10 +248,12 @@ public class SetupController {
             } else if (statusCode == 401) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("success", false, "message", "Authentication failed (401). Please check your APP_ES_API_KEY."));
             } else {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("success", false, "message", "Status code: " + statusCode));
+                logger.warn("ES connection test failed with status code: {}", statusCode);
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("success", false, "message", ES_CONNECTION_FAILED_MESSAGE));
             }
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("success", false, "message", "Connection failed: " + e.getMessage()));
+            logger.warn("ES connection test error", e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("success", false, "message", ES_CONNECTION_FAILED_MESSAGE));
         }
     }
 
@@ -272,6 +283,10 @@ public class SetupController {
     
     @PostMapping("/check-indices")
     public ResponseEntity<?> checkIndices(@RequestBody Map<String, Object> payload) {
+        ResponseEntity<?> blocked = requireSetupInProgress();
+        if (blocked != null) {
+            return blocked;
+        }
         @SuppressWarnings("unchecked")
         Map<String, String> config = (Map<String, String>) payload.get("configs");
         @SuppressWarnings("unchecked")
@@ -311,12 +326,17 @@ public class SetupController {
             }
             return ResponseEntity.ok(results);
         } catch (Exception e) {
-             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Failed to connect to ES: " + e.getMessage()));
+             logger.warn("Failed to check indices", e);
+             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", ES_CHECK_FAILED_MESSAGE));
         }
     }
     
     @PostMapping("/save-config")
     public ResponseEntity<?> saveConfig(@RequestBody Map<String, Object> payload) {
+        ResponseEntity<?> blocked = requireSetupInProgress();
+        if (blocked != null) {
+            return blocked;
+        }
         try {
             @SuppressWarnings("unchecked")
             Map<String, String> configs = (Map<String, String>) payload.get("configs");
@@ -380,12 +400,16 @@ public class SetupController {
             return ResponseEntity.ok(Map.of("success", true));
         } catch (Exception e) {
             logger.error("Failed to save config", e); 
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", SAVE_CONFIG_FAILED_MESSAGE));
         }
     }
 
     @PostMapping("/init-indices")
     public ResponseEntity<?> initIndices(@RequestBody Map<String, List<String>> payload) {
+        ResponseEntity<?> blocked = requireSetupInProgress();
+        if (blocked != null) {
+            return blocked;
+        }
         // In a real scenario, we would use the new configs to init indices.
         // Here we rely on the bootstrap service if available, or just return success
         // since the actual index creation might happen lazily or via the existing InitialAdminIndexBootstrapService
@@ -407,6 +431,10 @@ public class SetupController {
 
     @PostMapping("/complete")
     public ResponseEntity<?> completeSetup(@Valid @RequestBody RegisterRequest request) {
+        ResponseEntity<?> blocked = requireSetupInProgress();
+        if (blocked != null) {
+            return blocked;
+        }
         return authController.registerInitialAdmin(request);
     }
 }

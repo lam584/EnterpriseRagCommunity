@@ -60,31 +60,29 @@ public class ModerationChunkReviewConfigService {
 
     private ModerationChunkReviewConfigDTO normalize(ModerationChunkReviewConfigDTO in) {
         if (in == null) throw new IllegalStateException("invalid config: " + KEY_CONFIG_JSON + " is null");
-        ModerationChunkReviewConfigDTO dto = in;
-
-        dto.setEnabled(requireBool("enabled", dto.getEnabled()));
-        dto.setEnableTempIndexHints(requireBool("enableTempIndexHints", dto.getEnableTempIndexHints()));
-        dto.setEnableContextCompress(requireBool("enableContextCompress", dto.getEnableContextCompress()));
-        dto.setEnableGlobalMemory(requireBool("enableGlobalMemory", dto.getEnableGlobalMemory()));
-        dto.setSendImagesOnlyWhenInEvidence(dto.getSendImagesOnlyWhenInEvidence() == null ? Boolean.TRUE : dto.getSendImagesOnlyWhenInEvidence());
-        dto.setIncludeImagesBlockOnlyForEvidenceMatches(
-            dto.getIncludeImagesBlockOnlyForEvidenceMatches() == null ? Boolean.TRUE : dto.getIncludeImagesBlockOnlyForEvidenceMatches()
+        in.setEnabled(requireBool("enabled", in.getEnabled()));
+        in.setEnableTempIndexHints(requireBool("enableTempIndexHints", in.getEnableTempIndexHints()));
+        in.setEnableContextCompress(requireBool("enableContextCompress", in.getEnableContextCompress()));
+        in.setEnableGlobalMemory(requireBool("enableGlobalMemory", in.getEnableGlobalMemory()));
+        in.setSendImagesOnlyWhenInEvidence(in.getSendImagesOnlyWhenInEvidence() == null ? Boolean.TRUE : in.getSendImagesOnlyWhenInEvidence());
+        in.setIncludeImagesBlockOnlyForEvidenceMatches(
+            in.getIncludeImagesBlockOnlyForEvidenceMatches() == null ? Boolean.TRUE : in.getIncludeImagesBlockOnlyForEvidenceMatches()
         );
-        dto.setQueueAutoRefreshEnabled(requireBool("queueAutoRefreshEnabled", dto.getQueueAutoRefreshEnabled()));
+        in.setQueueAutoRefreshEnabled(requireBool("queueAutoRefreshEnabled", in.getQueueAutoRefreshEnabled()));
 
-        dto.setChunkThresholdChars(clampIntRequired("chunkThresholdChars", dto.getChunkThresholdChars(), 1000, 5_000_000));
-        dto.setChunkSizeChars(clampIntRequired("chunkSizeChars", dto.getChunkSizeChars(), 500, 10_000));
-        dto.setOverlapChars(clampIntRequired("overlapChars", dto.getOverlapChars(), 0, 2_000));
-        dto.setMaxChunksTotal(clampIntRequired("maxChunksTotal", dto.getMaxChunksTotal(), 1, 2000));
-        dto.setChunksPerRun(clampIntRequired("chunksPerRun", dto.getChunksPerRun(), 1, 50));
-        dto.setMaxConcurrentWorkers(clampIntRequired("maxConcurrentWorkers", dto.getMaxConcurrentWorkers(), 1, 64));
-        dto.setMaxAttempts(clampIntRequired("maxAttempts", dto.getMaxAttempts(), 1, 20));
-        dto.setQueuePollIntervalMs(clampIntRequired("queuePollIntervalMs", dto.getQueuePollIntervalMs(), 1000, 60_000));
+        in.setChunkThresholdChars(clampIntRequired("chunkThresholdChars", in.getChunkThresholdChars(), 1000, 5_000_000));
+        in.setChunkSizeChars(clampIntRequired("chunkSizeChars", in.getChunkSizeChars(), 500, 10_000));
+        in.setOverlapChars(clampIntRequired("overlapChars", in.getOverlapChars(), 0, 2_000));
+        in.setMaxChunksTotal(clampIntRequired("maxChunksTotal", in.getMaxChunksTotal(), 1, 2000));
+        in.setChunksPerRun(clampIntRequired("chunksPerRun", in.getChunksPerRun(), 1, 50));
+        in.setMaxConcurrentWorkers(clampIntRequired("maxConcurrentWorkers", in.getMaxConcurrentWorkers(), 1, 64));
+        in.setMaxAttempts(clampIntRequired("maxAttempts", in.getMaxAttempts(), 1, 20));
+        in.setQueuePollIntervalMs(clampIntRequired("queuePollIntervalMs", in.getQueuePollIntervalMs(), 1000, 60_000));
 
-        if (dto.getOverlapChars() >= dto.getChunkSizeChars()) {
-            dto.setOverlapChars(Math.max(0, dto.getChunkSizeChars() / 10));
+        if (in.getOverlapChars() >= in.getChunkSizeChars()) {
+            in.setOverlapChars(Math.max(0, in.getChunkSizeChars() / 10));
         }
-        return dto;
+        return in;
     }
 
     private static Integer clampIntRequired(String field, Integer v, int min, int max) {
@@ -103,23 +101,21 @@ public class ModerationChunkReviewConfigService {
     private static ModerationChunkReviewConfigDTO merge(ModerationChunkReviewConfigDTO base, ModerationChunkReviewConfigDTO payload) {
         ModerationChunkReviewConfigDTO out = new ModerationChunkReviewConfigDTO();
         if (base == null) throw new IllegalStateException("missing config: " + KEY_CONFIG_JSON);
-        ModerationChunkReviewConfigDTO b = base;
-
-        out.setEnabled(b.getEnabled());
-        out.setChunkThresholdChars(b.getChunkThresholdChars());
-        out.setChunkSizeChars(b.getChunkSizeChars());
-        out.setOverlapChars(b.getOverlapChars());
-        out.setMaxChunksTotal(b.getMaxChunksTotal());
-        out.setChunksPerRun(b.getChunksPerRun());
-        out.setMaxConcurrentWorkers(b.getMaxConcurrentWorkers());
-        out.setMaxAttempts(b.getMaxAttempts());
-        out.setEnableTempIndexHints(b.getEnableTempIndexHints());
-        out.setEnableContextCompress(b.getEnableContextCompress());
-        out.setEnableGlobalMemory(b.getEnableGlobalMemory());
-        out.setSendImagesOnlyWhenInEvidence(b.getSendImagesOnlyWhenInEvidence());
-        out.setIncludeImagesBlockOnlyForEvidenceMatches(b.getIncludeImagesBlockOnlyForEvidenceMatches());
-        out.setQueueAutoRefreshEnabled(b.getQueueAutoRefreshEnabled());
-        out.setQueuePollIntervalMs(b.getQueuePollIntervalMs());
+        out.setEnabled(base.getEnabled());
+        out.setChunkThresholdChars(base.getChunkThresholdChars());
+        out.setChunkSizeChars(base.getChunkSizeChars());
+        out.setOverlapChars(base.getOverlapChars());
+        out.setMaxChunksTotal(base.getMaxChunksTotal());
+        out.setChunksPerRun(base.getChunksPerRun());
+        out.setMaxConcurrentWorkers(base.getMaxConcurrentWorkers());
+        out.setMaxAttempts(base.getMaxAttempts());
+        out.setEnableTempIndexHints(base.getEnableTempIndexHints());
+        out.setEnableContextCompress(base.getEnableContextCompress());
+        out.setEnableGlobalMemory(base.getEnableGlobalMemory());
+        out.setSendImagesOnlyWhenInEvidence(base.getSendImagesOnlyWhenInEvidence());
+        out.setIncludeImagesBlockOnlyForEvidenceMatches(base.getIncludeImagesBlockOnlyForEvidenceMatches());
+        out.setQueueAutoRefreshEnabled(base.getQueueAutoRefreshEnabled());
+        out.setQueuePollIntervalMs(base.getQueuePollIntervalMs());
 
         if (payload.getEnabled() != null) out.setEnabled(payload.getEnabled());
         if (payload.getChunkThresholdChars() != null) out.setChunkThresholdChars(payload.getChunkThresholdChars());

@@ -251,8 +251,6 @@ public class ModerationSamplesIndexService {
     }
 
     private Map<String, Object> buildMapping(boolean ikEnabled, int embeddingDims) {
-        int dims = embeddingDims;
-
         Map<String, Object> root = new LinkedHashMap<>();
         Map<String, Object> propsMap = new LinkedHashMap<>();
 
@@ -276,10 +274,10 @@ public class ModerationSamplesIndexService {
         }
         propsMap.put("normalized_text", normText);
 
-        if (dims > 0) {
+        if (embeddingDims > 0) {
             Map<String, Object> emb = new LinkedHashMap<>();
             emb.put("type", "dense_vector");
-            emb.put("dims", dims);
+            emb.put("dims", embeddingDims);
             emb.put("index", true);
             emb.put("similarity", "cosine");
             propsMap.put("embedding", emb);

@@ -225,17 +225,16 @@ public class AccountEmailChangeController {
             }
             emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.CHANGE_EMAIL, newEmail, newEmailCode);
 
-            String oldEmail = currentEmail;
             user.setEmail(newEmail);
             user.setSessionInvalidatedAt(LocalDateTime.now());
             usersRepository.save(user);
             Map<String, Object> details = new HashMap<>();
             details.put("success", true);
             details.put("newEmailMasked", maskEmail(newEmail));
-            writeAuditSafely(user.getId(), oldEmail, "ACCOUNT_EMAIL_CHANGE_CONFIRM", AuditResult.SUCCESS, "更换邮箱", details);
+            writeAuditSafely(user.getId(), currentEmail, "ACCOUNT_EMAIL_CHANGE_CONFIRM", AuditResult.SUCCESS, "更换邮箱", details);
 
             try {
-                accountEmailChangeNotificationMailer.sendChangeEmailSuccessNotifications(oldEmail, newEmail);
+                accountEmailChangeNotificationMailer.sendChangeEmailSuccessNotifications(currentEmail, newEmail);
             } catch (Exception ignored) {
             }
             try {

@@ -113,9 +113,7 @@ public class AiSemanticTranslateService {
         if (maxChars > 0 && normalizedContent.length() > maxChars) {
             normalizedContent = normalizedContent.substring(0, maxChars);
         }
-
-        String finalNormalizedTitle = normalizedTitle;
-        String finalNormalizedContent = normalizedContent;
+        String normalizedContentFinal = normalizedContent;
 
         String promptCode = cfg.getPromptCode();
         if (promptCode == null || promptCode.isBlank()) {
@@ -137,7 +135,7 @@ public class AiSemanticTranslateService {
             0.4
         );
 
-        String sourceHash = sha256Hex(sourceType + "|" + finalNormalizedTitle + "\n\n" + finalNormalizedContent);
+        String sourceHash = sha256Hex(sourceType + "|" + normalizedTitle + "\n\n" + normalizedContentFinal);
         String configHash = sha256Hex(buildConfigSignature(cfg, prompt, params));
 
         var cached = semanticTranslateHistoryRepository
@@ -170,7 +168,7 @@ public class AiSemanticTranslateService {
                 Double topP = params.topP();
 
                 String streamInstruction = "\n\n[System Note: Stream Mode Active. Please output the translated content directly in Markdown. Do NOT wrap in JSON. If there is a title, put it on the first line.]";
-                String userPrompt = renderPrompt(prompt.getUserPromptTemplate() + streamInstruction, safeTargetLang, finalNormalizedTitle, finalNormalizedContent);
+                String userPrompt = renderPrompt(prompt.getUserPromptTemplate() + streamInstruction, safeTargetLang, normalizedTitle, normalizedContentFinal);
                 List<ChatMessage> messages = new ArrayList<>();
                 messages.add(ChatMessage.system(prompt.getSystemPrompt()));
                 messages.add(ChatMessage.user(userPrompt));
@@ -206,7 +204,7 @@ public class AiSemanticTranslateService {
                 String translatedTitle = null;
                 String translatedMarkdown = fullText;
 
-                if (!finalNormalizedTitle.isEmpty()) {
+                if (!normalizedTitle.isEmpty()) {
                     int firstNl = fullText.indexOf('\n');
                     if (firstNl > 0) {
                         translatedTitle = fullText.substring(0, firstNl).trim();
@@ -239,8 +237,8 @@ public class AiSemanticTranslateService {
                     h.setTargetLang(safeTargetLang);
                     h.setSourceHash(sourceHash);
                     h.setConfigHash(configHash);
-                    h.setSourceTitleExcerpt(buildTitleExcerpt(finalNormalizedTitle));
-                    h.setSourceContentExcerpt(buildExcerpt(finalNormalizedContent));
+                    h.setSourceTitleExcerpt(buildTitleExcerpt(normalizedTitle));
+                    h.setSourceContentExcerpt(buildExcerpt(normalizedContentFinal));
                     h.setTranslatedTitle(blankToNull(translatedTitle));
                     h.setTranslatedMarkdown(translatedMarkdown);
                     h.setJobId(job.getId());
@@ -452,9 +450,7 @@ public class AiSemanticTranslateService {
 
     private ParsedTranslate parseTranslateFromAssistantText(String assistantText) {
         if (assistantText == null) return new ParsedTranslate(null, null);
-        String t = assistantText.trim();
-
-        String json = t;
+        String json = assistantText.trim();
         int l = json.indexOf('{');
         int r = json.lastIndexOf('}');
         if (l >= 0 && r > l) {
@@ -476,10 +472,9 @@ public class AiSemanticTranslateService {
     }
 
     private static String renderPrompt(String template, String targetLang, String title, String content) {
-        String safeTemplate = (template == null || template.isBlank())
+        String out = (template == null || template.isBlank())
                 ? ""
                 : template;
-        String out = safeTemplate;
         out = out.replace("{{targetLang}}", targetLang == null ? "" : targetLang.trim());
         out = out.replace("{{title}}", title == null ? "" : title.trim());
         out = out.replace("{{content}}", content == null ? "" : content.trim());

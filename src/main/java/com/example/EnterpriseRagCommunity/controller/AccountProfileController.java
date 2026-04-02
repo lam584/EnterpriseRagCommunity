@@ -635,8 +635,7 @@ public class AccountProfileController {
         m.put("usernameLen", user.getUsername() == null ? 0 : user.getUsername().length());
         Map<?, ?> md = user.getMetadata();
         if (md == null) return m;
-        Map<?, ?> meta = md;
-        Object profileObj = meta.get("profile");
+        Object profileObj = md.get("profile");
         if (!(profileObj instanceof Map<?, ?> profile)) return m;
         m.put("avatarUrlLen", strLen(profile.get("avatarUrl")));
         m.put("bioLen", strLen(profile.get("bio")));

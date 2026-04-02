@@ -9,6 +9,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 @Testcontainers(disabledWithoutDocker = true)
+@SuppressWarnings("resource") // Managed by Testcontainers @Container lifecycle.
 public abstract class MySqlTestcontainersBase {
 
     @Container

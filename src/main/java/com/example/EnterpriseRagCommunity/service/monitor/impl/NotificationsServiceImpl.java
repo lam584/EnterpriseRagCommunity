@@ -17,7 +17,6 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class NotificationsServiceImpl implements NotificationsService {
@@ -41,16 +40,18 @@ public class NotificationsServiceImpl implements NotificationsService {
     }
 
     @Override
-    public Page<NotificationsEntity> listMyNotifications(Optional<String> type, Optional<Boolean> unreadOnly, Pageable pageable) {
+    public Page<NotificationsEntity> listMyNotifications(String type, Boolean unreadOnly, Pageable pageable) {
         Long me = currentUserIdOrThrow();
 
         Specification<NotificationsEntity> spec = (root, _query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.equal(root.get("userId"), me));
-            type.filter(t -> !t.isBlank()).ifPresent(t -> ps.add(cb.equal(root.get("type"), t)));
-            unreadOnly.ifPresent(u -> {
-                if (u) ps.add(cb.isNull(root.get("readAt")));
-            });
+            if (type != null && !type.isBlank()) {
+                ps.add(cb.equal(root.get("type"), type));
+            }
+            if (Boolean.TRUE.equals(unreadOnly)) {
+                ps.add(cb.isNull(root.get("readAt")));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
 

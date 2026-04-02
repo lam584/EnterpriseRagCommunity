@@ -38,6 +38,7 @@ import java.util.concurrent.locks.LockSupport;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -178,9 +179,10 @@ public class AdminLlmLoadTestService {
 
     private static String contentDispositionAttachment(String filename) {
         String raw = filename == null ? "export.txt" : filename.trim();
-        String safe = raw.replaceAll("[\r\n\"]+", "_").replaceAll("[^A-Za-z0-9._-]+", "_");
+        String safe = raw.replaceAll("[\r\n\";%]+", "_").replaceAll("[^A-Za-z0-9._-]+", "_");
         if (safe.isBlank()) safe = "export.txt";
-        return "attachment; filename=\"" + safe + "\"";
+        if (safe.length() > 128) safe = safe.substring(0, 128);
+        return ContentDisposition.attachment().filename(safe, StandardCharsets.UTF_8).build().toString();
     }
 
     private static void pauseMillis(long ms) throws InterruptedException {

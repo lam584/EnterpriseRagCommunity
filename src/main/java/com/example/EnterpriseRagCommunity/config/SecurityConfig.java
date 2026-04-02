@@ -170,8 +170,16 @@ public class SecurityConfig {
                     logger.debug("配置请求授权...");
                     authz
                         .requestMatchers(
-                                // 仅放行 API 认证相关端点
-                                "/api/setup/**",
+                                // 初始化向导端点（具体白名单，避免放行整个 /api/setup/**）
+                                "/api/setup/status",
+                                "/api/setup/check-env",
+                                "/api/setup/generate-totp",
+                                "/api/setup/encrypt",
+                                "/api/setup/test-es",
+                                "/api/setup/check-indices",
+                                "/api/setup/save-config",
+                                "/api/setup/init-indices",
+                                "/api/setup/complete",
                                 "/api/public/site-config",
                                 "/api/auth/login",
                                 "/api/auth/logout",
@@ -180,7 +188,6 @@ public class SecurityConfig {
                                 "/api/auth/password-reset/reset",
                                 "/api/auth/password-reset/send-code",
                                 "/api/auth/initial-setup-status",
-                                "/api/auth/register-initial-admin",
                                 "/api/auth/register", // 普通注册：允许匿名调用
                                 "/api/auth/register/verify",
                                 "/api/auth/register/resend-code",
@@ -345,8 +352,7 @@ public class SecurityConfig {
 
     @Bean
     public AuthenticationManager authenticationManager(UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
-        var authProvider = new org.springframework.security.authentication.dao.DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService);
+        var authProvider = new org.springframework.security.authentication.dao.DaoAuthenticationProvider(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder);
         return new ProviderManager(authProvider);
     }

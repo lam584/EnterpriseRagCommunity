@@ -194,9 +194,7 @@ public class UsersService {
                 predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), queryDTO.getCreatedBefore()));
             }
             
-            if (Boolean.TRUE.equals(queryDTO.getIncludeDeleted())) {
-                // Include deleted
-            } else {
+            if (!Boolean.TRUE.equals(queryDTO.getIncludeDeleted())) {
                 predicates.add(cb.equal(root.get("isDeleted"), false));
             }
 

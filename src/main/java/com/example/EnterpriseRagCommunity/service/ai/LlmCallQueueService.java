@@ -576,9 +576,8 @@ public class LlmCallQueueService {
 
     private static String clampDetail(String s) {
         if (s == null) return null;
-        String t = s;
-        if (t.length() <= MAX_DETAIL_CHARS) return t;
-        return t.substring(0, MAX_DETAIL_CHARS) + "\n...(truncated)...";
+        if (s.length() <= MAX_DETAIL_CHARS) return s;
+        return s.substring(0, MAX_DETAIL_CHARS) + "\n...(truncated)...";
     }
 
     private static Integer asIntLoose(JsonNode n) {
@@ -976,8 +975,12 @@ public class LlmCallQueueService {
                         break;
                     }
                     try {
-                        changed.await(250, TimeUnit.MILLISECONDS);
+                        boolean signalled = changed.await(250, TimeUnit.MILLISECONDS);
+                        if (!signalled && stopped.get()) {
+                            return;
+                        }
                     } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
                         if (stopped.get()) return;
                     }
                 }

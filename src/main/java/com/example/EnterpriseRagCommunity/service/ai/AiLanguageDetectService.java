@@ -99,9 +99,7 @@ public class AiLanguageDetectService {
 
     private List<String> parseLanguagesFromAssistantText(String assistantText) {
         if (assistantText == null) assistantText = "";
-        String t = assistantText.trim();
-
-        String json = t;
+        String json = assistantText.trim();
         int l = json.indexOf('{');
         int r = json.lastIndexOf('}');
         if (l >= 0 && r > l) {

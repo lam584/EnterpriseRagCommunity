@@ -12,11 +12,10 @@ public final class TokenCostCalculator {
     }
 
     public static BigDecimal computeCost(BigDecimal inputCostPer1k, BigDecimal outputCostPer1k, long tokensIn, long tokensOut) {
-        BigDecimal inPrice = inputCostPer1k;
         BigDecimal outPrice = outputCostPer1k == null ? inputCostPer1k : outputCostPer1k;
         BigDecimal cost = BigDecimal.ZERO;
-        if (inPrice != null && tokensIn > 0) {
-            cost = cost.add(inPrice.multiply(BigDecimal.valueOf(tokensIn)).divide(ONE_THOUSAND, 8, RoundingMode.HALF_UP));
+        if (inputCostPer1k != null && tokensIn > 0) {
+            cost = cost.add(inputCostPer1k.multiply(BigDecimal.valueOf(tokensIn)).divide(ONE_THOUSAND, 8, RoundingMode.HALF_UP));
         }
         if (outPrice != null && tokensOut > 0) {
             cost = cost.add(outPrice.multiply(BigDecimal.valueOf(tokensOut)).divide(ONE_THOUSAND, 8, RoundingMode.HALF_UP));

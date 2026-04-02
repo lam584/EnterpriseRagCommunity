@@ -53,7 +53,7 @@ const ImportConfigurationForm: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [helpKey, setHelpKey] = useState<string | null>(null);
-    const [envFileContent, setEnvFileContent] = useState<string | null>(null);
+    const [envFileDetected, setEnvFileDetected] = useState(false);
     const [visibleFields, setVisibleFields] = useState<Record<string, boolean>>({});
     const [encryptedValues, setEncryptedValues] = useState<Record<string, string>>({});
 
@@ -76,8 +76,8 @@ const ImportConfigurationForm: React.FC = () => {
 
     useEffect(() => {
         checkEnvFile().then(res => {
-            if (res.exists && res.content) {
-                setEnvFileContent(res.content);
+            if (res.exists) {
+                setEnvFileDetected(true);
             }
         }).catch(console.error);
     }, []);
@@ -697,7 +697,7 @@ const ImportConfigurationForm: React.FC = () => {
                     </div>
                 </Modal>
 
-                {envFileContent && (
+                {envFileDetected && (
                     <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 animate-in fade-in duration-200">
                         <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full mx-4">
                             <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
@@ -707,20 +707,22 @@ const ImportConfigurationForm: React.FC = () => {
                             <p className="text-gray-600 mb-6">
                                 在项目根目录下检测到 .env 文件。
                                 <br/>
-                                是否自动导入其中的配置？
+                                出于安全原因，服务端不会返回 .env 明文内容。
+                                <br/>
+                                是否现在从本地手动选择文件导入？
                             </p>
                             <div className="flex justify-end gap-3">
                                 <Button 
                                     variant="secondary" 
-                                    onClick={() => setEnvFileContent(null)}
+                                    onClick={() => setEnvFileDetected(false)}
                                     className="bg-gray-100 hover:bg-gray-200 text-gray-800"
                                 >
                                     取消
                                 </Button>
                                 <Button 
                                     onClick={() => {
-                                        processConfigText(envFileContent);
-                                        setEnvFileContent(null);
+                                        setEnvFileDetected(false);
+                                        document.getElementById('config-upload')?.click();
                                     }}
                                     className="bg-blue-600 hover:bg-blue-700 text-white"
                                 >

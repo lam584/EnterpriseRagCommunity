@@ -147,7 +147,6 @@ public class RagFileAssetIndexBuildService {
         List<RagFilesBuildResponse.FailedDoc> failedDocs = new ArrayList<>();
         Long lastFileAssetId = null;
 
-        Integer inferredDims;
         Integer dimsToUse = null;
         boolean ensured = false;
 
@@ -239,7 +238,7 @@ public class RagFileAssetIndexBuildService {
                         if (emb == null || emb.vector() == null) throw new IllegalStateException("embedding is null");
 
                         if (!ensured) {
-                            inferredDims = emb.dims();
+                            int inferredDims = emb.dims();
                             validateEmbeddingDims(configuredDims, inferredDims);
                             dimsToUse = configuredDims != null ? configuredDims : inferredDims;
                             if (clearPending) {
@@ -596,7 +595,7 @@ public class RagFileAssetIndexBuildService {
 
         try {
             String idx = URLEncoder.encode(indexName, StandardCharsets.UTF_8);
-            URL url = new URL(endpoint + "/" + idx + "/_delete_by_query?conflicts=proceed");
+            URL url = java.net.URI.create(endpoint + "/" + idx + "/_delete_by_query?conflicts=proceed").toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);
@@ -626,7 +625,7 @@ public class RagFileAssetIndexBuildService {
 
         try {
             String idx = URLEncoder.encode(indexName, StandardCharsets.UTF_8);
-            URL url = new URL(endpoint + "/" + idx);
+            URL url = java.net.URI.create(endpoint + "/" + idx).toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("DELETE");
             conn.setConnectTimeout(2000);

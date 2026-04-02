@@ -166,7 +166,7 @@ public class RagFileAssetTestQueryService {
         String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
-            URL url = new URL(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
+            URL url = java.net.URI.create(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source").toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);

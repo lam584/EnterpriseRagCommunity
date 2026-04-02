@@ -432,8 +432,7 @@ public class AiPostSummaryService {
     }
 
     private static String renderPrompt(String template, String title, String content, String tagsLine) {
-        String safeTemplate = (template == null || template.isBlank()) ? "" : template;
-        String out = safeTemplate;
+        String out = (template == null || template.isBlank()) ? "" : template;
         out = out.replace("{{title}}", title == null ? "" : title);
         out = out.replace("{{content}}", content == null ? "" : content);
         out = out.replace("{{tagsLine}}", tagsLine == null ? "" : tagsLine);

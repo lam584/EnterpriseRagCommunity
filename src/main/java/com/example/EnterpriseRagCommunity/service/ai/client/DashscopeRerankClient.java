@@ -104,7 +104,7 @@ public class DashscopeRerankClient {
             Integer connectTimeoutMs,
             Integer readTimeoutMs
     ) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
 
@@ -157,7 +157,7 @@ public class DashscopeRerankClient {
 
     private static String dashscopeOrigin(String baseUrl) {
         try {
-            URL u = new URL(baseUrl);
+            URL u = java.net.URI.create(baseUrl).toURL();
             return u.getProtocol() + "://" + u.getAuthority();
         } catch (Exception e) {
             String u = baseUrl == null ? "" : baseUrl.trim();

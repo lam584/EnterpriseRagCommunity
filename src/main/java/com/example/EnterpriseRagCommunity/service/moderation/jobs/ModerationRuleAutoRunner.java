@@ -296,7 +296,6 @@ public class ModerationRuleAutoRunner {
             }
 
             List<ModerationRulesEntity> rules = rulesRepository.findAll();
-            if (rules == null) rules = List.of();
             if (rules.isEmpty()) {
                 skipToVec(q, locker, ruleStepId, run, "no rules", "RULE skipped (no rules)");
                 return;

@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -47,8 +46,8 @@ public class NotificationsController {
         Pageable pageable = PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<NotificationsEntity> result = notificationsService.listMyNotifications(
-                Optional.ofNullable(type),
-                Optional.ofNullable(unreadOnly),
+                type,
+                unreadOnly,
                 pageable
         );
         return ResponseEntity.ok(result);

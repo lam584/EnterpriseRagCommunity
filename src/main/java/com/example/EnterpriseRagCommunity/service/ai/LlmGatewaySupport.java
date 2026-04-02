@@ -133,19 +133,18 @@ final class LlmGatewaySupport {
     static String removeMarkerWordIgnoreCase(String text, String marker) {
         if (text == null || text.isBlank()) return text;
         if (marker == null || marker.isBlank()) return text;
-        String t = text;
         String m = marker.trim();
-        int first = indexOfIgnoreCase(t, m, 0);
-        if (first < 0) return t;
-        StringBuilder sb = new StringBuilder(t.length());
+        int first = indexOfIgnoreCase(text, m, 0);
+        if (first < 0) return text;
+        StringBuilder sb = new StringBuilder(text.length());
         int i = 0;
         while (true) {
-            int idx = indexOfIgnoreCase(t, m, i);
+            int idx = indexOfIgnoreCase(text, m, i);
             if (idx < 0) {
-                sb.append(t, i, t.length());
+                sb.append(text, i, text.length());
                 break;
             }
-            sb.append(t, i, idx);
+            sb.append(text, i, idx);
             i = idx + m.length();
         }
         return sb.toString();
@@ -242,8 +241,7 @@ final class LlmGatewaySupport {
 
     static String safeErrorCode(Throwable e) {
         if (e == null) return "";
-        String c = extractErrorCode(e);
-        return c;
+        return extractErrorCode(e);
     }
 
     static String safeErrorMessage(Throwable e) {
@@ -444,10 +442,9 @@ final class LlmGatewaySupport {
 
     static String sanitizeMarker(String s) {
         if (s == null) return null;
-        String t = s;
-        if (t.equals("reasoning_content")) return "";
-        String trimmed = t.trim();
-        if (trimmed.isEmpty()) return t;
+        if (s.equals("reasoning_content")) return "";
+        String trimmed = s.trim();
+        if (trimmed.isEmpty()) return s;
         String lower = trimmed.toLowerCase(Locale.ROOT);
         switch (lower) {
             case "reasoning_content" -> {
@@ -462,6 +459,6 @@ final class LlmGatewaySupport {
         }
         if (lower.startsWith("reasoning_content") && removeMarkerWordIgnoreCase(trimmed, "reasoning_content").trim().isEmpty())
             return "";
-        return t;
+        return s;
     }
 }

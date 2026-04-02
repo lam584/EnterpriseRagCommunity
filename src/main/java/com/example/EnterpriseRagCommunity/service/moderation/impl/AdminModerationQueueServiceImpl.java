@@ -182,10 +182,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         }
         if (qBoardId != null) {
             spec = spec.and((root, q, cb) -> {
-                Subquery<Long> sq = null;
-                if (q != null) {
-                    sq = q.subquery(Long.class);
-                }
+                if (q == null) return cb.disjunction();
+                Subquery<Long> sq = q.subquery(Long.class);
                 var p = sq.from(PostsEntity.class);
                 sq.select(p.get("id"))
                         .where(

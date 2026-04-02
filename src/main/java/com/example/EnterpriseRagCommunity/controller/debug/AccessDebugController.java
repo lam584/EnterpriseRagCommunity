@@ -72,14 +72,12 @@ public class AccessDebugController {
         }
 
         // role_permissions lookup
-        List<RolePermissionsEntity> rpsAll = new ArrayList<>();
         Set<Long> allowPermIds = new LinkedHashSet<>();
         Set<Long> denyPermIds = new LinkedHashSet<>();
         Map<Long, String> rolePermRoleNameById = new LinkedHashMap<>();
 
         for (Long roleId : roleIds) {
             List<RolePermissionsEntity> rps = rolePermissionsRepository.findByRoleId(roleId);
-            rpsAll.addAll(rps);
 
             for (RolePermissionsEntity rp : rps) {
                 if (rp.getRoleName() != null && !rp.getRoleName().isBlank()) {

@@ -164,7 +164,6 @@ class AdminModerationLlmUpstreamSupport {
         boolean hasOssUrl = inputs.stream().anyMatch(in -> in.upstreamUrl() != null && in.upstreamUrl().startsWith("oss://"));
         Map<String, String> extraHeaders = hasOssUrl ? Map.of("X-DashScope-OssResourceResolve", "enable") : null;
 
-        List<StageCallResult> results = new ArrayList<>();
         long latencySum = 0L;
         int promptTokensSum = 0;
         int completionTokensSum = 0;
@@ -201,7 +200,6 @@ class AdminModerationLlmUpstreamSupport {
             messages.add(ChatMessage.system(systemPrompt));
             messages.add(ChatMessage.userParts(parts));
             StageCallResult r = callOnce(LlmQueueTaskType.MULTIMODAL_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, extraBody, "multimodal", useQueue, extraHeaders);
-            results.add(r);
             if (r == null) {
                 return new StageCallResult(
                         "ESCALATE",
@@ -1147,7 +1145,6 @@ class AdminModerationLlmUpstreamSupport {
     @SuppressWarnings("unchecked")
     List<String> enrichEvidenceWithText(List<String> evidence, String auditText) {
         if (evidence == null || evidence.isEmpty() || auditText == null || auditText.isBlank()) return evidence;
-        String textSection = auditText;
         ArrayList<String> out = new ArrayList<>();
         for (String ev : evidence) {
             if (ev == null) { out.add(ev); continue; }
@@ -1161,9 +1158,9 @@ class AdminModerationLlmUpstreamSupport {
                 if (node == null) { out.add(ev); continue; }
                 Object textObj = node.get("text");
                 String existing = textObj == null ? "" : String.valueOf(textObj).trim();
-                if (!existing.isBlank() && !isSuspiciousEvidenceText(existing, textSection)) { out.add(ev); continue; }
+                if (!existing.isBlank() && !isSuspiciousEvidenceText(existing, auditText)) { out.add(ev); continue; }
 
-                String snippet = extractByContextAnchors(node, textSection);
+                String snippet = extractByContextAnchors(node, auditText);
                 if (snippet == null || snippet.isBlank()) { out.add(ev); continue; }
                 snippet = IMAGE_PLACEHOLDER.matcher(snippet).replaceAll("").trim();
                 if (snippet.isBlank()) { out.add(ev); continue; }
@@ -1201,8 +1198,7 @@ class AdminModerationLlmUpstreamSupport {
     }
 
     private static String fallbackViolationSnippet(String text, int violationStart) {
-        int hardEnd = Math.min(violationStart + 220, text.length());
-        int end = hardEnd;
+        int end = Math.min(violationStart + 220, text.length());
         int imageIdx = text.indexOf("[[IMAGE_", violationStart);
         if (imageIdx >= 0 && imageIdx < end) end = imageIdx;
         int sectionIdx = text.indexOf("\n[", violationStart);

@@ -111,20 +111,19 @@ public class ContentSafetyCircuitBreakerFilter extends OncePerRequestFilter {
 
     private static String detectEntrypoint(String path, String method) {
         if (path == null) return null;
-        String p = path;
 
-        if (p.startsWith("/api/posts/") && isGet(method)) {
-            String tail = p.substring("/api/posts/".length());
+        if (path.startsWith("/api/posts/") && isGet(method)) {
+            String tail = path.substring("/api/posts/".length());
             if (tail.matches("\\d+")) return "PORTAL_POST_DETAIL";
             return null;
         }
-        if (p.equals("/api/posts") && isGet(method)) return "PORTAL_POST_LIST";
-        if (p.equals("/api/hot") && isGet(method)) return "PORTAL_HOT";
-        if (p.startsWith("/api/portal/search") && isGet(method)) return "PORTAL_SEARCH";
-        if (p.startsWith("/api/ai/chat")) return "PORTAL_CHAT";
-        if (p.startsWith("/api/uploads")) return "UPLOADS_API";
-        if (p.startsWith("/uploads/") || p.equals("/uploads")) return "UPLOADS_STATIC";
-        if (p.startsWith("/api/admin/moderation/queue")) return "ADMIN_MODERATION_QUEUE";
+        if (path.equals("/api/posts") && isGet(method)) return "PORTAL_POST_LIST";
+        if (path.equals("/api/hot") && isGet(method)) return "PORTAL_HOT";
+        if (path.startsWith("/api/portal/search") && isGet(method)) return "PORTAL_SEARCH";
+        if (path.startsWith("/api/ai/chat")) return "PORTAL_CHAT";
+        if (path.startsWith("/api/uploads")) return "UPLOADS_API";
+        if (path.startsWith("/uploads/") || path.equals("/uploads")) return "UPLOADS_STATIC";
+        if (path.startsWith("/api/admin/moderation/queue")) return "ADMIN_MODERATION_QUEUE";
         return null;
     }
 

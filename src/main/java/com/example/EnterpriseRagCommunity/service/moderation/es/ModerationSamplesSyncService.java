@@ -198,8 +198,7 @@ public class ModerationSamplesSyncService {
 
     public ModerationSamplesReindexResponse reindexAll(Boolean onlyEnabled, Integer batchSize, Long fromId) {
         boolean doClear = (fromId == null || fromId <= 0);
-        boolean doCleanupOrphans = doClear; // only meaningful for full rebuild
-        ModerationSamplesReindexResponse resp = syncByCursor(onlyEnabled, batchSize, fromId, doClear, doCleanupOrphans);
+        ModerationSamplesReindexResponse resp = syncByCursor(onlyEnabled, batchSize, fromId, doClear, doClear);
         autoSyncConfigService.updateIncrementalSyncCursorLastId(resp.getLastId() == null ? 0 : resp.getLastId());
         return resp;
     }

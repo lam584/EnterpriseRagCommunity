@@ -35,6 +35,12 @@ public class IpPathRateLimitFilter extends OncePerRequestFilter {
     @Value("${app.security.rate-limit.sensitive-max-requests-per-window:20}")
     private int sensitiveMaxRequestsPerWindow;
 
+    @Value("${app.security.rate-limit.setup-max-requests-per-window:30}")
+    private int setupMaxRequestsPerWindow;
+
+    @Value("${app.security.rate-limit.initial-admin-max-requests-per-window:5}")
+    private int initialAdminMaxRequestsPerWindow;
+
     @Value("${app.security.rate-limit.sensitive-path-prefixes:/api/auth,/api/.env,/api/.git,/api/phpinfo.php,/api/info.php,/api/keys,/api/apikey}")
     private String sensitivePathPrefixesRaw;
 
@@ -97,6 +103,12 @@ public class IpPathRateLimitFilter extends OncePerRequestFilter {
 
     private int resolveLimit(String normalizedPath) {
         if (normalizedPath == null) return maxRequestsPerWindow;
+        if ("/api/auth/register-initial-admin".equals(normalizedPath)) {
+            return Math.max(0, initialAdminMaxRequestsPerWindow);
+        }
+        if (normalizedPath.startsWith("/api/setup")) {
+            return Math.max(0, setupMaxRequestsPerWindow);
+        }
         List<String> prefixes = parsePrefixes(sensitivePathPrefixesRaw);
         for (String prefix : prefixes) {
             if (normalizedPath.startsWith(prefix)) return Math.max(0, sensitiveMaxRequestsPerWindow);

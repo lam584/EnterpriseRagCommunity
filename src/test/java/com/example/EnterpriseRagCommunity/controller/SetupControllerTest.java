@@ -1,5 +1,6 @@
 package com.example.EnterpriseRagCommunity.controller;
 
+import com.example.EnterpriseRagCommunity.config.AdminSetupManager;
 import com.example.EnterpriseRagCommunity.config.DynamicConfigurationLoader;
 import com.example.EnterpriseRagCommunity.config.DynamicElasticsearchConfig;
 import com.example.EnterpriseRagCommunity.config.ElasticsearchIndexStartupInitializer;
@@ -12,11 +13,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.Answers;
-import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -28,7 +27,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -97,6 +95,9 @@ class SetupControllerTest {
     @MockitoBean
     private SetupController.RestClientFactory restClientFactory;
 
+    @MockitoBean
+    private AdminSetupManager adminSetupManager;
+
     private final String originalUserDir = System.getProperty("user.dir");
 
     @AfterEach
@@ -104,6 +105,11 @@ class SetupControllerTest {
         if (originalUserDir != null) {
             System.setProperty("user.dir", originalUserDir);
         }
+    }
+
+    @BeforeEach
+    void setupDefaults() {
+        when(adminSetupManager.isSetupRequired()).thenReturn(true);
     }
 
     @Test
@@ -134,14 +140,13 @@ class SetupControllerTest {
     }
 
     @Test
-    void checkEnv_shouldReturnExistsTrueAndContent_whenEnvFilePresent(@TempDir Path tmp) throws Exception {
+    void checkEnv_shouldReturnExistsTrue_whenEnvFilePresent(@TempDir Path tmp) throws Exception {
         System.setProperty("user.dir", tmp.toString());
         Files.writeString(tmp.resolve(".env"), "X=1", StandardCharsets.UTF_8);
 
         mockMvc.perform(get("/api/setup/check-env"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.exists").value(true))
-                .andExpect(jsonPath("$.content").value("X=1"));
+                .andExpect(jsonPath("$.exists").value(true));
     }
 
     @Test
@@ -244,7 +249,7 @@ class SetupControllerTest {
                         .content("{\"spring.elasticsearch.uris\":\"http://x\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Status code: 503"));
+                .andExpect(jsonPath("$.message").value("Connection failed"));
     }
 
     @Test
@@ -258,7 +263,7 @@ class SetupControllerTest {
                         .content("{\"spring.elasticsearch.uris\":\"http://x\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Connection failed: boom"));
+                .andExpect(jsonPath("$.message").value("Connection failed"));
     }
 
     @Test
@@ -270,7 +275,7 @@ class SetupControllerTest {
                         .content("{\"spring.elasticsearch.uris\":\"http://x\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Connection failed: no"));
+                .andExpect(jsonPath("$.message").value("Connection failed"));
     }
 
     @Test
@@ -289,7 +294,7 @@ class SetupControllerTest {
                         .content("{\"spring.elasticsearch.uris\":\"http://x\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("Connection failed: close"));
+                .andExpect(jsonPath("$.message").value("Connection failed"));
     }
 
     @Test
@@ -391,7 +396,7 @@ class SetupControllerTest {
                                 }
                                 """))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.message").value("Failed to connect to ES: no"));
+                .andExpect(jsonPath("$.message").value("Failed to connect to ES"));
     }
 
     @Test
@@ -414,7 +419,7 @@ class SetupControllerTest {
                                 }
                                 """))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.message").value("Failed to connect to ES: close"));
+                .andExpect(jsonPath("$.message").value("Failed to connect to ES"));
     }
 
     @Test
@@ -461,7 +466,7 @@ class SetupControllerTest {
                                 }
                                 """))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.message").value("boom"));
+                .andExpect(jsonPath("$.message").value("Failed to save config"));
     }
 
     @Test
@@ -530,19 +535,16 @@ class SetupControllerTest {
     }
 
     @Test
-    void checkEnv_shouldReturn500_whenReadThrowsIOException(@TempDir Path tmp) throws Exception {
-        System.setProperty("user.dir", tmp.toString());
-        Path envPath = tmp.resolve(".env");
-        Files.writeString(envPath, "X=1", StandardCharsets.UTF_8);
+    void setupEndpoints_shouldReturn403_whenSetupAlreadyCompleted() throws Exception {
+        when(adminSetupManager.isSetupRequired()).thenReturn(false);
 
-        try (MockedStatic<Files> files = Mockito.mockStatic(Files.class, Answers.CALLS_REAL_METHODS)) {
-            files.when(() -> Files.readString(eq(envPath))).thenThrow(new IOException("x"));
+        mockMvc.perform(get("/api/setup/check-env"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Setup already completed"));
 
-            mockMvc.perform(get("/api/setup/check-env"))
-                    .andExpect(status().isInternalServerError())
-                    .andExpect(jsonPath("$.exists").value(true))
-                    .andExpect(jsonPath("$.error").value("Failed to read file"));
-        }
+        mockMvc.perform(post("/api/setup/generate-totp"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Setup already completed"));
     }
 
     @Test
@@ -570,8 +572,7 @@ class SetupControllerTest {
         try {
             mockMvc.perform(get("/api/setup/check-env"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.exists").value(true))
-                    .andExpect(jsonPath("$.content").value("Y=2"));
+                    .andExpect(jsonPath("$.exists").value(true));
         } finally {
             Files.deleteIfExists(envPath);
         }

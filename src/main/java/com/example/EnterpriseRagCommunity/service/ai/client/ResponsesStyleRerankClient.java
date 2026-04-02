@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -81,7 +80,7 @@ public class ResponsesStyleRerankClient {
             Integer connectTimeoutMs,
             Integer readTimeoutMs
     ) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
         conn.setRequestMethod("POST");
         conn.setDoOutput(true);
 

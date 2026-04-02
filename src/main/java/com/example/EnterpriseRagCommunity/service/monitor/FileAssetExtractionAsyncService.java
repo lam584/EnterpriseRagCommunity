@@ -586,7 +586,7 @@ public class FileAssetExtractionAsyncService {
     ) throws Exception {
         c.maxDepthSeen = Math.max(c.maxDepthSeen, depth);
         archiveMeta.putIfAbsent("archiveType", "7z");
-        try (SeekableByteChannel ch = Files.newByteChannel(sevenZPath); SevenZFile sevenZ = new SevenZFile(ch)) {
+        try (SeekableByteChannel ch = Files.newByteChannel(sevenZPath); SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
             SevenZArchiveEntry entry;
             byte[] buf = new byte[8192];
             while ((entry = sevenZ.getNextEntry()) != null) {
@@ -685,7 +685,7 @@ public class FileAssetExtractionAsyncService {
         if (bytes == null || bytes.length == 0) return;
         c.maxDepthSeen = Math.max(c.maxDepthSeen, depth);
         archiveMeta.putIfAbsent("archiveType", "7z");
-        try (SeekableInMemoryByteChannel ch = new SeekableInMemoryByteChannel(bytes); SevenZFile sevenZ = new SevenZFile(ch)) {
+        try (SeekableInMemoryByteChannel ch = new SeekableInMemoryByteChannel(bytes); SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
             SevenZArchiveEntry entry;
             byte[] buf = new byte[8192];
             while ((entry = sevenZ.getNextEntry()) != null) {
@@ -963,7 +963,7 @@ public class FileAssetExtractionAsyncService {
         archiveMeta.putIfAbsent("archiveType", "7z");
 
         StringBuilder out = new StringBuilder();
-        try (SeekableByteChannel ch = Files.newByteChannel(path); SevenZFile sevenZ = new SevenZFile(ch)) {
+        try (SeekableByteChannel ch = Files.newByteChannel(path); SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
             SevenZArchiveEntry entry;
             while ((entry = sevenZ.getNextEntry()) != null) {
                 if (exceededArchiveBudget(c, startNs)) {
@@ -1059,7 +1059,7 @@ public class FileAssetExtractionAsyncService {
         archiveMeta.putIfAbsent("archiveType", "7z");
 
         StringBuilder out = new StringBuilder();
-        try (SeekableInMemoryByteChannel ch = new SeekableInMemoryByteChannel(bytes); SevenZFile sevenZ = new SevenZFile(ch)) {
+        try (SeekableInMemoryByteChannel ch = new SeekableInMemoryByteChannel(bytes); SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
             SevenZArchiveEntry entry;
             while ((entry = sevenZ.getNextEntry()) != null) {
                 if (exceededArchiveBudget(c, startNs)) {

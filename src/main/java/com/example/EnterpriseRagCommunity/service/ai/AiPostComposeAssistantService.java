@@ -433,9 +433,7 @@ public class AiPostComposeAssistantService {
             messagesMultimodal.add(ChatMessage.user(userMsg));
         }
 
-        StringBuilder assistantAccum = new StringBuilder();
         long startedAt = System.currentTimeMillis();
-        boolean[] gotDelta = new boolean[]{false};
         try {
             llmGateway.chatStreamRouted(
                     chatTaskType,
@@ -453,8 +451,6 @@ public class AiPostComposeAssistantService {
                         if ("[DONE]".equals(data)) return;
                         String content = extractDeltaContent(data);
                         if (!StringUtils.hasText(content)) return;
-                        gotDelta[0] = true;
-                        assistantAccum.append(content);
                         out.write("event: delta\n");
                         out.write("data: {\"content\":\"" + jsonEscape(content) + "\"}\n\n");
                         out.flush();

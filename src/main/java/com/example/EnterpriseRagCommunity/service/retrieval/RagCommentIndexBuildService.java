@@ -343,14 +343,10 @@ public class RagCommentIndexBuildService {
         long successChunks0 = successChunks;
         long failedChunks0 = failedChunks;
         Long lastId0 = lastId;
-        int ps0 = ps;
-        int maxChars0 = maxChars;
-        int overlap0 = overlap;
         Integer embeddingDims0 = resp.getEmbeddingDims();
         String modelToUse0 = modelToUse;
         Boolean cleared0 = cleared;
         String clearError0 = clearError;
-        Long fromCommentId0 = fromCommentId;
 
         touchMetadata(vectorIndexId, meta -> {
             meta.remove("embeddingModel");
@@ -361,11 +357,11 @@ public class RagCommentIndexBuildService {
             meta.put("lastBuildTotalChunks", totalChunks0);
             meta.put("lastBuildSuccessChunks", successChunks0);
             meta.put("lastBuildFailedChunks", failedChunks0);
-            meta.put("lastBuildCommentBatchSize", ps0);
-            meta.put("lastBuildFromCommentId", fromCommentId0);
+            meta.put("lastBuildCommentBatchSize", ps);
+            meta.put("lastBuildFromCommentId", fromCommentId);
             meta.put("lastBuildLastCommentId", lastId0);
-            meta.put("lastBuildChunkMaxChars", maxChars0);
-            meta.put("lastBuildChunkOverlapChars", overlap0);
+            meta.put("lastBuildChunkMaxChars", maxChars);
+            meta.put("lastBuildChunkOverlapChars", overlap);
             meta.put("lastBuildEmbeddingDims", embeddingDims0);
             meta.put("lastBuildEmbeddingModel", modelToUse0);
             meta.put("lastBuildCleared", cleared0);
@@ -564,7 +560,7 @@ public class RagCommentIndexBuildService {
         }
 
         try {
-            HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+            HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(url).toURL().openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);
             conn.setReadTimeout(10_000);
@@ -592,7 +588,7 @@ public class RagCommentIndexBuildService {
         String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
-            URL url = new URL(endpoint + "/" + indexName.trim() + "/_delete_by_query?conflicts=proceed&refresh=true");
+            URL url = java.net.URI.create(endpoint + "/" + indexName.trim() + "/_delete_by_query?conflicts=proceed&refresh=true").toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(2000);
@@ -623,7 +619,7 @@ public class RagCommentIndexBuildService {
 
         try {
             String idx = URLEncoder.encode(indexName.trim(), StandardCharsets.UTF_8);
-            URL url = new URL(endpoint + "/" + idx + "?ignore_unavailable=true");
+            URL url = java.net.URI.create(endpoint + "/" + idx + "?ignore_unavailable=true").toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("DELETE");
             conn.setConnectTimeout(2000);
