@@ -41,6 +41,53 @@ public class ModerationSimilarityService {
     private final ModerationPolicyConfigRepository policyConfigRepository;
     private final SystemConfigurationService systemConfigurationService;
 
+    private static Double firstNonNull(Double a, Double b, Double c) {
+        if (a != null) return a;
+        if (b != null) return b;
+        return c;
+    }
+
+    private static Map<String, Object> asObjectMap(Object value) {
+        if (!(value instanceof Map<?, ?> rawMap)) {
+            return null;
+        }
+        Map<String, Object> typedMap = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                return null;
+            }
+            typedMap.put(key, entry.getValue());
+        }
+        return typedMap;
+    }
+
+    private ModerationSimilarityConfigEntity loadConfigOrNull() {
+        try {
+            return configRepository.findAll().stream().findFirst().orElse(null);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private static String truncateByChars(String s, int maxChars) {
+        if (s == null) return "";
+        if (maxChars <= 0) return s;
+        if (s.length() <= maxChars) return s;
+        return s.substring(0, maxChars);
+    }
+
+    private static String toNonBlank(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        return t.isBlank() ? null : t;
+    }
+
+    private static Integer firstNonNull(Integer a, Integer b, Integer c) {
+        if (a != null) return a;
+        if (b != null) return b;
+        return c;
+    }
+
     public SimilarityCheckResponse check(SimilarityCheckRequest req) {
         if (req == null) throw new IllegalArgumentException("req is null");
 
@@ -79,8 +126,8 @@ public class ModerationSimilarityService {
         }
 
         Integer configuredDimsOverride = req.getEmbeddingDims();
-    Integer configuredDimsCfg = cfg == null ? null : cfg.getEmbeddingDims();
-    int configuredDims = firstNonNull(configuredDimsOverride, configuredDimsCfg, indexConfigService.getEmbeddingDimsOrDefault());
+        Integer configuredDimsCfg = cfg == null ? null : cfg.getEmbeddingDims();
+        int configuredDims = firstNonNull(configuredDimsOverride, configuredDimsCfg, indexConfigService.getEmbeddingDimsOrDefault());
         if (configuredDims < 0) configuredDims = 0;
 
         // Embedding
@@ -143,9 +190,9 @@ public class ModerationSimilarityService {
             ModerationPolicyConfigEntity policy = policyConfigRepository.findByContentType(contentType).orElse(null);
             if (policy != null && policy.getConfig() != null) {
                 try {
-                    Map<String, Object> precheck = (Map<String, Object>) policy.getConfig().get("precheck");
+                    Map<String, Object> precheck = asObjectMap(policy.getConfig().get("precheck"));
                     if (precheck != null) {
-                        Map<String, Object> vec = (Map<String, Object>) precheck.get("vec");
+                        Map<String, Object> vec = asObjectMap(precheck.get("vec"));
                         if (vec != null && vec.get("threshold") != null) {
                             return ((Number) vec.get("threshold")).doubleValue();
                         }
@@ -154,39 +201,6 @@ public class ModerationSimilarityService {
             }
         }
         return 0.15; // default fallback
-    }
-
-    private ModerationSimilarityConfigEntity loadConfigOrNull() {
-        try {
-            return configRepository.findAll().stream().findFirst().orElse(null);
-        } catch (Exception ex) {
-            return null;
-        }
-    }
-
-    private static String truncateByChars(String s, int maxChars) {
-        if (s == null) return "";
-        if (maxChars <= 0) return s;
-        if (s.length() <= maxChars) return s;
-        return s.substring(0, maxChars);
-    }
-
-    private static String toNonBlank(String s) {
-        if (s == null) return null;
-        String t = s.trim();
-        return t.isBlank() ? null : t;
-    }
-
-    private static Integer firstNonNull(Integer a, Integer b, Integer c) {
-        if (a != null) return a;
-        if (b != null) return b;
-        return c;
-    }
-
-    private static Double firstNonNull(Double a, Double b, Double c) {
-        if (a != null) return a;
-        if (b != null) return b;
-        return c;
     }
 
     private void persistHits(ContentType contentType, Long contentId, double threshold, List<SimilarityCheckResponse.Hit> hits) {

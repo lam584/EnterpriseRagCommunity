@@ -223,9 +223,6 @@ public class PostsServiceImpl implements PostsService {
                     fileName = (fileName == null ? "" : fileName);
                     fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
                     fileName = fileName.replaceAll("[\\\\/]+", "_");
-                    if (fileName.isBlank()) {
-                        fileName = "file";
-                    }
 
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();
                     pa.setPostId(post.getId());
@@ -699,9 +696,6 @@ public class PostsServiceImpl implements PostsService {
                     fileName = (fileName == null ? "" : fileName);
                     fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
                     fileName = fileName.replaceAll("[\\\\/]+", "_");
-                    if (fileName.isBlank()) {
-                        fileName = "file";
-                    }
 
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();
                     pa.setPostId(post.getId());

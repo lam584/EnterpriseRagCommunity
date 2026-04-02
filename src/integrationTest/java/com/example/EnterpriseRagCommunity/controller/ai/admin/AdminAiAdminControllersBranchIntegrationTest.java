@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.dto.ai.AiProviderAddModelRequestDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelsDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AdminLlmPriceConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AdminLlmPriceConfigUpsertRequest;
+import com.example.EnterpriseRagCommunity.dto.ai.AdminChatContextEventLogDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.ChatContextGovernanceConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PromptBatchRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.PromptBatchResponse;
@@ -86,8 +87,8 @@ public class AdminAiAdminControllersBranchIntegrationTest {
         AdminChatContextGovernanceController controller =
                 new AdminChatContextGovernanceController(configService, logsService, auditLogWriter, auditDiffBuilder);
 
-        Page<?> page = new PageImpl<>(List.of());
-        when(logsService.list(any(), any(), anyInt(), anyInt())).thenReturn((Page) page);
+        Page<AdminChatContextEventLogDTO> page = new PageImpl<>(List.of());
+        when(logsService.list(any(), any(), anyInt(), anyInt())).thenReturn(page);
 
         controller.listLogs(0, 20, "not-a-time", "2026-02-27T01:02:03");
         verify(logsService).list(eq(null), eq(LocalDateTime.parse("2026-02-27T01:02:03")), eq(0), eq(20));
@@ -170,4 +171,3 @@ public class AdminAiAdminControllersBranchIntegrationTest {
         assertSame(ok1, controller.upsert(req, principal));
     }
 }
-

@@ -70,3 +70,5 @@ docs/测试/temp/
 docs/许可证整改清单-Apache2.md
 /docs/compliance/
 my-vite-app/.trae
+docs/测试/gen_test_cases-2.py
+docs/测试/gen_test_cases.py

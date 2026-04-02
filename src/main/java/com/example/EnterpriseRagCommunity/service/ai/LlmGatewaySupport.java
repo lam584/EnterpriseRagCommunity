@@ -175,9 +175,8 @@ final class LlmGatewaySupport {
                     ? indexOfIgnoreCase(t, "&lt;/reasoning_content&gt;", openEndExclusive)
                     : indexOfIgnoreCase(t, "</reasoning_content>", openEndExclusive);
             if (closeStart < 0) return t;
-            int closeEndExclusive = closeStart + (escaped ? "&lt;/reasoning_content&gt;".length() : "</reasoning_content>".length());
 
-            int after = closeEndExclusive;
+            int after = closeStart + (escaped ? "&lt;/reasoning_content&gt;".length() : "</reasoning_content>".length());
             while (after < t.length() && Character.isWhitespace(t.charAt(after))) after++;
             t = t.substring(0, start) + t.substring(after);
         }
@@ -216,9 +215,8 @@ final class LlmGatewaySupport {
                     ? indexOfIgnoreCase(t, "&lt;/think&gt;", openEndExclusive)
                     : indexOfIgnoreCase(t, "</think>", openEndExclusive);
             if (closeStart < 0) return t;
-            int closeEndExclusive = closeStart + (escaped ? "&lt;/think&gt;".length() : "</think>".length());
 
-            int after = closeEndExclusive;
+            int after = closeStart + (escaped ? "&lt;/think&gt;".length() : "</think>".length());
             while (after < t.length() && Character.isWhitespace(t.charAt(after))) after++;
             t = t.substring(0, start) + t.substring(after);
         }

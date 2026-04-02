@@ -793,6 +793,14 @@ public class HybridRagRetrievalService {
         return m;
     }
 
+    public AiRerankService getAiRerankService() {
+        return aiRerankService;
+    }
+
+    public AiEmbeddingService getEmbeddingService() {
+        return embeddingService;
+    }
+
 
     @Data
     public static class RetrieveResult {
