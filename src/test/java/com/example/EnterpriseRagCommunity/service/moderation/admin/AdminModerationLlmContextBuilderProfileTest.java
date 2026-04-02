@@ -22,6 +22,8 @@ import com.example.EnterpriseRagCommunity.service.moderation.web.WebContentFetch
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -32,6 +34,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -108,6 +111,8 @@ class AdminModerationLlmContextBuilderProfileTest {
         u.setMetadata(metadata);
 
         when(usersRepository.findById(1L)).thenReturn(Optional.of(u));
+        when(reportsRepository.findByTargetTypeAndTargetId(any(), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
 
         AdminModerationLlmContextBuilder builder = newBuilder(
                 queueRepository,
@@ -194,6 +199,8 @@ class AdminModerationLlmContextBuilderProfileTest {
         md.put("profile", publicProfile);
         u.setMetadata(md);
         when(usersRepository.findById(1L)).thenReturn(Optional.of(u));
+        when(reportsRepository.findByTargetTypeAndTargetId(any(), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
 
         Map<String, Object> snap = new LinkedHashMap<>();
         snap.put("username", "snapName");
@@ -209,6 +216,8 @@ class AdminModerationLlmContextBuilderProfileTest {
         a.setCreatedAt(LocalDateTime.now());
 
         when(moderationActionsRepository.findAllByQueueId(99L)).thenReturn(List.of(a));
+        when(reportsRepository.findByTargetTypeAndTargetId(any(), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
 
         AdminModerationLlmContextBuilder builder = newBuilder(
                 queueRepository,

@@ -19,6 +19,7 @@ import java.io.StringWriter;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.util.Arrays;
@@ -41,79 +42,15 @@ import static org.mockito.Mockito.when;
 
 class AdminLlmLoadTestServiceBranchHelperUnitTest {
 
-    @Test
-    void staticHelpers_should_cover_main_branches() throws Exception {
-        assertNull(invokeStatic("trimToNull", new Class[]{String.class}, new Object[]{null}));
-        assertNull(invokeStatic("trimToNull", new Class[]{String.class}, new Object[]{"   "}));
-        assertEquals("a", invokeStatic("trimToNull", new Class[]{String.class}, new Object[]{" a "}));
-
-        assertNull(invokeStatic("toNonBlank", new Class[]{Object.class}, new Object[]{null}));
-        assertNull(invokeStatic("toNonBlank", new Class[]{Object.class}, new Object[]{"   "}));
-        assertEquals("42", invokeStatic("toNonBlank", new Class[]{Object.class}, new Object[]{42}));
-
-        assertEquals(10, invokeStatic("clampInt", new Class[]{Integer.class, int.class, int.class, int.class}, new Object[]{null, 1, 20, 10}));
-        assertEquals(1, invokeStatic("clampInt", new Class[]{Integer.class, int.class, int.class, int.class}, new Object[]{0, 1, 20, 10}));
-        assertEquals(20, invokeStatic("clampInt", new Class[]{Integer.class, int.class, int.class, int.class}, new Object[]{21, 1, 20, 10}));
-        assertEquals(7, invokeStatic("clampInt", new Class[]{Integer.class, int.class, int.class, int.class}, new Object[]{7, 1, 20, 10}));
-
-        assertFalse((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{null}));
-        assertFalse((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{"qwen3-thinking"}));
-        assertTrue((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{"qwen3-8b"}));
-        assertTrue((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{"provider/qwen-plus-2025-04-28"}));
-        assertFalse((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{"gpt-4"}));
-
-        assertEquals("a", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"a", false, "gpt"}));
-        assertEquals("x/think", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"x/think", true, "qwen3-8b"}));
-        assertEquals("x\n/think", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"x", true, "qwen3-8b"}));
-        assertEquals("x\n/no_think", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"x", false, "qwen3-8b"}));
-        assertEquals("x\n/no_think", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"x\n", false, "qwen3-8b"}));
-
-        assertEquals(-1, invokeStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, new Object[]{null, "a", 0}));
-        assertEquals(0, invokeStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, new Object[]{"abc", "", -1}));
-        assertEquals(-1, invokeStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, new Object[]{"ab", "abc", 0}));
-        assertEquals(2, invokeStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, new Object[]{"AbCd", "cd", 0}));
-
-        assertNull(invokeStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, new Object[]{null, "x"}));
-        assertEquals("abc", invokeStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, new Object[]{"abc", " "} ));
-        assertEquals("abc", invokeStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, new Object[]{"abc", "X"}));
-        assertEquals("ab", invokeStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, new Object[]{"aXXb", "x"}));
-
-        String stripped = (String) invokeStatic("stripReasoningArtifacts", new Class[]{String.class}, new Object[]{"<reasoning_content>abc</reasoning_content>"});
-        assertFalse(stripped.toLowerCase().contains("reasoning_content"));
-
-        assertNull(invokeStatic("extractDeltaStringField", new Class[]{String.class, String.class}, new Object[]{null, "content"}));
-        assertNull(invokeStatic("extractDeltaStringField", new Class[]{String.class, String.class}, new Object[]{"{}", ""}));
-        assertNull(invokeStatic("extractDeltaStringField", new Class[]{String.class, String.class}, new Object[]{"{\"x\":\"1\"}", "content"}));
-        assertEquals("你\n好", invokeStatic("extractDeltaStringField", new Class[]{String.class, String.class}, new Object[]{"{\"content\":\"\\u4f60\\n\\u597d\"}", "content"}));
-
-        assertNull(invokeStatic("extractDeltaText", new Class[]{String.class, boolean.class}, new Object[]{null, false}));
-        assertEquals("abc", invokeStatic("extractDeltaText", new Class[]{String.class, boolean.class}, new Object[]{"{\"content\":\"abc\"}", false}));
-        assertEquals("r", invokeStatic("extractDeltaText", new Class[]{String.class, boolean.class}, new Object[]{"{\"reasoning_content\":\"r\",\"text\":\"t\"}", true}));
-        assertEquals("t", invokeStatic("extractDeltaText", new Class[]{String.class, boolean.class}, new Object[]{"{\"text\":\"t\"}", false}));
-        assertEquals("abc", invokeStatic("extractDeltaContent", new Class[]{String.class}, new Object[]{"{\"content\":\"abc\"}"}));
-
-        assertEquals("error", invokeStatic("safeMessage", new Class[]{Exception.class}, new Object[]{null}));
-        assertEquals("IllegalStateException", invokeStatic("safeMessage", new Class[]{Exception.class}, new Object[]{new IllegalStateException(" ")}));
-        assertEquals("boom", invokeStatic("safeMessage", new Class[]{Exception.class}, new Object[]{new RuntimeException("boom")}));
-
-        Object cfgZero = newNormalizedConfig(1, 1, 0, 0, null, null, false, 1000, 0, 0, "a", "b");
-        assertEquals("MODERATION_TEST", invokeStatic("weightedPick", new Class[]{cfgZero.getClass(), long.class}, new Object[]{cfgZero, 1L}).toString());
-        Object cfgMixed = newNormalizedConfig(1, 1, 2, 1, null, null, false, 1000, 0, 0, "a", "b");
-        assertEquals("CHAT_STREAM", invokeStatic("weightedPick", new Class[]{cfgMixed.getClass(), long.class}, new Object[]{cfgMixed, 0L}).toString());
-        assertEquals("MODERATION_TEST", invokeStatic("weightedPick", new Class[]{cfgMixed.getClass(), long.class}, new Object[]{cfgMixed, 2L}).toString());
-
-        assertNull(invokeStatic("normalizeModel", new Class[]{String.class}, new Object[]{null}));
-        assertNull(invokeStatic("normalizeModel", new Class[]{String.class}, new Object[]{"   "}));
-        assertEquals("m", invokeStatic("normalizeModel", new Class[]{String.class}, new Object[]{"x/y:m"}));
-
-        assertNull(invokeStatic("normalizeCurrency", new Class[]{String.class}, new Object[]{null}));
-        assertNull(invokeStatic("normalizeCurrency", new Class[]{String.class}, new Object[]{"  "}));
-        assertEquals("USD", invokeStatic("normalizeCurrency", new Class[]{String.class}, new Object[]{" usd "}));
-
-        assertNull(invokeStatic("percentile", new Class[]{long[].class, double.class}, new Object[]{null, 0.5}));
-        assertNull(invokeStatic("percentile", new Class[]{long[].class, double.class}, new Object[]{new long[]{1, 2}, Double.NaN}));
-        assertEquals(5.0, invokeStatic("percentile", new Class[]{long[].class, double.class}, new Object[]{new long[]{5}, 0.5}));
-        assertEquals(15.0, invokeStatic("percentile", new Class[]{long[].class, double.class}, new Object[]{new long[]{10, 20}, 0.5}));
+    private static Object invokeStatic(String name, Class<?>[] paramTypes, Object[] args) throws Exception {
+        Method m;
+        try {
+            m = AdminLlmLoadTestService.class.getDeclaredMethod(name, paramTypes);
+        } catch (NoSuchMethodException ex) {
+            m = findCompatibleStaticMethod(name, args);
+        }
+        m.setAccessible(true);
+        return m.invoke(null, args);
     }
 
     @Test
@@ -256,10 +193,121 @@ class AdminLlmLoadTestServiceBranchHelperUnitTest {
         assertNull(nullCost);
     }
 
-    private static Object invokeStatic(String name, Class<?>[] paramTypes, Object[] args) throws Exception {
-        Method m = AdminLlmLoadTestService.class.getDeclaredMethod(name, paramTypes);
-        m.setAccessible(true);
-        return m.invoke(null, args);
+    private static Method findCompatibleStaticMethod(String name, Object[] args) throws NoSuchMethodException {
+        for (Method m : AdminLlmLoadTestService.class.getDeclaredMethods()) {
+            if (!m.getName().equals(name) || !Modifier.isStatic(m.getModifiers())) {
+                continue;
+            }
+            Class<?>[] pts = m.getParameterTypes();
+            if (pts.length != (args == null ? 0 : args.length)) {
+                continue;
+            }
+            boolean ok = true;
+            for (int i = 0; i < pts.length; i++) {
+                Object arg = args[i];
+                if (arg == null) {
+                    continue;
+                }
+                if (!wrap(pts[i]).isInstance(arg)) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) {
+                return m;
+            }
+        }
+        throw new NoSuchMethodException(name);
+    }
+
+    private static Class<?> wrap(Class<?> c) {
+        if (!c.isPrimitive()) {
+            return c;
+        }
+        if (c == int.class) return Integer.class;
+        if (c == long.class) return Long.class;
+        if (c == double.class) return Double.class;
+        if (c == float.class) return Float.class;
+        if (c == boolean.class) return Boolean.class;
+        if (c == byte.class) return Byte.class;
+        if (c == short.class) return Short.class;
+        if (c == char.class) return Character.class;
+        return c;
+    }
+
+    @Test
+    void staticHelpers_should_cover_main_branches() throws Exception {
+        assertNull(invokeStatic("trimToNull", new Class[]{String.class}, new Object[]{null}));
+        assertNull(invokeStatic("trimToNull", new Class[]{String.class}, new Object[]{"   "}));
+        assertEquals("a", invokeStatic("trimToNull", new Class[]{String.class}, new Object[]{" a "}));
+
+        assertNull(invokeStatic("toNonBlank", new Class[]{Object.class}, new Object[]{null}));
+        assertNull(invokeStatic("toNonBlank", new Class[]{Object.class}, new Object[]{"   "}));
+        assertEquals("42", invokeStatic("toNonBlank", new Class[]{Object.class}, new Object[]{42}));
+
+        assertEquals(10, invokeStatic("clampInt", new Class[]{Integer.class, int.class, int.class, int.class}, new Object[]{null, 1, 20, 10}));
+        assertEquals(1, invokeStatic("clampInt", new Class[]{Integer.class, int.class, int.class, int.class}, new Object[]{0, 1, 20, 10}));
+        assertEquals(20, invokeStatic("clampInt", new Class[]{Integer.class, int.class, int.class, int.class}, new Object[]{21, 1, 20, 10}));
+        assertEquals(7, invokeStatic("clampInt", new Class[]{Integer.class, int.class, int.class, int.class}, new Object[]{7, 1, 20, 10}));
+
+        assertFalse((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{null}));
+        assertFalse((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{"qwen3-thinking"}));
+        assertTrue((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{"qwen3-8b"}));
+        assertTrue((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{"provider/qwen-plus-2025-04-28"}));
+        assertFalse((Boolean) invokeStatic("supportsThinkingDirectiveModel", new Class[]{String.class}, new Object[]{"gpt-4"}));
+
+        assertEquals("a", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"a", false, "gpt"}));
+        assertEquals("x/think", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"x/think", true, "qwen3-8b"}));
+        assertEquals("x\n/think", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"x", true, "qwen3-8b"}));
+        assertEquals("x\n/no_think", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"x", false, "qwen3-8b"}));
+        assertEquals("x\n/no_think", invokeStatic("applyThinkingDirective", new Class[]{String.class, boolean.class, String.class}, new Object[]{"x\n", false, "qwen3-8b"}));
+
+        assertEquals(-1, invokeStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, new Object[]{null, "a", 0}));
+        assertEquals(0, invokeStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, new Object[]{"abc", "", -1}));
+        assertEquals(-1, invokeStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, new Object[]{"ab", "abc", 0}));
+        assertEquals(2, invokeStatic("indexOfIgnoreCase", new Class[]{String.class, String.class, int.class}, new Object[]{"AbCd", "cd", 0}));
+
+        assertNull(invokeStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, new Object[]{null, "x"}));
+        assertEquals("abc", invokeStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, new Object[]{"abc", " "} ));
+        assertEquals("abc", invokeStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, new Object[]{"abc", "X"}));
+        assertEquals("ab", invokeStatic("removeMarkerWordIgnoreCase", new Class[]{String.class, String.class}, new Object[]{"aXXb", "x"}));
+
+        String stripped = (String) invokeStatic("stripReasoningArtifacts", new Class[]{String.class}, new Object[]{"<reasoning_content>abc</reasoning_content>"});
+        assertFalse(stripped.toLowerCase().contains("reasoning_content"));
+
+        assertNull(invokeStatic("extractDeltaStringField", new Class[]{String.class, String.class}, new Object[]{null, "content"}));
+        assertNull(invokeStatic("extractDeltaStringField", new Class[]{String.class, String.class}, new Object[]{"{}", ""}));
+        assertNull(invokeStatic("extractDeltaStringField", new Class[]{String.class, String.class}, new Object[]{"{\"x\":\"1\"}", "content"}));
+        assertEquals("你\n好", invokeStatic("extractDeltaStringField", new Class[]{String.class, String.class}, new Object[]{"{\"content\":\"\\u4f60\\n\\u597d\"}", "content"}));
+
+        assertNull(invokeStatic("extractDeltaText", new Class[]{String.class, boolean.class}, new Object[]{null, false}));
+        assertEquals("abc", invokeStatic("extractDeltaText", new Class[]{String.class, boolean.class}, new Object[]{"{\"content\":\"abc\"}", false}));
+        assertEquals("r", invokeStatic("extractDeltaText", new Class[]{String.class, boolean.class}, new Object[]{"{\"reasoning_content\":\"r\",\"text\":\"t\"}", true}));
+        assertEquals("t", invokeStatic("extractDeltaText", new Class[]{String.class, boolean.class}, new Object[]{"{\"text\":\"t\"}", false}));
+        assertEquals("abc", invokeStatic("extractDeltaText", new Class[]{String.class, boolean.class}, new Object[]{"{\"content\":\"abc\"}", false}));
+
+        assertEquals("error", invokeStatic("safeMessage", new Class[]{Exception.class}, new Object[]{null}));
+        assertEquals("IllegalStateException", invokeStatic("safeMessage", new Class[]{Exception.class}, new Object[]{new IllegalStateException(" ")}));
+        assertEquals("boom", invokeStatic("safeMessage", new Class[]{Exception.class}, new Object[]{new RuntimeException("boom")}));
+
+        Object cfgZero = newNormalizedConfig(1, 1, 0, 0, null, null, false, 1000, 0, 0, "a", "b");
+        assertEquals("MODERATION_TEST", invokeStatic("weightedPick", new Class[]{cfgZero.getClass(), long.class}, new Object[]{cfgZero, 1L}).toString());
+        Object cfgMixed = newNormalizedConfig(1, 1, 2, 1, null, null, false, 1000, 0, 0, "a", "b");
+        assertEquals("CHAT_STREAM", invokeStatic("weightedPick", new Class[]{cfgMixed.getClass(), long.class}, new Object[]{cfgMixed, 0L}).toString());
+        assertEquals("MODERATION_TEST", invokeStatic("weightedPick", new Class[]{cfgMixed.getClass(), long.class}, new Object[]{cfgMixed, 2L}).toString());
+
+        assertNull(invokeStatic("normalizeModel", new Class[]{String.class}, new Object[]{null}));
+        assertNull(invokeStatic("normalizeModel", new Class[]{String.class}, new Object[]{"   "}));
+        assertEquals("m", invokeStatic("normalizeModel", new Class[]{String.class}, new Object[]{"x/y:m"}));
+
+        assertNull(invokeStatic("normalizeCurrency", new Class[]{String.class}, new Object[]{null}));
+        assertNull(invokeStatic("normalizeCurrency", new Class[]{String.class}, new Object[]{"  "}));
+        assertEquals("USD", invokeStatic("normalizeCurrency", new Class[]{String.class}, new Object[]{" usd "}));
+
+        assertNull(invokeStatic("percentile", new Class[]{long[].class, double.class}, new Object[]{null, 0.5}));
+        assertNull(invokeStatic("percentile", new Class[]{long[].class, double.class}, new Object[]{new long[]{1, 2}, Double.NaN}));
+        assertEquals(5.0, invokeStatic("percentile", new Class[]{long[].class, double.class}, new Object[]{new long[]{5}, 0.5}));
+        assertEquals(15.0, invokeStatic("percentile", new Class[]{long[].class, double.class}, new Object[]{new long[]{10, 20}, 0.5}));
     }
 
     private static AdminLlmLoadTestService newService(LlmModelRepository modelRepo, LlmPriceConfigRepository priceRepo) {

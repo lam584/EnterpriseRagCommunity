@@ -5,6 +5,7 @@ import com.example.EnterpriseRagCommunity.service.retrieval.RagPostChatRetrieval
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,38 +14,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RagContextPromptServiceUtilityBranchesTest {
 
-    @Test
-    void tokenizeSet_should_cover_empty_normalize_and_maxTerms_cap() throws Exception {
-        @SuppressWarnings("unchecked")
-        Set<String> emptyNull = (Set<String>) invokePrivateStatic(
-                RagContextPromptService.class,
-                "tokenizeSet",
-                new Class<?>[]{String.class, int.class},
-                null,
-                10
-        );
-        assertTrue(emptyNull.isEmpty());
-
-        @SuppressWarnings("unchecked")
-        Set<String> emptyBlank = (Set<String>) invokePrivateStatic(
-                RagContextPromptService.class,
-                "tokenizeSet",
-                new Class<?>[]{String.class, int.class},
-                "   !!!   ",
-                5
-        );
-        assertTrue(emptyBlank.isEmpty());
-
-        @SuppressWarnings("unchecked")
-        Set<String> capped = (Set<String>) invokePrivateStatic(
-                RagContextPromptService.class,
-                "tokenizeSet",
-                new Class<?>[]{String.class, int.class},
-                "A b c d",
-                2
-        );
-        assertEquals(2, capped.size());
-        assertTrue(capped.contains("a"));
+    private static Object invokePrivateStatic(Class<?> clazz, String name, Class<?>[] paramTypes, Object... args) throws Exception {
+        Method m;
+        try {
+            m = clazz.getDeclaredMethod(name, paramTypes);
+        } catch (NoSuchMethodException ex) {
+            m = findCompatibleMethod(clazz, name, args);
+        }
+        m.setAccessible(true);
+        return m.invoke(null, args);
     }
 
     @Test
@@ -119,14 +97,100 @@ class RagContextPromptServiceUtilityBranchesTest {
         ));
     }
 
+    private static Method findCompatibleMethod(Class<?> clazz, String name, Object[] args) throws NoSuchMethodException {
+        for (Method m : clazz.getDeclaredMethods()) {
+            if (!m.getName().equals(name) || !Modifier.isStatic(m.getModifiers())) {
+                continue;
+            }
+            Class<?>[] pts = m.getParameterTypes();
+            if (pts.length != (args == null ? 0 : args.length)) {
+                continue;
+            }
+            boolean ok = true;
+            for (int i = 0; i < pts.length; i++) {
+                Object arg = args[i];
+                if (arg == null) {
+                    continue;
+                }
+                Class<?> want = wrap(pts[i]);
+                if (!want.isInstance(arg)) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) {
+                return m;
+            }
+        }
+        throw new NoSuchMethodException(name);
+    }
+
+    private static Class<?> wrap(Class<?> c) {
+        if (!c.isPrimitive()) {
+            return c;
+        }
+        if (c == int.class) return Integer.class;
+        if (c == long.class) return Long.class;
+        if (c == double.class) return Double.class;
+        if (c == float.class) return Float.class;
+        if (c == boolean.class) return Boolean.class;
+        if (c == byte.class) return Byte.class;
+        if (c == short.class) return Short.class;
+        if (c == char.class) return Character.class;
+        return c;
+    }
+
+    @Test
+    void tokenizeSet_should_cover_empty_normalize_and_maxTerms_cap() throws Exception {
+        @SuppressWarnings("unchecked")
+        Set<String> emptyNull = (Set<String>) invokePrivateStatic(
+                RagContextPromptService.class,
+                "tokenizeSet",
+                new Class<?>[]{String.class},
+                new Object[]{null}
+        );
+        assertTrue(emptyNull.isEmpty());
+
+        @SuppressWarnings("unchecked")
+        Set<String> emptyBlank = (Set<String>) invokePrivateStatic(
+                RagContextPromptService.class,
+                "tokenizeSet",
+                new Class<?>[]{String.class},
+                "   !!!   "
+        );
+        assertTrue(emptyBlank.isEmpty());
+
+        @SuppressWarnings("unchecked")
+        Set<String> capped = (Set<String>) invokePrivateStatic(
+                RagContextPromptService.class,
+                "tokenizeSet",
+                new Class<?>[]{String.class},
+                "A b c d"
+        );
+        assertEquals(4, capped.size());
+        assertTrue(capped.contains("a"));
+
+        StringBuilder manyTerms = new StringBuilder();
+        for (int i = 0; i < 120; i++) {
+            manyTerms.append("t").append(i).append(' ');
+        }
+        @SuppressWarnings("unchecked")
+        Set<String> capped80 = (Set<String>) invokePrivateStatic(
+                RagContextPromptService.class,
+                "tokenizeSet",
+                new Class<?>[]{String.class},
+                manyTerms.toString()
+        );
+        assertEquals(80, capped80.size());
+    }
+
     @Test
     void trimHelpers_and_buildSnippet_should_cover_defaults_null_and_truncate() throws Exception {
-        assertEquals("d", invokePrivateStatic(
+        assertEquals("", invokePrivateStatic(
                 RagContextPromptService.class,
                 "trimOrDefault",
-                new Class<?>[]{String.class, String.class},
-                "   ",
-                "d"
+                new Class<?>[]{String.class},
+                "   "
         ));
 
         assertNull(invokePrivateStatic(
@@ -156,54 +220,39 @@ class RagContextPromptServiceUtilityBranchesTest {
 
     @Test
     void clampDouble_and_normalizeAblationMode_should_cover_all_switch_paths() throws Exception {
-        assertEquals(2.5, (Double) invokePrivateStatic(
+        assertEquals(1.0, (Double) invokePrivateStatic(
                 RagContextPromptService.class,
                 "clampDouble",
-                new Class<?>[]{Double.class, double.class, double.class, double.class},
-                null,
-                0.0,
-                3.0,
-                2.5
+                new Class<?>[]{Double.class},
+                new Object[]{null}
         ));
 
-        assertEquals(2.5, (Double) invokePrivateStatic(
+        assertEquals(1.0, (Double) invokePrivateStatic(
                 RagContextPromptService.class,
                 "clampDouble",
-                new Class<?>[]{Double.class, double.class, double.class, double.class},
-                Double.NaN,
-                0.0,
-                3.0,
-                2.5
+                new Class<?>[]{Double.class},
+                Double.NaN
         ));
 
-        assertEquals(2.5, (Double) invokePrivateStatic(
+        assertEquals(1.0, (Double) invokePrivateStatic(
                 RagContextPromptService.class,
                 "clampDouble",
-                new Class<?>[]{Double.class, double.class, double.class, double.class},
-                Double.POSITIVE_INFINITY,
-                0.0,
-                3.0,
-                2.5
+                new Class<?>[]{Double.class},
+                Double.POSITIVE_INFINITY
         ));
 
         assertEquals(0.0, (Double) invokePrivateStatic(
                 RagContextPromptService.class,
                 "clampDouble",
-                new Class<?>[]{Double.class, double.class, double.class, double.class},
-                -10.0,
-                0.0,
-                3.0,
-                2.5
+                new Class<?>[]{Double.class},
+                -10.0
         ));
 
-        assertEquals(3.0, (Double) invokePrivateStatic(
+        assertEquals(10.0, (Double) invokePrivateStatic(
                 RagContextPromptService.class,
                 "clampDouble",
-                new Class<?>[]{Double.class, double.class, double.class, double.class},
-                10.0,
-                0.0,
-                3.0,
-                2.5
+                new Class<?>[]{Double.class},
+                10.0
         ));
 
         assertEquals("NONE", invokePrivateStatic(
@@ -254,11 +303,5 @@ class RagContextPromptServiceUtilityBranchesTest {
                 new Class<?>[]{String.class},
                 "unknown"
         ));
-    }
-
-    private static Object invokePrivateStatic(Class<?> clazz, String name, Class<?>[] paramTypes, Object... args) throws Exception {
-        Method m = clazz.getDeclaredMethod(name, paramTypes);
-        m.setAccessible(true);
-        return m.invoke(null, args);
     }
 }

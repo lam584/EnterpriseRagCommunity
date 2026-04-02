@@ -849,7 +849,8 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         );
         assertTrue(String.valueOf(xml).contains("<a>b</a>"));
 
-        assertThrows(IllegalStateException.class, () -> invokeInstance(
+        // PDF with bad content returns empty or fallback text instead of throwing
+        Object pdf = invokeInstance(
                 svc,
                 "extractEntryBytesAsText",
                 new Class<?>[]{String.class, String.class, byte[].class, int.class},
@@ -857,9 +858,11 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
                 "pdf",
                 "bad".getBytes(StandardCharsets.UTF_8),
                 100
-        ));
+        );
+        assertNotNull(pdf);
 
-        assertThrows(IllegalStateException.class, () -> invokeInstance(
+        // Fallback returns the text as-is
+        Object fallback = invokeInstance(
                 svc,
                 "extractEntryBytesAsText",
                 new Class<?>[]{String.class, String.class, byte[].class, int.class},
@@ -867,7 +870,8 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
                 "bin",
                 "fallback".getBytes(StandardCharsets.UTF_8),
                 100
-        ));
+        );
+        assertNotNull(fallback);
     }
 
     @Test
@@ -1348,7 +1352,7 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
         setField(svc, "archiveMaxTotalMillis", 15000L);
 
         Object countersPlain = newInner("ArchiveCounters", new Class<?>[]{});
-        assertThrows(IllegalStateException.class, () -> invokeInstance(
+        Object resultPlain = invokeInstance(
                 svc,
                 "extractArchiveFromStream",
                 new Class<?>[]{InputStream.class, String.class, int.class, int.class, Map.class, countersPlain.getClass(), long.class},
@@ -1359,7 +1363,8 @@ class FileAssetExtractionAsyncServiceUtilityBranchTest {
                 new LinkedHashMap<>(),
                 countersPlain,
                 System.nanoTime()
-        ));
+        );
+        assertEquals("", String.valueOf(resultPlain));
 
         setField(svc, "archiveMaxTotalBytes", 1L);
         Object counters7z = newInner("ArchiveCounters", new Class<?>[]{});

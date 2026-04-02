@@ -406,7 +406,8 @@ class LlmImageUploadServiceTest {
         Files.write(f, encodePng(noiseImage(64, 64, BufferedImage.TYPE_INT_RGB, 5)));
 
         LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
-        String url = svc.resolveImageUrl(f.toString(), "image/png", "m1");
+        setUploadRoot(svc, dir.toString());
+        String url = svc.resolveImageUrl("a.png", "image/png", "m1");
         assertTrue(url.startsWith("oss://dir/"));
 
         ArgumentCaptor<ImageUploadLogEntity> captor = ArgumentCaptor.forClass(ImageUploadLogEntity.class);
@@ -463,7 +464,8 @@ class LlmImageUploadServiceTest {
         Files.write(f, encodePng(noiseImage(64, 64, BufferedImage.TYPE_INT_RGB, 13)));
 
         LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
-        String url = svc.resolveImageUrl(f.toString(), "image/png", "m1");
+        setUploadRoot(svc, dir.toString());
+        String url = svc.resolveImageUrl("a.png", "image/png", "m1");
         assertTrue(url.startsWith("oss://dir/"));
     }
 
@@ -730,7 +732,8 @@ class LlmImageUploadServiceTest {
         Files.write(f, encodeJpeg(noiseImage(64, 64, BufferedImage.TYPE_INT_RGB, 7)));
 
         LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
-        String url = svc.resolveImageUrl(f.toString(), null, null);
+        setUploadRoot(svc, dir.toString());
+        String url = svc.resolveImageUrl("a.jpg", null, null);
         assertNotNull(url);
         assertTrue(url.startsWith("https://bucket.oss.test/llm-images/"));
         verify(repo).save(any(ImageUploadLogEntity.class));
@@ -762,7 +765,8 @@ class LlmImageUploadServiceTest {
         Files.write(f, encodeJpeg(noiseImage(64, 64, BufferedImage.TYPE_INT_RGB, 17)));
 
         LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
-        String url = svc.resolveImageUrl(f.toString(), "image/jpeg", null);
+        setUploadRoot(svc, dir.toString());
+        String url = svc.resolveImageUrl("a.jpg", "image/jpeg", null);
         assertNotNull(url);
     }
 
@@ -791,7 +795,8 @@ class LlmImageUploadServiceTest {
         Files.write(f, encodeJpeg(noiseImage(64, 64, BufferedImage.TYPE_INT_RGB, 18)));
 
         LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
-        assertNotNull(svc.resolveImageUrl(f.toString(), "image/jpeg", null));
+        setUploadRoot(svc, dir.toString());
+        assertNotNull(svc.resolveImageUrl("a.jpg", "image/jpeg", null));
         assertEquals("image/jpeg", HttpsStub.lastOssPutHeaders.get("Content-Type"));
     }
 
@@ -820,7 +825,8 @@ class LlmImageUploadServiceTest {
         Files.write(f, encodeJpeg(noiseImage(64, 64, BufferedImage.TYPE_INT_RGB, 26)));
 
         LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
-        assertNotNull(svc.resolveImageUrl(f.toString(), " ", null));
+        setUploadRoot(svc, dir.toString());
+        assertNotNull(svc.resolveImageUrl("a.jpg", " ", null));
         assertEquals("application/octet-stream", HttpsStub.lastOssPutHeaders.get("Content-Type"));
     }
 
@@ -889,7 +895,7 @@ class LlmImageUploadServiceTest {
         Path f = dir.resolve("big.png");
         Files.write(f, src);
 
-        Map<String, Object> r = svc.testCompress(f.toString());
+        Map<String, Object> r = svc.testCompress("big.png");
         assertNotNull(r.get("originalSize"));
         assertNotNull(r.get("compressedSize"));
         assertTrue((Boolean) r.get("wasCompressed"));
@@ -924,7 +930,7 @@ class LlmImageUploadServiceTest {
         Path f = dir.resolve("small.png");
         Files.write(f, src);
 
-        Map<String, Object> r = svc.testCompress(f.toString());
+        Map<String, Object> r = svc.testCompress("small.png");
         assertFalse((Boolean) r.get("wasCompressed"));
         assertEquals(r.get("originalSize"), r.get("compressedSize"));
         assertEquals(r.get("originalBase64"), r.get("compressedBase64"));
@@ -950,7 +956,7 @@ class LlmImageUploadServiceTest {
                 if (c == 3) return null;
                 return Mockito.CALLS_REAL_METHODS.answer(inv);
             });
-            Map<String, Object> r = svc.testCompress(f.toString());
+            Map<String, Object> r = svc.testCompress("big.png");
             assertTrue((Boolean) r.get("wasCompressed"));
             assertEquals(r.get("originalBase64"), r.get("compressedBase64"));
         }
@@ -1141,22 +1147,22 @@ class LlmImageUploadServiceTest {
         assertEquals("image/tiff", guessMime.invoke(null, "x.tiff"));
         assertEquals("image/jpeg", guessMime.invoke(null, "x.jpg"));
 
-        Method toBase64 = LlmImageUploadService.class.getDeclaredMethod("toBase64Preview", BufferedImage.class, String.class, int.class);
+        Method toBase64 = LlmImageUploadService.class.getDeclaredMethod("toBase64Preview", BufferedImage.class, String.class);
         toBase64.setAccessible(true);
-        assertEquals("", toBase64.invoke(null, null, "image/png", 10));
+        assertEquals("", toBase64.invoke(null, null, "image/png"));
         BufferedImage small = noiseImage(20, 20, BufferedImage.TYPE_INT_RGB, 21);
-        String jpg = (String) toBase64.invoke(null, small, "image/jpeg", 100);
+        String jpg = (String) toBase64.invoke(null, small, "image/jpeg");
         assertTrue(jpg.startsWith("data:image/jpeg;base64,"));
         assertFalse(jpg.isBlank());
-        String png = (String) toBase64.invoke(null, small, "image/png", 100);
+        String png = (String) toBase64.invoke(null, small, "image/png");
         assertTrue(png.startsWith("data:image/png;base64,"));
         BufferedImage big = noiseImage(1000, 600, BufferedImage.TYPE_INT_RGB, 33);
-        String jpgResize = (String) toBase64.invoke(null, big, "image/jpeg", 200);
+        String jpgResize = (String) toBase64.invoke(null, big, "image/jpeg");
         assertTrue(jpgResize.startsWith("data:image/jpeg;base64,"));
         BufferedImage wide = noiseImage(1000, 100, BufferedImage.TYPE_INT_RGB, 39);
-        String jpgWide = (String) toBase64.invoke(null, wide, "image/jpeg", 200);
+        String jpgWide = (String) toBase64.invoke(null, wide, "image/jpeg");
         assertTrue(jpgWide.startsWith("data:image/jpeg;base64,"));
-        String jpgNullMime = (String) toBase64.invoke(null, small, null, 100);
+        String jpgNullMime = (String) toBase64.invoke(null, small, null);
         assertTrue(jpgNullMime.startsWith("data:image/jpeg;base64,"));
 
         Method readStream = LlmImageUploadService.class.getDeclaredMethod("readStream", InputStream.class);

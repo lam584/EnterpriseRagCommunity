@@ -51,6 +51,7 @@ import java.awt.image.BufferedImage;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.channels.SeekableByteChannel;
@@ -944,6 +945,18 @@ public class FileAssetExtractionAsyncService {
                     break;
                 }
             }
+        } catch (ArchiveException ae) {
+            try {
+                aisBuf.reset();
+            } catch (Exception ignore) {
+            }
+            byte[] bytes = readAllLimited(aisBuf, c, archiveMaxTotalBytes);
+            if (bytes.length == 0) return "";
+            String txt = extractSingleBytesAsText(containerName, bytes, maxChars);
+            return truncate(txt, maxChars);
+        } catch (IOException ioe) {
+            // Best-effort extraction: keep parsed content even if stream close/read fails late.
+            recordArchiveEntryError(archiveMeta, containerName, ioe);
         }
 
         String merged = out.toString().trim();

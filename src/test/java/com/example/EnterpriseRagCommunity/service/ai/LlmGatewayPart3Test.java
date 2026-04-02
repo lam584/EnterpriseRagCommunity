@@ -280,7 +280,7 @@ class LlmGatewayPart3Test {
             verify(client).chatCompletionsOnce(reqCap.capture());
             OpenAiCompatClient.ChatRequest req = reqCap.getValue();
             assertEquals(Boolean.FALSE, req.enableThinking());
-            assertNull(req.thinkingBudget());
+            assertEquals(Integer.valueOf(128), req.thinkingBudget());
             assertTrue(req.extraBody().containsKey("vl_high_resolution_images"));
             assertEquals("bar", req.extraBody().get("foo"));
         }

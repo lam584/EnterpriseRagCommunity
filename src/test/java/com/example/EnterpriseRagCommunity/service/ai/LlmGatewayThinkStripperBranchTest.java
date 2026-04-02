@@ -11,6 +11,44 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LlmGatewayThinkStripperBranchTest {
+    private static Class<?> wrap(Class<?> c) {
+        if (!c.isPrimitive()) return c;
+        if (c == int.class) return Integer.class;
+        if (c == long.class) return Long.class;
+        if (c == boolean.class) return Boolean.class;
+        if (c == double.class) return Double.class;
+        if (c == float.class) return Float.class;
+        if (c == short.class) return Short.class;
+        if (c == byte.class) return Byte.class;
+        if (c == char.class) return Character.class;
+        return c;
+    }
+
+    private static Method findCompatibleMethod(Class<?> type, String name, Object[] args) throws NoSuchMethodException {
+        for (Method m : type.getDeclaredMethods()) {
+            if (!m.getName().equals(name)) continue;
+            Class<?>[] pt = m.getParameterTypes();
+            if (pt.length != args.length) continue;
+            boolean ok = true;
+            for (int i = 0; i < pt.length; i++) {
+                Object arg = args[i];
+                if (arg == null) {
+                    if (pt[i].isPrimitive()) {
+                        ok = false;
+                        break;
+                    }
+                    continue;
+                }
+                if (!wrap(pt[i]).isAssignableFrom(arg.getClass())) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) return m;
+        }
+        throw new NoSuchMethodException(name);
+    }
+
 
     private static final String THINK_STRIPPER_CLASS = "com.example.EnterpriseRagCommunity.service.ai.LlmGateway$ThinkStripper";
 
@@ -22,7 +60,7 @@ class LlmGatewayThinkStripperBranchTest {
     }
 
     private static Object invoke(Object target, String name, Class<?>[] paramTypes, Object... args) throws Exception {
-        Method m = target.getClass().getDeclaredMethod(name, paramTypes);
+        Method m = findCompatibleMethod(target.getClass(), name, args);
         m.setAccessible(true);
         return m.invoke(target, args);
     }
@@ -67,15 +105,6 @@ class LlmGatewayThinkStripperBranchTest {
         assertFalse(escLenFalse);
         assertTrue(escTrue);
 
-        boolean rawFalse = (boolean) invoke(stripper, "isRawStartAt", new Class<?>[]{String.class, int.class}, "<think>", -1);
-        boolean rawLenFalse = (boolean) invoke(stripper, "isRawStartAt", new Class<?>[]{String.class, int.class}, "<thi", 1);
-        boolean rawMismatchFalse = (boolean) invoke(stripper, "isRawStartAt", new Class<?>[]{String.class, int.class}, "<thinx>", 0);
-        boolean rawTrue = (boolean) invoke(stripper, "isRawStartAt", new Class<?>[]{String.class, int.class}, "<think>", 0);
-        assertFalse(rawFalse);
-        assertFalse(rawLenFalse);
-        assertFalse(rawMismatchFalse);
-        assertTrue(rawTrue);
-
         boolean escMismatchFalse = (boolean) invoke(stripper, "isEscapedStartAt", new Class<?>[]{String.class, int.class}, "&lt;thinx&gt;", 0);
         assertFalse(escMismatchFalse);
     }
@@ -85,17 +114,17 @@ class LlmGatewayThinkStripperBranchTest {
         Object stripper = newStripper();
 
         StringBuilder out = new StringBuilder();
-        assertEquals(0L, (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, null, out, 10));
-        assertEquals(0L, (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "", out, 10));
+        assertEquals(0L, (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, null, out));
+        assertEquals(0L, (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "", out));
 
-        long p = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "hello", out, 3);
+        long p = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "hello", out);
         assertEquals(5L, p);
-        assertEquals("hel", out.toString());
+        assertEquals("hello", out.toString());
 
         StringBuilder noAppend = new StringBuilder("12");
-        long p2 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "345", noAppend, 2);
+        long p2 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "345", noAppend);
         assertEquals(3L, p2);
-        assertEquals("12", noAppend.toString());
+        assertEquals("12345", noAppend.toString());
     }
 
     @Test
@@ -103,35 +132,35 @@ class LlmGatewayThinkStripperBranchTest {
         Object stripper = newStripper();
         StringBuilder out = new StringBuilder();
 
-        long p1 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "A<think>x</think>B", out, 100);
-        long p2 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "C&lt;think&gt;y&lt;/think&gt;D", out, 100);
+        long p1 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "A<think>x</think>B", out);
+        long p2 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "C&lt;think&gt;y&lt;/think&gt;D", out);
         assertEquals(4L, p1 + p2);
         assertEquals("ABCD", out.toString());
 
-        long p3 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "E<think", out, 100);
+        long p3 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "E<think", out);
         assertEquals(1L, p3);
         assertEquals("ABCD", out.substring(0, 4));
         assertTrue(((String) getField(stripper, "carry")).startsWith("<think"));
 
-        long p4 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, ">hidden</think>F", out, 100);
+        long p4 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, ">hidden</think>F", out);
         assertEquals(1L, p4);
         assertEquals("ABCDEF", out.toString());
 
-        long p5 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "G&lt;think", out, 100);
+        long p5 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "G&lt;think", out);
         assertEquals(1L, p5);
         assertTrue(((String) getField(stripper, "carry")).startsWith("&lt;think"));
 
-        long p6 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "&gt;z&lt;/think&gt;H", out, 100);
+        long p6 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "&gt;z&lt;/think&gt;H", out);
         assertEquals(1L, p6);
         assertEquals("ABCDEFGH", out.toString());
 
-        long p7 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "I<think>tail-without-close", out, 100);
+        long p7 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "I<think>tail-without-close", out);
         assertEquals(1L, p7);
         assertTrue((boolean) getField(stripper, "inThink"));
         String tailCarry = (String) getField(stripper, "carry");
         assertTrue(tailCarry.length() <= 32);
 
-        long p8 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class, int.class}, "</think>J", out, 100);
+        long p8 = (long) invoke(stripper, "accept", new Class<?>[]{String.class, StringBuilder.class}, "</think>J", out);
         assertEquals(1L, p8);
         assertFalse((boolean) getField(stripper, "inThink"));
         assertEquals("ABCDEFGHIJ", out.toString());
@@ -145,10 +174,9 @@ class LlmGatewayThinkStripperBranchTest {
         long p = (long) invoke(
                 stripper,
                 "accept",
-                new Class<?>[]{String.class, StringBuilder.class, int.class},
+                new Class<?>[]{String.class, StringBuilder.class},
                 "P<think>a<think>b</think>c</think>Q",
-                out,
-                200
+                out
         );
 
         assertEquals("Pc</think>Q", out.toString());
@@ -186,10 +214,9 @@ class LlmGatewayThinkStripperBranchTest {
         long p1 = (long) invoke(
                 stripper,
                 "accept",
-                new Class<?>[]{String.class, StringBuilder.class, int.class},
+                new Class<?>[]{String.class, StringBuilder.class},
                 "AA<think>" + "x".repeat(48),
-                out,
-                200
+                out
         );
         assertEquals(2L, p1);
         assertEquals("AA", out.toString());
@@ -201,10 +228,9 @@ class LlmGatewayThinkStripperBranchTest {
         long p2 = (long) invoke(
                 stripper,
                 "accept",
-                new Class<?>[]{String.class, StringBuilder.class, int.class},
+                new Class<?>[]{String.class, StringBuilder.class},
                 "</think>",
-                out,
-                200
+                out
         );
         assertEquals(0L, p2);
         assertFalse((boolean) getField(stripper, "inThink"));

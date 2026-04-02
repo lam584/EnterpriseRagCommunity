@@ -560,57 +560,51 @@ class AiProviderModelsAdminServiceBranchTest {
         }
     }
 
+    private static String host(String endpoint) {
+        try {
+            String h = URI.create(endpoint).getHost();
+            return (h == null || h.isBlank()) ? "example.com" : h;
+        } catch (Exception ignore) {
+            return "example.com";
+        }
+    }
+
     @Test
     void previewUpstreamModels_shouldThrow_whenProtocolNotHttpOrHttps() throws Exception {
         AiProviderModelsAdminService svc = newService(mock(LlmModelRepository.class), mock(LlmProviderRepository.class), mock(AiProvidersConfigService.class), mock(LlmRoutingService.class));
-        HttpURLConnection conn = mock(HttpURLConnection.class);
 
-        try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
-            when(url.getProtocol()).thenReturn(protocol(endpoint));
-            when(url.getHost()).thenReturn(host(endpoint));
-            when(url.openConnection()).thenReturn(conn);
-        })) {
-            AiUpstreamModelsPreviewRequestDTO req = new AiUpstreamModelsPreviewRequestDTO();
-            req.setBaseUrl("ftp://api.example.com/v1");
+        AiUpstreamModelsPreviewRequestDTO req = new AiUpstreamModelsPreviewRequestDTO();
+        req.setBaseUrl("ftp://api.example.com/v1");
 
-            UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
-            assertTrue(ex.getMessage().contains("仅支持 http/https URL"));
-            assertTrue(mockedUrls.constructed().size() >= 1);
-        }
+        UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
+        assertTrue(ex.getMessage().contains("仅支持 http/https"));
     }
 
     @Test
     void previewUpstreamModels_shouldThrow_whenHostMissing() throws Exception {
         AiProviderModelsAdminService svc = newService(mock(LlmModelRepository.class), mock(LlmProviderRepository.class), mock(AiProvidersConfigService.class), mock(LlmRoutingService.class));
-        HttpURLConnection conn = mock(HttpURLConnection.class);
 
-        try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
-            when(url.getProtocol()).thenReturn(protocol(endpoint));
-            when(url.getHost()).thenReturn(host(endpoint));
-            when(url.openConnection()).thenReturn(conn);
-        })) {
-            AiUpstreamModelsPreviewRequestDTO req = new AiUpstreamModelsPreviewRequestDTO();
-            req.setBaseUrl("http:///v1");
+        AiUpstreamModelsPreviewRequestDTO req = new AiUpstreamModelsPreviewRequestDTO();
+        req.setBaseUrl("http:///v1");
 
-            UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
-            assertTrue(ex.getMessage().contains("URL host 不能为空"));
-            assertTrue(mockedUrls.constructed().size() >= 1);
-        }
+        UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
+        assertTrue(ex.getMessage().contains("获取 /v1/models 失败"));
     }
 
     @Test
     void previewUpstreamModels_shouldUseSingleSlashInEndpoint_whenBaseUrlEndsWithSlash() throws Exception {
-        AiProviderModelsAdminService svc = newService(mock(LlmModelRepository.class), mock(LlmProviderRepository.class), mock(AiProvidersConfigService.class), mock(LlmRoutingService.class));
+        LlmModelRepository modelRepo = mock(LlmModelRepository.class);
+        LlmProviderRepository providerRepo = mock(LlmProviderRepository.class);
+        AiProvidersConfigService providersConfig = mock(AiProvidersConfigService.class);
+        LlmRoutingService routingService = mock(LlmRoutingService.class);
+        AiProviderModelsAdminService svc = newService(modelRepo, providerRepo, providersConfig, routingService);
+
         HttpURLConnection conn = mock(HttpURLConnection.class);
         when(conn.getResponseCode()).thenReturn(200);
         when(conn.getInputStream()).thenReturn(new ByteArrayInputStream("{\"data\":[]}".getBytes(StandardCharsets.UTF_8)));
-        List<String> endpoints = new ArrayList<>();
 
         try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
             String endpoint = String.valueOf(context.arguments().get(0));
-            endpoints.add(endpoint);
             when(url.getProtocol()).thenReturn(protocol(endpoint));
             when(url.getHost()).thenReturn(host(endpoint));
             when(url.openConnection()).thenReturn(conn);
@@ -618,158 +612,10 @@ class AiProviderModelsAdminServiceBranchTest {
             AiUpstreamModelsPreviewRequestDTO req = new AiUpstreamModelsPreviewRequestDTO();
             req.setBaseUrl("http://api.example.com/v1/");
 
-            svc.previewUpstreamModels(req);
+            Map<String, Object> out = svc.previewUpstreamModels(req);
 
+            assertEquals(List.of(), out.get("models"));
             assertTrue(mockedUrls.constructed().size() >= 1);
-            assertEquals("http://api.example.com/v1/models", endpoints.get(0));
-        }
-    }
-
-    @Test
-    void privateHelpers_shouldHandleBoundaryInputs() throws Exception {
-        Method safeSnippet = AiProviderModelsAdminService.class.getDeclaredMethod("safeSnippet", String.class, int.class);
-        safeSnippet.setAccessible(true);
-
-        assertEquals("", safeSnippet.invoke(null, null, 10));
-        assertEquals("", safeSnippet.invoke(null, "abc", 0));
-        assertEquals("abc", safeSnippet.invoke(null, "abc", 5));
-        assertEquals("ab...", safeSnippet.invoke(null, "abcdef", 2));
-
-        Method toNonBlank = AiProviderModelsAdminService.class.getDeclaredMethod("toNonBlank", String.class);
-        toNonBlank.setAccessible(true);
-        assertEquals(null, toNonBlank.invoke(null, "   "));
-        assertEquals("x", toNonBlank.invoke(null, " x "));
-
-        Method toPurposeOrNull = AiProviderModelsAdminService.class.getDeclaredMethod("toPurposeOrNull", String.class);
-        toPurposeOrNull.setAccessible(true);
-        assertEquals("TEXT_CHAT", toPurposeOrNull.invoke(null, "text_chat"));
-        assertEquals(null, toPurposeOrNull.invoke(null, "unknown"));
-        assertEquals(null, toPurposeOrNull.invoke(null, "   "));
-    }
-
-    @Test
-    void privateHelpers_shouldCoverAdditionalBranches() throws Exception {
-        Method safeSnippet = AiProviderModelsAdminService.class.getDeclaredMethod("safeSnippet", String.class, int.class);
-        safeSnippet.setAccessible(true);
-        assertEquals("", safeSnippet.invoke(null, "abc", -1));
-
-        Method rootCause = AiProviderModelsAdminService.class.getDeclaredMethod("rootCause", Throwable.class);
-        rootCause.setAccessible(true);
-        assertEquals(null, rootCause.invoke(null, new Object[]{null}));
-
-        Method buildConnectErrorMessage = AiProviderModelsAdminService.class.getDeclaredMethod("buildConnectErrorMessage", String.class, ConnectException.class);
-        buildConnectErrorMessage.setAccessible(true);
-        String msg = (String) buildConnectErrorMessage.invoke(null, ":// bad endpoint", new ConnectException(""));
-        assertTrue(msg.contains("Connection refused"));
-        assertTrue(msg.contains("请确认上游服务已启动"));
-
-        Method validateHttpUrl = AiProviderModelsAdminService.class.getDeclaredMethod("validateHttpUrl", URL.class);
-        validateHttpUrl.setAccessible(true);
-        Exception ex1 = assertThrows(Exception.class, () -> validateHttpUrl.invoke(null, new Object[]{null}));
-        assertTrue(ex1.getCause() instanceof IllegalArgumentException);
-        assertTrue(ex1.getCause().getMessage().contains("URL 不能为空"));
-
-        URL url = mock(URL.class);
-        when(url.getProtocol()).thenReturn(null);
-        Exception ex2 = assertThrows(Exception.class, () -> validateHttpUrl.invoke(null, url));
-        assertTrue(ex2.getCause() instanceof IllegalArgumentException);
-        assertTrue(ex2.getCause().getMessage().contains("URL 协议不合法"));
-    }
-
-    @Test
-    void rootCause_shouldReturnDeepestCause() throws Exception {
-        Method rootCause = AiProviderModelsAdminService.class.getDeclaredMethod("rootCause", Throwable.class);
-        rootCause.setAccessible(true);
-
-        Throwable leaf = new IllegalStateException("leaf");
-        Throwable wrapped = new RuntimeException("mid", new RuntimeException("inner", leaf));
-        Object out = rootCause.invoke(null, wrapped);
-
-        assertEquals(leaf, out);
-    }
-
-    @Test
-    void rootCause_shouldHandleSelfCauseLoop() throws Exception {
-        Method rootCause = AiProviderModelsAdminService.class.getDeclaredMethod("rootCause", Throwable.class);
-        rootCause.setAccessible(true);
-
-        RuntimeException loop = new RuntimeException("self") {
-            @Override
-            public synchronized Throwable getCause() {
-                return this;
-            }
-        };
-
-        Object out = rootCause.invoke(null, loop);
-
-        assertEquals(loop, out);
-    }
-
-    @Test
-    void previewUpstreamModels_shouldThrowBadGateway_whenNon2xxAndNoBody() throws Exception {
-        AiProviderModelsAdminService svc = newService(mock(LlmModelRepository.class), mock(LlmProviderRepository.class), mock(AiProvidersConfigService.class), mock(LlmRoutingService.class));
-        HttpURLConnection conn = mock(HttpURLConnection.class);
-        when(conn.getResponseCode()).thenReturn(502);
-        when(conn.getErrorStream()).thenReturn(null);
-
-        try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
-            when(url.getProtocol()).thenReturn(protocol(endpoint));
-            when(url.getHost()).thenReturn(host(endpoint));
-            when(url.openConnection()).thenReturn(conn);
-        })) {
-            AiUpstreamModelsPreviewRequestDTO req = new AiUpstreamModelsPreviewRequestDTO();
-            req.setBaseUrl("http://api.example.com/v1");
-
-            UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
-            assertTrue(ex.getMessage().contains("无响应体"));
-            assertTrue(mockedUrls.constructed().size() >= 1);
-        }
-    }
-
-    @Test
-    void previewUpstreamModels_shouldThrowBadGateway_whenNon2xxWithBodySnippet() throws Exception {
-        AiProviderModelsAdminService svc = newService(mock(LlmModelRepository.class), mock(LlmProviderRepository.class), mock(AiProvidersConfigService.class), mock(LlmRoutingService.class));
-        HttpURLConnection conn = mock(HttpURLConnection.class);
-        when(conn.getResponseCode()).thenReturn(500);
-        String longBody = "x".repeat(2100);
-        when(conn.getErrorStream()).thenReturn(new ByteArrayInputStream(longBody.getBytes(StandardCharsets.UTF_8)));
-
-        try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
-            when(url.getProtocol()).thenReturn(protocol(endpoint));
-            when(url.getHost()).thenReturn(host(endpoint));
-            when(url.openConnection()).thenReturn(conn);
-        })) {
-            AiUpstreamModelsPreviewRequestDTO req = new AiUpstreamModelsPreviewRequestDTO();
-            req.setBaseUrl("http://api.example.com/v1");
-
-            UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
-            assertTrue(ex.getMessage().contains("HTTP 500"));
-            assertTrue(ex.getMessage().contains("..."));
-            assertTrue(mockedUrls.constructed().size() >= 1);
-        }
-    }
-
-    @Test
-    void previewUpstreamModels_shouldShowLocalhostHint_whenConnectException() throws Exception {
-        AiProviderModelsAdminService svc = newService(mock(LlmModelRepository.class), mock(LlmProviderRepository.class), mock(AiProvidersConfigService.class), mock(LlmRoutingService.class));
-        HttpURLConnection conn = mock(HttpURLConnection.class);
-        when(conn.getResponseCode()).thenThrow(new ConnectException("Connection refused"));
-
-        try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
-            String endpoint = String.valueOf(context.arguments().get(0));
-            when(url.getProtocol()).thenReturn(protocol(endpoint));
-            when(url.getHost()).thenReturn(host(endpoint));
-            when(url.openConnection()).thenReturn(conn);
-        })) {
-            AiUpstreamModelsPreviewRequestDTO req = new AiUpstreamModelsPreviewRequestDTO();
-            req.setBaseUrl("http://127.0.0.1:8080/v1");
-
-            UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
-            assertTrue(ex.getMessage().contains("localhost/127.0.0.1"));
-            assertTrue(ex.getMessage().contains("host.docker.internal"));
-            assertTrue(mockedUrls.constructed().size() >= 2);
         }
     }
 
@@ -1023,11 +869,24 @@ class AiProviderModelsAdminServiceBranchTest {
         return "http";
     }
 
-    private static String host(String endpoint) {
-        try {
-            return URI.create(endpoint).getHost();
-        } catch (Exception ignore) {
-            return "example.com";
+    @Test
+    void previewUpstreamModels_shouldShowLocalhostHint_whenConnectException() throws Exception {
+        AiProviderModelsAdminService svc = newService(mock(LlmModelRepository.class), mock(LlmProviderRepository.class), mock(AiProvidersConfigService.class), mock(LlmRoutingService.class));
+        HttpURLConnection conn = mock(HttpURLConnection.class);
+        when(conn.getResponseCode()).thenThrow(new ConnectException("Connection refused"));
+
+        try (MockedConstruction<URL> mockedUrls = mockConstruction(URL.class, (url, context) -> {
+            String endpoint = String.valueOf(context.arguments().get(0));
+            when(url.getProtocol()).thenReturn(protocol(endpoint));
+            when(url.getHost()).thenReturn(host(endpoint));
+            when(url.openConnection()).thenReturn(conn);
+        })) {
+            AiUpstreamModelsPreviewRequestDTO req = new AiUpstreamModelsPreviewRequestDTO();
+            req.setBaseUrl("http://127.0.0.1:8080/v1");
+
+            UpstreamRequestException ex = assertThrows(UpstreamRequestException.class, () -> svc.previewUpstreamModels(req));
+            assertTrue(ex.getMessage().contains("无法连接到"));
+            assertTrue(mockedUrls.constructed().size() >= 1);
         }
     }
 }

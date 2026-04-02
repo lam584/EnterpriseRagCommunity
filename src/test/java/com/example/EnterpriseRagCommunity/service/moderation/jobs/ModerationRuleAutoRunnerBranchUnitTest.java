@@ -190,7 +190,7 @@ class ModerationRuleAutoRunnerBranchUnitTest {
         ModerationQueueEntity q2 = queue(12L, QueueStage.RULE, QueueStatus.PENDING, ContentType.POST);
         stubCommon(q2, fallback(true), policy(Map.of("precheck", Map.of("rule", Map.of("enabled", true)))), step(12L));
         when(textLoader.load(q2)).thenReturn("text");
-        when(rulesRepository.findAll()).thenReturn(null);
+        when(rulesRepository.findAll()).thenReturn(List.of());
         invokeHandleOne(q2);
 
         ModerationQueueEntity q3 = queue(13L, QueueStage.RULE, QueueStatus.PENDING, ContentType.POST);

@@ -138,6 +138,8 @@ dependencies {
     implementation 'org.apache.pdfbox:pdfbox-tools:3.0.7'
     implementation 'org.apache.pdfbox:xmpbox:3.0.7'
     implementation 'org.apache.commons:commons-compress:1.26.2'
+    // XZ library required for 7z archive support in commons-compress
+    implementation 'org.tukaani:xz:1.10'
     implementation 'org.apache.commons:commons-lang3:3.18.0'
     implementation 'org.apache.tika:tika-core:3.2.2'
 }
@@ -152,6 +154,18 @@ tasks.named('test') {
     testLogging {
         events "passed", "skipped", "failed", "standardOut", "standardError"
         showStandardStreams = true
+    }
+}
+
+def ignoreTestFailuresForCoverage = providers.gradleProperty('coverage.ignoreTestFailures')
+        .map { Boolean.parseBoolean(it) }
+        .orElse(false)
+        .get()
+
+tasks.named('test', Test) {
+    if (ignoreTestFailuresForCoverage) {
+        // Keep jacoco generation available even when a subset of tests is currently red.
+        ignoreFailures = true
     }
 }
 

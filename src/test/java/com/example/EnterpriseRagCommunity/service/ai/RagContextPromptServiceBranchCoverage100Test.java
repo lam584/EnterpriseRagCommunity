@@ -150,8 +150,8 @@ class RagContextPromptServiceBranchCoverage100Test {
         assertEquals(0.0, (Double) redundancy.invoke(null, newCandidate(10L, 10, 1.0, 1), List.of(badSelected)));
 
         @SuppressWarnings("unchecked")
-        Set<String> tokenSet = (Set<String>) declared("tokenizeSet", String.class, int.class).invoke(null, "a b c", 0);
-        assertTrue(tokenSet.isEmpty());
+        Set<String> tokenSet = (Set<String>) declared("tokenizeSet", String.class).invoke(null, "a b c");
+        assertEquals(3, tokenSet.size());
     }
 
     @Test

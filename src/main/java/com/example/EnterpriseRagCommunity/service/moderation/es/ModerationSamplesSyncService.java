@@ -340,7 +340,7 @@ public class ModerationSamplesSyncService {
             q.addFields("id");
 
             var hits = template.search(q, Document.class, idx);
-            if (hits.isEmpty()) break;
+            if (hits == null || hits.isEmpty()) break;
 
             long maxSeen = lastId;
             for (var h : hits) {

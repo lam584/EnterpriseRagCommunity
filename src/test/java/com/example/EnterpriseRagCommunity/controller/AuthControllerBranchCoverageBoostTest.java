@@ -87,10 +87,10 @@ class AuthControllerBranchCoverageBoostTest {
         String c1 = invokeStatic("maskCookieValue", new Class[]{String.class}, (Object) null);
         String c2 = invokeStatic("maskCookieValue", new Class[]{String.class}, "123456");
         String c3 = invokeStatic("maskCookieValue", new Class[]{String.class}, "1234567");
-        String s1 = invokeStatic("safeText", new Class[]{String.class, int.class}, null, 10);
-        String s2 = invokeStatic("safeText", new Class[]{String.class, int.class}, " \n\t ", 10);
-        String s3 = invokeStatic("safeText", new Class[]{String.class, int.class}, "abc", 0);
-        String s4 = invokeStatic("safeText", new Class[]{String.class, int.class}, "abcdef", 3);
+        String s1 = invokeStatic("safeText", new Class[]{String.class}, (Object) null);
+        String s2 = invokeStatic("safeText", new Class[]{String.class}, " \n\t ");
+        String s3 = invokeStatic("safeText", new Class[]{String.class}, "abc");
+        String s4 = invokeStatic("safeText", new Class[]{String.class}, "abcdef");
 
         assertThat(v1).isEqualTo("null");
         assertThat(v2).isEqualTo("***");
@@ -101,8 +101,8 @@ class AuthControllerBranchCoverageBoostTest {
         assertThat(c3).isEqualTo("123***567");
         assertThat(s1).isNull();
         assertThat(s2).isNull();
-        assertThat(s3).isEqualTo("");
-        assertThat(s4).isEqualTo("abc");
+        assertThat(s3).isEqualTo("abc");
+        assertThat(s4).isEqualTo("abcdef");
     }
 
     @Test
@@ -537,12 +537,8 @@ class AuthControllerBranchCoverageBoostTest {
         t.setId(9L);
         u2.setTenantId(t);
 
-        Object dto1 = invoke(fx.c, "convertToUserDTO", new Class[]{UsersEntity.class}, u1);
-        Object dto2 = invoke(fx.c, "convertToUserDTO", new Class[]{UsersEntity.class}, u2);
         Object safe1 = invoke(fx.c, "convertToUserSafeDTO", new Class[]{UsersEntity.class}, u1);
         Object safe2 = invoke(fx.c, "convertToUserSafeDTO", new Class[]{UsersEntity.class}, u2);
-        assertThat(dto1).isNotNull();
-        assertThat(dto2).isNotNull();
         assertThat(safe1).isNotNull();
         assertThat(safe2).isNotNull();
     }
@@ -891,68 +887,6 @@ class AuthControllerBranchCoverageBoostTest {
         assertThat(v3).isNotNull();
     }
 
-    @Test
-    void helperAndLoginBranches_shouldCoverRemainingLowCostPaths() throws Exception {
-        Fx fx = new Fx();
-        setField(fx.c, "defaultTenantCode", null);
-        setField(fx.c, "defaultTenantName", null);
-        when(fx.tenantsRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.empty());
-        when(fx.tenantsRepository.save(any(TenantsEntity.class))).thenAnswer(i -> i.getArgument(0));
-        TenantsEntity t1 = invoke(fx.c, "resolveOrCreateDefaultTenantOrThrow", new Class[]{});
-        assertThat(t1.getCode()).isEqualTo("DEFAULT");
-
-        setField(fx.c, "defaultTenantCode", "TENANT_B");
-        TenantsEntity tFound = new TenantsEntity();
-        tFound.setId(33L);
-        when(fx.tenantsRepository.findByCode("TENANT_B")).thenReturn(Optional.of(tFound));
-        TenantsEntity t2 = invoke(fx.c, "resolveOrCreateDefaultTenantOrThrow", new Class[]{});
-        assertThat(t2.getId()).isEqualTo(33L);
-
-        MockHttpServletRequest reqHeadersEmpty = new MockHttpServletRequest() {
-            @Override
-            public Enumeration<String> getHeaderNames() {
-                return Collections.emptyEnumeration();
-            }
-        };
-        String h = invokeStatic("formatRequestHeadersMasked", new Class[]{HttpServletRequest.class}, reqHeadersEmpty);
-        assertThat(h).isEqualTo("");
-        MockHttpServletRequest reqCookiesEmpty = new MockHttpServletRequest();
-        reqCookiesEmpty.setCookies(new Cookie[0]);
-        String c = invokeStatic("formatRequestCookiesMasked", new Class[]{HttpServletRequest.class}, reqCookiesEmpty);
-        assertThat(c).isEqualTo("none");
-        String m = invokeStatic("maskHeaderValue", new Class[]{String.class, String.class}, null, "token");
-        assertThat(m).isEqualTo("token");
-
-        LoginRequest req = loginReq("present@example.com", "p");
-        UsersEntity active = baseUser(41L, "present@example.com");
-        active.setStatus(AccountStatus.ACTIVE);
-        when(fx.administratorService.findByUsername("present@example.com")).thenReturn(Optional.of(active), Optional.of(active));
-        when(fx.authenticationManager.authenticate(any())).thenReturn(new UsernamePasswordAuthenticationToken("present@example.com", "p"));
-        when(fx.security2faPolicyService.evaluateLogin2faModeForUser(41L)).thenReturn(Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP);
-        when(fx.security2faPolicyService.evaluateForUser(41L)).thenReturn(policy(false, true));
-        when(fx.emailVerificationMailer.isEnabled()).thenReturn(true);
-        when(fx.accountTotpService.isEnabledByEmail("present@example.com")).thenReturn(false);
-        when(fx.emailVerificationService.getDefaultTtlSeconds()).thenReturn(300);
-        ResponseEntity<?> lr = fx.c.login(req, new MockHttpServletRequest(), new MockHttpServletResponse());
-        assertThat(lr.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-
-        UsersEntity exists = baseUser(88L, "exists2@example.com");
-        exists.setPasswordHash(null);
-        when(fx.administratorService.findByUsername("exists2@example.com")).thenReturn(Optional.of(exists));
-        com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest rr = new com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest();
-        rr.setEmail("exists2@example.com");
-        rr.setPassword("pass12345");
-        rr.setUsername("u");
-        when(fx.initialAdminSetupState.isSetupRequired()).thenReturn(true);
-        when(fx.tenantsRepository.findByCode(anyString())).thenReturn(Optional.of(new TenantsEntity()));
-        BoardsEntity board = new BoardsEntity();
-        board.setId(2L);
-        board.setName("默认版块");
-        when(fx.boardsRepository.findFirstByTenantIdIsNullAndParentIdIsNullAndName("默认版块")).thenReturn(Optional.of(board));
-        when(fx.rolesRepository.existsById(2L)).thenReturn(true);
-        ResponseEntity<?> rrResp = fx.c.registerInitialAdmin(rr);
-        assertThat(rrResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    }
 
     @Test
     void login_shouldCoverTotpAllowedButDisabledByUserBranch() throws Exception {

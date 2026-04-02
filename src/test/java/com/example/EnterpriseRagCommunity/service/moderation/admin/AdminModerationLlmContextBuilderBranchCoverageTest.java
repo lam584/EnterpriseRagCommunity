@@ -362,7 +362,8 @@ class AdminModerationLlmContextBuilderBranchCoverageTest {
         assertNull(d.builder.buildReportsBlock(null, 1L));
         assertNull(d.builder.buildReportsBlock(ReportTargetType.POST, null));
 
-        when(d.reportsRepository.findByTargetTypeAndTargetId(eq(ReportTargetType.POST), eq(9L), any(Pageable.class))).thenReturn(null);
+        when(d.reportsRepository.findByTargetTypeAndTargetId(eq(ReportTargetType.POST), eq(9L), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
         assertNull(d.builder.buildReportsBlock(ReportTargetType.POST, 9L));
 
         ReportsEntity r1 = new ReportsEntity();
@@ -800,12 +801,12 @@ class AdminModerationLlmContextBuilderBranchCoverageTest {
         assertEquals("", nullToEmpty.invoke(null, new Object[]{null}));
         assertEquals("x", nullToEmpty.invoke(null, "x"));
 
-        Method clamp01 = AdminModerationLlmContextBuilder.class.getDeclaredMethod("clamp01", Double.class, double.class);
+        Method clamp01 = AdminModerationLlmContextBuilder.class.getDeclaredMethod("clamp01", Double.class);
         clamp01.setAccessible(true);
-        assertEquals(0.5, (Double) clamp01.invoke(null, null, 0.5), 1e-9);
-        assertEquals(0.0, (Double) clamp01.invoke(null, -1.0, 0.5), 1e-9);
-        assertEquals(1.0, (Double) clamp01.invoke(null, 2.0, 0.5), 1e-9);
-        assertEquals(0.3, (Double) clamp01.invoke(null, 0.3, 0.5), 1e-9);
+        assertEquals(0.5, (Double) clamp01.invoke(null, new Object[]{null}), 1e-9);
+        assertEquals(0.0, (Double) clamp01.invoke(null, -1.0), 1e-9);
+        assertEquals(1.0, (Double) clamp01.invoke(null, 2.0), 1e-9);
+        assertEquals(0.3, (Double) clamp01.invoke(null, 0.3), 1e-9);
 
         Method blankToNullS = AdminModerationLlmContextBuilder.class.getDeclaredMethod("blankToNull", String.class);
         blankToNullS.setAccessible(true);

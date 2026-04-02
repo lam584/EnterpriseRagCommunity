@@ -425,24 +425,20 @@ class AdminSettingsControllerTest {
         assertThat(invokeCurrentUsernameOrNull()).isNull();
     }
 
-    @Test
-    void parseStringList_should_return_empty_for_blank_and_split_for_values() throws Exception {
-        assertThat(invokeParseStringList(java.util.Optional.empty())).isEmpty();
-        assertThat(invokeParseStringList(java.util.Optional.of(" "))).isEmpty();
-        assertThat(invokeParseStringList(java.util.Optional.of("a, b, ,c"))).containsExactly("a", "b", "c");
+    private static List<String> invokeParseStringList(String v) throws Exception {
+        Method m = AdminSettingsController.class.getDeclaredMethod("parseStringList", String.class);
+        m.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Optional<List<String>> out = (java.util.Optional<List<String>>) m.invoke(null, v);
+        return out.orElseGet(List::of);
     }
 
-    @Test
-    void parseIntList_should_skip_invalid_numbers_and_return_empty_when_no_valid() throws Exception {
-        assertThat(invokeParseIntList(java.util.Optional.of("1, x, 2"))).containsExactly(1, 2);
-        assertThat(invokeParseIntList(java.util.Optional.of("x, y"))).isEmpty();
-    }
-
-    @Test
-    void joinInts_should_skip_null_values_and_return_empty_for_null_list() throws Exception {
-        assertThat(invokeJoinInts(null)).isEqualTo("");
-        assertThat(invokeJoinInts(List.of())).isEqualTo("");
-        assertThat(invokeJoinInts(java.util.Arrays.asList(1, null, 2))).isEqualTo("1,2");
+    private static List<Integer> invokeParseIntList(String v) throws Exception {
+        Method m = AdminSettingsController.class.getDeclaredMethod("parseIntList", String.class);
+        m.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Optional<List<Integer>> out = (java.util.Optional<List<Integer>>) m.invoke(null, v);
+        return out.orElseGet(List::of);
     }
 
     private static TotpAdminSettingsDTO invokeNormalize(TotpAdminSettingsDTO dto) throws Exception {
@@ -481,20 +477,17 @@ class AdminSettingsControllerTest {
         return (String) m.invoke(null);
     }
 
-    private static List<String> invokeParseStringList(java.util.Optional<String> v) throws Exception {
-        Method m = AdminSettingsController.class.getDeclaredMethod("parseStringList", java.util.Optional.class);
-        m.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        java.util.Optional<List<String>> out = (java.util.Optional<List<String>>) m.invoke(null, v);
-        return out.orElseGet(List::of);
+    @Test
+    void parseStringList_should_return_empty_for_blank_and_split_for_values() throws Exception {
+        assertThat(invokeParseStringList(null)).isEmpty();
+        assertThat(invokeParseStringList(" ")).isEmpty();
+        assertThat(invokeParseStringList("a, b, ,c")).containsExactly("a", "b", "c");
     }
 
-    private static List<Integer> invokeParseIntList(java.util.Optional<String> v) throws Exception {
-        Method m = AdminSettingsController.class.getDeclaredMethod("parseIntList", java.util.Optional.class);
-        m.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        java.util.Optional<List<Integer>> out = (java.util.Optional<List<Integer>>) m.invoke(null, v);
-        return out.orElseGet(List::of);
+    @Test
+    void parseIntList_should_skip_invalid_numbers_and_return_empty_when_no_valid() throws Exception {
+        assertThat(invokeParseIntList("1, x, 2")).containsExactly(1, 2);
+        assertThat(invokeParseIntList("x, y")).isEmpty();
     }
 
     private static String invokeJoinInts(List<Integer> list) throws Exception {

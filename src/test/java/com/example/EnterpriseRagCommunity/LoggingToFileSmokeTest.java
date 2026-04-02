@@ -16,7 +16,7 @@ class LoggingToFileSmokeTest {
 
     @Test
     void writesStartupLogToFile() throws Exception {
-        Path logFile = Path.of("build", "test-logs", "startup.log");
+        Path logFile = Path.of("build", "test-logs", "startup-" + System.currentTimeMillis() + ".log");
         Files.createDirectories(logFile.getParent());
         Files.deleteIfExists(logFile);
 

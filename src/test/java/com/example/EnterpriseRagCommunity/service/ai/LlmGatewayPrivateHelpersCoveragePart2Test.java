@@ -18,14 +18,57 @@ import static org.mockito.Mockito.when;
 
 class LlmGatewayPrivateHelpersCoveragePart2Test {
 
+    private static Class<?> wrap(Class<?> c) {
+        if (!c.isPrimitive()) return c;
+        if (c == int.class) return Integer.class;
+        if (c == long.class) return Long.class;
+        if (c == boolean.class) return Boolean.class;
+        if (c == double.class) return Double.class;
+        if (c == float.class) return Float.class;
+        if (c == short.class) return Short.class;
+        if (c == byte.class) return Byte.class;
+        if (c == char.class) return Character.class;
+        return c;
+    }
+
+    private static Method findCompatibleMethod(Class<?> type, String name, Object[] args) {
+        for (Method m : type.getDeclaredMethods()) {
+            if (!m.getName().equals(name)) continue;
+            Class<?>[] pt = m.getParameterTypes();
+            if (pt.length != args.length) continue;
+            boolean ok = true;
+            for (int i = 0; i < pt.length; i++) {
+                Object arg = args[i];
+                if (arg == null) {
+                    if (pt[i].isPrimitive()) {
+                        ok = false;
+                        break;
+                    }
+                    continue;
+                }
+                if (!wrap(pt[i]).isAssignableFrom(arg.getClass())) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) return m;
+        }
+        return null;
+    }
+
     private static Object callStatic(String name, Class<?>[] paramTypes, Object... args) throws Exception {
-        Method m = LlmGateway.class.getDeclaredMethod(name, paramTypes);
+        Method m = findCompatibleMethod(LlmGateway.class, name, args);
+        if (m == null) {
+            m = findCompatibleMethod(LlmGatewaySupport.class, name, args);
+        }
+        if (m == null) throw new NoSuchMethodException(name);
         m.setAccessible(true);
         return m.invoke(null, args);
     }
 
     private static Object callInstance(LlmGateway gateway, String name, Class<?>[] paramTypes, Object... args) throws Exception {
-        Method m = LlmGateway.class.getDeclaredMethod(name, paramTypes);
+        Method m = findCompatibleMethod(LlmGateway.class, name, args);
+        if (m == null) throw new NoSuchMethodException(name);
         m.setAccessible(true);
         return m.invoke(gateway, args);
     }
@@ -440,11 +483,11 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                     "callChatStreamSingle",
                     new Class[]{
                             LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
-                            Double.class, Double.class, Boolean.class, Integer.class, Map.class,
+                            Double.class, Double.class, Boolean.class, Integer.class,
                             OpenAiCompatClient.SseLineConsumer.class, int.class, AtomicReference.class
                     },
                     LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")),
-                    0.1, null, Boolean.TRUE, null, Map.of(), (OpenAiCompatClient.SseLineConsumer) line -> {
+                    0.1, null, Boolean.TRUE, null, (OpenAiCompatClient.SseLineConsumer) line -> {
                     }, 1, null
             );
             assertNotNull(usage);

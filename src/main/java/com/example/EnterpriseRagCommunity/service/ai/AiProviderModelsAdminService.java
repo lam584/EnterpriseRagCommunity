@@ -180,60 +180,17 @@ public class AiProviderModelsAdminService {
         return out;
     }
 
-    private List<String> requestUpstreamModels(
-            String endpoint,
-            String apiKey,
-            Map<String, String> extraHeaders,
-            int connectTimeoutMs,
-            int readTimeoutMs
-    ) {
+    private static void validateHttpEndpoint(String endpoint) {
+        if (endpoint == null) throw new IllegalArgumentException("endpoint 不能为空");
+        String trimmed = endpoint.trim();
+        if (trimmed.isBlank()) throw new IllegalArgumentException("endpoint 不能为空");
         try {
-            URL url = java.net.URI.create(endpoint).toURL();
+            URL url = java.net.URI.create(trimmed).toURL();
             validateHttpUrl(url);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(connectTimeoutMs);
-            conn.setReadTimeout(readTimeoutMs);
-            conn.setRequestProperty("Accept", "application/json");
-            applyHeaders(conn, apiKey, extraHeaders);
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            if (is == null) {
-                throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, "Upstream 返回 HTTP " + code + " 且无响应体");
-            }
-
-            byte[] raw = is.readAllBytes();
-            String body = new String(raw, StandardCharsets.UTF_8);
-            if (code < 200 || code >= 300) {
-                String snippet = safeSnippet(body, 2000);
-                throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, "Upstream 返回 HTTP " + code + ": " + snippet);
-            }
-
-            JsonNode root = objectMapper.readTree(body);
-            JsonNode data = root == null ? null : root.get("data");
-            List<String> models = new ArrayList<>();
-            if (data != null && data.isArray()) {
-                for (JsonNode item : data) {
-                    if (item == null) continue;
-                    String id = item.hasNonNull("id") ? item.get("id").asText(null) : null;
-                    if (id == null || id.isBlank()) continue;
-                    models.add(id.trim());
-                }
-            }
-            models.sort(String::compareTo);
-            return models;
-        } catch (UpstreamRequestException e) {
+        } catch (IllegalArgumentException e) {
             throw e;
-        } catch (ConnectException e) {
-            throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, buildConnectErrorMessage(endpoint, e), e);
         } catch (Exception e) {
-            Throwable root = rootCause(e);
-            if (root instanceof ConnectException ce) {
-                throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, buildConnectErrorMessage(endpoint, ce), ce);
-            }
-            String msg = root == null || root.getMessage() == null || root.getMessage().isBlank() ? "未知错误" : root.getMessage();
-            throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, "获取 /v1/models 失败: " + msg + "（endpoint: " + endpoint + "）", e);
+            throw new IllegalArgumentException("endpoint 格式不合法", e);
         }
     }
 
@@ -307,6 +264,63 @@ public class AiProviderModelsAdminService {
         }
         String host = url.getHost();
         if (host == null || host.isBlank()) throw new IllegalArgumentException("URL host 不能为空");
+    }
+
+    private List<String> requestUpstreamModels(
+            String endpoint,
+            String apiKey,
+            Map<String, String> extraHeaders,
+            int connectTimeoutMs,
+            int readTimeoutMs
+    ) {
+        try {
+            validateHttpEndpoint(endpoint);
+            URL url = java.net.URI.create(endpoint).toURL();
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(connectTimeoutMs);
+            conn.setReadTimeout(readTimeoutMs);
+            conn.setRequestProperty("Accept", "application/json");
+            applyHeaders(conn, apiKey, extraHeaders);
+
+            int code = conn.getResponseCode();
+            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+            if (is == null) {
+                throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, "Upstream 返回 HTTP " + code + " 且无响应体");
+            }
+
+            byte[] raw = is.readAllBytes();
+            String body = new String(raw, StandardCharsets.UTF_8);
+            if (code < 200 || code >= 300) {
+                String snippet = safeSnippet(body, 2000);
+                throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, "Upstream 返回 HTTP " + code + ": " + snippet);
+            }
+
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode data = root == null ? null : root.get("data");
+            List<String> models = new ArrayList<>();
+            if (data != null && data.isArray()) {
+                for (JsonNode item : data) {
+                    if (item == null) continue;
+                    String id = item.hasNonNull("id") ? item.get("id").asText(null) : null;
+                    if (id == null || id.isBlank()) continue;
+                    models.add(id.trim());
+                }
+            }
+            models.sort(String::compareTo);
+            return models;
+        } catch (UpstreamRequestException e) {
+            throw e;
+        } catch (ConnectException e) {
+            throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, buildConnectErrorMessage(endpoint, e), e);
+        } catch (Exception e) {
+            Throwable root = rootCause(e);
+            if (root instanceof ConnectException ce) {
+                throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, buildConnectErrorMessage(endpoint, ce), ce);
+            }
+            String msg = root == null || root.getMessage() == null || root.getMessage().isBlank() ? "未知错误" : root.getMessage();
+            throw new UpstreamRequestException(HttpStatus.BAD_GATEWAY, "获取 /v1/models 失败: " + msg + "（endpoint: " + endpoint + "）", e);
+        }
     }
 
     private static String toNonBlank(String v) {

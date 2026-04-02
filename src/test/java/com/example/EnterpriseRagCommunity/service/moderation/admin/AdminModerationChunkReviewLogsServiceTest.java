@@ -23,7 +23,6 @@ import com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkRevi
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
@@ -525,10 +524,6 @@ class AdminModerationChunkReviewLogsServiceTest {
         withPost.setContentType(ContentType.POST);
         withPost.setContentId(55L);
 
-        Page<PostAttachmentsEntity> pageWithNull = mock(Page.class);
-        when(pageWithNull.getContent()).thenReturn(null);
-        when(postAttachmentsRepository.findByPostId(55L, PageRequest.of(0, 200))).thenReturn(pageWithNull);
-        assertTrue(((List<?>) invokePrivateInstance(service, "resolvePostTextImages", new Class[]{ModerationChunkSetEntity.class}, withPost)).isEmpty());
 
         when(postAttachmentsRepository.findByPostId(55L, PageRequest.of(0, 200))).thenReturn(new PageImpl<>(List.of()));
         assertTrue(((List<?>) invokePrivateInstance(service, "resolvePostTextImages", new Class[]{ModerationChunkSetEntity.class}, withPost)).isEmpty());

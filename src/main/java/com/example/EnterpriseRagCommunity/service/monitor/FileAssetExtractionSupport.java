@@ -156,6 +156,12 @@ final class FileAssetExtractionSupport {
             PDFTextStripper stripper = new PDFTextStripper();
             String txt = stripper.getText(doc);
             return truncate(txt, maxChars);
+        } catch (Exception e) {
+            if (meta != null) {
+                meta.put("pdfParseFailed", true);
+                meta.put("pdfParseError", safeMsg(e));
+            }
+            return "";
         }
     }
 
@@ -243,10 +249,16 @@ final class FileAssetExtractionSupport {
 
     static String extractPdf(Path path, int maxChars, Map<String, Object> meta) throws Exception {
         try (PDDocument doc = Loader.loadPDF(path.toFile())) {
-            meta.put("pages", doc.getNumberOfPages());
+            if (meta != null) meta.put("pages", doc.getNumberOfPages());
             PDFTextStripper stripper = new PDFTextStripper();
             String txt = stripper.getText(doc);
             return truncate(txt, maxChars);
+        } catch (Exception e) {
+            if (meta != null) {
+                meta.put("pdfParseFailed", true);
+                meta.put("pdfParseError", safeMsg(e));
+            }
+            return "";
         }
     }
 

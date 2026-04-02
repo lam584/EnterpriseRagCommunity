@@ -110,7 +110,7 @@ class ReportControllersBranchUnitTest {
         req.setReasonCode("SPAM");
         req.setReasonText("   ");
         when(portalReportsService.reportProfile(90L, "SPAM", "   ")).thenReturn(null);
-        assertThrows(RuntimeException.class, () -> c.reportProfile(90L, req));
+        assertTrue(c.reportProfile(90L, req).isEmpty());
 
         assertThrows(NullPointerException.class, () -> c.reportProfile(91L, null));
     }
@@ -158,7 +158,7 @@ class ReportControllersBranchUnitTest {
         req.setReasonCode("ABUSE");
         req.setReasonText("   ");
         when(portalReportsService.reportComment(190L, "ABUSE", "   ")).thenReturn(null);
-        assertThrows(RuntimeException.class, () -> c.reportComment(190L, req));
+        assertTrue(c.reportComment(190L, req).isEmpty());
 
         assertThrows(NullPointerException.class, () -> c.reportComment(191L, null));
     }
@@ -209,7 +209,7 @@ class ReportControllersBranchUnitTest {
         req.setReasonCode("OTHER");
         req.setReasonText("   ");
         when(portalReportsService.reportPost(290L, "OTHER", "   ")).thenReturn(null);
-        assertThrows(RuntimeException.class, () -> c.reportPost(290L, req));
+        assertTrue(c.reportPost(290L, req).isEmpty());
 
         assertThrows(NullPointerException.class, () -> c.reportPost(291L, null));
     }

@@ -294,7 +294,7 @@ class ContentSafetyCircuitBreakerServiceTest {
     }
 
     @Test
-    void countBlockedLastSeconds_shouldClampInputAndFilterRange() {
+    void countBlockedLast60Seconds_shouldFilterRange() {
         ContentSafetyCircuitBreakerService service = newService();
         long nowSec = System.currentTimeMillis() / 1000L;
         long[] keys = (long[]) ReflectionTestUtils.getField(service, "blockedSecondKeys");
@@ -310,11 +310,9 @@ class ContentSafetyCircuitBreakerServiceTest {
         keys[3] = nowSec + 1;
         counts[3] = 99;
 
-        long s1 = ReflectionTestUtils.invokeMethod(service, "countBlockedLastSeconds", 0);
-        long s2 = ReflectionTestUtils.invokeMethod(service, "countBlockedLastSeconds", 1000);
+        long sum = ReflectionTestUtils.invokeMethod(service, "countBlockedLast60Seconds");
 
-        assertEquals(3L, s1);
-        assertEquals(7L, s2);
+        assertEquals(7L, sum);
     }
 
     @Test
