@@ -36,66 +36,27 @@ public class AccountPreferencesController {
 
     @GetMapping("/preferences")
     public ResponseEntity<?> getPreferences() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "未登录或会话已过期");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-        }
+        String email = currentEmailOrNull();
+        if (email == null) return unauthorized();
 
-        String email = auth.getName();
-        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        UsersEntity user = requireActiveUserByEmail(email);
 
         return ResponseEntity.ok(toTranslatePreferencesDto(user.getMetadata()));
     }
 
     @PutMapping("/preferences")
-    @SuppressWarnings("unchecked")
     public ResponseEntity<?> updatePreferences(@RequestBody @Valid UpdateTranslatePreferencesRequest req) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "未登录或会话已过期");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-        }
+        String email = currentEmailOrNull();
+        if (email == null) return unauthorized();
 
-        String email = auth.getName();
-        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        UsersEntity user = requireActiveUserByEmail(email);
 
         Map<String, Object> metadata0 = user.getMetadata();
         Map<String, Object> metadata = (metadata0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata0);
 
-        Object prefsObj = metadata.get("preferences");
-        Map<String, Object> prefs0;
-        if (prefsObj instanceof Map) {
-            //noinspection unchecked
-            prefs0 = (Map<String, Object>) prefsObj;
-        } else {
-            prefs0 = null;
-        }
-        Map<String, Object> prefs = (prefs0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(prefs0);
-
-        Object translateObj = prefs.get("translate");
-        Map<String, Object> translate0;
-        if (translateObj instanceof Map) {
-            //noinspection unchecked
-            translate0 = (Map<String, Object>) translateObj;
-        } else {
-            translate0 = null;
-        }
-        Map<String, Object> translate = (translate0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(translate0);
-
-        Object postsComposeObj = prefs.get("postsCompose");
-        Map<String, Object> postsCompose0;
-        if (postsComposeObj instanceof Map) {
-            //noinspection unchecked
-            postsCompose0 = (Map<String, Object>) postsComposeObj;
-        } else {
-            postsCompose0 = null;
-        }
-        Map<String, Object> postsCompose = (postsCompose0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(postsCompose0);
+        Map<String, Object> prefs = mutableChildMap(metadata, "preferences");
+        Map<String, Object> translate = mutableChildMap(prefs, "translate");
+        Map<String, Object> postsCompose = mutableChildMap(prefs, "postsCompose");
 
         if (req.isTargetLanguagePresent()) {
             String tl = req.getTargetLanguage() == null ? null : req.getTargetLanguage().trim();
@@ -130,26 +91,11 @@ public class AccountPreferencesController {
         return ResponseEntity.ok(toTranslatePreferencesDto(saved.getMetadata()));
     }
 
-    @SuppressWarnings("unchecked")
     private TranslatePreferencesDTO toTranslatePreferencesDto(Map<String, Object> metadata) {
         TranslatePreferencesDTO dto = new TranslatePreferencesDTO();
-        Map<String, Object> prefs = null;
-        if (metadata != null) {
-            Object p = metadata.get("preferences");
-            if (p instanceof Map) prefs = (Map<String, Object>) p;
-        }
-
-        Map<String, Object> translate = null;
-        if (prefs != null) {
-            Object t = prefs.get("translate");
-            if (t instanceof Map) translate = (Map<String, Object>) t;
-        }
-
-        Map<String, Object> postsCompose = null;
-        if (prefs != null) {
-            Object pc = prefs.get("postsCompose");
-            if (pc instanceof Map) postsCompose = (Map<String, Object>) pc;
-        }
+        Map<String, Object> prefs = childMapOrNull(metadata, "preferences");
+        Map<String, Object> translate = childMapOrNull(prefs, "translate");
+        Map<String, Object> postsCompose = childMapOrNull(prefs, "postsCompose");
 
         String targetLanguage = null;
         Boolean autoTranslatePosts = null;
@@ -187,5 +133,37 @@ public class AccountPreferencesController {
         dto.setTitleGenCount(titleGenCount);
         dto.setTagGenCount(tagGenCount);
         return dto;
+    }
+
+    private static String currentEmailOrNull() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+        return auth.getName();
+    }
+
+    private static ResponseEntity<Map<String, String>> unauthorized() {
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "未登录或会话已过期");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
+    private UsersEntity requireActiveUserByEmail(String email) {
+        return usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> childMapOrNull(Map<String, Object> parent, String key) {
+        if (parent == null) return null;
+        Object value = parent.get(key);
+        if (value instanceof Map) return (Map<String, Object>) value;
+        return null;
+    }
+
+    private static Map<String, Object> mutableChildMap(Map<String, Object> parent, String key) {
+        Map<String, Object> found = childMapOrNull(parent, key);
+        return found == null ? new LinkedHashMap<>() : new LinkedHashMap<>(found);
     }
 }

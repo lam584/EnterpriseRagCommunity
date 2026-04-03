@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.moderation.web;
 
 import org.apache.tika.Tika;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,7 +12,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
@@ -36,6 +39,11 @@ class WebContentFetchServiceTest {
 
     @Autowired
     WebContentFetchService webContentFetchService;
+
+    @BeforeEach
+    void resetHostAddressResolver() {
+        ReflectionTestUtils.setField(webContentFetchService, "hostAddressResolver", (WebContentFetchService.HostAddressResolver) InetAddress::getAllByName);
+    }
 
     @Test
     void shouldExtractHttpUrlsFromText() {
@@ -153,6 +161,7 @@ class WebContentFetchServiceTest {
 
     @Test
     void shouldCoverPortAndUrlValidationBranches() {
+        useDeterministicHostResolver();
         ReflectionTestUtils.setField(webContentFetchService, "allowedPorts", "80,,abc,443");
         assertFalse((Boolean) ReflectionTestUtils.invokeMethod(webContentFetchService, "isAllowedPort", -1));
         assertFalse((Boolean) ReflectionTestUtils.invokeMethod(webContentFetchService, "isAllowedPort", 70000));
@@ -186,6 +195,7 @@ class WebContentFetchServiceTest {
 
     @Test
     void shouldCoverFetchOneBranchesWithMockClient() throws Exception {
+        useDeterministicHostResolver();
         HttpClient client = Mockito.mock(HttpClient.class);
         ReflectionTestUtils.setField(webContentFetchService, "client", client);
         ReflectionTestUtils.setField(webContentFetchService, "allowedPorts", "80,443");
@@ -296,6 +306,22 @@ class WebContentFetchServiceTest {
         Map<String, Object> redirectThenOk = ReflectionTestUtils.invokeMethod(webContentFetchService, "fetchOne", "http://example.com/a");
         assertEquals("OK", redirectThenOk.get("status"));
         assertEquals("http://example.com/b", redirectThenOk.get("redirectedTo"));
+    }
+
+    private void useDeterministicHostResolver() {
+        ReflectionTestUtils.setField(webContentFetchService, "hostAddressResolver", deterministicHostResolver());
+    }
+
+    private WebContentFetchService.HostAddressResolver deterministicHostResolver() {
+        return host -> {
+            if ("example.com".equals(host)) {
+                return new InetAddress[]{InetAddress.getByAddress(host, new byte[]{8, 8, 8, 8})};
+            }
+            if ("nonexistent-xyz-1234567890.invalid".equals(host)) {
+                throw new UnknownHostException(host);
+            }
+            return new InetAddress[]{InetAddress.getByName(host)};
+        };
     }
 
     private HttpResponse<InputStream> mockResponse(int code, Map<String, List<String>> headers, InputStream body) {

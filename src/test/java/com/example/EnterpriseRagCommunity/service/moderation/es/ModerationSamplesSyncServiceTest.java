@@ -398,8 +398,10 @@ class ModerationSamplesSyncServiceTest {
     void reindexAll_shouldClearWhenIndexMissing() {
         when(indexOperations.exists()).thenReturn(false);
         when(samplesRepository.findAll(any(Specification.class), any(PageRequest.class))).thenReturn(Page.empty());
+        SearchHits empty = mock(SearchHits.class);
+        when(empty.isEmpty()).thenReturn(true);
         when(template.search(any(org.springframework.data.elasticsearch.core.query.CriteriaQuery.class), eq(Document.class), any(org.springframework.data.elasticsearch.core.mapping.IndexCoordinates.class)))
-                .thenReturn(null);
+                .thenReturn(empty);
 
         ModerationSamplesReindexResponse resp = service.reindexAll(true, 10, null);
 
@@ -412,8 +414,10 @@ class ModerationSamplesSyncServiceTest {
         when(indexOperations.exists()).thenReturn(true);
         when(indexOperations.delete()).thenReturn(true);
         when(samplesRepository.findAll(any(Specification.class), any(PageRequest.class))).thenReturn(Page.empty());
+        SearchHits empty = mock(SearchHits.class);
+        when(empty.isEmpty()).thenReturn(true);
         when(template.search(any(org.springframework.data.elasticsearch.core.query.CriteriaQuery.class), eq(Document.class), any(org.springframework.data.elasticsearch.core.mapping.IndexCoordinates.class)))
-                .thenReturn(null);
+                .thenReturn(empty);
 
         ModerationSamplesReindexResponse resp = service.reindexAll(true, 10, null);
 
@@ -444,7 +448,6 @@ class ModerationSamplesSyncServiceTest {
     @Test
     void reindexAll_shouldExecuteSpecificationLambdaBranches() {
         doAnswer(inv -> {
-            @SuppressWarnings("unchecked")
             Specification<ModerationSamplesEntity> spec = inv.getArgument(0);
             invokeSpec(spec);
             return Page.empty();

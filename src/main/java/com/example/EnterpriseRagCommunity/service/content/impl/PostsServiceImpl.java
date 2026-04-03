@@ -220,9 +220,6 @@ public class PostsServiceImpl implements PostsService {
                         int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
                         fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
                     }
-                    fileName = (fileName == null ? "" : fileName);
-                    fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
-                    fileName = fileName.replaceAll("[\\\\/]+", "_");
 
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();
                     pa.setPostId(post.getId());
@@ -691,11 +688,7 @@ public class PostsServiceImpl implements PostsService {
                         int h = fileName.indexOf('#');
                         if (h >= 0) fileName = fileName.substring(0, h);
                         int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
-                        fileName = slash >= 0 ? fileName.substring(slash + 1) : fileName;
                     }
-                    fileName = (fileName == null ? "" : fileName);
-                    fileName = fileName.replaceAll("[\\r\\n\\t]+", " ").trim();
-                    fileName = fileName.replaceAll("[\\\\/]+", "_");
 
                     PostAttachmentsEntity pa = new PostAttachmentsEntity();
                     pa.setPostId(post.getId());

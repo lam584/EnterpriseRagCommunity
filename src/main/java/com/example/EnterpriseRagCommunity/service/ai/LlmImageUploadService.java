@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.entity.ai.ImageUploadLogEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.ImageUploadLogRepository;
 import com.example.EnterpriseRagCommunity.service.ai.ImageStorageConfigService.CompressionConfig;
 import com.example.EnterpriseRagCommunity.service.ai.ImageStorageConfigService.StorageMode;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -382,18 +383,7 @@ public class LlmImageUploadService {
             }
 
             // Only allow upload-root-relative paths to avoid path traversal from user-provided paths.
-            String normalizedInput = p.replace('\\', '/');
-            String relative;
-            if (normalizedInput.startsWith("/uploads/")) {
-                relative = normalizedInput.substring("/uploads/".length());
-            } else if (normalizedInput.startsWith("uploads/")) {
-                relative = normalizedInput.substring("uploads/".length());
-            } else {
-                while (normalizedInput.startsWith("/")) {
-                    normalizedInput = normalizedInput.substring(1);
-                }
-                relative = normalizedInput;
-            }
+            String relative = getString(p);
 
             Path relativePath = Paths.get(relative).normalize();
             if (relativePath.isAbsolute() || relativePath.startsWith("..")) {
@@ -415,6 +405,22 @@ public class LlmImageUploadService {
             logger.warn("Failed to read local file: {} — {}", localPath, e.getMessage());
             return null;
         }
+    }
+
+    private static @NonNull String getString(String p) {
+        String normalizedInput = p.replace('\\', '/');
+        String relative;
+        if (normalizedInput.startsWith("/uploads/")) {
+            relative = normalizedInput.substring("/uploads/".length());
+        } else if (normalizedInput.startsWith("uploads/")) {
+            relative = normalizedInput.substring("uploads/".length());
+        } else {
+            while (normalizedInput.startsWith("/")) {
+                normalizedInput = normalizedInput.substring(1);
+            }
+            relative = normalizedInput;
+        }
+        return relative;
     }
 
     private static String extractFileName(String path) {

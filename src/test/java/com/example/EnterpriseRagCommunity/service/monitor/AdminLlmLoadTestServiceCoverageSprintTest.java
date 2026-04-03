@@ -79,7 +79,7 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
     @Test
     void maybeRecomputePaths_should_cover_force_recompute_delta_and_model_fallback_branches() throws Exception {
         TokenCountService tokenCountService = mock(TokenCountService.class);
-        when(tokenCountService.countChatMessagesTokens(any())).thenReturn(5, null);
+        when(tokenCountService.countChatMessagesTokens(any())).thenReturn(5, (Integer) null);
         when(tokenCountService.countTextTokens(anyString())).thenReturn(7);
 
         AdminLlmLoadTestService svc = newService(tokenCountService, mock(LlmQueueMonitorService.class));

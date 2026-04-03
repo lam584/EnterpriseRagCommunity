@@ -51,6 +51,13 @@ public class WebContentFetchService {
 
     private final Tika tika = new Tika();
 
+    @FunctionalInterface
+    interface HostAddressResolver {
+        InetAddress[] resolve(String host) throws Exception;
+    }
+
+    private HostAddressResolver hostAddressResolver = InetAddress::getAllByName;
+
     private static final Pattern URL_PATTERN = Pattern.compile("(?i)\\bhttps?://[^\\s<>\"']+");
 
     public Map<String, Object> fetchUrlsToMeta(List<String> urls) {
@@ -230,7 +237,7 @@ public class WebContentFetchService {
         if (port != -1 && !isAllowedPort(port)) return "PORT";
 
         try {
-            InetAddress[] addrs = InetAddress.getAllByName(host);
+            InetAddress[] addrs = resolveHostAddresses(host);
             for (InetAddress a : addrs) {
                 if (a.isAnyLocalAddress() || a.isLoopbackAddress() || a.isLinkLocalAddress() || a.isSiteLocalAddress() || a.isMulticastAddress()) {
                     return "PRIVATE_IP";
@@ -240,6 +247,11 @@ public class WebContentFetchService {
             return "DNS";
         }
         return null;
+    }
+
+    private InetAddress[] resolveHostAddresses(String host) throws Exception {
+        HostAddressResolver resolver = hostAddressResolver == null ? InetAddress::getAllByName : hostAddressResolver;
+        return resolver.resolve(host);
     }
 
     private boolean isAllowedPort(int port) {

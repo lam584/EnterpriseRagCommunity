@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.time.LocalDateTime;
 
+import lombok.Getter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -71,6 +72,7 @@ public class AccountProfileController {
     private final AccountSecurityService accountSecurityService;
     private final AccountTotpService accountTotpService;
     private final EmailVerificationService emailVerificationService;
+    @Getter
     private final EmailVerificationMailer emailVerificationMailer;
     private final Security2faPolicyService security2faPolicyService;
     private final NotificationsService notificationsService;
@@ -88,16 +90,10 @@ public class AccountProfileController {
 
     @GetMapping("/security-2fa-policy")
     public ResponseEntity<?> getMySecurity2faPolicy() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "未登录或会话已过期");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-        }
+        String email = currentEmailOrNull();
+        if (email == null) return unauthorized();
 
-        String email = auth.getName();
-        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        UsersEntity user = requireActiveUserByEmail(email);
 
         Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(user.getId());
         return ResponseEntity.ok(policy);
@@ -105,16 +101,10 @@ public class AccountProfileController {
 
     @PutMapping("/login-2fa-preference")
     public ResponseEntity<?> updateMyLogin2faPreference(@RequestBody @Valid UpdateLogin2faPreferenceRequest req, HttpServletRequest servletRequest) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "未登录或会话已过期");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-        }
+        String email = currentEmailOrNull();
+        if (email == null) return unauthorized();
 
-        String email = auth.getName();
-        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        UsersEntity user = requireActiveUserByEmail(email);
         Map<String, Object> beforeAudit = summarizeLogin2faPreferenceForAudit(user);
 
         Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(user.getId());
@@ -122,7 +112,7 @@ public class AccountProfileController {
             writeAuditSafely(user.getId(), email, "ACCOUNT_LOGIN_2FA_PREFERENCE_UPDATE", AuditResult.FAIL, "配置登录二次验证失败", Map.of("reason", "policy_forbidden"));
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "当前策略不允许你配置登录二次验证"));
         }
-        if (!isPasswordVerified(servletRequest, SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT)) {
+        if (!isPasswordVerified(servletRequest)) {
             writeAuditSafely(user.getId(), email, "ACCOUNT_LOGIN_2FA_PREFERENCE_UPDATE", AuditResult.FAIL, "配置登录二次验证失败", Map.of("reason", "password_not_verified"));
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "请先验证密码"));
         }
@@ -190,7 +180,7 @@ public class AccountProfileController {
         metadata.put("preferences", prefs);
         user.setMetadata(metadata);
         usersRepository.save(user);
-        clearPasswordVerified(servletRequest, SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT);
+        clearPasswordVerified(servletRequest);
 
         Map<String, Object> afterAudit = summarizeLogin2faPreferenceForAudit(user);
         Map<String, Object> meta = new LinkedHashMap<>();
@@ -220,7 +210,7 @@ public class AccountProfileController {
         String password = req.getPassword() == null ? "" : req.getPassword();
         try {
             accountSecurityService.verifyPasswordByEmail(email, password);
-            markPasswordVerified(servletRequest, SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT);
+            markPasswordVerified(servletRequest);
             UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
                     .orElseThrow(() -> new IllegalArgumentException("User not found"));
             writeAuditSafely(user.getId(), email, "ACCOUNT_LOGIN_2FA_PREFERENCE_VERIFY_PASSWORD", AuditResult.SUCCESS, "验证密码（用于修改登录二次验证）", Map.of("success", true));
@@ -247,15 +237,10 @@ public class AccountProfileController {
     @PutMapping("/profile")
     @Transactional
     public ResponseEntity<?> updateMyProfile(@RequestBody @Valid UpdateMyProfileRequest req) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "未登录或会话已过期");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-        }
+        String email = currentEmailOrNull();
+        if (email == null) return unauthorized();
 
         // IMPORTANT: authentication name is email (see AuthController.login + SecurityConfig)
-        String email = auth.getName();
         UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
         Map<String, Object> beforeAudit = summarizeProfileForAudit(user);
@@ -271,7 +256,7 @@ public class AccountProfileController {
         Map<String, Object> metadata = (metadata0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata0);
 
         Map<String, Object> publicProfile = readProfileMap(metadata, "profile");
-        Map<String, Object> pending0 = readProfileMapOrNull(metadata, "profilePending");
+        Map<String, Object> pending0 = readProfileMapOrNull(metadata);
         Map<String, Object> pending = pending0 == null ? new LinkedHashMap<>(publicProfile) : new LinkedHashMap<>(pending0);
         if (!pending.containsKey("username")) pending.put("username", user.getUsername());
 
@@ -393,27 +378,20 @@ public class AccountProfileController {
         return out;
     }
 
-    private static Map<String, Object> readProfileMapOrNull(Map<String, Object> metadata, String key) {
+    private static Map<String, Object> readProfileMapOrNull(Map<String, Object> metadata) {
         if (metadata == null) return null;
-        Object obj = metadata.get(key);
+        Object obj = metadata.get("profilePending");
         if (!(obj instanceof Map<?, ?>)) return null;
-        return readProfileMap(metadata, key);
+        return readProfileMap(metadata, "profilePending");
     }
 
     @PostMapping("/password")
     public ResponseEntity<?> changeMyPassword(@RequestBody @Valid ChangePasswordRequest req, HttpServletRequest servletRequest) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "未登录或会话已过期");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-        }
-
-        String email = auth.getName();
+        String email = currentEmailOrNull();
+        if (email == null) return unauthorized();
 
         try {
-            UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
-                    .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            UsersEntity user = requireActiveUserByEmail(email);
 
             Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(user.getId());
 
@@ -541,31 +519,37 @@ public class AccountProfileController {
     }
 
     private static Object sanitizeJsonValue(Object v) {
-        if (v == null) return null;
-        if (v instanceof Map<?, ?> m) {
-            LinkedHashMap<String, Object> out = new LinkedHashMap<>();
-            for (var e : m.entrySet()) {
-                Object k = e.getKey();
-                if (k == null) continue;
-                out.put(String.valueOf(k), sanitizeJsonValue(e.getValue()));
+        switch (v) {
+            case null -> {
+                return null;
             }
-            return out;
-        }
-        if (v instanceof List<?> list) {
-            List<Object> out = new ArrayList<>(list.size());
-            for (Object it : list) {
-                out.add(sanitizeJsonValue(it));
+            case Map<?, ?> m -> {
+                LinkedHashMap<String, Object> out = new LinkedHashMap<>();
+                for (var e : m.entrySet()) {
+                    Object k = e.getKey();
+                    if (k == null) continue;
+                    out.put(String.valueOf(k), sanitizeJsonValue(e.getValue()));
+                }
+                return out;
             }
-            return out;
+            case List<?> list -> {
+                List<Object> out = new ArrayList<>(list.size());
+                for (Object it : list) {
+                    out.add(sanitizeJsonValue(it));
+                }
+                return out;
+            }
+            default -> {
+            }
         }
         return v;
     }
 
-    private static boolean isPasswordVerified(HttpServletRequest req, String key) {
+    private static boolean isPasswordVerified(HttpServletRequest req) {
         try {
             HttpSession session = req.getSession(false);
             if (session == null) return false;
-            Object v = session.getAttribute(key);
+            Object v = session.getAttribute(AccountProfileController.SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT);
             if (!(v instanceof Long t)) return false;
             long now = System.currentTimeMillis();
             return t > 0 && now - t <= LOGIN2FA_PREF_PWD_VERIFY_TTL_MS;
@@ -574,18 +558,18 @@ public class AccountProfileController {
         }
     }
 
-    private static void markPasswordVerified(HttpServletRequest req, String key) {
+    private static void markPasswordVerified(HttpServletRequest req) {
         try {
-            req.getSession(true).setAttribute(key, System.currentTimeMillis());
+            req.getSession(true).setAttribute(AccountProfileController.SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT, System.currentTimeMillis());
         } catch (Exception ignore) {
         }
     }
 
-    private static void clearPasswordVerified(HttpServletRequest req, String key) {
+    private static void clearPasswordVerified(HttpServletRequest req) {
         try {
             HttpSession session = req.getSession(false);
             if (session == null) return;
-            session.removeAttribute(key);
+            session.removeAttribute(AccountProfileController.SESSION_LOGIN2FA_PREF_PWD_VERIFIED_AT);
         } catch (Exception ignore) {
         }
     }
@@ -602,6 +586,11 @@ public class AccountProfileController {
         Map<String, String> response = new HashMap<>();
         response.put("message", "未登录或会话已过期");
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
+    private UsersEntity requireActiveUserByEmail(String email) {
+        return usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
     }
 
     private static Map<String, Object> summarizeLogin2faPreferenceForAudit(UsersEntity user) {
@@ -683,12 +672,9 @@ public class AccountProfileController {
 
     @GetMapping("/profile")
     public ResponseEntity<?> getMyProfileView() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            return unauthorized();
-        }
+        String email = currentEmailOrNull();
+        if (email == null) return unauthorized();
 
-        String email = auth.getName();
         UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -709,4 +695,5 @@ public class AccountProfileController {
         dto.setMetadata(md);
         return ResponseEntity.ok(dto);
     }
+
 }

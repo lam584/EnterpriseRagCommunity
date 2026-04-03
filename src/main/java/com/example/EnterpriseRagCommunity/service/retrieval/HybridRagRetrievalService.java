@@ -19,6 +19,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,8 +49,10 @@ public class HybridRagRetrievalService {
 
     private final RetrievalRagProperties ragProps;
     private final RagPostsIndexService indexService;
+    @Getter
     private final AiEmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
+    @Getter
     private final AiRerankService aiRerankService;
     private final LlmGateway llmGateway;
     private final RagFileAssetChatRetrievalService ragFileAssetChatRetrievalService;
@@ -791,14 +794,6 @@ public class HybridRagRetrievalService {
         m.put("rerankDegraded", r.getRerankDegraded());
         m.put("rerankDegradeReason", r.getRerankDegradeReason());
         return m;
-    }
-
-    public AiRerankService getAiRerankService() {
-        return aiRerankService;
-    }
-
-    public AiEmbeddingService getEmbeddingService() {
-        return embeddingService;
     }
 
 
