@@ -4,6 +4,7 @@ buildscript {
     repositories {
         mavenCentral()
         maven { url = uri('https://maven.aliyun.com/repository/public/') }
+        maven { url = uri('https://mirrors.cloud.tencent.com/nexus/repository/maven-public/') }
     }
     dependencies {
         classpath 'com.mysql:mysql-connector-j:9.4.0'
@@ -88,6 +89,7 @@ repositories {
     maven { url = uri('https://maven.aliyun.com/repository/public/') }
     maven { url = uri('https://maven.aliyun.com/repository/spring/') }
     maven { url = uri('https://maven.aliyun.com/repository/gradle-plugin/') }
+    maven { url = uri('https://mirrors.cloud.tencent.com/nexus/repository/maven-public/') }
     // 备用仓库
     mavenCentral()
 }

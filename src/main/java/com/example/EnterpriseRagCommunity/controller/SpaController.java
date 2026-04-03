@@ -61,7 +61,7 @@ public class SpaController implements WebMvcConfigurer {
     static class SpaFallbackResourceResolver extends PathResourceResolver {
         @Override
         protected Resource getResource(String resourcePath, @NonNull Resource location) throws IOException {
-            if (resourcePath == null || resourcePath.isBlank()) {
+            if (resourcePath.isBlank()) {
                 return resolveReadableResource(location, "index.html");
             }
             String normalized = resourcePath;

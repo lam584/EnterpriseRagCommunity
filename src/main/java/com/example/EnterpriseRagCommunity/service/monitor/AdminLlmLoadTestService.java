@@ -153,7 +153,7 @@ public class AdminLlmLoadTestService {
             return ResponseEntity.notFound().build();
         }
 
-        String filename = csv ? ("llm-loadtest-" + safeRunId + ".csv") : ("llm-loadtest-" + safeRunId + ".json");
+        String filename = csv ? ("llm-loader-" + safeRunId + ".csv") : ("llm-loader-" + safeRunId + ".json");
         MediaType mt = csv ? MediaType.valueOf("text/csv; charset=UTF-8") : MediaType.APPLICATION_JSON;
 
         StreamingResponseBody body = outputStream -> {

@@ -56,7 +56,7 @@ public class WebContentFetchService {
         InetAddress[] resolve(String host) throws Exception;
     }
 
-    private HostAddressResolver hostAddressResolver = InetAddress::getAllByName;
+    private final HostAddressResolver hostAddressResolver = InetAddress::getAllByName;
 
     private static final Pattern URL_PATTERN = Pattern.compile("(?i)\\bhttps?://[^\\s<>\"']+");
 

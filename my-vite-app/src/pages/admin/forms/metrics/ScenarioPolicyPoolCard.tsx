@@ -279,11 +279,11 @@ export const ScenarioPolicyPoolCard: React.FC<{
             <div className="text-sm text-gray-500">暂无候选模型</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full table-fixed text-sm border-separate border-spacing-0">
+                <table className="w-full min-w-[1040px] table-fixed text-sm border-separate border-spacing-0">
                 <thead>
                   <tr>
                     <th className="text-left text-xs font-semibold text-gray-700 py-2 px-2 border-b w-[56px] min-w-[56px]">序号</th>
-                    <th className="text-left text-xs font-semibold text-gray-700 py-2 px-2 border-b">模型</th>
+                      <th className="text-left text-xs font-semibold text-gray-700 py-2 px-2 border-b w-[240px] min-w-[240px]">模型</th>
                     <th className="text-left text-xs font-semibold text-gray-700 py-2 px-2 border-b w-[85px] min-w-[85px] relative pr-5">
                       轮询权重
                       <span
@@ -334,7 +334,7 @@ export const ScenarioPolicyPoolCard: React.FC<{
                       }}
                     >
                       <td className="py-2 px-2 border-b whitespace-nowrap text-gray-700">{idx + 1}</td>
-                      <td className="py-2 px-2 border-b min-w-0">
+                        <td className="py-2 px-2 border-b w-[240px] min-w-[240px] align-top">
                         <ProviderModelSelect
                           providers={providerOptions}
                           activeProviderId={
@@ -348,7 +348,7 @@ export const ScenarioPolicyPoolCard: React.FC<{
                           label=""
                           autoOptionLabel="请选择模型"
                           disableAutoOption
-                          selectClassName="w-full rounded border px-2 py-2 text-sm bg-white disabled:bg-gray-50"
+                          selectClassName="block w-full min-w-[220px] rounded border px-2 py-2 text-sm bg-white disabled:bg-gray-50"
                           onChange={(next) => updateTarget(targetIndex, { providerId: next.providerId, modelName: next.model })}
                         />
                       </td>
