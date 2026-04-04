@@ -18,6 +18,24 @@ import static org.mockito.Mockito.when;
 
 class PortalReportsServiceImplCurrentUserIdOrThrowTest {
 
+    private static PortalReportsServiceImpl newService() {
+        return new PortalReportsServiceImpl(
+                mock(com.example.EnterpriseRagCommunity.repository.content.ReportsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.PostsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.CommentsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.AdministratorService.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.UsersRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationActionsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationConfidenceFallbackConfigRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationPolicyConfigRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner.class)
+        );
+    }
+
     @AfterEach
     void cleanup() {
         SecurityContextTestSupport.clear();
@@ -25,7 +43,7 @@ class PortalReportsServiceImplCurrentUserIdOrThrowTest {
 
     @Test
     void currentUserIdOrThrow_authNull_throwsAuthenticationException() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         assertThrows(org.springframework.security.core.AuthenticationException.class, () -> ReflectionTestUtils.invokeMethod(svc, "currentUserIdOrThrow"));
     }
 
@@ -37,7 +55,7 @@ class PortalReportsServiceImplCurrentUserIdOrThrowTest {
         when(auth.getName()).thenReturn("u@example.com");
         SecurityContextHolder.getContext().setAuthentication(auth);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         assertThrows(org.springframework.security.core.AuthenticationException.class, () -> ReflectionTestUtils.invokeMethod(svc, "currentUserIdOrThrow"));
     }
 
@@ -49,7 +67,7 @@ class PortalReportsServiceImplCurrentUserIdOrThrowTest {
         when(auth.getName()).thenReturn("anonymousUser");
         SecurityContextHolder.getContext().setAuthentication(auth);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         assertThrows(org.springframework.security.core.AuthenticationException.class, () -> ReflectionTestUtils.invokeMethod(svc, "currentUserIdOrThrow"));
     }
 
@@ -64,7 +82,7 @@ class PortalReportsServiceImplCurrentUserIdOrThrowTest {
         AdministratorService administratorService = mock(AdministratorService.class);
         when(administratorService.findByUsername("u@example.com")).thenReturn(Optional.empty());
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "administratorService", administratorService);
 
         assertThrows(IllegalArgumentException.class, () -> ReflectionTestUtils.invokeMethod(svc, "currentUserIdOrThrow"));
@@ -83,11 +101,10 @@ class PortalReportsServiceImplCurrentUserIdOrThrowTest {
         u.setId(123L);
         when(administratorService.findByUsername("u@example.com")).thenReturn(Optional.of(u));
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "administratorService", administratorService);
 
         Long id = ReflectionTestUtils.invokeMethod(svc, "currentUserIdOrThrow");
         assertEquals(123L, id);
     }
 }
-

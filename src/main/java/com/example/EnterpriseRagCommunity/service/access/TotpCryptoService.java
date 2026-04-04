@@ -67,7 +67,7 @@ public class TotpCryptoService {
         if (version != VERSION_1) throw new IllegalArgumentException("unsupported payload version: " + version);
 
         int ivLen = payload[1] & 0xFF;
-        if (ivLen <= 0 || payload.length < 2 + ivLen + 1) throw new IllegalArgumentException("payload iv length is invalid");
+        if (ivLen == 0 || payload.length < 2 + ivLen + 1) throw new IllegalArgumentException("payload iv length is invalid");
 
         byte[] iv = new byte[ivLen];
         System.arraycopy(payload, 2, iv, 0, ivLen);

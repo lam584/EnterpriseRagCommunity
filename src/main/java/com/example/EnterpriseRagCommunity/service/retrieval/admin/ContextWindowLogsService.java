@@ -67,18 +67,7 @@ public class ContextWindowLogsService {
         if (e.getEventId() != null) {
             queryText = retrievalEventsRepository.findById(e.getEventId()).map(RetrievalEventsEntity::getQueryText).orElse(null);
         }
-        ContextWindowDetailDTO dto = new ContextWindowDetailDTO();
-        dto.setId(e.getId());
-        dto.setEventId(e.getEventId());
-        dto.setQueryText(queryText == null ? null : queryText.trim());
-        dto.setPolicy(e.getPolicy());
-        dto.setBudgetTokens(e.getBudgetTokens());
-        dto.setTotalTokens(e.getTotalTokens());
-        dto.setSelectedItems(e.getSelectedItems());
-        dto.setDroppedItems(e.getDroppedItems());
-        dto.setChunkIds(castMap(e.getChunkIds()));
-        dto.setCreatedAt(e.getCreatedAt());
-        return dto;
+        return toDetailDto(e, queryText);
     }
 
     private ContextWindowLogDTO toLogDto(ContextWindowsEntity e, String queryText) {
@@ -92,6 +81,21 @@ public class ContextWindowLogsService {
         dto.setDroppedItems(e.getDroppedItems());
         dto.setItems(countItems(e.getChunkIds()));
         dto.setQueryText(queryText);
+        dto.setCreatedAt(e.getCreatedAt());
+        return dto;
+    }
+
+    private ContextWindowDetailDTO toDetailDto(ContextWindowsEntity e, String queryText) {
+        ContextWindowDetailDTO dto = new ContextWindowDetailDTO();
+        dto.setId(e.getId());
+        dto.setEventId(e.getEventId());
+        dto.setQueryText(queryText == null ? null : queryText.trim());
+        dto.setPolicy(e.getPolicy());
+        dto.setBudgetTokens(e.getBudgetTokens());
+        dto.setTotalTokens(e.getTotalTokens());
+        dto.setSelectedItems(e.getSelectedItems());
+        dto.setDroppedItems(e.getDroppedItems());
+        dto.setChunkIds(castMap(e.getChunkIds()));
         dto.setCreatedAt(e.getCreatedAt());
         return dto;
     }

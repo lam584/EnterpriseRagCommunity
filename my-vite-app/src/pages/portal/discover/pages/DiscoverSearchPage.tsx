@@ -248,7 +248,7 @@ function splitByEmTag(input: string): Array<{ text: string; hit: boolean }> {
 function extractSearchTerms(input: string): string[] {
   const src = String(input ?? '').trim();
   if (!src) return [];
-  const matches = src.match(/[\u4e00-\u9fa5]{2,}|[a-zA-Z0-9][a-zA-Z0-9._-]{1,}/g) ?? [];
+  const matches = src.match(/[\u4e00-\u9fa5]{2,}|[a-zA-Z0-9][a-zA-Z0-9._-]+/g) ?? [];
   const deduped = new Map<string, string>();
   for (const raw of matches) {
     const term = raw.trim();

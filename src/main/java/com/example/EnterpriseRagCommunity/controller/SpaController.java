@@ -1,28 +1,5 @@
 package com.example.EnterpriseRagCommunity.controller;
 
-//import org.springframework.stereotype.Controller;
-//import org.springframework.web.bind.annotation.GetMapping;
-//
-//@Controller
-//public class SpaController {
-//
-//    // 访问站点根路径时，转发到打包后的 index.html
-//    @GetMapping({"/", "/index", "/index.html"})
-//    public String index() {
-//        return "forward:/index.html";
-//    }
-//
-//    // 兼容 Spring 6 PathPatternParser：使用首段变量 + 结尾 **，且排除后端与静态资源前缀
-//    // 说明：
-//    // - {path:...} 仅匹配首个路径段，并使用负向前瞻排除 api、assets、static、public、resources、webjars 等常见静态与后端前缀
-//    // - 结尾使用 /** 捕获其余多级段（PathPattern 要求 ** 必须位于末尾）
-//    // - 避免包含点号的静态资源（如 favicon.ico），通过排除列表规避
-//    @GetMapping("/{path:^(?!api|assets|static|public|resources|webjars|db|css|js|img|images|fonts|favicon\\.ico$).*$}/**")
-//    public String any() {
-//        return "forward:/index.html";
-//    }
-//}
-
 
 import org.jspecify.annotations.NonNull;
 import org.springframework.context.annotation.Configuration;
@@ -60,7 +37,7 @@ public class SpaController implements WebMvcConfigurer {
 
     static class SpaFallbackResourceResolver extends PathResourceResolver {
         @Override
-        protected Resource getResource(String resourcePath, @NonNull Resource location) throws IOException {
+        protected Resource getResource(@NonNull String resourcePath, @NonNull Resource location) throws IOException {
             if (resourcePath.isBlank()) {
                 return resolveReadableResource(location, "index.html");
             }

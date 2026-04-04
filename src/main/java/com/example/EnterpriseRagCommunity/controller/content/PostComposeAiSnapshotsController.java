@@ -6,17 +6,16 @@ import com.example.EnterpriseRagCommunity.dto.content.PostComposeAiSnapshotDTO;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostComposeAiSnapshotTargetType;
 import com.example.EnterpriseRagCommunity.service.content.PostComposeAiSnapshotsService;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/post-compose/ai-snapshots")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class PostComposeAiSnapshotsController {
-
-    @Autowired
-    private PostComposeAiSnapshotsService service;
+    private final PostComposeAiSnapshotsService service;
 
     @PostMapping
     public PostComposeAiSnapshotDTO create(@Valid @RequestBody PostComposeAiSnapshotCreateRequest req) {
@@ -35,12 +34,12 @@ public class PostComposeAiSnapshotsController {
     }
 
     @PostMapping("/{id}/apply")
-    public PostComposeAiSnapshotDTO apply(@PathVariable("id") Long id, @Valid @RequestBody PostComposeAiSnapshotApplyRequest req) {
+    public PostComposeAiSnapshotDTO apply(@PathVariable Long id, @Valid @RequestBody PostComposeAiSnapshotApplyRequest req) {
         return service.apply(id, req);
     }
 
     @PostMapping("/{id}/revert")
-    public PostComposeAiSnapshotDTO revert(@PathVariable("id") Long id) {
+    public PostComposeAiSnapshotDTO revert(@PathVariable Long id) {
         return service.revert(id);
     }
 }

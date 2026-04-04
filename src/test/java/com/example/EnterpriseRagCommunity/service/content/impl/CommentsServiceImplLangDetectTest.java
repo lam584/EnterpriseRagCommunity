@@ -14,13 +14,14 @@ import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -28,9 +29,40 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class CommentsServiceImplLangDetectTest {
+
+    private static CommentsServiceImpl newService(
+            CommentsRepository commentsRepository,
+            AdministratorService administratorService,
+            PostsRepository postsRepository,
+            NotificationsService notificationsService,
+            AdminModerationQueueService adminModerationQueueService,
+            ModerationQueueRepository moderationQueueRepository,
+            ModerationAutoKickService moderationAutoKickService,
+            UsersRepository usersRepository,
+            ReactionsRepository reactionsRepository,
+            AiLanguageDetectService aiLanguageDetectService,
+            AuditLogWriter auditLogWriter
+    ) {
+        return new CommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                postsRepository,
+                notificationsService,
+                adminModerationQueueService,
+                moderationQueueRepository,
+                moderationAutoKickService,
+                mock(ModerationRuleAutoRunner.class),
+                usersRepository,
+                reactionsRepository,
+                aiLanguageDetectService,
+                auditLogWriter,
+                mock(RagCommentIndexVisibilitySyncService.class)
+        );
+    }
 
     @AfterEach
     void cleanup() {
@@ -63,18 +95,19 @@ class CommentsServiceImplLangDetectTest {
 
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("u@example.com", "n/a", List.of()));
 
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "notificationsService", notificationsService);
-        ReflectionTestUtils.setField(svc, "adminModerationQueueService", adminModerationQueueService);
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
-        ReflectionTestUtils.setField(svc, "moderationAutoKickService", moderationAutoKickService);
-        ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
-        ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
-        ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
+        CommentsServiceImpl svc = newService(
+                commentsRepository,
+                administratorService,
+                postsRepository,
+                notificationsService,
+                adminModerationQueueService,
+                moderationQueueRepository,
+                moderationAutoKickService,
+                usersRepository,
+                reactionsRepository,
+                aiLanguageDetectService,
+                auditLogWriter
+        );
 
         CommentCreateRequest req = new CommentCreateRequest();
         req.setContent("hello");
@@ -119,18 +152,19 @@ class CommentsServiceImplLangDetectTest {
 
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("u@example.com", "n/a", List.of()));
 
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "notificationsService", notificationsService);
-        ReflectionTestUtils.setField(svc, "adminModerationQueueService", adminModerationQueueService);
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
-        ReflectionTestUtils.setField(svc, "moderationAutoKickService", moderationAutoKickService);
-        ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
-        ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
-        ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
+        CommentsServiceImpl svc = newService(
+                commentsRepository,
+                administratorService,
+                postsRepository,
+                notificationsService,
+                adminModerationQueueService,
+                moderationQueueRepository,
+                moderationAutoKickService,
+                usersRepository,
+                reactionsRepository,
+                aiLanguageDetectService,
+                auditLogWriter
+        );
 
         CommentCreateRequest req = new CommentCreateRequest();
         req.setContent("hello");

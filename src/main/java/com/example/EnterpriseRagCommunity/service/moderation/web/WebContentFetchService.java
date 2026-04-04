@@ -250,8 +250,7 @@ public class WebContentFetchService {
     }
 
     private InetAddress[] resolveHostAddresses(String host) throws Exception {
-        HostAddressResolver resolver = hostAddressResolver == null ? InetAddress::getAllByName : hostAddressResolver;
-        return resolver.resolve(host);
+        return hostAddressResolver.resolve(host);
     }
 
     private boolean isAllowedPort(int port) {

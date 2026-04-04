@@ -554,27 +554,28 @@ class AdminModerationQueueServiceImplBranchCoverageTest {
         final RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService = mock(RagCommentIndexVisibilitySyncService.class);
         final AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
         final UsersService usersService = mock(UsersService.class);
-        final AdminModerationQueueServiceImpl service = new AdminModerationQueueServiceImpl();
+        final AdminModerationQueueServiceImpl service = new AdminModerationQueueServiceImpl(
+                moderationQueueRepository,
+                postsRepository,
+                postAttachmentsRepository,
+                fileAssetExtractionsRepository,
+                commentsRepository,
+                usersRepository,
+                administratorService,
+                reportsRepository,
+                notificationsService,
+                moderationPipelineRunRepository,
+                moderationActionsRepository,
+                riskLabelingService,
+                moderationChunkReviewService,
+                ragPostIndexVisibilitySyncService,
+                ragCommentIndexVisibilitySyncService,
+                auditLogWriter,
+                usersService
+        );
 
         Fixture() {
-            ReflectionTestUtils.setField(service, "moderationQueueRepository", moderationQueueRepository);
-            ReflectionTestUtils.setField(service, "postsRepository", postsRepository);
-            ReflectionTestUtils.setField(service, "postAttachmentsRepository", postAttachmentsRepository);
-            ReflectionTestUtils.setField(service, "fileAssetExtractionsRepository", fileAssetExtractionsRepository);
-            ReflectionTestUtils.setField(service, "commentsRepository", commentsRepository);
-            ReflectionTestUtils.setField(service, "usersRepository", usersRepository);
-            ReflectionTestUtils.setField(service, "administratorService", administratorService);
-            ReflectionTestUtils.setField(service, "reportsRepository", reportsRepository);
-            ReflectionTestUtils.setField(service, "notificationsService", notificationsService);
-            ReflectionTestUtils.setField(service, "moderationPipelineRunRepository", moderationPipelineRunRepository);
-            ReflectionTestUtils.setField(service, "moderationActionsRepository", moderationActionsRepository);
             ReflectionTestUtils.setField(service, "moderationAutoKickService", moderationAutoKickService);
-            ReflectionTestUtils.setField(service, "riskLabelingService", riskLabelingService);
-            ReflectionTestUtils.setField(service, "moderationChunkReviewService", moderationChunkReviewService);
-            ReflectionTestUtils.setField(service, "ragPostIndexVisibilitySyncService", ragPostIndexVisibilitySyncService);
-            ReflectionTestUtils.setField(service, "ragCommentIndexVisibilitySyncService", ragCommentIndexVisibilitySyncService);
-            ReflectionTestUtils.setField(service, "auditLogWriter", auditLogWriter);
-            ReflectionTestUtils.setField(service, "usersService", usersService);
 
             lenient().when(moderationQueueRepository.save(any(ModerationQueueEntity.class))).thenAnswer(i -> i.getArgument(0));
             lenient().when(postsRepository.save(any(PostsEntity.class))).thenAnswer(i -> i.getArgument(0));

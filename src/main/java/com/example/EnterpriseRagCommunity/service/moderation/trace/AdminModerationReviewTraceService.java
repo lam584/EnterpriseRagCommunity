@@ -187,16 +187,15 @@ public class AdminModerationReviewTraceService {
     ) {
         Long resolvedQueueId = queueId;
         String traceKw = StringUtils.hasText(traceId) ? traceId.trim() : null;
+        int p = page == null ? 1 : Math.max(1, page);
+        int ps = pageSize == null ? 20 : Math.clamp(pageSize, 1, 200);
         if (resolvedQueueId == null && traceKw != null) {
             ModerationPipelineRunEntity run = runRepository.findByTraceId(traceKw).orElse(null);
             if (run != null) resolvedQueueId = run.getQueueId();
             else {
-                return new AdminModerationReviewTraceTaskPageDTO(List.of(), 0, 0, page == null ? 1 : Math.max(1, page), pageSize == null ? 20 : Math.max(1, pageSize));
+                return new AdminModerationReviewTraceTaskPageDTO(List.of(), 0, 0, p, ps);
             }
         }
-
-        int p = page == null ? 1 : Math.max(1, page);
-        int ps = pageSize == null ? 20 : Math.clamp(pageSize, 1, 200);
 
         Pageable pageable = PageRequest.of(p - 1, ps, Sort.by(Sort.Direction.DESC, "updatedAt"));
 

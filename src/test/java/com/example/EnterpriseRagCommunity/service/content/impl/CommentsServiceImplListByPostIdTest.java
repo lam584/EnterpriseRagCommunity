@@ -16,7 +16,9 @@ import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.ai.AiLanguageDetectService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -25,7 +27,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -58,19 +59,21 @@ class CommentsServiceImplListByPostIdTest {
             AiLanguageDetectService aiLanguageDetectService,
             AuditLogWriter auditLogWriter
     ) {
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "notificationsService", notificationsService);
-        ReflectionTestUtils.setField(svc, "adminModerationQueueService", adminModerationQueueService);
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
-        ReflectionTestUtils.setField(svc, "moderationAutoKickService", moderationAutoKickService);
-        ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
-        ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
-        ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        return svc;
+        return new CommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                postsRepository,
+                notificationsService,
+                adminModerationQueueService,
+                moderationQueueRepository,
+                moderationAutoKickService,
+                mock(ModerationRuleAutoRunner.class),
+                usersRepository,
+                reactionsRepository,
+                aiLanguageDetectService,
+                auditLogWriter,
+                mock(RagCommentIndexVisibilitySyncService.class)
+        );
     }
 
     private static CommentsEntity newComment(Long id, Long postId, Long parentId, Long authorId, String content, CommentStatus status) {

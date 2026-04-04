@@ -1074,14 +1074,14 @@ public class LlmCallQueueService {
 
     private void pushCompleted(TaskSnapshot snap) {
         int keep = Math.max(0, props.getKeepCompleted());
-        if (keep <= 0) return;
+        if (keep == 0) return;
         completed.addFirst(snap);
         while (completed.size() > keep) completed.removeLast();
     }
 
     private void pushCompletedDetail(Task task) {
         int keep = Math.max(0, props.getKeepCompleted());
-        if (keep <= 0 || task == null) return;
+        if (keep == 0 || task == null) return;
         TaskDetailSnapshot snap = task.toDetailSnapshot();
         completedDetails.put(task.id, snap);
         completedDetailOrder.addFirst(task.id);
@@ -1093,7 +1093,7 @@ public class LlmCallQueueService {
 
     private void recordRecentDedup(String key, CompletableFuture<Object> future) {
         int keep = Math.max(0, props.getKeepCompleted());
-        if (keep <= 0 || key == null || key.isBlank() || future == null) return;
+        if (keep == 0 || key == null || key.isBlank() || future == null) return;
 
         recentDedup.put(key, future);
         lock.lock();

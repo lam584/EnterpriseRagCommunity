@@ -31,6 +31,7 @@ import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickS
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -47,46 +48,34 @@ import java.util.Locale;
 import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class PortalReportsServiceImpl implements PortalReportsService {
 
-    @Autowired
-    private ReportsRepository reportsRepository;
+    private final ReportsRepository reportsRepository;
 
-    @Autowired
-    private PostsRepository postsRepository;
+    private final PostsRepository postsRepository;
 
-    @Autowired
-    private CommentsRepository commentsRepository;
+    private final CommentsRepository commentsRepository;
 
-    @Autowired
-    private AdministratorService administratorService;
+    private final AdministratorService administratorService;
 
-    @Autowired
-    private UsersRepository usersRepository;
+    private final UsersRepository usersRepository;
 
-    @Autowired
-    private ModerationQueueRepository moderationQueueRepository;
+    private final ModerationQueueRepository moderationQueueRepository;
 
-    @Autowired
-    private ModerationActionsRepository moderationActionsRepository;
+    private final ModerationActionsRepository moderationActionsRepository;
 
-    @Autowired
-    private ModerationPipelineRunRepository moderationPipelineRunRepository;
+    private final ModerationPipelineRunRepository moderationPipelineRunRepository;
 
-    @Autowired
-    private ModerationConfidenceFallbackConfigRepository fallbackConfigRepository;
+    private final ModerationConfidenceFallbackConfigRepository fallbackConfigRepository;
 
-    @Autowired
-    private ModerationPolicyConfigRepository policyConfigRepository;
+    private final ModerationPolicyConfigRepository policyConfigRepository;
 
-    @Autowired
-    private ModerationRuleAutoRunner moderationRuleAutoRunner;
+    private final ModerationRuleAutoRunner moderationRuleAutoRunner;
 
-    @Autowired
-    private ModerationVecAutoRunner moderationVecAutoRunner;
+    private final ModerationVecAutoRunner moderationVecAutoRunner;
 
-    @Autowired
-    private ModerationLlmAutoRunner moderationLlmAutoRunner;
+    private final ModerationLlmAutoRunner moderationLlmAutoRunner;
 
     @Autowired(required = false)
     private ModerationAutoKickService moderationAutoKickService;

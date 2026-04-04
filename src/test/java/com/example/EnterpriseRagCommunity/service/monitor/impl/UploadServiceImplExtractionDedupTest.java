@@ -8,6 +8,7 @@ import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepositor
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.monitor.FileAssetExtractionService;
 import com.example.EnterpriseRagCommunity.service.monitor.UploadFormatsConfigService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
@@ -71,11 +72,14 @@ class UploadServiceImplExtractionDedupTest {
         existing.setSha256(sha256);
         when(fileAssetsRepository.findBySha256(eq(sha256))).thenReturn(Optional.of(existing));
 
-        UploadServiceImpl svc = new UploadServiceImpl();
-        ReflectionTestUtils.setField(svc, "fileAssetsRepository", fileAssetsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "uploadFormatsConfigService", uploadFormatsConfigService);
-        ReflectionTestUtils.setField(svc, "fileAssetExtractionService", fileAssetExtractionService);
+        ObjectMapper objectMapper = new ObjectMapper();
+        UploadServiceImpl svc = new UploadServiceImpl(
+                fileAssetsRepository,
+                administratorService,
+                uploadFormatsConfigService,
+                fileAssetExtractionService,
+                objectMapper
+        );
         ReflectionTestUtils.setField(svc, "uploadRoot", "uploads");
         ReflectionTestUtils.setField(svc, "urlPrefix", "/uploads");
 

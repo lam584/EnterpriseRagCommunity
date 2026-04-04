@@ -15,7 +15,7 @@ import com.example.EnterpriseRagCommunity.service.monitor.UploadFormatsConfigSer
 import com.example.EnterpriseRagCommunity.service.monitor.UploadService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
@@ -39,6 +39,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.LongConsumer;
 
 @Service
+@RequiredArgsConstructor
 public class UploadServiceImpl implements UploadService {
 
     @Value("${app.upload.root:uploads}")
@@ -46,21 +47,11 @@ public class UploadServiceImpl implements UploadService {
 
     @Value("${app.upload.url-prefix:/uploads}")
     private String urlPrefix;
-
-    @Autowired
-    private FileAssetsRepository fileAssetsRepository;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private UploadFormatsConfigService uploadFormatsConfigService;
-
-    @Autowired
-    private FileAssetExtractionService fileAssetExtractionService;
-
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final FileAssetsRepository fileAssetsRepository;
+    private final AdministratorService administratorService;
+    private final UploadFormatsConfigService uploadFormatsConfigService;
+    private final FileAssetExtractionService fileAssetExtractionService;
+    private final ObjectMapper objectMapper;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -386,7 +377,7 @@ public class UploadServiceImpl implements UploadService {
                 Files.move(tmp, metaPath, StandardCopyOption.REPLACE_EXISTING);
                 return;
             } catch (AccessDeniedException e) {
-                if (i >= 19) throw e;
+                if (i == 19) throw e;
                 try {
                     Thread.sleep(5L);
                 } catch (InterruptedException ie) {

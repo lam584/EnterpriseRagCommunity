@@ -109,7 +109,7 @@ public class ModerationRuleAutoRunner {
         return switch (a) {
             case "LLM" -> QueueStage.LLM;
             case "VEC" -> QueueStage.VEC;
-            case "HUMAN", "REJECT" -> QueueStage.HUMAN;
+            case "HUMAN" -> QueueStage.HUMAN;
             default -> QueueStage.HUMAN;
         };
     }
@@ -262,15 +262,7 @@ public class ModerationRuleAutoRunner {
                 queueRepository.updateStageAndStatusIfPendingOrReviewing(q.getId(), QueueStage.HUMAN, QueueStatus.HUMAN, q.getUpdatedAt());
 
                 if (ruleStepId > 0) {
-                    Map<String, Object> antiSpamDetails = new LinkedHashMap<>();
-                    antiSpamDetails.put("antiSpamHit", true);
-                    antiSpamDetails.put("antiSpamType", antiSpamDecision.type());
-                    antiSpamDetails.put("reason", antiSpamDecision.reason());
-                    antiSpamDetails.put("actualCount", antiSpamDecision.actualCount());
-                    antiSpamDetails.put("threshold", antiSpamDecision.threshold());
-                    antiSpamDetails.put("windowSeconds", antiSpamDecision.windowSeconds());
-                    antiSpamDetails.put("windowMinutes", antiSpamDecision.windowMinutes());
-                    antiSpamDetails.put("nextStage", "HUMAN");
+                    Map<String, Object> antiSpamDetails = buildAntiSpamDetails(antiSpamDecision);
                     pipelineTraceService.finishStepOk(ruleStepId, "HIT", null, antiSpamDetails);
                 }
                 pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.HUMAN);
@@ -576,6 +568,19 @@ public class ModerationRuleAutoRunner {
         } catch (Exception ignore) {
             return null;
         }
+    }
+
+    private static Map<String, Object> buildAntiSpamDetails(AntiSpamDecision antiSpamDecision) {
+        Map<String, Object> antiSpamDetails = new LinkedHashMap<>();
+        antiSpamDetails.put("antiSpamHit", true);
+        antiSpamDetails.put("antiSpamType", antiSpamDecision.type());
+        antiSpamDetails.put("reason", antiSpamDecision.reason());
+        antiSpamDetails.put("actualCount", antiSpamDecision.actualCount());
+        antiSpamDetails.put("threshold", antiSpamDecision.threshold());
+        antiSpamDetails.put("windowSeconds", antiSpamDecision.windowSeconds());
+        antiSpamDetails.put("windowMinutes", antiSpamDecision.windowMinutes());
+        antiSpamDetails.put("nextStage", "HUMAN");
+        return antiSpamDetails;
     }
 
     private record AntiSpamDecision(

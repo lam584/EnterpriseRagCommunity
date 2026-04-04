@@ -261,7 +261,6 @@ public class ModerationVecAutoRunner {
         return switch (a) {
             case "LLM" -> QueueStage.LLM;
             case "VEC" -> QueueStage.VEC;
-            case "HUMAN" -> QueueStage.HUMAN;
             default -> QueueStage.HUMAN;
         };
     }

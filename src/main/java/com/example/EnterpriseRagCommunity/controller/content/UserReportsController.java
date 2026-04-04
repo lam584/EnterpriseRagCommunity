@@ -10,7 +10,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,19 +23,12 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/users")
+@RequiredArgsConstructor
 public class UserReportsController {
-
-    @Autowired
-    private PortalReportsService portalReportsService;
-
-    @Autowired
-    private NotificationsService notificationsService;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
+    private final PortalReportsService portalReportsService;
+    private final NotificationsService notificationsService;
+    private final AdministratorService administratorService;
+    private final AuditLogWriter auditLogWriter;
 
     @Data
     public static class UserReportRequest {
@@ -48,7 +41,7 @@ public class UserReportsController {
     }
 
     @PostMapping("/{userId}/report")
-    public Map<String, Object> reportProfile(@PathVariable("userId") Long userId, @Valid @RequestBody UserReportRequest req) {
+    public Map<String, Object> reportProfile(@PathVariable Long userId, @Valid @RequestBody UserReportRequest req) {
         Long reporterId = currentUserIdOrNull();
         String actorName = currentUsernameOrNull();
         try {

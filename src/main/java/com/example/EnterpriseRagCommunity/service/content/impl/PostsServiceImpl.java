@@ -8,7 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -59,61 +59,26 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
+@RequiredArgsConstructor
 public class PostsServiceImpl implements PostsService {
-
-    @Autowired
-    private PostsRepository postsRepository;
-
-    @Autowired
-    private PostAttachmentsRepository postAttachmentsRepository;
-
-    @Autowired
-    private FileAssetsRepository fileAssetsRepository;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private AdminModerationQueueService adminModerationQueueService;
-
-    @Autowired
-    private ModerationRuleAutoRunner moderationRuleAutoRunner;
-
-    @Autowired
-    private ModerationVecAutoRunner moderationVecAutoRunner;
-
-    @Autowired
-    private ModerationLlmAutoRunner moderationLlmAutoRunner;
-
-    @Autowired
-    private AiPostSummaryTriggerService aiPostSummaryTriggerService;
-
-    @Autowired
-    private TagsRepository tagsRepository;
-
-    @Autowired
-    private RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
-
-    @Autowired
-    private HybridRagRetrievalService hybridRagRetrievalService;
-
-    @Autowired
-    private VectorIndicesRepository vectorIndicesRepository;
-
-    @Autowired
-    private RagFileAssetIndexAsyncService ragFileAssetIndexAsyncService;
-
-    @Autowired
-    private BoardAccessControlService boardAccessControlService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
-
-    @Autowired
-    private PostComposeConfigService postComposeConfigService;
-
-    @Autowired
-    private ModerationQueueRepository moderationQueueRepository;
+    private final PostsRepository postsRepository;
+    private final PostAttachmentsRepository postAttachmentsRepository;
+    private final FileAssetsRepository fileAssetsRepository;
+    private final AdministratorService administratorService;
+    private final AdminModerationQueueService adminModerationQueueService;
+    private final ModerationRuleAutoRunner moderationRuleAutoRunner;
+    private final ModerationVecAutoRunner moderationVecAutoRunner;
+    private final ModerationLlmAutoRunner moderationLlmAutoRunner;
+    private final AiPostSummaryTriggerService aiPostSummaryTriggerService;
+    private final TagsRepository tagsRepository;
+    private final RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
+    private final HybridRagRetrievalService hybridRagRetrievalService;
+    private final VectorIndicesRepository vectorIndicesRepository;
+    private final RagFileAssetIndexAsyncService ragFileAssetIndexAsyncService;
+    private final BoardAccessControlService boardAccessControlService;
+    private final AuditLogWriter auditLogWriter;
+    private final PostComposeConfigService postComposeConfigService;
+    private final ModerationQueueRepository moderationQueueRepository;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -400,40 +365,7 @@ public class PostsServiceImpl implements PostsService {
         int safePage = Math.max(page, 1);
         int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
 
-        // Only allow sorting by real PostsEntity properties to avoid PropertyReferenceException (500).
-        // Also keep a couple of legacy/portal-friendly aliases.
-        String rawSortBy = (sortBy == null ? "" : sortBy.trim());
-        String normalizedSortBy;
-        if (rawSortBy.isEmpty()) {
-            normalizedSortBy = "createdAt";
-        } else if ("hotScore".equalsIgnoreCase(rawSortBy) || "hot_score".equalsIgnoreCase(rawSortBy)) {
-            // hotScore is not a PostsEntity field. Map to a safe default for now.
-            normalizedSortBy = "createdAt";
-        } else if ("created_at".equalsIgnoreCase(rawSortBy)) {
-            normalizedSortBy = "createdAt";
-        } else if ("updated_at".equalsIgnoreCase(rawSortBy)) {
-            normalizedSortBy = "updatedAt";
-        } else if ("published_at".equalsIgnoreCase(rawSortBy)) {
-            normalizedSortBy = "publishedAt";
-        } else {
-            normalizedSortBy = rawSortBy;
-        }
-
-        java.util.Set<String> allowedSortBy = java.util.Set.of(
-                "id",
-                "tenantId",
-                "boardId",
-                "authorId",
-                "title",
-                "contentFormat",
-                "status",
-                "publishedAt",
-                "isDeleted",
-                "createdAt",
-                "updatedAt"
-        );
-
-        String safeSortBy = allowedSortBy.contains(normalizedSortBy) ? normalizedSortBy : "createdAt";
+        String safeSortBy = resolveSafeSortBy(sortBy);
         Sort.Direction direction = "ASC".equalsIgnoreCase(sortOrderDirection) ? Sort.Direction.ASC : Sort.Direction.DESC;
         Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(direction, safeSortBy));
 
@@ -473,6 +405,41 @@ public class PostsServiceImpl implements PostsService {
         }
 
         return postsRepository.findAll(spec, pageable);
+    }
+
+    private static String resolveSafeSortBy(String sortBy) {
+        // Only allow sorting by real PostsEntity properties to avoid PropertyReferenceException (500).
+        // Also keep a couple of legacy/portal-friendly aliases.
+        String rawSortBy = (sortBy == null ? "" : sortBy.trim());
+        String normalizedSortBy;
+        if (rawSortBy.isEmpty()) {
+            normalizedSortBy = "createdAt";
+        } else if ("hotScore".equalsIgnoreCase(rawSortBy) || "hot_score".equalsIgnoreCase(rawSortBy)) {
+            normalizedSortBy = "createdAt";
+        } else if ("created_at".equalsIgnoreCase(rawSortBy)) {
+            normalizedSortBy = "createdAt";
+        } else if ("updated_at".equalsIgnoreCase(rawSortBy)) {
+            normalizedSortBy = "updatedAt";
+        } else if ("published_at".equalsIgnoreCase(rawSortBy)) {
+            normalizedSortBy = "publishedAt";
+        } else {
+            normalizedSortBy = rawSortBy;
+        }
+
+        java.util.Set<String> allowedSortBy = java.util.Set.of(
+                "id",
+                "tenantId",
+                "boardId",
+                "authorId",
+                "title",
+                "contentFormat",
+                "status",
+                "publishedAt",
+                "isDeleted",
+                "createdAt",
+                "updatedAt"
+        );
+        return allowedSortBy.contains(normalizedSortBy) ? normalizedSortBy : "createdAt";
     }
 
     private Page<PostsEntity> vectorSearchPublished(String keyword, Long boardId, Long authorId, LocalDate createdFrom, LocalDate createdTo, int page, int pageSize) {
@@ -566,19 +533,17 @@ public class PostsServiceImpl implements PostsService {
             );
             return saved;
         } catch (RuntimeException e) {
-            if (me == null) {
-                auditLogWriter.write(
-                        me,
-                        actorName,
-                        "POST_UPDATE_STATUS",
-                        "POST",
-                        id,
-                        AuditResult.FAIL,
-                        safeText(e.getMessage(), 512),
-                        null,
-                        Map.of("status", status.name())
-                );
-            }
+            auditLogWriter.write(
+                    me,
+                    actorName,
+                    "POST_UPDATE_STATUS",
+                    "POST",
+                    id,
+                    AuditResult.FAIL,
+                    safeText(e.getMessage(), 512),
+                    null,
+                    Map.of("status", status.name())
+            );
             throw e;
         }
     }

@@ -59,6 +59,7 @@ public class RagCommentIndexBuildService {
     private final ObjectMapper objectMapper;
     private final SystemConfigurationService systemConfigurationService;
 
+    @SuppressWarnings("DataFlowIssue")
     @Transactional
     public RagCommentsBuildResponse buildComments(Long vectorIndexId,
                                                  Long fromCommentId,

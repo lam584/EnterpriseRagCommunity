@@ -68,7 +68,7 @@ public class AdminRetrievalContextController {
 
     @GetMapping("/logs/windows/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_context','access'))")
-    public ContextWindowDetailDTO getWindow(@PathVariable("id") long id) {
+    public ContextWindowDetailDTO getWindow(@PathVariable long id) {
         return contextWindowLogsService.getWindow(id);
     }
 

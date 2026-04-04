@@ -41,7 +41,7 @@ public class GlobalExceptionHandler {
             errors.put(fieldName, errorMessage);
         });
 
-        logger.debug("返回的错误信息: {}", errors);
+        logger.debug("参数校验错误详情: {}", errors);
         return new ResponseEntity<>(errors, HttpStatus.BAD_REQUEST);
     }
 
@@ -62,7 +62,7 @@ public class GlobalExceptionHandler {
             response.put("message", "数据操作失败，请联系系统管理员");
         }
 
-        logger.debug("返回的错误信息: {}", response);
+        logger.debug("数据库异常响应体: {}", response);
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
@@ -170,7 +170,7 @@ public class GlobalExceptionHandler {
         Map<String, String> response = new HashMap<>();
         response.put("message", "系统处理请求时发生错误");
 
-        logger.debug("返回的错误信息: {}", response);
+        logger.debug("系统异常响应体: {}", response);
         return new ResponseEntity<>(response, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }

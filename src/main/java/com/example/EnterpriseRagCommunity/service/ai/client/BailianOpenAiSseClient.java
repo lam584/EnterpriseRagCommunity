@@ -110,21 +110,9 @@ public class BailianOpenAiSseClient {
             os.write(body.getBytes(StandardCharsets.UTF_8));
         }
 
-        int code = conn.getResponseCode();
-        InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-        if (is == null) {
-            throw new IOException("Upstream returned HTTP " + code + " without body");
-        }
-
-        String resp;
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                sb.append(line);
-            }
-            resp = sb.toString();
-        }
+        HttpTextResponse upstream = readHttpTextResponse(conn);
+        int code = upstream.code();
+        String resp = upstream.body();
 
         if (code < 200 || code >= 300) {
             throw new IOException("Upstream returned HTTP " + code + ": " + resp);
@@ -132,6 +120,26 @@ public class BailianOpenAiSseClient {
 
         return resp;
     }
+
+    private static HttpTextResponse readHttpTextResponse(HttpURLConnection conn) throws IOException {
+        int code = conn.getResponseCode();
+        InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+        if (is == null) {
+            throw new IOException("Upstream returned HTTP " + code + " without body");
+        }
+        String body;
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+            body = sb.toString();
+        }
+        return new HttpTextResponse(code, body);
+    }
+
+    private record HttpTextResponse(int code, String body) {}
 
     private static String escapeJson(String s) {
         if (s == null) return "";

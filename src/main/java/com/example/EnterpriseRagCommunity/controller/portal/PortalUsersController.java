@@ -22,7 +22,7 @@ public class PortalUsersController {
     private final UsersRepository usersRepository;
 
     @GetMapping("/{id}/profile")
-    public ResponseEntity<?> getPublicProfile(@PathVariable("id") Long id) {
+    public ResponseEntity<?> getPublicProfile(@PathVariable Long id) {
         UsersEntity user = usersRepository.findByIdAndIsDeletedFalse(id).orElse(null);
         if (user == null) {
             return ResponseEntity.status(404).body(Map.of("message", "用户不存在"));

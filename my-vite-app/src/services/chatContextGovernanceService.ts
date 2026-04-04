@@ -1,19 +1,9 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 import type { SpringPage } from '../types/page';
 
-const API_BASE: string = ((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '';
-
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
+const apiUrl = serviceApiUrl;
 
 export type ChatContextGovernanceConfigDTO = {
   enabled?: boolean | null;

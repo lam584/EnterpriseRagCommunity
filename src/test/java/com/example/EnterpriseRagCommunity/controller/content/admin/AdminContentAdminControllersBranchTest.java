@@ -53,8 +53,7 @@ class AdminContentAdminControllersBranchTest {
 
     @Test
     void adminPostsList_shouldCoverStatusBranches() {
-        AdminPostsController controller = new AdminPostsController();
-        ReflectionTestUtils.setField(controller, "postsService", postsService);
+        AdminPostsController controller = new AdminPostsController(postsService);
         when(postsService.query(any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), any(), any()))
                 .thenReturn(new PageImpl<>(List.<PostsEntity>of(), PageRequest.of(0, 20), 0));
 

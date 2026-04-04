@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.service.impl;
 
 // 修改批次: 1 | 修改依据: src/main/java/com/example/EnterpriseRagCommunity/entity/access/UserRolesEntity.java, src/main/java/com/example/EnterpriseRagCommunity/dto/access/UserRolesCreateDTO.java
 import com.example.EnterpriseRagCommunity.dto.access.UserRolesCreateDTO;
+import com.example.EnterpriseRagCommunity.entity.access.TenantsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UserRolesEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UserRolesRepository;
@@ -43,7 +44,7 @@ public class UserRoleServiceImpl implements UserRoleService {
             String email = auth.getName();
             return usersRepository.findByEmailAndIsDeletedFalse(email)
                     .map(UsersEntity::getTenantId)
-                    .map(t -> t.getId())
+                    .map(TenantsEntity::getId)
                     .orElse(null);
         } catch (Exception ignored) {
             return null;
@@ -55,8 +56,6 @@ public class UserRoleServiceImpl implements UserRoleService {
         if (entity == null) return null;
         UserRolesCreateDTO dto = new UserRolesCreateDTO();
         dto.setId(entity.getId());
-        // dto.setCreatedAt(entity.getCreatedAt()); // createdAt 是 @JsonIgnore 字段，前端不传
-        // dto.setUpdatedAt(entity.getUpdatedAt()); // updatedAt 是 @JsonIgnore 字段，前端不传
         dto.setRoles(entity.getRoles()); // 对齐: 旧name → 新roles
         dto.setNotes(entity.getNotes()); // 对齐: 旧description → 新notes
         dto.setTenantId(entity.getTenantId()); // 对齐: 直接使用tenantId字段

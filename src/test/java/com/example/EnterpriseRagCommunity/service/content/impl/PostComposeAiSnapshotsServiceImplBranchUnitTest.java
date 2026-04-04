@@ -51,12 +51,12 @@ class PostComposeAiSnapshotsServiceImplBranchUnitTest {
             PostsRepository postsRepository,
             AdministratorService administratorService
     ) {
-        PostComposeAiSnapshotsServiceImpl svc = new PostComposeAiSnapshotsServiceImpl();
-        ReflectionTestUtils.setField(svc, "snapshotsRepository", snapshotsRepository);
-        ReflectionTestUtils.setField(svc, "postDraftsRepository", postDraftsRepository);
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        return svc;
+        return new PostComposeAiSnapshotsServiceImpl(
+                snapshotsRepository,
+                postDraftsRepository,
+                postsRepository,
+                administratorService
+        );
     }
 
     private static void mockAuth(Authentication auth) {

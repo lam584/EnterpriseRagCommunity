@@ -3,7 +3,7 @@ package com.example.EnterpriseRagCommunity.controller.content.admin;
 import com.example.EnterpriseRagCommunity.dto.content.admin.PostFileExtractionAdminDetailDTO;
 import com.example.EnterpriseRagCommunity.dto.content.admin.PostFileExtractionAdminListItemDTO;
 import com.example.EnterpriseRagCommunity.service.content.admin.AdminPostFilesService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -11,10 +11,9 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/admin/post-files")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class AdminPostFilesController {
-
-    @Autowired
-    private AdminPostFilesService adminPostFilesService;
+    private final AdminPostFilesService adminPostFilesService;
 
     @GetMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_posts','read'))")
@@ -29,13 +28,13 @@ public class AdminPostFilesController {
 
     @GetMapping("/{attachmentId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_posts','read'))")
-    public PostFileExtractionAdminDetailDTO detail(@PathVariable("attachmentId") Long attachmentId) {
+    public PostFileExtractionAdminDetailDTO detail(@PathVariable Long attachmentId) {
         return adminPostFilesService.detail(attachmentId);
     }
 
     @PostMapping("/{attachmentId}/reextract")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_posts','update'))")
-    public PostFileExtractionAdminDetailDTO reextract(@PathVariable("attachmentId") Long attachmentId) {
+    public PostFileExtractionAdminDetailDTO reextract(@PathVariable Long attachmentId) {
         return adminPostFilesService.reextract(attachmentId);
     }
 }

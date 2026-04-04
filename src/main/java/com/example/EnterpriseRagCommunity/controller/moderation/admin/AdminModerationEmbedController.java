@@ -230,7 +230,7 @@ public class AdminModerationEmbedController {
 
     @GetMapping("/samples/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
-    public ResponseEntity<ModerationSampleDTO> getSample(@PathVariable("id") Long id) {
+    public ResponseEntity<ModerationSampleDTO> getSample(@PathVariable Long id) {
         ModerationSamplesEntity e = samplesRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "sample not found"));
         return ResponseEntity.ok(ModerationSampleDTO.fromEntity(e));
@@ -309,7 +309,7 @@ public class AdminModerationEmbedController {
     @PutMapping("/samples/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
     public ResponseEntity<ModerationSampleDTO> updateSample(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestBody(required = false) ModerationSampleUpdateRequest req
     ) {
         if (req == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "body is required");
@@ -385,7 +385,7 @@ public class AdminModerationEmbedController {
 
     @DeleteMapping("/samples/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
-    public ResponseEntity<Void> deleteSample(@PathVariable("id") Long id) {
+    public ResponseEntity<Void> deleteSample(@PathVariable Long id) {
         ModerationSamplesEntity before = samplesRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "sample not found"));
         samplesRepository.deleteById(id);
@@ -455,7 +455,7 @@ public class AdminModerationEmbedController {
      */
     @PostMapping("/samples/{id}/sync")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
-    public ResponseEntity<ModerationSamplesSyncResult> syncOne(@PathVariable("id") Long id) {
+    public ResponseEntity<ModerationSamplesSyncResult> syncOne(@PathVariable Long id) {
         ModerationSamplesSyncResult res = samplesSyncService.upsertById(id);
         Map<String, Object> details = new LinkedHashMap<>();
         if (res != null) {

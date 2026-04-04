@@ -165,10 +165,15 @@ class AdminCommentsServiceImplCoverageTest {
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
         AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
 
-        AdminCommentsServiceImpl svc = buildService(commentsRepository, usersRepository, postsRepository, administratorService);
-        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", sync);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "auditDiffBuilder", auditDiffBuilder);
+        AdminCommentsServiceImpl svc = new AdminCommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                usersRepository,
+                postsRepository,
+                sync,
+                auditLogWriter,
+                auditDiffBuilder
+        );
 
         when(auditDiffBuilder.build(any(), any())).thenReturn(Map.of());
 
@@ -363,14 +368,14 @@ class AdminCommentsServiceImplCoverageTest {
             PostsRepository postsRepository,
             AdministratorService administratorService
     ) {
-        AdminCommentsServiceImpl svc = new AdminCommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", mock(RagCommentIndexVisibilitySyncService.class));
-        ReflectionTestUtils.setField(svc, "auditLogWriter", mock(AuditLogWriter.class));
-        ReflectionTestUtils.setField(svc, "auditDiffBuilder", mock(AuditDiffBuilder.class));
-        return svc;
+        return new AdminCommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                usersRepository,
+                postsRepository,
+                mock(RagCommentIndexVisibilitySyncService.class),
+                mock(AuditLogWriter.class),
+                mock(AuditDiffBuilder.class)
+        );
     }
 }

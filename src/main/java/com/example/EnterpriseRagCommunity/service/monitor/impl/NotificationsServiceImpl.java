@@ -6,7 +6,7 @@ import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -19,13 +19,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class NotificationsServiceImpl implements NotificationsService {
-
-    @Autowired
-    private NotificationsRepository notificationsRepository;
-
-    @Autowired
-    private AdministratorService administratorService;
+    private final NotificationsRepository notificationsRepository;
+    private final AdministratorService administratorService;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

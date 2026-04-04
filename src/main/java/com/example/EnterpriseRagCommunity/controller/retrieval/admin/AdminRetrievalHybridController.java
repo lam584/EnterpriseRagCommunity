@@ -85,20 +85,7 @@ public class AdminRetrievalHybridController {
         boolean debug = req != null && Boolean.TRUE.equals(req.getDebug());
         out.setQueryText(queryFinal);
 
-        List<HybridRerankTestDocumentDTO> docsIn = req == null ? null : req.getDocuments();
-        List<HybridRerankTestDocumentDTO> docs = new ArrayList<>();
-        if (docsIn != null) {
-            for (int i = 0; i < docsIn.size(); i++) {
-                HybridRerankTestDocumentDTO d = docsIn.get(i);
-                if (d == null) continue;
-                HybridRerankTestDocumentDTO dd = new HybridRerankTestDocumentDTO();
-                String id = d.getDocId() == null ? null : d.getDocId().trim();
-                dd.setDocId(id == null || id.isBlank() ? String.valueOf(i + 1) : id);
-                dd.setTitle(d.getTitle());
-                dd.setText(d.getText());
-                docs.add(dd);
-            }
-        }
+        List<HybridRerankTestDocumentDTO> docs = normalizeDocs(req == null ? null : req.getDocuments());
 
         if (queryFinal.isBlank()) {
             out.setOk(false);
@@ -170,24 +157,7 @@ public class AdminRetrievalHybridController {
             out.setUsedModel(rr == null ? null : rr.model());
             out.setTotalTokens(rr == null ? null : rr.totalTokens());
 
-            List<HybridRerankTestHitDTO> hits = new ArrayList<>();
-            if (rr != null && rr.results() != null) {
-                for (AiRerankService.RerankHit h : rr.results()) {
-                    if (h == null) continue;
-                    int idx = h.index();
-                    if (idx < 0 || idx >= docsUsed.size()) continue;
-                    HybridRerankTestDocumentDTO d = docsUsed.get(idx);
-                    if (d == null) continue;
-                    HybridRerankTestHitDTO hh = new HybridRerankTestHitDTO();
-                    hh.setIndex(idx);
-                    hh.setRelevanceScore(h.relevanceScore());
-                    hh.setDocId(d.getDocId());
-                    hh.setTitle(d.getTitle());
-                    hh.setText(d.getText());
-                    hits.add(hh);
-                }
-            }
-            out.setResults(hits);
+            out.setResults(toRerankHits(rr, docsUsed));
         } catch (Exception e) {
             out.setLatencyMs((int) (System.currentTimeMillis() - t0));
             out.setOk(false);
@@ -221,7 +191,7 @@ public class AdminRetrievalHybridController {
 
     @GetMapping("/logs/events/{eventId}/hits")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_hybrid','access'))")
-    public List<RetrievalHitLogDTO> listHits(@PathVariable("eventId") long eventId) {
+    public List<RetrievalHitLogDTO> listHits(@PathVariable long eventId) {
         return hybridRetrievalLogsService.listHits(eventId);
     }
 
@@ -241,6 +211,49 @@ public class AdminRetrievalHybridController {
         if (d.getTitle() != null && !d.getTitle().isBlank()) sb.append(d.getTitle().trim()).append('\n');
         if (d.getText() != null) sb.append(d.getText());
         return sb.toString();
+    }
+
+    private static List<HybridRerankTestDocumentDTO> normalizeDocs(List<HybridRerankTestDocumentDTO> docsIn) {
+        List<HybridRerankTestDocumentDTO> docs = new ArrayList<>();
+        if (docsIn == null) return docs;
+        for (int i = 0; i < docsIn.size(); i++) {
+            HybridRerankTestDocumentDTO d = docsIn.get(i);
+            if (d == null) continue;
+            HybridRerankTestDocumentDTO dd = new HybridRerankTestDocumentDTO();
+            String id = d.getDocId() == null ? null : d.getDocId().trim();
+            dd.setDocId(id == null || id.isBlank() ? String.valueOf(i + 1) : id);
+            dd.setTitle(d.getTitle());
+            dd.setText(d.getText());
+            docs.add(dd);
+        }
+        return docs;
+    }
+
+    private static List<HybridRerankTestHitDTO> toRerankHits(AiRerankService.RerankResult rr,
+                                                            List<HybridRerankTestDocumentDTO> docsUsed) {
+        List<HybridRerankTestHitDTO> hits = new ArrayList<>();
+        if (rr == null || rr.results() == null) return hits;
+        for (AiRerankService.RerankHit h : rr.results()) {
+            HybridRerankTestHitDTO hit = toRerankHit(h, docsUsed);
+            if (hit != null) hits.add(hit);
+        }
+        return hits;
+    }
+
+    private static HybridRerankTestHitDTO toRerankHit(AiRerankService.RerankHit h,
+                                                      List<HybridRerankTestDocumentDTO> docsUsed) {
+        if (h == null) return null;
+        int idx = h.index();
+        if (idx < 0 || idx >= docsUsed.size()) return null;
+        HybridRerankTestDocumentDTO d = docsUsed.get(idx);
+        if (d == null) return null;
+        HybridRerankTestHitDTO hh = new HybridRerankTestHitDTO();
+        hh.setIndex(idx);
+        hh.setRelevanceScore(h.relevanceScore());
+        hh.setDocId(d.getDocId());
+        hh.setTitle(d.getTitle());
+        hh.setText(d.getText());
+        return hh;
     }
 
     private static int approxTokens(String s) {

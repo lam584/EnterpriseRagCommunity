@@ -74,7 +74,7 @@ public class AccessLogsController {
     @GetMapping("/{id}")
     @ApiOperation("获取访问日志详情")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AccessLogsViewDTO> getById(@PathVariable("id") Long id) {
+    public ResponseEntity<AccessLogsViewDTO> getById(@PathVariable Long id) {
         return ResponseEntity.ok(accessLogsService.getById(id));
     }
 

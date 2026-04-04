@@ -548,7 +548,7 @@ public class ModerationChunkReviewService {
     public void refreshSetCountersDebounced(Long chunkSetId, long minIntervalMs) {
         if (chunkSetId == null) return;
         long interval = Math.max(0L, minIntervalMs);
-        if (interval <= 0L) {
+        if (interval == 0L) {
             refreshSetCounters(chunkSetId);
             return;
         }

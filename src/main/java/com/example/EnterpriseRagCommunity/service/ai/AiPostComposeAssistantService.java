@@ -160,22 +160,6 @@ public class AiPostComposeAssistantService {
     private static List<AiPostComposeStreamRequest.ImageInput> resolveImages(AiPostComposeStreamRequest req, PostComposeAiSnapshotsEntity snap) {
         List<AiPostComposeStreamRequest.ImageInput> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        java.util.function.BiConsumer<Long, AiPostComposeStreamRequest.ImageInput> add = (fileAssetId, in) -> {
-            if (out.size() >= 5) return;
-            if (in == null) return;
-            String url = toNonBlank(in.getUrl());
-            if (url == null) return;
-            if (seen.contains(url)) return;
-            String mimeType = toNonBlank(in.getMimeType());
-            boolean isImg = mimeType != null && mimeType.toLowerCase().startsWith("image/");
-            if (!isImg && !isLikelyImageUrl(url)) return;
-            AiPostComposeStreamRequest.ImageInput x = new AiPostComposeStreamRequest.ImageInput();
-            x.setFileAssetId(fileAssetId);
-            x.setUrl(url);
-            x.setMimeType(mimeType);
-            out.add(x);
-            seen.add(url);
-        };
 
         if (snap != null) {
             Map<String, Object> meta = snap.getBeforeMetadata();
@@ -206,7 +190,7 @@ public class AiPostComposeAssistantService {
                         AiPostComposeStreamRequest.ImageInput in = new AiPostComposeStreamRequest.ImageInput();
                         in.setUrl(url);
                         in.setMimeType(mt);
-                        add.accept(fileAssetId, in);
+                        addResolvedImage(out, seen, fileAssetId, in);
                         if (out.size() >= 5) break;
                     }
                 }
@@ -216,11 +200,31 @@ public class AiPostComposeAssistantService {
         if (req != null && req.getImages() != null) {
             for (AiPostComposeStreamRequest.ImageInput img : req.getImages()) {
                 if (img == null) continue;
-                add.accept(img.getFileAssetId(), img);
+                addResolvedImage(out, seen, img.getFileAssetId(), img);
                 if (out.size() >= 5) break;
             }
         }
         return out;
+    }
+
+    private static void addResolvedImage(List<AiPostComposeStreamRequest.ImageInput> out,
+                                         Set<String> seen,
+                                         Long fileAssetId,
+                                         AiPostComposeStreamRequest.ImageInput in) {
+        if (out.size() >= 5) return;
+        if (in == null) return;
+        String url = toNonBlank(in.getUrl());
+        if (url == null) return;
+        if (seen.contains(url)) return;
+        String mimeType = toNonBlank(in.getMimeType());
+        boolean isImg = mimeType != null && mimeType.toLowerCase().startsWith("image/");
+        if (!isImg && !isLikelyImageUrl(url)) return;
+        AiPostComposeStreamRequest.ImageInput x = new AiPostComposeStreamRequest.ImageInput();
+        x.setFileAssetId(fileAssetId);
+        x.setUrl(url);
+        x.setMimeType(mimeType);
+        out.add(x);
+        seen.add(url);
     }
 
     private static boolean isLikelyImageUrl(String url) {

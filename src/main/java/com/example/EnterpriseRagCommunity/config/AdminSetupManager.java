@@ -3,7 +3,7 @@ package com.example.EnterpriseRagCommunity.config;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
@@ -18,13 +18,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @Component
 @Order(1) // 确保在其他 ApplicationRunner 之前运行
+@RequiredArgsConstructor
 public class AdminSetupManager implements ApplicationRunner {
     private static final Logger logger = LoggerFactory.getLogger(AdminSetupManager.class);
 
     private final AtomicBoolean setupRequired = new AtomicBoolean(false);
-
-    @Autowired
-    private AdministratorService administratorService;
+    private final AdministratorService administratorService;
 
     /**
      * 获取是否需要初始设置

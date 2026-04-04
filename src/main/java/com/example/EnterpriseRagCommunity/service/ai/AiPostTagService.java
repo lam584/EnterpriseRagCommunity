@@ -41,9 +41,7 @@ public class AiPostTagService {
         int defaultCount = cfg.getDefaultCount() == null ? PostTagGenConfigService.DEFAULT_DEFAULT_COUNT : cfg.getDefaultCount();
         int maxCount = cfg.getMaxCount() == null ? PostTagGenConfigService.DEFAULT_MAX_COUNT : cfg.getMaxCount();
 
-        int count = req.getCount() == null ? defaultCount : req.getCount();
-        if (count <= 0) count = defaultCount;
-        if (count > maxCount) count = maxCount;
+        int count = resolveRequestedCount(req.getCount(), defaultCount, maxCount);
 
         String content = req.getContent() == null ? "" : req.getContent();
         content = content.trim();
@@ -74,9 +72,7 @@ public class AiPostTagService {
             0.8
         );
 
-        String modelOverride = req.getModel() != null && !req.getModel().isBlank()
-            ? req.getModel().trim()
-            : params.model();
+        String modelOverride = resolveModelOverride(req.getModel(), params.model());
 
         Double temperature = req.getTemperature() != null ? req.getTemperature() : params.temperature();
         if (temperature == null) temperature = 0.4;
@@ -183,19 +179,7 @@ public class AiPostTagService {
         assistantText = assistantText.trim();
         if (assistantText.isEmpty()) return List.of();
 
-        String json = assistantText;
-        int lObj = json.indexOf('{');
-        int rObj = json.lastIndexOf('}');
-        int lArr = json.indexOf('[');
-        int rArr = json.lastIndexOf(']');
-        if ((lObj >= 0 && rObj <= lObj) || (lArr >= 0 && rArr <= lArr)) {
-            throw new IllegalArgumentException("AI 输出包含不完整的 JSON 片段，请重试");
-        }
-        if (lObj >= 0 && (lArr < 0 || lObj < lArr)) {
-            json = json.substring(lObj, rObj + 1);
-        } else if (lArr >= 0) {
-            json = json.substring(lArr, rArr + 1);
-        }
+        String json = extractJsonPayload(assistantText);
 
         List<String> tags = new ArrayList<>();
         try {
@@ -229,12 +213,42 @@ public class AiPostTagService {
         return t.trim();
     }
 
+    private static String extractJsonPayload(String assistantText) {
+        String json = assistantText;
+        int lObj = json.indexOf('{');
+        int rObj = json.lastIndexOf('}');
+        int lArr = json.indexOf('[');
+        int rArr = json.lastIndexOf(']');
+        if ((lObj >= 0 && rObj <= lObj) || (lArr >= 0 && rArr <= lArr)) {
+            throw new IllegalArgumentException("AI 输出包含不完整的 JSON 片段，请重试");
+        }
+        if (lObj >= 0 && (lArr < 0 || lObj < lArr)) {
+            return json.substring(lObj, rObj + 1);
+        }
+        if (lArr >= 0) {
+            return json.substring(lArr, rArr + 1);
+        }
+        return json;
+    }
+
     private static String buildExcerpt(String content) {
         if (content == null) return null;
         String t = content.trim();
         if (t.isEmpty()) return null;
         if (t.length() > 240) t = t.substring(0, 240);
         return t;
+    }
+
+    private static int resolveRequestedCount(Integer requestedCount, int defaultCount, int maxCount) {
+        int count = requestedCount == null ? defaultCount : requestedCount;
+        if (count <= 0) count = defaultCount;
+        if (count > maxCount) count = maxCount;
+        return count;
+    }
+
+    private static String resolveModelOverride(String requestedModel, String defaultModel) {
+        if (requestedModel == null || requestedModel.isBlank()) return defaultModel;
+        return requestedModel.trim();
     }
 
     private static String buildTitleExcerpt(String title) {

@@ -198,20 +198,7 @@ public class RagChatPostCommentAggregationService {
         List<RagPostChatRetrievalService.Hit> out = new ArrayList<>();
         int limit = Math.min(maxPosts, aggs.size());
         for (int i = 0; i < limit; i++) {
-            PostAgg a = aggs.get(i);
-            RagPostChatRetrievalService.Hit h = new RagPostChatRetrievalService.Hit();
-            h.setDocId("agg_post_" + a.postId);
-            h.setPostId(a.postId);
-            h.setBoardId(a.boardId);
-            h.setChunkIndex(a.chunkIndex);
-            h.setCommentId(a.commentId);
-            h.setScore(a.score);
-            h.setTitle(a.title);
-            h.setContentText(a.contentText);
-            h.setSourceType(a.sourceType);
-            h.setFileAssetId(a.fileAssetId);
-            h.setType(a.type);
-            out.add(h);
+            out.add(toAggregatedHit(aggs.get(i)));
         }
         if (out.isEmpty()) {
             List<RagPostChatRetrievalService.Hit> fallback = fallbackToPostHits(postHits, maxPosts);
@@ -466,7 +453,7 @@ public class RagChatPostCommentAggregationService {
     static String truncateByApproxTokens(String s, int maxTokens) {
         if (s == null) return "";
         int cap = Math.max(0, maxTokens);
-        if (cap <= 0) return "";
+        if (cap == 0) return "";
         if (approxTokens(s) <= cap) return s;
         int lo = 0;
         int hi = s.length();
@@ -496,6 +483,22 @@ public class RagChatPostCommentAggregationService {
         private String sourceType;
         private Long fileAssetId;
         private com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType type;
+    }
+
+    private static RagPostChatRetrievalService.Hit toAggregatedHit(PostAgg a) {
+        RagPostChatRetrievalService.Hit h = new RagPostChatRetrievalService.Hit();
+        h.setDocId("agg_post_" + a.postId);
+        h.setPostId(a.postId);
+        h.setBoardId(a.boardId);
+        h.setChunkIndex(a.chunkIndex);
+        h.setCommentId(a.commentId);
+        h.setScore(a.score);
+        h.setTitle(a.title);
+        h.setContentText(a.contentText);
+        h.setSourceType(a.sourceType);
+        h.setFileAssetId(a.fileAssetId);
+        h.setType(a.type);
+        return h;
     }
 
     private static class CommentContext {

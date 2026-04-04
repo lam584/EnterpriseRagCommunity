@@ -39,6 +39,24 @@ import static org.mockito.Mockito.when;
 
 class PortalReportsServiceImplAfterCommitTest {
 
+    private static PortalReportsServiceImpl newService() {
+        return new PortalReportsServiceImpl(
+                mock(com.example.EnterpriseRagCommunity.repository.content.ReportsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.PostsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.CommentsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.AdministratorService.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.UsersRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationActionsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationConfidenceFallbackConfigRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationPolicyConfigRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner.class)
+        );
+    }
+
     @AfterEach
     void cleanup() {
         SecurityContextHolder.clearContext();
@@ -55,7 +73,7 @@ class PortalReportsServiceImplAfterCommitTest {
         AdministratorService administratorService = mock(AdministratorService.class);
         ModerationAutoKickService moderationAutoKickService = mock(ModerationAutoKickService.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);

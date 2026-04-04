@@ -10,7 +10,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,19 +23,12 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/comments")
+@RequiredArgsConstructor
 public class CommentReportsController {
-
-    @Autowired
-    private PortalReportsService portalReportsService;
-
-    @Autowired
-    private NotificationsService notificationsService;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
+    private final PortalReportsService portalReportsService;
+    private final NotificationsService notificationsService;
+    private final AdministratorService administratorService;
+    private final AuditLogWriter auditLogWriter;
 
     @Data
     public static class CommentReportRequest {
@@ -48,7 +41,7 @@ public class CommentReportsController {
     }
 
     @PostMapping("/{commentId}/report")
-    public Map<String, Object> reportComment(@PathVariable("commentId") Long commentId, @Valid @RequestBody CommentReportRequest req) {
+    public Map<String, Object> reportComment(@PathVariable Long commentId, @Valid @RequestBody CommentReportRequest req) {
         Long userId = currentUserIdOrNull();
         String actorName = currentUsernameOrNull();
         try {

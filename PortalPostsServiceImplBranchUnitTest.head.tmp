@@ -79,18 +79,17 @@ class PortalPostsServiceImplBranchUnitTest {
     }
 
     private PortalPostsServiceImpl newService(HotScoresRepository hotScoresRepositoryOrNull) {
-        PortalPostsServiceImpl s = new PortalPostsServiceImpl(
-                postsService,
-                postInteractionsService,
-                commentsService,
-                postViewsDailyRepository,
-                reactionsRepository,
-                administratorService,
-                usersRepository,
-                boardsRepository,
-                boardAccessControlService
-        );
+        PortalPostsServiceImpl s = new PortalPostsServiceImpl();
+        setField(s, "postsService", postsService);
+        setField(s, "postInteractionsService", postInteractionsService);
+        setField(s, "commentsService", commentsService);
+        setField(s, "postViewsDailyRepository", postViewsDailyRepository);
         setField(s, "hotScoresRepository", hotScoresRepositoryOrNull);
+        setField(s, "reactionsRepository", reactionsRepository);
+        setField(s, "administratorService", administratorService);
+        setField(s, "usersRepository", usersRepository);
+        setField(s, "boardsRepository", boardsRepository);
+        setField(s, "boardAccessControlService", boardAccessControlService);
         return s;
     }
 

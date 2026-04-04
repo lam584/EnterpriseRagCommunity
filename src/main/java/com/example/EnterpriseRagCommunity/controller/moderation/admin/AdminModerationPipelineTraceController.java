@@ -36,7 +36,7 @@ public class AdminModerationPipelineTraceController {
 
     @GetMapping("/{runId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
-    public AdminModerationPipelineRunDetailDTO byRunId(@PathVariable("runId") Long runId) {
+    public AdminModerationPipelineRunDetailDTO byRunId(@PathVariable Long runId) {
         return service.getByRunId(runId);
     }
 }

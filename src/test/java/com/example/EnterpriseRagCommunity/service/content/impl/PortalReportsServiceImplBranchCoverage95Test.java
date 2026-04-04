@@ -64,6 +64,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PortalReportsServiceImplBranchCoverage95Test {
+    private static PortalReportsServiceImpl newService() {
+        return new PortalReportsServiceImpl(null, null, null, null, null, null, null, null, null, null, null, null, null);
+    }
+
 
     @AfterEach
     void cleanup() {
@@ -72,7 +76,7 @@ class PortalReportsServiceImplBranchCoverage95Test {
 
     @Test
     void currentUserIdOrThrow_allBranches() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         assertThrows(org.springframework.security.core.AuthenticationException.class, () -> ReflectionTestUtils.invokeMethod(svc, "currentUserIdOrThrow"));
 
         Authentication notAuthed = mock(Authentication.class);
@@ -163,7 +167,7 @@ class PortalReportsServiceImplBranchCoverage95Test {
     @Test
     void snapshotProfileFields_and_tryWriteReportSnapshot_branches() {
         ModerationActionsRepository moderationActionsRepository = mock(ModerationActionsRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationActionsRepository", moderationActionsRepository);
 
         Map<String, Object> empty = ReflectionTestUtils.invokeMethod(svc, "snapshotProfileFields", new Object[]{null});
@@ -234,7 +238,7 @@ class PortalReportsServiceImplBranchCoverage95Test {
     @Test
     void buildReporterTrustAgg_branches() {
         UsersRepository usersRepository = mock(UsersRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
 
         double v0 = ReflectionTestUtils.invokeMethod(svc, "buildReporterTrustAgg", new Object[]{null});
@@ -271,7 +275,7 @@ class PortalReportsServiceImplBranchCoverage95Test {
     @Test
     void sealRunningPipelineRun_branches() {
         ModerationPipelineRunRepository repo = mock(ModerationPipelineRunRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationPipelineRunRepository", repo);
 
         ReflectionTestUtils.invokeMethod(svc, "sealRunningPipelineRun", new Object[]{null});
@@ -323,7 +327,7 @@ class PortalReportsServiceImplBranchCoverage95Test {
         ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
         ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
         ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
@@ -458,7 +462,7 @@ class PortalReportsServiceImplBranchCoverage95Test {
         ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
         ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -544,3 +548,4 @@ class PortalReportsServiceImplBranchCoverage95Test {
         verify(moderationLlmAutoRunner, atLeastOnce()).runOnce();
     }
 }
+

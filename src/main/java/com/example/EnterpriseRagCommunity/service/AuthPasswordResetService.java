@@ -86,10 +86,7 @@ public class AuthPasswordResetService {
         }
 
         String normalized = totpCode == null ? "" : totpCode.trim();
-        int digits = enabled.getDigits() == null ? 0 : enabled.getDigits();
-        if (digits != 6 && digits != 8) {
-            throw new IllegalStateException("TOTP 配置不正确");
-        }
+        int digits = requireValidTotpDigits(enabled.getDigits());
         if (normalized.length() != digits) {
             throw new IllegalArgumentException("验证码格式不正确，应为 " + digits + " 位数字");
         }
@@ -139,5 +136,13 @@ public class AuthPasswordResetService {
         emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.PASSWORD_RESET, code);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         usersRepository.save(user);
+    }
+
+    private static int requireValidTotpDigits(Integer configuredDigits) {
+        int digits = configuredDigits == null ? 0 : configuredDigits;
+        if (digits != 6 && digits != 8) {
+            throw new IllegalStateException("TOTP 配置不正确");
+        }
+        return digits;
     }
 }

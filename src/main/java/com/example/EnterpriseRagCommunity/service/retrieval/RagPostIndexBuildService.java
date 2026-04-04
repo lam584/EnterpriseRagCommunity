@@ -58,6 +58,7 @@ public class RagPostIndexBuildService {
     private final ElasticsearchTemplate esTemplate;
     private final SystemConfigurationService systemConfigurationService;
 
+    @SuppressWarnings("DataFlowIssue")
     @Transactional
     public RagPostsBuildResponse buildPosts(Long vectorIndexId,
                                            Long boardId,

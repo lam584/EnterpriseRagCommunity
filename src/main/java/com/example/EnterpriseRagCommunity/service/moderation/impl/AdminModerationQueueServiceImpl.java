@@ -12,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import jakarta.persistence.criteria.Subquery;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
@@ -71,63 +72,29 @@ import com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexVisibili
 import jakarta.transaction.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class AdminModerationQueueServiceImpl implements AdminModerationQueueService {
-
-    @Autowired
-    private ModerationQueueRepository moderationQueueRepository;
-
-    @Autowired
-    private PostsRepository postsRepository;
-
-    @Autowired
-    private PostAttachmentsRepository postAttachmentsRepository;
-
-    @Autowired
-    private FileAssetExtractionsRepository fileAssetExtractionsRepository;
-
-    @Autowired
-    private CommentsRepository commentsRepository;
-
-    @Autowired
-    private UsersRepository usersRepository;
-
-    @Autowired
-    private com.example.EnterpriseRagCommunity.service.AdministratorService administratorService;
-
-    @Autowired
-    private ReportsRepository reportsRepository;
-
-    @Autowired
-    private NotificationsService notificationsService;
-
-    @Autowired
-    private ModerationPipelineRunRepository moderationPipelineRunRepository;
-
-    @Autowired
-    private ModerationActionsRepository moderationActionsRepository;
+    private final ModerationQueueRepository moderationQueueRepository;
+    private final PostsRepository postsRepository;
+    private final PostAttachmentsRepository postAttachmentsRepository;
+    private final FileAssetExtractionsRepository fileAssetExtractionsRepository;
+    private final CommentsRepository commentsRepository;
+    private final UsersRepository usersRepository;
+    private final com.example.EnterpriseRagCommunity.service.AdministratorService administratorService;
+    private final ReportsRepository reportsRepository;
+    private final NotificationsService notificationsService;
+    private final ModerationPipelineRunRepository moderationPipelineRunRepository;
+    private final ModerationActionsRepository moderationActionsRepository;
 
     @Autowired
     @Lazy
     private ModerationAutoKickService moderationAutoKickService;
-
-
-    @Autowired
-    private RiskLabelingService riskLabelingService;
-
-    @Autowired
-    private ModerationChunkReviewService moderationChunkReviewService;
-
-    @Autowired
-    private RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
-
-    @Autowired
-    private RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
-
-    @Autowired
-    private UsersService usersService;
+    private final RiskLabelingService riskLabelingService;
+    private final ModerationChunkReviewService moderationChunkReviewService;
+    private final RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService;
+    private final RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
+    private final AuditLogWriter auditLogWriter;
+    private final UsersService usersService;
 
     @Override
     public Page<AdminModerationQueueItemDTO> list(ModerationQueueQueryDTO query) {
@@ -549,10 +516,6 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 }
             } catch (Exception ignore) {
             }
-            try {
-                notifyModerationResultToAuthor(q, true, reason);
-            } catch (Exception ignore) {
-            }
         } else {
             if (q.getContentType() == ContentType.POST) {
                 PostsEntity post = postsRepository.findById(q.getContentId())
@@ -593,10 +556,11 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 u.setMetadata(md);
                 usersRepository.save(u);
             }
-            try {
-                notifyModerationResultToAuthor(q, true, reason);
-            } catch (Exception ignore) {
-            }
+        }
+
+        try {
+            notifyModerationResultToAuthor(q, true, reason);
+        } catch (Exception ignore) {
         }
 
         q.setStatus(QueueStatus.APPROVED);
@@ -761,15 +725,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
         // ---- comments ----
         if (types.contains(ContentType.COMMENT) && remaining > 0) {
-            Specification<CommentsEntity> spec = (root, q, cb) -> cb.conjunction();
-            spec = spec.and((root, q, cb) -> cb.equal(root.get("status"), CommentStatus.PENDING));
-            spec = spec.and((root, q, cb) -> cb.isFalse(root.get("isDeleted")));
-            if (createdFrom != null) {
-                spec = spec.and((root, q, cb) -> cb.greaterThanOrEqualTo(root.get("createdAt"), createdFrom));
-            }
-            if (createdTo != null) {
-                spec = spec.and((root, q, cb) -> cb.lessThanOrEqualTo(root.get("createdAt"), createdTo));
-            }
+            Specification<CommentsEntity> spec = buildPendingCommentSpec(createdFrom, createdTo);
 
             // 按创建时间升序扫描，更符合"先来先审"
             Pageable pageable = PageRequest.of(0, Math.min(remaining, 1000), Sort.by(Sort.Order.asc("createdAt"), Sort.Order.asc("id")));
@@ -917,10 +873,6 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 }
             } catch (Exception ignore) {
             }
-            try {
-                notifyModerationResultToAuthor(q, false, reason);
-            } catch (Exception ignore) {
-            }
         } else {
             if (q.getContentType() == ContentType.POST) {
                 PostsEntity post = postsRepository.findById(q.getContentId())
@@ -957,10 +909,11 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 u.setMetadata(md);
                 usersRepository.save(u);
             }
-            try {
-                notifyModerationResultToAuthor(q, false, reason);
-            } catch (Exception ignore) {
-            }
+        }
+
+        try {
+            notifyModerationResultToAuthor(q, false, reason);
+        } catch (Exception ignore) {
         }
 
         q.setStatus(QueueStatus.REJECTED);
@@ -1083,15 +1036,15 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         if (reported) {
             content = approved
                     ? ("你的" + targetLabel + "已完成复审：未发现违规。目标：" + targetLabel + " #" + q.getContentId()
-                    + (r.isEmpty() ? "" : ("；说明：" + r)))
+                    + suffixReason(r, "说明"))
                     : ("你的" + targetLabel + "已完成复审：已确认违规并已处理。目标：" + targetLabel + " #" + q.getContentId()
-                    + (r.isEmpty() ? "" : ("；原因：" + r)));
+                    + suffixReason(r, "原因"));
         } else {
             content = approved
                     ? ("你的" + targetLabel + "已通过审核。目标：" + targetLabel + " #" + q.getContentId()
-                    + (r.isEmpty() ? "" : ("；说明：" + r)))
+                    + suffixReason(r, "说明"))
                     : ("你的" + targetLabel + "未通过审核。目标：" + targetLabel + " #" + q.getContentId()
-                    + (r.isEmpty() ? "" : ("；原因：" + r)));
+                    + suffixReason(r, "原因"));
         }
 
         notificationsService.createNotification(userId, "MODERATION", "审核通知", content);
@@ -1107,6 +1060,11 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         if (v == null) return null;
         String s = String.valueOf(v).trim();
         return s.isEmpty() ? null : s;
+    }
+
+    private static String suffixReason(String reason, String label) {
+        if (reason == null || reason.isEmpty()) return "";
+        return "；" + label + "：" + reason;
     }
 
     private static String excerpt(String text, int maxLen) {
@@ -1544,15 +1502,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             throw new IllegalStateException("进入人工审核失败：仅允许已终态任务进入人工审核");
         }
         AdminModerationQueueDetailDTO detail = getDetail(id);
-        Map<String, Object> details = new HashMap<>();
-        details.put("queueId", detail.getId());
-        details.put("caseType", enumName(detail.getCaseType()));
-        details.put("contentType", enumName(detail.getContentType()));
-        details.put("contentId", detail.getContentId());
+        Map<String, Object> details = buildQueueAuditDetails(detail);
         details.put("reason", checkedReason);
-        details.put("status", enumName(detail.getStatus()));
-        details.put("stage", enumName(detail.getCurrentStage()));
-        details.put("assignedToId", detail.getAssignedToId());
         auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_TO_HUMAN", "MODERATION_QUEUE", detail.getId(), AuditResult.SUCCESS, "人工操作：进入人工审核", newTraceId(), details);
         return detail;
     }
@@ -1571,17 +1522,35 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
         riskLabelingService.replaceRiskTags(q.getContentType(), q.getContentId(), Source.HUMAN, riskTags, null, true);
         AdminModerationQueueDetailDTO detail = getDetail(queueId);
+        Map<String, Object> details = buildQueueAuditDetails(detail);
+        details.put("riskTags", riskTags);
+        auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_SET_RISK_TAGS", "MODERATION_QUEUE", detail.getId(), AuditResult.SUCCESS, "人工操作：更新风险标签", newTraceId(), details);
+        return detail;
+    }
+
+    private Specification<CommentsEntity> buildPendingCommentSpec(LocalDateTime createdFrom, LocalDateTime createdTo) {
+        Specification<CommentsEntity> spec = (root, q, cb) -> cb.conjunction();
+        spec = spec.and((root, q, cb) -> cb.equal(root.get("status"), CommentStatus.PENDING));
+        spec = spec.and((root, q, cb) -> cb.isFalse(root.get("isDeleted")));
+        if (createdFrom != null) {
+            spec = spec.and((root, q, cb) -> cb.greaterThanOrEqualTo(root.get("createdAt"), createdFrom));
+        }
+        if (createdTo != null) {
+            spec = spec.and((root, q, cb) -> cb.lessThanOrEqualTo(root.get("createdAt"), createdTo));
+        }
+        return spec;
+    }
+
+    private Map<String, Object> buildQueueAuditDetails(AdminModerationQueueDetailDTO detail) {
         Map<String, Object> details = new HashMap<>();
         details.put("queueId", detail.getId());
         details.put("caseType", enumName(detail.getCaseType()));
         details.put("contentType", enumName(detail.getContentType()));
         details.put("contentId", detail.getContentId());
-        details.put("riskTags", riskTags);
         details.put("status", enumName(detail.getStatus()));
         details.put("stage", enumName(detail.getCurrentStage()));
         details.put("assignedToId", detail.getAssignedToId());
-        auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_SET_RISK_TAGS", "MODERATION_QUEUE", detail.getId(), AuditResult.SUCCESS, "人工操作：更新风险标签", newTraceId(), details);
-        return detail;
+        return details;
     }
 
     private Long currentUserIdOrThrow() {

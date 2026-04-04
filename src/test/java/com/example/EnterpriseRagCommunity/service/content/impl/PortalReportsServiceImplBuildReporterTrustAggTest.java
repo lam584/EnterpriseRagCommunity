@@ -21,9 +21,27 @@ import static org.mockito.Mockito.when;
 
 class PortalReportsServiceImplBuildReporterTrustAggTest {
 
+    private static PortalReportsServiceImpl newService() {
+        return new PortalReportsServiceImpl(
+                mock(com.example.EnterpriseRagCommunity.repository.content.ReportsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.PostsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.CommentsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.AdministratorService.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.UsersRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationActionsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationConfidenceFallbackConfigRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationPolicyConfigRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner.class)
+        );
+    }
+
     @Test
     void buildReporterTrustAgg_nullOrEmpty_returnsNaN() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         double v0 = ReflectionTestUtils.invokeMethod(svc, "buildReporterTrustAgg", new Object[]{null});
         double v1 = ReflectionTestUtils.invokeMethod(svc, "buildReporterTrustAgg", List.of());
         assertTrue(Double.isNaN(v0));
@@ -33,7 +51,7 @@ class PortalReportsServiceImplBuildReporterTrustAggTest {
     @Test
     void buildReporterTrustAgg_allIgnored_returnsNaN() {
         UsersRepository usersRepository = mock(UsersRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
 
         ReportsEntity noReporter = new ReportsEntity();
@@ -44,7 +62,7 @@ class PortalReportsServiceImplBuildReporterTrustAggTest {
     @Test
     void buildReporterTrustAgg_usesDefaultWhenUserMissingOrMetadataNull() {
         UsersRepository usersRepository = mock(UsersRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
 
         ReportsEntity r1 = new ReportsEntity();
@@ -65,7 +83,7 @@ class PortalReportsServiceImplBuildReporterTrustAggTest {
     @Test
     void buildReporterTrustAgg_clampsTrustScoreAndIgnoresNonNumber() {
         UsersRepository usersRepository = mock(UsersRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
 
         ReportsEntity r1 = new ReportsEntity();
@@ -97,7 +115,7 @@ class PortalReportsServiceImplBuildReporterTrustAggTest {
     @Test
     void buildReporterTrustAgg_usesCachePerReporter() {
         UsersRepository usersRepository = mock(UsersRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
 
         ReportsEntity r1 = new ReportsEntity();
@@ -118,7 +136,7 @@ class PortalReportsServiceImplBuildReporterTrustAggTest {
     @Test
     void buildReporterTrustAgg_userRepoThrows_isSwallowed() {
         UsersRepository usersRepository = mock(UsersRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
 
         ReportsEntity r1 = new ReportsEntity();

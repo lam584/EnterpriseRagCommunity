@@ -28,7 +28,6 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -66,21 +65,21 @@ class CommentsServiceImplCreateForPostTest {
             AiLanguageDetectService aiLanguageDetectService,
             AuditLogWriter auditLogWriter
     ) {
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "notificationsService", notificationsService);
-        ReflectionTestUtils.setField(svc, "adminModerationQueueService", adminModerationQueueService);
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", mock(ModerationQueueRepository.class));
-        ReflectionTestUtils.setField(svc, "moderationAutoKickService", mock(ModerationAutoKickService.class));
-        ReflectionTestUtils.setField(svc, "moderationRuleAutoRunner", moderationRuleAutoRunner);
-        ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
-        ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
-        ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", mock(RagCommentIndexVisibilitySyncService.class));
-        return svc;
+        return new CommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                postsRepository,
+                notificationsService,
+                adminModerationQueueService,
+                mock(ModerationQueueRepository.class),
+                mock(ModerationAutoKickService.class),
+                moderationRuleAutoRunner,
+                usersRepository,
+                reactionsRepository,
+                aiLanguageDetectService,
+                auditLogWriter,
+                mock(RagCommentIndexVisibilitySyncService.class)
+        );
     }
 
     private static CommentsServiceImpl newService(
@@ -96,21 +95,53 @@ class CommentsServiceImplCreateForPostTest {
             AiLanguageDetectService aiLanguageDetectService,
             AuditLogWriter auditLogWriter
     ) {
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "notificationsService", notificationsService);
-        ReflectionTestUtils.setField(svc, "adminModerationQueueService", adminModerationQueueService);
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
-        ReflectionTestUtils.setField(svc, "moderationAutoKickService", moderationAutoKickService);
-        ReflectionTestUtils.setField(svc, "moderationRuleAutoRunner", mock(ModerationRuleAutoRunner.class));
-        ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
-        ReflectionTestUtils.setField(svc, "reactionsRepository", reactionsRepository);
-        ReflectionTestUtils.setField(svc, "aiLanguageDetectService", aiLanguageDetectService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", mock(RagCommentIndexVisibilitySyncService.class));
-        return svc;
+        return new CommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                postsRepository,
+                notificationsService,
+                adminModerationQueueService,
+                moderationQueueRepository,
+                moderationAutoKickService,
+                mock(ModerationRuleAutoRunner.class),
+                usersRepository,
+                reactionsRepository,
+                aiLanguageDetectService,
+                auditLogWriter,
+                mock(RagCommentIndexVisibilitySyncService.class)
+        );
+    }
+
+    private static CommentsServiceImpl newService(
+            CommentsRepository commentsRepository,
+            AdministratorService administratorService,
+            PostsRepository postsRepository,
+            NotificationsService notificationsService,
+            AdminModerationQueueService adminModerationQueueService,
+            ModerationQueueRepository moderationQueueRepository,
+            ModerationAutoKickService moderationAutoKickService,
+            ModerationRuleAutoRunner moderationRuleAutoRunner,
+            UsersRepository usersRepository,
+            ReactionsRepository reactionsRepository,
+            AiLanguageDetectService aiLanguageDetectService,
+            AuditLogWriter auditLogWriter,
+            RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService
+    ) {
+        return new CommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                postsRepository,
+                notificationsService,
+                adminModerationQueueService,
+                moderationQueueRepository,
+                moderationAutoKickService,
+                moderationRuleAutoRunner,
+                usersRepository,
+                reactionsRepository,
+                aiLanguageDetectService,
+                auditLogWriter,
+                ragCommentIndexVisibilitySyncService
+        );
     }
 
     @Test
@@ -437,16 +468,15 @@ class CommentsServiceImplCreateForPostTest {
                 mock(PostsRepository.class),
                 mock(NotificationsService.class),
                 adminModerationQueueService,
+                moderationQueueRepository,
+                mock(ModerationAutoKickService.class),
                 moderationRuleAutoRunner,
-                mock(ModerationVecAutoRunner.class),
-                mock(ModerationLlmAutoRunner.class),
                 mock(UsersRepository.class),
                 mock(ReactionsRepository.class),
                 mock(AiLanguageDetectService.class),
-                mock(AuditLogWriter.class)
+                mock(AuditLogWriter.class),
+                ragSync
         );
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
-        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", ragSync);
 
         CommentCreateRequest req = new CommentCreateRequest();
         req.setContent("ref");

@@ -122,7 +122,7 @@ public class ContentSafetyAutoTriggerJob {
         if (cfg == null) return;
         Integer ar0 = at.getAutoRecoverSeconds();
         int ar = ar0 == null ? 0 : Math.max(0, ar0);
-        if (ar <= 0) return;
+        if (ar == 0) return;
         Instant enabledAt = lastAutoEnabledAt;
         if (enabledAt == null) return;
         if (enabledAt.plusSeconds(ar).isAfter(now)) return;

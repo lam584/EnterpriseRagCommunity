@@ -1,7 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.content.jobs;
 
 import com.example.EnterpriseRagCommunity.service.content.HotScoresService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -11,10 +11,9 @@ import org.springframework.stereotype.Component;
  * - 每小时整点+1分钟 做一次 24h 的增量刷新（自然日口径：更新“今天”）
  */
 @Component
+@RequiredArgsConstructor
 public class HotScoresScheduler {
-
-    @Autowired
-    private HotScoresService hotScoresService;
+    private final HotScoresService hotScoresService;
 
     /** 每天 00:05 执行 */
     @Scheduled(cron = "0 5 0 * * ?", zone = "Asia/Shanghai")

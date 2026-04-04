@@ -30,8 +30,7 @@ public class PostsServiceImplQueryVectorSearchTest {
     @Test
     void queryPostIdReturnsSingletonOrEmpty() {
         PostsRepository postsRepository = mock(PostsRepository.class);
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
+        PostsServiceImpl svc = newService(postsRepository, mock(HybridRagRetrievalService.class));
 
         PostsEntity p = new PostsEntity();
         p.setId(10L);
@@ -50,9 +49,7 @@ public class PostsServiceImplQueryVectorSearchTest {
     void queryKeywordWithStatusNotPublishedReturnsEmptyWithoutCallingRetrieval() {
         PostsRepository postsRepository = mock(PostsRepository.class);
         HybridRagRetrievalService hybridRagRetrievalService = mock(HybridRagRetrievalService.class);
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "hybridRagRetrievalService", hybridRagRetrievalService);
+        PostsServiceImpl svc = newService(postsRepository, hybridRagRetrievalService);
 
         Page<PostsEntity> r = svc.query("  k  ", null, null, null, PostStatus.DRAFT, null, null, null, 1, 10, "createdAt", "ASC");
         assertEquals(0, r.getContent().size());
@@ -64,9 +61,7 @@ public class PostsServiceImplQueryVectorSearchTest {
     void queryKeywordHandlesNullRetrieveResultAndNullFinalHits() {
         PostsRepository postsRepository = mock(PostsRepository.class);
         HybridRagRetrievalService hybridRagRetrievalService = mock(HybridRagRetrievalService.class);
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "hybridRagRetrievalService", hybridRagRetrievalService);
+        PostsServiceImpl svc = newService(postsRepository, hybridRagRetrievalService);
 
         when(hybridRagRetrievalService.retrieve(eq("k"), eq(null), any(), eq(false))).thenReturn(null);
         Page<PostsEntity> r1 = svc.query("k", null, null, null, PostStatus.PUBLISHED, null, null, null, 1, 10, "hotScore", "DESC");
@@ -85,9 +80,7 @@ public class PostsServiceImplQueryVectorSearchTest {
     void queryKeywordVectorSearchFiltersAndPagingBranches() {
         PostsRepository postsRepository = mock(PostsRepository.class);
         HybridRagRetrievalService hybridRagRetrievalService = mock(HybridRagRetrievalService.class);
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "hybridRagRetrievalService", hybridRagRetrievalService);
+        PostsServiceImpl svc = newService(postsRepository, hybridRagRetrievalService);
 
         HybridRagRetrievalService.DocHit h0 = null;
         HybridRagRetrievalService.DocHit h1 = new HybridRagRetrievalService.DocHit();
@@ -159,8 +152,7 @@ public class PostsServiceImplQueryVectorSearchTest {
     @Test
     void queryNonKeywordBuildsSpecAndDelegatesToFindAll() {
         PostsRepository postsRepository = mock(PostsRepository.class);
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
+        PostsServiceImpl svc = newService(postsRepository, mock(HybridRagRetrievalService.class));
 
         Page<PostsEntity> expected = new PageImpl<>(List.of());
         when(postsRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class)))
@@ -182,5 +174,28 @@ public class PostsServiceImplQueryVectorSearchTest {
         );
         assertNotNull(r);
         verify(postsRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), any(org.springframework.data.domain.Pageable.class));
+    }
+
+    private static PostsServiceImpl newService(PostsRepository postsRepository, HybridRagRetrievalService hybridRagRetrievalService) {
+        return new PostsServiceImpl(
+                postsRepository,
+                mock(com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.AdministratorService.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.ai.AiPostSummaryTriggerService.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.TagsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.retrieval.RagPostIndexVisibilitySyncService.class),
+                hybridRagRetrievalService,
+                mock(com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetIndexAsyncService.class),
+                mock(com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService.class),
+                mock(com.example.EnterpriseRagCommunity.service.access.AuditLogWriter.class),
+                mock(com.example.EnterpriseRagCommunity.service.content.PostComposeConfigService.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository.class)
+        );
     }
 }

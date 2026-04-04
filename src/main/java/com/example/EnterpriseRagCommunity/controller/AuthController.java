@@ -9,7 +9,7 @@ import java.time.ZoneId;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired; // 替代旧User
+import lombok.RequiredArgsConstructor; // 替代旧User
 import org.springframework.beans.factory.annotation.Value; // 替代旧Tenant
 import org.springframework.http.HttpStatus; // 调整枚举包路径
 import org.springframework.http.ResponseEntity;
@@ -77,6 +77,7 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/auth")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class AuthController {
     private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
     private static final String DEFAULT_BOARD_NAME = "默认版块";
@@ -84,67 +85,26 @@ public class AuthController {
     private static final String SESSION_LOGIN2FA_PENDING_EMAIL = "login2fa.pendingEmail";
     private static final String SESSION_LOGIN2FA_PENDING_MODE = "login2fa.mode";
     private static final String SESSION_LOGIN2FA_PENDING_CREATED_AT = "login2fa.createdAtMs";
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private AuthenticationManager authenticationManager;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Autowired
-    private AdminSetupManager initialAdminSetupState;
-
-    @Autowired
-    private TenantsRepository tenantsRepository; // 注入 TenantsRepository
-
-
-    @Autowired
-    private UserRoleLinksRepository userRoleLinksRepository;
-
-    @Autowired
-    private PermissionsRepository permissionsRepository;
-
-    @Autowired
-    private RolePermissionsRepository rolePermissionsRepository;
-
-    @Autowired
-    private AppSettingsService appSettingsService;
-
-    @Autowired
-    private RolesRepository rolesRepository;
-
-    @Autowired
-    private BoardsRepository boardsRepository;
-
-    @Autowired
-    private BoardModeratorsRepository boardModeratorsRepository;
-
-    @Autowired
-    private InitialAdminIndexBootstrapService initialAdminIndexBootstrapService;
-
-    @Autowired
-    private TotpMasterKeyBootstrapService totpMasterKeyBootstrapService;
-
-    @Autowired
-    private EmailVerificationService emailVerificationService;
-
-    @Autowired
-    private EmailVerificationMailer emailVerificationMailer;
-
-    @Autowired
-    private Security2faPolicyService security2faPolicyService;
-
-    @Autowired
-    private AccountTotpService accountTotpService;
-
-    @Autowired
-    private UserDetailsService userDetailsService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
+    private final AdministratorService administratorService;
+    private final AuthenticationManager authenticationManager;
+    private final PasswordEncoder passwordEncoder;
+    private final AdminSetupManager initialAdminSetupState;
+    private final TenantsRepository tenantsRepository; // 注入 TenantsRepository
+    private final UserRoleLinksRepository userRoleLinksRepository;
+    private final PermissionsRepository permissionsRepository;
+    private final RolePermissionsRepository rolePermissionsRepository;
+    private final AppSettingsService appSettingsService;
+    private final RolesRepository rolesRepository;
+    private final BoardsRepository boardsRepository;
+    private final BoardModeratorsRepository boardModeratorsRepository;
+    private final InitialAdminIndexBootstrapService initialAdminIndexBootstrapService;
+    private final TotpMasterKeyBootstrapService totpMasterKeyBootstrapService;
+    private final EmailVerificationService emailVerificationService;
+    private final EmailVerificationMailer emailVerificationMailer;
+    private final Security2faPolicyService security2faPolicyService;
+    private final AccountTotpService accountTotpService;
+    private final UserDetailsService userDetailsService;
+    private final AuditLogWriter auditLogWriter;
 
     @Value("${app.tenant.default-code:DEFAULT}")
     private String defaultTenantCode;
@@ -374,13 +334,7 @@ public class AuthController {
                     Security2faPolicyStatusDTO policy = security2faPolicyService.evaluateForUser(currentUser.getId());
                     boolean allowEmail = policy.isEmailOtpAllowed() && emailVerificationMailer.isEnabled();
                     boolean allowTotp = policy.isTotpAllowed() && accountTotpService.isEnabledByEmail(currentUser.getEmail());
-                    List<String> methods = new ArrayList<>();
-                    if ((login2faMode == Security2faPolicyService.Login2faMode.EMAIL_ONLY || login2faMode == Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP) && allowEmail) {
-                        methods.add("email");
-                    }
-                    if ((login2faMode == Security2faPolicyService.Login2faMode.TOTP_ONLY || login2faMode == Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP) && allowTotp) {
-                        methods.add("totp");
-                    }
+                    List<String> methods = resolveLogin2faMethods(login2faMode, allowEmail, allowTotp);
 
                     HttpSession session = request.getSession(true);
                     session.setAttribute(SESSION_LOGIN2FA_PENDING_USER_ID, currentUser.getId());
@@ -976,20 +930,7 @@ public class AuthController {
             UsersDTO responseDTO = convertToUserSafeDTO(savedUser);
 
             TotpMasterKeyBootstrapService.Result totpResult = totpMasterKeyBootstrapService.generateAndPersistToOsEnv();
-            InitialAdminRegisterResponse resp = new InitialAdminRegisterResponse();
-            resp.setUser(responseDTO);
-            InitialAdminRegisterResponse.TotpMasterKeySetup setup = new InitialAdminRegisterResponse.TotpMasterKeySetup();
-            setup.setEnvVarName(totpResult.getEnvVarName());
-            setup.setKeyBase64(totpResult.getKeyBase64());
-            setup.setAttempted(totpResult.isAttempted());
-            setup.setSucceeded(totpResult.isSucceeded());
-            setup.setScope(totpResult.getScope());
-            setup.setCommand(totpResult.getCommand());
-            setup.setFallbackCommand(totpResult.getFallbackCommand());
-            setup.setMessage(totpResult.getMessage());
-            setup.setError(totpResult.getError());
-            setup.setRestartRequired(true);
-            resp.setTotpMasterKeySetup(setup);
+            InitialAdminRegisterResponse resp = buildInitialAdminRegisterResponse(responseDTO, totpResult);
 
             logger.debug("registerInitialAdmin success response ready");
             return ResponseEntity.status(HttpStatus.CREATED)
@@ -1033,6 +974,40 @@ public class AuthController {
         }
 
         return tenantOpt.get();
+    }
+
+    private static InitialAdminRegisterResponse buildInitialAdminRegisterResponse(UsersDTO responseDTO,
+                                                                                  TotpMasterKeyBootstrapService.Result totpResult) {
+        InitialAdminRegisterResponse resp = new InitialAdminRegisterResponse();
+        resp.setUser(responseDTO);
+        InitialAdminRegisterResponse.TotpMasterKeySetup setup = new InitialAdminRegisterResponse.TotpMasterKeySetup();
+        setup.setEnvVarName(totpResult.getEnvVarName());
+        setup.setKeyBase64(totpResult.getKeyBase64());
+        setup.setAttempted(totpResult.isAttempted());
+        setup.setSucceeded(totpResult.isSucceeded());
+        setup.setScope(totpResult.getScope());
+        setup.setCommand(totpResult.getCommand());
+        setup.setFallbackCommand(totpResult.getFallbackCommand());
+        setup.setMessage(totpResult.getMessage());
+        setup.setError(totpResult.getError());
+        setup.setRestartRequired(true);
+        resp.setTotpMasterKeySetup(setup);
+        return resp;
+    }
+
+    private static List<String> resolveLogin2faMethods(Security2faPolicyService.Login2faMode login2faMode,
+                                                       boolean allowEmail,
+                                                       boolean allowTotp) {
+        List<String> methods = new ArrayList<>();
+        if ((login2faMode == Security2faPolicyService.Login2faMode.EMAIL_ONLY
+                || login2faMode == Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP) && allowEmail) {
+            methods.add("email");
+        }
+        if ((login2faMode == Security2faPolicyService.Login2faMode.TOTP_ONLY
+                || login2faMode == Security2faPolicyService.Login2faMode.EMAIL_OR_TOTP) && allowTotp) {
+            methods.add("totp");
+        }
+        return methods;
     }
 
 

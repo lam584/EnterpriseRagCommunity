@@ -85,14 +85,8 @@ class AdminModerationLlmContextBuilder {
             String content = p.getContent() == null ? "" : p.getContent();
             String files = buildPostFilesBlock(q.getContentId());
             String web = buildPostWebBlock(q.getContentId(), content);
-            String base = ("[POST]\n标题: " + title + "\n内容: " + content
-                    + (files == null || files.isBlank() ? "" : ("\n\n" + files))
-                    + (web == null || web.isBlank() ? "" : ("\n\n" + web))
-            ).trim();
-            String contentNormalized = (content
-                    + (files == null || files.isBlank() ? "" : ("\n\n" + files))
-                    + (web == null || web.isBlank() ? "" : ("\n\n" + web))
-            ).trim();
+            String contentNormalized = mergePostSupplements(content, files, web);
+            String base = ("[POST]\n标题: " + title + "\n内容: " + contentNormalized).trim();
             return new PromptVars(title, contentNormalized, base);
         }
         if (q.getContentType() == ContentType.COMMENT) {
@@ -138,6 +132,19 @@ class AdminModerationLlmContextBuilder {
         return null;
     }
 
+    private static String appendSectionBlock(String block) {
+        return block == null || block.isBlank() ? "" : ("\n\n" + block);
+    }
+
+    private static String mergePostSupplements(String content, String files, String web) {
+        return (nullToEmpty(content) + appendSectionBlock(files) + appendSectionBlock(web)).trim();
+    }
+
+    private static void putTextIfPresent(Map<String, Object> root, PromptVars vars) {
+        if (root == null || vars == null || vars.content() == null || vars.content().isBlank()) return;
+        root.put("text", vars.content());
+    }
+
     PromptVars resolvePromptVars(LlmModerationTestRequest req) {
         if (req == null) return null;
         if (req.getText() != null && !req.getText().isBlank()) {
@@ -156,21 +163,13 @@ class AdminModerationLlmContextBuilder {
             String content = p.getContent() == null ? "" : p.getContent();
             String files = buildPostFilesBlock(q.getContentId());
             String web = buildPostWebBlock(q.getContentId(), content);
-            String base = ("[POST]\n标题: " + title + "\n内容: " + content
-                    + (files == null || files.isBlank() ? "" : ("\n\n" + files))
-                    + (web == null || web.isBlank() ? "" : ("\n\n" + web))
-            ).trim();
+            String contentNormalized = mergePostSupplements(content, files, web);
+            String base = ("[POST]\n标题: " + title + "\n内容: " + contentNormalized).trim();
             String reports = buildReportsBlock(ReportTargetType.POST, q.getContentId());
             String text = (reports != null && !reports.isBlank()) ? (reports + "\n\n" + base).trim() : base;
             String contentWithReports = (reports != null && !reports.isBlank())
-                    ? (reports + "\n\n" + content
-                    + (files == null || files.isBlank() ? "" : ("\n\n" + files))
-                    + (web == null || web.isBlank() ? "" : ("\n\n" + web))
-            ).trim()
-                    : (content
-                    + (files == null || files.isBlank() ? "" : ("\n\n" + files))
-                    + (web == null || web.isBlank() ? "" : ("\n\n" + web))
-            );
+                    ? (reports + "\n\n" + contentNormalized).trim()
+                    : contentNormalized;
             return new PromptVars(title, contentWithReports, text);
         }
         if (q.getContentType() == ContentType.COMMENT) {
@@ -418,7 +417,7 @@ class AdminModerationLlmContextBuilder {
             root.put("post_id", q.getContentId());
             root.put("mode", "full");
             if (vars != null && vars.title() != null && !vars.title().isBlank()) root.put("title", vars.title());
-            if (vars != null && vars.content() != null && !vars.content().isBlank()) root.put("text", vars.content());
+            putTextIfPresent(root, vars);
             root.put("related_ocr", resolveRelatedOcr(ctx));
             if ("reported".equalsIgnoreCase(reviewStage)) {
                 Map<String, Object> rc = buildReportContext(ReportTargetType.POST, q.getContentId(), ctx, reviewStage);
@@ -432,7 +431,7 @@ class AdminModerationLlmContextBuilder {
                 root.put("author_id", c.getAuthorId());
                 if (c.getParentId() != null) root.put("parent_comment_id", c.getParentId());
                 if (reviewStage == null) root.put("comment_stage", "publish");
-                if (vars != null && vars.content() != null && !vars.content().isBlank()) root.put("text", vars.content());
+                putTextIfPresent(root, vars);
                 Map<String, Object> threadContext = buildThreadContextForComment(c.getPostId(), c.getParentId());
                 if (threadContext != null && !threadContext.isEmpty()) root.put("thread_context", threadContext);
                 root.put("related_ocr", resolveRelatedOcr(ctx));

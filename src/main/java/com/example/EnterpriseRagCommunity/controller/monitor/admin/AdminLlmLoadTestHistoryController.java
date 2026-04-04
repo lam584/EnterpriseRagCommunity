@@ -45,7 +45,7 @@ public class AdminLlmLoadTestHistoryController {
 
     @DeleteMapping("/{runId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public void delete(@PathVariable("runId") String runId) {
+    public void delete(@PathVariable String runId) {
         try {
             service.delete(runId);
         } catch (IllegalArgumentException e) {

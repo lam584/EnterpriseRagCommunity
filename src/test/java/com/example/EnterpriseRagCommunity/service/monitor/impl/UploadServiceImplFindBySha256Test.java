@@ -7,6 +7,8 @@ import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.monitor.FileAssetExtractionService;
+import com.example.EnterpriseRagCommunity.service.monitor.UploadFormatsConfigService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.TestingAuthenticationToken;
@@ -47,10 +49,15 @@ class UploadServiceImplFindBySha256Test {
         existing.setSha256(sha256);
         when(fileAssetsRepository.findBySha256(eq(sha256))).thenReturn(Optional.of(existing));
 
-        UploadServiceImpl svc = new UploadServiceImpl();
-        ReflectionTestUtils.setField(svc, "fileAssetsRepository", fileAssetsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "fileAssetExtractionService", fileAssetExtractionService);
+        UploadFormatsConfigService uploadFormatsConfigService = mock(UploadFormatsConfigService.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        UploadServiceImpl svc = new UploadServiceImpl(
+                fileAssetsRepository,
+                administratorService,
+                uploadFormatsConfigService,
+                fileAssetExtractionService,
+                objectMapper
+        );
         ReflectionTestUtils.setField(svc, "uploadRoot", "uploads");
         ReflectionTestUtils.setField(svc, "urlPrefix", "/uploads");
 
@@ -75,10 +82,15 @@ class UploadServiceImplFindBySha256Test {
         String sha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
         when(fileAssetsRepository.findBySha256(eq(sha256))).thenReturn(Optional.empty());
 
-        UploadServiceImpl svc = new UploadServiceImpl();
-        ReflectionTestUtils.setField(svc, "fileAssetsRepository", fileAssetsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "fileAssetExtractionService", fileAssetExtractionService);
+        UploadFormatsConfigService uploadFormatsConfigService = mock(UploadFormatsConfigService.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        UploadServiceImpl svc = new UploadServiceImpl(
+                fileAssetsRepository,
+                administratorService,
+                uploadFormatsConfigService,
+                fileAssetExtractionService,
+                objectMapper
+        );
         ReflectionTestUtils.setField(svc, "uploadRoot", "uploads");
         ReflectionTestUtils.setField(svc, "urlPrefix", "/uploads");
 
@@ -96,10 +108,15 @@ class UploadServiceImplFindBySha256Test {
         when(administratorService.findByUsername(eq("u@example.com"))).thenReturn(Optional.of(me));
         SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("u@example.com", "n/a", java.util.List.of()));
 
-        UploadServiceImpl svc = new UploadServiceImpl();
-        ReflectionTestUtils.setField(svc, "fileAssetsRepository", fileAssetsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "fileAssetExtractionService", fileAssetExtractionService);
+        UploadFormatsConfigService uploadFormatsConfigService = mock(UploadFormatsConfigService.class);
+        ObjectMapper objectMapper = new ObjectMapper();
+        UploadServiceImpl svc = new UploadServiceImpl(
+                fileAssetsRepository,
+                administratorService,
+                uploadFormatsConfigService,
+                fileAssetExtractionService,
+                objectMapper
+        );
         ReflectionTestUtils.setField(svc, "uploadRoot", "uploads");
         ReflectionTestUtils.setField(svc, "urlPrefix", "/uploads");
 

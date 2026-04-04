@@ -72,7 +72,41 @@ public class PostsServiceImplPublishUpdateTest {
 
     @Test
     void publishThrowsWhenDtoNull() {
-        PostsServiceImpl svc = new PostsServiceImpl();
+        PostsRepository postsRepository = mock(PostsRepository.class);
+        PostAttachmentsRepository postAttachmentsRepository = mock(PostAttachmentsRepository.class);
+        FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+        AdministratorService administratorService = mock(AdministratorService.class);
+        AdminModerationQueueService adminModerationQueueService = mock(AdminModerationQueueService.class);
+        ModerationRuleAutoRunner moderationRuleAutoRunner = mock(ModerationRuleAutoRunner.class);
+        ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
+        ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
+        AiPostSummaryTriggerService aiPostSummaryTriggerService = mock(AiPostSummaryTriggerService.class);
+        TagsRepository tagsRepository = mock(TagsRepository.class);
+        RagPostIndexVisibilitySyncService ragPostIndexVisibilitySyncService = mock(RagPostIndexVisibilitySyncService.class);
+        HybridRagRetrievalService hybridRagRetrievalService = mock(HybridRagRetrievalService.class);
+        BoardAccessControlService boardAccessControlService = mock(BoardAccessControlService.class);
+        AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
+        PostComposeConfigService postComposeConfigService = mock(PostComposeConfigService.class);
+        ModerationQueueRepository moderationQueueRepository = mock(ModerationQueueRepository.class);
+
+        PostsServiceImpl svc = newService(
+                postsRepository,
+                postAttachmentsRepository,
+                fileAssetsRepository,
+                administratorService,
+                adminModerationQueueService,
+                moderationRuleAutoRunner,
+                moderationVecAutoRunner,
+                moderationLlmAutoRunner,
+                aiPostSummaryTriggerService,
+                tagsRepository,
+                ragPostIndexVisibilitySyncService,
+                hybridRagRetrievalService,
+                boardAccessControlService,
+                auditLogWriter,
+                postComposeConfigService,
+                moderationQueueRepository
+        );
         assertThrows(IllegalArgumentException.class, () -> svc.publish(null));
     }
 
@@ -656,7 +690,7 @@ public class PostsServiceImplPublishUpdateTest {
 
     @Test
     void updateValidatesIdAndDtoAndDeletedAndPermission() {
-        PostsServiceImpl svc0 = new PostsServiceImpl();
+        PostsServiceImpl svc0 = baseService(mock(PostsRepository.class), mock(AuditLogWriter.class));
         assertThrows(IllegalArgumentException.class, () -> svc0.update(null, new PostsUpdateDTO()));
         assertThrows(IllegalArgumentException.class, () -> svc0.update(1L, null));
 
@@ -894,28 +928,28 @@ public class PostsServiceImplPublishUpdateTest {
                                               AuditLogWriter auditLogWriter,
                                               PostComposeConfigService postComposeConfigService,
                                               ModerationQueueRepository moderationQueueRepository) {
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "postAttachmentsRepository", postAttachmentsRepository);
-        ReflectionTestUtils.setField(svc, "fileAssetsRepository", fileAssetsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "adminModerationQueueService", adminModerationQueueService);
-        ReflectionTestUtils.setField(svc, "moderationRuleAutoRunner", moderationRuleAutoRunner);
-        ReflectionTestUtils.setField(svc, "moderationVecAutoRunner", moderationVecAutoRunner);
-        ReflectionTestUtils.setField(svc, "moderationLlmAutoRunner", moderationLlmAutoRunner);
-        ReflectionTestUtils.setField(svc, "aiPostSummaryTriggerService", aiPostSummaryTriggerService);
-        ReflectionTestUtils.setField(svc, "tagsRepository", tagsRepository);
-        ReflectionTestUtils.setField(svc, "ragPostIndexVisibilitySyncService", ragPostIndexVisibilitySyncService);
-        ReflectionTestUtils.setField(svc, "hybridRagRetrievalService", hybridRagRetrievalService);
         VectorIndicesRepository vectorIndicesRepository = mock(VectorIndicesRepository.class);
         when(vectorIndicesRepository.findByStatus(any())).thenReturn(List.of());
-        ReflectionTestUtils.setField(svc, "vectorIndicesRepository", vectorIndicesRepository);
-        ReflectionTestUtils.setField(svc, "ragFileAssetIndexAsyncService", mock(RagFileAssetIndexAsyncService.class));
-        ReflectionTestUtils.setField(svc, "boardAccessControlService", boardAccessControlService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "postComposeConfigService", postComposeConfigService);
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
-        return svc;
+        return new PostsServiceImpl(
+                postsRepository,
+                postAttachmentsRepository,
+                fileAssetsRepository,
+                administratorService,
+                adminModerationQueueService,
+                moderationRuleAutoRunner,
+                moderationVecAutoRunner,
+                moderationLlmAutoRunner,
+                aiPostSummaryTriggerService,
+                tagsRepository,
+                ragPostIndexVisibilitySyncService,
+                hybridRagRetrievalService,
+                vectorIndicesRepository,
+                mock(RagFileAssetIndexAsyncService.class),
+                boardAccessControlService,
+                auditLogWriter,
+                postComposeConfigService,
+                moderationQueueRepository
+        );
     }
 
     private static FileAssetsEntity asset(Long id, Long ownerId, FileAssetStatus status, String url) {

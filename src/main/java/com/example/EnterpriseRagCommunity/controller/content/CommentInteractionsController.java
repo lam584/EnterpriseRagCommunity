@@ -9,7 +9,7 @@ import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -20,19 +20,12 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/comments")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class CommentInteractionsController {
-
-    @Autowired
-    private ReactionsRepository reactionsRepository;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
-
-    @Autowired
-    private CommentsService commentsService;
+    private final ReactionsRepository reactionsRepository;
+    private final AdministratorService administratorService;
+    private final AuditLogWriter auditLogWriter;
+    private final CommentsService commentsService;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -46,7 +39,7 @@ public class CommentInteractionsController {
     }
 
     @PostMapping("/{commentId}/like")
-    public CommentToggleResponseDTO toggleLike(@PathVariable("commentId") Long commentId) {
+    public CommentToggleResponseDTO toggleLike(@PathVariable Long commentId) {
         if (commentId == null) throw new IllegalArgumentException("commentId 不能为空");
         Long me = null;
         String actorName = null;
@@ -109,7 +102,7 @@ public class CommentInteractionsController {
     }
 
     @DeleteMapping("/{commentId}")
-    public void deleteMyComment(@PathVariable("commentId") Long commentId) {
+    public void deleteMyComment(@PathVariable Long commentId) {
         commentsService.deleteOwnComment(commentId);
     }
 

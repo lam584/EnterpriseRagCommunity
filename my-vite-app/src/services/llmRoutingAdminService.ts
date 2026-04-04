@@ -1,4 +1,5 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
 
 function getApiBase(): string {
   const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: string }).__VITE_API_BASE_URL__;
@@ -9,13 +10,6 @@ function apiUrl(path: string): string {
   if (!path.startsWith('/')) path = `/${path}`;
   const base = getApiBase();
   return base ? `${base}${path}` : path;
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
 }
 
 export type AdminLlmRoutingScenarioDTO = {

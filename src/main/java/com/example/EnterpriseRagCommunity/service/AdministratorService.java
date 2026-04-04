@@ -5,18 +5,17 @@ import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class AdministratorService {
     private static final Logger logger = LoggerFactory.getLogger(AdministratorService.class);
-
-    @Autowired
-    private UsersRepository userRepository; // 对齐: Repository层已改为access包
+    private final UsersRepository userRepository; // 对齐: Repository层已改为access包
 
     public List<UsersEntity> findAll() { // 对齐: 返回类型改为UsersEntity
         logger.debug("正在查找所有管理员...");
@@ -28,7 +27,7 @@ public class AdministratorService {
     public Optional<UsersEntity> findById(Long id) { // 对齐: 返回类型改为UsersEntity
         logger.debug("正在通过ID查找用户，id={}", id);
         Optional<UsersEntity> user = userRepository.findById(id); // 修复: 使用基础findById方法，因编译错误要求匹配findByEmail签名模式
-        logger.debug("查找结果 found={}", user.isPresent());
+        logger.debug("按ID查询结果 found={}", user.isPresent());
         return user;
     }
 
@@ -36,7 +35,7 @@ public class AdministratorService {
         logger.debug("正在通过用户名/邮箱查找用户，input={}", username);
         // 直接使用邮箱查找（新的User实体使用email作为登录凭证）
         Optional<UsersEntity> user = userRepository.findByEmailAndIsDeletedFalse(username); // 修复: 使用软删除感知方法
-        logger.debug("查找结果 found={}", user.isPresent());
+        logger.debug("按用户名/邮箱查询结果 found={}", user.isPresent());
         return user;
     }
 

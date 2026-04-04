@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.controller.content;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -61,11 +60,7 @@ class ReportControllersBranchUnitTest {
 
     @Test
     void userReports_shouldCoverSuccessAndFailureBranches() {
-        UserReportsController c = new UserReportsController();
-        setField(c, "portalReportsService", portalReportsService);
-        setField(c, "notificationsService", notificationsService);
-        setField(c, "administratorService", administratorService);
-        setField(c, "auditLogWriter", auditLogWriter);
+        UserReportsController c = new UserReportsController(portalReportsService, notificationsService, administratorService, auditLogWriter);
 
         UserReportsController.UserReportRequest req = new UserReportsController.UserReportRequest();
         req.setReasonCode("SPAM");
@@ -97,11 +92,7 @@ class ReportControllersBranchUnitTest {
 
     @Test
     void userReports_shouldCoverNullResultAndNullRequestFailure() {
-        UserReportsController c = new UserReportsController();
-        setField(c, "portalReportsService", portalReportsService);
-        setField(c, "notificationsService", notificationsService);
-        setField(c, "administratorService", administratorService);
-        setField(c, "auditLogWriter", auditLogWriter);
+        UserReportsController c = new UserReportsController(portalReportsService, notificationsService, administratorService, auditLogWriter);
 
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("u10@example.com", "p", List.of()));
         when(administratorService.findByUsername("u10@example.com")).thenReturn(Optional.of(user(1001L)));
@@ -117,11 +108,7 @@ class ReportControllersBranchUnitTest {
 
     @Test
     void commentReports_shouldCoverSafeMsgNullAndBlankUsername() {
-        CommentReportsController c = new CommentReportsController();
-        setField(c, "portalReportsService", portalReportsService);
-        setField(c, "notificationsService", notificationsService);
-        setField(c, "administratorService", administratorService);
-        setField(c, "auditLogWriter", auditLogWriter);
+        CommentReportsController c = new CommentReportsController(portalReportsService, notificationsService, administratorService, auditLogWriter);
 
         CommentReportsController.CommentReportRequest req = new CommentReportsController.CommentReportRequest();
         req.setReasonCode("ABUSE");
@@ -145,11 +132,7 @@ class ReportControllersBranchUnitTest {
 
     @Test
     void commentReports_shouldCoverNullResultAndReqNullFailure() {
-        CommentReportsController c = new CommentReportsController();
-        setField(c, "portalReportsService", portalReportsService);
-        setField(c, "notificationsService", notificationsService);
-        setField(c, "administratorService", administratorService);
-        setField(c, "auditLogWriter", auditLogWriter);
+        CommentReportsController c = new CommentReportsController(portalReportsService, notificationsService, administratorService, auditLogWriter);
 
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("u20@example.com", "p", List.of()));
         when(administratorService.findByUsername("u20@example.com")).thenReturn(Optional.of(user(2001L)));
@@ -165,11 +148,7 @@ class ReportControllersBranchUnitTest {
 
     @Test
     void postReports_shouldCoverUnauthenticatedAndNotAuthenticatedBranches() {
-        PostReportsController c = new PostReportsController();
-        setField(c, "portalReportsService", portalReportsService);
-        setField(c, "notificationsService", notificationsService);
-        setField(c, "administratorService", administratorService);
-        setField(c, "auditLogWriter", auditLogWriter);
+        PostReportsController c = new PostReportsController(portalReportsService, notificationsService, administratorService, auditLogWriter);
 
         PostReportsController.PostReportRequest req = new PostReportsController.PostReportRequest();
         req.setReasonCode("OTHER");
@@ -196,11 +175,7 @@ class ReportControllersBranchUnitTest {
 
     @Test
     void postReports_shouldCoverNullResultAndNullRequestFailure() {
-        PostReportsController c = new PostReportsController();
-        setField(c, "portalReportsService", portalReportsService);
-        setField(c, "notificationsService", notificationsService);
-        setField(c, "administratorService", administratorService);
-        setField(c, "auditLogWriter", auditLogWriter);
+        PostReportsController c = new PostReportsController(portalReportsService, notificationsService, administratorService, auditLogWriter);
 
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("u30@example.com", "p", List.of()));
         when(administratorService.findByUsername("u30@example.com")).thenReturn(Optional.of(user(3001L)));
@@ -216,23 +191,9 @@ class ReportControllersBranchUnitTest {
 
     @Test
     void reportControllers_shouldCoverRemainingConditionalBranches() {
-        UserReportsController userC = new UserReportsController();
-        setField(userC, "portalReportsService", portalReportsService);
-        setField(userC, "notificationsService", notificationsService);
-        setField(userC, "administratorService", administratorService);
-        setField(userC, "auditLogWriter", auditLogWriter);
-
-        CommentReportsController commentC = new CommentReportsController();
-        setField(commentC, "portalReportsService", portalReportsService);
-        setField(commentC, "notificationsService", notificationsService);
-        setField(commentC, "administratorService", administratorService);
-        setField(commentC, "auditLogWriter", auditLogWriter);
-
-        PostReportsController postC = new PostReportsController();
-        setField(postC, "portalReportsService", portalReportsService);
-        setField(postC, "notificationsService", notificationsService);
-        setField(postC, "administratorService", administratorService);
-        setField(postC, "auditLogWriter", auditLogWriter);
+        UserReportsController userC = newUserReportsController();
+        CommentReportsController commentC = newCommentReportsController();
+        PostReportsController postC = newPostReportsController();
 
         UserReportsController.UserReportRequest ur = new UserReportsController.UserReportRequest();
         ur.setReasonCode("R1");
@@ -294,12 +255,9 @@ class ReportControllersBranchUnitTest {
 
     @Test
     void helpers_shouldCoverPrivateBranchesAcrossReportControllers() {
-        UserReportsController userC = new UserReportsController();
-        PostReportsController postC = new PostReportsController();
-        CommentReportsController commentC = new CommentReportsController();
-        setField(userC, "administratorService", administratorService);
-        setField(postC, "administratorService", administratorService);
-        setField(commentC, "administratorService", administratorService);
+        UserReportsController userC = newUserReportsController();
+        PostReportsController postC = newPostReportsController();
+        CommentReportsController commentC = newCommentReportsController();
 
         SecurityContextHolder.clearContext();
         assertNull(invoke(userC, "currentUserIdOrNull"));
@@ -358,14 +316,16 @@ class ReportControllersBranchUnitTest {
         return user;
     }
 
-    private static void setField(Object target, String fieldName, Object value) {
-        try {
-            Field field = target.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            field.set(target, value);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
+    private UserReportsController newUserReportsController() {
+        return new UserReportsController(portalReportsService, notificationsService, administratorService, auditLogWriter);
+    }
+
+    private CommentReportsController newCommentReportsController() {
+        return new CommentReportsController(portalReportsService, notificationsService, administratorService, auditLogWriter);
+    }
+
+    private PostReportsController newPostReportsController() {
+        return new PostReportsController(portalReportsService, notificationsService, administratorService, auditLogWriter);
     }
 
     private static Object invoke(Object target, String methodName) {

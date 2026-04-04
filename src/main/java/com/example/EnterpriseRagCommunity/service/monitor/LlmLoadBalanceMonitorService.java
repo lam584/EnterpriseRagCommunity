@@ -44,21 +44,7 @@ public class LlmLoadBalanceMonitorService {
             m.setThrottled429Rate(a.count() > 0 ? (a.throttled429Count() * 1.0) / a.count() : 0.0);
             m.setP95ResponseMs(a.p95ResponseMs());
 
-            List<AdminLlmLoadBalancePointDTO> points = new ArrayList<>(effectiveBuckets);
-            for (int i = 0; i < a.points().size(); i++) {
-                LlmLoadBalanceTimeseriesService.BucketPoint bp = a.points().get(i);
-                AdminLlmLoadBalancePointDTO p = new AdminLlmLoadBalancePointDTO();
-                p.setTsMs(bp.tsMs());
-                p.setCount(bp.count());
-                p.setErrorCount(bp.errorCount());
-                p.setThrottled429Count(bp.throttled429Count());
-                p.setQps(bp.count() / (bucketSec * 1.0));
-                p.setAvgResponseMs(bp.avgResponseMs());
-                p.setErrorRate(bp.count() > 0 ? (bp.errorCount() * 1.0) / bp.count() : 0.0);
-                p.setThrottled429Rate(bp.count() > 0 ? (bp.throttled429Count() * 1.0) / bp.count() : 0.0);
-                p.setP95ResponseMs(bp.p95ResponseMs());
-                points.add(p);
-            }
+            List<AdminLlmLoadBalancePointDTO> points = toPoints(a, effectiveBuckets, bucketSec);
             m.setPoints(points);
             models.add(m);
         }
@@ -72,6 +58,30 @@ public class LlmLoadBalanceMonitorService {
         out.setBucketSec(bucketSec);
         out.setModels(models);
         return out;
+    }
+
+    private static List<AdminLlmLoadBalancePointDTO> toPoints(LlmLoadBalanceTimeseriesService.ModelSeries a,
+                                                              int effectiveBuckets,
+                                                              int bucketSec) {
+        List<AdminLlmLoadBalancePointDTO> points = new ArrayList<>(effectiveBuckets);
+        for (int i = 0; i < a.points().size(); i++) {
+            points.add(toPoint(a.points().get(i), bucketSec));
+        }
+        return points;
+    }
+
+    private static AdminLlmLoadBalancePointDTO toPoint(LlmLoadBalanceTimeseriesService.BucketPoint bp, int bucketSec) {
+        AdminLlmLoadBalancePointDTO p = new AdminLlmLoadBalancePointDTO();
+        p.setTsMs(bp.tsMs());
+        p.setCount(bp.count());
+        p.setErrorCount(bp.errorCount());
+        p.setThrottled429Count(bp.throttled429Count());
+        p.setQps(bp.count() / (bucketSec * 1.0));
+        p.setAvgResponseMs(bp.avgResponseMs());
+        p.setErrorRate(bp.count() > 0 ? (bp.errorCount() * 1.0) / bp.count() : 0.0);
+        p.setThrottled429Rate(bp.count() > 0 ? (bp.throttled429Count() * 1.0) / bp.count() : 0.0);
+        p.setP95ResponseMs(bp.p95ResponseMs());
+        return p;
     }
 
     private static ParsedRange parseRange(String range, Integer hours) {
@@ -112,11 +122,8 @@ public class LlmLoadBalanceMonitorService {
             case "ms" -> n;
             case "s" -> n * 1000L;
             case "m" -> n * 60_000L;
-            case "h" -> n * 3600_000L;
+            case "h", "1h", "6h", "24h" -> n * 3600_000L;
             case "d" -> n * 24L * 3600_000L;
-            case "1h" -> n * 3600_000L;
-            case "6h" -> n * 3600_000L;
-            case "24h" -> n * 3600_000L;
             default -> -1L;
         };
     }

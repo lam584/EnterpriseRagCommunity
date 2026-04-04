@@ -81,10 +81,7 @@ public class AccountTotpService {
                 .orElseThrow(() -> new IllegalStateException("当前未启用 TOTP"));
 
         String normalized = code == null ? "" : code.trim();
-        int digits = current.getDigits() == null ? 0 : current.getDigits();
-        if (digits != 6 && digits != 8) {
-            throw new IllegalStateException("TOTP 配置不正确");
-        }
+        int digits = requireValidTotpDigits(current.getDigits());
         if (normalized.length() != digits) {
             throw new IllegalArgumentException("验证码格式不正确，应为 " + digits + " 位数字");
         }
@@ -354,5 +351,13 @@ public class AccountTotpService {
         String period = e.getPeriodSeconds() == null ? "-" : String.valueOf(e.getPeriodSeconds());
         String skew = e.getSkew() == null ? "-" : String.valueOf(e.getSkew());
         return alg + " / " + digits + " 位 / " + period + " 秒 / skew=" + skew;
+    }
+
+    private static int requireValidTotpDigits(Integer configuredDigits) {
+        int digits = configuredDigits == null ? 0 : configuredDigits;
+        if (digits != 6 && digits != 8) {
+            throw new IllegalStateException("TOTP 配置不正确");
+        }
+        return digits;
     }
 }

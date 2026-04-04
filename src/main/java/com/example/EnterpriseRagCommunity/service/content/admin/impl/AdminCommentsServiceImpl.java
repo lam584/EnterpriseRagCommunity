@@ -16,7 +16,7 @@ import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.content.admin.AdminCommentsService;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -31,30 +31,17 @@ import java.util.*;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
+@RequiredArgsConstructor
 public class AdminCommentsServiceImpl implements AdminCommentsService {
 
     private static final Logger log = LoggerFactory.getLogger(AdminCommentsServiceImpl.class);
-
-    @Autowired
-    private CommentsRepository commentsRepository;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private UsersRepository usersRepository;
-
-    @Autowired
-    private PostsRepository postsRepository;
-
-    @Autowired
-    private RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
-
-    @Autowired
-    private AuditDiffBuilder auditDiffBuilder;
+    private final CommentsRepository commentsRepository;
+    private final AdministratorService administratorService;
+    private final UsersRepository usersRepository;
+    private final PostsRepository postsRepository;
+    private final RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
+    private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
 
     private static String buildPostExcerpt(String content, int maxLen) {
         if (content == null) return null;

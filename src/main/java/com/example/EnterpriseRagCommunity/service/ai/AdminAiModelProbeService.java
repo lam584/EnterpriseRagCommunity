@@ -80,7 +80,7 @@ public class AdminAiModelProbeService {
                 if (!ok) out.setErrorMessage("rerank 响应为空");
             } else if ("CHAT".equals(kind)) {
                 LlmQueueTaskType tt = LlmQueueTaskType.MULTIMODAL_CHAT;
-                List<ChatMessage> messages = buildProbeMessages(tt);
+                List<ChatMessage> messages = buildProbeMessages();
                 LlmGateway.RoutedChatOnceResult routed = withTimeout(
                         () -> llmGateway.chatOnceRouted(tt, providerId, modelName, messages, 0.0, 8, List.of("\n")),
                         timeoutMs
@@ -106,13 +106,8 @@ public class AdminAiModelProbeService {
         return out;
     }
 
-    private static List<ChatMessage> buildProbeMessages(LlmQueueTaskType tt) {
-        String sys;
-        if (tt == LlmQueueTaskType.RERANK) {
-            sys = "探活：只输出 ok。";
-        } else {
-            sys = "探活：只输出 ok。";
-        }
+    private static List<ChatMessage> buildProbeMessages() {
+        String sys = "探活：只输出 ok。";
         return List.of(
                 ChatMessage.system(sys),
                 ChatMessage.user("ok")

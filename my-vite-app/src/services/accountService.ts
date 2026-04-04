@@ -1,5 +1,7 @@
 // src/services/accountService.ts
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 import type { UpdateUserProfileRequest, UserProfile } from '../types/userProfile';
 
 export interface AdminAccountInfo {
@@ -24,9 +26,10 @@ export interface ChangePasswordRequest {
 }
 
 const BASE_URL = '/api/account';
+const apiUrl = serviceApiUrl;
 
 export async function getAccountInfo(): Promise<AdminAccountInfo> {
-  const res = await fetch(`${BASE_URL}/me`, {
+  const res = await fetch(apiUrl(`${BASE_URL}/me`), {
     method: 'GET',
     credentials: 'include',
   });
@@ -38,7 +41,7 @@ export async function getAccountInfo(): Promise<AdminAccountInfo> {
 
 export async function updateAccountInfo(body: UpdateAccountRequest): Promise<void> {
   const csrfToken = await getCsrfToken();
-  const res = await fetch(`${BASE_URL}/me`, {
+  const res = await fetch(apiUrl(`${BASE_URL}/me`), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -55,7 +58,7 @@ export async function updateAccountInfo(body: UpdateAccountRequest): Promise<voi
 
 export async function changePassword(body: ChangePasswordRequest): Promise<void> {
   const csrfToken = await getCsrfToken();
-  const res = await fetch(`${BASE_URL}/password`, {
+  const res = await fetch(apiUrl(`${BASE_URL}/password`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -72,16 +75,6 @@ export async function changePassword(body: ChangePasswordRequest): Promise<void>
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  if (data && typeof data === 'object' && 'error' in data && typeof (data as { error?: unknown }).error === 'string') {
-    return (data as { error: string }).error;
-  }
-  return undefined;
 }
 
 function toUserProfileFromCurrentAdmin(data: unknown): UserProfile {
@@ -139,7 +132,7 @@ function toUserProfileFromCurrentAdmin(data: unknown): UserProfile {
 }
 
 export async function getMyProfile(): Promise<UserProfile> {
-  const res = await fetch(`${BASE_URL}/profile`, {
+  const res = await fetch(apiUrl(`${BASE_URL}/profile`), {
     method: 'GET',
     credentials: 'include',
   });
@@ -152,7 +145,7 @@ export async function getMyProfile(): Promise<UserProfile> {
 
 export async function updateMyProfile(body: UpdateUserProfileRequest): Promise<UserProfile> {
   const csrfToken = await getCsrfToken();
-  const res = await fetch(`${BASE_URL}/profile`, {
+  const res = await fetch(apiUrl(`${BASE_URL}/profile`), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',

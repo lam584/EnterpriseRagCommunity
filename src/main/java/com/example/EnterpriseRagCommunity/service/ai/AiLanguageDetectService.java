@@ -29,11 +29,7 @@ public class AiLanguageDetectService {
             throw new IllegalStateException("翻译功能已关闭");
         }
 
-        String normalizedContent = content == null ? "" : content.trim();
-        int maxChars = cfg.getMaxContentChars() == null ? SemanticTranslateConfigService.DEFAULT_MAX_CONTENT_CHARS : cfg.getMaxContentChars();
-        if (maxChars > 0 && normalizedContent.length() > maxChars) {
-            normalizedContent = normalizedContent.substring(0, maxChars);
-        }
+        String normalizedContent = normalizeContent(content, cfg);
 
         PromptsEntity prompt = promptsRepository.findByPromptCode(PROMPT_CODE)
                 .orElseThrow(() -> new IllegalStateException("Prompt code not found: " + PROMPT_CODE));
@@ -134,6 +130,17 @@ public class AiLanguageDetectService {
         t = t.replaceAll("\\s+", "");
         if (t.length() > 16) t = t.substring(0, 16);
         return t.trim();
+    }
+
+    private static String normalizeContent(String content, SemanticTranslateConfigEntity cfg) {
+        String normalizedContent = content == null ? "" : content.trim();
+        int maxChars = cfg.getMaxContentChars() == null
+                ? SemanticTranslateConfigService.DEFAULT_MAX_CONTENT_CHARS
+                : cfg.getMaxContentChars();
+        if (maxChars > 0 && normalizedContent.length() > maxChars) {
+            normalizedContent = normalizedContent.substring(0, maxChars);
+        }
+        return normalizedContent;
     }
 
     private static String renderPrompt(String template, String content) {

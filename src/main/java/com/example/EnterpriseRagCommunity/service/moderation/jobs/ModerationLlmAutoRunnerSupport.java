@@ -536,7 +536,7 @@ final class ModerationLlmAutoRunnerSupport {
             }
         }
 
-        int estimatedBatchesByCount = imageCount <= 0 ? 0 : (imageCount + maxImagesPerRequest - 1) / maxImagesPerRequest;
+        int estimatedBatchesByCount = imageCount == 0 ? 0 : (imageCount + maxImagesPerRequest - 1) / maxImagesPerRequest;
 
         diag.put("promptChars", promptChars);
         diag.put("imagesSent", imageCount);
@@ -736,12 +736,12 @@ final class ModerationLlmAutoRunnerSupport {
                 for (String p : ps) {
                     if (p == null || p.isBlank()) continue;
                     placeholders.add(p.trim());
-                    if (placeholders.size() >= 64) break;
+                    if (placeholders.size() == 64) break;
                 }
-                if (placeholders.size() >= 64) break;
+                if (placeholders.size() == 64) break;
             }
             if (chunkUsed) sourceChunkIndexes.add(idx);
-            if (sourceChunkIndexes.size() >= 12 || placeholders.size() >= 64) break;
+            if (sourceChunkIndexes.size() == 12 || placeholders.size() == 64) break;
         }
 
         if (placeholders.isEmpty()) {

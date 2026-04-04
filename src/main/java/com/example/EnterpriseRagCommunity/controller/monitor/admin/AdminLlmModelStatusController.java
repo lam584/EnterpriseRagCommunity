@@ -44,8 +44,8 @@ public class AdminLlmModelStatusController {
             @RequestParam(value = "windowSec", required = false) Integer windowSec,
             @RequestParam(value = "perModel", required = false) Integer perModel
     ) {
-        int win = windowSec == null ? 300 : Math.max(10, Math.min(3600, windowSec));
-        int per = perModel == null ? 10 : Math.max(1, Math.min(100, perModel));
+        int win = windowSec == null ? 300 : Math.clamp(windowSec, 10, 3600);
+        int per = perModel == null ? 10 : Math.clamp(perModel, 1, 100);
 
         LlmCallQueueService.QueueSnapshot snap = llmCallQueueService.snapshot(500, 0, 5000);
         Map<String, AdminLlmModelStatusItemDTO> byKey = new HashMap<>();
@@ -55,15 +55,7 @@ public class AdminLlmModelStatusController {
             String providerId = trim(t.getProviderId());
             String model = trim(t.getModel());
             if (providerId == null || model == null) continue;
-            String key = providerId + "|" + model;
-            AdminLlmModelStatusItemDTO item = byKey.computeIfAbsent(key, _k -> {
-                AdminLlmModelStatusItemDTO x = new AdminLlmModelStatusItemDTO();
-                x.setProviderId(providerId);
-                x.setModelName(model);
-                x.setRunningCount(0);
-                x.setRecords(new ArrayList<>());
-                return x;
-            });
+            AdminLlmModelStatusItemDTO item = ensureModelItem(byKey, providerId, model);
             Integer rc = item.getRunningCount();
             item.setRunningCount((rc == null ? 0 : rc) + 1);
         }
@@ -76,15 +68,7 @@ public class AdminLlmModelStatusController {
             String providerId = trim(t.getProviderId());
             String model = trim(t.getModel());
             if (providerId == null || model == null) continue;
-            String key = providerId + "|" + model;
-            AdminLlmModelStatusItemDTO item = byKey.computeIfAbsent(key, _k -> {
-                AdminLlmModelStatusItemDTO x = new AdminLlmModelStatusItemDTO();
-                x.setProviderId(providerId);
-                x.setModelName(model);
-                x.setRunningCount(0);
-                x.setRecords(new ArrayList<>());
-                return x;
-            });
+            AdminLlmModelStatusItemDTO item = ensureModelItem(byKey, providerId, model);
             List<AdminLlmModelCallRecordDTO> list = item.getRecords();
             if (list.size() >= per) continue;
             AdminLlmModelCallRecordDTO r = new AdminLlmModelCallRecordDTO();
@@ -116,6 +100,20 @@ public class AdminLlmModelStatusController {
         out.setPerModel(per);
         out.setModels(items);
         return out;
+    }
+
+    private static AdminLlmModelStatusItemDTO ensureModelItem(Map<String, AdminLlmModelStatusItemDTO> byKey,
+                                                             String providerId,
+                                                             String model) {
+        String key = providerId + "|" + model;
+        return byKey.computeIfAbsent(key, _k -> {
+            AdminLlmModelStatusItemDTO x = new AdminLlmModelStatusItemDTO();
+            x.setProviderId(providerId);
+            x.setModelName(model);
+            x.setRunningCount(0);
+            x.setRecords(new ArrayList<>());
+            return x;
+        });
     }
 
     private static String extractErrorCode(String message) {

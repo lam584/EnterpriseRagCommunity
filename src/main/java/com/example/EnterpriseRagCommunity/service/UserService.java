@@ -3,7 +3,7 @@ package com.example.EnterpriseRagCommunity.service;
 // 修改批次: 1 | 修改依据: src/main/java/com/example/EnterpriseRagCommunity/entity/access/UsersEntity.java, src/main/java/com/example/EnterpriseRagCommunity/repository/access/UsersRepository.java
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
@@ -15,10 +15,9 @@ import java.util.List;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class UserService {
-
-    @Autowired
-    private UsersRepository userRepository; // 对齐: Repository层已改为access包
+    private final UsersRepository userRepository; // 对齐: Repository层已改为access包
 
     public List<UsersEntity> findAll() { // 对齐: 返回类型改为UsersEntity
         return userRepository.findAll();

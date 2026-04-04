@@ -4,8 +4,19 @@ import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.dto.content.CommentDTO;
 import com.example.EnterpriseRagCommunity.entity.content.CommentsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
+import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
+import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.ai.AiLanguageDetectService;
+import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
+import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
+import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisibilitySyncService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.core.Authentication;
@@ -42,11 +53,28 @@ class CommentsServiceImplHelpersTest {
         return m;
     }
 
+    private static CommentsServiceImpl newService(CommentsRepository commentsRepository, AdministratorService administratorService) {
+        return new CommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                mock(PostsRepository.class),
+                mock(NotificationsService.class),
+                mock(AdminModerationQueueService.class),
+                mock(ModerationQueueRepository.class),
+                mock(ModerationAutoKickService.class),
+                mock(ModerationRuleAutoRunner.class),
+                mock(UsersRepository.class),
+                mock(ReactionsRepository.class),
+                mock(AiLanguageDetectService.class),
+                mock(AuditLogWriter.class),
+                mock(RagCommentIndexVisibilitySyncService.class)
+        );
+    }
+
     @Test
     void currentUserIdOrThrow_should_throw_for_null_auth_not_authenticated_anonymous() {
         AdministratorService administratorService = mock(AdministratorService.class);
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
+        CommentsServiceImpl svc = newService(mock(CommentsRepository.class), administratorService);
 
         SecurityContextHolder.clearContext();
         assertThrows(org.springframework.security.core.AuthenticationException.class,
@@ -64,8 +92,7 @@ class CommentsServiceImplHelpersTest {
     @Test
     void currentUserIdOrThrow_should_throw_when_user_missing_and_return_when_ok() {
         AdministratorService administratorService = mock(AdministratorService.class);
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
+        CommentsServiceImpl svc = newService(mock(CommentsRepository.class), administratorService);
 
         SecurityContextHolder.getContext().setAuthentication(auth(true, "p", "u@example.com"));
         when(administratorService.findByUsername(eq("u@example.com"))).thenReturn(Optional.empty());
@@ -81,8 +108,7 @@ class CommentsServiceImplHelpersTest {
     @Test
     void currentUserIdOrNull_should_return_null_for_anonymous_and_on_exception_and_when_user_missing() {
         AdministratorService administratorService = mock(AdministratorService.class);
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
+        CommentsServiceImpl svc = newService(mock(CommentsRepository.class), administratorService);
 
         SecurityContextHolder.clearContext();
         assertNull(ReflectionTestUtils.invokeMethod(svc, "currentUserIdOrNull"));
@@ -191,8 +217,7 @@ class CommentsServiceImplHelpersTest {
         CommentsRepository commentsRepository = mock(CommentsRepository.class);
         when(commentsRepository.countByPostIdAndStatusAndIsDeletedFalse(eq(9L), eq(CommentStatus.VISIBLE))).thenReturn(5L);
 
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
+        CommentsServiceImpl svc = newService(commentsRepository, mock(AdministratorService.class));
 
         assertEquals(0L, svc.countByPostId(null));
         assertEquals(5L, svc.countByPostId(9L));

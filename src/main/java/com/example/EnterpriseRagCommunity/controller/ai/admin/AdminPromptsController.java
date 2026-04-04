@@ -50,7 +50,7 @@ public class AdminPromptsController {
                     " or hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))"
     )
     public PromptContentDTO updateContent(
-            @PathVariable("promptCode") String promptCode,
+            @PathVariable String promptCode,
             @RequestBody PromptContentUpdateRequest req,
             Principal principal
     ) {

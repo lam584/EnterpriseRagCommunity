@@ -30,14 +30,14 @@ public class AdminAiProviderModelsController {
 
     @GetMapping("/{providerId}/models")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','read'))")
-    public AiProviderModelsDTO listModels(@PathVariable("providerId") String providerId) {
+    public AiProviderModelsDTO listModels(@PathVariable String providerId) {
         return aiProviderModelsAdminService.listProviderModels(providerId);
     }
 
     @PostMapping("/{providerId}/models")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public AiProviderModelsDTO addModel(
-            @PathVariable("providerId") String providerId,
+            @PathVariable String providerId,
             @RequestBody(required = false) AiProviderAddModelRequestDTO payload,
             Principal principal
     ) {
@@ -54,7 +54,7 @@ public class AdminAiProviderModelsController {
     @DeleteMapping("/{providerId}/models")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public AiProviderModelsDTO deleteModel(
-            @PathVariable("providerId") String providerId,
+            @PathVariable String providerId,
             @RequestParam("purpose") String purpose,
             @RequestParam("modelName") String modelName
     ) {
@@ -63,7 +63,7 @@ public class AdminAiProviderModelsController {
 
     @GetMapping("/{providerId}/upstream-models")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','read'))")
-    public Map<String, Object> upstreamModels(@PathVariable("providerId") String providerId) {
+    public Map<String, Object> upstreamModels(@PathVariable String providerId) {
         return aiProviderModelsAdminService.fetchUpstreamModels(providerId);
     }
 

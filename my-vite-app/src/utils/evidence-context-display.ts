@@ -38,7 +38,7 @@ function splitSentences(text: string): string[] {
 function countApproxTokens(text: string): number {
   const t = normalizeText(text);
   if (!t) return 0;
-  const matches = t.match(/[\p{Script=Han}]|[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/gu);
+  const matches = t.match(/\p{Script=Han}|[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/gu);
   return matches ? matches.length : t.length;
 }
 
@@ -47,7 +47,7 @@ function truncateSentenceByTokens(text: string, maxTokens: number): string {
   if (!t) return '';
   if (maxTokens <= 0) return '';
   if (countApproxTokens(t) <= maxTokens) return t;
-  const matches = Array.from(t.matchAll(/[\p{Script=Han}]|[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/gu));
+  const matches = Array.from(t.matchAll(/\p{Script=Han}|[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/gu));
   if (matches.length <= maxTokens) return t;
   const cutAt = matches[maxTokens]?.index ?? t.length;
   return `${t.slice(0, Math.max(0, cutAt)).trimEnd()}…`;

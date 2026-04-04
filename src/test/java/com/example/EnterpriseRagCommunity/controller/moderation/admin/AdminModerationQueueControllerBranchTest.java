@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 
@@ -100,9 +99,6 @@ class AdminModerationQueueControllerBranchTest {
     }
 
     private AdminModerationQueueController newController() {
-        AdminModerationQueueController controller = new AdminModerationQueueController();
-        ReflectionTestUtils.setField(controller, "adminModerationQueueService", queueService);
-        ReflectionTestUtils.setField(controller, "moderationChunkReviewService", chunkReviewService);
-        return controller;
+        return new AdminModerationQueueController(queueService, chunkReviewService);
     }
 }

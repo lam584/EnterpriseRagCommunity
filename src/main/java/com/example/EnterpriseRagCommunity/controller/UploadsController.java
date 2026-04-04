@@ -6,7 +6,7 @@ import com.example.EnterpriseRagCommunity.dto.monitor.ResumableUploadInitRespons
 import com.example.EnterpriseRagCommunity.dto.monitor.ResumableUploadStatusDTO;
 import com.example.EnterpriseRagCommunity.service.monitor.UploadService;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -16,10 +16,9 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/uploads")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class UploadsController {
-
-    @Autowired
-    private UploadService uploadService;
+    private final UploadService uploadService;
 
     @PostMapping
     public UploadResultDTO upload(@RequestParam("file") MultipartFile file) {
@@ -45,14 +44,16 @@ public class UploadsController {
     }
 
     @GetMapping("/resumable/{uploadId}")
-    public ResumableUploadStatusDTO getResumableStatus(@PathVariable("uploadId") String uploadId) {
+    public ResumableUploadStatusDTO getResumableStatus(@PathVariable String uploadId) {
         return uploadService.getResumableStatus(uploadId);
     }
 
     @PutMapping("/resumable/{uploadId}/chunk")
     public ResumableUploadStatusDTO uploadResumableChunk(
-            @PathVariable("uploadId") String uploadId,
+            @PathVariable String uploadId,
+            //noinspection UastIncorrectHttpHeaderInspection
             @RequestHeader("X-Upload-Offset") long offset,
+            //noinspection UastIncorrectHttpHeaderInspection
             @RequestHeader("X-Upload-Total") long total,
             HttpServletRequest request
     ) throws IOException {
@@ -60,12 +61,12 @@ public class UploadsController {
     }
 
     @PostMapping("/resumable/{uploadId}/complete")
-    public UploadResultDTO completeResumable(@PathVariable("uploadId") String uploadId) {
+    public UploadResultDTO completeResumable(@PathVariable String uploadId) {
         return uploadService.completeResumable(uploadId);
     }
 
     @DeleteMapping("/resumable/{uploadId}")
-    public void cancelResumable(@PathVariable("uploadId") String uploadId) {
+    public void cancelResumable(@PathVariable String uploadId) {
         uploadService.cancelResumable(uploadId);
     }
 }

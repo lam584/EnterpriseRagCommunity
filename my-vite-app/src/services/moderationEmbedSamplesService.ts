@@ -1,4 +1,6 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
 export type ModerationSample = {
   id: number;
@@ -61,11 +63,7 @@ export type ModerationSamplesReindexResponse = {
   orphanFailedIds?: number[];
 };
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
 function buildQuery(params: Record<string, unknown>): string {
   const sp = new URLSearchParams();
@@ -75,13 +73,6 @@ function buildQuery(params: Record<string, unknown>): string {
   }
   const qs = sp.toString();
   return qs ? `?${qs}` : '';
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -124,7 +115,7 @@ export async function listSamples(params: {
 }
 
 export async function createSample(payload: ModerationSampleCreateRequest): Promise<ModerationSample> {
-  return apiFetch<ModerationSample>(`api/admin/moderation/embed/samples`, {
+  return apiFetch<ModerationSample>(`/api/admin/moderation/embed/samples`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

@@ -1,4 +1,6 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 import type { SpringPage } from '../types/page';
 
 export type AuditLogAction =
@@ -60,11 +62,7 @@ export type AuditLogPageQuery = {
   sort?: string; // eg: createdAt,desc
 };
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
 function buildQuery(params: Record<string, unknown>): string {
   const sp = new URLSearchParams();
@@ -74,13 +72,6 @@ function buildQuery(params: Record<string, unknown>): string {
   }
   const qs = sp.toString();
   return qs ? `?${qs}` : '';
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
 }
 
 export async function adminListAuditLogs(query: AuditLogPageQuery = {}): Promise<SpringPage<AuditLogDTO>> {

@@ -3,7 +3,7 @@ package com.example.EnterpriseRagCommunity.controller.content.admin;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -14,10 +14,9 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/admin/posts")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class AdminPostsController {
-
-    @Autowired
-    private PostsService postsService;
+    private final PostsService postsService;
 
     /**
      * 管理端帖子查询：默认不过滤 status（即 ALL），用于查看 PENDING 等状态。

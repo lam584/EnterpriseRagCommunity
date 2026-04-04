@@ -360,19 +360,23 @@ public class AdminModerationChunkReviewLogsService {
             String mt = a.getFileAsset().getMimeType() == null ? "" : a.getFileAsset().getMimeType().trim().toLowerCase(Locale.ROOT);
             if (!mt.startsWith("image/")) continue;
             idx += 1;
-            AdminModerationChunkContentPreviewDTO.Image img = new AdminModerationChunkContentPreviewDTO.Image();
-            img.setIndex(idx);
-            img.setPlaceholder("[[IMAGE_" + idx + "]]");
-            img.setUrl(a.getFileAsset().getUrl());
-            img.setMimeType(a.getFileAsset().getMimeType());
-            img.setFileName(a.getFileAsset().getOriginalName());
-            img.setSizeBytes(a.getFileAsset().getSizeBytes());
-            img.setFileAssetId(a.getFileAssetId());
-            img.setWidth(a.getWidth());
-            img.setHeight(a.getHeight());
-            out.add(img);
+            out.add(toPostImageDto(a, idx));
         }
         return out;
+    }
+
+    private static AdminModerationChunkContentPreviewDTO.Image toPostImageDto(PostAttachmentsEntity a, int idx) {
+        AdminModerationChunkContentPreviewDTO.Image img = new AdminModerationChunkContentPreviewDTO.Image();
+        img.setIndex(idx);
+        img.setPlaceholder("[[IMAGE_" + idx + "]]");
+        img.setUrl(a.getFileAsset().getUrl());
+        img.setMimeType(a.getFileAsset().getMimeType());
+        img.setFileName(a.getFileAsset().getOriginalName());
+        img.setSizeBytes(a.getFileAsset().getSizeBytes());
+        img.setFileAssetId(a.getFileAssetId());
+        img.setWidth(a.getWidth());
+        img.setHeight(a.getHeight());
+        return img;
     }
 
     private static Map<String, Object> extractBudgetConvergenceLog(Map<String, Object> configJson) {

@@ -37,7 +37,7 @@ public class AdminDependencyCircuitBreakerController {
 
     @GetMapping("/{dependency}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_safety_circuit_breaker','read'))")
-    public DependencyCircuitBreakerConfigDTO get(@PathVariable("dependency") String dependency) {
+    public DependencyCircuitBreakerConfigDTO get(@PathVariable String dependency) {
         String dep = normalizeDep(dependency);
         DependencyCircuitBreakerConfigDTO out = new DependencyCircuitBreakerConfigDTO();
         out.setDependency(dep);
@@ -48,7 +48,7 @@ public class AdminDependencyCircuitBreakerController {
 
     @PutMapping("/{dependency}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_safety_circuit_breaker','write'))")
-    public DependencyCircuitBreakerConfigDTO update(@PathVariable("dependency") String dependency, @Valid @RequestBody DependencyCircuitBreakerUpdateRequest req, HttpServletRequest request) {
+    public DependencyCircuitBreakerConfigDTO update(@PathVariable String dependency, @Valid @RequestBody DependencyCircuitBreakerUpdateRequest req, HttpServletRequest request) {
         String dep = normalizeDep(dependency);
         DependencyCircuitBreakerConfigDTO cfg = req.getConfig();
         if (cfg == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "config 不能为空");
@@ -61,8 +61,8 @@ public class AdminDependencyCircuitBreakerController {
 
         Integer ft0 = cfg.getFailureThreshold();
         Integer cd0 = cfg.getCooldownSeconds();
-        int ft = ft0 == null ? 5 : Math.max(0, Math.min(1000, ft0));
-        int cd = cd0 == null ? 30 : Math.max(0, Math.min(3600, cd0));
+        int ft = ft0 == null ? 5 : Math.clamp(ft0, 0, 1000);
+        int cd = cd0 == null ? 30 : Math.clamp(cd0, 0, 3600);
 
         appSettingsService.upsertString("deps." + dep + ".failureThreshold", String.valueOf(ft));
         appSettingsService.upsertString("deps." + dep + ".cooldownSeconds", String.valueOf(cd));

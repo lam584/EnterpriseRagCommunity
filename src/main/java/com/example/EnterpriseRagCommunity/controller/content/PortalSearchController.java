@@ -2,7 +2,7 @@ package com.example.EnterpriseRagCommunity.controller.content;
 
 import com.example.EnterpriseRagCommunity.dto.content.PortalSearchHitDTO;
 import com.example.EnterpriseRagCommunity.service.content.PortalSearchService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,10 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/portal/search")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class PortalSearchController {
-
-    @Autowired
-    private PortalSearchService portalSearchService;
+    private final PortalSearchService portalSearchService;
 
     @GetMapping
     public Page<PortalSearchHitDTO> search(@RequestParam(value = "q", required = false) String q,

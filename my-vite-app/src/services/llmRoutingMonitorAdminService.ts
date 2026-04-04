@@ -1,16 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
+const apiUrl = serviceApiUrl;
 
 function normTaskType(s: string | null | undefined): string {
   return String(s || '').trim().toUpperCase();
@@ -73,4 +64,3 @@ export function adminOpenLlmRoutingEventSource(params?: { taskType?: string | nu
   })();
   return es;
 }
-

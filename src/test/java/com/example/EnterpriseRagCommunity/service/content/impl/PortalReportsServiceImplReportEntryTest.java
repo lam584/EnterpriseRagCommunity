@@ -50,6 +50,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PortalReportsServiceImplReportEntryTest {
+    private static PortalReportsServiceImpl newService() {
+        return new PortalReportsServiceImpl(null, null, null, null, null, null, null, null, null, null, null, null, null);
+    }
+
 
     @AfterEach
     void cleanup() {
@@ -58,14 +62,14 @@ class PortalReportsServiceImplReportEntryTest {
 
     @Test
     void reportPost_postIdNull_throws() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         assertThrows(IllegalArgumentException.class, () -> svc.reportPost(null, "SPAM", "x"));
     }
 
     @Test
     void reportPost_postMissing_throws() {
         PostsRepository postsRepository = mock(PostsRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
 
         when(postsRepository.findById(9L)).thenReturn(Optional.empty());
@@ -75,7 +79,7 @@ class PortalReportsServiceImplReportEntryTest {
     @Test
     void reportPost_postDeleted_throws() {
         PostsRepository postsRepository = mock(PostsRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
 
         PostsEntity p = new PostsEntity();
@@ -89,7 +93,7 @@ class PortalReportsServiceImplReportEntryTest {
     @Test
     void reportPost_authMissing_throwsAuthenticationException() {
         PostsRepository postsRepository = mock(PostsRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
 
         PostsEntity p = new PostsEntity();
@@ -113,7 +117,7 @@ class PortalReportsServiceImplReportEntryTest {
         ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
         ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
         ReflectionTestUtils.setField(svc, "administratorService", administratorService);
@@ -188,7 +192,7 @@ class PortalReportsServiceImplReportEntryTest {
         ModerationConfidenceFallbackConfigRepository fallbackConfigRepository = mock(ModerationConfidenceFallbackConfigRepository.class);
         ModerationPolicyConfigRepository policyConfigRepository = mock(ModerationPolicyConfigRepository.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
         ReflectionTestUtils.setField(svc, "administratorService", administratorService);
@@ -246,14 +250,14 @@ class PortalReportsServiceImplReportEntryTest {
 
     @Test
     void reportProfile_userIdNull_throws() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         assertThrows(IllegalArgumentException.class, () -> svc.reportProfile(null, "SPAM", "x"));
     }
 
     @Test
     void reportProfile_userMissing_throws() {
         UsersRepository usersRepository = mock(UsersRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
 
         when(usersRepository.findById(9L)).thenReturn(Optional.empty());
@@ -263,7 +267,7 @@ class PortalReportsServiceImplReportEntryTest {
     @Test
     void reportProfile_userDeleted_throws() {
         UsersRepository usersRepository = mock(UsersRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
 
         UsersEntity u = new UsersEntity();
@@ -284,7 +288,7 @@ class PortalReportsServiceImplReportEntryTest {
         ModerationConfidenceFallbackConfigRepository fallbackConfigRepository = mock(ModerationConfidenceFallbackConfigRepository.class);
         ModerationPolicyConfigRepository policyConfigRepository = mock(ModerationPolicyConfigRepository.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
         ReflectionTestUtils.setField(svc, "administratorService", administratorService);
@@ -367,7 +371,7 @@ class PortalReportsServiceImplReportEntryTest {
         ModerationConfidenceFallbackConfigRepository fallbackConfigRepository = mock(ModerationConfidenceFallbackConfigRepository.class);
         ModerationPolicyConfigRepository policyConfigRepository = mock(ModerationPolicyConfigRepository.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
         ReflectionTestUtils.setField(svc, "administratorService", administratorService);
@@ -426,3 +430,4 @@ class PortalReportsServiceImplReportEntryTest {
         verify(moderationQueueRepository, never()).save(any());
     }
 }
+

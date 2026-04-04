@@ -21,10 +21,28 @@ import static org.mockito.Mockito.when;
 
 class PortalReportsServiceImplSealRunningPipelineRunTest {
 
+    private static PortalReportsServiceImpl newService() {
+        return new PortalReportsServiceImpl(
+                mock(com.example.EnterpriseRagCommunity.repository.content.ReportsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.PostsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.CommentsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.AdministratorService.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.UsersRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationActionsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipelineRunRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationConfidenceFallbackConfigRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.moderation.ModerationPolicyConfigRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner.class)
+        );
+    }
+
     @Test
     void sealRunningPipelineRun_queueIdNull_returnsEarly() {
         ModerationPipelineRunRepository repo = mock(ModerationPipelineRunRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationPipelineRunRepository", repo);
 
         ReflectionTestUtils.invokeMethod(svc, "sealRunningPipelineRun", new Object[]{null});
@@ -36,7 +54,7 @@ class PortalReportsServiceImplSealRunningPipelineRunTest {
         ModerationPipelineRunRepository repo = mock(ModerationPipelineRunRepository.class);
         when(repo.findFirstByQueueIdOrderByCreatedAtDesc(1L)).thenThrow(new RuntimeException("boom"));
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationPipelineRunRepository", repo);
 
         ReflectionTestUtils.invokeMethod(svc, "sealRunningPipelineRun", 1L);
@@ -48,7 +66,7 @@ class PortalReportsServiceImplSealRunningPipelineRunTest {
         ModerationPipelineRunRepository repo = mock(ModerationPipelineRunRepository.class);
         when(repo.findFirstByQueueIdOrderByCreatedAtDesc(1L)).thenReturn(Optional.empty());
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationPipelineRunRepository", repo);
 
         ReflectionTestUtils.invokeMethod(svc, "sealRunningPipelineRun", 1L);
@@ -62,7 +80,7 @@ class PortalReportsServiceImplSealRunningPipelineRunTest {
         run.setStatus(ModerationPipelineRunEntity.RunStatus.SUCCESS);
         when(repo.findFirstByQueueIdOrderByCreatedAtDesc(1L)).thenReturn(Optional.of(run));
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationPipelineRunRepository", repo);
 
         ReflectionTestUtils.invokeMethod(svc, "sealRunningPipelineRun", 1L);
@@ -78,7 +96,7 @@ class PortalReportsServiceImplSealRunningPipelineRunTest {
         when(repo.findFirstByQueueIdOrderByCreatedAtDesc(1L)).thenReturn(Optional.of(run));
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationPipelineRunRepository", repo);
 
         ReflectionTestUtils.invokeMethod(svc, "sealRunningPipelineRun", 1L);
@@ -103,7 +121,7 @@ class PortalReportsServiceImplSealRunningPipelineRunTest {
         when(repo.findFirstByQueueIdOrderByCreatedAtDesc(1L)).thenReturn(Optional.of(run));
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationPipelineRunRepository", repo);
 
         ReflectionTestUtils.invokeMethod(svc, "sealRunningPipelineRun", 1L);
@@ -120,10 +138,9 @@ class PortalReportsServiceImplSealRunningPipelineRunTest {
         when(repo.findFirstByQueueIdOrderByCreatedAtDesc(1L)).thenReturn(Optional.of(run));
         when(repo.save(any())).thenThrow(new RuntimeException("boom"));
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationPipelineRunRepository", repo);
 
         ReflectionTestUtils.invokeMethod(svc, "sealRunningPipelineRun", 1L);
     }
 }
-

@@ -30,10 +30,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PortalReportsServiceImplSnapshotAndHelpersTest {
+    private static PortalReportsServiceImpl newService() {
+        return new PortalReportsServiceImpl(null, null, null, null, null, null, null, null, null, null, null, null, null);
+    }
+
 
     @Test
     void snapshotProfileFields_userNull_returnsEmpty() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         Map<String, Object> out = ReflectionTestUtils.invokeMethod(svc, "snapshotProfileFields", new Object[]{null});
         assertNotNull(out);
         assertTrue(out.isEmpty());
@@ -41,7 +45,7 @@ class PortalReportsServiceImplSnapshotAndHelpersTest {
 
     @Test
     void snapshotProfileFields_metadataNull_returnsUserBasicsOnly() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         UsersEntity u = new UsersEntity();
         u.setId(1L);
         u.setUsername("alice");
@@ -56,7 +60,7 @@ class PortalReportsServiceImplSnapshotAndHelpersTest {
 
     @Test
     void snapshotProfileFields_profileNotMap_ignoresProfile() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         UsersEntity u = new UsersEntity();
         u.setId(1L);
         u.setUsername("alice");
@@ -71,7 +75,7 @@ class PortalReportsServiceImplSnapshotAndHelpersTest {
 
     @Test
     void snapshotProfileFields_includesOnlyNonNullProfileFields() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         UsersEntity u = new UsersEntity();
         u.setId(1L);
         u.setUsername("alice");
@@ -95,7 +99,7 @@ class PortalReportsServiceImplSnapshotAndHelpersTest {
     @Test
     void tryWriteReportSnapshot_returnsEarlyWhenIdsMissing() {
         ModerationActionsRepository moderationActionsRepository = mock(ModerationActionsRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationActionsRepository", moderationActionsRepository);
 
         ReflectionTestUtils.invokeMethod(svc, "tryWriteReportSnapshot", new Object[]{null, null, null});
@@ -114,7 +118,7 @@ class PortalReportsServiceImplSnapshotAndHelpersTest {
     @Test
     void tryWriteReportSnapshot_writesSnapshotAndOmitsTargetSnapshotWhenNull() {
         ModerationActionsRepository moderationActionsRepository = mock(ModerationActionsRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationActionsRepository", moderationActionsRepository);
 
         ModerationQueueEntity q = new ModerationQueueEntity();
@@ -145,7 +149,7 @@ class PortalReportsServiceImplSnapshotAndHelpersTest {
     @Test
     void tryWriteReportSnapshot_writesSnapshotAndOmitsTargetSnapshotWhenEmpty() {
         ModerationActionsRepository moderationActionsRepository = mock(ModerationActionsRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationActionsRepository", moderationActionsRepository);
 
         ModerationQueueEntity q = new ModerationQueueEntity();
@@ -168,7 +172,7 @@ class PortalReportsServiceImplSnapshotAndHelpersTest {
     @Test
     void tryWriteReportSnapshot_targetTypeNullAndCreatedAtNull_areAllowed() {
         ModerationActionsRepository moderationActionsRepository = mock(ModerationActionsRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationActionsRepository", moderationActionsRepository);
 
         ModerationQueueEntity q = new ModerationQueueEntity();
@@ -194,7 +198,7 @@ class PortalReportsServiceImplSnapshotAndHelpersTest {
     @Test
     void tryWriteReportSnapshot_saveThrows_isSwallowed() {
         ModerationActionsRepository moderationActionsRepository = mock(ModerationActionsRepository.class);
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "moderationActionsRepository", moderationActionsRepository);
 
         ModerationQueueEntity q = new ModerationQueueEntity();
@@ -254,3 +258,4 @@ class PortalReportsServiceImplSnapshotAndHelpersTest {
         assertEquals(3, m1.get("2"));
     }
 }
+

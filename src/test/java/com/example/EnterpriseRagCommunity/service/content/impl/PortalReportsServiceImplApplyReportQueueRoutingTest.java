@@ -40,23 +40,27 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PortalReportsServiceImplApplyReportQueueRoutingTest {
+    private static PortalReportsServiceImpl newService() {
+        return new PortalReportsServiceImpl(null, null, null, null, null, null, null, null, null, null, null, null, null);
+    }
+
 
     @Test
     void applyReportQueueRouting_repNull_throws() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         assertThrows(IllegalStateException.class, () -> ReflectionTestUtils.invokeMethod(svc, "applyReportQueueRouting", null, new ModerationQueueEntity()));
     }
 
     @Test
     void applyReportQueueRouting_repIdNull_throws() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReportsEntity rep = new ReportsEntity();
         assertThrows(IllegalStateException.class, () -> ReflectionTestUtils.invokeMethod(svc, "applyReportQueueRouting", rep, new ModerationQueueEntity()));
     }
 
     @Test
     void applyReportQueueRouting_queueNull_throws() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReportsEntity rep = new ReportsEntity();
         rep.setId(1L);
         assertThrows(IllegalStateException.class, () -> ReflectionTestUtils.invokeMethod(svc, "applyReportQueueRouting", rep, null));
@@ -64,7 +68,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
 
     @Test
     void applyReportQueueRouting_queueIdNull_throws() {
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReportsEntity rep = new ReportsEntity();
         rep.setId(1L);
         ModerationQueueEntity q = new ModerationQueueEntity();
@@ -83,7 +87,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
         ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -167,7 +171,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
         ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -247,7 +251,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
         ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -319,7 +323,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
         ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -371,7 +375,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         ModerationPolicyConfigRepository policyConfigRepository = mock(ModerationPolicyConfigRepository.class);
         ModerationPipelineRunRepository moderationPipelineRunRepository = mock(ModerationPipelineRunRepository.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -419,7 +423,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         ModerationPolicyConfigRepository policyConfigRepository = mock(ModerationPolicyConfigRepository.class);
         ModerationPipelineRunRepository moderationPipelineRunRepository = mock(ModerationPipelineRunRepository.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -462,7 +466,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         ModerationPolicyConfigRepository policyConfigRepository = mock(ModerationPolicyConfigRepository.class);
         ModerationPipelineRunRepository moderationPipelineRunRepository = mock(ModerationPipelineRunRepository.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -514,7 +518,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         ModerationVecAutoRunner moderationVecAutoRunner = mock(ModerationVecAutoRunner.class);
         ModerationLlmAutoRunner moderationLlmAutoRunner = mock(ModerationLlmAutoRunner.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -575,7 +579,7 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         ModerationPolicyConfigRepository policyConfigRepository = mock(ModerationPolicyConfigRepository.class);
         ModerationPipelineRunRepository moderationPipelineRunRepository = mock(ModerationPipelineRunRepository.class);
 
-        PortalReportsServiceImpl svc = new PortalReportsServiceImpl();
+        PortalReportsServiceImpl svc = newService();
         ReflectionTestUtils.setField(svc, "reportsRepository", reportsRepository);
         ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
         ReflectionTestUtils.setField(svc, "fallbackConfigRepository", fallbackConfigRepository);
@@ -607,3 +611,4 @@ class PortalReportsServiceImplApplyReportQueueRoutingTest {
         assertThrows(IllegalStateException.class, () -> ReflectionTestUtils.invokeMethod(svc, "applyReportQueueRouting", rep, q));
     }
 }
+

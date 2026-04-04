@@ -9,7 +9,6 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.Optional;
 
@@ -25,10 +24,9 @@ class AuthControllerCurrentAdminUnitTest {
     }
 
     @Test
-    void getCurrentAdmin_shouldReturn401_whenAuthNull() throws Exception {
+    void getCurrentAdmin_shouldReturn401_whenAuthNull() {
         AdministratorService administratorService = mock(AdministratorService.class);
-        AuthController c = new AuthController();
-        setField(c, "administratorService", administratorService);
+        AuthController c = newController(administratorService);
 
         SecurityContextHolder.clearContext();
 
@@ -40,10 +38,9 @@ class AuthControllerCurrentAdminUnitTest {
     }
 
     @Test
-    void getCurrentAdmin_shouldReturn401_whenNotAuthenticated() throws Exception {
+    void getCurrentAdmin_shouldReturn401_whenNotAuthenticated() {
         AdministratorService administratorService = mock(AdministratorService.class);
-        AuthController c = new AuthController();
-        setField(c, "administratorService", administratorService);
+        AuthController c = newController(administratorService);
 
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("u@example.invalid", "p"));
 
@@ -54,10 +51,9 @@ class AuthControllerCurrentAdminUnitTest {
     }
 
     @Test
-    void getCurrentAdmin_shouldReturn401_whenAnonymousUser() throws Exception {
+    void getCurrentAdmin_shouldReturn401_whenAnonymousUser() {
         AdministratorService administratorService = mock(AdministratorService.class);
-        AuthController c = new AuthController();
-        setField(c, "administratorService", administratorService);
+        AuthController c = newController(administratorService);
 
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("anonymousUser", "p", java.util.List.of()));
 
@@ -68,12 +64,11 @@ class AuthControllerCurrentAdminUnitTest {
     }
 
     @Test
-    void getCurrentAdmin_shouldReturn404_whenUserNotFound() throws Exception {
+    void getCurrentAdmin_shouldReturn404_whenUserNotFound() {
         AdministratorService administratorService = mock(AdministratorService.class);
         when(administratorService.findByUsername("u@example.invalid")).thenReturn(Optional.empty());
 
-        AuthController c = new AuthController();
-        setField(c, "administratorService", administratorService);
+        AuthController c = newController(administratorService);
 
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("u@example.invalid", "p", java.util.List.of()));
 
@@ -83,10 +78,28 @@ class AuthControllerCurrentAdminUnitTest {
         assertThat(((Map<?, ?>) r.getBody()).get("message")).isEqualTo("无法获取管理员信息");
     }
 
-    private static void setField(Object target, String name, Object value) throws Exception {
-        Field f = AuthController.class.getDeclaredField(name);
-        f.setAccessible(true);
-        f.set(target, value);
+    private static AuthController newController(AdministratorService administratorService) {
+        return new AuthController(
+                administratorService,
+                mock(org.springframework.security.authentication.AuthenticationManager.class),
+                mock(org.springframework.security.crypto.password.PasswordEncoder.class),
+                mock(com.example.EnterpriseRagCommunity.config.AdminSetupManager.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.TenantsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.UserRoleLinksRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.PermissionsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.RolePermissionsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.RolesRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.BoardsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.BoardModeratorsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService.class),
+                mock(com.example.EnterpriseRagCommunity.service.init.TotpMasterKeyBootstrapService.class),
+                mock(com.example.EnterpriseRagCommunity.service.access.EmailVerificationService.class),
+                mock(com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer.class),
+                mock(com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService.class),
+                mock(com.example.EnterpriseRagCommunity.service.AccountTotpService.class),
+                mock(org.springframework.security.core.userdetails.UserDetailsService.class),
+                mock(com.example.EnterpriseRagCommunity.service.access.AuditLogWriter.class)
+        );
     }
 }
-

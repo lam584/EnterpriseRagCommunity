@@ -309,7 +309,7 @@ public class FileAssetExtractionAsyncService {
                     continue;
                 }
                 int remaining = Math.max(0, maxChars - out.length());
-                if (remaining <= 0) {
+                if (remaining == 0) {
                     c.truncatedReason = c.truncatedReason == null ? "TEXT_CHAR_LIMIT" : c.truncatedReason;
                     break;
                 }
@@ -1508,11 +1508,7 @@ public class FileAssetExtractionAsyncService {
         if (e.isBlank()) return List.of();
         if (isImageExt(e)) return List.of();
         switch (e) {
-            case "txt", "md", "markdown", "html", "htm" -> {
-                meta.put("imagesExtractionMode", "NONE");
-                return List.of();
-            }
-            case "csv", "json" -> {
+            case "txt", "md", "markdown", "html", "htm", "csv", "json" -> {
                 meta.put("imagesExtractionMode", "NONE");
                 return List.of();
             }

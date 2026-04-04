@@ -37,14 +37,14 @@ public class AdminAiProvidersController {
         String username = principal == null ? null : principal.getName();
         Long userId = null;
         if (username != null) {
-            userId = administratorService.findByUsername(username).map(u -> u.getId()).orElse(null);
+            userId = administratorService.findByUsername(username).map(com.example.EnterpriseRagCommunity.entity.access.UsersEntity::getId).orElse(null);
         }
         int maxAttempts = 3;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 return aiProvidersConfigService.updateAdminConfig(payload, userId);
             } catch (ObjectOptimisticLockingFailureException | DataIntegrityViolationException e) {
-                if (attempt >= maxAttempts) throw e;
+                if (attempt == maxAttempts) throw e;
                 try {
                     Thread.sleep(25L * attempt);
                 } catch (InterruptedException ie) {

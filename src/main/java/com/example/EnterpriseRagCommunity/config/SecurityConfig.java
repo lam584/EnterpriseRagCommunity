@@ -7,7 +7,7 @@ import java.util.Optional; // 新增导入
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -42,9 +42,11 @@ import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
 import com.example.EnterpriseRagCommunity.service.safety.ContentSafetyCircuitBreakerService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
     private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
 
@@ -55,34 +57,31 @@ public class SecurityConfig {
     private String corsAllowedOriginPatterns;
 
     // 改为注入Service
-    @Autowired
-    private AdministratorService administratorService;
+    private final AdministratorService administratorService;
 
-    @Autowired
-    private AccessControlService accessControlService;
+    private final AccessControlService accessControlService;
 
-    @Autowired(required = false)
-    private AccessChangedFilter accessChangedFilter;
+    private final ObjectProvider<AccessChangedFilter> accessChangedFilterProvider;
 
-    @Autowired(required = false)
-    private AccessLogsFilter accessLogsFilter;
+    private final ObjectProvider<AccessLogsFilter> accessLogsFilterProvider;
 
-    @Autowired(required = false)
-    private ThreatPathBlockFilter threatPathBlockFilter;
+    private final ObjectProvider<ThreatPathBlockFilter> threatPathBlockFilterProvider;
 
-    @Autowired(required = false)
-    private IpPathRateLimitFilter ipPathRateLimitFilter;
+    private final ObjectProvider<IpPathRateLimitFilter> ipPathRateLimitFilterProvider;
 
-    @Autowired
-    private ContentSafetyCircuitBreakerService contentSafetyCircuitBreakerService;
+    private final ContentSafetyCircuitBreakerService contentSafetyCircuitBreakerService;
 
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
 
     @Bean
     @Order(1) // API 链优先级更高，只拦截 /api/**
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         logger.debug("配置统一的安全过滤链...");
+
+        AccessChangedFilter accessChangedFilter = accessChangedFilterProvider.getIfAvailable();
+        AccessLogsFilter accessLogsFilter = accessLogsFilterProvider.getIfAvailable();
+        ThreatPathBlockFilter threatPathBlockFilter = threatPathBlockFilterProvider.getIfAvailable();
+        IpPathRateLimitFilter ipPathRateLimitFilter = ipPathRateLimitFilterProvider.getIfAvailable();
 
         http.securityMatcher("/api/**"); // 仅匹配 API 请求，避免与 Web 链重叠
 
@@ -232,6 +231,7 @@ public class SecurityConfig {
     public SecurityFilterChain webSecurityFilterChain(HttpSecurity http) throws Exception {
         logger.debug("配置 Web 安全过滤链开始...");
         http.securityMatcher("/**");
+        ThreatPathBlockFilter threatPathBlockFilter = threatPathBlockFilterProvider.getIfAvailable();
         if (threatPathBlockFilter != null) {
             http.addFilterBefore(threatPathBlockFilter, SecurityContextHolderFilter.class);
             http.addFilterAfter(contentSafetyCircuitBreakerFilter(), SecurityContextHolderFilter.class);

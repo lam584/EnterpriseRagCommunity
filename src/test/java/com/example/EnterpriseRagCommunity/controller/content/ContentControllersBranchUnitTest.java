@@ -29,7 +29,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
 
@@ -64,11 +63,7 @@ class ContentControllersBranchUnitTest {
 
     @Test
     void commentInteractions_shouldCoverLikeUnlikeAndExceptionBranches() {
-        CommentInteractionsController c = new CommentInteractionsController();
-        setField(c, "reactionsRepository", reactionsRepository);
-        setField(c, "administratorService", administratorService);
-        setField(c, "auditLogWriter", auditLogWriter);
-        setField(c, "commentsService", commentsService);
+        CommentInteractionsController c = new CommentInteractionsController(reactionsRepository, administratorService, auditLogWriter, commentsService);
 
         assertThrows(IllegalArgumentException.class, () -> c.toggleLike(null));
 
@@ -117,10 +112,7 @@ class ContentControllersBranchUnitTest {
 
     @Test
     void postsController_shouldCoverStatusAndMineBranches() {
-        PostsController c = new PostsController();
-        setField(c, "postsService", postsService);
-        setField(c, "portalPostsService", portalPostsService);
-        setField(c, "administratorService", administratorService);
+        PostsController c = new PostsController(postsService, portalPostsService, administratorService);
 
         when(portalPostsService.query(any(), any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
@@ -164,8 +156,7 @@ class ContentControllersBranchUnitTest {
 
     @Test
     void hotScoresController_shouldCoverParseWindowBranches() {
-        HotScoresController c = new HotScoresController();
-        setField(c, "hotScoresService", hotScoresService);
+        HotScoresController c = new HotScoresController(hotScoresService);
         when(hotScoresService.listHot(any(), anyInt(), anyInt())).thenReturn(new PageImpl<HotPostDTO>(List.of(), PageRequest.of(0, 20), 0));
 
         c.listHot(null, 1, 20);
@@ -179,8 +170,7 @@ class ContentControllersBranchUnitTest {
 
     @Test
     void portalSearchController_shouldCoverQFallbackBranch() {
-        PortalSearchController c = new PortalSearchController();
-        setField(c, "portalSearchService", portalSearchService);
+        PortalSearchController c = new PortalSearchController(portalSearchService);
         when(portalSearchService.search(any(), any(), anyInt(), anyInt())).thenReturn(new PageImpl<>(List.<com.example.EnterpriseRagCommunity.dto.content.PortalSearchHitDTO>of(), PageRequest.of(0, 20), 0));
 
         c.search("query", "keyword", 1L, 1, 20);
@@ -194,13 +184,4 @@ class ContentControllersBranchUnitTest {
         verify(portalSearchService).search(isNull(), eq(4L), eq(1), eq(20));
     }
 
-    private static void setField(Object target, String fieldName, Object value) {
-        try {
-            Field field = target.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            field.set(target, value);
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
 }

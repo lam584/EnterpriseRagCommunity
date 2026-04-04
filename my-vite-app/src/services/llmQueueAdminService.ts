@@ -1,4 +1,6 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
 export type LlmQueueTaskStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
 
@@ -93,11 +95,7 @@ export type LlmQueueTaskDetailDTO = {
   output?: string | null;
 };
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
 function buildQuery(params: Record<string, unknown>): string {
   const sp = new URLSearchParams();
@@ -107,13 +105,6 @@ function buildQuery(params: Record<string, unknown>): string {
   }
   const qs = sp.toString();
   return qs ? `?${qs}` : '';
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
 }
 
 function createFetchSignal(args: { signal?: AbortSignal; timeoutMs?: number }): { signal?: AbortSignal; cleanup: () => void } {

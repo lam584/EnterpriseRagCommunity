@@ -445,13 +445,9 @@ final class LlmGatewaySupport {
         if (trimmed.isEmpty()) return s;
         String lower = trimmed.toLowerCase(Locale.ROOT);
         switch (lower) {
-            case "reasoning_content" -> {
-                return "";
-            }
-            case "<reasoning_content>", "</reasoning_content>" -> {
-                return "";
-            }
-            case "&lt;reasoning_content&gt;", "&lt;/reasoning_content&gt;" -> {
+            case "reasoning_content",
+                 "<reasoning_content>", "</reasoning_content>",
+                 "&lt;reasoning_content&gt;", "&lt;/reasoning_content&gt;" -> {
                 return "";
             }
         }

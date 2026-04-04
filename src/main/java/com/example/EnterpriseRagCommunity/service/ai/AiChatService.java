@@ -340,6 +340,7 @@ public class AiChatService {
         response.setCharacterEncoding("UTF-8");
         response.setContentType("text/event-stream;charset=UTF-8");
         response.setHeader("Cache-Control", "no-cache, no-transform");
+        //noinspection UastIncorrectHttpHeaderInspection
         response.setHeader("X-Accel-Buffering", "no");
 
         PrintWriter out = response.getWriter();
@@ -1942,6 +1943,7 @@ public class AiChatService {
         response.setCharacterEncoding("UTF-8");
         response.setContentType("text/event-stream;charset=UTF-8");
         response.setHeader("Cache-Control", "no-cache, no-transform");
+        //noinspection UastIncorrectHttpHeaderInspection
         response.setHeader("X-Accel-Buffering", "no");
 
         PrintWriter out = response.getWriter();

@@ -5,11 +5,14 @@ import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
 import com.example.EnterpriseRagCommunity.security.AccessChangedFilter;
 import com.example.EnterpriseRagCommunity.security.AccessLogsFilter;
 import com.example.EnterpriseRagCommunity.security.ContentSafetyCircuitBreakerFilter;
+import com.example.EnterpriseRagCommunity.security.IpPathRateLimitFilter;
+import com.example.EnterpriseRagCommunity.security.ThreatPathBlockFilter;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
 import com.example.EnterpriseRagCommunity.service.safety.ContentSafetyCircuitBreakerService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -41,6 +44,48 @@ import static org.mockito.Mockito.when;
 
 class SecurityConfigTest {
 
+    private SecurityConfig newConfig() {
+        return newConfig(
+                mock(AdministratorService.class),
+                mock(AccessControlService.class),
+                null,
+                null,
+                null,
+                null,
+                mock(ContentSafetyCircuitBreakerService.class),
+                mock(ObjectMapper.class)
+        );
+    }
+
+    private SecurityConfig newConfig(
+            AdministratorService administratorService,
+            AccessControlService accessControlService,
+            AccessChangedFilter accessChangedFilter,
+            AccessLogsFilter accessLogsFilter,
+            ThreatPathBlockFilter threatPathBlockFilter,
+            IpPathRateLimitFilter ipPathRateLimitFilter,
+            ContentSafetyCircuitBreakerService contentSafetyCircuitBreakerService,
+            ObjectMapper objectMapper
+    ) {
+        return new SecurityConfig(
+                administratorService,
+                accessControlService,
+                provider(accessChangedFilter),
+                provider(accessLogsFilter),
+                provider(threatPathBlockFilter),
+                provider(ipPathRateLimitFilter),
+                contentSafetyCircuitBreakerService,
+                objectMapper
+        );
+    }
+
+    private <T> ObjectProvider<T> provider(T value) {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<T> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(value);
+        return provider;
+    }
+
     @Test
     void parseCorsList_should_return_empty_for_blank() {
         @SuppressWarnings("unchecked")
@@ -58,7 +103,7 @@ class SecurityConfigTest {
 
     @Test
     void corsConfigurationSource_should_choose_patterns_over_origins() {
-        SecurityConfig cfg = new SecurityConfig();
+        SecurityConfig cfg = newConfig();
         ReflectionTestUtils.setField(cfg, "corsAllowedOriginPatterns", "https://*.example.com");
         ReflectionTestUtils.setField(cfg, "corsAllowedOrigins", "http://should-not-win.com");
 
@@ -70,7 +115,7 @@ class SecurityConfigTest {
 
     @Test
     void corsConfigurationSource_should_choose_origins_when_patterns_empty() {
-        SecurityConfig cfg = new SecurityConfig();
+        SecurityConfig cfg = newConfig();
         ReflectionTestUtils.setField(cfg, "corsAllowedOriginPatterns", "   ");
         ReflectionTestUtils.setField(cfg, "corsAllowedOrigins", "http://a.com http://b.com");
 
@@ -82,7 +127,7 @@ class SecurityConfigTest {
 
     @Test
     void corsConfigurationSource_should_fallback_to_default_localhost_origins() {
-        SecurityConfig cfg = new SecurityConfig();
+        SecurityConfig cfg = newConfig();
         ReflectionTestUtils.setField(cfg, "corsAllowedOriginPatterns", "");
         ReflectionTestUtils.setField(cfg, "corsAllowedOrigins", "");
 
@@ -94,11 +139,18 @@ class SecurityConfigTest {
 
     @Test
     void userDetailsService_should_throw_when_user_missing() {
-        SecurityConfig cfg = new SecurityConfig();
         AdministratorService administratorService = mock(AdministratorService.class);
         AccessControlService accessControlService = mock(AccessControlService.class);
-        ReflectionTestUtils.setField(cfg, "administratorService", administratorService);
-        ReflectionTestUtils.setField(cfg, "accessControlService", accessControlService);
+        SecurityConfig cfg = newConfig(
+                administratorService,
+                accessControlService,
+                null,
+                null,
+                null,
+                null,
+                mock(ContentSafetyCircuitBreakerService.class),
+                mock(ObjectMapper.class)
+        );
 
         when(administratorService.findByUsername(eq("u@example.com"))).thenReturn(Optional.empty());
 
@@ -108,11 +160,18 @@ class SecurityConfigTest {
 
     @Test
     void userDetailsService_should_throw_when_user_not_active() {
-        SecurityConfig cfg = new SecurityConfig();
         AdministratorService administratorService = mock(AdministratorService.class);
         AccessControlService accessControlService = mock(AccessControlService.class);
-        ReflectionTestUtils.setField(cfg, "administratorService", administratorService);
-        ReflectionTestUtils.setField(cfg, "accessControlService", accessControlService);
+        SecurityConfig cfg = newConfig(
+                administratorService,
+                accessControlService,
+                null,
+                null,
+                null,
+                null,
+                mock(ContentSafetyCircuitBreakerService.class),
+                mock(ObjectMapper.class)
+        );
 
         UsersEntity u = new UsersEntity();
         u.setId(7L);
@@ -127,11 +186,18 @@ class SecurityConfigTest {
 
     @Test
     void userDetailsService_should_build_authorities_for_active_user() {
-        SecurityConfig cfg = new SecurityConfig();
         AdministratorService administratorService = mock(AdministratorService.class);
         AccessControlService accessControlService = mock(AccessControlService.class);
-        ReflectionTestUtils.setField(cfg, "administratorService", administratorService);
-        ReflectionTestUtils.setField(cfg, "accessControlService", accessControlService);
+        SecurityConfig cfg = newConfig(
+                administratorService,
+                accessControlService,
+                null,
+                null,
+                null,
+                null,
+                mock(ContentSafetyCircuitBreakerService.class),
+                mock(ObjectMapper.class)
+        );
 
         UsersEntity u = new UsersEntity();
         u.setId(7L);
@@ -150,11 +216,19 @@ class SecurityConfigTest {
 
     @Test
     void securityFilterChain_should_add_circuit_breaker_after_access_changed_when_no_access_logs_filter() throws Exception {
-        SecurityConfig cfg = new SecurityConfig();
-        ReflectionTestUtils.setField(cfg, "accessChangedFilter", mock(AccessChangedFilter.class));
-        ReflectionTestUtils.setField(cfg, "accessLogsFilter", null);
-        ReflectionTestUtils.setField(cfg, "contentSafetyCircuitBreakerService", mock(ContentSafetyCircuitBreakerService.class));
-        ReflectionTestUtils.setField(cfg, "objectMapper", mock(ObjectMapper.class));
+        AccessChangedFilter accessChangedFilter = mock(AccessChangedFilter.class);
+        ContentSafetyCircuitBreakerService contentSafetyCircuitBreakerService = mock(ContentSafetyCircuitBreakerService.class);
+        ObjectMapper objectMapper = mock(ObjectMapper.class);
+        SecurityConfig cfg = newConfig(
+                mock(AdministratorService.class),
+                mock(AccessControlService.class),
+                accessChangedFilter,
+                null,
+                null,
+                null,
+                contentSafetyCircuitBreakerService,
+                objectMapper
+        );
 
         HttpSecurity http = mock(HttpSecurity.class);
         when(http.securityMatcher(anyString())).thenReturn(http);
@@ -169,18 +243,27 @@ class SecurityConfigTest {
         SecurityFilterChain out = cfg.securityFilterChain(http);
         assertNotNull(out);
 
-        verify(http).addFilterAfter(any(AccessChangedFilter.class), eq(SecurityContextHolderFilter.class));
+        verify(http).addFilterAfter(eq(accessChangedFilter), eq(SecurityContextHolderFilter.class));
         verify(http).addFilterAfter(argThat(f -> f instanceof ContentSafetyCircuitBreakerFilter), eq(AccessChangedFilter.class));
         verifyNoMoreInteractions(chain);
     }
 
     @Test
     void securityFilterChain_should_add_circuit_breaker_after_access_logs_when_access_logs_filter_present() throws Exception {
-        SecurityConfig cfg = new SecurityConfig();
-        ReflectionTestUtils.setField(cfg, "accessChangedFilter", mock(AccessChangedFilter.class));
-        ReflectionTestUtils.setField(cfg, "accessLogsFilter", mock(AccessLogsFilter.class));
-        ReflectionTestUtils.setField(cfg, "contentSafetyCircuitBreakerService", mock(ContentSafetyCircuitBreakerService.class));
-        ReflectionTestUtils.setField(cfg, "objectMapper", mock(ObjectMapper.class));
+        AccessChangedFilter accessChangedFilter = mock(AccessChangedFilter.class);
+        AccessLogsFilter accessLogsFilter = mock(AccessLogsFilter.class);
+        ContentSafetyCircuitBreakerService contentSafetyCircuitBreakerService = mock(ContentSafetyCircuitBreakerService.class);
+        ObjectMapper objectMapper = mock(ObjectMapper.class);
+        SecurityConfig cfg = newConfig(
+                mock(AdministratorService.class),
+                mock(AccessControlService.class),
+                accessChangedFilter,
+                accessLogsFilter,
+                null,
+                null,
+                contentSafetyCircuitBreakerService,
+                objectMapper
+        );
 
         HttpSecurity http = mock(HttpSecurity.class);
         when(http.securityMatcher(anyString())).thenReturn(http);
@@ -195,8 +278,8 @@ class SecurityConfigTest {
         SecurityFilterChain out = cfg.securityFilterChain(http);
         assertNotNull(out);
 
-        verify(http).addFilterAfter(any(AccessChangedFilter.class), eq(SecurityContextHolderFilter.class));
-        verify(http).addFilterAfter(any(AccessLogsFilter.class), eq(AccessChangedFilter.class));
+        verify(http).addFilterAfter(eq(accessChangedFilter), eq(SecurityContextHolderFilter.class));
+        verify(http).addFilterAfter(eq(accessLogsFilter), eq(AccessChangedFilter.class));
         verify(http).addFilterAfter(argThat(f -> f instanceof ContentSafetyCircuitBreakerFilter), eq(AccessLogsFilter.class));
         verifyNoMoreInteractions(chain);
     }

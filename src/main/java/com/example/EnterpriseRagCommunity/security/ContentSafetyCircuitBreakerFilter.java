@@ -58,7 +58,7 @@ public class ContentSafetyCircuitBreakerFilter extends OncePerRequestFilter {
 
         String mode = cfg.getMode() == null ? ContentSafetyCircuitBreakerService.MODE_S1 : cfg.getMode();
         if (ContentSafetyCircuitBreakerService.MODE_S1.equalsIgnoreCase(mode)) {
-            if (!shouldBlockInS1(entrypoint, path, method)) {
+            if (shouldBlockInS1(entrypoint)) {
                 filterChain.doFilter(request, response);
                 return;
             }
@@ -79,7 +79,7 @@ public class ContentSafetyCircuitBreakerFilter extends OncePerRequestFilter {
         writeBlockedResponse(response, path, msg, mode);
     }
 
-    private static boolean shouldBlockInS1(String entrypoint, String path, String method) {
+    private static boolean shouldBlockInS1(String entrypoint) {
         if (entrypoint == null) return false;
         return Set.of(
                 "PORTAL_POST_LIST",
@@ -104,9 +104,7 @@ public class ContentSafetyCircuitBreakerFilter extends OncePerRequestFilter {
         if (path == null) return true;
         if (isStaticAssetPath(path)) return false;
         if (path.startsWith("/api/admin/safety/circuit-breaker")) return false;
-        if (path.startsWith("/api/public")) return false;
-        if (path.startsWith("/api/admin")) return true;
-        return true;
+        return !path.startsWith("/api/public");
     }
 
     private static String detectEntrypoint(String path, String method) {

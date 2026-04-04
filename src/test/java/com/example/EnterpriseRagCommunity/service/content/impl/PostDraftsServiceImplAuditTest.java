@@ -129,11 +129,7 @@ public class PostDraftsServiceImplAuditTest {
             return e;
         });
 
-        PostDraftsServiceImpl svc = new PostDraftsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postDraftsRepository", repo);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "auditDiffBuilder", auditDiffBuilder);
+        PostDraftsServiceImpl svc = newService(repo, administratorService, auditLogWriter, auditDiffBuilder);
 
         PostDraftsCreateDTO dto = new PostDraftsCreateDTO();
         dto.setTenantId(1L);
@@ -219,11 +215,7 @@ public class PostDraftsServiceImplAuditTest {
         when(repo.findByIdAndAuthorId(101L, 10L)).thenReturn(Optional.of(existing));
         when(repo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        PostDraftsServiceImpl svc = new PostDraftsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postDraftsRepository", repo);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "auditDiffBuilder", auditDiffBuilder);
+        PostDraftsServiceImpl svc = newService(repo, administratorService, auditLogWriter, auditDiffBuilder);
 
         PostDraftsUpdateDTO dto = new PostDraftsUpdateDTO();
         dto.setBoardId(3L);
@@ -410,11 +402,7 @@ public class PostDraftsServiceImplAuditTest {
         existing.setContent("c");
         when(repo.findByIdAndAuthorId(102L, 10L)).thenReturn(Optional.of(existing));
 
-        PostDraftsServiceImpl svc = new PostDraftsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postDraftsRepository", repo);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "auditDiffBuilder", auditDiffBuilder);
+        PostDraftsServiceImpl svc = newService(repo, administratorService, auditLogWriter, auditDiffBuilder);
 
         svc.deleteMine(102L);
 
@@ -432,11 +420,11 @@ public class PostDraftsServiceImplAuditTest {
     }
 
     private static PostDraftsServiceImpl newService(PostDraftsRepository repo, AdministratorService administratorService, AuditLogWriter auditLogWriter, AuditDiffBuilder auditDiffBuilder) {
-        PostDraftsServiceImpl svc = new PostDraftsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postDraftsRepository", repo);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "auditDiffBuilder", auditDiffBuilder);
-        return svc;
+        return new PostDraftsServiceImpl(
+                repo,
+                administratorService,
+                auditLogWriter,
+                auditDiffBuilder
+        );
     }
 }

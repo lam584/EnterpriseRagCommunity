@@ -13,29 +13,20 @@ import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.content.PostInteractionsService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class PostInteractionsServiceImpl implements PostInteractionsService {
-
-    @Autowired
-    private ReactionsRepository reactionsRepository;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private PostsRepository postsRepository;
-
-    @Autowired
-    private NotificationsService notificationsService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
+    private final ReactionsRepository reactionsRepository;
+    private final AdministratorService administratorService;
+    private final PostsRepository postsRepository;
+    private final NotificationsService notificationsService;
+    private final AuditLogWriter auditLogWriter;
 
     private Long currentUserIdOrThrow() {
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();

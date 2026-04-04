@@ -915,7 +915,7 @@ class AdminModerationLlmUpstreamSupport {
         if (out.description == null || out.description.isBlank()) {
             out.description = textOrNull(root.path("imageDescription"));
         }
-        out.description = trimToMaxChars(out.description, 400);
+        out.description = trimToMaxChars(out.description);
 
         if (out.decisionSuggestion == null || out.decisionSuggestion.isBlank()) {
             Boolean safe = booleanOrNull(root.path("safe"));
@@ -1004,13 +1004,13 @@ class AdminModerationLlmUpstreamSupport {
         Matcher m = p.matcher(text);
         if (!m.find()) return null;
         if (m.groupCount() >= 2) return m.group(2);
-        if (m.groupCount() >= 1) return m.group(1);
+        if (m.groupCount() == 1) return m.group(1);
         return null;
     }
 
-    private static String trimToMaxChars(String s, int maxChars) {
+    private static String trimToMaxChars(String s) {
         if (s == null) return null;
-        int limit = Math.max(0, maxChars);
+        int limit = Math.max(0, 400);
         String t = s.trim();
         if (t.length() <= limit) return t;
         return t.substring(0, limit);

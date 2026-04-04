@@ -43,20 +43,7 @@ public class AdminLlmRoutingMonitorController {
         List<AdminLlmRoutingDecisionEventDTO> items = new ArrayList<>(list.size());
         for (LlmRoutingTelemetryService.RoutingDecisionEvent e : list) {
             if (e == null) continue;
-            AdminLlmRoutingDecisionEventDTO x = new AdminLlmRoutingDecisionEventDTO();
-            x.setTsMs(e.tsMs());
-            x.setKind(e.kind());
-            x.setTaskType(e.taskType());
-            x.setAttempt(e.attempt());
-            x.setTaskId(e.taskId());
-            x.setProviderId(e.providerId());
-            x.setModelName(e.modelName());
-            x.setOk(e.ok());
-            x.setErrorCode(e.errorCode());
-            x.setErrorMessage(e.errorMessage());
-            x.setLatencyMs(e.latencyMs());
-            x.setApiSource(e.apiSource());
-            items.add(x);
+            items.add(toDecisionDto(e));
         }
 
         AdminLlmRoutingDecisionResponseDTO out = new AdminLlmRoutingDecisionResponseDTO();
@@ -76,19 +63,7 @@ public class AdminLlmRoutingMonitorController {
         Runnable unsubscribe = llmRoutingTelemetryService.subscribe((e) -> {
             if (e == null) return;
             if (tt != null && e.taskType() != null && !e.taskType().trim().equalsIgnoreCase(tt)) return;
-            AdminLlmRoutingDecisionEventDTO x = new AdminLlmRoutingDecisionEventDTO();
-            x.setTsMs(e.tsMs());
-            x.setKind(e.kind());
-            x.setTaskType(e.taskType());
-            x.setAttempt(e.attempt());
-            x.setTaskId(e.taskId());
-            x.setProviderId(e.providerId());
-            x.setModelName(e.modelName());
-            x.setOk(e.ok());
-            x.setErrorCode(e.errorCode());
-            x.setErrorMessage(e.errorMessage());
-            x.setLatencyMs(e.latencyMs());
-            x.setApiSource(e.apiSource());
+            AdminLlmRoutingDecisionEventDTO x = toDecisionDto(e);
             try {
                 emitter.send(SseEmitter.event().name("routing").data(x));
             } catch (Exception ex) {
@@ -134,24 +109,45 @@ public class AdminLlmRoutingMonitorController {
         List<AdminLlmRoutingStateItemDTO> items = new ArrayList<>();
         for (LlmRoutingService.RuntimeTargetState it : snap.items()) {
             if (it == null) continue;
-            AdminLlmRoutingStateItemDTO row = new AdminLlmRoutingStateItemDTO();
-            row.setTaskType(it.taskType());
-            row.setProviderId(it.providerId());
-            row.setModelName(it.modelName());
-            row.setWeight(it.weight());
-            row.setPriority(it.priority());
-            row.setQps(it.qps());
-            row.setRunningCount(it.runningCount());
-            row.setConsecutiveFailures(it.consecutiveFailures());
-            row.setCooldownUntilMs(it.cooldownUntilMs());
-            row.setCooldownRemainingMs(Math.max(0L, it.cooldownUntilMs() - nowMs));
-            row.setCurrentWeight(it.currentWeight());
-            row.setLastDispatchAtMs(it.lastDispatchAtMs());
-            row.setRateTokens(it.rateTokens());
-            row.setLastRefillAtMs(it.lastRefillAtMs());
-            items.add(row);
+            items.add(toStateItemDto(it, nowMs));
         }
         out.setItems(items);
         return out;
+    }
+
+    private static AdminLlmRoutingDecisionEventDTO toDecisionDto(LlmRoutingTelemetryService.RoutingDecisionEvent e) {
+        AdminLlmRoutingDecisionEventDTO x = new AdminLlmRoutingDecisionEventDTO();
+        x.setTsMs(e.tsMs());
+        x.setKind(e.kind());
+        x.setTaskType(e.taskType());
+        x.setAttempt(e.attempt());
+        x.setTaskId(e.taskId());
+        x.setProviderId(e.providerId());
+        x.setModelName(e.modelName());
+        x.setOk(e.ok());
+        x.setErrorCode(e.errorCode());
+        x.setErrorMessage(e.errorMessage());
+        x.setLatencyMs(e.latencyMs());
+        x.setApiSource(e.apiSource());
+        return x;
+    }
+
+    private static AdminLlmRoutingStateItemDTO toStateItemDto(LlmRoutingService.RuntimeTargetState it, long nowMs) {
+        AdminLlmRoutingStateItemDTO row = new AdminLlmRoutingStateItemDTO();
+        row.setTaskType(it.taskType());
+        row.setProviderId(it.providerId());
+        row.setModelName(it.modelName());
+        row.setWeight(it.weight());
+        row.setPriority(it.priority());
+        row.setQps(it.qps());
+        row.setRunningCount(it.runningCount());
+        row.setConsecutiveFailures(it.consecutiveFailures());
+        row.setCooldownUntilMs(it.cooldownUntilMs());
+        row.setCooldownRemainingMs(Math.max(0L, it.cooldownUntilMs() - nowMs));
+        row.setCurrentWeight(it.currentWeight());
+        row.setLastDispatchAtMs(it.lastDispatchAtMs());
+        row.setRateTokens(it.rateTokens());
+        row.setLastRefillAtMs(it.lastRefillAtMs());
+        return row;
     }
 }

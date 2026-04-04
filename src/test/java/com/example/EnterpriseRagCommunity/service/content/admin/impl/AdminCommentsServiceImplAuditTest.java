@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -34,6 +33,26 @@ public class AdminCommentsServiceImplAuditTest {
     @AfterEach
     void cleanup() {
         SecurityContextHolder.clearContext();
+    }
+
+    private static AdminCommentsServiceImpl newService(
+            CommentsRepository commentsRepository,
+            AdministratorService administratorService,
+            UsersRepository usersRepository,
+            PostsRepository postsRepository,
+            RagCommentIndexVisibilitySyncService syncService,
+            AuditLogWriter auditLogWriter,
+            AuditDiffBuilder auditDiffBuilder
+    ) {
+        return new AdminCommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                usersRepository,
+                postsRepository,
+                syncService,
+                auditLogWriter,
+                auditDiffBuilder
+        );
     }
 
     @Test
@@ -67,14 +86,15 @@ public class AdminCommentsServiceImplAuditTest {
         when(commentsRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(auditDiffBuilder.build(any(), any())).thenReturn(java.util.Map.of());
 
-        AdminCommentsServiceImpl svc = new AdminCommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", syncService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "auditDiffBuilder", auditDiffBuilder);
+        AdminCommentsServiceImpl svc = newService(
+                commentsRepository,
+                administratorService,
+                usersRepository,
+                postsRepository,
+                syncService,
+                auditLogWriter,
+                auditDiffBuilder
+        );
 
         CommentUpdateStatusRequest req = new CommentUpdateStatusRequest();
         req.setStatus("HIDDEN");
@@ -125,14 +145,15 @@ public class AdminCommentsServiceImplAuditTest {
         when(commentsRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(auditDiffBuilder.build(any(), any())).thenReturn(java.util.Map.of());
 
-        AdminCommentsServiceImpl svc = new AdminCommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "usersRepository", usersRepository);
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", syncService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        ReflectionTestUtils.setField(svc, "auditDiffBuilder", auditDiffBuilder);
+        AdminCommentsServiceImpl svc = newService(
+                commentsRepository,
+                administratorService,
+                usersRepository,
+                postsRepository,
+                syncService,
+                auditLogWriter,
+                auditDiffBuilder
+        );
 
         CommentSetDeletedRequest req = new CommentSetDeletedRequest();
         req.setIsDeleted(true);

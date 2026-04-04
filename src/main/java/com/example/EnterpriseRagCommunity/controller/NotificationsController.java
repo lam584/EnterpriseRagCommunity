@@ -7,7 +7,7 @@ import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -23,16 +23,11 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/notifications")
+@RequiredArgsConstructor
 public class NotificationsController {
-
-    @Autowired
-    private NotificationsService notificationsService;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
+    private final NotificationsService notificationsService;
+    private final AdministratorService administratorService;
+    private final AuditLogWriter auditLogWriter;
 
     @GetMapping
     public ResponseEntity<Page<NotificationsEntity>> listMyNotifications(
@@ -60,7 +55,7 @@ public class NotificationsController {
     }
 
     @PatchMapping("/{id}/read")
-    public ResponseEntity<NotificationsEntity> markRead(@PathVariable("id") Long id, Authentication authentication, HttpServletRequest request) {
+    public ResponseEntity<NotificationsEntity> markRead(@PathVariable Long id, Authentication authentication, HttpServletRequest request) {
         Long userId = currentUserIdOrNull(authentication, request);
         String actorName = currentUsernameOrNull(authentication, request);
         try {
@@ -160,7 +155,7 @@ public class NotificationsController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable("id") Long id, Authentication authentication, HttpServletRequest request) {
+    public ResponseEntity<?> delete(@PathVariable Long id, Authentication authentication, HttpServletRequest request) {
         Long userId = currentUserIdOrNull(authentication, request);
         String actorName = currentUsernameOrNull(authentication, request);
         try {

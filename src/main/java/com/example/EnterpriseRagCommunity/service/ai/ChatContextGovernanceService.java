@@ -84,7 +84,7 @@ public class ChatContextGovernanceService {
 
         int maxTokens = cfg.getMaxPromptTokens() == null ? 0 : Math.max(0, cfg.getMaxPromptTokens());
         int reserve = cfg.getReserveAnswerTokens() == null ? 0 : Math.max(0, cfg.getReserveAnswerTokens());
-        int budgetTokens = maxTokens <= 0 ? 0 : Math.max(0, maxTokens - reserve);
+        int budgetTokens = maxTokens == 0 ? 0 : Math.max(0, maxTokens - reserve);
         int maxChars = cfg.getMaxPromptChars() == null ? 0 : Math.max(0, cfg.getMaxPromptChars());
         int perMessageMaxTokens = cfg.getPerMessageMaxTokens() == null ? 0 : Math.max(0, cfg.getPerMessageMaxTokens());
         int keepLast = cfg.getKeepLastMessages() == null ? 0 : Math.max(0, cfg.getKeepLastMessages());

@@ -1,8 +1,9 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 import type { SpringPage } from '../types/page';
+import { getBackendMessage } from './serviceErrorUtils';
 
 function getApiBase(): string {
-  const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: string }).__VITE_API_BASE_URL__;
+  const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: unknown }).__VITE_API_BASE_URL__;
   if (typeof globalBase === 'string') return globalBase;
   return (((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '') || '';
 }
@@ -13,11 +14,46 @@ function apiUrl(path: string): string {
   return base ? `${base}${path}` : path;
 }
 
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
+function buildPostRagParams(params: {
+  boardId?: number;
+  fromPostId?: number;
+  postBatchSize?: number;
+  chunkMaxChars?: number;
+  chunkOverlapChars?: number;
+  clear?: boolean;
+  embeddingProviderId?: string;
+  embeddingDims?: number;
+}): URLSearchParams {
+  const sp = new URLSearchParams();
+  if (params.boardId) sp.set('boardId', String(params.boardId));
+  if (params.fromPostId) sp.set('fromPostId', String(params.fromPostId));
+  if (params.postBatchSize) sp.set('postBatchSize', String(params.postBatchSize));
+  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
+  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
+  if (params.clear) sp.set('clear', 'true');
+  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
+  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  return sp;
+}
+
+function buildFileRagParams(params: {
+  fromFileAssetId?: number;
+  fileBatchSize?: number;
+  chunkMaxChars?: number;
+  chunkOverlapChars?: number;
+  clear?: boolean;
+  embeddingProviderId?: string;
+  embeddingDims?: number;
+}): URLSearchParams {
+  const sp = new URLSearchParams();
+  if (params.fromFileAssetId) sp.set('fromFileAssetId', String(params.fromFileAssetId));
+  if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
+  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
+  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
+  if (params.clear) sp.set('clear', 'true');
+  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
+  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  return sp;
 }
 
 export type VectorIndexProvider = 'FAISS' | 'MILVUS' | 'OTHER';
@@ -238,15 +274,7 @@ export async function adminBuildPostRagIndex(params: {
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagPostsBuildResponse> {
-  const sp = new URLSearchParams();
-  if (params.boardId) sp.set('boardId', String(params.boardId));
-  if (params.fromPostId) sp.set('fromPostId', String(params.fromPostId));
-  if (params.postBatchSize) sp.set('postBatchSize', String(params.postBatchSize));
-  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
-  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.clear) sp.set('clear', 'true');
-  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
-  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  const sp = buildPostRagParams(params);
 
   const csrf = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/build/posts?${sp.toString()}`), {
@@ -271,13 +299,7 @@ export async function adminRebuildPostRagIndex(params: {
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagPostsBuildResponse> {
-  const sp = new URLSearchParams();
-  if (params.boardId) sp.set('boardId', String(params.boardId));
-  if (params.postBatchSize) sp.set('postBatchSize', String(params.postBatchSize));
-  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
-  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
-  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  const sp = buildPostRagParams(params);
 
   const csrf = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/rebuild/posts?${sp.toString()}`), {
@@ -302,13 +324,7 @@ export async function adminSyncPostRagIndex(params: {
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagPostsBuildResponse> {
-  const sp = new URLSearchParams();
-  if (params.boardId) sp.set('boardId', String(params.boardId));
-  if (params.postBatchSize) sp.set('postBatchSize', String(params.postBatchSize));
-  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
-  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
-  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  const sp = buildPostRagParams(params);
 
   const csrf = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/sync/posts?${sp.toString()}`), {
@@ -334,14 +350,7 @@ export async function adminBuildFileRagIndex(params: {
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagFilesBuildResponse> {
-  const sp = new URLSearchParams();
-  if (params.fromFileAssetId) sp.set('fromFileAssetId', String(params.fromFileAssetId));
-  if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
-  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
-  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.clear) sp.set('clear', 'true');
-  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
-  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  const sp = buildFileRagParams(params);
 
   const csrf = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/build/files?${sp.toString()}`), {
@@ -364,12 +373,7 @@ export async function adminRebuildFileRagIndex(params: {
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagFilesBuildResponse> {
-  const sp = new URLSearchParams();
-  if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
-  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
-  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
-  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  const sp = buildFileRagParams(params);
 
   const csrf = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/rebuild/files?${sp.toString()}`), {
@@ -392,12 +396,7 @@ export async function adminSyncFileRagIndex(params: {
   embeddingProviderId?: string;
   embeddingDims?: number;
 }): Promise<RagFilesBuildResponse> {
-  const sp = new URLSearchParams();
-  if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
-  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
-  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
-  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  const sp = buildFileRagParams(params);
 
   const csrf = await getCsrfToken();
   const res = await fetch(apiUrl(`/api/admin/retrieval/vector-indices/${params.id}/sync/files?${sp.toString()}`), {

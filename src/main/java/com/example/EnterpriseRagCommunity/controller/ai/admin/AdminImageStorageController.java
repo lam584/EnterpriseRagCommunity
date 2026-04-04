@@ -21,12 +21,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/admin/ai/image-storage")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
 @RequiredArgsConstructor
 public class AdminImageStorageController {
+
+    private static final Pattern SAFE_LOCAL_PATH = Pattern.compile("^[A-Za-z0-9._/\\\\-]+$");
 
     private final ImageStorageConfigService configService;
     private final ImageUploadLogRepository uploadLogRepository;
@@ -51,15 +54,15 @@ public class AdminImageStorageController {
     public Page<ImageUploadLogEntity> getUploadLogs(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        int safeSize = Math.min(Math.max(size, 1), 100);
+        int safeSize = Math.clamp(size, 1, 100);
         return uploadLogRepository.findAllByOrderByUploadedAtDesc(PageRequest.of(page, safeSize));
     }
 
     @PostMapping("/test-upload")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_ai_image_storage','write'))")
     public Map<String, Object> testUpload(@RequestBody TestUploadRequest req) {
-        String localPath = req.localPath();
-        if (localPath == null || localPath.isBlank()) {
+        String localPath = sanitizeLocalPath(req.localPath());
+        if (localPath == null) {
             return Map.of("success", false, "error", "localPath 不能为空");
         }
         try {
@@ -84,22 +87,18 @@ public class AdminImageStorageController {
         return Map.of("deleted", deleted);
     }
 
-    @PostMapping("/test-compress")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_ai_image_storage','write'))")
-    public Map<String, Object> testCompress(@RequestBody TestCompressRequest req) {
-        String localPath = req.localPath();
-        if (localPath == null || localPath.isBlank()) {
-            return Map.of("success", false, "error", "localPath 不能为空");
-        }
-        try {
-            Map<String, Object> result = uploadService.testCompress(localPath);
-            result.put("success", true);
-            return result;
-        } catch (Exception e) {
-            return Map.of("success", false, "error", e.getMessage() == null ? "未知错误" : e.getMessage());
-        }
+    public record TestUploadRequest(String localPath, String mimeType, String modelName) {}
+
+    private static String sanitizeLocalPath(String raw) {
+        if (raw == null) return null;
+        String p = raw.trim();
+        if (p.isBlank()) return null;
+        String normalized = p.replace('\\', '/');
+        if (!SAFE_LOCAL_PATH.matcher(normalized).matches()) return null;
+        if (normalized.contains("..") || normalized.contains("//")) return null;
+        if (normalized.startsWith("/") || normalized.matches("^[A-Za-z]:/.*") || normalized.contains("://")) return null;
+        if (!(normalized.startsWith("uploads/") || normalized.startsWith("_resumable/") || normalized.startsWith("202"))) return null;
+        return normalized;
     }
 
-    public record TestUploadRequest(String localPath, String mimeType, String modelName) {}
-    public record TestCompressRequest(String localPath) {}
 }

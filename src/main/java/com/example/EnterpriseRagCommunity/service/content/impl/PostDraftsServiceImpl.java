@@ -11,7 +11,7 @@ import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.content.PostDraftsService;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
@@ -22,19 +22,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class PostDraftsServiceImpl implements PostDraftsService {
-
-    @Autowired
-    private PostDraftsRepository postDraftsRepository;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
-
-    @Autowired
-    private AuditDiffBuilder auditDiffBuilder;
+    private final PostDraftsRepository postDraftsRepository;
+    private final AdministratorService administratorService;
+    private final AuditLogWriter auditLogWriter;
+    private final AuditDiffBuilder auditDiffBuilder;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

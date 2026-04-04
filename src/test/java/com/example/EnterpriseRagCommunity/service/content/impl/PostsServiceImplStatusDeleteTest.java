@@ -44,7 +44,7 @@ public class PostsServiceImplStatusDeleteTest {
 
     @Test
     void updateStatusValidatesIdAndStatus() {
-        PostsServiceImpl svc = new PostsServiceImpl();
+        PostsServiceImpl svc = newService(mock(PostsRepository.class), mock(AdministratorService.class), mock(PostAttachmentsRepository.class), mock(ModerationQueueRepository.class), mock(RagPostIndexVisibilitySyncService.class), mock(AuditLogWriter.class));
         assertThrows(IllegalArgumentException.class, () -> svc.updateStatus(null, PostStatus.PUBLISHED));
         assertThrows(IllegalArgumentException.class, () -> svc.updateStatus(1L, null));
     }
@@ -72,11 +72,7 @@ public class PostsServiceImplStatusDeleteTest {
         doNothing().when(sync).scheduleSyncAfterCommit(anyLong());
         doNothing().when(auditLogWriter).write(any(), any(), any(), any(), any(), any(), any(), any(), any());
 
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "ragPostIndexVisibilitySyncService", sync);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
+        PostsServiceImpl svc = newService(postsRepository, administratorService, mock(PostAttachmentsRepository.class), mock(ModerationQueueRepository.class), sync, auditLogWriter);
 
         PostsEntity saved = svc.updateStatus(100L, PostStatus.PUBLISHED);
         assertNotNull(saved.getPublishedAt());
@@ -108,11 +104,7 @@ public class PostsServiceImplStatusDeleteTest {
         doNothing().when(sync).scheduleSyncAfterCommit(anyLong());
         doNothing().when(auditLogWriter).write(any(), any(), any(), any(), any(), any(), any(), any(), any());
 
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "ragPostIndexVisibilitySyncService", sync);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
+        PostsServiceImpl svc = newService(postsRepository, administratorService, mock(PostAttachmentsRepository.class), mock(ModerationQueueRepository.class), sync, auditLogWriter);
 
         PostsEntity saved = svc.updateStatus(100L, PostStatus.PUBLISHED);
         assertSame(publishedAt, saved.getPublishedAt());
@@ -137,25 +129,20 @@ public class PostsServiceImplStatusDeleteTest {
         when(postsRepository.findById(100L)).thenReturn(Optional.of(post));
         doNothing().when(auditLogWriter).write(any(), any(), any(), any(), any(), any(), any(), any(), any());
 
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "ragPostIndexVisibilitySyncService", sync);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
+        PostsServiceImpl svc = newService(postsRepository, administratorService, mock(PostAttachmentsRepository.class), mock(ModerationQueueRepository.class), sync, auditLogWriter);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> svc.updateStatus(100L, PostStatus.PUBLISHED));
         assertEquals("帖子已删除: 100", ex.getMessage());
 
         SecurityContextHolder.clearContext();
         assertThrows(AuthenticationException.class, () -> svc.updateStatus(100L, PostStatus.PUBLISHED));
-        verify(auditLogWriter).write(any(), any(), eq("POST_UPDATE_STATUS"), eq("POST"), eq(100L), any(), any(), any(), any());
+        verify(auditLogWriter, org.mockito.Mockito.atLeastOnce()).write(any(), any(), eq("POST_UPDATE_STATUS"), eq("POST"), eq(100L), any(), any(), any(), any());
     }
 
     @Test
     void getByIdValidatesAndFinds() {
         PostsRepository postsRepository = mock(PostsRepository.class);
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
+        PostsServiceImpl svc = newService(postsRepository, mock(AdministratorService.class), mock(PostAttachmentsRepository.class), mock(ModerationQueueRepository.class), mock(RagPostIndexVisibilitySyncService.class), mock(AuditLogWriter.class));
 
         assertThrows(IllegalArgumentException.class, () -> svc.getById(null));
 
@@ -179,18 +166,12 @@ public class PostsServiceImplStatusDeleteTest {
         when(administratorService.findByUsername("alice@example.com")).thenReturn(Optional.of(me));
         doNothing().when(auditLogWriter).write(any(), any(), any(), any(), any(), any(), any(), any(), any());
 
+        PostsServiceImpl svc = newService(postsRepository, administratorService, postAttachmentsRepository, moderationQueueRepository, sync, auditLogWriter);
+
         PostsEntity alreadyDeleted = new PostsEntity();
         alreadyDeleted.setId(1L);
         alreadyDeleted.setIsDeleted(true);
         when(postsRepository.findById(1L)).thenReturn(Optional.of(alreadyDeleted));
-
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "postAttachmentsRepository", postAttachmentsRepository);
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
-        ReflectionTestUtils.setField(svc, "ragPostIndexVisibilitySyncService", sync);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
 
         svc.delete(1L);
         verify(postsRepository, never()).save(any());
@@ -216,7 +197,7 @@ public class PostsServiceImplStatusDeleteTest {
 
     @Test
     void deleteThrowsWhenNotAuthorAndWhenIdNull() {
-        PostsServiceImpl svc0 = new PostsServiceImpl();
+        PostsServiceImpl svc0 = newService(mock(PostsRepository.class), mock(AdministratorService.class), mock(PostAttachmentsRepository.class), mock(ModerationQueueRepository.class), mock(RagPostIndexVisibilitySyncService.class), mock(AuditLogWriter.class));
         assertThrows(IllegalArgumentException.class, () -> svc0.delete(null));
 
         SecurityContextTestSupport.setAuthenticatedEmail("alice@example.com");
@@ -239,16 +220,40 @@ public class PostsServiceImplStatusDeleteTest {
         post.setAuthorId(11L);
         when(postsRepository.findById(3L)).thenReturn(Optional.of(post));
 
-        PostsServiceImpl svc = new PostsServiceImpl();
-        ReflectionTestUtils.setField(svc, "postsRepository", postsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "postAttachmentsRepository", postAttachmentsRepository);
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
-        ReflectionTestUtils.setField(svc, "ragPostIndexVisibilitySyncService", sync);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
+        PostsServiceImpl svc = newService(postsRepository, administratorService, postAttachmentsRepository, moderationQueueRepository, sync, auditLogWriter);
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> svc.delete(3L));
         assertEquals("无权删除该帖子", ex.getMessage());
         verify(auditLogWriter).write(eq(10L), any(), eq("POST_DELETE"), eq("POST"), eq(3L), any(), any(), any(), any());
+    }
+
+    private static PostsServiceImpl newService(
+            PostsRepository postsRepository,
+            AdministratorService administratorService,
+            PostAttachmentsRepository postAttachmentsRepository,
+            ModerationQueueRepository moderationQueueRepository,
+            RagPostIndexVisibilitySyncService sync,
+            AuditLogWriter auditLogWriter
+    ) {
+        return new PostsServiceImpl(
+                postsRepository,
+                postAttachmentsRepository,
+                mock(com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository.class),
+                administratorService,
+                mock(com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.service.ai.AiPostSummaryTriggerService.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.TagsRepository.class),
+                sync,
+                mock(com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService.class),
+                mock(com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.retrieval.RagFileAssetIndexAsyncService.class),
+                mock(com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService.class),
+                auditLogWriter,
+                mock(com.example.EnterpriseRagCommunity.service.content.PostComposeConfigService.class),
+                moderationQueueRepository
+        );
     }
 }

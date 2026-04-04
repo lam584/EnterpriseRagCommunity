@@ -1,10 +1,8 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
 export type AiPostTitleSuggestRequest = {
   content: string;
@@ -21,13 +19,6 @@ export type AiPostTitleSuggestResponse = {
   model?: string;
   latencyMs?: number;
 };
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
 
 export async function suggestPostTitles(payload: AiPostTitleSuggestRequest): Promise<AiPostTitleSuggestResponse> {
   const csrfToken = await getCsrfToken();
@@ -49,4 +40,3 @@ export async function suggestPostTitles(payload: AiPostTitleSuggestRequest): Pro
 
   return data as AiPostTitleSuggestResponse;
 }
-

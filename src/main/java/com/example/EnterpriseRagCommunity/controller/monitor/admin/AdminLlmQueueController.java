@@ -40,7 +40,7 @@ public class AdminLlmQueueController {
 
     @GetMapping("/tasks/{taskId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public AdminLlmQueueTaskDetailDTO taskDetail(@PathVariable("taskId") String taskId) {
+    public AdminLlmQueueTaskDetailDTO taskDetail(@PathVariable String taskId) {
         AdminLlmQueueTaskDetailDTO d = llmQueueMonitorService.getTaskDetail(taskId);
         if (d == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "任务不存在或详情已被清理");
         return d;
@@ -61,15 +61,15 @@ public class AdminLlmQueueController {
     public AdminLlmQueueConfigDTO updateConfig(@RequestBody AdminLlmQueueConfigDTO payload) {
         if (payload != null) {
             if (payload.getMaxConcurrent() != null) {
-                int v = Math.max(1, Math.min(1024, payload.getMaxConcurrent()));
+                int v = Math.clamp(payload.getMaxConcurrent(), 1, 1024);
                 llmQueueProperties.setMaxConcurrent(v);
             }
             if (payload.getMaxQueueSize() != null) {
-                int v = Math.max(100, Math.min(200000, payload.getMaxQueueSize()));
+                int v = Math.clamp(payload.getMaxQueueSize(), 100, 200000);
                 llmQueueProperties.setMaxQueueSize(v);
             }
             if (payload.getKeepCompleted() != null) {
-                int v = Math.max(0, Math.min(20000, payload.getKeepCompleted()));
+                int v = Math.clamp(payload.getKeepCompleted(), 0, 20000);
                 llmQueueProperties.setKeepCompleted(v);
             }
         }

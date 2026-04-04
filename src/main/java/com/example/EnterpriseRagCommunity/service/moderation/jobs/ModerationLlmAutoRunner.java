@@ -734,7 +734,7 @@ public class ModerationLlmAutoRunner {
         q.setCurrentStage(QueueStage.HUMAN);
         q.setStatus(QueueStatus.HUMAN);
         queueRepository.updateStageAndStatusIfPendingOrReviewing(q.getId(), QueueStage.HUMAN, QueueStatus.HUMAN, LocalDateTime.now());
-        applyRiskTags(q, effectiveRes != null ? effectiveRes : res);
+        applyRiskTags(q, effectiveRes);
         pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.HUMAN);
 
         auditLogWriter.writeSystem(
@@ -2115,6 +2115,10 @@ public class ModerationLlmAutoRunner {
             atts = List.of();
         }
         if (atts.isEmpty()) return List.of();
+        return collectPostImageRefs(atts);
+    }
+
+    private List<ChunkImageRef> collectPostImageRefs(List<PostAttachmentsEntity> atts) {
         ArrayList<ChunkImageRef> out = new ArrayList<>();
         LinkedHashSet<String> seenUrl = new LinkedHashSet<>();
         int idx = 0;
@@ -2141,25 +2145,30 @@ public class ModerationLlmAutoRunner {
             if (!Double.isFinite(score)) score = 0.0;
             if (score < 0) score = 0.0;
             if (score > 1) score = 1.0;
-            LinkedHashSet<String> set = new LinkedHashSet<>();
-            if (res.getRiskTags() != null) {
-                for (String t : res.getRiskTags()) {
-                    if (t == null) continue;
-                    String s = t.trim();
-                    if (!s.isEmpty()) set.add(s);
-                }
-            }
-            if (res.getLabels() != null) {
-                for (String t : res.getLabels()) {
-                    if (t == null) continue;
-                    String s = t.trim();
-                    if (!s.isEmpty()) set.add(s);
-                }
-            }
+            LinkedHashSet<String> set = collectNormalizedTags(res.getRiskTags(), res.getLabels());
             List<String> tags = set.isEmpty() ? List.of() : new ArrayList<>(set);
             riskLabelingService.replaceRiskTags(q.getContentType(), q.getContentId(), Source.LLM, tags, BigDecimal.valueOf(score), false);
         } catch (Exception ignore) {
         }
+    }
+
+    private static LinkedHashSet<String> collectNormalizedTags(List<String> riskTags, List<String> labels) {
+        LinkedHashSet<String> set = new LinkedHashSet<>();
+        if (riskTags != null) {
+            for (String t : riskTags) {
+                if (t == null) continue;
+                String s = t.trim();
+                if (!s.isEmpty()) set.add(s);
+            }
+        }
+        if (labels != null) {
+            for (String t : labels) {
+                if (t == null) continue;
+                String s = t.trim();
+                if (!s.isEmpty()) set.add(s);
+            }
+        }
+        return set;
     }
 
     private void applyChunkedRiskTags(ModerationQueueEntity q, Long chunkSetId, LlmModerationTestResponse res) {

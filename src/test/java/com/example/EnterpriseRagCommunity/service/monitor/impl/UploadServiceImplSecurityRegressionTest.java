@@ -16,6 +16,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -81,11 +82,14 @@ class UploadServiceImplSecurityRegressionTest {
 				"hello".getBytes(StandardCharsets.UTF_8)
 		);
 
-		UploadServiceImpl svc = new UploadServiceImpl();
-		ReflectionTestUtils.setField(svc, "fileAssetsRepository", fileAssetsRepository);
-		ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-		ReflectionTestUtils.setField(svc, "uploadFormatsConfigService", uploadFormatsConfigService);
-		ReflectionTestUtils.setField(svc, "fileAssetExtractionService", fileAssetExtractionService);
+		ObjectMapper objectMapper = new ObjectMapper();
+		UploadServiceImpl svc = new UploadServiceImpl(
+				fileAssetsRepository,
+				administratorService,
+				uploadFormatsConfigService,
+				fileAssetExtractionService,
+				objectMapper
+		);
 		ReflectionTestUtils.setField(svc, "uploadRoot", tempDir.toString());
 		ReflectionTestUtils.setField(svc, "urlPrefix", "/uploads");
 

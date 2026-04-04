@@ -32,7 +32,7 @@ public class RagContextPromptService {
     private static List<CitationSource> buildSources(CitationConfigDTO cfg, List<Item> selected) {
         if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return List.of();
         int max = cfg.getMaxSources() == null ? 0 : Math.max(0, cfg.getMaxSources());
-        if (max <= 0) return List.of();
+        if (max == 0) return List.of();
         List<CitationSource> out = new ArrayList<>();
         int n = Math.min(max, selected == null ? 0 : selected.size());
         for (int i = 0; i < n; i++) {
@@ -187,7 +187,7 @@ public class RagContextPromptService {
 
         int remainingBudget = Math.max(0, budgetTokens - used);
         int remainingSlots = Math.max(0, maxItems - out.size());
-        if (remainingBudget <= 0 || remainingSlots <= 0) return out;
+        if (remainingBudget == 0 || remainingSlots == 0) return out;
 
         List<Candidate> rest = new ArrayList<>();
         for (Candidate c : candidates) {
@@ -374,20 +374,7 @@ public class RagContextPromptService {
         for (Item it : selected) {
             if (it == null) continue;
             if (it.getPostId() != null) ids.add(it.getPostId());
-            Map<String, Object> m = new HashMap<>();
-            m.put("rank", it.getRank());
-            m.put("postId", it.getPostId());
-            m.put("chunkIndex", it.getChunkIndex());
-            m.put("score", it.getScore());
-            m.put("relScore", it.getRelScore());
-            m.put("impScore", it.getImpScore());
-            m.put("redScore", it.getRedScore());
-            m.put("finalScore", it.getFinalScore());
-            m.put("source", it.getSource());
-            m.put("title", it.getTitle());
-            m.put("tokens", it.getTokens());
-            m.put("reason", it.getReason());
-            items.add(m);
+            items.add(toChunkIdItem(it));
         }
         Map<String, Object> stats = new HashMap<>();
         stats.put("budgetTokens", r.getBudgetTokens());
@@ -423,6 +410,23 @@ public class RagContextPromptService {
             out = out.replace(e.getKey(), e.getValue());
         }
         return out;
+    }
+
+    private static Map<String, Object> toChunkIdItem(Item it) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("rank", it.getRank());
+        m.put("postId", it.getPostId());
+        m.put("chunkIndex", it.getChunkIndex());
+        m.put("score", it.getScore());
+        m.put("relScore", it.getRelScore());
+        m.put("impScore", it.getImpScore());
+        m.put("redScore", it.getRedScore());
+        m.put("finalScore", it.getFinalScore());
+        m.put("source", it.getSource());
+        m.put("title", it.getTitle());
+        m.put("tokens", it.getTokens());
+        m.put("reason", it.getReason());
+        return m;
     }
 
     private static String appendExactCitationRule(String citationInstruction) {
@@ -988,7 +992,6 @@ public class RagContextPromptService {
             case "NONE", "NO_PRUNING" -> ABLATION_NONE;
             case "REL", "REL_ONLY" -> ABLATION_REL_ONLY;
             case "REL_IMP", "RELATIVE_IMPORTANCE" -> ABLATION_REL_IMP;
-            case "REL_IMP_RED", "REL_IMP_REDUCTION", "REL_IMP_REDUNDANCY" -> ABLATION_REL_IMP_RED;
             default -> ABLATION_REL_IMP_RED;
         };
     }
@@ -1007,7 +1010,7 @@ public class RagContextPromptService {
     static String truncateByApproxTokens(String s, int maxTokens) {
         if (s == null) return "";
         int cap = Math.max(0, maxTokens);
-        if (cap <= 0) return "";
+        if (cap == 0) return "";
         if (approxTokens(s) <= cap) return s;
         int lo = 0;
         int hi = s.length();

@@ -5,7 +5,7 @@ import com.example.EnterpriseRagCommunity.dto.content.admin.CommentSetDeletedReq
 import com.example.EnterpriseRagCommunity.dto.content.admin.CommentUpdateStatusRequest;
 import com.example.EnterpriseRagCommunity.service.content.admin.AdminCommentsService;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,10 +16,9 @@ import java.time.LocalDateTime;
 @RestController
 @RequestMapping("/api/admin/comments")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class AdminCommentsController {
-
-    @Autowired
-    private AdminCommentsService adminCommentsService;
+    private final AdminCommentsService adminCommentsService;
 
     @GetMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_comments','read'))")
@@ -40,14 +39,14 @@ public class AdminCommentsController {
 
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_comments','update'))")
-    public CommentAdminDTO updateStatus(@PathVariable("id") Long id,
+    public CommentAdminDTO updateStatus(@PathVariable Long id,
                                         @Valid @RequestBody CommentUpdateStatusRequest req) {
         return adminCommentsService.updateStatus(id, req);
     }
 
     @PatchMapping("/{id}/deleted")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_comments','update'))")
-    public CommentAdminDTO setDeleted(@PathVariable("id") Long id,
+    public CommentAdminDTO setDeleted(@PathVariable Long id,
                                       @Valid @RequestBody CommentSetDeletedRequest req) {
         return adminCommentsService.setDeleted(id, req);
     }

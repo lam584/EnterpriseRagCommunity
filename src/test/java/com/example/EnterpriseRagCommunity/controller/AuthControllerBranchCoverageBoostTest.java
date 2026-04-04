@@ -740,7 +740,7 @@ class AuthControllerBranchCoverageBoostTest {
         when(fx.security2faPolicyService.evaluateForUser(81L)).thenReturn(policy(true, true), policy(true, true), policy(true, true));
         when(fx.emailVerificationMailer.isEnabled()).thenReturn(true, true, false);
         when(fx.accountTotpService.isEnabledByEmail("extra@example.com")).thenReturn(true, true, true);
-        when(fx.accountTotpService.getEnabledDigitsByEmail("extra@example.com")).thenReturn(8, null);
+        when(fx.accountTotpService.getEnabledDigitsByEmail("extra@example.com")).thenReturn(Integer.valueOf(8), (Integer) null);
         when(fx.emailVerificationService.getDefaultTtlSeconds()).thenReturn(300);
 
         assertThat(fx.c.login(req, new MockHttpServletRequest(), new MockHttpServletResponse()).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
@@ -976,7 +976,6 @@ class AuthControllerBranchCoverageBoostTest {
     }
 
     private static class Fx {
-        final AuthController c = new AuthController();
         final AdministratorService administratorService = mock(AdministratorService.class);
         final AuthenticationManager authenticationManager = mock(AuthenticationManager.class);
         final PasswordEncoder passwordEncoder = mock(PasswordEncoder.class);
@@ -997,28 +996,30 @@ class AuthControllerBranchCoverageBoostTest {
         final AccountTotpService accountTotpService = mock(AccountTotpService.class);
         final UserDetailsService userDetailsService = mock(UserDetailsService.class);
         final AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
+        final AuthController c = new AuthController(
+                administratorService,
+                authenticationManager,
+                passwordEncoder,
+                initialAdminSetupState,
+                tenantsRepository,
+                userRoleLinksRepository,
+                permissionsRepository,
+                rolePermissionsRepository,
+                appSettingsService,
+                rolesRepository,
+                boardsRepository,
+                boardModeratorsRepository,
+                initialAdminIndexBootstrapService,
+                totpMasterKeyBootstrapService,
+                emailVerificationService,
+                emailVerificationMailer,
+                security2faPolicyService,
+                accountTotpService,
+                userDetailsService,
+                auditLogWriter
+        );
 
         Fx() throws Exception {
-            setField(c, "administratorService", administratorService);
-            setField(c, "authenticationManager", authenticationManager);
-            setField(c, "passwordEncoder", passwordEncoder);
-            setField(c, "initialAdminSetupState", initialAdminSetupState);
-            setField(c, "tenantsRepository", tenantsRepository);
-            setField(c, "userRoleLinksRepository", userRoleLinksRepository);
-            setField(c, "permissionsRepository", permissionsRepository);
-            setField(c, "rolePermissionsRepository", rolePermissionsRepository);
-            setField(c, "appSettingsService", appSettingsService);
-            setField(c, "rolesRepository", rolesRepository);
-            setField(c, "boardsRepository", boardsRepository);
-            setField(c, "boardModeratorsRepository", boardModeratorsRepository);
-            setField(c, "initialAdminIndexBootstrapService", initialAdminIndexBootstrapService);
-            setField(c, "totpMasterKeyBootstrapService", totpMasterKeyBootstrapService);
-            setField(c, "emailVerificationService", emailVerificationService);
-            setField(c, "emailVerificationMailer", emailVerificationMailer);
-            setField(c, "security2faPolicyService", security2faPolicyService);
-            setField(c, "accountTotpService", accountTotpService);
-            setField(c, "userDetailsService", userDetailsService);
-            setField(c, "auditLogWriter", auditLogWriter);
             setField(c, "defaultTenantCode", "DEFAULT");
             setField(c, "defaultTenantName", "Default Tenant");
         }

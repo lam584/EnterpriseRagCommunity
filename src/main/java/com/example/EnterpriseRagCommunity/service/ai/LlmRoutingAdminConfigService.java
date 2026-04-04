@@ -68,17 +68,7 @@ public class LlmRoutingAdminConfigService {
         List<AdminLlmRoutingTargetDTO> targets = new ArrayList<>();
         for (LlmModelEntity m : models) {
             if (m == null) continue;
-            AdminLlmRoutingTargetDTO t = new AdminLlmRoutingTargetDTO();
-            t.setTaskType(m.getPurpose());
-            t.setProviderId(m.getProviderId());
-            t.setModelName(m.getModelName());
-            t.setEnabled(m.getEnabled());
-            t.setWeight(m.getWeight());
-            t.setPriority(m.getPriority());
-            t.setSortIndex(m.getSortIndex());
-            t.setQps(m.getQps());
-            t.setPriceConfigId(m.getPriceConfigId());
-            targets.add(t);
+            targets.add(toTargetDto(m));
         }
         out.setTargets(targets);
 
@@ -218,6 +208,20 @@ public class LlmRoutingAdminConfigService {
         String t = normalizeNonBlank(s);
         if (t == null) return null;
         return t.toUpperCase(Locale.ROOT);
+    }
+
+    private static AdminLlmRoutingTargetDTO toTargetDto(LlmModelEntity m) {
+        AdminLlmRoutingTargetDTO t = new AdminLlmRoutingTargetDTO();
+        t.setTaskType(m.getPurpose());
+        t.setProviderId(m.getProviderId());
+        t.setModelName(m.getModelName());
+        t.setEnabled(m.getEnabled());
+        t.setWeight(m.getWeight());
+        t.setPriority(m.getPriority());
+        t.setSortIndex(m.getSortIndex());
+        t.setQps(m.getQps());
+        t.setPriceConfigId(m.getPriceConfigId());
+        return t;
     }
 
     private static String normalizeNonBlank(String s) {

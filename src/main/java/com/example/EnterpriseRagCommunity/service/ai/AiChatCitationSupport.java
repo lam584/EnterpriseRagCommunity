@@ -110,7 +110,7 @@ final class AiChatCitationSupport {
             if (s == null || s.getIndex() == null) continue;
             maxIndex = Math.max(maxIndex, s.getIndex());
         }
-        if (maxIndex <= 0) return List.of();
+        if (maxIndex == 0) return List.of();
 
         Set<Integer> cited = extractCitationIndexes(answerText, maxIndex);
         if (cited.isEmpty()) return List.of();

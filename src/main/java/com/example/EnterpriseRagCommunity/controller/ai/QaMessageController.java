@@ -37,14 +37,14 @@ public class QaMessageController {
     }
 
     @PatchMapping("/{messageId}")
-    public ResponseEntity<Void> updateMessage(@PathVariable("messageId") Long messageId, @Valid @RequestBody QaMessageUpdateRequest req) {
+    public ResponseEntity<Void> updateMessage(@PathVariable Long messageId, @Valid @RequestBody QaMessageUpdateRequest req) {
         Long me = currentUserIdOrThrow();
         qaMessageService.updateMyMessage(me, messageId, req.getContent());
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{messageId}")
-    public ResponseEntity<Void> deleteMessage(@PathVariable("messageId") Long messageId) {
+    public ResponseEntity<Void> deleteMessage(@PathVariable Long messageId) {
         Long me = currentUserIdOrThrow();
         qaMessageService.deleteMyMessage(me, messageId);
         return ResponseEntity.noContent().build();
@@ -52,7 +52,7 @@ public class QaMessageController {
 
     @PostMapping(value = "/{questionMessageId}/regenerate/stream", produces = "text/event-stream")
     public void regenerate(
-            @PathVariable("questionMessageId") Long questionMessageId,
+            @PathVariable Long questionMessageId,
             @Valid @RequestBody AiChatRegenerateStreamRequest req,
             HttpServletResponse response
     ) throws IOException {
@@ -62,7 +62,7 @@ public class QaMessageController {
 
     @PostMapping("/{questionMessageId}/regenerate")
     public ResponseEntity<AiChatResponseDTO> regenerateOnce(
-            @PathVariable("questionMessageId") Long questionMessageId,
+            @PathVariable Long questionMessageId,
             @Valid @RequestBody AiChatRegenerateStreamRequest req
     ) {
         Long me = currentUserIdOrThrow();
@@ -70,7 +70,7 @@ public class QaMessageController {
     }
 
     @PatchMapping("/{messageId}/favorite")
-    public ResponseEntity<Boolean> toggleFavorite(@PathVariable("messageId") Long messageId) {
+    public ResponseEntity<Boolean> toggleFavorite(@PathVariable Long messageId) {
         Long me = currentUserIdOrThrow();
         return ResponseEntity.ok(qaMessageService.toggleMyMessageFavorite(me, messageId));
     }

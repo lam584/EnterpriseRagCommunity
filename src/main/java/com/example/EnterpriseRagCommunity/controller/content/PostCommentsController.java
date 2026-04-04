@@ -6,20 +6,19 @@ import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import jakarta.validation.Valid;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/posts")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class PostCommentsController {
-
-    @Autowired
-    private CommentsService commentsService;
+    private final CommentsService commentsService;
 
     @GetMapping("/{postId}/comments")
-    public Page<CommentDTO> list(@PathVariable("postId") Long postId,
+    public Page<CommentDTO> list(@PathVariable Long postId,
                                  @RequestParam(value = "page", defaultValue = "1") int page,
                                  @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
                                  @RequestParam(value = "includeMinePending", defaultValue = "false") boolean includeMinePending) {
@@ -27,7 +26,7 @@ public class PostCommentsController {
     }
 
     @PostMapping("/{postId}/comments")
-    public CommentDTO create(@PathVariable("postId") Long postId, @Valid @RequestBody CommentCreateRequest req) {
+    public CommentDTO create(@PathVariable Long postId, @Valid @RequestBody CommentCreateRequest req) {
         return commentsService.createForPost(postId, req);
     }
 
@@ -43,7 +42,7 @@ public class PostCommentsController {
     }
 
     @GetMapping("/{postId}/comments/count")
-    public CountResponse count(@PathVariable("postId") Long postId) {
+    public CountResponse count(@PathVariable Long postId) {
         return new CountResponse(commentsService.countByPostId(postId));
     }
 }

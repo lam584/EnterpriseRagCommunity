@@ -54,12 +54,14 @@ class UploadServiceImplResumableVerifyProgressTest {
             return fa;
         });
 
-        UploadServiceImpl svc = new UploadServiceImpl();
-        ReflectionTestUtils.setField(svc, "fileAssetsRepository", fileAssetsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "uploadFormatsConfigService", uploadFormatsConfigService);
-        ReflectionTestUtils.setField(svc, "fileAssetExtractionService", fileAssetExtractionService);
-        ReflectionTestUtils.setField(svc, "objectMapper", new ObjectMapper());
+        ObjectMapper objectMapper = new ObjectMapper();
+        UploadServiceImpl svc = new UploadServiceImpl(
+                fileAssetsRepository,
+                administratorService,
+                uploadFormatsConfigService,
+                fileAssetExtractionService,
+                objectMapper
+        );
         ReflectionTestUtils.setField(svc, "uploadRoot", tempDir.toString());
         ReflectionTestUtils.setField(svc, "urlPrefix", "/uploads");
 

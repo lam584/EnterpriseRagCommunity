@@ -10,7 +10,7 @@ import com.example.EnterpriseRagCommunity.repository.content.PostViewsDailyRepos
 import com.example.EnterpriseRagCommunity.service.content.HotScoresService;
 import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 
@@ -20,19 +20,12 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class HotScoresServiceImpl implements HotScoresService {
-
-    @Autowired
-    private HotScoresRepository hotScoresRepository;
-
-    @Autowired
-    private PostsRepository postsRepository;
-
-    @Autowired
-    private PortalPostsService portalPostsService;
-
-    @Autowired
-    private PostViewsDailyRepository postViewsDailyRepository;
+    private final HotScoresRepository hotScoresRepository;
+    private final PostsRepository postsRepository;
+    private final PortalPostsService portalPostsService;
+    private final PostViewsDailyRepository postViewsDailyRepository;
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 

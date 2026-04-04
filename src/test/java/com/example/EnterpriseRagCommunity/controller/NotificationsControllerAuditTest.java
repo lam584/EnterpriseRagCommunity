@@ -11,7 +11,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.Map;
@@ -45,10 +44,7 @@ public class NotificationsControllerAuditTest {
         when(administratorService.findByUsername("alice@example.com")).thenReturn(Optional.of(u));
         when(notificationsService.markMyNotificationRead(1L)).thenReturn(new NotificationsEntity());
 
-        NotificationsController c = new NotificationsController();
-        ReflectionTestUtils.setField(c, "notificationsService", notificationsService);
-        ReflectionTestUtils.setField(c, "administratorService", administratorService);
-        ReflectionTestUtils.setField(c, "auditLogWriter", auditLogWriter);
+        NotificationsController c = new NotificationsController(notificationsService, administratorService, auditLogWriter);
 
         ResponseEntity<NotificationsEntity> resp = c.markRead(1L);
         org.junit.jupiter.api.Assertions.assertEquals(200, resp.getStatusCode().value());
@@ -81,10 +77,7 @@ public class NotificationsControllerAuditTest {
         when(administratorService.findByUsername("alice@example.com")).thenReturn(Optional.of(u));
         when(notificationsService.markMyNotificationsRead(List.of(1L, 2L))).thenReturn(2);
 
-        NotificationsController c = new NotificationsController();
-        ReflectionTestUtils.setField(c, "notificationsService", notificationsService);
-        ReflectionTestUtils.setField(c, "administratorService", administratorService);
-        ReflectionTestUtils.setField(c, "auditLogWriter", auditLogWriter);
+        NotificationsController c = new NotificationsController(notificationsService, administratorService, auditLogWriter);
 
         ResponseEntity<Map<String, Integer>> resp = c.markReadBatch(Map.of("ids", List.of(1, 2)));
         org.junit.jupiter.api.Assertions.assertEquals(200, resp.getStatusCode().value());
@@ -116,10 +109,7 @@ public class NotificationsControllerAuditTest {
         u.setId(10L);
         when(administratorService.findByUsername("alice@example.com")).thenReturn(Optional.of(u));
 
-        NotificationsController c = new NotificationsController();
-        ReflectionTestUtils.setField(c, "notificationsService", notificationsService);
-        ReflectionTestUtils.setField(c, "administratorService", administratorService);
-        ReflectionTestUtils.setField(c, "auditLogWriter", auditLogWriter);
+        NotificationsController c = new NotificationsController(notificationsService, administratorService, auditLogWriter);
 
         ResponseEntity<?> resp = c.delete(9L);
         org.junit.jupiter.api.Assertions.assertEquals(204, resp.getStatusCode().value());
@@ -137,4 +127,3 @@ public class NotificationsControllerAuditTest {
         );
     }
 }
-

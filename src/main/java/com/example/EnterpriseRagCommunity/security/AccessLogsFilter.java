@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Predicate;
 
 @Component
 @ConditionalOnBean({AccessLogWriter.class, AdministratorService.class})
@@ -82,41 +83,26 @@ public class AccessLogsFilter extends OncePerRequestFilter {
     }
 
     private static String sanitizeQueryString(String qs) {
-        if (qs == null || qs.isBlank()) return null;
-        String[] pairs = qs.split("&");
-        StringBuilder out = new StringBuilder();
-        for (String pair : pairs) {
-            if (pair.isBlank()) continue;
-            int idx = pair.indexOf('=');
-            String k = idx >= 0 ? pair.substring(0, idx) : pair;
-            String v = idx >= 0 ? pair.substring(idx + 1) : "";
-            String key = urlDecodeSafe(k).toLowerCase();
-            boolean sensitive = key.contains("password") || key.contains("passwd") || key.contains("token") || key.contains("secret") || key.contains("code");
-            String val = sensitive ? "***" : urlDecodeSafe(v);
-            if (!out.isEmpty()) out.append('&');
-            out.append(urlEncodeSafe(k)).append('=').append(urlEncodeSafe(val));
-        }
-        return out.toString();
+        return sanitizeUrlEncodedPairs(qs, AccessLogsFilter::isQuerySensitiveKey);
     }
 
     private Long resolveUserId(Authentication auth) {
         String username = resolveUsername(auth);
-        if (username == null) return null;
+        if (username != null) {
+            long now = System.currentTimeMillis();
+            UserIdCacheEntry cached = USER_ID_CACHE.get(username);
+            if (cached != null && cached.expiresAtMs() > now) return cached.userId();
 
-        long now = System.currentTimeMillis();
-        UserIdCacheEntry cached = USER_ID_CACHE.get(username);
-        if (cached != null && cached.expiresAtMs() > now) return cached.userId();
-
-        Optional<UsersEntity> user = administratorService.findByUsername(username);
-        Long id = user.map(UsersEntity::getId).orElse(null);
-        USER_ID_CACHE.put(username, new UserIdCacheEntry(id, now + USER_ID_CACHE_TTL_MS));
-        return id;
+            Optional<UsersEntity> user = administratorService.findByUsername(username);
+            Long id = user.map(UsersEntity::getId).orElse(null);
+            USER_ID_CACHE.put(username, new UserIdCacheEntry(id, now + USER_ID_CACHE_TTL_MS));
+            return id;
+        }
+        return null;
     }
 
     private static String resolveUsername(Authentication auth) {
-        if (auth == null) return null;
-        if (!auth.isAuthenticated()) return null;
-        if ("anonymousUser".equals(auth.getPrincipal())) return null;
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
         String name = auth.getName();
         return name == null || name.isBlank() ? null : name.trim();
     }
@@ -127,28 +113,17 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         String contentType = safeLower(rawRequest.getContentType());
         if (contentType == null) return null;
         if (contentType.startsWith("multipart/form-data")) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("contentType", rawRequest.getContentType());
-            out.put("captured", false);
-            out.put("reason", "multipart");
-            return out;
+            return unsupportedBody(rawRequest.getContentType(), "multipart");
         }
         if (contentType.startsWith("application/octet-stream") || contentType.startsWith("image/")) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("contentType", rawRequest.getContentType());
-            out.put("captured", false);
-            out.put("reason", "binary");
-            return out;
+            return unsupportedBody(rawRequest.getContentType(), "binary");
         }
 
         byte[] bytes = cachingRequest.getContentAsByteArray();
         if (bytes.length == 0) return null;
 
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("contentType", safeString(rawRequest.getContentType(), 128));
-        out.put("capturedBytes", bytes.length);
-        out.put("limitBytes", maxBytes);
-        out.put("sha256", sha256Hex(bytes));
+        putCaptureMeta(out, rawRequest.getContentType(), bytes.length, maxBytes, sha256Hex(bytes));
 
         String encoding = rawRequest.getCharacterEncoding();
         if (encoding == null || encoding.isBlank()) encoding = StandardCharsets.UTF_8.name();
@@ -264,26 +239,20 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         if (cachingResponse == null || response == null) return null;
         String contentType = safeLower(response.getContentType());
         if (contentType != null) {
-            if (contentType.startsWith("multipart/form-data")) return Map.of("contentType", response.getContentType(), "captured", false, "reason", "multipart");
-            if (contentType.startsWith("application/octet-stream") || contentType.startsWith("image/")) return Map.of("contentType", response.getContentType(), "captured", false, "reason", "binary");
-            if (contentType.startsWith("text/event-stream")) return Map.of("contentType", response.getContentType(), "captured", false, "reason", "streaming");
+            if (contentType.startsWith("multipart/form-data")) return unsupportedBody(response.getContentType(), "multipart");
+            if (contentType.startsWith("application/octet-stream") || contentType.startsWith("image/")) return unsupportedBody(response.getContentType(), "binary");
+            if (contentType.startsWith("text/event-stream")) return unsupportedBody(response.getContentType(), "streaming");
         }
 
         byte[] bytes = cachingResponse.getCapturedAsByteArray();
         if (bytes.length == 0) {
             Map<String, Object> out = new LinkedHashMap<>();
-            if (response.getContentType() != null) out.put("contentType", safeString(response.getContentType(), 128));
-            out.put("capturedBytes", 0);
-            out.put("limitBytes", maxBytes);
-            out.put("sha256", null);
+            putCaptureMeta(out, response.getContentType(), 0, maxBytes, null);
             return out;
         }
 
         Map<String, Object> out = new LinkedHashMap<>();
-        if (response.getContentType() != null) out.put("contentType", safeString(response.getContentType(), 128));
-        out.put("capturedBytes", bytes.length);
-        out.put("limitBytes", maxBytes);
-        out.put("sha256", sha256Hex(bytes));
+        putCaptureMeta(out, response.getContentType(), bytes.length, maxBytes, sha256Hex(bytes));
 
         String encoding = response.getCharacterEncoding();
         if (encoding == null || encoding.isBlank()) encoding = StandardCharsets.UTF_8.name();
@@ -297,8 +266,28 @@ public class AccessLogsFilter extends OncePerRequestFilter {
     }
 
     private static String sanitizeUrlEncodedBody(String bodyText) {
-        if (bodyText == null || bodyText.isBlank()) return bodyText;
-        String[] pairs = bodyText.split("&");
+        return sanitizeUrlEncodedPairs(bodyText, AccessLogsFilter::isSensitiveKey);
+    }
+
+    private static Map<String, Object> unsupportedBody(String contentType, String reason) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("contentType", contentType);
+        out.put("captured", false);
+        out.put("reason", reason);
+        return out;
+    }
+
+    private static void putCaptureMeta(Map<String, Object> out, String contentType, int capturedBytes, int maxBytes, String sha256) {
+        if (out == null) return;
+        if (contentType != null) out.put("contentType", safeString(contentType, 128));
+        out.put("capturedBytes", capturedBytes);
+        out.put("limitBytes", maxBytes);
+        out.put("sha256", sha256);
+    }
+
+    private static String sanitizeUrlEncodedPairs(String raw, Predicate<String> sensitiveKeyMatcher) {
+        if (raw == null || raw.isBlank()) return raw;
+        String[] pairs = raw.split("&");
         StringBuilder out = new StringBuilder();
         for (String pair : pairs) {
             if (pair.isBlank()) continue;
@@ -306,12 +295,21 @@ public class AccessLogsFilter extends OncePerRequestFilter {
             String k = idx >= 0 ? pair.substring(0, idx) : pair;
             String v = idx >= 0 ? pair.substring(idx + 1) : "";
             String key = urlDecodeSafe(k).toLowerCase();
-            boolean sensitive = isSensitiveKey(key);
+            boolean sensitive = sensitiveKeyMatcher != null && sensitiveKeyMatcher.test(key);
             String val = sensitive ? "***" : urlDecodeSafe(v);
             if (!out.isEmpty()) out.append('&');
             out.append(urlEncodeSafe(k)).append('=').append(urlEncodeSafe(val));
         }
         return out.toString();
+    }
+
+    private static boolean isQuerySensitiveKey(String keyLower) {
+        if (keyLower == null || keyLower.isBlank()) return false;
+        return keyLower.contains("password")
+                || keyLower.contains("passwd")
+                || keyLower.contains("token")
+                || keyLower.contains("secret")
+                || keyLower.contains("code");
     }
 
     private static String safeLower(String s) {

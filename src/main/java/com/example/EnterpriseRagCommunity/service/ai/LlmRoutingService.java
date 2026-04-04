@@ -309,7 +309,7 @@ public class LlmRoutingService {
                 RouteKey k = toKey(taskType, t);
                 WeightedState st = weighted.computeIfAbsent(k, kk -> new WeightedState());
                 int w = Math.max(0, t.weight());
-                if (w <= 0) w = 1;
+                if (w == 0) w = 1;
                 st.currentWeight += w;
                 if (st.currentWeight > bestWeight) {
                     bestWeight = st.currentWeight;
@@ -436,7 +436,7 @@ public class LlmRoutingService {
     private static void refillInPlace(RateState st, long nowMs, double qps) {
         long last = st.lastRefillAtMs;
         long dtMs = Math.max(0L, nowMs - last);
-        if (dtMs <= 0L) return;
+        if (dtMs == 0L) return;
         double add = (dtMs / 1000.0) * qps;
         double cap = Math.max(1.0, qps);
         st.tokens = Math.min(cap, st.tokens + add);

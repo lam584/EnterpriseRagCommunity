@@ -1,5 +1,13 @@
 // src/services/authService.ts
 import { getCsrfToken, clearCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage, readJsonRecord, readNumberField, readStringField } from './serviceErrorUtils';
+
+function extractRegisterErrorMessage(data: Record<string, unknown>): string | undefined {
+  return getBackendMessage(data)
+    || readStringField(data, 'username')
+    || readStringField(data, 'email')
+    || readStringField(data, 'password');
+}
 
 export interface AdminDTO {
   id: number;
@@ -114,16 +122,15 @@ export async function resendLogin2faEmail(): Promise<{
     credentials: 'include',
   });
 
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const data = await readJsonRecord(res);
   if (!res.ok) {
-    const msg = typeof data?.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '发送失败');
+    throw new Error(getBackendMessage(data) || '发送失败');
   }
 
   return {
-    message: typeof data?.message === 'string' ? data.message : undefined,
-    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
-    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
+    message: getBackendMessage(data),
+    resendWaitSeconds: readNumberField(data, 'resendWaitSeconds'),
+    codeTtlSeconds: readNumberField(data, 'codeTtlSeconds'),
   };
 }
 
@@ -253,21 +260,16 @@ export async function register(registerData: RegisterRequest): Promise<void> {
     body: JSON.stringify(registerData)
   });
 
-  const data = await res.json().catch(() => ({}));
+  const data = await readJsonRecord(res);
 
   if (!res.ok) {
-    const fieldErrMsg = typeof data === 'object' && data !== null
-      ? (data.message || data.username || data.email || data.password)
-      : undefined;
-    throw new Error(fieldErrMsg || '注册失败');
+    throw new Error(extractRegisterErrorMessage(data) || '注册失败');
   }
 
   // 若后端使用 ApiResponse 包装
-  if (data && typeof data === 'object' && 'success' in data) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const api: any = data;
-    if (!api.success) {
-      throw new Error(api.message || '注册失败');
+  if ('success' in data) {
+    if (!data.success) {
+      throw new Error(getBackendMessage(data) || '注册失败');
     }
   }
 }
@@ -277,10 +279,9 @@ export async function getRegistrationStatus(): Promise<{ registrationEnabled: bo
     method: 'GET',
     credentials: 'include',
   });
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const data = await readJsonRecord(res);
   if (!res.ok) {
-    const msg = typeof data?.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '获取注册状态失败');
+    throw new Error(getBackendMessage(data) || '获取注册状态失败');
   }
   return { registrationEnabled: data?.registrationEnabled !== false };
 }
@@ -298,22 +299,18 @@ export async function registerAndGetStatus(registerData: RegisterRequest): Promi
     body: JSON.stringify(registerData),
   });
 
-  const data = await res.json().catch(() => ({}));
+  const data = await readJsonRecord(res);
   if (!res.ok) {
-    const fieldErrMsg = typeof data === 'object' && data !== null
-      ? (data.message || data.username || data.email || data.password)
-      : undefined;
-    throw new Error(fieldErrMsg || '注册失败');
+    throw new Error(extractRegisterErrorMessage(data) || '注册失败');
   }
 
-  if (data && typeof data === 'object' && 'success' in data) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const api: any = data;
-    if (!api.success) {
-      throw new Error(api.message || '注册失败');
+  if ('success' in data) {
+    if (!data.success) {
+      throw new Error(getBackendMessage(data) || '注册失败');
     }
-    const status = api?.data?.status;
-    const message = api?.message;
+    const apiData = data.data;
+    const status = apiData && typeof apiData === 'object' ? (apiData as Record<string, unknown>).status : undefined;
+    const message = getBackendMessage(data);
     return { message: typeof message === 'string' ? message : undefined, status: typeof status === 'string' ? status : undefined };
   }
 
@@ -330,17 +327,14 @@ export async function verifyRegister(email: string, code: string): Promise<void>
     body: JSON.stringify({ email, code }),
   });
 
-  const data = await res.json().catch(() => ({}));
+  const data = await readJsonRecord(res);
   if (!res.ok) {
-    const msg = typeof data?.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '激活失败');
+    throw new Error(getBackendMessage(data) || '激活失败');
   }
 
-  if (data && typeof data === 'object' && 'success' in data) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const api: any = data;
-    if (!api.success) {
-      throw new Error(api.message || '激活失败');
+  if ('success' in data) {
+    if (!data.success) {
+      throw new Error(getBackendMessage(data) || '激活失败');
     }
   }
 }
@@ -361,15 +355,14 @@ export async function resendRegisterCode(email: string): Promise<{
     body: JSON.stringify({ email }),
   });
 
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const data = await readJsonRecord(res);
   if (!res.ok) {
-    const msg = typeof data?.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '发送失败');
+    throw new Error(getBackendMessage(data) || '发送失败');
   }
 
   return {
-    message: typeof data?.message === 'string' ? data.message : undefined,
-    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
-    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
+    message: getBackendMessage(data),
+    resendWaitSeconds: readNumberField(data, 'resendWaitSeconds'),
+    codeTtlSeconds: readNumberField(data, 'codeTtlSeconds'),
   };
 }

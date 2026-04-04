@@ -104,11 +104,9 @@ public class AiEmbeddingService {
                             os.write(body.getBytes(StandardCharsets.UTF_8));
                         }
 
-                        int code = conn.getResponseCode();
-                        InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-                        if (is == null) throw new IOException("Upstream returned HTTP " + code + " without body");
-
-                        String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                        HttpTextResponse upstream = readHttpTextResponse(conn);
+                        int code = upstream.code();
+                        String json = upstream.body();
                         if (code < 200 || code >= 300) {
                             throw new IOException("Embedding upstream error HTTP " + code + ": " + json);
                         }
@@ -165,6 +163,16 @@ public class AiEmbeddingService {
                 ",\"input\":\"" + escapeJson(input) + "\"" +
                 '}';
     }
+
+    private static HttpTextResponse readHttpTextResponse(HttpURLConnection conn) throws IOException {
+        int code = conn.getResponseCode();
+        InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+        if (is == null) throw new IOException("Upstream returned HTTP " + code + " without body");
+        String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        return new HttpTextResponse(code, body);
+    }
+
+    private record HttpTextResponse(int code, String body) {}
 
     private static String escapeJson(String s) {
         if (s == null) return "";

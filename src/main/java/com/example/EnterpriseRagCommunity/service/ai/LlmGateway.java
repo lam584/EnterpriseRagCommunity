@@ -1744,7 +1744,6 @@ public class LlmGateway {
         boolean stripThink = shouldStripThinkBlocks(enableThinking);
         boolean isDashscope = shouldSendDashscopeThinking(provider);
         Boolean enableThinkingToSend = isDashscope ? Boolean.FALSE : null;
-        Integer thinkingBudgetToSend = null;
         Map<String, Object> extraBodyToSend = filterExtraBody(provider, extraBody);
         OpenAiCompatClient.ChatRequest req = new OpenAiCompatClient.ChatRequest(
                 provider.apiKey(),
@@ -1756,7 +1755,7 @@ public class LlmGateway {
                 maxTokens,
                 stop,
                 enableThinkingToSend,
-                thinkingBudgetToSend,
+                null,
                 extraBodyToSend,
                 mergeHeaders(provider.extraHeaders(), extraRequestHeaders),
                 provider.connectTimeoutMs(),

@@ -2,8 +2,10 @@ package com.example.EnterpriseRagCommunity.controller.monitor.admin;
 
 import java.util.Map;
 
+import jakarta.validation.constraints.Pattern;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,10 +23,13 @@ import com.example.EnterpriseRagCommunity.service.monitor.AdminLlmLoadTestServic
 
 import lombok.RequiredArgsConstructor;
 
+import java.util.Locale;
+
 @RestController
 @RequestMapping("/api/admin/metrics/llm-loadtest")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
 @RequiredArgsConstructor
+@Validated
 public class AdminLlmLoadTestController {
 
     private final AdminLlmLoadTestService service;
@@ -40,7 +45,7 @@ public class AdminLlmLoadTestController {
 
     @GetMapping("/{runId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public ResponseEntity<AdminLlmLoadTestStatusDTO> status(@PathVariable("runId") String runId) {
+    public ResponseEntity<AdminLlmLoadTestStatusDTO> status(@PathVariable("runId") @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
         AdminLlmLoadTestStatusDTO st = service.status(runId);
         if (st == null) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(st);
@@ -48,7 +53,7 @@ public class AdminLlmLoadTestController {
 
     @PostMapping("/{runId}/stop")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public ResponseEntity<?> stop(@PathVariable("runId") String runId) {
+    public ResponseEntity<?> stop(@PathVariable("runId") @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
         boolean ok = service.stop(runId);
         if (!ok) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(Map.of("stopped", true));
@@ -57,9 +62,15 @@ public class AdminLlmLoadTestController {
     @GetMapping("/{runId}/export")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
     public ResponseEntity<StreamingResponseBody> export(
-            @PathVariable("runId") String runId,
-            @RequestParam(value = "format", required = false, defaultValue = "json") String format
+            @PathVariable("runId") @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId,
+            @RequestParam(value = "format", required = false, defaultValue = "json") @Pattern(regexp = "^(json|csv)$") String format
     ) {
-        return service.export(runId, format);
+        String safeFormat = sanitizeFormat(format);
+        return service.export(runId.trim(), safeFormat);
+    }
+
+    private static String sanitizeFormat(String format) {
+        String f = format == null ? "json" : format.trim().toLowerCase(Locale.ROOT);
+        return "csv".equals(f) ? "csv" : "json";
     }
 }

@@ -249,22 +249,27 @@ public class HybridRagRetrievalService {
         if (raw == null || raw.isEmpty()) return List.of();
         List<DocHit> out = new ArrayList<>();
         for (RagFileAssetChatRetrievalService.Hit h : raw) {
-            if (h == null || h.getDocId() == null) continue;
-            DocHit d = new DocHit();
-            d.setDocId(h.getDocId());
-            d.setScore(h.getScore());
-            d.setSourceType("FILE_ASSET");
-            d.setFileAssetId(h.getFileAssetId());
-            d.setPostIds(h.getPostIds());
-            Long firstPostId = null;
-            if (h.getPostIds() != null && !h.getPostIds().isEmpty()) firstPostId = h.getPostIds().get(0);
-            d.setPostId(firstPostId);
-            d.setChunkIndex(h.getChunkIndex());
-            d.setTitle(h.getFileName());
-            d.setContentText(h.getContentText());
-            out.add(d);
+            DocHit d = toDocHitFromFileAssetHit(h);
+            if (d != null) out.add(d);
         }
         return out;
+    }
+
+    private static DocHit toDocHitFromFileAssetHit(RagFileAssetChatRetrievalService.Hit h) {
+        if (h == null || h.getDocId() == null) return null;
+        DocHit d = new DocHit();
+        d.setDocId(h.getDocId());
+        d.setScore(h.getScore());
+        d.setSourceType("FILE_ASSET");
+        d.setFileAssetId(h.getFileAssetId());
+        d.setPostIds(h.getPostIds());
+        Long firstPostId = null;
+        if (h.getPostIds() != null && !h.getPostIds().isEmpty()) firstPostId = h.getPostIds().get(0);
+        d.setPostId(firstPostId);
+        d.setChunkIndex(h.getChunkIndex());
+        d.setTitle(h.getFileName());
+        d.setContentText(h.getContentText());
+        return d;
     }
 
     private List<DocHit> filterVisibleHits(List<DocHit> hits) {

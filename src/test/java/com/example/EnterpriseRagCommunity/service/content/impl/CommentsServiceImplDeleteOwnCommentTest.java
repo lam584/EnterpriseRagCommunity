@@ -16,7 +16,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
+
 
 import java.util.List;
 import java.util.Optional;
@@ -40,14 +40,23 @@ class CommentsServiceImplDeleteOwnCommentTest {
             RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService,
             AuditLogWriter auditLogWriter
     ) {
-        CommentsServiceImpl svc = new CommentsServiceImpl();
-        ReflectionTestUtils.setField(svc, "commentsRepository", commentsRepository);
-        ReflectionTestUtils.setField(svc, "administratorService", administratorService);
-        ReflectionTestUtils.setField(svc, "moderationQueueRepository", moderationQueueRepository);
-        ReflectionTestUtils.setField(svc, "ragCommentIndexVisibilitySyncService", ragCommentIndexVisibilitySyncService);
-        ReflectionTestUtils.setField(svc, "auditLogWriter", auditLogWriter);
-        return svc;
+        return new CommentsServiceImpl(
+                commentsRepository,
+                administratorService,
+                mock(com.example.EnterpriseRagCommunity.repository.content.PostsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.monitor.NotificationsService.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService.class),
+                moderationQueueRepository,
+                mock(com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService.class),
+                mock(com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner.class),
+                mock(com.example.EnterpriseRagCommunity.repository.access.UsersRepository.class),
+                mock(com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository.class),
+                mock(com.example.EnterpriseRagCommunity.service.ai.AiLanguageDetectService.class),
+                auditLogWriter,
+                ragCommentIndexVisibilitySyncService
+        );
     }
+
 
     @AfterEach
     void cleanup() {

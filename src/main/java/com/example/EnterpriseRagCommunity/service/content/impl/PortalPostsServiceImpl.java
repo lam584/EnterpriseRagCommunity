@@ -18,6 +18,7 @@ import com.example.EnterpriseRagCommunity.repository.content.PostViewsDailyRepos
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -37,39 +38,31 @@ import java.util.Map;
 import java.util.Set;
 
 @Service
+@RequiredArgsConstructor
 public class PortalPostsServiceImpl implements PortalPostsService {
 
     private static final Logger log = LoggerFactory.getLogger(PortalPostsServiceImpl.class);
 
-    @Autowired
-    private PostsService postsService;
+    private final PostsService postsService;
 
-    @Autowired
-    private PostInteractionsService postInteractionsService;
+    private final PostInteractionsService postInteractionsService;
 
-    @Autowired
-    private CommentsService commentsService;
+    private final CommentsService commentsService;
 
-    @Autowired
-    private PostViewsDailyRepository postViewsDailyRepository;
+    private final PostViewsDailyRepository postViewsDailyRepository;
 
     @Autowired(required = false)
     private HotScoresRepository hotScoresRepository;
 
-    @Autowired
-    private ReactionsRepository reactionsRepository;
+    private final ReactionsRepository reactionsRepository;
 
-    @Autowired
-    private AdministratorService administratorService;
+    private final AdministratorService administratorService;
 
-    @Autowired
-    private UsersRepository usersRepository;
+    private final UsersRepository usersRepository;
 
-    @Autowired
-    private BoardsRepository boardsRepository;
+    private final BoardsRepository boardsRepository;
 
-    @Autowired
-    private BoardAccessControlService boardAccessControlService;
+    private final BoardAccessControlService boardAccessControlService;
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
 

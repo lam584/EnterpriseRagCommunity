@@ -12,7 +12,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,16 +25,11 @@ import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/posts")
+@RequiredArgsConstructor
 public class PostsController {
-
-    @Autowired
-    private PostsService postsService;
-
-    @Autowired
-    private PortalPostsService portalPostsService;
-
-    @Autowired
-    private AdministratorService administratorService;
+    private final PostsService postsService;
+    private final PortalPostsService portalPostsService;
+    private final AdministratorService administratorService;
 
     @PostMapping
     public PostsEntity publish(@Valid @RequestBody PostsPublishDTO dto) {
@@ -69,7 +64,7 @@ public class PostsController {
     }
 
     @GetMapping("/{id}")
-    public PostDetailDTO getById(@PathVariable("id") Long id) {
+    public PostDetailDTO getById(@PathVariable Long id) {
         return portalPostsService.getById(id);
     }
 
@@ -83,17 +78,17 @@ public class PostsController {
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
-    public PostsEntity updateStatus(@PathVariable("id") Long id, @Valid @RequestBody UpdateStatusRequest req) {
+    public PostsEntity updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest req) {
         return postsService.updateStatus(id, req.getStatus());
     }
 
     @PutMapping("/{id}")
-    public PostsEntity update(@PathVariable("id") Long id, @Valid @RequestBody PostsUpdateDTO dto) {
+    public PostsEntity update(@PathVariable Long id, @Valid @RequestBody PostsUpdateDTO dto) {
         return postsService.update(id, dto);
     }
 
     @DeleteMapping("/{id}")
-    public void delete(@PathVariable("id") Long id) {
+    public void delete(@PathVariable Long id) {
         postsService.delete(id);
     }
 

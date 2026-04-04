@@ -2,29 +2,28 @@ package com.example.EnterpriseRagCommunity.controller.content;
 
 import com.example.EnterpriseRagCommunity.dto.content.PostToggleResponseDTO;
 import com.example.EnterpriseRagCommunity.service.content.PostInteractionsService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/posts")
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
+@RequiredArgsConstructor
 public class PostInteractionsController {
-
-    @Autowired
-    private PostInteractionsService postInteractionsService;
+    private final PostInteractionsService postInteractionsService;
 
     @PostMapping("/{postId}/like")
-    public PostToggleResponseDTO toggleLike(@PathVariable("postId") Long postId) {
+    public PostToggleResponseDTO toggleLike(@PathVariable Long postId) {
         return postInteractionsService.toggleLike(postId);
     }
 
     @PostMapping("/{postId}/favorite")
-    public PostToggleResponseDTO toggleFavorite(@PathVariable("postId") Long postId) {
+    public PostToggleResponseDTO toggleFavorite(@PathVariable Long postId) {
         return postInteractionsService.toggleFavorite(postId);
     }
 
     @DeleteMapping("/{postId}/favorite")
-    public PostToggleResponseDTO unfavorite(@PathVariable("postId") Long postId) {
+    public PostToggleResponseDTO unfavorite(@PathVariable Long postId) {
         return postInteractionsService.unfavorite(postId);
     }
 }

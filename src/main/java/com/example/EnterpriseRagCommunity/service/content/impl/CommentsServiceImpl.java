@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -48,31 +48,16 @@ import com.example.EnterpriseRagCommunity.service.retrieval.RagCommentIndexVisib
 import jakarta.transaction.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class CommentsServiceImpl implements CommentsService {
-
-    @Autowired
-    private CommentsRepository commentsRepository;
-
-    @Autowired
-    private AdministratorService administratorService;
-
-    @Autowired
-    private PostsRepository postsRepository;
-
-    @Autowired
-    private NotificationsService notificationsService;
-
-    @Autowired
-    private AdminModerationQueueService adminModerationQueueService;
-
-    @Autowired
-    private ModerationQueueRepository moderationQueueRepository;
-
-    @Autowired
-    private ModerationAutoKickService moderationAutoKickService;
-
-    @Autowired
-    private com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner moderationRuleAutoRunner;
+    private final CommentsRepository commentsRepository;
+    private final AdministratorService administratorService;
+    private final PostsRepository postsRepository;
+    private final NotificationsService notificationsService;
+    private final AdminModerationQueueService adminModerationQueueService;
+    private final ModerationQueueRepository moderationQueueRepository;
+    private final ModerationAutoKickService moderationAutoKickService;
+    private final com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner moderationRuleAutoRunner;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -95,21 +80,11 @@ public class CommentsServiceImpl implements CommentsService {
             return null;
         }
     }
-
-    @Autowired
-    private UsersRepository usersRepository;
-
-    @Autowired
-    private ReactionsRepository reactionsRepository;
-
-    @Autowired
-    private AiLanguageDetectService aiLanguageDetectService;
-
-    @Autowired
-    private AuditLogWriter auditLogWriter;
-
-    @Autowired
-    private RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
+    private final UsersRepository usersRepository;
+    private final ReactionsRepository reactionsRepository;
+    private final AiLanguageDetectService aiLanguageDetectService;
+    private final AuditLogWriter auditLogWriter;
+    private final RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
 
     private static String extractProfileString(UsersEntity u, String key) {
         if (u == null || u.getMetadata() == null) return null;

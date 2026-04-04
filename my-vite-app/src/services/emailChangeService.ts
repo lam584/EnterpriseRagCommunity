@@ -1,4 +1,5 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage, readJsonRecord, readNumberField } from './serviceErrorUtils';
 
 export async function verifyEmailChangePassword(password: string): Promise<void> {
   const csrfToken = await getCsrfToken();
@@ -12,9 +13,8 @@ export async function verifyEmailChangePassword(password: string): Promise<void>
     body: JSON.stringify({ password }),
   });
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const msg = typeof data.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '密码验证失败');
+    const data = await readJsonRecord(res);
+    throw new Error(getBackendMessage(data) || '密码验证失败');
   }
 }
 
@@ -32,16 +32,15 @@ export async function sendOldEmailVerificationCode(): Promise<{
     },
     credentials: 'include',
   });
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const data = await readJsonRecord(res);
   if (!res.ok) {
-    const msg = typeof data?.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '发送验证码失败');
+    throw new Error(getBackendMessage(data) || '发送验证码失败');
   }
 
   return {
-    message: typeof data?.message === 'string' ? data.message : undefined,
-    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
-    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
+    message: getBackendMessage(data),
+    resendWaitSeconds: readNumberField(data, 'resendWaitSeconds'),
+    codeTtlSeconds: readNumberField(data, 'codeTtlSeconds'),
   };
 }
 
@@ -63,9 +62,8 @@ export async function verifyOldEmailOrTotp(body: {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const msg = typeof data.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '验证失败');
+    const data = await readJsonRecord(res);
+    throw new Error(getBackendMessage(data) || '验证失败');
   }
 }
 
@@ -84,16 +82,15 @@ export async function sendChangeEmailVerificationCode(newEmail: string): Promise
     credentials: 'include',
     body: JSON.stringify({ newEmail }),
   });
-  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const data = await readJsonRecord(res);
   if (!res.ok) {
-    const msg = typeof data?.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '发送验证码失败');
+    throw new Error(getBackendMessage(data) || '发送验证码失败');
   }
 
   return {
-    message: typeof data?.message === 'string' ? data.message : undefined,
-    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
-    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
+    message: getBackendMessage(data),
+    resendWaitSeconds: readNumberField(data, 'resendWaitSeconds'),
+    codeTtlSeconds: readNumberField(data, 'codeTtlSeconds'),
   };
 }
 
@@ -114,8 +111,7 @@ export async function changeEmail(body: ChangeEmailRequest): Promise<void> {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const msg = typeof data.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '更换邮箱失败');
+    const data = await readJsonRecord(res);
+    throw new Error(getBackendMessage(data) || '更换邮箱失败');
   }
 }

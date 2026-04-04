@@ -63,6 +63,7 @@ public class RagFileAssetIndexBuildService {
     private final ElasticsearchTemplate esTemplate;
     private final SystemConfigurationService systemConfigurationService;
 
+    @SuppressWarnings("DataFlowIssue")
     @Transactional
     public RagFilesBuildResponse buildFiles(Long vectorIndexId,
                                            Long fromFileAssetId,

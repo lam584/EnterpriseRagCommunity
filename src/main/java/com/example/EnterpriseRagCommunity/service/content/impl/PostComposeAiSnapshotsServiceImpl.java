@@ -14,7 +14,7 @@ import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.content.PostComposeAiSnapshotsService;
 import jakarta.transaction.Transactional;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -24,21 +24,14 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 @Service
+@RequiredArgsConstructor
 public class PostComposeAiSnapshotsServiceImpl implements PostComposeAiSnapshotsService {
 
     private static final int DEFAULT_EXPIRES_SECONDS = 120;
-
-    @Autowired
-    private PostComposeAiSnapshotsRepository snapshotsRepository;
-
-    @Autowired
-    private PostDraftsRepository postDraftsRepository;
-
-    @Autowired
-    private PostsRepository postsRepository;
-
-    @Autowired
-    private AdministratorService administratorService;
+    private final PostComposeAiSnapshotsRepository snapshotsRepository;
+    private final PostDraftsRepository postDraftsRepository;
+    private final PostsRepository postsRepository;
+    private final AdministratorService administratorService;
 
     private Long currentUserIdOrThrow() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

@@ -41,9 +41,7 @@ public class AiPostTitleService {
         int defaultCount = cfg.getDefaultCount() == null ? PostTitleGenConfigService.DEFAULT_DEFAULT_COUNT : cfg.getDefaultCount();
         int maxCount = cfg.getMaxCount() == null ? PostTitleGenConfigService.DEFAULT_MAX_COUNT : cfg.getMaxCount();
 
-        int count = req.getCount() == null ? defaultCount : req.getCount();
-        if (count <= 0) count = defaultCount;
-        if (count > maxCount) count = maxCount;
+        int count = resolveRequestedCount(req.getCount(), defaultCount, maxCount);
 
         String content = req.getContent() == null ? "" : req.getContent();
         content = content.trim();
@@ -74,9 +72,7 @@ public class AiPostTitleService {
             0.9
         );
 
-        String modelOverride = req.getModel() != null && !req.getModel().isBlank()
-            ? req.getModel().trim()
-            : params.model();
+        String modelOverride = resolveModelOverride(req.getModel(), params.model());
 
         Double temperature = req.getTemperature() != null ? req.getTemperature() : params.temperature();
         if (temperature == null) temperature = 0.4;
@@ -235,6 +231,18 @@ public class AiPostTitleService {
         if (t.isEmpty()) return null;
         if (t.length() > 240) t = t.substring(0, 240);
         return t;
+    }
+
+    private static int resolveRequestedCount(Integer requestedCount, int defaultCount, int maxCount) {
+        int count = requestedCount == null ? defaultCount : requestedCount;
+        if (count <= 0) count = defaultCount;
+        if (count > maxCount) count = maxCount;
+        return count;
+    }
+
+    private static String resolveModelOverride(String requestedModel, String defaultModel) {
+        if (requestedModel == null || requestedModel.isBlank()) return defaultModel;
+        return requestedModel.trim();
     }
 
     private static String renderPrompt(String template, int count, String boardName, List<String> tags, String content) {

@@ -392,7 +392,7 @@ final class FileAssetExtractionSupport {
                 }
                 int right = target + d;
                 if (right >= minBasePos && right >= 0 && right <= len) {
-                    if (right <= 0 || right >= len || Character.isWhitespace(base.charAt(right - 1)) || Character.isWhitespace(base.charAt(right))) {
+                    if (right == 0 || right >= len || Character.isWhitespace(base.charAt(right - 1)) || Character.isWhitespace(base.charAt(right))) {
                         pos = right;
                         break;
                     }

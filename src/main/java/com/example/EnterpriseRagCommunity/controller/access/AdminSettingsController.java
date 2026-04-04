@@ -137,14 +137,18 @@ public class AdminSettingsController {
     private static final String KEY_EMAIL_INBOX_FOLDER = "email_inbox_folder";
     private static final String KEY_EMAIL_SENT_FOLDER = "email_sent_folder";
 
-    private static Optional<List<String>> parseStringList(String raw) {
-        if (raw == null || raw.isBlank()) return Optional.empty();
+    private static List<String> splitCsvTokens(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
         List<String> out = new ArrayList<>();
         for (String s : raw.split(",")) {
             String t = s.trim();
-            if (t.isEmpty()) continue;
-            out.add(t);
+            if (!t.isEmpty()) out.add(t);
         }
+        return out;
+    }
+
+    private static Optional<List<String>> parseStringList(String raw) {
+        List<String> out = splitCsvTokens(raw);
         if (out.isEmpty()) return Optional.empty();
         return Optional.of(out);
     }
@@ -209,27 +213,7 @@ public class AdminSettingsController {
     @GetMapping("/email")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
     public ResponseEntity<EmailAdminSettingsDTO> getEmail() {
-        EmailAdminSettingsDTO dto = new EmailAdminSettingsDTO();
-        dto.setEnabled(appSettingsService.getLongOrDefault(KEY_EMAIL_ENABLED, 1L) == 1L);
-        dto.setOtpTtlSeconds((int) appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_TTL_SECONDS, 600L));
-        dto.setOtpResendWaitSeconds((int) appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_RESEND_WAIT_SECONDS, 120L));
-        dto.setOtpResendWaitReductionSecondsAfterVerified((int) appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS, 0L));
-        dto.setProtocol(appSettingsService.getString(KEY_EMAIL_PROTOCOL).orElse("SMTP"));
-        dto.setHost(appSettingsService.getString(KEY_EMAIL_HOST).orElse("smtp.qiye.aliyun.com"));
-        dto.setPortPlain((int) appSettingsService.getLongOrDefault(KEY_EMAIL_PORT_PLAIN, 25L));
-        dto.setPortEncrypted((int) appSettingsService.getLongOrDefault(KEY_EMAIL_PORT_ENCRYPTED, 465L));
-        dto.setEncryption(appSettingsService.getString(KEY_EMAIL_ENCRYPTION).orElse("SSL"));
-        dto.setConnectTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_CONNECT_TIMEOUT_MS, 10_000L));
-        dto.setTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_TIMEOUT_MS, 10_000L));
-        dto.setWriteTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_WRITE_TIMEOUT_MS, 10_000L));
-        dto.setDebug(appSettingsService.getLongOrDefault(KEY_EMAIL_DEBUG, 0L) == 1L);
-        dto.setSslTrust(appSettingsService.getString(KEY_EMAIL_SSL_TRUST).orElse(""));
-        dto.setSubjectPrefix(appSettingsService.getString(KEY_EMAIL_SUBJECT_PREFIX).orElse(""));
-        dto.setUsername(systemConfigurationService.getConfig(KEY_EMAIL_USERNAME));
-        dto.setPassword(systemConfigurationService.getConfig(KEY_EMAIL_PASSWORD));
-        dto.setFrom(systemConfigurationService.getConfig(KEY_EMAIL_FROM));
-        dto.setFromName(systemConfigurationService.getConfig(KEY_EMAIL_FROM_NAME));
-        return ResponseEntity.ok(normalizeEmailSettings(dto));
+        return ResponseEntity.ok(normalizeEmailSettings(loadEmailSettingsFromStorage()));
     }
 
     @PutMapping("/email")
@@ -239,27 +223,7 @@ public class AdminSettingsController {
         if (before == null) before = new EmailAdminSettingsDTO();
 
         EmailAdminSettingsDTO normalized = normalizeEmailSettings(dto);
-
-        appSettingsService.upsertString(KEY_EMAIL_ENABLED, normalized.getEnabled() != null && normalized.getEnabled() ? "1" : "0");
-        appSettingsService.upsertString(KEY_EMAIL_OTP_TTL_SECONDS, String.valueOf(normalized.getOtpTtlSeconds()));
-        appSettingsService.upsertString(KEY_EMAIL_OTP_RESEND_WAIT_SECONDS, String.valueOf(normalized.getOtpResendWaitSeconds()));
-        appSettingsService.upsertString(KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS, String.valueOf(normalized.getOtpResendWaitReductionSecondsAfterVerified()));
-        appSettingsService.upsertString(KEY_EMAIL_PROTOCOL, normalized.getProtocol());
-        appSettingsService.upsertString(KEY_EMAIL_HOST, normalized.getHost());
-        appSettingsService.upsertString(KEY_EMAIL_PORT_PLAIN, String.valueOf(normalized.getPortPlain()));
-        appSettingsService.upsertString(KEY_EMAIL_PORT_ENCRYPTED, String.valueOf(normalized.getPortEncrypted()));
-        appSettingsService.upsertString(KEY_EMAIL_ENCRYPTION, normalized.getEncryption());
-        appSettingsService.upsertString(KEY_EMAIL_CONNECT_TIMEOUT_MS, String.valueOf(normalized.getConnectTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_TIMEOUT_MS, String.valueOf(normalized.getTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_WRITE_TIMEOUT_MS, String.valueOf(normalized.getWriteTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_DEBUG, normalized.getDebug() != null && normalized.getDebug() ? "1" : "0");
-        appSettingsService.upsertString(KEY_EMAIL_SSL_TRUST, normalized.getSslTrust() == null ? "" : normalized.getSslTrust());
-        appSettingsService.upsertString(KEY_EMAIL_SUBJECT_PREFIX, normalized.getSubjectPrefix() == null ? "" : normalized.getSubjectPrefix());
-
-        systemConfigurationService.saveConfig(KEY_EMAIL_USERNAME, normalized.getUsername(), false, "Updated via Admin Settings");
-        systemConfigurationService.saveConfig(KEY_EMAIL_PASSWORD, normalized.getPassword(), true, "Updated via Admin Settings");
-        systemConfigurationService.saveConfig(KEY_EMAIL_FROM, normalized.getFrom(), false, "Updated via Admin Settings");
-        systemConfigurationService.saveConfig(KEY_EMAIL_FROM_NAME, normalized.getFromName(), false, "Updated via Admin Settings");
+        saveEmailSettingsToStorage(normalized);
 
         auditLogWriter.write(
                 null,
@@ -306,20 +270,7 @@ public class AdminSettingsController {
     @GetMapping("/email/inbox-config")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
     public ResponseEntity<EmailInboxSettingsDTO> getEmailInboxConfig() {
-        EmailInboxSettingsDTO dto = new EmailInboxSettingsDTO();
-        dto.setProtocol(appSettingsService.getString(KEY_EMAIL_INBOX_PROTOCOL).orElse("IMAP"));
-        dto.setHost(appSettingsService.getString(KEY_EMAIL_INBOX_HOST).orElse("imap.qiye.aliyun.com"));
-        dto.setPortPlain((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_PORT_PLAIN, 143L));
-        dto.setPortEncrypted((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_PORT_ENCRYPTED, 993L));
-        dto.setEncryption(appSettingsService.getString(KEY_EMAIL_INBOX_ENCRYPTION).orElse("SSL"));
-        dto.setConnectTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_CONNECT_TIMEOUT_MS, 10_000L));
-        dto.setTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_TIMEOUT_MS, 10_000L));
-        dto.setWriteTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_WRITE_TIMEOUT_MS, 10_000L));
-        dto.setDebug(appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_DEBUG, 0L) == 1L);
-        dto.setSslTrust(appSettingsService.getString(KEY_EMAIL_INBOX_SSL_TRUST).orElse(""));
-        dto.setFolder(appSettingsService.getString(KEY_EMAIL_INBOX_FOLDER).orElse("INBOX"));
-        dto.setSentFolder(appSettingsService.getString(KEY_EMAIL_SENT_FOLDER).orElse("Sent"));
-        return ResponseEntity.ok(dto);
+        return ResponseEntity.ok(loadEmailInboxSettingsFromStorage());
     }
 
     @PutMapping("/email/inbox-config")
@@ -329,19 +280,7 @@ public class AdminSettingsController {
         if (before == null) before = new EmailInboxSettingsDTO();
 
         EmailInboxSettingsDTO normalized = normalizeEmailInboxSettings(dto);
-
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_PROTOCOL, normalized.getProtocol());
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_HOST, normalized.getHost());
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_PORT_PLAIN, String.valueOf(normalized.getPortPlain()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_PORT_ENCRYPTED, String.valueOf(normalized.getPortEncrypted()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_ENCRYPTION, normalized.getEncryption());
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_CONNECT_TIMEOUT_MS, String.valueOf(normalized.getConnectTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_TIMEOUT_MS, String.valueOf(normalized.getTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_WRITE_TIMEOUT_MS, String.valueOf(normalized.getWriteTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_DEBUG, normalized.getDebug() != null && normalized.getDebug() ? "1" : "0");
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_SSL_TRUST, normalized.getSslTrust() == null ? "" : normalized.getSslTrust());
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_FOLDER, normalized.getFolder() == null ? "INBOX" : normalized.getFolder());
-        appSettingsService.upsertString(KEY_EMAIL_SENT_FOLDER, normalized.getSentFolder() == null ? "Sent" : normalized.getSentFolder());
+        saveEmailInboxSettingsToStorage(normalized);
 
         auditLogWriter.write(
                 null,
@@ -381,20 +320,7 @@ public class AdminSettingsController {
         EmailInboxSettingsDTO cfg = getEmailInboxConfig().getBody();
         if (cfg == null) throw new IllegalStateException("inbox settings missing");
         EmailInboxSettingsDTO normalized = normalizeEmailInboxSettings(cfg);
-        String folder = normalized.getSentFolder() == null || normalized.getSentFolder().isBlank() ? "Sent" : normalized.getSentFolder();
-
-        EmailInboxSettingsDTO sentCfg = new EmailInboxSettingsDTO();
-        sentCfg.setProtocol(normalized.getProtocol());
-        sentCfg.setHost(normalized.getHost());
-        sentCfg.setPortPlain(normalized.getPortPlain());
-        sentCfg.setPortEncrypted(normalized.getPortEncrypted());
-        sentCfg.setEncryption(normalized.getEncryption());
-        sentCfg.setConnectTimeoutMs(normalized.getConnectTimeoutMs());
-        sentCfg.setTimeoutMs(normalized.getTimeoutMs());
-        sentCfg.setWriteTimeoutMs(normalized.getWriteTimeoutMs());
-        sentCfg.setDebug(normalized.getDebug());
-        sentCfg.setSslTrust(normalized.getSslTrust());
-        sentCfg.setFolder(folder);
+        EmailInboxSettingsDTO sentCfg = buildSentInboxSettings(normalized);
 
         List<EmailInboxMessageDTO> list = emailInboxService.listInbox(sentCfg, limit == null ? 20 : limit);
         return ResponseEntity.ok(list);
@@ -417,6 +343,101 @@ public class AdminSettingsController {
         if (t.isBlank()) return null;
         if (maxLen <= 0) return "";
         return t.length() <= maxLen ? t : t.substring(0, maxLen);
+    }
+
+    private EmailAdminSettingsDTO loadEmailSettingsFromStorage() {
+        EmailAdminSettingsDTO dto = new EmailAdminSettingsDTO();
+        dto.setEnabled(appSettingsService.getLongOrDefault(KEY_EMAIL_ENABLED, 1L) == 1L);
+        dto.setOtpTtlSeconds((int) appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_TTL_SECONDS, 600L));
+        dto.setOtpResendWaitSeconds((int) appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_RESEND_WAIT_SECONDS, 120L));
+        dto.setOtpResendWaitReductionSecondsAfterVerified((int) appSettingsService.getLongOrDefault(KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS, 0L));
+        dto.setProtocol(appSettingsService.getString(KEY_EMAIL_PROTOCOL).orElse("SMTP"));
+        dto.setHost(appSettingsService.getString(KEY_EMAIL_HOST).orElse("smtp.qiye.aliyun.com"));
+        dto.setPortPlain((int) appSettingsService.getLongOrDefault(KEY_EMAIL_PORT_PLAIN, 25L));
+        dto.setPortEncrypted((int) appSettingsService.getLongOrDefault(KEY_EMAIL_PORT_ENCRYPTED, 465L));
+        dto.setEncryption(appSettingsService.getString(KEY_EMAIL_ENCRYPTION).orElse("SSL"));
+        dto.setConnectTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_CONNECT_TIMEOUT_MS, 10_000L));
+        dto.setTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_TIMEOUT_MS, 10_000L));
+        dto.setWriteTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_WRITE_TIMEOUT_MS, 10_000L));
+        dto.setDebug(appSettingsService.getLongOrDefault(KEY_EMAIL_DEBUG, 0L) == 1L);
+        dto.setSslTrust(appSettingsService.getString(KEY_EMAIL_SSL_TRUST).orElse(""));
+        dto.setSubjectPrefix(appSettingsService.getString(KEY_EMAIL_SUBJECT_PREFIX).orElse(""));
+        dto.setUsername(systemConfigurationService.getConfig(KEY_EMAIL_USERNAME));
+        dto.setPassword(systemConfigurationService.getConfig(KEY_EMAIL_PASSWORD));
+        dto.setFrom(systemConfigurationService.getConfig(KEY_EMAIL_FROM));
+        dto.setFromName(systemConfigurationService.getConfig(KEY_EMAIL_FROM_NAME));
+        return dto;
+    }
+
+    private void saveEmailSettingsToStorage(EmailAdminSettingsDTO normalized) {
+        appSettingsService.upsertString(KEY_EMAIL_ENABLED, normalized.getEnabled() != null && normalized.getEnabled() ? "1" : "0");
+        appSettingsService.upsertString(KEY_EMAIL_OTP_TTL_SECONDS, String.valueOf(normalized.getOtpTtlSeconds()));
+        appSettingsService.upsertString(KEY_EMAIL_OTP_RESEND_WAIT_SECONDS, String.valueOf(normalized.getOtpResendWaitSeconds()));
+        appSettingsService.upsertString(KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS, String.valueOf(normalized.getOtpResendWaitReductionSecondsAfterVerified()));
+        appSettingsService.upsertString(KEY_EMAIL_PROTOCOL, normalized.getProtocol());
+        appSettingsService.upsertString(KEY_EMAIL_HOST, normalized.getHost());
+        appSettingsService.upsertString(KEY_EMAIL_PORT_PLAIN, String.valueOf(normalized.getPortPlain()));
+        appSettingsService.upsertString(KEY_EMAIL_PORT_ENCRYPTED, String.valueOf(normalized.getPortEncrypted()));
+        appSettingsService.upsertString(KEY_EMAIL_ENCRYPTION, normalized.getEncryption());
+        appSettingsService.upsertString(KEY_EMAIL_CONNECT_TIMEOUT_MS, String.valueOf(normalized.getConnectTimeoutMs()));
+        appSettingsService.upsertString(KEY_EMAIL_TIMEOUT_MS, String.valueOf(normalized.getTimeoutMs()));
+        appSettingsService.upsertString(KEY_EMAIL_WRITE_TIMEOUT_MS, String.valueOf(normalized.getWriteTimeoutMs()));
+        appSettingsService.upsertString(KEY_EMAIL_DEBUG, normalized.getDebug() != null && normalized.getDebug() ? "1" : "0");
+        appSettingsService.upsertString(KEY_EMAIL_SSL_TRUST, normalized.getSslTrust() == null ? "" : normalized.getSslTrust());
+        appSettingsService.upsertString(KEY_EMAIL_SUBJECT_PREFIX, normalized.getSubjectPrefix() == null ? "" : normalized.getSubjectPrefix());
+
+        systemConfigurationService.saveConfig(KEY_EMAIL_USERNAME, normalized.getUsername(), false, "Updated via Admin Settings");
+        systemConfigurationService.saveConfig(KEY_EMAIL_PASSWORD, normalized.getPassword(), true, "Updated via Admin Settings");
+        systemConfigurationService.saveConfig(KEY_EMAIL_FROM, normalized.getFrom(), false, "Updated via Admin Settings");
+        systemConfigurationService.saveConfig(KEY_EMAIL_FROM_NAME, normalized.getFromName(), false, "Updated via Admin Settings");
+    }
+
+    private EmailInboxSettingsDTO loadEmailInboxSettingsFromStorage() {
+        EmailInboxSettingsDTO dto = new EmailInboxSettingsDTO();
+        dto.setProtocol(appSettingsService.getString(KEY_EMAIL_INBOX_PROTOCOL).orElse("IMAP"));
+        dto.setHost(appSettingsService.getString(KEY_EMAIL_INBOX_HOST).orElse("imap.qiye.aliyun.com"));
+        dto.setPortPlain((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_PORT_PLAIN, 143L));
+        dto.setPortEncrypted((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_PORT_ENCRYPTED, 993L));
+        dto.setEncryption(appSettingsService.getString(KEY_EMAIL_INBOX_ENCRYPTION).orElse("SSL"));
+        dto.setConnectTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_CONNECT_TIMEOUT_MS, 10_000L));
+        dto.setTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_TIMEOUT_MS, 10_000L));
+        dto.setWriteTimeoutMs((int) appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_WRITE_TIMEOUT_MS, 10_000L));
+        dto.setDebug(appSettingsService.getLongOrDefault(KEY_EMAIL_INBOX_DEBUG, 0L) == 1L);
+        dto.setSslTrust(appSettingsService.getString(KEY_EMAIL_INBOX_SSL_TRUST).orElse(""));
+        dto.setFolder(appSettingsService.getString(KEY_EMAIL_INBOX_FOLDER).orElse("INBOX"));
+        dto.setSentFolder(appSettingsService.getString(KEY_EMAIL_SENT_FOLDER).orElse("Sent"));
+        return dto;
+    }
+
+    private void saveEmailInboxSettingsToStorage(EmailInboxSettingsDTO normalized) {
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_PROTOCOL, normalized.getProtocol());
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_HOST, normalized.getHost());
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_PORT_PLAIN, String.valueOf(normalized.getPortPlain()));
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_PORT_ENCRYPTED, String.valueOf(normalized.getPortEncrypted()));
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_ENCRYPTION, normalized.getEncryption());
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_CONNECT_TIMEOUT_MS, String.valueOf(normalized.getConnectTimeoutMs()));
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_TIMEOUT_MS, String.valueOf(normalized.getTimeoutMs()));
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_WRITE_TIMEOUT_MS, String.valueOf(normalized.getWriteTimeoutMs()));
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_DEBUG, normalized.getDebug() != null && normalized.getDebug() ? "1" : "0");
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_SSL_TRUST, normalized.getSslTrust() == null ? "" : normalized.getSslTrust());
+        appSettingsService.upsertString(KEY_EMAIL_INBOX_FOLDER, normalized.getFolder() == null ? "INBOX" : normalized.getFolder());
+        appSettingsService.upsertString(KEY_EMAIL_SENT_FOLDER, normalized.getSentFolder() == null ? "Sent" : normalized.getSentFolder());
+    }
+
+    private static String normalizeProtocol(String raw, String fallback, String allowed) {
+        String out = raw == null || raw.isBlank() ? fallback : raw.trim().toUpperCase(Locale.ROOT);
+        return out.equals(allowed) ? out : fallback;
+    }
+
+    private static String normalizeEncryption(String raw) {
+        String out = raw == null || raw.isBlank() ? "SSL" : raw.trim().toUpperCase(Locale.ROOT);
+        if (!out.equals("NONE") && !out.equals("SSL") && !out.equals("STARTTLS")) return "SSL";
+        return out;
+    }
+
+    private static int normalizeTimeoutMs(Integer value) {
+        int out = value == null ? 10_000 : value;
+        return Math.max(out, 0);
     }
 
     private static TotpAdminSettingsDTO normalizeTotpSettings(TotpAdminSettingsDTO input) {
@@ -465,14 +486,13 @@ public class AdminSettingsController {
         boolean enabled = dto.getEnabled() != null && dto.getEnabled();
         int otpTtlSeconds = dto.getOtpTtlSeconds() == null ? 600 : dto.getOtpTtlSeconds();
         int otpResendWaitSeconds = dto.getOtpResendWaitSeconds() == null ? 120 : dto.getOtpResendWaitSeconds();
-        int otpResendWaitReductionSecondsAfterVerified = dto.getOtpResendWaitReductionSecondsAfterVerified() == null ? 0 : dto.getOtpResendWaitReductionSecondsAfterVerified();
+        int otpResendWaitReductionSecondsAfterVerified = normalizeOtpResendWaitReductionSecondsAfterVerified(
+                dto.getOtpResendWaitReductionSecondsAfterVerified(),
+                otpResendWaitSeconds
+        );
         if (otpTtlSeconds < 60 || otpTtlSeconds > 3600) throw new IllegalArgumentException("otpTtlSeconds 不合法（建议 60~3600 秒）");
         if (otpResendWaitSeconds < 10 || otpResendWaitSeconds > 3600) throw new IllegalArgumentException("otpResendWaitSeconds 不合法（建议 10~3600 秒）");
-        if (otpResendWaitReductionSecondsAfterVerified < 0) otpResendWaitReductionSecondsAfterVerified = 0;
-        if (otpResendWaitReductionSecondsAfterVerified > 3600) otpResendWaitReductionSecondsAfterVerified = 3600;
-        if (otpResendWaitReductionSecondsAfterVerified > otpResendWaitSeconds) otpResendWaitReductionSecondsAfterVerified = otpResendWaitSeconds;
-        String protocol = dto.getProtocol() == null || dto.getProtocol().isBlank() ? "SMTP" : dto.getProtocol().trim().toUpperCase(Locale.ROOT);
-        if (!protocol.equals("SMTP")) protocol = "SMTP";
+        String protocol = normalizeProtocol(dto.getProtocol(), "SMTP", "SMTP");
 
         String host = dto.getHost() == null ? "" : dto.getHost().trim();
         int portPlain = dto.getPortPlain() == null ? 25 : dto.getPortPlain();
@@ -493,15 +513,11 @@ public class AdminSettingsController {
             throw new IllegalArgumentException("看起来这是收件(IMAP/POP3)配置；发送验证码需要填写 SMTP 主机与端口");
         }
 
-        String encryption = dto.getEncryption() == null || dto.getEncryption().isBlank() ? "SSL" : dto.getEncryption().trim().toUpperCase(Locale.ROOT);
-        if (!encryption.equals("NONE") && !encryption.equals("SSL") && !encryption.equals("STARTTLS")) encryption = "SSL";
+        String encryption = normalizeEncryption(dto.getEncryption());
 
-        int connectTimeoutMs = dto.getConnectTimeoutMs() == null ? 10_000 : dto.getConnectTimeoutMs();
-        int timeoutMs = dto.getTimeoutMs() == null ? 10_000 : dto.getTimeoutMs();
-        int writeTimeoutMs = dto.getWriteTimeoutMs() == null ? 10_000 : dto.getWriteTimeoutMs();
-        if (connectTimeoutMs < 0) connectTimeoutMs = 0;
-        if (timeoutMs < 0) timeoutMs = 0;
-        if (writeTimeoutMs < 0) writeTimeoutMs = 0;
+        int connectTimeoutMs = normalizeTimeoutMs(dto.getConnectTimeoutMs());
+        int timeoutMs = normalizeTimeoutMs(dto.getTimeoutMs());
+        int writeTimeoutMs = normalizeTimeoutMs(dto.getWriteTimeoutMs());
 
         boolean debug = dto.getDebug() != null && dto.getDebug();
         String sslTrust = dto.getSslTrust() == null ? "" : dto.getSslTrust().trim();
@@ -560,11 +576,36 @@ public class AdminSettingsController {
         );
     }
 
+    private static EmailInboxSettingsDTO buildSentInboxSettings(EmailInboxSettingsDTO normalized) {
+        String folder = normalized.getSentFolder() == null || normalized.getSentFolder().isBlank() ? "Sent" : normalized.getSentFolder();
+        EmailInboxSettingsDTO sentCfg = new EmailInboxSettingsDTO();
+        sentCfg.setProtocol(normalized.getProtocol());
+        sentCfg.setHost(normalized.getHost());
+        sentCfg.setPortPlain(normalized.getPortPlain());
+        sentCfg.setPortEncrypted(normalized.getPortEncrypted());
+        sentCfg.setEncryption(normalized.getEncryption());
+        sentCfg.setConnectTimeoutMs(normalized.getConnectTimeoutMs());
+        sentCfg.setTimeoutMs(normalized.getTimeoutMs());
+        sentCfg.setWriteTimeoutMs(normalized.getWriteTimeoutMs());
+        sentCfg.setDebug(normalized.getDebug());
+        sentCfg.setSslTrust(normalized.getSslTrust());
+        sentCfg.setFolder(folder);
+        return sentCfg;
+    }
+
+    private static int normalizeOtpResendWaitReductionSecondsAfterVerified(Integer configured,
+                                                                           int otpResendWaitSeconds) {
+        int out = configured == null ? 0 : configured;
+        if (out < 0) out = 0;
+        if (out > 3600) out = 3600;
+        if (out > otpResendWaitSeconds) out = otpResendWaitSeconds;
+        return out;
+    }
+
     private static EmailInboxSettingsDTO normalizeEmailInboxSettings(EmailInboxSettingsDTO input) {
         EmailInboxSettingsDTO dto = input == null ? new EmailInboxSettingsDTO() : input;
 
-        String protocol = dto.getProtocol() == null || dto.getProtocol().isBlank() ? "IMAP" : dto.getProtocol().trim().toUpperCase(Locale.ROOT);
-        if (!protocol.equals("IMAP")) protocol = "IMAP";
+        String protocol = normalizeProtocol(dto.getProtocol(), "IMAP", "IMAP");
 
         String host = dto.getHost() == null ? "" : dto.getHost().trim();
         if (host.isEmpty()) host = "imap.qiye.aliyun.com";
@@ -574,15 +615,11 @@ public class AdminSettingsController {
         if (portPlain <= 0 || portPlain > 65535) throw new IllegalArgumentException("portPlain 不合法");
         if (portEncrypted <= 0 || portEncrypted > 65535) throw new IllegalArgumentException("portEncrypted 不合法");
 
-        String encryption = dto.getEncryption() == null || dto.getEncryption().isBlank() ? "SSL" : dto.getEncryption().trim().toUpperCase(Locale.ROOT);
-        if (!encryption.equals("NONE") && !encryption.equals("SSL") && !encryption.equals("STARTTLS")) encryption = "SSL";
+        String encryption = normalizeEncryption(dto.getEncryption());
 
-        int connectTimeoutMs = dto.getConnectTimeoutMs() == null ? 10_000 : dto.getConnectTimeoutMs();
-        int timeoutMs = dto.getTimeoutMs() == null ? 10_000 : dto.getTimeoutMs();
-        int writeTimeoutMs = dto.getWriteTimeoutMs() == null ? 10_000 : dto.getWriteTimeoutMs();
-        if (connectTimeoutMs < 0) connectTimeoutMs = 0;
-        if (timeoutMs < 0) timeoutMs = 0;
-        if (writeTimeoutMs < 0) writeTimeoutMs = 0;
+        int connectTimeoutMs = normalizeTimeoutMs(dto.getConnectTimeoutMs());
+        int timeoutMs = normalizeTimeoutMs(dto.getTimeoutMs());
+        int writeTimeoutMs = normalizeTimeoutMs(dto.getWriteTimeoutMs());
 
         boolean debug = dto.getDebug() != null && dto.getDebug();
         String sslTrust = dto.getSslTrust() == null ? "" : dto.getSslTrust().trim();
@@ -637,11 +674,8 @@ public class AdminSettingsController {
     }
 
     private static Optional<List<Integer>> parseIntList(String raw) {
-        if (raw == null || raw.isBlank()) return Optional.empty();
         List<Integer> out = new ArrayList<>();
-        for (String s : raw.split(",")) {
-            String t = s.trim();
-            if (t.isEmpty()) continue;
+        for (String t : splitCsvTokens(raw)) {
             try {
                 out.add(Integer.parseInt(t));
             } catch (NumberFormatException ignored) {
@@ -654,11 +688,12 @@ public class AdminSettingsController {
     private static String joinInts(List<Integer> list) {
         if (list == null || list.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < list.size(); i++) {
-            Integer v = list.get(i);
+        boolean first = true;
+        for (Integer v : list) {
             if (v == null) continue;
-            if (!sb.isEmpty()) sb.append(',');
+            if (!first) sb.append(',');
             sb.append(v);
+            first = false;
         }
         return sb.toString();
     }

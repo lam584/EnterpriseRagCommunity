@@ -148,17 +148,7 @@ public class ModerationSimilarityService {
             throw new IllegalStateException("Embedding returned empty vector; cannot run vector search");
         }
 
-        // Prefer configured dims, but allow auto-infer from embedding result when not configured.
-        int inferredDims = vec.length;
-        if (configuredDims > 0 && configuredDims != inferredDims) {
-            throw new IllegalStateException(
-                    "Embedding dims mismatch: configuredDims=" + configuredDims
-                            + " but embedding service returned vector length=" + inferredDims
-                            + ". Please fix config and (re)create ES index mapping 'embedding' with correct dims.");
-        }
-
-        // Ensure ES index exists (mapping depends on embedding dims). If dims wasn't configured, auto-infer.
-        int dimsToUse = configuredDims > 0 ? configuredDims : inferredDims;
+        int dimsToUse = resolveDimsToUse(configuredDims, vec.length);
         indexService.ensureIndex(dimsToUse);
 
         List<SimilarityCheckResponse.Hit> hits = queryKnn(topK, numCandidates, vec);
@@ -241,18 +231,7 @@ public class ModerationSimilarityService {
             if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
             if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
 
-            URI uri = URI.create(endpoint + "/" + indexService.getIndexName() + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
-            HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(10_000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-
-            // Auth: ApiKey only
-            if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
-            }
+            HttpURLConnection conn = openSearchConnection(endpoint, elasticsearchApiKey);
 
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(body.getBytes(StandardCharsets.UTF_8));
@@ -291,6 +270,30 @@ public class ModerationSimilarityService {
         sb.append('}');
         sb.append('}');
         return sb.toString();
+    }
+
+    private static int resolveDimsToUse(int configuredDims, int inferredDims) {
+        if (configuredDims > 0 && configuredDims != inferredDims) {
+            throw new IllegalStateException(
+                    "Embedding dims mismatch: configuredDims=" + configuredDims
+                            + " but embedding service returned vector length=" + inferredDims
+                            + ". Please fix config and (re)create ES index mapping 'embedding' with correct dims.");
+        }
+        return configuredDims > 0 ? configuredDims : inferredDims;
+    }
+
+    private HttpURLConnection openSearchConnection(String endpoint, String elasticsearchApiKey) throws Exception {
+        URI uri = URI.create(endpoint + "/" + indexService.getIndexName() + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source");
+        HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
+        conn.setRequestMethod("POST");
+        conn.setConnectTimeout(2000);
+        conn.setReadTimeout(10_000);
+        conn.setDoOutput(true);
+        conn.setRequestProperty("Content-Type", "application/json");
+        if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
+            conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
+        }
+        return conn;
     }
 
     /**
