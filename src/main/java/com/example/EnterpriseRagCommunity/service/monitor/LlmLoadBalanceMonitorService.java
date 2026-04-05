@@ -21,6 +21,10 @@ public class LlmLoadBalanceMonitorService {
     @Value("${app.ai.metrics.loadBalance.buckets:24}")
     private int buckets;
 
+    private static double ratio(long numerator, long denominator) {
+        return denominator > 0 ? (numerator * 1.0) / denominator : 0.0;
+    }
+
     public AdminLlmLoadBalanceResponseDTO query(String range, Integer hours) {
         ParsedRange pr = parseRange(range, hours);
         long nowMs = System.currentTimeMillis();
@@ -40,8 +44,8 @@ public class LlmLoadBalanceMonitorService {
             m.setCount(a.count());
             m.setQps(a.count() / rangeSeconds);
             m.setAvgResponseMs(a.avgResponseMs());
-            m.setErrorRate(a.count() > 0 ? (a.errorCount() * 1.0) / a.count() : 0.0);
-            m.setThrottled429Rate(a.count() > 0 ? (a.throttled429Count() * 1.0) / a.count() : 0.0);
+            m.setErrorRate(ratio(a.errorCount(), a.count()));
+            m.setThrottled429Rate(ratio(a.throttled429Count(), a.count()));
             m.setP95ResponseMs(a.p95ResponseMs());
 
             List<AdminLlmLoadBalancePointDTO> points = toPoints(a, effectiveBuckets, bucketSec);
@@ -78,8 +82,8 @@ public class LlmLoadBalanceMonitorService {
         p.setThrottled429Count(bp.throttled429Count());
         p.setQps(bp.count() / (bucketSec * 1.0));
         p.setAvgResponseMs(bp.avgResponseMs());
-        p.setErrorRate(bp.count() > 0 ? (bp.errorCount() * 1.0) / bp.count() : 0.0);
-        p.setThrottled429Rate(bp.count() > 0 ? (bp.throttled429Count() * 1.0) / bp.count() : 0.0);
+        p.setErrorRate(ratio(bp.errorCount(), bp.count()));
+        p.setThrottled429Rate(ratio(bp.throttled429Count(), bp.count()));
         p.setP95ResponseMs(bp.p95ResponseMs());
         return p;
     }

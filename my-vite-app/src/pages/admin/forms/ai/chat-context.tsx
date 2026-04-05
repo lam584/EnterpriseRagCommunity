@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAccess } from '../../../../contexts/AccessContext';
 import Modal from '../users/roles/Modal';
+import { AdminLoadingCard, computeLogsTotalPages, copyTextWithFeedback } from '../shared/adminFormUiShared';
 import {
   adminGetChatContextConfig,
   adminGetChatContextLog,
@@ -169,23 +170,14 @@ const ChatContextGovernanceForm: React.FC = () => {
     }
   }, []);
 
-  const logsTotalPages = useMemo(() => Math.max(1, Math.ceil((logsTotal || 0) / 20)), [logsTotal]);
+  const logsTotalPages = useMemo(() => computeLogsTotalPages(logsTotal), [logsTotal]);
 
   const copyText = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setMessage('已复制到剪贴板');
-    } catch {
-      setError('复制失败（浏览器权限限制）');
-    }
+    await copyTextWithFeedback(text, setMessage, setError);
   }, []);
 
   if (accessLoading || !configLoaded) {
-    return (
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="text-gray-500">加载中…</div>
-      </div>
-    );
+    return <AdminLoadingCard />;
   }
 
   if (!canAccess) {

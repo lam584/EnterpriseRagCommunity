@@ -1015,15 +1015,7 @@ public class AuthController {
      * Safe mapping for returning user to frontend (includes id, excludes passwordHash).
      */
     private UsersDTO convertToUserSafeDTO(UsersEntity user) {
-        UsersDTO dto = new UsersDTO();
-        dto.setId(user.getId());
-        if (user.getTenantId() != null) {
-            dto.setTenantId(user.getTenantId().getId());
-        }
-        dto.setEmail(user.getEmail());
-        dto.setUsername(user.getUsername());
-        dto.setStatus(user.getStatus());
-        dto.setIsDeleted(user.getIsDeleted());
+        UsersDTO dto = UserDtoSupport.toBasicDto(user);
         dto.setMetadata(user.getMetadata());
         return dto;
     }

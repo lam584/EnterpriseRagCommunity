@@ -33,11 +33,7 @@ public class AdminLlmRoutingController {
     @PutMapping("/config")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
     public AdminLlmRoutingConfigDTO updateConfig(@RequestBody AdminLlmRoutingConfigDTO payload, Principal principal) {
-        String username = principal == null ? null : principal.getName();
-        Long userId = null;
-        if (username != null) {
-            userId = administratorService.findByUsername(username).map(com.example.EnterpriseRagCommunity.entity.access.UsersEntity::getId).orElse(null);
-        }
+        Long userId = AdminAiControllerSupport.resolveActorUserId(administratorService, principal);
         int maxAttempts = 3;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {

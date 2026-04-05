@@ -1,5 +1,8 @@
 package com.example.EnterpriseRagCommunity.service.retrieval;
 
+import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetExtractionsEntity;
+import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
@@ -11,9 +14,11 @@ import com.example.EnterpriseRagCommunity.service.retrieval.es.RagFileAssetsInde
 import com.example.EnterpriseRagCommunity.testutil.MockHttpUrl;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
+import org.springframework.data.elasticsearch.core.document.Document;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -124,6 +129,56 @@ class RagFileAssetIndexBuildServicePrivateMethodsTest {
         @SuppressWarnings("unchecked")
         List<String> c = (List<String>) splitWithOverlap.invoke(null, "abcdef", 3, 99);
         assertEquals(List.of("abc", "bcd", "cde", "def"), c);
+
+        FileAssetsEntity fileAsset = new FileAssetsEntity();
+        fileAsset.setId(1L);
+        fileAsset.setOriginalName(" report.pdf ");
+        fileAsset.setMimeType(" application/pdf ");
+        fileAsset.setCreatedAt(LocalDateTime.of(2024, 1, 2, 3, 4, 5));
+        UsersEntity owner = new UsersEntity();
+        owner.setId(8L);
+        fileAsset.setOwner(owner);
+
+        FileAssetExtractionsEntity extraction = new FileAssetExtractionsEntity();
+        extraction.setUpdatedAt(LocalDateTime.of(2024, 2, 3, 4, 5, 6));
+
+        Method buildFileAssetDocument = RagFileAssetIndexBuildService.class.getDeclaredMethod(
+                "buildFileAssetDocument",
+                String.class,
+                Long.class,
+                FileAssetsEntity.class,
+                FileAssetExtractionsEntity.class,
+                List.class,
+                int.class,
+                String.class,
+                String.class,
+                float[].class
+        );
+        buildFileAssetDocument.setAccessible(true);
+        Document d = (Document) buildFileAssetDocument.invoke(
+                null,
+                "doc-1",
+                9L,
+                fileAsset,
+                extraction,
+                List.of(10L, 11L),
+                2,
+                "hash-x",
+                "content",
+                new float[]{0.1f, 0.2f}
+        );
+        assertEquals("doc-1", d.get("id"));
+        assertEquals(9L, d.get("file_asset_id"));
+        assertEquals(8L, d.get("owner_user_id"));
+        assertEquals(List.of(10L, 11L), d.get("post_ids"));
+        assertEquals(2, d.get("chunk_index"));
+        assertEquals("hash-x", d.get("content_hash"));
+        assertEquals("report.pdf", d.get("file_name"));
+        assertEquals("application/pdf", d.get("mime_type"));
+        assertEquals("content", d.get("content_text"));
+        assertNotNull(d.get("created_at"));
+        assertNotNull(d.get("updated_at"));
+        assertNotNull(d.get("embedding"));
 
         Method summarizeException = RagFileAssetIndexBuildService.class.getDeclaredMethod("summarizeException", Throwable.class);
         summarizeException.setAccessible(true);

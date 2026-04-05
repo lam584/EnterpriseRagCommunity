@@ -345,9 +345,7 @@ public class LlmImageUploadService {
                 double ratio = Math.min((double) cfg.maxWidth() / w, (double) cfg.maxHeight() / h);
                 int nw = Math.max(1, (int) Math.round(w * ratio));
                 int nh = Math.max(1, (int) Math.round(h * ratio));
-                BufferedImage resized = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
-                resized.getGraphics().drawImage(image, 0, 0, nw, nh, null);
-                image = resized;
+                image = ImageResizeSupport.drawResized(image, nw, nh);
             }
 
             // Compress as JPEG

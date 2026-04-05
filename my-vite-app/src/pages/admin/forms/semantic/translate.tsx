@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { HistoryPagination } from '../../../../components/admin/HistoryPagination';
 import {
   adminGetTranslateConfig,
   adminListTranslateHistory,
@@ -7,18 +8,21 @@ import {
   type SemanticTranslateConfigDTO,
   type SemanticTranslateHistoryDTO,
 } from '../../../../services/translateAdminService';
-import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
+import { adminBatchGetPrompts, adminUpdatePromptContent } from '../../../../services/promptsAdminService';
 import {
   adminDeleteSupportedLanguage,
   adminUpdateSupportedLanguage,
   adminUpsertSupportedLanguage,
   listSupportedLanguages,
+  normalizeSupportedLanguages,
   type SupportedLanguageDTO,
 } from '../../../../services/supportedLanguagesService';
 import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
 import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
+import SemanticEditActionBar from './SemanticEditActionBar';
+import { loadPromptDraftState, validatePromptRangeFields } from './semanticConfigShared';
 
 type FormState = {
   enabled: boolean;
@@ -57,14 +61,6 @@ function defaultConfig(): SemanticTranslateConfigDTO {
   };
 }
 
-function toPromptDraft(dto?: PromptContentDTO | null): PromptContentDraft {
-  return {
-    name: dto?.name ?? '',
-    systemPrompt: dto?.systemPrompt ?? '',
-    userPromptTemplate: dto?.userPromptTemplate ?? '',
-  };
-}
-
 function toFormState(cfg?: SemanticTranslateConfigDTO | null): FormState {
   const codes = (cfg?.allowedTargetLanguages?.length ? cfg.allowedTargetLanguages : []).filter(Boolean);
   return {
@@ -84,18 +80,7 @@ function toFormState(cfg?: SemanticTranslateConfigDTO | null): FormState {
 }
 
 function validateForm(s: FormState): string[] {
-  const errors: string[] = [];
-  if (!s.promptCode.trim()) errors.push('promptCode 不能为空');
-
-  const temp = parseOptionalNumber(s.temperature);
-  if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
-
-  const topP = parseOptionalNumber(s.topP);
-  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('topP 需在 [0, 1] 范围内');
-
-  const mcc = parseOptionalNumber(s.maxContentChars);
-  if (mcc !== undefined && (!Number.isInteger(mcc) || mcc < 200 || mcc > 100000)) errors.push('maxContentChars 需为 200~100000 的整数');
-
+  const errors = validatePromptRangeFields(s, 100000);
   const hkd = parseOptionalNumber(s.historyKeepDays);
   if (hkd !== undefined && (!Number.isInteger(hkd) || hkd < 1)) errors.push('historyKeepDays 必须为正整数');
   const hkr = parseOptionalNumber(s.historyKeepRows);
@@ -229,22 +214,7 @@ const TranslateForm: React.FC = () => {
       setForm(next);
       setEditing(false);
 
-      try {
-        const resp = await adminBatchGetPrompts([next.promptCode]);
-        const dto = resp.prompts?.[0];
-        if (!dto || (resp.missingCodes ?? []).length) {
-          setCommittedPromptDraft(null);
-          setPromptDraft(null);
-        } else {
-          const draft = toPromptDraft(dto);
-          setCommittedPromptDraft(draft);
-          setPromptDraft(draft);
-        }
-      } catch (e: unknown) {
-        setPromptLoadError(e instanceof Error ? e.message : String(e));
-        setCommittedPromptDraft(null);
-        setPromptDraft(null);
-      }
+      await loadPromptDraftState(next.promptCode, setPromptLoadError, setCommittedPromptDraft, setPromptDraft);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -260,7 +230,7 @@ const TranslateForm: React.FC = () => {
   const loadSupportedLanguages = useCallback(async () => {
     try {
       const langs = await listSupportedLanguages();
-      setSupportedLanguages((langs ?? []).filter((x) => x && typeof x.languageCode === 'string' && typeof x.displayName === 'string'));
+      setSupportedLanguages(normalizeSupportedLanguages(langs));
     } catch {
       setSupportedLanguages([]);
     }
@@ -272,7 +242,7 @@ const TranslateForm: React.FC = () => {
       try {
         const langs = await listSupportedLanguages();
         if (!mounted) return;
-        setSupportedLanguages((langs ?? []).filter((x) => x && typeof x.languageCode === 'string' && typeof x.displayName === 'string'));
+        setSupportedLanguages(normalizeSupportedLanguages(langs));
       } catch {
         if (!mounted) return;
         setSupportedLanguages([]);
@@ -471,41 +441,22 @@ const TranslateForm: React.FC = () => {
             >
               刷新
             </button>
-            {!editing ? (
-              <button
-                type="button"
-                className="rounded border px-3 py-1.5 text-sm"
-                onClick={() => setEditing(true)}
-                disabled={loading || saving}
-              >
-                编辑
-              </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="rounded border px-3 py-1.5 text-sm"
-                  onClick={() => {
-                    setForm(committedForm);
-                    setPromptDraft(committedPromptDraft);
-                    setEditing(false);
-                    setError(null);
-                    setSavedHint(null);
-                  }}
-                  disabled={saving || loading}
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm disabled:bg-blue-300"
-                  onClick={() => void onSave()}
-                  disabled={!canSave || !hasUnsavedChanges}
-                >
-                  {saving ? '保存中...' : '保存'}
-                </button>
-              </>
-            )}
+            <SemanticEditActionBar
+              editing={editing}
+              loading={loading}
+              saving={saving}
+              canSave={canSave}
+              hasUnsavedChanges={hasUnsavedChanges}
+              onStartEditing={() => setEditing(true)}
+              onCancel={() => {
+                setForm(committedForm);
+                setPromptDraft(committedPromptDraft);
+                setEditing(false);
+                setError(null);
+                setSavedHint(null);
+              }}
+              onSave={() => void onSave()}
+            />
           </div>
         </div>
 
@@ -872,46 +823,18 @@ const TranslateForm: React.FC = () => {
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
-            <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">每页</span>
-            <select
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs disabled:opacity-50"
-              value={historyPageSize}
-              disabled={historyLoading}
-              onChange={(e) => {
-                const nextSize = Math.max(1, Math.trunc(Number(e.target.value) || 20));
-                setHistoryPageSize(nextSize);
-                void loadHistory(0, nextSize);
-              }}
-            >
-              {[10, 20, 50, 100].map((n) => (
-                <option key={n} value={n}>
-                  {n} 条
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            type="button"
-            className="px-3 py-1 rounded-md border border-gray-300 bg-white disabled:opacity-50"
-            onClick={() => void loadHistory(Math.max(0, historyPageNo - 1))}
-            disabled={historyLoading || historyPageNo <= 0}
-          >
-            上一页
-          </button>
-          <div className="text-xs text-gray-500">
-            第 {historyPageNo + 1} 页 / 共 {totalPages || 0} 页
-          </div>
-          <button
-            type="button"
-            className="px-3 py-1 rounded-md border border-gray-300 bg-white disabled:opacity-50"
-            onClick={() => void loadHistory(historyPageNo + 1)}
-            disabled={historyLoading || (totalPages > 0 && historyPageNo + 1 >= totalPages)}
-          >
-            下一页
-          </button>
-        </div>
+        <HistoryPagination
+          pageNo={historyPageNo}
+          pageSize={historyPageSize}
+          totalPages={totalPages}
+          loading={historyLoading}
+          onPageSizeChange={(nextSize) => {
+            setHistoryPageSize(nextSize);
+            void loadHistory(0, nextSize);
+          }}
+          onPrevPage={() => void loadHistory(Math.max(0, historyPageNo - 1))}
+          onNextPage={() => void loadHistory(historyPageNo + 1)}
+        />
       </div>
     </div>
   );

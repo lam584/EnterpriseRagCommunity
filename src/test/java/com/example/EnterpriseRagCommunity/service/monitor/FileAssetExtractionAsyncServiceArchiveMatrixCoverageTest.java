@@ -39,6 +39,7 @@ import java.util.zip.ZipOutputStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -246,6 +247,71 @@ class FileAssetExtractionAsyncServiceArchiveMatrixCoverageTest {
         assertTrue(path.startsWith("vp/unknown_"));
         assertEquals(Boolean.TRUE, files.get(0).get("extractionTruncated"));
         ReflectionTestUtils.setField(service, "archiveMaxTotalBytes", 10L * 1024 * 1024);
+    }
+
+    @Test
+    void helperMethods_shouldCoverNestedArchiveAndBudgetGuards() throws Exception {
+        Object counters = newInner("ArchiveCounters", new Class<?>[]{});
+        Class<?> countersClass = counters.getClass();
+        ReflectionTestUtils.setField(service, "archiveMaxDepth", 3);
+        ReflectionTestUtils.setField(service, "archiveMaxEntries", 1);
+
+        byte[] nestedZip = zipBytes(List.of(Map.entry("nested.txt", "inside".getBytes(StandardCharsets.UTF_8))));
+        StringBuilder out = new StringBuilder();
+        boolean appended = (boolean) invokeInstance(
+                "appendNestedArchiveText",
+                new Class<?>[]{StringBuilder.class, String.class, String.class, byte[].class, int.class, int.class, Map.class, countersClass, long.class},
+                out,
+                "nested.zip",
+                "zip",
+                nestedZip,
+                0,
+                300,
+                new LinkedHashMap<>(),
+                counters,
+                System.nanoTime()
+        );
+        assertTrue(appended);
+        assertTrue(out.toString().contains("nested.txt"));
+
+        Object cTime = newInner("ArchiveCounters", new Class<?>[]{});
+        boolean timeStop = (boolean) invokeInstance(
+                "markTimeLimitAndStop",
+                new Class<?>[]{countersClass, long.class},
+                cTime,
+                1L
+        );
+        assertTrue(timeStop);
+        Field truncatedReason = countersClass.getDeclaredField("truncatedReason");
+        truncatedReason.setAccessible(true);
+        assertEquals("TIME_LIMIT", truncatedReason.get(cTime));
+
+        Object cEntry = newInner("ArchiveCounters", new Class<?>[]{});
+        boolean first = (boolean) invokeInstance("markEntryCountLimitAndStop", new Class<?>[]{countersClass}, cEntry);
+        boolean second = (boolean) invokeInstance("markEntryCountLimitAndStop", new Class<?>[]{countersClass}, cEntry);
+        assertFalse(first);
+        assertTrue(second);
+        assertEquals("ENTRY_COUNT_LIMIT", truncatedReason.get(cEntry));
+
+        Object cNoAppend = newInner("ArchiveCounters", new Class<?>[]{});
+        boolean notAppended = (boolean) invokeInstance(
+                "appendNestedArchiveText",
+                new Class<?>[]{StringBuilder.class, String.class, String.class, byte[].class, int.class, int.class, Map.class, countersClass, long.class},
+                new StringBuilder(),
+                "blank.zip",
+                "zip",
+                zipBytes(List.of(Map.entry("empty.txt", new byte[0]))),
+                0,
+                300,
+                new LinkedHashMap<>(),
+                cNoAppend,
+                System.nanoTime()
+        );
+        assertFalse(notAppended);
+        Field filesParsed = countersClass.getDeclaredField("filesParsed");
+        filesParsed.setAccessible(true);
+        assertEquals(0L, filesParsed.get(cNoAppend));
+        assertNull(truncatedReason.get(cNoAppend));
     }
 
     @Test

@@ -7,49 +7,14 @@ import {
   adminOpenLlmRoutingEventSource,
   type AdminLlmRoutingDecisionEventDTO,
 } from '../../../../services/llmRoutingMonitorAdminService';
+import { getBackendMessage } from '../../../../services/serviceErrorUtils';
+import { serviceApiUrl } from '../../../../services/serviceUrlUtils';
+import { clampMetricInt, formatMmddHms } from './metricsTimeUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
+const apiUrl = serviceApiUrl;
 
 function normTaskType(s: string | null | undefined): string {
   return String(s || '').trim().toUpperCase();
-}
-
-function clampInt(v: unknown, min: number, max: number, def: number): number {
-  if (typeof v === 'number' && Number.isFinite(v)) {
-    const t = Math.trunc(v);
-    return Math.max(min, Math.min(max, t));
-  }
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return def;
-    const n = Number(t);
-    if (!Number.isFinite(n)) return def;
-    const x = Math.trunc(n);
-    return Math.max(min, Math.min(max, x));
-  }
-  return def;
-}
-
-function formatMmddHms(ms: number | null | undefined): string {
-  if (ms == null || !Number.isFinite(ms)) return '';
-  const d = new Date(ms);
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
 type RoutingState = {
@@ -74,7 +39,7 @@ const ROUTING_RUNTIME_STATE_POLL_INTERVAL_MS = 5000;
 const ROUTING_EVENTS_KEEP = (() => {
   try {
     const raw = window.localStorage.getItem('admin.metrics.routingEventsKeep');
-    return clampInt(raw, 200, 10_000, 2000);
+    return clampMetricInt(raw, 200, 10_000, 2000);
   } catch {
     return 2000;
   }
@@ -109,7 +74,7 @@ function loadRoutingEventsCache(taskType: string): RoutingEventsCacheV1 | null {
       taskType: parsed.taskType,
       resetAtMs: typeof parsed.resetAtMs === 'number' ? parsed.resetAtMs : Date.now(),
       lastAtMs: typeof parsed.lastAtMs === 'number' ? parsed.lastAtMs : null,
-      pageSize: clampInt(parsed.pageSize, 1, 1000, 10),
+      pageSize: clampMetricInt(parsed.pageSize, 1, 1000, 10),
       events: events.slice(0, ROUTING_EVENTS_KEEP),
     };
   } catch {
@@ -204,7 +169,7 @@ const LlmRoutingMonitorForm: React.FC = () => {
         taskType: tt ? normTaskType(tt) : 'ALL',
         resetAtMs: routingEventsResetAtMs,
         lastAtMs: routingEventsLastAtMs,
-        pageSize: clampInt(routingEventsPageSize, 1, 1000, 10),
+        pageSize: clampMetricInt(routingEventsPageSize, 1, 1000, 10),
         events: routingEvents.slice(0, ROUTING_EVENTS_KEEP),
       });
     }, 350);
@@ -369,7 +334,7 @@ const LlmRoutingMonitorForm: React.FC = () => {
   }, [routingMonitorReady, monitorTaskType]);
 
   const [autoRefreshIntervalMs, setAutoRefreshIntervalMs] = useState<number>(2000);
-  const autoRefreshIntervalMsSafe = useMemo(() => clampInt(autoRefreshIntervalMs, 1000, 60_000, 2000), [autoRefreshIntervalMs]);
+  const autoRefreshIntervalMsSafe = useMemo(() => clampMetricInt(autoRefreshIntervalMs, 1000, 60_000, 2000), [autoRefreshIntervalMs]);
 
   const intervalInputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
@@ -403,7 +368,7 @@ const LlmRoutingMonitorForm: React.FC = () => {
             max={60000}
             step={500}
             defaultValue={String(autoRefreshIntervalMsSafe)}
-            onChange={(e) => setAutoRefreshIntervalMs(clampInt(e.target.value, 1000, 60_000, 2000))}
+            onChange={(e) => setAutoRefreshIntervalMs(clampMetricInt(e.target.value, 1000, 60_000, 2000))}
           />
           <div className="text-gray-500">ms</div>
         </div>

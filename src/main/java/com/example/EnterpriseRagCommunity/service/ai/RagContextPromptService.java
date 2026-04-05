@@ -17,7 +17,9 @@ import org.springframework.stereotype.Service;
 import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.ContextWindowPolicy;
+import com.example.EnterpriseRagCommunity.service.retrieval.CitationSourcesTextSupport;
 import com.example.EnterpriseRagCommunity.service.retrieval.RagPostChatRetrievalService;
+import com.example.EnterpriseRagCommunity.service.retrieval.CitationUrlSupport;
 
 import lombok.Data;
 
@@ -52,6 +54,61 @@ public class RagContextPromptService {
         return out;
     }
 
+    private static String prepareHitContent(
+            RagPostChatRetrievalService.Hit h,
+            Item item,
+            int perItemMaxTokens
+    ) {
+        String text = h.getContentText();
+        if (text == null || text.isBlank()) {
+            item.setReason("emptyContent");
+            return null;
+        }
+        String trimmed = text.trim();
+        String truncated = truncateByApproxTokens(trimmed, perItemMaxTokens);
+        int tokens = approxTokens(truncated);
+        item.setTokens(tokens);
+        item.setSnippet(buildSnippet(truncated));
+        if (tokens <= 0) {
+            item.setReason("noTokens");
+            return null;
+        }
+        return truncated;
+    }
+
+    private static Item buildRankedItemOrDrop(
+            RagPostChatRetrievalService.Hit h,
+            int rank,
+            Double minScore,
+            boolean requireTitle,
+            List<Item> dropped
+    ) {
+        if (h == null) return null;
+
+        Item item = new Item();
+        item.setRank(rank);
+        item.setPostId(h.getPostId());
+        item.setCommentId(h.getCommentId());
+        item.setChunkIndex(h.getChunkIndex());
+        item.setScore(h.getScore());
+        item.setTitle(trimOrNull(h.getTitle()));
+
+        Double score = item.getScore();
+        if (score == null) score = 0.0;
+        if (minScore != null && score < minScore) {
+            item.setReason("minScore");
+            dropped.add(item);
+            return null;
+        }
+
+        if (requireTitle && (item.getTitle() == null || item.getTitle().isBlank())) {
+            item.setReason("requireTitle");
+            dropped.add(item);
+            return null;
+        }
+        return item;
+    }
+
     private static class Candidate {
         Item item;
         String text;
@@ -80,6 +137,9 @@ public class RagContextPromptService {
         final Map<Long, Integer> postCount = new HashMap<>();
     }
 
+    private record CandidateCheck(Candidate candidate, boolean alreadyDropped) {
+    }
+
     private static List<Candidate> selectSliding(
             List<Candidate> candidates,
             SelectionState st,
@@ -95,18 +155,15 @@ public class RagContextPromptService {
         List<Candidate> out = new ArrayList<>();
         int used = 0;
         for (Candidate c : candidates) {
-            if (c == null || c.item == null) continue;
+            CandidateCheck checked = prepareCandidateForSelection(c, st, out, dropped, alpha, beta, gamma, ablationMode);
+            if (checked == null) continue;
             if (out.size() >= maxItems) break;
-
-            String reason = canTake(c, st);
-            if (reason != null) {
-                c.item.setReason(reason);
-                dropped.add(c.item);
+            c = checked.candidate();
+            if (c == null) continue;
+            if (c.item == null) continue;
+            if (checked.alreadyDropped()) {
                 continue;
             }
-
-            double red = redundancyWithSelected(c, out);
-            applyCandidateScore(c, alpha, beta, gamma, ablationMode, red);
             int tok = c.tokens == null ? 0 : c.tokens;
             int remaining = Math.max(0, budgetTokens - used);
             if (tok > remaining) {
@@ -161,18 +218,15 @@ public class RagContextPromptService {
         List<Candidate> out = new ArrayList<>();
         int used = 0;
         for (Candidate c : candidates) {
-            if (c == null || c.item == null) continue;
+            CandidateCheck checked = prepareCandidateForSelection(c, st, out, dropped, alpha, beta, gamma, ablationMode);
+            if (checked == null) continue;
             if (out.size() >= headN) break;
-
-            String reason = canTake(c, st);
-            if (reason != null) {
-                c.item.setReason(reason);
-                dropped.add(c.item);
+            c = checked.candidate();
+            if (c == null) continue;
+            if (c.item == null) continue;
+            if (checked.alreadyDropped()) {
                 continue;
             }
-
-            double red = redundancyWithSelected(c, out);
-            applyCandidateScore(c, alpha, beta, gamma, ablationMode, red);
             int tok = c.tokens == null ? 0 : c.tokens;
             if (used + tok > budgetTokens) {
                 c.item.setReason("budgetExceeded");
@@ -208,6 +262,28 @@ public class RagContextPromptService {
             out.add(c);
         }
         return out;
+    }
+
+    private static CandidateCheck prepareCandidateForSelection(
+            Candidate candidate,
+            SelectionState selectionState,
+            List<Candidate> selected,
+            List<Item> dropped,
+            double alpha,
+            double beta,
+            double gamma,
+            String ablationMode
+    ) {
+        if (candidate == null || candidate.item == null) return null;
+        String reason = canTake(candidate, selectionState);
+        if (reason != null) {
+            candidate.item.setReason(reason);
+            dropped.add(candidate.item);
+            return new CandidateCheck(candidate, true);
+        }
+        double red = redundancyWithSelected(candidate, selected);
+        applyCandidateScore(candidate, alpha, beta, gamma, ablationMode, red);
+        return new CandidateCheck(candidate, false);
     }
 
     private static List<Candidate> selectGreedyByScore(
@@ -442,37 +518,32 @@ public class RagContextPromptService {
     }
 
     static String renderSourcesText(CitationConfigDTO cfg, List<CitationSource> sources) {
-        if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return "";
-        String mode = cfg.getCitationMode() == null ? "" : cfg.getCitationMode().trim().toUpperCase();
-        if (!mode.equals("SOURCES_SECTION") && !mode.equals("BOTH")) return "";
-        if (sources == null || sources.isEmpty()) return "";
-        if (cfg.getSourcesTitle() == null || cfg.getSourcesTitle().isBlank()) return "";
-        StringBuilder sb = new StringBuilder();
-        sb.append(cfg.getSourcesTitle().trim()).append("：\n");
-        for (CitationSource s : sources) {
-            if (s == null) continue;
-            sb.append('[').append(s.getIndex() == null ? "" : s.getIndex()).append("] ");
-            if (Boolean.TRUE.equals(cfg.getIncludeTitle()) && s.getTitle() != null && !s.getTitle().isBlank()) {
-                sb.append(s.getTitle().trim()).append(' ');
+        String mode = cfg == null || cfg.getCitationMode() == null ? "" : cfg.getCitationMode().trim().toUpperCase(Locale.ROOT);
+        return CitationSourcesTextSupport.renderSourcesText(cfg, sources, mode, sb -> {
+            for (CitationSource s : sources) {
+                if (s == null) continue;
+                sb.append('[').append(s.getIndex() == null ? "" : s.getIndex()).append("] ");
+                if (Boolean.TRUE.equals(cfg.getIncludeTitle()) && s.getTitle() != null && !s.getTitle().isBlank()) {
+                    sb.append(s.getTitle().trim()).append(' ');
+                }
+                if (Boolean.TRUE.equals(cfg.getIncludeUrl()) && s.getUrl() != null && !s.getUrl().isBlank()) {
+                    sb.append(s.getUrl().trim()).append(' ');
+                }
+                if (Boolean.TRUE.equals(cfg.getIncludeScore()) && s.getScore() != null) {
+                    sb.append("score=").append(String.format(Locale.ROOT, "%.4f", s.getScore())).append(' ');
+                }
+                if (Boolean.TRUE.equals(cfg.getIncludePostId()) && s.getPostId() != null) {
+                    sb.append("post_id=").append(s.getPostId()).append(' ');
+                }
+                if (s.getCommentId() != null) {
+                    sb.append("comment_id=").append(s.getCommentId()).append(' ');
+                }
+                if (Boolean.TRUE.equals(cfg.getIncludeChunkIndex()) && s.getChunkIndex() != null) {
+                    sb.append("chunk=").append(s.getChunkIndex()).append(' ');
+                }
+                sb.append('\n');
             }
-            if (Boolean.TRUE.equals(cfg.getIncludeUrl()) && s.getUrl() != null && !s.getUrl().isBlank()) {
-                sb.append(s.getUrl().trim()).append(' ');
-            }
-            if (Boolean.TRUE.equals(cfg.getIncludeScore()) && s.getScore() != null) {
-                sb.append("score=").append(String.format(Locale.ROOT, "%.4f", s.getScore())).append(' ');
-            }
-            if (Boolean.TRUE.equals(cfg.getIncludePostId()) && s.getPostId() != null) {
-                sb.append("post_id=").append(s.getPostId()).append(' ');
-            }
-            if (s.getCommentId() != null) {
-                sb.append("comment_id=").append(s.getCommentId()).append(' ');
-            }
-            if (Boolean.TRUE.equals(cfg.getIncludeChunkIndex()) && s.getChunkIndex() != null) {
-                sb.append("chunk=").append(s.getChunkIndex()).append(' ');
-            }
-            sb.append('\n');
-        }
-        return sb.toString().trim();
+        });
     }
 
     private static String buildCitationUrl(CitationConfigDTO cfg, Long postId, Long commentId) {
@@ -555,47 +626,17 @@ public class RagContextPromptService {
             List<Candidate> candidates = new ArrayList<>();
             for (int i = 0; i < scanLimit; i++) {
                 RagPostChatRetrievalService.Hit h = hits.get(i);
-                if (h == null) continue;
-
-                Item item = new Item();
-                item.setRank(i + 1);
-                item.setPostId(h.getPostId());
-                item.setCommentId(h.getCommentId());
-                item.setChunkIndex(h.getChunkIndex());
-                item.setScore(h.getScore());
-                item.setTitle(trimOrNull(h.getTitle()));
-
-                Double score = item.getScore();
-                if (score == null) score = 0.0;
-                if (minScore != null && score < minScore) {
-                    item.setReason("minScore");
-                    dropped.add(item);
+                Item item = buildRankedItemOrDrop(h, i + 1, minScore, requireTitle, dropped);
+                if (item == null) {
                     continue;
                 }
 
-                if (requireTitle && (item.getTitle() == null || item.getTitle().isBlank())) {
-                    item.setReason("requireTitle");
+                String truncated = prepareHitContent(h, item, perItemMaxTokens);
+                if (truncated == null) {
                     dropped.add(item);
                     continue;
                 }
-
-                String text = h.getContentText();
-                if (text == null || text.isBlank()) {
-                    item.setReason("emptyContent");
-                    dropped.add(item);
-                    continue;
-                }
-
-                String trimmed = text.trim();
-                String truncated = truncateByApproxTokens(trimmed, perItemMaxTokens);
-                int tokens = approxTokens(truncated);
-                item.setTokens(tokens);
-                item.setSnippet(buildSnippet(truncated));
-                if (tokens <= 0) {
-                    item.setReason("noTokens");
-                    dropped.add(item);
-                    continue;
-                }
+                int tokens = item.getTokens() == null ? 0 : item.getTokens();
 
                 Candidate c = new Candidate();
                 c.item = item;
@@ -656,27 +697,8 @@ public class RagContextPromptService {
             int n = Math.min(maxItems, hits == null ? 0 : hits.size());
             for (int i = 0; i < n; i++) {
                 RagPostChatRetrievalService.Hit h = hits.get(i);
-                if (h == null) continue;
-
-                Item item = new Item();
-                item.setRank(i + 1);
-                item.setPostId(h.getPostId());
-                item.setCommentId(h.getCommentId());
-                item.setChunkIndex(h.getChunkIndex());
-                item.setScore(h.getScore());
-                item.setTitle(trimOrNull(h.getTitle()));
-
-                Double score = item.getScore();
-                if (score == null) score = 0.0;
-                if (minScore != null && score < minScore) {
-                    item.setReason("minScore");
-                    dropped.add(item);
-                    continue;
-                }
-
-                if (requireTitle && (item.getTitle() == null || item.getTitle().isBlank())) {
-                    item.setReason("requireTitle");
-                    dropped.add(item);
+                Item item = buildRankedItemOrDrop(h, i + 1, minScore, requireTitle, dropped);
+                if (item == null) {
                     continue;
                 }
 
@@ -697,24 +719,13 @@ public class RagContextPromptService {
                     }
                 }
 
-                String text = h.getContentText();
-                if (text == null || text.isBlank()) {
-                    item.setReason("emptyContent");
+                String truncated = prepareHitContent(h, item, perItemMaxTokens);
+                if (truncated == null) {
                     dropped.add(item);
                     continue;
                 }
-
-                String trimmed = text.trim();
-                String truncated = truncateByApproxTokens(trimmed, perItemMaxTokens);
-                int tokens = approxTokens(truncated);
+                int tokens = item.getTokens() == null ? 0 : item.getTokens();
                 String textKey = normalizeTextKey(truncated);
-                item.setTokens(tokens);
-                item.setSnippet(buildSnippet(truncated));
-                if (tokens <= 0) {
-                    item.setReason("noTokens");
-                    dropped.add(item);
-                    continue;
-                }
 
                 if (dedupByContentHash) {
                     long h32 = crc32(truncated);
@@ -812,11 +823,7 @@ public class RagContextPromptService {
     }
 
     private static String buildPostUrl(CitationConfigDTO cfg, Long postId) {
-        if (cfg == null) return null;
-        String tpl = cfg.getPostUrlTemplate();
-        if (tpl == null || tpl.isBlank()) return null;
-        String id = postId == null ? "" : String.valueOf(postId);
-        return tpl.replace("{postId}", id);
+        return CitationUrlSupport.buildPostUrl(cfg, postId);
     }
 
     private static long crc32(String s) {
@@ -997,36 +1004,11 @@ public class RagContextPromptService {
     }
 
     static int approxTokens(String s) {
-        if (s == null || s.isEmpty()) return 0;
-        double t = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c <= 0x7f) t += 0.25;
-            else t += 1.0;
-        }
-        return Math.max(0, (int) Math.ceil(t));
+        return ApproxTokenSupport.approxTokens(s);
     }
 
     static String truncateByApproxTokens(String s, int maxTokens) {
-        if (s == null) return "";
-        int cap = Math.max(0, maxTokens);
-        if (cap == 0) return "";
-        if (approxTokens(s) <= cap) return s;
-        int lo = 0;
-        int hi = s.length();
-        int best = 0;
-        while (lo <= hi) {
-            int mid = (lo + hi) >>> 1;
-            String sub = s.substring(0, mid);
-            int tok = approxTokens(sub);
-            if (tok <= cap) {
-                best = mid;
-                lo = mid + 1;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return s.substring(0, best);
+        return ApproxTokenSupport.truncateByApproxTokens(s, maxTokens);
     }
 
     @Data

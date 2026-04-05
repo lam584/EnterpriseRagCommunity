@@ -48,6 +48,18 @@ describe('useAdminStepUp', () => {
     vi.useRealTimers();
   });
 
+  async function openStepUpModal() {
+    fireEvent.click(screen.getByText('go'));
+    await screen.findByText('高权限操作需要二次验证');
+  }
+
+  async function sendEmailCode() {
+    fireEvent.click(screen.getByText('发送验证码'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+  }
+
   it('resolves immediately when step-up already ok', async () => {
     (getAdminStepUpStatus as any).mockResolvedValue({ ok: true });
     render(<Host />);
@@ -62,10 +74,9 @@ describe('useAdminStepUp', () => {
     (verifyAdminStepUp as any).mockResolvedValue({});
 
     render(<Host />);
-    fireEvent.click(screen.getByText('go'));
-    await screen.findByText('高权限操作需要二次验证');
+    await openStepUpModal();
 
-    fireEvent.click(screen.getByText('发送验证码'));
+    await sendEmailCode();
     await screen.findByText('验证码有效期约 1 分钟');
     expect(sendAccountEmailVerificationCode).toHaveBeenCalledWith('ADMIN_STEP_UP');
 
@@ -188,13 +199,8 @@ describe('useAdminStepUp', () => {
     (verifyAdminStepUp as any).mockRejectedValue('x');
     render(<Host />);
 
-    fireEvent.click(screen.getByText('go'));
-    await screen.findByText('高权限操作需要二次验证');
-
-    fireEvent.click(screen.getByText('发送验证码'));
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await openStepUpModal();
+    await sendEmailCode();
     expect(screen.getByText('重发（180s）')).not.toBeNull();
     expect(screen.queryByText('验证码有效期约')).toBeNull();
 
@@ -221,13 +227,8 @@ describe('useAdminStepUp', () => {
     (sendAccountEmailVerificationCode as any).mockResolvedValue({ resendWaitSeconds: 'abc', codeTtlSeconds: 0 });
     render(<Host />);
 
-    fireEvent.click(screen.getByText('go'));
-    await screen.findByText('高权限操作需要二次验证');
-
-    fireEvent.click(screen.getByText('发送验证码'));
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await openStepUpModal();
+    await sendEmailCode();
 
     expect(screen.getByText('重发（180s）')).not.toBeNull();
     expect(screen.queryByText('验证码有效期约')).toBeNull();

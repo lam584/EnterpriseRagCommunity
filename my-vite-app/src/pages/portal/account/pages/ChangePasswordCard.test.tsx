@@ -79,6 +79,15 @@ import { logout } from '../../../../services/authService';
 const mockChangePassword = vi.mocked(changePassword);
 const mockLogout = vi.mocked(logout);
 
+function advanceToPasswordVerificationStep() {
+  fireEvent.click(screen.getByRole('button', { name: '修改密码' }));
+  const pwdInputs = Array.from(document.querySelectorAll('input[type="password"]'));
+  fireEvent.change(pwdInputs[0], { target: { value: 'old' } });
+  fireEvent.change(pwdInputs[1], { target: { value: 'newpwd1' } });
+  fireEvent.change(pwdInputs[2], { target: { value: 'newpwd1' } });
+  fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+}
+
 function renderCard(override?: Partial<React.ComponentProps<typeof ChangePasswordCard>>) {
   const setErrorMsg = vi.fn();
   const props: React.ComponentProps<typeof ChangePasswordCard> = {
@@ -132,12 +141,7 @@ describe('ChangePasswordCard', () => {
       emailOtpRequiredByPolicy: false,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '修改密码' }));
-    const pwdInputs = Array.from(document.querySelectorAll('input[type="password"]'));
-    fireEvent.change(pwdInputs[0], { target: { value: 'old' } });
-    fireEvent.change(pwdInputs[1], { target: { value: 'newpwd1' } });
-    fireEvent.change(pwdInputs[2], { target: { value: 'newpwd1' } });
-    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    advanceToPasswordVerificationStep();
 
     fireEvent.click(await screen.findByRole('button', { name: '更新密码' }));
 
@@ -162,12 +166,7 @@ describe('ChangePasswordCard', () => {
       activeTotpDigits: 6,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '修改密码' }));
-    const pwdInputs = Array.from(document.querySelectorAll('input[type="password"]'));
-    fireEvent.change(pwdInputs[0], { target: { value: 'old' } });
-    fireEvent.change(pwdInputs[1], { target: { value: 'newpwd1' } });
-    fireEvent.change(pwdInputs[2], { target: { value: 'newpwd1' } });
-    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+    advanceToPasswordVerificationStep();
 
     fireEvent.change(screen.getAllByTestId('otp-input')[0], { target: { value: '123456' } });
 

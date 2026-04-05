@@ -5,6 +5,7 @@ import com.example.EnterpriseRagCommunity.dto.access.response.AdminUserTotpStatu
 import com.example.EnterpriseRagCommunity.entity.access.TotpSecretsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.TotpSecretsRepository;
+import com.example.EnterpriseRagCommunity.service.AccountTotpSupport;
 import com.example.EnterpriseRagCommunity.service.access.UsersService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -61,13 +62,7 @@ public class AdminUsersTotpController {
         }
 
         dto.setEnabled(Boolean.TRUE.equals(row.getEnabled()));
-        dto.setVerifiedAt(row.getVerifiedAt());
-        dto.setCreatedAt(row.getCreatedAt());
-        dto.setAlgorithm(row.getAlgorithm());
-        dto.setDigits(row.getDigits());
-        dto.setPeriodSeconds(row.getPeriodSeconds());
-        dto.setSkew(row.getSkew());
+        AccountTotpSupport.applySecretFields(dto, row);
         return dto;
     }
 }
-

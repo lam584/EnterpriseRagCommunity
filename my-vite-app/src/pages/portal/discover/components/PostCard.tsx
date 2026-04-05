@@ -7,6 +7,7 @@ import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import CollapsedMarkdownPreview from './CollapsedMarkdownPreview';
 import ImageLightbox from '../../../../components/ui/ImageLightbox';
 import * as StatButtonModule from '../../../../components/ui/StatButton';
+import { pickStatButton } from '../../../../components/ui/statButtonSupport';
 import HotScoreBadge from '../../../../components/post/HotScoreBadge';
 import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';
 
@@ -14,34 +15,6 @@ function clamp0(n: number) {
   return n < 0 ? 0 : n;
 }
 
-type StatButtonProps = {
-  label: string;
-  count: number;
-  onClick?: () => void;
-  tone?: string;
-  active?: boolean;
-  disabled?: boolean;
-};
-
-type StatButtonComponent = (props: StatButtonProps) => JSX.Element;
-
-function pickStatButton(mod: unknown): StatButtonComponent {
-  if (mod && typeof mod === 'object') {
-    const m = mod as Record<string, unknown>;
-
-    const candidate =
-      (m.default as unknown) ??
-      (m.StatButton as unknown) ??
-      Object.values(m).find((v) => typeof v === 'function');
-
-    if (typeof candidate === 'function') return candidate as StatButtonComponent;
-  }
-
-  // Fallback so the list won't crash if the module shape changes.
-  return (() => <span />) as StatButtonComponent;
-}
-
-// 兼容：模块可能是 default 导出，也可能是各种具名导出；这里选到一个可用的 React 组件即可
 const StatButton = pickStatButton(StatButtonModule);
 
 export type PostCardProps = {

@@ -1,19 +1,10 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { buildPageQuery } from './servicePagingUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 import type { SpringPage } from '../types/page';
 
-const API_BASE: string = ((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '';
-
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
+const apiUrl = serviceApiUrl;
 
 export type ContextWindowPolicy =
   | 'FIXED'
@@ -191,13 +182,7 @@ export async function adminListContextWindows(params?: {
   from?: string;
   to?: string;
 }): Promise<SpringPage<ContextWindowLogDTO>> {
-  const sp = new URLSearchParams();
-  sp.set('page', String(params?.page ?? 0));
-  sp.set('size', String(params?.size ?? 20));
-  if (params?.from) sp.set('from', params.from);
-  if (params?.to) sp.set('to', params.to);
-
-  const res = await fetch(apiUrl(`/api/admin/retrieval/context/logs/windows?${sp.toString()}`), {
+  const res = await fetch(apiUrl(`/api/admin/retrieval/context/logs/windows?${buildPageQuery(params)}`), {
     method: 'GET',
     credentials: 'include',
   });

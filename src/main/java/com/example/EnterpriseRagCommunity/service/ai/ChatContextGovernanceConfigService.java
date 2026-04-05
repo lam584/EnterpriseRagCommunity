@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
 import com.example.EnterpriseRagCommunity.dto.ai.ChatContextGovernanceConfigDTO;
+import com.example.EnterpriseRagCommunity.service.NumericClampSupport;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -109,10 +110,6 @@ public class ChatContextGovernanceConfigService {
     }
 
     private static double clampDouble(Double v, double min, double max, double def) {
-        double x = v == null ? def : v;
-        if (Double.isNaN(x) || Double.isInfinite(x)) x = def;
-        if (x < min) x = min;
-        if (x > max) x = max;
-        return x;
+        return NumericClampSupport.clampDouble(v, min, max, def);
     }
 }

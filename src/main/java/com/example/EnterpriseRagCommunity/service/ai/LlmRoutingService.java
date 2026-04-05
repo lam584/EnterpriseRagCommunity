@@ -165,28 +165,7 @@ public class LlmRoutingService {
     public RouteTarget pickNext(LlmQueueTaskType taskType, Set<TargetId> exclude) {
         Policy policy = getPolicy(taskType);
         List<RouteTarget> candidates = listEnabledTargets(taskType);
-        long nowMs = System.currentTimeMillis();
-        candidates.removeIf(t -> isExcludedOrCooling(taskType, t, exclude, nowMs));
-        if (candidates.isEmpty()) return null;
-
-        List<RouteTarget> eligible = new ArrayList<>(candidates);
-        eligible.removeIf(t -> isIneligible(t, nowMs, true));
-        if (eligible.isEmpty()) {
-            eligible = new ArrayList<>(candidates);
-            eligible.removeIf(t -> isIneligible(t, nowMs, false));
-        }
-        if (eligible.isEmpty()) eligible = candidates;
-
-        for (int guard = 0; guard < Math.max(1, eligible.size()); guard++) {
-            RouteTarget best = (policy.strategy() == Strategy.PRIORITY_FALLBACK)
-                    ? pickPriorityFallback(eligible)
-                    : pickWeightedRoundRobin(taskType, eligible);
-            if (best == null) return null;
-            if (reserveRate(best, nowMs)) return best;
-            eligible.remove(best);
-            if (eligible.isEmpty()) return best;
-        }
-        return eligible.getFirst();
+        return pickNextFromCandidates(taskType, policy, candidates, exclude);
     }
 
     public RouteTarget pickNextInProvider(LlmQueueTaskType taskType, String providerId, Set<TargetId> exclude) {
@@ -196,6 +175,15 @@ public class LlmRoutingService {
         Policy policy = getPolicy(taskType);
         List<RouteTarget> candidates = listEnabledTargets(taskType);
         candidates.removeIf(t -> t == null || !pid.equals(toNonBlank(t.providerId())));
+        return pickNextFromCandidates(taskType, policy, candidates, exclude);
+    }
+
+    private RouteTarget pickNextFromCandidates(
+            LlmQueueTaskType taskType,
+            Policy policy,
+            List<RouteTarget> candidates,
+            Set<TargetId> exclude
+    ) {
         long nowMs = System.currentTimeMillis();
         candidates.removeIf(t -> isExcludedOrCooling(taskType, t, exclude, nowMs));
         if (candidates.isEmpty()) return null;

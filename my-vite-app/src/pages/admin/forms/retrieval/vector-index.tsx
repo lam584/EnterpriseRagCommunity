@@ -61,6 +61,27 @@ function sourceCountOfIndex(it?: VectorIndexDTO): number | undefined {
   return undefined;
 }
 
+function buildIndexRunPayload(
+  selectedIndexId: string,
+  indexConfig: {
+    defaultChunkMaxChars: string;
+    defaultChunkOverlapChars: string;
+    dim: string;
+    embeddingProviderId: string;
+  }
+) {
+  const embProviderId = indexConfig.embeddingProviderId.trim();
+  return {
+    id: selectedIndexId,
+    fileBatchSize: 50,
+    postBatchSize: 50,
+    chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
+    chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
+    embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
+    embeddingProviderId: embProviderId || undefined,
+  };
+}
+
 type PostTestHit = NonNullable<RagPostsTestQueryResponse['hits']>[number];
 type FileTestHit = NonNullable<RagFilesTestQueryResponse['hits']>[number];
 
@@ -278,16 +299,9 @@ const VectorIndexForm: React.FC = () => {
     setError(null);
     setMessage(null);
     try {
-      const embProviderId = indexConfig.embeddingProviderId.trim();
+      const payload = buildIndexRunPayload(selectedIndexId, indexConfig);
       if (selectedSourceType === 'FILE_ASSET') {
-        const res = await adminRebuildFileRagIndex({
-          id: selectedIndexId,
-          fileBatchSize: 50,
-          chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
-          chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
-          embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-            embeddingProviderId: embProviderId || undefined,
-        });
+        const res = await adminRebuildFileRagIndex(payload);
         const clearedText =
           res.cleared === true ? '已删除并重建索引' : res.cleared === false ? `清空失败：${res.clearError ?? ''}` : '';
         const msgParts = [
@@ -299,14 +313,7 @@ const VectorIndexForm: React.FC = () => {
         ].filter(Boolean);
         setMessage(`文件索引全量重建完成：${msgParts.join('，')}`);
       } else {
-        const res = await adminRebuildPostRagIndex({
-          id: selectedIndexId,
-          postBatchSize: 50,
-          chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
-          chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
-          embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-            embeddingProviderId: embProviderId || undefined,
-        });
+        const res = await adminRebuildPostRagIndex(payload);
         const clearedText =
           res.cleared === true ? '已删除并重建索引' : res.cleared === false ? `清空失败：${res.clearError ?? ''}` : '';
         const msgParts = [
@@ -338,26 +345,12 @@ const VectorIndexForm: React.FC = () => {
     setError(null);
     setMessage(null);
     try {
-      const embProviderId = indexConfig.embeddingProviderId.trim();
+      const payload = buildIndexRunPayload(selectedIndexId, indexConfig);
       if (selectedSourceType === 'FILE_ASSET') {
-        const res = await adminSyncFileRagIndex({
-          id: selectedIndexId,
-          fileBatchSize: 50,
-          chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
-          chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
-          embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-            embeddingProviderId: embProviderId || undefined,
-        });
+        const res = await adminSyncFileRagIndex(payload);
         setMessage(`${res.failedChunks ? '文件增量同步完成（部分失败）' : '文件增量同步完成'}：新增文件 ${res.totalFiles ?? 0}，成功 ${res.successChunks ?? 0}，失败 ${res.failedChunks ?? 0}`);
       } else {
-        const res = await adminSyncPostRagIndex({
-          id: selectedIndexId,
-          postBatchSize: 50,
-          chunkMaxChars: Math.max(200, Math.trunc(Number(indexConfig.defaultChunkMaxChars))),
-          chunkOverlapChars: Math.max(0, Math.trunc(Number(indexConfig.defaultChunkOverlapChars))),
-          embeddingDims: indexConfig.dim === '' ? undefined : Math.max(0, Math.trunc(Number(indexConfig.dim))),
-            embeddingProviderId: embProviderId || undefined,
-        });
+        const res = await adminSyncPostRagIndex(payload);
         setMessage(`${res.failedChunks ? '增量同步完成（部分失败）' : '增量同步完成'}：新增帖子 ${res.totalPosts ?? 0}，成功 ${res.successChunks ?? 0}，失败 ${res.failedChunks ?? 0}`);
       }
       await load();

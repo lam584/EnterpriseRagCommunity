@@ -1863,7 +1863,17 @@ public class ModerationLlmAutoRunner {
     }
 
     static int findBoundaryEnd(String text, int start, int maxEnd) {
-        return ModerationLlmAutoRunnerSupport.findBoundaryEnd(text, start, maxEnd);
+        if (text == null || text.isEmpty()) return 0;
+        int s = Math.max(0, start);
+        int end = Math.min(Math.max(s, maxEnd), text.length());
+        for (int i = s; i < end; i++) {
+            char ch = text.charAt(i);
+            if (ch == '\n' || ch == '\r') return i;
+            if (ch == ',' || ch == '，' || ch == '.' || ch == '!' || ch == '?' || ch == ';' || ch == ':' || ch == '。' || ch == '！' || ch == '？' || ch == '；' || ch == '：') {
+                return i;
+            }
+        }
+        return end;
     }
 
     static String fallbackViolationSnippet(String text, int violationStart) {

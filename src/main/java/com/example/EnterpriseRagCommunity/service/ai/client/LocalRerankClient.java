@@ -9,7 +9,6 @@ import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 public class LocalRerankClient {
@@ -37,18 +36,22 @@ public class LocalRerankClient {
 
     public String rerankOnce(RerankRequest req) throws IOException {
         String baseUrl = normalizeRerankBaseUrl(req.baseUrl(), null);
-        String apiKey = normalizeString(req.apiKey(), null);
-        String model = normalizeString(req.model(), null);
+        String apiKey = RerankUrlSupport.normalizeString(req.apiKey(), null);
+        String model = RerankUrlSupport.normalizeString(req.model(), null);
         if (model == null || model.isBlank()) throw new IllegalArgumentException("model 不能为空");
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", model);
-        body.put("query", req.query() == null ? "" : req.query());
-        body.put("documents", req.documents() == null ? List.of() : req.documents());
-        if (req.topN() != null && req.topN() > 0) body.put("top_n", req.topN());
+        Map<String, Object> body = RerankRequestBodySupport.buildBaseBody(model, req.query(), req.documents(), req.topN());
 
         String endpoint = buildEndpoint(baseUrl, req.rerankEndpointPath());
-        HttpURLConnection conn = openJsonPost(endpoint, apiKey, req.extraHeaders(), req.connectTimeoutMs(), req.readTimeoutMs());
+        HttpURLConnection conn = AiClientHttpSupport.openJsonPost(
+                endpoint,
+                apiKey,
+                req.extraHeaders(),
+                req.connectTimeoutMs(),
+                req.readTimeoutMs(),
+                DEFAULT_CONNECT_TIMEOUT_MS,
+                DEFAULT_READ_TIMEOUT_MS
+        );
         String json = objectMapper.writeValueAsString(body);
         try (OutputStream os = conn.getOutputStream()) {
             os.write(json.getBytes(StandardCharsets.UTF_8));
@@ -64,57 +67,13 @@ public class LocalRerankClient {
         return resp;
     }
 
-    private HttpURLConnection openJsonPost(
-            String endpoint,
-            String apiKey,
-            Map<String, String> extraHeaders,
-            Integer connectTimeoutMs,
-            Integer readTimeoutMs
-    ) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-
-        int cto = (connectTimeoutMs == null || connectTimeoutMs <= 0) ? DEFAULT_CONNECT_TIMEOUT_MS : connectTimeoutMs;
-        int rto = (readTimeoutMs == null || readTimeoutMs <= 0) ? DEFAULT_READ_TIMEOUT_MS : readTimeoutMs;
-        conn.setConnectTimeout(cto);
-        conn.setReadTimeout(rto);
-
-        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-        conn.setRequestProperty("Accept", "application/json");
-        applyHeaders(conn, apiKey, extraHeaders);
-        return conn;
-    }
-
-    private static void applyHeaders(HttpURLConnection conn, String apiKey, Map<String, String> extraHeaders) {
-        boolean hasAuth = false;
-        if (extraHeaders != null && !extraHeaders.isEmpty()) {
-            for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
-                String k = e.getKey();
-                String v = e.getValue();
-                if (k == null || k.isBlank()) continue;
-                if (v == null) continue;
-                conn.setRequestProperty(k, v);
-                if ("authorization".equals(k.trim().toLowerCase(Locale.ROOT))) {
-                    hasAuth = true;
-                }
-            }
-        }
-        if (!hasAuth && apiKey != null && !apiKey.isBlank()) {
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-        }
-    }
-
     private static String readAll(InputStream is) throws IOException {
         return new String(is.readAllBytes(), StandardCharsets.UTF_8);
     }
 
     private static String normalizeRerankBaseUrl(String baseUrl, String fallback) {
-        String u = normalizeString(baseUrl, fallback);
-        if (u == null) return "";
-        u = u.trim();
-        if (u.endsWith("/")) u = u.substring(0, u.length() - 1);
-        String lower = u.toLowerCase(Locale.ROOT);
+        String u = RerankUrlSupport.trimTrailingSlash(baseUrl, fallback);
+        String lower = RerankUrlSupport.lowerCase(u);
         if (lower.endsWith("/v1") || lower.contains("/v1/")) return u;
         if (lower.endsWith("/api/v1") || lower.contains("/api/v1/")) return u;
         return u + "/v1";
@@ -123,25 +82,8 @@ public class LocalRerankClient {
     private static String buildEndpoint(String baseUrlWithV1, String rerankEndpointPath) {
         String base = baseUrlWithV1 == null ? "" : baseUrlWithV1.trim();
         if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-        String path = normalizeString(rerankEndpointPath, "/rerank");
+        String path = RerankUrlSupport.normalizeString(rerankEndpointPath, "/rerank");
         if (path == null || path.isBlank()) path = "/rerank";
-        path = path.trim();
-        if (path.startsWith("http://") || path.startsWith("https://")) return path;
-        if (!path.startsWith("/")) path = "/" + path;
-        if (path.startsWith("/v1/") || path.equals("/v1") || path.startsWith("/api/v1/") || path.equals("/api/v1")) {
-            String root = base;
-            String lower = root.toLowerCase(Locale.ROOT);
-            if (lower.endsWith("/v1")) root = root.substring(0, root.length() - 3);
-            else if (lower.endsWith("/api/v1")) root = root.substring(0, root.length() - 7);
-            if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
-            return root + path;
-        }
-        return base + path;
-    }
-
-    private static String normalizeString(String s, String fallback) {
-        String t = s == null ? null : s.trim();
-        if (t == null || t.isBlank()) return fallback;
-        return t;
+        return RerankUrlSupport.buildEndpoint(base, path);
     }
 }

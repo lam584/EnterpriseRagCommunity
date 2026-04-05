@@ -8,6 +8,7 @@ import {
   type CitationTestItem,
   type CitationTestResponse,
 } from '../../../../services/retrievalCitationService';
+import { EditSaveActions } from '../../../../components/admin/EditSaveActions';
 
 const inputClass =
   'block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors duration-200';
@@ -189,37 +190,24 @@ const CitationForm: React.FC = () => {
           <button className={btnSecondaryClass} onClick={loadConfig} disabled={loading}>
             刷新
           </button>
-          {!editing ? (
-            <button
-              className={btnSecondaryClass}
-              onClick={() => {
-                setEditing(true);
-                setError(null);
-                setMessage(null);
-              }}
-              disabled={loading || !canWrite}
-            >
-              编辑
-            </button>
-          ) : (
-            <>
-              <button
-                className={btnSecondaryClass}
-                onClick={() => {
-                  setConfig(committedConfig);
-                  setEditing(false);
-                  setError(null);
-                  setMessage(null);
-                }}
-                disabled={loading}
-              >
-                取消
-              </button>
-              <button className={btnPrimaryClass} onClick={onSave} disabled={loading || !canWrite || !hasUnsavedChanges}>
-                保存
-              </button>
-            </>
-          )}
+          <EditSaveActions
+            editing={editing}
+            loading={loading}
+            canWrite={canWrite}
+            hasUnsavedChanges={hasUnsavedChanges}
+            onEdit={() => {
+              setEditing(true);
+              setError(null);
+              setMessage(null);
+            }}
+            onCancel={() => {
+              setConfig(committedConfig);
+              setEditing(false);
+              setError(null);
+              setMessage(null);
+            }}
+            onSave={onSave}
+          />
         </div>
       </div>
 

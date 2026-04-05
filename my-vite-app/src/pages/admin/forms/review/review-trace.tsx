@@ -12,6 +12,8 @@ import ChunkEvidenceView from '../../../../components/admin/ChunkEvidenceView';
 import EvidenceListView from '../../../../components/admin/EvidenceListView';
 import { buildEvidenceImageUrlMap, extractLatestRunImageUrls } from '../../../../utils/evidenceImageMap';
 import { countUniqueEvidence, extractEvidenceFromDetails, shouldSkipStepEvidenceForChunkedReview } from '../../../../utils/evidence-utils';
+import { toInt } from '../../../../utils/numberParsers';
+import { copyTextWithFallback } from '../../../../utils/clipboard';
 import DetailDialog from '../../../../components/common/DetailDialog';
 import {downloadBlob} from '../../../../utils/download';
 
@@ -129,17 +131,6 @@ function toStringListDict(v: unknown): Record<string, string[]> {
     out[k] = list;
   }
   return out;
-}
-
-function toInt(v: unknown): number | null {
-  if (typeof v === 'number' && Number.isFinite(v)) return Math.floor(v);
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return null;
-    const n = Number(t);
-    if (Number.isFinite(n)) return Math.floor(n);
-  }
-  return null;
 }
 
 function rowChunkIndex(row: Record<string, unknown>): number | null {
@@ -653,27 +644,7 @@ const ReviewTraceForm: React.FC = () => {
   }, [detail?.latestRun, detail?.queue]);
 
   const copyText = useCallback(async (text: string) => {
-    const t = text ?? '';
-    try {
-      await navigator.clipboard.writeText(t);
-      return true;
-    } catch {
-      try {
-        const el = document.createElement('textarea');
-        el.value = t;
-        el.style.position = 'fixed';
-        el.style.left = '-10000px';
-        el.style.top = '0';
-        document.body.appendChild(el);
-        el.focus();
-        el.select();
-        const ok = document.execCommand('copy');
-        document.body.removeChild(el);
-        return ok;
-      } catch {
-        return false;
-      }
-    }
+    return copyTextWithFallback(text);
   }, []);
 
   return (

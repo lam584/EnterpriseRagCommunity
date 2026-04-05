@@ -1,10 +1,7 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
 export type AssistantPreferencesDTO = {
   defaultProviderId: string | null;

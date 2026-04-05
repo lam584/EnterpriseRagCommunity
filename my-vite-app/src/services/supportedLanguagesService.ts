@@ -1,10 +1,8 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
 export type SupportedLanguageDTO = {
   languageCode: string;
@@ -13,11 +11,11 @@ export type SupportedLanguageDTO = {
   sortOrder?: number | null;
 };
 
-function getBackendMessage(data: unknown): string | null {
-  if (!data || typeof data !== 'object') return null;
-  const d = data as Record<string, unknown>;
-  const msg = d.message ?? d.error;
-  return msg == null ? null : String(msg);
+export function normalizeSupportedLanguages(data: unknown): SupportedLanguageDTO[] {
+  if (!Array.isArray(data)) return [];
+  return data.filter((x): x is SupportedLanguageDTO => {
+    return Boolean(x && typeof x === 'object' && typeof (x as SupportedLanguageDTO).languageCode === 'string' && typeof (x as SupportedLanguageDTO).displayName === 'string');
+  });
 }
 
 export async function listSupportedLanguages(): Promise<SupportedLanguageDTO[]> {
@@ -29,7 +27,7 @@ export async function listSupportedLanguages(): Promise<SupportedLanguageDTO[]> 
   if (!res.ok) {
     throw new Error(getBackendMessage(data) || '获取支持语言列表失败');
   }
-  return (Array.isArray(data) ? data : []) as SupportedLanguageDTO[];
+  return normalizeSupportedLanguages(data);
 }
 
 export async function adminUpsertSupportedLanguage(payload: SupportedLanguageDTO): Promise<SupportedLanguageDTO> {

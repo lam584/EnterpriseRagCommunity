@@ -42,14 +42,15 @@ class LlmGatewayPrivateHelpersCoveragePart3Test {
     }
 
     private static Object callCallChatOnceSingleLambda(LlmGateway gateway, Class<?>[] paramTypes, Object... args) throws Exception {
-        for (int i = 0; i < 8; i++) {
-            try {
-                Method m = LlmGateway.class.getDeclaredMethod("lambda$callChatOnceSingle$" + i, paramTypes);
-                m.setAccessible(true);
-                return m.invoke(gateway, args);
-            } catch (NoSuchMethodException ignore) {
-                // Continue probing synthetic lambda index.
+        for (Method m : LlmGateway.class.getDeclaredMethods()) {
+            if (!m.getName().startsWith("lambda$callChatOnceSingle$")) {
+                continue;
             }
+            if (!Arrays.equals(m.getParameterTypes(), paramTypes)) {
+                continue;
+            }
+            m.setAccessible(true);
+            return m.invoke(gateway, args);
         }
         throw new NoSuchMethodException("lambda$callChatOnceSingle$* with expected signature not found");
     }

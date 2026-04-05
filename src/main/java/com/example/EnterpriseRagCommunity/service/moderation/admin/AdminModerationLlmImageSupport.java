@@ -33,6 +33,8 @@ import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepo
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
+import com.example.EnterpriseRagCommunity.service.ai.ImageResizeSupport;
+import com.example.EnterpriseRagCommunity.service.ai.LocalUploadFileSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -264,9 +266,7 @@ class AdminModerationLlmImageSupport {
         double ratio = maxSide / (double) max;
         int nw = Math.max(1, (int) Math.round(w * ratio));
         int nh = Math.max(1, (int) Math.round(h * ratio));
-        BufferedImage out = new BufferedImage(nw, nh, BufferedImage.TYPE_INT_RGB);
-        out.getGraphics().drawImage(src, 0, 0, nw, nh, null);
-        return out;
+        return ImageResizeSupport.drawResized(src, nw, nh);
     }
 
     private static byte[] writeJpeg(BufferedImage image, float quality) {
@@ -416,36 +416,7 @@ class AdminModerationLlmImageSupport {
     }
 
     private byte[] readLocalUploadBytes(Long fileAssetId, String url) {
-        try {
-            String prefix = urlPrefix == null ? "/uploads" : urlPrefix.trim();
-            String u = blankToNull(url);
-            if (u != null && !prefix.isEmpty() && u.startsWith(prefix + "/")) {
-                int q = u.indexOf('?');
-                if (q >= 0) u = u.substring(0, q);
-                String rel = u.substring(prefix.length());
-                while (rel.startsWith("/")) rel = rel.substring(1);
-
-                Path root = Paths.get(uploadRoot == null ? "uploads" : uploadRoot).toAbsolutePath().normalize();
-                Path p = root.resolve(rel).normalize();
-                if (p.startsWith(root) && Files.exists(p) && Files.isRegularFile(p)) {
-                    return Files.readAllBytes(p);
-                }
-            }
-
-            if (fileAssetId != null) {
-                var fa = fileAssetsRepository.findById(fileAssetId).orElse(null);
-                if (fa != null && fa.getPath() != null && !fa.getPath().isBlank()) {
-                    Path p = Paths.get(fa.getPath()).toAbsolutePath().normalize();
-                    if (Files.exists(p) && Files.isRegularFile(p)) {
-                        return Files.readAllBytes(p);
-                    }
-                }
-            }
-
-            return null;
-        } catch (Exception ignored) {
-            return null;
-        }
+        return LocalUploadFileSupport.readLocalUploadBytes(fileAssetsRepository, uploadRoot, urlPrefix, fileAssetId, url);
     }
 
     private static String blankToNull(String s) {

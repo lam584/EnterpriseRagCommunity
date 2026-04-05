@@ -6,6 +6,7 @@ import com.example.EnterpriseRagCommunity.dto.monitor.AdminLlmQueueTaskDetailDTO
 import com.example.EnterpriseRagCommunity.dto.monitor.AdminLlmQueueTaskDTO;
 import com.example.EnterpriseRagCommunity.config.LlmQueueProperties;
 import com.example.EnterpriseRagCommunity.entity.monitor.LlmQueueTaskHistoryEntity;
+import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskMappingSupport;
 import com.example.EnterpriseRagCommunity.repository.monitor.LlmQueueTaskHistoryRepository;
 import com.example.EnterpriseRagCommunity.service.ai.LlmCallQueueService;
 import lombok.RequiredArgsConstructor;
@@ -300,74 +301,24 @@ public class LlmQueueMonitorService {
 
     private AdminLlmQueueTaskDTO mapTask(LlmQueueTaskHistoryEntity e) {
         if (e == null) return null;
+        LlmQueueTaskMappingSupport.TaskMappedData mapped = LlmQueueTaskMappingSupport.from(e);
+        if (mapped == null) return null;
         AdminLlmQueueTaskDTO d = new AdminLlmQueueTaskDTO();
-        d.setId(e.getTaskId());
-        d.setSeq(e.getSeq());
-        d.setPriority(e.getPriority());
-        d.setType(e.getType());
-        d.setStatus(e.getStatus());
-        d.setProviderId(e.getProviderId());
-        d.setModel(e.getModel());
-        d.setCreatedAt(e.getCreatedAt());
-        d.setStartedAt(e.getStartedAt());
-        d.setFinishedAt(e.getFinishedAt());
-        d.setWaitMs(e.getWaitMs());
-        d.setDurationMs(e.getDurationMs());
-        d.setTokensIn(e.getTokensIn());
-        d.setTokensOut(e.getTokensOut());
-        d.setTotalTokens(e.getTotalTokens());
-        d.setTokensPerSec(e.getTokensPerSec());
-        d.setError(e.getError());
+        mapped.applyTo(d);
         return d;
     }
 
     private AdminLlmQueueTaskDetailDTO mapDetail(LlmCallQueueService.TaskDetailSnapshot t) {
+        LlmQueueTaskMappingSupport.TaskMappedData mapped = LlmQueueTaskMappingSupport.from(t);
         AdminLlmQueueTaskDetailDTO d = new AdminLlmQueueTaskDetailDTO();
-        d.setId(t.id());
-        d.setSeq(t.seq());
-        d.setPriority(t.priority());
-        d.setType(t.type());
-        d.setLabel(t.label());
-        d.setStatus(t.status());
-        d.setProviderId(t.providerId());
-        d.setModel(t.model());
-        d.setCreatedAt(t.createdAt());
-        d.setStartedAt(t.startedAt());
-        d.setFinishedAt(t.finishedAt());
-        d.setWaitMs(t.waitMs());
-        d.setDurationMs(t.durationMs());
-        d.setTokensIn(t.tokensIn());
-        d.setTokensOut(t.tokensOut());
-        d.setTotalTokens(t.totalTokens());
-        d.setTokensPerSec(t.tokensPerSec());
-        d.setError(t.error());
-        d.setInput(t.input());
-        d.setOutput(t.output());
+        if (mapped != null) mapped.applyTo(d);
         return d;
     }
 
     private AdminLlmQueueTaskDetailDTO mapDetail(LlmQueueTaskHistoryEntity e) {
+        LlmQueueTaskMappingSupport.TaskMappedData mapped = LlmQueueTaskMappingSupport.from(e);
         AdminLlmQueueTaskDetailDTO d = new AdminLlmQueueTaskDetailDTO();
-        d.setId(e.getTaskId());
-        d.setSeq(e.getSeq());
-        d.setPriority(e.getPriority());
-        d.setType(e.getType());
-        d.setLabel(null);
-        d.setStatus(e.getStatus());
-        d.setProviderId(e.getProviderId());
-        d.setModel(e.getModel());
-        d.setCreatedAt(e.getCreatedAt());
-        d.setStartedAt(e.getStartedAt());
-        d.setFinishedAt(e.getFinishedAt());
-        d.setWaitMs(e.getWaitMs());
-        d.setDurationMs(e.getDurationMs());
-        d.setTokensIn(e.getTokensIn());
-        d.setTokensOut(e.getTokensOut());
-        d.setTotalTokens(e.getTotalTokens());
-        d.setTokensPerSec(e.getTokensPerSec());
-        d.setError(e.getError());
-        d.setInput(e.getInput());
-        d.setOutput(e.getOutput());
+        if (mapped != null) mapped.applyTo(d);
         return d;
     }
 

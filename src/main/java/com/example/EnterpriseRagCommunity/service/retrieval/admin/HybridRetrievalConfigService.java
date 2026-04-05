@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
+import com.example.EnterpriseRagCommunity.service.NumericClampSupport;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -152,10 +153,6 @@ public class HybridRetrievalConfigService {
     }
 
     private static double clampDouble(Double v, double min, double max, double def) {
-        double x = v == null ? def : v;
-        if (Double.isNaN(x) || Double.isInfinite(x)) x = def;
-        if (x < min) x = min;
-        if (x > max) x = max;
-        return x;
+        return NumericClampSupport.clampDouble(v, min, max, def);
     }
 }

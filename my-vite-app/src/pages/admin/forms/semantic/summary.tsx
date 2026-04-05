@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { HistoryPagination } from '../../../../components/admin/HistoryPagination';
 import {
   adminGetPostSummaryConfig,
   adminListPostSummaryHistory,
@@ -12,7 +13,9 @@ import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO }
 import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
 import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
+import { EditToggleButton } from '../../../../components/admin/EditToggleButton';
 import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
+import { applyUnavailableFallback } from './semanticConfigShared';
 
 type FormState = {
   enabled: boolean;
@@ -183,14 +186,17 @@ const SummaryForm: React.FC = () => {
         setPromptDraft(null);
       }
     } catch (e) {
-      const next = toFormState(defaultConfig());
-      setForm(next);
-      setCommittedForm(next);
-      setEditing(false);
-      setError(e instanceof Error ? e.message : String(e));
-      setSavedHint('后端接口不可用，已加载前端默认配置（可用于演示）');
-      setCommittedPromptDraft(null);
-      setPromptDraft(null);
+      applyUnavailableFallback(
+        toFormState(defaultConfig()),
+        e,
+        setForm,
+        setCommittedForm,
+        setEditing,
+        setError,
+        setSavedHint,
+        setCommittedPromptDraft,
+        setPromptDraft,
+      );
     } finally {
       setLoading(false);
     }
@@ -350,26 +356,19 @@ const SummaryForm: React.FC = () => {
             >
               {loading ? '刷新中...' : '刷新配置'}
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (editing) {
-                  setForm(committedForm);
-                  setPromptDraft(committedPromptDraft);
-                  setEditing(false);
-                  setError(null);
-                  setSavedHint(null);
-                } else {
-                  setEditing(true);
-                }
+            <EditToggleButton
+              editing={editing}
+              loading={loading}
+              saving={saving}
+              onEdit={() => setEditing(true)}
+              onCancel={() => {
+                setForm(committedForm);
+                setPromptDraft(committedPromptDraft);
+                setEditing(false);
+                setError(null);
+                setSavedHint(null);
               }}
-              disabled={loading || saving}
-              className={`px-3 py-1.5 rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-60 text-sm ${
-                editing ? 'bg-gray-50' : 'bg-white'
-              }`}
-            >
-              {editing ? '取消编辑' : '编辑'}
-            </button>
+            />
             {editing ? (
               <button
                 type="button"
@@ -541,46 +540,18 @@ const SummaryForm: React.FC = () => {
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">每页</span>
-            <select
-              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs disabled:opacity-50"
-              value={historyPageSize}
-              disabled={historyLoading}
-              onChange={(e) => {
-                const nextSize = Math.max(1, Math.trunc(Number(e.target.value) || 20));
-                setHistoryPageSize(nextSize);
-                void loadHistory(0, nextSize);
-              }}
-            >
-              {[10, 20, 50, 100].map((n) => (
-                <option key={n} value={n}>
-                  {n} 条
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            type="button"
-            className="px-3 py-1 rounded-md border border-gray-300 bg-white disabled:opacity-50"
-            onClick={() => void loadHistory(Math.max(0, historyPageNo - 1))}
-            disabled={historyLoading || historyPageNo <= 0}
-          >
-            上一页
-          </button>
-          <div className="text-xs text-gray-500">
-            第 {historyPageNo + 1} 页 / 共 {totalPages || 0} 页
-          </div>
-          <button
-            type="button"
-            className="px-3 py-1 rounded-md border border-gray-300 bg-white disabled:opacity-50"
-            onClick={() => void loadHistory(historyPageNo + 1)}
-            disabled={historyLoading || (totalPages > 0 && historyPageNo + 1 >= totalPages)}
-          >
-            下一页
-          </button>
-        </div>
+        <HistoryPagination
+          pageNo={historyPageNo}
+          pageSize={historyPageSize}
+          totalPages={totalPages}
+          loading={historyLoading}
+          onPageSizeChange={(nextSize) => {
+            setHistoryPageSize(nextSize);
+            void loadHistory(0, nextSize);
+          }}
+          onPrevPage={() => void loadHistory(Math.max(0, historyPageNo - 1))}
+          onNextPage={() => void loadHistory(historyPageNo + 1)}
+        />
       </div>
 
       {errorOpen ? (

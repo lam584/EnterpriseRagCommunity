@@ -4,6 +4,7 @@ import type {
     ModerationQueueDetail,
     ModerationQueueItem,
 } from '../../../../services/moderationQueueService';
+import { toInt } from '../../../../utils/numberParsers';
 
 export function formatDateTime(s?: string | null): string {
     if (!s) return '—';
@@ -41,17 +42,6 @@ export function toRecord(v: unknown): Record<string, unknown> | null {
     }
     if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
     return v as Record<string, unknown>;
-}
-
-export function toInt(v: unknown): number | null {
-    if (typeof v === 'number' && Number.isFinite(v)) return Math.floor(v);
-    if (typeof v === 'string') {
-        const t = v.trim();
-        if (!t) return null;
-        const n = Number(t);
-        if (Number.isFinite(n)) return Math.floor(n);
-    }
-    return null;
 }
 
 export function toStringDict(v: unknown): Record<string, string> {

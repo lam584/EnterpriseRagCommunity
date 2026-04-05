@@ -54,8 +54,7 @@ public class TokenCostMetricsService {
         return value == null ? null : value.name();
     }
 
-    @Transactional(readOnly = true)
-    public AdminTokenMetricsResponseDTO query(LocalDateTime start, LocalDateTime end, String source, LlmPricing.Mode pricingMode) {
+    private static NormalizedRange normalizeRange(LocalDateTime start, LocalDateTime end) {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime s = start == null ? now.minusDays(7) : start;
         LocalDateTime e = end == null ? now : end;
@@ -64,6 +63,14 @@ public class TokenCostMetricsService {
             s = e;
             e = t;
         }
+        return new NormalizedRange(s, e);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminTokenMetricsResponseDTO query(LocalDateTime start, LocalDateTime end, String source, LlmPricing.Mode pricingMode) {
+        NormalizedRange range = normalizeRange(start, end);
+        LocalDateTime s = range.start();
+        LocalDateTime e = range.end();
 
         SourceFilter src = parseSource(source);
         LlmPricing.Mode pm = pricingMode == null ? LlmPricing.Mode.DEFAULT : pricingMode;
@@ -160,14 +167,9 @@ public class TokenCostMetricsService {
 
     @Transactional(readOnly = true)
     public AdminTokenTimelineResponseDTO queryTimeline(LocalDateTime start, LocalDateTime end, String source, TimelineBucket bucket) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime s = start == null ? now.minusDays(7) : start;
-        LocalDateTime e = end == null ? now : end;
-        if (s.isAfter(e)) {
-            LocalDateTime t = s;
-            s = e;
-            e = t;
-        }
+        NormalizedRange range = normalizeRange(start, end);
+        LocalDateTime s = range.start();
+        LocalDateTime e = range.end();
 
         SourceFilter src = parseSource(source);
         TimelineBucket buck = resolveBucket(s, e, bucket);
@@ -650,6 +652,12 @@ public class TokenCostMetricsService {
     private record PriceInfo(
             String currency,
             LlmPricing.Config pricing
+    ) {
+    }
+
+    private record NormalizedRange(
+            LocalDateTime start,
+            LocalDateTime end
     ) {
     }
 

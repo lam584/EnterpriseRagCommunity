@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import DetailDialog from '../common/DetailDialog';
 import ImageLightbox from '../ui/ImageLightbox';
 import { expandEvidenceContext } from '../../utils/evidence-context-display';
+import { toInt } from '../../utils/numberParsers';
+import { copyTextWithFallback } from '../../utils/clipboard';
 import EvidenceContextCell from './EvidenceContextCell';
 import { useModerationChunkContentPreview } from '../../hooks/useModerationChunkContentPreview';
 
@@ -34,17 +36,6 @@ const EVIDENCE_POLLUTION_MARKERS = [
   'label_taxonomy',
   'label_taxono',
 ];
-
-function toInt(v: unknown): number | null {
-  if (typeof v === 'number' && Number.isFinite(v)) return Math.floor(v);
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return null;
-    const n = Number(t);
-    if (Number.isFinite(n)) return Math.floor(n);
-  }
-  return null;
-}
 
 function toRecord(v: unknown): Record<string, unknown> | null {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
@@ -376,27 +367,7 @@ function anchorPreviewText(beforeText: string, afterText: string): string {
 }
 
 async function copyText(text: string): Promise<boolean> {
-  const t = text ?? '';
-  try {
-    await navigator.clipboard.writeText(t);
-    return true;
-  } catch {
-    try {
-      const el = document.createElement('textarea');
-      el.value = t;
-      el.style.position = 'fixed';
-      el.style.left = '-10000px';
-      el.style.top = '0';
-      document.body.appendChild(el);
-      el.focus();
-      el.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(el);
-      return ok;
-    } catch {
-      return false;
-    }
-  }
+  return copyTextWithFallback(text);
 }
 
 export type EvidenceListViewProps = {

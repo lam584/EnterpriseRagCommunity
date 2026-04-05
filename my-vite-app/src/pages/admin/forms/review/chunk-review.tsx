@@ -22,6 +22,8 @@ import {
     formatBudgetConvergenceSummary,
     formatDateTime,
     formatEnumZh,
+    collectMissingImageSizeEntries,
+    hasResolvedImageSize,
     isAbortError,
     parseBudgetConvergenceLog,
     parseOptionalPositiveInt,
@@ -126,6 +128,25 @@ const ChunkReviewConfigForm: React.FC = () => {
     height?: number | null;
     sizeStatus: ImageSizeStatus;
   };
+
+  const toLogImageInfo = useCallback((it: {
+    index?: number | null;
+    placeholder?: string | null;
+    fileName?: string | null;
+    url?: string | null;
+    width?: number | null;
+    height?: number | null;
+  }): LogImageInfo => {
+    const sizeStatus: ImageSizeStatus = hasResolvedImageSize(it) ? 'done' : 'idle';
+    return {
+      index: it.index,
+      label: String(it.placeholder || it.fileName || it.url || (it.index != null ? `图片#${it.index}` : '图片')),
+      url: it.url,
+      width: it.width,
+      height: it.height,
+      sizeStatus,
+    };
+  }, []);
   const [logImages, setLogImages] = useState<Record<number, { loading: boolean; error: string | null; images: LogImageInfo[] }>>({});
   const logImagesRef = useRef(logImages);
   useEffect(() => {
@@ -334,15 +355,7 @@ const ChunkReviewConfigForm: React.FC = () => {
 
   const probeLogImageSizes = useCallback(
     (logId: number, imgs: LogImageInfo[], signal: AbortSignal) => {
-      const missing = imgs
-        .map((img, idx) => ({ img, idx, url: toUrlString(img.url) }))
-        .filter(({ img, url }) => {
-          if (!url) return false;
-          const w = img.width;
-          const h = img.height;
-          const ok = typeof w === 'number' && Number.isFinite(w) && w > 0 && typeof h === 'number' && Number.isFinite(h) && h > 0;
-          return !ok;
-        });
+      const missing = collectMissingImageSizeEntries(imgs);
 
       if (missing.length === 0) return;
 
@@ -449,31 +462,10 @@ const ChunkReviewConfigForm: React.FC = () => {
     const controller = new AbortController();
     const imgs: LogImageInfo[] = (content.images ?? [])
       .filter((it) => Boolean(it?.url))
-      .map((it) => {
-        const w = it.width;
-        const h = it.height;
-        const ok = typeof w === 'number' && Number.isFinite(w) && w > 0 && typeof h === 'number' && Number.isFinite(h) && h > 0;
-        const sizeStatus: ImageSizeStatus = ok ? 'done' : 'idle';
-        return {
-          index: it.index,
-          label: String(it.placeholder || it.fileName || it.url || (it.index != null ? `图片#${it.index}` : '图片')),
-          url: it.url,
-          width: it.width,
-          height: it.height,
-          sizeStatus,
-        };
-      });
+      .map(toLogImageInfo);
     setContentImages(imgs);
 
-    const missing = imgs
-      .map((img, idx) => ({ img, idx, url: toUrlString(img.url) }))
-      .filter(({ img, url }) => {
-        if (!url) return false;
-        const w = img.width;
-        const h = img.height;
-        const ok = typeof w === 'number' && Number.isFinite(w) && w > 0 && typeof h === 'number' && Number.isFinite(h) && h > 0;
-        return !ok;
-      });
+    const missing = collectMissingImageSizeEntries(imgs);
 
     if (missing.length === 0) return () => controller.abort();
 
@@ -551,20 +543,7 @@ const ChunkReviewConfigForm: React.FC = () => {
           const preview = await adminGetModerationChunkLogContent(id, controller.signal);
           const imgs: LogImageInfo[] = (preview.images ?? [])
             .filter((it) => Boolean(it?.url))
-            .map((it) => {
-              const w = it.width;
-              const h = it.height;
-              const ok = typeof w === 'number' && Number.isFinite(w) && w > 0 && typeof h === 'number' && Number.isFinite(h) && h > 0;
-              const sizeStatus: ImageSizeStatus = ok ? 'done' : 'idle';
-              return {
-                index: it.index,
-                label: String(it.placeholder || it.fileName || it.url || (it.index != null ? `图片#${it.index}` : '图片')),
-                url: it.url,
-                width: it.width,
-                height: it.height,
-                sizeStatus,
-              };
-            });
+            .map(toLogImageInfo);
           setLogImages((prev) => ({ ...prev, [id]: { loading: false, error: null, images: imgs } }));
           probeLogImageSizes(id, imgs, controller.signal);
         } catch (e) {
@@ -579,7 +558,7 @@ const ChunkReviewConfigForm: React.FC = () => {
 
     void Promise.all(Array.from({ length: concurrency }, () => worker()));
     return () => controller.abort();
-  }, [visibleLogs, logsLoading, probeLogImageSizes]);
+  }, [visibleLogs, logsLoading, probeLogImageSizes, toLogImageInfo]);
 
   useEffect(() => {
     if (!detailOpen) return;

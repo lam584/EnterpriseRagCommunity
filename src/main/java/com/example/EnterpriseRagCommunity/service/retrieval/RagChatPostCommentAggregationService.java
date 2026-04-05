@@ -10,6 +10,8 @@ import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
+import com.example.EnterpriseRagCommunity.service.ai.ApproxTokenSupport;
+import com.example.EnterpriseRagCommunity.service.content.PostLookupSupport;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -213,10 +215,8 @@ public class RagChatPostCommentAggregationService {
             int maxChunks,
             int chunkMaxTokens
     ) {
-        if (postId == null || maxChunks <= 0) return null;
-        StringBuilder sb = new StringBuilder();
-        int kept = 0;
-        Set<Long> seenHashes = new java.util.HashSet<>();
+        ChunkAccumulator acc = newChunkAccumulator(postId, maxChunks);
+        if (acc == null) return null;
         Set<Long> seenCommentIds = new java.util.HashSet<>();
         Long primaryCommentId = null;
         Integer primaryChunkIndex = null;
@@ -224,13 +224,13 @@ public class RagChatPostCommentAggregationService {
         if (hitComments != null) {
             for (RagCommentChatRetrievalService.Hit ch : hitComments) {
                 if (ch == null) continue;
-                if (kept >= maxChunks) break;
+                if (acc.kept >= maxChunks) break;
                 String raw = ch.getContentText();
                 if (raw == null || raw.isBlank()) continue;
                 String trimmed = raw.trim();
                 long h32 = crc32(truncatedHashBasis(trimmed, chunkMaxTokens));
-                if (seenHashes.contains(h32)) continue;
-                seenHashes.add(h32);
+                if (acc.seenHashes.contains(h32)) continue;
+                acc.seenHashes.add(h32);
                 if (ch.getCommentId() != null) seenCommentIds.add(ch.getCommentId());
                 if (primaryCommentId == null && ch.getCommentId() != null) {
                     primaryCommentId = ch.getCommentId();
@@ -238,63 +238,48 @@ public class RagChatPostCommentAggregationService {
                 }
 
                 String part = truncateByApproxTokens(trimmed, chunkMaxTokens);
-                if (sb.isEmpty()) sb.append("命中评论片段：\n");
-                sb.append("- ");
-                if (ch.getCommentId() != null) sb.append("comment_id=").append(ch.getCommentId()).append(' ');
-                if (ch.getChunkIndex() != null) sb.append("chunk=").append(ch.getChunkIndex()).append(' ');
-                if (ch.getScore() != null)
-                    sb.append("score=").append(String.format(Locale.ROOT, "%.4f", ch.getScore())).append(' ');
-                sb.append("source=hit").append('\n');
-                sb.append(part).append('\n');
-                kept++;
+                appendHitChunk(acc.text, "命中评论片段：\n", "comment_id", ch.getCommentId(), ch.getChunkIndex(), ch.getScore(), "hit", part);
+                acc.kept++;
             }
         }
 
-        if (kept < maxChunks) {
+        if (acc.kept < maxChunks) {
             List<CommentsEntity> dbComments = fetchVisibleComments(postId, Math.max(maxChunks * 2, 10));
             for (CommentsEntity c : dbComments) {
                 if (c == null) continue;
-                if (kept >= maxChunks) break;
+                if (acc.kept >= maxChunks) break;
                 if (c.getId() != null && seenCommentIds.contains(c.getId())) continue;
                 String raw = c.getContent();
                 if (raw == null || raw.isBlank()) continue;
                 String trimmed = raw.trim();
                 long h32 = crc32(truncatedHashBasis(trimmed, chunkMaxTokens));
-                if (seenHashes.contains(h32)) continue;
-                seenHashes.add(h32);
+                if (acc.seenHashes.contains(h32)) continue;
+                acc.seenHashes.add(h32);
                 if (c.getId() != null) seenCommentIds.add(c.getId());
                 if (primaryCommentId == null && c.getId() != null) {
                     primaryCommentId = c.getId();
                 }
 
                 String part = truncateByApproxTokens(trimmed, chunkMaxTokens);
-                if (sb.isEmpty()) sb.append("命中评论片段：\n");
-                sb.append("- ");
-                if (c.getId() != null) sb.append("comment_id=").append(c.getId()).append(' ');
-                sb.append("source=db_visible").append('\n');
-                sb.append(part).append('\n');
-                kept++;
+                if (acc.text.isEmpty()) acc.text.append("命中评论片段：\n");
+                acc.text.append("- ");
+                if (c.getId() != null) acc.text.append("comment_id=").append(c.getId()).append(' ');
+                acc.text.append("source=db_visible").append('\n');
+                acc.text.append(part).append('\n');
+                acc.kept++;
             }
         }
 
-        if (kept <= 0) return null;
+        if (acc.kept <= 0) return null;
         CommentContext out = new CommentContext();
-        out.text = sb.toString().trim();
+        out.text = acc.text.toString().trim();
         out.primaryCommentId = primaryCommentId;
         out.primaryChunkIndex = primaryChunkIndex;
         return out;
     }
 
     private Map<Long, PostsEntity> fetchPosts(Set<Long> postIds) {
-        if (postIds == null || postIds.isEmpty()) return Map.of();
-        List<Long> ids = postIds.stream().filter(x -> x != null && x > 0).toList();
-        if (ids.isEmpty()) return Map.of();
-        Map<Long, PostsEntity> out = new HashMap<>();
-        for (PostsEntity p : postsRepository.findByIdInAndIsDeletedFalseAndStatus(ids, PostStatus.PUBLISHED)) {
-            if (p == null || p.getId() == null) continue;
-            out.put(p.getId(), p);
-        }
-        return out;
+        return PostLookupSupport.loadPublishedPostsById(postIds, postsRepository);
     }
 
     private String buildAttachmentContext(
@@ -303,38 +288,29 @@ public class RagChatPostCommentAggregationService {
             int maxChunks,
             int chunkMaxTokens
     ) {
-        if (postId == null || maxChunks <= 0) return null;
-        StringBuilder sb = new StringBuilder();
-        int kept = 0;
-        Set<Long> seenHashes = new java.util.HashSet<>();
+        ChunkAccumulator acc = newChunkAccumulator(postId, maxChunks);
+        if (acc == null) return null;
         Set<Long> seenFileAssetIds = new java.util.HashSet<>();
 
         if (hitAttachments != null) {
             for (RagPostChatRetrievalService.Hit h : hitAttachments) {
                 if (h == null) continue;
-                if (kept >= maxChunks) break;
+                if (acc.kept >= maxChunks) break;
                 String raw = h.getContentText();
                 if (raw == null || raw.isBlank()) continue;
                 String trimmed = raw.trim();
                 long h32 = crc32(truncatedHashBasis(trimmed, chunkMaxTokens));
-                if (seenHashes.contains(h32)) continue;
-                seenHashes.add(h32);
+                if (acc.seenHashes.contains(h32)) continue;
+                acc.seenHashes.add(h32);
                 if (h.getFileAssetId() != null) seenFileAssetIds.add(h.getFileAssetId());
 
                 String part = truncateByApproxTokens(trimmed, chunkMaxTokens);
-                if (sb.isEmpty()) sb.append("关联附件片段：\n");
-                sb.append("- ");
-                if (h.getFileAssetId() != null) sb.append("file_asset_id=").append(h.getFileAssetId()).append(' ');
-                if (h.getChunkIndex() != null) sb.append("chunk=").append(h.getChunkIndex()).append(' ');
-                if (h.getScore() != null)
-                    sb.append("score=").append(String.format(Locale.ROOT, "%.4f", h.getScore())).append(' ');
-                sb.append("source=hit").append('\n');
-                sb.append(part).append('\n');
-                kept++;
+                appendHitChunk(acc.text, "关联附件片段：\n", "file_asset_id", h.getFileAssetId(), h.getChunkIndex(), h.getScore(), "hit", part);
+                acc.kept++;
             }
         }
 
-        if (kept < maxChunks) {
+        if (acc.kept < maxChunks) {
             List<PostAttachmentsEntity> atts = new ArrayList<>(fetchPostAttachments(postId));
             if (!atts.isEmpty()) {
                 atts.sort(Comparator
@@ -350,7 +326,7 @@ public class RagChatPostCommentAggregationService {
 
                 for (PostAttachmentsEntity att : atts) {
                     if (att == null) continue;
-                    if (kept >= maxChunks) break;
+                    if (acc.kept >= maxChunks) break;
                     Long fileAssetId = att.getFileAssetId();
                     if (fileAssetId == null || fileAssetId <= 0) continue;
                     if (seenFileAssetIds.contains(fileAssetId)) continue;
@@ -359,21 +335,32 @@ public class RagChatPostCommentAggregationService {
                     if (raw == null || raw.isBlank()) continue;
                     String trimmed = raw.trim();
                     long h32 = crc32(truncatedHashBasis(trimmed, chunkMaxTokens));
-                    if (seenHashes.contains(h32)) continue;
-                    seenHashes.add(h32);
+                    if (acc.seenHashes.contains(h32)) continue;
+                    acc.seenHashes.add(h32);
                     seenFileAssetIds.add(fileAssetId);
 
                     String part = truncateByApproxTokens(trimmed, chunkMaxTokens);
-                    if (sb.isEmpty()) sb.append("关联附件片段：\n");
-                    sb.append("- file_asset_id=").append(fileAssetId).append(' ').append("source=db_extraction").append('\n');
-                    sb.append(part).append('\n');
-                    kept++;
+                    if (acc.text.isEmpty()) acc.text.append("关联附件片段：\n");
+                    acc.text.append("- file_asset_id=").append(fileAssetId).append(' ').append("source=db_extraction").append('\n');
+                    acc.text.append(part).append('\n');
+                    acc.kept++;
                 }
             }
         }
 
-        if (kept <= 0) return null;
-        return sb.toString().trim();
+        if (acc.kept <= 0) return null;
+        return acc.text.toString().trim();
+    }
+
+    private ChunkAccumulator newChunkAccumulator(Long postId, int maxChunks) {
+        if (postId == null || maxChunks <= 0) return null;
+        return new ChunkAccumulator();
+    }
+
+    private static final class ChunkAccumulator {
+        private final StringBuilder text = new StringBuilder();
+        private final Set<Long> seenHashes = new java.util.HashSet<>();
+        private int kept = 0;
     }
 
     private List<CommentsEntity> fetchVisibleComments(Long postId, int limit) {
@@ -389,6 +376,25 @@ public class RagChatPostCommentAggregationService {
         } catch (Exception ignored) {
             return List.of();
         }
+    }
+
+    private static void appendHitChunk(
+            StringBuilder sb,
+            String title,
+            String idLabel,
+            Long idValue,
+            Integer chunkIndex,
+            Double score,
+            String source,
+            String part
+    ) {
+        if (sb.isEmpty()) sb.append(title);
+        sb.append("- ");
+        if (idValue != null) sb.append(idLabel).append('=').append(idValue).append(' ');
+        if (chunkIndex != null) sb.append("chunk=").append(chunkIndex).append(' ');
+        if (score != null) sb.append("score=").append(String.format(Locale.ROOT, "%.4f", score)).append(' ');
+        sb.append("source=").append(source).append('\n');
+        sb.append(part).append('\n');
     }
 
     private List<PostAttachmentsEntity> fetchPostAttachments(Long postId) {
@@ -440,36 +446,11 @@ public class RagChatPostCommentAggregationService {
     }
 
     static int approxTokens(String s) {
-        if (s == null || s.isEmpty()) return 0;
-        double t = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c <= 0x7f) t += 0.25;
-            else t += 1.0;
-        }
-        return Math.max(0, (int) Math.ceil(t));
+        return ApproxTokenSupport.approxTokens(s);
     }
 
     static String truncateByApproxTokens(String s, int maxTokens) {
-        if (s == null) return "";
-        int cap = Math.max(0, maxTokens);
-        if (cap == 0) return "";
-        if (approxTokens(s) <= cap) return s;
-        int lo = 0;
-        int hi = s.length();
-        int best = 0;
-        while (lo <= hi) {
-            int mid = (lo + hi) >>> 1;
-            String sub = s.substring(0, mid);
-            int tok = approxTokens(sub);
-            if (tok <= cap) {
-                best = mid;
-                lo = mid + 1;
-            } else {
-                hi = mid - 1;
-            }
-        }
-        return s.substring(0, best);
+        return ApproxTokenSupport.truncateByApproxTokens(s, maxTokens);
     }
 
     private static class PostAgg {

@@ -10,8 +10,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
-import java.util.Map;
-
 @Service
 @RequiredArgsConstructor
 public class RagCommentIndexVisibilitySyncService {
@@ -38,10 +36,7 @@ public class RagCommentIndexVisibilitySyncService {
     private void doSync(Long commentId) {
         List<VectorIndicesEntity> indices = vectorIndicesRepository.findAll();
         for (VectorIndicesEntity vi : indices) {
-            if (vi == null || vi.getId() == null) continue;
-            Map<String, Object> meta = vi.getMetadata();
-            String sourceType = meta == null ? null : (meta.get("sourceType") == null ? null : String.valueOf(meta.get("sourceType")));
-            if (sourceType == null || !"COMMENT".equalsIgnoreCase(sourceType.trim())) continue;
+            if (!RagValueSupport.matchesSourceType(vi, "COMMENT")) continue;
             try {
                 buildService.syncSingleComment(vi.getId(), commentId);
             } catch (Exception ex) {
@@ -50,4 +45,3 @@ public class RagCommentIndexVisibilitySyncService {
         }
     }
 }
-

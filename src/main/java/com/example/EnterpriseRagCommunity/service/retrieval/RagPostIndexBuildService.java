@@ -92,8 +92,9 @@ public class RagPostIndexBuildService {
         resp.setChunkOverlapChars(chunkOverlapChars);
 
         int ps = postBatchSize == null || postBatchSize < 1 ? 50 : Math.min(500, postBatchSize);
-        int maxChars = chunkMaxChars == null || chunkMaxChars < 200 ? 800 : Math.min(5000, chunkMaxChars);
-        int overlap = chunkOverlapChars == null || chunkOverlapChars < 0 ? 80 : Math.min(maxChars - 1, chunkOverlapChars);
+        RagValueSupport.ChunkingParams chunking = RagValueSupport.resolveIndexBuildChunking(chunkMaxChars, chunkOverlapChars);
+        int maxChars = chunking.maxChars();
+        int overlap = chunking.overlap();
 
         Map<String, Object> meta0ForDefaults = vi.getMetadata();
 
@@ -103,42 +104,12 @@ public class RagPostIndexBuildService {
 
         String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
 
-        String modelToUse = null;
-        String providerToUse = null;
+        ResolvedEmbeddingTarget resolvedTarget =
+                resolveEmbeddingTarget(overrideModel, overrideProviderId, fixedProviderId, hasOverride, true);
+        String modelToUse = resolvedTarget.model();
+        String providerToUse = resolvedTarget.providerId();
 
-        if (hasOverride) {
-            modelToUse = overrideModel;
-            providerToUse = overrideProviderId;
-        } else if (fixedProviderId != null) {
-            providerToUse = fixedProviderId;
-        } else if (overrideProviderId != null && overrideModel == null) {
-            providerToUse = overrideProviderId;
-        }
-
-        if (modelToUse == null) {
-            LlmRoutingService.RouteTarget target = (providerToUse == null)
-                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
-                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
-            if (target == null) {
-                String legacy = toNonBlankString(ragProps.getEs().getEmbeddingModel());
-                if (legacy == null) {
-                    throw new IllegalStateException(providerToUse == null
-                            ? "no eligible embedding target (please check embedding routing config)"
-                            : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
-                }
-                modelToUse = legacy;
-                providerToUse = null;
-            } else {
-                providerToUse = target.providerId();
-                modelToUse = target.modelName();
-            }
-        }
-
-        Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
-        if (configuredDims == null) {
-            Integer d = vi.getDim();
-            configuredDims = d != null && d > 0 ? d : null;
-        }
+        Integer configuredDims = resolveConfiguredDims(expectedEmbeddingDims, vi.getDim());
 
         vi.setStatus(VectorIndexStatus.BUILDING);
         vectorIndicesRepository.save(vi);
@@ -237,25 +208,7 @@ public class RagPostIndexBuildService {
                             ensured = true;
                         }
 
-                        Document d = Document.create();
-                        d.setId(docId);
-                        d.put("id", docId);
-                        d.put("post_id", p.getId());
-                        d.put("board_id", p.getBoardId());
-                        d.put("author_id", p.getAuthorId());
-                        d.put("chunk_index", ci);
-                        d.put("content_hash", contentHash);
-                        d.put("title", p.getTitle());
-                        d.put("content_text", chunk);
-                        if (p.getCreatedAt() != null) d.put("created_at", Date.from(p.getCreatedAt().toInstant(ZoneOffset.UTC)));
-                        if (p.getUpdatedAt() != null) d.put("updated_at", Date.from(p.getUpdatedAt().toInstant(ZoneOffset.UTC)));
-
-                        float[] vector = emb.vector();
-                        if (vector.length > 0) {
-                            List<Float> vec = new ArrayList<>(vector.length);
-                            for (float v : vector) vec.add(v);
-                            d.put("embedding", vec);
-                        }
+                        Document d = buildPostChunkDocument(p, docId, ci, contentHash, chunk, emb.vector());
 
                         esTemplate.save(d, IndexCoordinates.of(indexName));
                         success++;
@@ -315,23 +268,14 @@ public class RagPostIndexBuildService {
             }
         }
 
-        if (dimsToUse != null && dimsToUse > 0) {
-            if (vi.getDim() == null || vi.getDim() <= 0) {
-                vi.setDim(dimsToUse);
-            } else if (!vi.getDim().equals(dimsToUse)) {
-                vi.setStatus(VectorIndexStatus.ERROR);
-                vectorIndicesRepository.save(vi);
-                throw new IllegalStateException("vector index dim mismatch: stored=" + vi.getDim() + ", embedding=" + dimsToUse);
-            }
-        }
-        vi.setMetric(vi.getMetric() == null || vi.getMetric().isBlank() ? "cosine" : vi.getMetric());
-        vi.setStatus(failed > 0 ? VectorIndexStatus.ERROR : VectorIndexStatus.READY);
-
-        Map<String, Object> meta0 = vi.getMetadata();
-        Map<String, Object> meta = meta0 == null ? new LinkedHashMap<>() : new LinkedHashMap<>(meta0);
-        meta.remove("embeddingModel");
-        meta.put("esIndex", indexName);
-        meta.put("sourceType", "POST");
+        Map<String, Object> meta = VectorIndexMetadataSupport.prepareBuildMetadata(
+                vi,
+                vectorIndicesRepository,
+                dimsToUse,
+                failed,
+                indexName,
+                "POST"
+        );
         meta.put("lastBuildAt", LocalDateTime.now().toString());
         meta.put("lastBuildTotalPosts", totalPosts);
         meta.put("lastBuildTotalChunks", totalChunks);
@@ -341,13 +285,7 @@ public class RagPostIndexBuildService {
         if (fromPostId != null) meta.put("lastBuildFromPostId", fromPostId);
         if (lastPostId != null) meta.put("lastBuildLastPostId", lastPostId);
         if (boardId != null) meta.put("lastBuildBoardId", boardId);
-        meta.put("lastBuildChunkMaxChars", maxChars);
-        meta.put("lastBuildChunkOverlapChars", overlap);
-        if (dimsToUse != null && dimsToUse > 0) meta.put("lastBuildEmbeddingDims", dimsToUse);
-        if (modelToUse != null && !modelToUse.isBlank()) meta.put("lastBuildEmbeddingModel", modelToUse);
-        if (providerToUse != null && !providerToUse.isBlank()) meta.put("lastBuildEmbeddingProviderId", providerToUse);
-        if (cleared != null) meta.put("lastBuildCleared", cleared);
-        if (clearError != null) meta.put("lastBuildClearError", clearError);
+        VectorIndexMetadataSupport.putBuildEmbeddingMetadata(meta, maxChars, overlap, dimsToUse, modelToUse, providerToUse, cleared, clearError);
         vi.setMetadata(meta);
         vectorIndicesRepository.save(vi);
 
@@ -449,83 +387,19 @@ public class RagPostIndexBuildService {
     }
 
     private void deleteByQuery(String indexName, String body) {
-        if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
-        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
-
-        try {
-            URL url = java.net.URI.create(endpoint + "/" + indexName.trim() + "/_delete_by_query?conflicts=proceed&refresh=true").toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(30_000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
-
-            String payload = body == null ? "{\"query\":{\"match_all\":{}}}" : body;
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(payload.getBytes(StandardCharsets.UTF_8));
-            }
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String json = is == null ? "" : new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("ES delete_by_query HTTP " + code + ": " + json);
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("ES delete_by_query failed: " + e.getMessage(), e);
-        }
+        ElasticsearchHttpSupport.deleteByQuery(systemConfigurationService, indexName, body);
     }
 
     private void deleteIndexViaHttp(String indexName) {
-        if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
-        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
-
-        try {
-            String idx = URLEncoder.encode(indexName.trim(), StandardCharsets.UTF_8);
-            URL url = java.net.URI.create(endpoint + "/" + idx + "?ignore_unavailable=true").toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("DELETE");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(30_000);
-            conn.setRequestProperty("Content-Type", "application/json");
-            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String json = is == null ? "" : new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            if ((code >= 200 && code < 300) || code == 404) return;
-            throw new IllegalStateException("ES delete index HTTP " + code + ": " + json);
-        } catch (Exception e) {
-            throw new IllegalStateException("ES delete index failed: " + e.getMessage(), e);
-        }
+        ElasticsearchHttpSupport.deleteIndex(systemConfigurationService, indexName);
     }
 
     private void touchMetadata(Long vectorIndexId, java.util.function.Consumer<Map<String, Object>> mutator) {
-        if (vectorIndexId == null) return;
-        VectorIndicesEntity vi = vectorIndicesRepository.findById(vectorIndexId).orElse(null);
-        if (vi == null) return;
-        Map<String, Object> meta0 = vi.getMetadata();
-        Map<String, Object> meta = meta0 == null ? new LinkedHashMap<>() : new LinkedHashMap<>(meta0);
-        if (mutator != null) mutator.accept(meta);
-        vi.setMetadata(meta);
-        vectorIndicesRepository.save(vi);
+        VectorIndexMetadataSupport.touchMetadata(vectorIndexId, vectorIndicesRepository, mutator);
     }
 
     private static Long toLong(Object v) {
-        if (v == null) return null;
-        if (v instanceof Number n) return n.longValue();
-        if (v instanceof String s) {
-            String t = s.trim();
-            if (t.isBlank()) return null;
-            try {
-                return Long.parseLong(t);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
+        return RagValueSupport.toLong(v);
     }
 
     public void syncSinglePost(Long vectorIndexId,
@@ -568,51 +442,21 @@ public class RagPostIndexBuildService {
 
         String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
 
-        String modelToUse = null;
-        String providerToUse = null;
+        ResolvedEmbeddingTarget resolvedTarget =
+                resolveEmbeddingTarget(overrideModel, overrideProviderId, fixedProviderId, hasOverride, false);
+        String modelToUse = resolvedTarget.model();
+        String providerToUse = resolvedTarget.providerId();
 
-        if (hasOverride) {
-            modelToUse = overrideModel;
-            providerToUse = overrideProviderId;
-        } else if (fixedProviderId != null) {
-            providerToUse = fixedProviderId;
-        } else if (overrideProviderId != null) {
-            providerToUse = overrideProviderId;
-        }
-
-        if (modelToUse == null) {
-            LlmRoutingService.RouteTarget target = (providerToUse == null)
-                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
-                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
-            if (target == null) {
-                String legacy = toNonBlankString(ragProps.getEs().getEmbeddingModel());
-                if (legacy == null) {
-                    throw new IllegalStateException(providerToUse == null
-                            ? "no eligible embedding target (please check embedding routing config)"
-                            : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
-                }
-                modelToUse = legacy;
-                providerToUse = null;
-            } else {
-                providerToUse = target.providerId();
-                modelToUse = target.modelName();
-            }
-        }
-
-        Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
-        if (configuredDims == null) {
-            Integer d = vi.getDim();
-            configuredDims = d != null && d > 0 ? d : null;
-        }
+        Integer configuredDims = resolveConfiguredDims(expectedEmbeddingDims, vi.getDim());
 
         Integer maxCharsMeta = toInt(meta0ForDefaults == null ? null : meta0ForDefaults.get("lastBuildChunkMaxChars"));
         Integer overlapMeta = toInt(meta0ForDefaults == null ? null : meta0ForDefaults.get("lastBuildChunkOverlapChars"));
-        int maxChars = chunkMaxChars == null ? (maxCharsMeta == null ? 800 : maxCharsMeta) : chunkMaxChars;
-        int overlap = chunkOverlapChars == null ? (overlapMeta == null ? 80 : overlapMeta) : chunkOverlapChars;
-        if (maxChars < 200) maxChars = 800;
-        if (maxChars > 5000) maxChars = 5000;
-        if (overlap < 0) overlap = 0;
-        if (overlap >= maxChars) overlap = Math.max(0, maxChars - 1);
+        RagValueSupport.ChunkingParams chunking = RagValueSupport.resolveIndexBuildChunking(
+                chunkMaxChars == null ? maxCharsMeta : chunkMaxChars,
+                chunkOverlapChars == null ? overlapMeta : chunkOverlapChars
+        );
+        int maxChars = chunking.maxChars();
+        int overlap = chunking.overlap();
 
         String title = ModerationSampleTextUtils.normalize(p.getTitle());
         String body = ModerationSampleTextUtils.normalize(p.getContent());
@@ -642,25 +486,7 @@ public class RagPostIndexBuildService {
                     ensured = true;
                 }
 
-                Document d = Document.create();
-                d.setId(docId);
-                d.put("id", docId);
-                d.put("post_id", p.getId());
-                d.put("board_id", p.getBoardId());
-                d.put("author_id", p.getAuthorId());
-                d.put("chunk_index", ci);
-                d.put("content_hash", contentHash);
-                d.put("title", p.getTitle());
-                d.put("content_text", chunk);
-                if (p.getCreatedAt() != null) d.put("created_at", Date.from(p.getCreatedAt().toInstant(ZoneOffset.UTC)));
-                if (p.getUpdatedAt() != null) d.put("updated_at", Date.from(p.getUpdatedAt().toInstant(ZoneOffset.UTC)));
-
-                float[] vector = emb.vector();
-                if (vector.length > 0) {
-                    List<Float> vec = new ArrayList<>(vector.length);
-                    for (float v : vector) vec.add(v);
-                    d.put("embedding", vec);
-                }
+                Document d = buildPostChunkDocument(p, docId, ci, contentHash, chunk, emb.vector());
 
                 esTemplate.save(d, IndexCoordinates.of(indexName));
             } catch (Exception ex) {
@@ -680,35 +506,100 @@ public class RagPostIndexBuildService {
         return s.isBlank() ? null : s;
     }
 
+    private static Document buildPostChunkDocument(
+            PostsEntity post,
+            String docId,
+            int chunkIndex,
+            String contentHash,
+            String chunk,
+            float[] vector
+    ) {
+        Document d = Document.create();
+        d.setId(docId);
+        d.put("id", docId);
+        d.put("post_id", post.getId());
+        d.put("board_id", post.getBoardId());
+        d.put("author_id", post.getAuthorId());
+        d.put("chunk_index", chunkIndex);
+        d.put("content_hash", contentHash);
+        d.put("title", post.getTitle());
+        d.put("content_text", chunk);
+        if (post.getCreatedAt() != null) d.put("created_at", Date.from(post.getCreatedAt().toInstant(ZoneOffset.UTC)));
+        if (post.getUpdatedAt() != null) d.put("updated_at", Date.from(post.getUpdatedAt().toInstant(ZoneOffset.UTC)));
+        List<Float> embedding = toFloatList(vector);
+        if (!embedding.isEmpty()) {
+            d.put("embedding", embedding);
+        }
+        return d;
+    }
+
+    private static List<Float> toFloatList(float[] vector) {
+        if (vector == null || vector.length == 0) {
+            return List.of();
+        }
+        List<Float> out = new ArrayList<>(vector.length);
+        for (float value : vector) {
+            out.add(value);
+        }
+        return out;
+    }
+
+    private ResolvedEmbeddingTarget resolveEmbeddingTarget(String overrideModel,
+                                                           String overrideProviderId,
+                                                           String fixedProviderId,
+                                                           boolean hasOverride,
+                                                           boolean requireModelForProviderOverride) {
+        RagEmbeddingBuildSupport.SelectedEmbeddingTarget selectedTarget =
+                RagEmbeddingBuildSupport.preselectTarget(
+                        overrideModel,
+                        overrideProviderId,
+                        fixedProviderId,
+                        requireModelForProviderOverride
+                );
+        String modelToUse = selectedTarget.model();
+        String providerToUse = selectedTarget.providerId();
+
+        if (modelToUse != null) {
+            return new ResolvedEmbeddingTarget(modelToUse, providerToUse);
+        }
+
+        LlmRoutingService.RouteTarget target = (providerToUse == null)
+                ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
+                : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
+        if (target == null) {
+            String legacy = toNonBlankString(ragProps.getEs().getEmbeddingModel());
+            if (legacy == null) {
+                throw new IllegalStateException(providerToUse == null
+                        ? "no eligible embedding target (please check embedding routing config)"
+                        : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
+            }
+            return new ResolvedEmbeddingTarget(legacy, null);
+        }
+        return new ResolvedEmbeddingTarget(target.modelName(), target.providerId());
+    }
+
     static void validateEmbeddingDims(Integer configuredDims, Integer inferredDims) {
         if (configuredDims != null && !configuredDims.equals(inferredDims)) {
             throw new IllegalStateException("embedding dims mismatch: configured=" + configuredDims + ", inferred=" + inferredDims);
         }
     }
 
+    private static Integer resolveConfiguredDims(Integer expectedEmbeddingDims, Integer vectorIndexDims) {
+        Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
+        if (configuredDims == null) {
+            configuredDims = vectorIndexDims != null && vectorIndexDims > 0 ? vectorIndexDims : null;
+        }
+        return configuredDims;
+    }
+
     private static String summarizeException(Throwable ex) {
-        if (ex == null) return null;
-        String type = ex.getClass().getSimpleName();
-        String msg = ex.getMessage();
-        String out = (msg == null || msg.isBlank()) ? type : (type + ": " + msg);
-        out = out.replaceAll("\\s+", " ").trim();
-        if (out.length() > 800) out = out.substring(0, 800) + "...";
-        return out;
+        return ExceptionSummaryUtils.summarizeException(ex);
     }
 
     private static List<String> splitWithOverlap(String text, int maxChars, int overlap) {
-        String s = text == null ? "" : text.trim();
-        if (s.isBlank()) return List.of();
-        if (s.length() <= maxChars) return List.of(s);
+        return RagValueSupport.splitWithOverlap(text, maxChars, overlap);
+    }
 
-        int step = Math.max(1, maxChars - Math.max(0, overlap));
-        List<String> out = new ArrayList<>();
-        for (int start = 0; start < s.length(); start += step) {
-            int end = Math.min(s.length(), start + maxChars);
-            String part = s.substring(start, end).trim();
-            if (!part.isBlank()) out.add(part);
-            if (end >= s.length()) break;
-        }
-        return out;
+    private record ResolvedEmbeddingTarget(String model, String providerId) {
     }
 }

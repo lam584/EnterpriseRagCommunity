@@ -1,8 +1,6 @@
 package com.example.EnterpriseRagCommunity.service.retrieval;
 
 import java.util.List;
-import java.util.Map;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -40,10 +38,7 @@ public class RagPostIndexVisibilitySyncService {
     private void doSync(Long postId) {
         List<VectorIndicesEntity> indices = vectorIndicesRepository.findAll();
         for (VectorIndicesEntity vi : indices) {
-            if (vi == null || vi.getId() == null) continue;
-            Map<String, Object> meta = vi.getMetadata();
-            String sourceType = meta == null ? null : (meta.get("sourceType") == null ? null : String.valueOf(meta.get("sourceType")));
-            if (sourceType == null || !"POST".equalsIgnoreCase(sourceType.trim())) continue;
+            if (!RagValueSupport.matchesSourceType(vi, "POST")) continue;
             try {
                 buildService.syncSinglePost(vi.getId(), postId);
             } catch (Exception ex) {
@@ -52,4 +47,3 @@ public class RagPostIndexVisibilitySyncService {
         }
     }
 }
-

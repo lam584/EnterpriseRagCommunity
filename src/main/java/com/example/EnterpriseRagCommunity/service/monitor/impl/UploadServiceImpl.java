@@ -10,16 +10,16 @@ import com.example.EnterpriseRagCommunity.entity.monitor.enums.FileAssetStatus;
 import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUserIdResolver;
 import com.example.EnterpriseRagCommunity.service.monitor.FileAssetExtractionService;
 import com.example.EnterpriseRagCommunity.service.monitor.UploadFormatsConfigService;
 import com.example.EnterpriseRagCommunity.service.monitor.UploadService;
+import com.example.EnterpriseRagCommunity.util.FileNameUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -56,14 +56,11 @@ public class UploadServiceImpl implements UploadService {
     private final ObjectMapper objectMapper;
 
     private Long currentUserIdOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
-        }
-        String email = auth.getName();
-        return administratorService.findByUsername(email)
-                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
-                .getId();
+        return CurrentUserIdResolver.currentUserIdOrThrow(
+                administratorService,
+                () -> new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {},
+                () -> new IllegalArgumentException("当前用户不存在")
+        );
     }
 
     private static String sha256Hex(MultipartFile file) {
@@ -182,15 +179,22 @@ public class UploadServiceImpl implements UploadService {
     }
 
     private static String extLowerOrNull(String fileName) {
-        if (!StringUtils.hasText(fileName)) return null;
-        String name = fileName.trim();
-        int idx = name.lastIndexOf('.');
-        if (idx < 0 || idx == name.length() - 1) return null;
-        String ext = name.substring(idx + 1).trim().toLowerCase(Locale.ROOT);
-        if (ext.isBlank()) return null;
-        if (!ext.matches("[a-z0-9]+")) return null;
-        if (ext.length() > 16) return null;
-        return ext;
+        return FileNameUtils.extLowerOrNull(fileName);
+    }
+
+    private static UploadFormatsConfigDTO.UploadFormatRuleDTO requireUploadRule(
+            String fileName,
+            Map<String, UploadFormatsConfigDTO.UploadFormatRuleDTO> extToRule
+    ) {
+        String ext = extLowerOrNull(fileName);
+        if (ext == null) {
+            throw new IllegalArgumentException("文件缺少扩展名: " + fileName);
+        }
+        UploadFormatsConfigDTO.UploadFormatRuleDTO rule = extToRule.get(ext);
+        if (rule == null) {
+            throw new IllegalArgumentException("不支持的文件类型: " + fileName);
+        }
+        return rule;
     }
 
     private static long safeSize(MultipartFile f) {
@@ -230,14 +234,7 @@ public class UploadServiceImpl implements UploadService {
         long globalMax = cfg.getMaxFileSizeBytes() == null ? (50L * 1024 * 1024) : cfg.getMaxFileSizeBytes();
         for (MultipartFile f : files) {
             String originalName = safeFileName(f.getOriginalFilename());
-            String ext = extLowerOrNull(originalName);
-            if (ext == null) {
-                throw new IllegalArgumentException("文件缺少扩展名: " + originalName);
-            }
-            UploadFormatsConfigDTO.UploadFormatRuleDTO rule = extToRule.get(ext);
-            if (rule == null) {
-                throw new IllegalArgumentException("不支持的文件类型: " + originalName);
-            }
+            UploadFormatsConfigDTO.UploadFormatRuleDTO rule = requireUploadRule(originalName, extToRule);
             long perMax = (rule.getMaxFileSizeBytes() != null && rule.getMaxFileSizeBytes() > 0) ? rule.getMaxFileSizeBytes() : globalMax;
             long size = safeSize(f);
             if (size > perMax) {
@@ -281,14 +278,7 @@ public class UploadServiceImpl implements UploadService {
         }
 
         String safeName = safeFileName(originalName);
-        String ext = extLowerOrNull(safeName);
-        if (ext == null) {
-            throw new IllegalArgumentException("文件缺少扩展名: " + safeName);
-        }
-        UploadFormatsConfigDTO.UploadFormatRuleDTO rule = extToRule.get(ext);
-        if (rule == null) {
-            throw new IllegalArgumentException("不支持的文件类型: " + safeName);
-        }
+        UploadFormatsConfigDTO.UploadFormatRuleDTO rule = requireUploadRule(safeName, extToRule);
 
         long globalMax = cfg.getMaxFileSizeBytes() == null ? (50L * 1024 * 1024) : cfg.getMaxFileSizeBytes();
         long perMax = (rule.getMaxFileSizeBytes() != null && rule.getMaxFileSizeBytes() > 0) ? rule.getMaxFileSizeBytes() : globalMax;

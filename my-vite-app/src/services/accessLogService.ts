@@ -1,6 +1,7 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 import type { SpringPage } from '../types/page';
 import { getBackendMessage } from './serviceErrorUtils';
+import { buildQuery } from './serviceQueryUtils';
 import { serviceApiUrl } from './serviceUrlUtils';
 
 export type AccessLogDTO = {
@@ -56,16 +57,6 @@ export type AccessLogPageQuery = {
 };
 
 const apiUrl = serviceApiUrl;
-
-function buildQuery(params: Record<string, unknown>): string {
-  const sp = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === '') continue;
-    sp.set(k, String(v));
-  }
-  const qs = sp.toString();
-  return qs ? `?${qs}` : '';
-}
 
 export async function adminListAccessLogs(query: AccessLogPageQuery = {}): Promise<SpringPage<AccessLogDTO>> {
   const qs = buildQuery({

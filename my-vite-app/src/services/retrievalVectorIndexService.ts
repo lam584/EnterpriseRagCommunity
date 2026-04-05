@@ -14,6 +14,23 @@ function apiUrl(path: string): string {
   return base ? `${base}${path}` : path;
 }
 
+function appendSharedRagParams(
+  sp: URLSearchParams,
+  params: {
+    chunkMaxChars?: number;
+    chunkOverlapChars?: number;
+    clear?: boolean;
+    embeddingProviderId?: string;
+    embeddingDims?: number;
+  }
+) {
+  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
+  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
+  if (params.clear) sp.set('clear', 'true');
+  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
+  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+}
+
 function buildPostRagParams(params: {
   boardId?: number;
   fromPostId?: number;
@@ -28,11 +45,7 @@ function buildPostRagParams(params: {
   if (params.boardId) sp.set('boardId', String(params.boardId));
   if (params.fromPostId) sp.set('fromPostId', String(params.fromPostId));
   if (params.postBatchSize) sp.set('postBatchSize', String(params.postBatchSize));
-  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
-  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.clear) sp.set('clear', 'true');
-  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
-  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  appendSharedRagParams(sp, params);
   return sp;
 }
 
@@ -48,11 +61,7 @@ function buildFileRagParams(params: {
   const sp = new URLSearchParams();
   if (params.fromFileAssetId) sp.set('fromFileAssetId', String(params.fromFileAssetId));
   if (params.fileBatchSize) sp.set('fileBatchSize', String(params.fileBatchSize));
-  if (params.chunkMaxChars) sp.set('chunkMaxChars', String(params.chunkMaxChars));
-  if (params.chunkOverlapChars !== undefined && params.chunkOverlapChars !== null) sp.set('chunkOverlapChars', String(params.chunkOverlapChars));
-  if (params.clear) sp.set('clear', 'true');
-  if (params.embeddingProviderId) sp.set('embeddingProviderId', params.embeddingProviderId);
-  if (params.embeddingDims) sp.set('embeddingDims', String(params.embeddingDims));
+  appendSharedRagParams(sp, params);
   return sp;
 }
 

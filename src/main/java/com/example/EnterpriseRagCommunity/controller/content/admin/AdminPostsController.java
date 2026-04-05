@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.controller.content.admin;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
+import com.example.EnterpriseRagCommunity.service.content.PostQueryStatusSupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -42,12 +43,7 @@ public class AdminPostsController {
                                  @RequestParam(value = "sortBy", required = false) String sortBy,
                                  @RequestParam(value = "sortOrderDirection", required = false) String sortOrderDirection) {
 
-        PostStatus effectiveStatus;
-        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status)) {
-            effectiveStatus = null; // 管理端默认 ALL
-        } else {
-            effectiveStatus = PostStatus.valueOf(status);
-        }
+        PostStatus effectiveStatus = PostQueryStatusSupport.parseEffectiveStatus(status);
 
         return postsService.query(keyword, postId, searchMode, boardId, effectiveStatus, authorId,
                 createdFrom, createdTo, page, pageSize, sortBy, sortOrderDirection);

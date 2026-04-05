@@ -1,4 +1,5 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getErrorMessage, parseSendCodeResponse } from './serviceResponseUtils';
 
 export async function sendAccountEmailVerificationCode(purpose: string): Promise<{
   message?: string;
@@ -17,13 +18,7 @@ export async function sendAccountEmailVerificationCode(purpose: string): Promise
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    const msg = typeof data?.message === 'string' ? data.message : undefined;
-    throw new Error(msg || '发送验证码失败');
+    throw new Error(getErrorMessage(data, '发送验证码失败'));
   }
-
-  return {
-    message: typeof data?.message === 'string' ? data.message : undefined,
-    resendWaitSeconds: typeof data?.resendWaitSeconds === 'number' ? data.resendWaitSeconds : undefined,
-    codeTtlSeconds: typeof data?.codeTtlSeconds === 'number' ? data.codeTtlSeconds : undefined,
-  };
+  return parseSendCodeResponse(data);
 }

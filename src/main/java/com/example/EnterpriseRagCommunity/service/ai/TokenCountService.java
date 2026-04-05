@@ -234,36 +234,14 @@ public class TokenCountService {
     }
 
     private static int indexOfIgnoreCase(String haystack, String needle, int fromIndex) {
-        return LlmGatewaySupport.indexOfIgnoreCase(haystack, needle, fromIndex);
+        return LlmTextSupport.indexOfIgnoreCase(haystack, needle, fromIndex);
     }
 
     private static String removeMarkerWordIgnoreCase(String text, String marker) {
-        if (text == null || text.isBlank()) return text;
-        if (marker == null || marker.isBlank()) return text;
-        String m = marker.trim();
-        int first = indexOfIgnoreCase(text, m, 0);
-        if (first < 0) return text;
-        StringBuilder sb = new StringBuilder(text.length());
-        int i = 0;
-        while (true) {
-            int idx = indexOfIgnoreCase(text, m, i);
-            if (idx < 0) {
-                sb.append(text, i, text.length());
-                break;
-            }
-            sb.append(text, i, idx);
-            i = idx + m.length();
-        }
-        return sb.toString();
+        return LlmTextSupport.removeMarkerWordIgnoreCase(text, marker);
     }
 
     private static String stripReasoningArtifacts(String text) {
-        if (text == null || text.isBlank()) return text;
-        String t = removeMarkerWordIgnoreCase(text, "reasoning_content");
-        t = removeMarkerWordIgnoreCase(t, "<reasoning_content>");
-        t = removeMarkerWordIgnoreCase(t, "</reasoning_content>");
-        t = removeMarkerWordIgnoreCase(t, "&lt;reasoning_content&gt;");
-        t = removeMarkerWordIgnoreCase(t, "&lt;/reasoning_content&gt;");
-        return t;
+        return LlmTextSupport.stripReasoningArtifacts(text);
     }
 }

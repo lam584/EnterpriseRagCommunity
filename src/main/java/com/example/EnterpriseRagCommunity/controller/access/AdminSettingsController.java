@@ -365,16 +365,28 @@ public class AdminSettingsController {
         appSettingsService.upsertString(KEY_EMAIL_OTP_TTL_SECONDS, String.valueOf(normalized.getOtpTtlSeconds()));
         appSettingsService.upsertString(KEY_EMAIL_OTP_RESEND_WAIT_SECONDS, String.valueOf(normalized.getOtpResendWaitSeconds()));
         appSettingsService.upsertString(KEY_EMAIL_OTP_RESEND_WAIT_REDUCTION_AFTER_VERIFIED_SECONDS, String.valueOf(normalized.getOtpResendWaitReductionSecondsAfterVerified()));
-        appSettingsService.upsertString(KEY_EMAIL_PROTOCOL, normalized.getProtocol());
-        appSettingsService.upsertString(KEY_EMAIL_HOST, normalized.getHost());
-        appSettingsService.upsertString(KEY_EMAIL_PORT_PLAIN, String.valueOf(normalized.getPortPlain()));
-        appSettingsService.upsertString(KEY_EMAIL_PORT_ENCRYPTED, String.valueOf(normalized.getPortEncrypted()));
-        appSettingsService.upsertString(KEY_EMAIL_ENCRYPTION, normalized.getEncryption());
-        appSettingsService.upsertString(KEY_EMAIL_CONNECT_TIMEOUT_MS, String.valueOf(normalized.getConnectTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_TIMEOUT_MS, String.valueOf(normalized.getTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_WRITE_TIMEOUT_MS, String.valueOf(normalized.getWriteTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_DEBUG, normalized.getDebug() != null && normalized.getDebug() ? "1" : "0");
-        appSettingsService.upsertString(KEY_EMAIL_SSL_TRUST, normalized.getSslTrust() == null ? "" : normalized.getSslTrust());
+        saveEmailTransportSettings(
+                KEY_EMAIL_PROTOCOL,
+                KEY_EMAIL_HOST,
+                KEY_EMAIL_PORT_PLAIN,
+                KEY_EMAIL_PORT_ENCRYPTED,
+                KEY_EMAIL_ENCRYPTION,
+                KEY_EMAIL_CONNECT_TIMEOUT_MS,
+                KEY_EMAIL_TIMEOUT_MS,
+                KEY_EMAIL_WRITE_TIMEOUT_MS,
+                KEY_EMAIL_DEBUG,
+                KEY_EMAIL_SSL_TRUST,
+                normalized.getProtocol(),
+                normalized.getHost(),
+                normalized.getPortPlain(),
+                normalized.getPortEncrypted(),
+                normalized.getEncryption(),
+                normalized.getConnectTimeoutMs(),
+                normalized.getTimeoutMs(),
+                normalized.getWriteTimeoutMs(),
+                normalized.getDebug(),
+                normalized.getSslTrust()
+        );
         appSettingsService.upsertString(KEY_EMAIL_SUBJECT_PREFIX, normalized.getSubjectPrefix() == null ? "" : normalized.getSubjectPrefix());
 
         systemConfigurationService.saveConfig(KEY_EMAIL_USERNAME, normalized.getUsername(), false, "Updated via Admin Settings");
@@ -401,18 +413,62 @@ public class AdminSettingsController {
     }
 
     private void saveEmailInboxSettingsToStorage(EmailInboxSettingsDTO normalized) {
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_PROTOCOL, normalized.getProtocol());
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_HOST, normalized.getHost());
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_PORT_PLAIN, String.valueOf(normalized.getPortPlain()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_PORT_ENCRYPTED, String.valueOf(normalized.getPortEncrypted()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_ENCRYPTION, normalized.getEncryption());
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_CONNECT_TIMEOUT_MS, String.valueOf(normalized.getConnectTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_TIMEOUT_MS, String.valueOf(normalized.getTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_WRITE_TIMEOUT_MS, String.valueOf(normalized.getWriteTimeoutMs()));
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_DEBUG, normalized.getDebug() != null && normalized.getDebug() ? "1" : "0");
-        appSettingsService.upsertString(KEY_EMAIL_INBOX_SSL_TRUST, normalized.getSslTrust() == null ? "" : normalized.getSslTrust());
+        saveEmailTransportSettings(
+                KEY_EMAIL_INBOX_PROTOCOL,
+                KEY_EMAIL_INBOX_HOST,
+                KEY_EMAIL_INBOX_PORT_PLAIN,
+                KEY_EMAIL_INBOX_PORT_ENCRYPTED,
+                KEY_EMAIL_INBOX_ENCRYPTION,
+                KEY_EMAIL_INBOX_CONNECT_TIMEOUT_MS,
+                KEY_EMAIL_INBOX_TIMEOUT_MS,
+                KEY_EMAIL_INBOX_WRITE_TIMEOUT_MS,
+                KEY_EMAIL_INBOX_DEBUG,
+                KEY_EMAIL_INBOX_SSL_TRUST,
+                normalized.getProtocol(),
+                normalized.getHost(),
+                normalized.getPortPlain(),
+                normalized.getPortEncrypted(),
+                normalized.getEncryption(),
+                normalized.getConnectTimeoutMs(),
+                normalized.getTimeoutMs(),
+                normalized.getWriteTimeoutMs(),
+                normalized.getDebug(),
+                normalized.getSslTrust()
+        );
         appSettingsService.upsertString(KEY_EMAIL_INBOX_FOLDER, normalized.getFolder() == null ? "INBOX" : normalized.getFolder());
         appSettingsService.upsertString(KEY_EMAIL_SENT_FOLDER, normalized.getSentFolder() == null ? "Sent" : normalized.getSentFolder());
+    }
+
+    private void saveEmailTransportSettings(String protocolKey,
+                                            String hostKey,
+                                            String portPlainKey,
+                                            String portEncryptedKey,
+                                            String encryptionKey,
+                                            String connectTimeoutKey,
+                                            String timeoutKey,
+                                            String writeTimeoutKey,
+                                            String debugKey,
+                                            String sslTrustKey,
+                                            String protocol,
+                                            String host,
+                                            Integer portPlain,
+                                            Integer portEncrypted,
+                                            String encryption,
+                                            Integer connectTimeoutMs,
+                                            Integer timeoutMs,
+                                            Integer writeTimeoutMs,
+                                            Boolean debug,
+                                            String sslTrust) {
+        appSettingsService.upsertString(protocolKey, protocol);
+        appSettingsService.upsertString(hostKey, host);
+        appSettingsService.upsertString(portPlainKey, String.valueOf(portPlain));
+        appSettingsService.upsertString(portEncryptedKey, String.valueOf(portEncrypted));
+        appSettingsService.upsertString(encryptionKey, encryption);
+        appSettingsService.upsertString(connectTimeoutKey, String.valueOf(connectTimeoutMs));
+        appSettingsService.upsertString(timeoutKey, String.valueOf(timeoutMs));
+        appSettingsService.upsertString(writeTimeoutKey, String.valueOf(writeTimeoutMs));
+        appSettingsService.upsertString(debugKey, Boolean.TRUE.equals(debug) ? "1" : "0");
+        appSettingsService.upsertString(sslTrustKey, sslTrust == null ? "" : sslTrust);
     }
 
     private static String normalizeProtocol(String raw, String fallback, String allowed) {
@@ -504,14 +560,7 @@ public class AdminSettingsController {
             throw new IllegalArgumentException("看起来这是收件(IMAP/POP3)配置；发送验证码需要填写 SMTP 主机与端口");
         }
 
-        String encryption = normalizeEncryption(dto.getEncryption());
-
-        int connectTimeoutMs = normalizeTimeoutMs(dto.getConnectTimeoutMs());
-        int timeoutMs = normalizeTimeoutMs(dto.getTimeoutMs());
-        int writeTimeoutMs = normalizeTimeoutMs(dto.getWriteTimeoutMs());
-
-        boolean debug = dto.getDebug() != null && dto.getDebug();
-        String sslTrust = dto.getSslTrust() == null ? "" : dto.getSslTrust().trim();
+        NormalizedEmailTransportSettings transport = normalizeEmailTransportSettings(dto);
         String subjectPrefix = dto.getSubjectPrefix() == null ? "" : dto.getSubjectPrefix().trim();
         if (subjectPrefix.length() > 64) throw new IllegalArgumentException("subjectPrefix 过长");
 
@@ -529,12 +578,7 @@ public class AdminSettingsController {
         out.setHost(host);
         out.setPortPlain(portPlain);
         out.setPortEncrypted(portEncrypted);
-        out.setEncryption(encryption);
-        out.setConnectTimeoutMs(connectTimeoutMs);
-        out.setTimeoutMs(timeoutMs);
-        out.setWriteTimeoutMs(writeTimeoutMs);
-        out.setDebug(debug);
-        out.setSslTrust(sslTrust);
+        applyTransportSettings(out, transport);
         out.setSubjectPrefix(subjectPrefix);
         out.setUsername(username);
         out.setPassword(password);
@@ -606,14 +650,7 @@ public class AdminSettingsController {
         if (portPlain <= 0 || portPlain > 65535) throw new IllegalArgumentException("portPlain 不合法");
         if (portEncrypted <= 0 || portEncrypted > 65535) throw new IllegalArgumentException("portEncrypted 不合法");
 
-        String encryption = normalizeEncryption(dto.getEncryption());
-
-        int connectTimeoutMs = normalizeTimeoutMs(dto.getConnectTimeoutMs());
-        int timeoutMs = normalizeTimeoutMs(dto.getTimeoutMs());
-        int writeTimeoutMs = normalizeTimeoutMs(dto.getWriteTimeoutMs());
-
-        boolean debug = dto.getDebug() != null && dto.getDebug();
-        String sslTrust = dto.getSslTrust() == null ? "" : dto.getSslTrust().trim();
+        NormalizedEmailTransportSettings transport = normalizeEmailTransportSettings(dto);
 
         String folder = dto.getFolder();
         folder = (folder == null || folder.isBlank()) ? "INBOX" : folder.trim();
@@ -628,15 +665,58 @@ public class AdminSettingsController {
         out.setHost(host);
         out.setPortPlain(portPlain);
         out.setPortEncrypted(portEncrypted);
-        out.setEncryption(encryption);
-        out.setConnectTimeoutMs(connectTimeoutMs);
-        out.setTimeoutMs(timeoutMs);
-        out.setWriteTimeoutMs(writeTimeoutMs);
-        out.setDebug(debug);
-        out.setSslTrust(sslTrust);
+        applyTransportSettings(out, transport);
         out.setFolder(folder);
         out.setSentFolder(sentFolder);
         return out;
+    }
+
+    private static NormalizedEmailTransportSettings normalizeEmailTransportSettings(EmailAdminSettingsDTO dto) {
+        return new NormalizedEmailTransportSettings(
+                normalizeEncryption(dto.getEncryption()),
+                normalizeTimeoutMs(dto.getConnectTimeoutMs()),
+                normalizeTimeoutMs(dto.getTimeoutMs()),
+                normalizeTimeoutMs(dto.getWriteTimeoutMs()),
+                dto.getDebug() != null && dto.getDebug(),
+                dto.getSslTrust() == null ? "" : dto.getSslTrust().trim()
+        );
+    }
+
+    private static NormalizedEmailTransportSettings normalizeEmailTransportSettings(EmailInboxSettingsDTO dto) {
+        return new NormalizedEmailTransportSettings(
+                normalizeEncryption(dto.getEncryption()),
+                normalizeTimeoutMs(dto.getConnectTimeoutMs()),
+                normalizeTimeoutMs(dto.getTimeoutMs()),
+                normalizeTimeoutMs(dto.getWriteTimeoutMs()),
+                dto.getDebug() != null && dto.getDebug(),
+                dto.getSslTrust() == null ? "" : dto.getSslTrust().trim()
+        );
+    }
+
+    private static void applyTransportSettings(EmailAdminSettingsDTO target, NormalizedEmailTransportSettings transport) {
+        target.setEncryption(transport.encryption());
+        target.setConnectTimeoutMs(transport.connectTimeoutMs());
+        target.setTimeoutMs(transport.timeoutMs());
+        target.setWriteTimeoutMs(transport.writeTimeoutMs());
+        target.setDebug(transport.debug());
+        target.setSslTrust(transport.sslTrust());
+    }
+
+    private static void applyTransportSettings(EmailInboxSettingsDTO target, NormalizedEmailTransportSettings transport) {
+        target.setEncryption(transport.encryption());
+        target.setConnectTimeoutMs(transport.connectTimeoutMs());
+        target.setTimeoutMs(transport.timeoutMs());
+        target.setWriteTimeoutMs(transport.writeTimeoutMs());
+        target.setDebug(transport.debug());
+        target.setSslTrust(transport.sslTrust());
+    }
+
+    private record NormalizedEmailTransportSettings(String encryption,
+                                                    int connectTimeoutMs,
+                                                    int timeoutMs,
+                                                    int writeTimeoutMs,
+                                                    boolean debug,
+                                                    String sslTrust) {
     }
 
     private static List<String> normalizeAlgorithms(List<String> input) {
@@ -692,18 +772,19 @@ public class AdminSettingsController {
     @GetMapping("/totp")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
     public ResponseEntity<TotpAdminSettingsDTO> getTotp() {
-        TotpAdminSettingsDTO dto = new TotpAdminSettingsDTO();
-        dto.setIssuer(appSettingsService.getString(KEY_TOTP_ISSUER).orElse("EnterpriseRagCommunity"));
-
-        dto.setAllowedAlgorithms(parseStringList(appSettingsService.getString(KEY_TOTP_ALLOWED_ALG).orElse(null)).orElse(List.of("SHA1", "SHA256", "SHA512")));
-        dto.setAllowedDigits(parseIntList(appSettingsService.getString(KEY_TOTP_ALLOWED_DIGITS).orElse(null)).orElse(List.of(6, 8)));
-        dto.setAllowedPeriodSeconds(parseIntList(appSettingsService.getString(KEY_TOTP_ALLOWED_PERIOD).orElse(null)).orElse(List.of(30)));
-        dto.setMaxSkew((int) appSettingsService.getLongOrDefault(KEY_TOTP_MAX_SKEW, 1L));
-
-        dto.setDefaultAlgorithm(appSettingsService.getString(KEY_TOTP_DEFAULT_ALG).orElse("SHA1"));
-        dto.setDefaultDigits((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_DIGITS, 6L));
-        dto.setDefaultPeriodSeconds((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_PERIOD, 30L));
-        dto.setDefaultSkew((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_SKEW, 1L));
-        return ResponseEntity.ok(dto);
+        return ResponseEntity.ok(com.example.EnterpriseRagCommunity.service.access.TotpPolicySettingsSupport.buildSettings(
+                appSettingsService,
+                AdminSettingsController::parseStringList,
+                AdminSettingsController::parseIntList,
+                KEY_TOTP_ISSUER,
+                KEY_TOTP_ALLOWED_ALG,
+                KEY_TOTP_ALLOWED_DIGITS,
+                KEY_TOTP_ALLOWED_PERIOD,
+                KEY_TOTP_MAX_SKEW,
+                KEY_TOTP_DEFAULT_ALG,
+                KEY_TOTP_DEFAULT_DIGITS,
+                KEY_TOTP_DEFAULT_PERIOD,
+                KEY_TOTP_DEFAULT_SKEW
+        ));
     }
 }

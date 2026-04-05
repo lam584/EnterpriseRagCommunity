@@ -12,11 +12,10 @@ import com.example.EnterpriseRagCommunity.repository.content.PostComposeAiSnapsh
 import com.example.EnterpriseRagCommunity.repository.content.PostDraftsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUserIdResolver;
 import com.example.EnterpriseRagCommunity.service.content.PostComposeAiSnapshotsService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -34,14 +33,11 @@ public class PostComposeAiSnapshotsServiceImpl implements PostComposeAiSnapshots
     private final AdministratorService administratorService;
 
     private Long currentUserIdOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
-        }
-        String email = auth.getName();
-        return administratorService.findByUsername(email)
-                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
-                .getId();
+        return CurrentUserIdResolver.currentUserIdOrThrow(
+                administratorService,
+                () -> new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {},
+                () -> new IllegalArgumentException("当前用户不存在")
+        );
     }
 
     private static PostComposeAiSnapshotDTO toDTO(PostComposeAiSnapshotsEntity e) {
@@ -87,21 +83,7 @@ public class PostComposeAiSnapshotsServiceImpl implements PostComposeAiSnapshots
             e.setTargetType(PostComposeAiSnapshotTargetType.DRAFT);
             e.setDraftId(draftId);
             e.setPostId(null);
-            e.setBeforeTitle(normTitle(req.getBeforeTitle()));
-            e.setBeforeContent(normContent(req.getBeforeContent()));
-            e.setBeforeBoardId(req.getBeforeBoardId());
-            e.setBeforeMetadata(req.getBeforeMetadata());
-            e.setAfterContent(null);
-            e.setInstruction(blankToNull(req.getInstruction()));
-            e.setProviderId(blankToNull(req.getProviderId()));
-            e.setModel(blankToNull(req.getModel()));
-            e.setTemperature(req.getTemperature());
-            e.setTopP(req.getTopP());
-            e.setStatus(PostComposeAiSnapshotStatus.PENDING);
-            e.setExpiresAt(LocalDateTime.now().plusSeconds(DEFAULT_EXPIRES_SECONDS));
-            e.setResolvedAt(null);
-            e = snapshotsRepository.save(e);
-            return toDTO(e);
+            return savePendingSnapshot(e, req);
         }
 
         if (req.getTargetType() == PostComposeAiSnapshotTargetType.POST) {
@@ -118,21 +100,7 @@ public class PostComposeAiSnapshotsServiceImpl implements PostComposeAiSnapshots
             e.setTargetType(PostComposeAiSnapshotTargetType.POST);
             e.setDraftId(null);
             e.setPostId(postId);
-            e.setBeforeTitle(normTitle(req.getBeforeTitle()));
-            e.setBeforeContent(normContent(req.getBeforeContent()));
-            e.setBeforeBoardId(req.getBeforeBoardId());
-            e.setBeforeMetadata(req.getBeforeMetadata());
-            e.setAfterContent(null);
-            e.setInstruction(blankToNull(req.getInstruction()));
-            e.setProviderId(blankToNull(req.getProviderId()));
-            e.setModel(blankToNull(req.getModel()));
-            e.setTemperature(req.getTemperature());
-            e.setTopP(req.getTopP());
-            e.setStatus(PostComposeAiSnapshotStatus.PENDING);
-            e.setExpiresAt(LocalDateTime.now().plusSeconds(DEFAULT_EXPIRES_SECONDS));
-            e.setResolvedAt(null);
-            e = snapshotsRepository.save(e);
-            return toDTO(e);
+            return savePendingSnapshot(e, req);
         }
 
         throw new IllegalArgumentException("不支持的targetType");
@@ -193,6 +161,26 @@ public class PostComposeAiSnapshotsServiceImpl implements PostComposeAiSnapshots
         e.setResolvedAt(LocalDateTime.now());
         e = snapshotsRepository.save(e);
         return toDTO(e);
+    }
+
+    private PostComposeAiSnapshotDTO savePendingSnapshot(
+            PostComposeAiSnapshotsEntity entity,
+            PostComposeAiSnapshotCreateRequest req
+    ) {
+        entity.setBeforeTitle(normTitle(req.getBeforeTitle()));
+        entity.setBeforeContent(normContent(req.getBeforeContent()));
+        entity.setBeforeBoardId(req.getBeforeBoardId());
+        entity.setBeforeMetadata(req.getBeforeMetadata());
+        entity.setAfterContent(null);
+        entity.setInstruction(blankToNull(req.getInstruction()));
+        entity.setProviderId(blankToNull(req.getProviderId()));
+        entity.setModel(blankToNull(req.getModel()));
+        entity.setTemperature(req.getTemperature());
+        entity.setTopP(req.getTopP());
+        entity.setStatus(PostComposeAiSnapshotStatus.PENDING);
+        entity.setExpiresAt(LocalDateTime.now().plusSeconds(DEFAULT_EXPIRES_SECONDS));
+        entity.setResolvedAt(null);
+        return toDTO(snapshotsRepository.save(entity));
     }
 
     private static String blankToNull(String s) {

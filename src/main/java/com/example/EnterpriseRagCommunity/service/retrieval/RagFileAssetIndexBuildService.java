@@ -89,47 +89,24 @@ public class RagFileAssetIndexBuildService {
         resp.setChunkOverlapChars(chunkOverlapChars);
 
         int ps = fileBatchSize == null || fileBatchSize < 1 ? 100 : Math.min(1000, fileBatchSize);
-        int maxChars = chunkMaxChars == null || chunkMaxChars < 200 ? 1200 : Math.min(8000, chunkMaxChars);
-        int overlap = chunkOverlapChars == null || chunkOverlapChars < 0 ? 120 : Math.min(maxChars - 1, chunkOverlapChars);
+        RagChunkingSupport.ChunkingParams chunking = RagChunkingSupport.resolve(chunkMaxChars, chunkOverlapChars);
+        int maxChars = chunking.maxChars();
+        int overlap = chunking.overlap();
 
         Map<String, Object> meta0ForDefaults = vi.getMetadata();
+        RagEmbeddingBuildSupport.ResolvedEmbeddingTarget embeddingTarget =
+                RagEmbeddingBuildSupport.resolveEmbeddingTarget(
+                        llmRoutingService,
+                        embeddingModelOverride,
+                        embeddingProviderId,
+                        meta0ForDefaults,
+                        true,
+                        null
+                );
+        String modelToUse = embeddingTarget.model();
+        String providerToUse = embeddingTarget.providerId();
 
-        String overrideModel = toNonBlankString(embeddingModelOverride);
-        String overrideProviderId = toNonBlankString(embeddingProviderId);
-        boolean hasOverride = overrideModel != null && overrideProviderId != null;
-
-        String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
-
-        String modelToUse = null;
-        String providerToUse = null;
-
-        if (hasOverride) {
-            modelToUse = overrideModel;
-            providerToUse = overrideProviderId;
-        } else if (fixedProviderId != null) {
-            providerToUse = fixedProviderId;
-        } else if (overrideProviderId != null && overrideModel == null) {
-            providerToUse = overrideProviderId;
-        }
-
-        if (modelToUse == null) {
-            LlmRoutingService.RouteTarget target = (providerToUse == null)
-                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
-                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
-            if (target == null) {
-                throw new IllegalStateException(providerToUse == null
-                        ? "no eligible embedding target (please check embedding routing config)"
-                        : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
-            }
-            providerToUse = target.providerId();
-            modelToUse = target.modelName();
-        }
-
-        Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
-        if (configuredDims == null) {
-            Integer d = vi.getDim();
-            configuredDims = d != null && d > 0 ? d : null;
-        }
+        Integer configuredDims = RagEmbeddingBuildSupport.resolveConfiguredDims(expectedEmbeddingDims, vi.getDim());
 
         vi.setStatus(VectorIndexStatus.BUILDING);
         vectorIndicesRepository.save(vi);
@@ -207,14 +184,7 @@ public class RagFileAssetIndexBuildService {
                     }
                 }
 
-                String header = "";
-                String fileName = fa.getOriginalName();
-                if (fileName != null && !fileName.isBlank()) header += "fileName: " + fileName.trim() + "\n";
-                String mimeType = fa.getMimeType();
-                if (mimeType != null && !mimeType.isBlank()) header += "mimeType: " + mimeType.trim() + "\n";
-                String text = header.isBlank() ? raw : (header + "\n" + raw);
-
-                List<String> chunks = splitWithOverlap(text, maxChars, overlap);
+                List<String> chunks = buildChunksForFileAsset(fa, raw, maxChars, overlap);
                 if (chunks.isEmpty()) continue;
 
                 List<Long> postIds = postIdsByFileAssetId.get(fileAssetId);
@@ -270,27 +240,17 @@ public class RagFileAssetIndexBuildService {
                             ensured = true;
                         }
 
-                        Document d = Document.create();
-                        d.setId(docId);
-                        d.put("id", docId);
-                        d.put("file_asset_id", fileAssetId);
-                        if (fa.getOwner() != null && fa.getOwner().getId() != null) d.put("owner_user_id", fa.getOwner().getId());
-                        if (uniquePostIds != null) d.put("post_ids", uniquePostIds);
-                        d.put("chunk_index", ci);
-                        d.put("content_hash", contentHash);
-                        if (fileName != null) d.put("file_name", fileName);
-                        if (mimeType != null) d.put("mime_type", mimeType);
-                        d.put("content_text", chunk);
-                        if (fa.getCreatedAt() != null) d.put("created_at", Date.from(fa.getCreatedAt().toInstant(ZoneOffset.UTC)));
-                        if (ex.getUpdatedAt() != null) d.put("updated_at", Date.from(ex.getUpdatedAt().toInstant(ZoneOffset.UTC)));
-
-                        float[] vector = emb.vector();
-                        if (vector.length > 0) {
-                            List<Float> vec = new ArrayList<>(vector.length);
-                            for (float v : vector) vec.add(v);
-                            d.put("embedding", vec);
-                        }
-
+                        Document d = buildFileAssetDocument(
+                                docId,
+                                fileAssetId,
+                                fa,
+                                ex,
+                                uniquePostIds,
+                                ci,
+                                contentHash,
+                                chunk,
+                                emb.vector()
+                        );
                         esTemplate.save(d, IndexCoordinates.of(indexName));
                         success++;
                     } catch (Exception ex2) {
@@ -308,23 +268,14 @@ public class RagFileAssetIndexBuildService {
             }
         }
 
-        if (dimsToUse != null && dimsToUse > 0) {
-            if (vi.getDim() == null || vi.getDim() <= 0) {
-                vi.setDim(dimsToUse);
-            } else if (!vi.getDim().equals(dimsToUse)) {
-                vi.setStatus(VectorIndexStatus.ERROR);
-                vectorIndicesRepository.save(vi);
-                throw new IllegalStateException("vector index dim mismatch: stored=" + vi.getDim() + ", embedding=" + dimsToUse);
-            }
-        }
-        vi.setMetric(vi.getMetric() == null || vi.getMetric().isBlank() ? "cosine" : vi.getMetric());
-        vi.setStatus(failed > 0 ? VectorIndexStatus.ERROR : VectorIndexStatus.READY);
-
-        Map<String, Object> meta0 = vi.getMetadata();
-        Map<String, Object> meta = meta0 == null ? new LinkedHashMap<>() : new LinkedHashMap<>(meta0);
-        meta.remove("embeddingModel");
-        meta.put("esIndex", indexName);
-        meta.put("sourceType", "FILE_ASSET");
+        Map<String, Object> meta = VectorIndexMetadataSupport.prepareBuildMetadata(
+                vi,
+                vectorIndicesRepository,
+                dimsToUse,
+                failed,
+                indexName,
+                "FILE_ASSET"
+        );
         meta.put("lastBuildAt", LocalDateTime.now().toString());
         meta.put("lastBuildTotalFiles", totalFiles);
         meta.put("lastBuildTotalChunks", totalChunks);
@@ -333,13 +284,7 @@ public class RagFileAssetIndexBuildService {
         meta.put("lastBuildFileBatchSize", ps);
         if (fromFileAssetId != null) meta.put("lastBuildFromFileAssetId", fromFileAssetId);
         if (lastFileAssetId != null) meta.put("lastBuildLastFileAssetId", lastFileAssetId);
-        meta.put("lastBuildChunkMaxChars", maxChars);
-        meta.put("lastBuildChunkOverlapChars", overlap);
-        if (dimsToUse != null && dimsToUse > 0) meta.put("lastBuildEmbeddingDims", dimsToUse);
-        if (modelToUse != null && !modelToUse.isBlank()) meta.put("lastBuildEmbeddingModel", modelToUse);
-        if (providerToUse != null && !providerToUse.isBlank()) meta.put("lastBuildEmbeddingProviderId", providerToUse);
-        if (cleared != null) meta.put("lastBuildCleared", cleared);
-        if (clearError != null) meta.put("lastBuildClearError", clearError);
+        VectorIndexMetadataSupport.putBuildEmbeddingMetadata(meta, maxChars, overlap, dimsToUse, modelToUse, providerToUse, cleared, clearError);
         vi.setMetadata(meta);
         vectorIndicesRepository.save(vi);
 
@@ -439,8 +384,9 @@ public class RagFileAssetIndexBuildService {
             return;
         }
 
-        int maxChars = chunkMaxChars == null || chunkMaxChars < 200 ? 1200 : Math.min(8000, chunkMaxChars);
-        int overlap = chunkOverlapChars == null || chunkOverlapChars < 0 ? 120 : Math.min(maxChars - 1, chunkOverlapChars);
+        RagChunkingSupport.ChunkingParams chunking = RagChunkingSupport.resolve(chunkMaxChars, chunkOverlapChars);
+        int maxChars = chunking.maxChars();
+        int overlap = chunking.overlap();
 
         Map<String, Object> meta0ForDefaults = vi.getMetadata();
         String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
@@ -462,23 +408,12 @@ public class RagFileAssetIndexBuildService {
         providerToUse = target.providerId();
         modelToUse = target.modelName();
 
-        Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
-        if (configuredDims == null) {
-            Integer d = vi.getDim();
-            configuredDims = d != null && d > 0 ? d : null;
-        }
+        Integer configuredDims = RagEmbeddingBuildSupport.resolveConfiguredDims(expectedEmbeddingDims, vi.getDim());
 
         String raw = ModerationSampleTextUtils.normalize(ex.getExtractedText());
         if (raw.isBlank()) return;
 
-        String header = "";
-        String fileName = fa.getOriginalName();
-        if (fileName != null && !fileName.isBlank()) header += "fileName: " + fileName.trim() + "\n";
-        String mimeType = fa.getMimeType();
-        if (mimeType != null && !mimeType.isBlank()) header += "mimeType: " + mimeType.trim() + "\n";
-        String text = header.isBlank() ? raw : (header + "\n" + raw);
-
-        List<String> chunks = splitWithOverlap(text, maxChars, overlap);
+        List<String> chunks = buildChunksForFileAsset(fa, raw, maxChars, overlap);
         if (chunks.isEmpty()) return;
 
         List<PostAttachmentsEntity> pa = postAttachmentsRepository.findByFileAssetIdIn(List.of(fileAssetId));
@@ -511,27 +446,17 @@ public class RagFileAssetIndexBuildService {
             int dimsToUse = configuredDims != null ? configuredDims : inferredDims;
             indexService.ensureIndex(indexName, dimsToUse, true);
 
-            Document d = Document.create();
-            d.setId(docId);
-            d.put("id", docId);
-            d.put("file_asset_id", fileAssetId);
-            if (fa.getOwner() != null && fa.getOwner().getId() != null) d.put("owner_user_id", fa.getOwner().getId());
-            if (uniquePostIds != null) d.put("post_ids", uniquePostIds);
-            d.put("chunk_index", ci);
-            d.put("content_hash", contentHash);
-            if (fileName != null) d.put("file_name", fileName);
-            if (mimeType != null) d.put("mime_type", mimeType);
-            d.put("content_text", chunk);
-            if (fa.getCreatedAt() != null) d.put("created_at", Date.from(fa.getCreatedAt().toInstant(ZoneOffset.UTC)));
-            if (ex.getUpdatedAt() != null) d.put("updated_at", Date.from(ex.getUpdatedAt().toInstant(ZoneOffset.UTC)));
-
-            float[] vector = emb.vector();
-            if (vector.length > 0) {
-                List<Float> vec = new ArrayList<>(vector.length);
-                for (float v : vector) vec.add(v);
-                d.put("embedding", vec);
-            }
-
+            Document d = buildFileAssetDocument(
+                    docId,
+                    fileAssetId,
+                    fa,
+                    ex,
+                    uniquePostIds,
+                    ci,
+                    contentHash,
+                    chunk,
+                    emb.vector()
+            );
             esTemplate.save(d, IndexCoordinates.of(indexName));
         }
     }
@@ -548,23 +473,74 @@ public class RagFileAssetIndexBuildService {
     }
 
     private static Long toLong(Object o) {
-        if (o instanceof Number n) return n.longValue();
-        if (o instanceof String s) {
-            String t = s.trim();
-            if (t.isBlank()) return null;
-            try {
-                return Long.parseLong(t);
-            } catch (Exception ignored) {
-                return null;
-            }
-        }
-        return null;
+        return RagValueSupport.toLong(o);
     }
 
     private static String toNonBlankString(Object o) {
         if (o == null) return null;
         String s = String.valueOf(o).trim();
         return s.isBlank() ? null : s;
+    }
+
+    private static List<String> buildChunksForFileAsset(FileAssetsEntity fileAsset, String raw, int maxChars, int overlap) {
+        String header = buildFileAssetHeader(fileAsset);
+        String text = header.isBlank() ? raw : (header + "\n" + raw);
+        return splitWithOverlap(text, maxChars, overlap);
+    }
+
+    private static Document buildFileAssetDocument(
+            String docId,
+            Long fileAssetId,
+            FileAssetsEntity fileAsset,
+            FileAssetExtractionsEntity extraction,
+            List<Long> uniquePostIds,
+            int chunkIndex,
+            String contentHash,
+            String chunk,
+            float[] vector
+    ) {
+        Document d = Document.create();
+        d.setId(docId);
+        d.put("id", docId);
+        d.put("file_asset_id", fileAssetId);
+        if (fileAsset != null && fileAsset.getOwner() != null && fileAsset.getOwner().getId() != null) {
+            d.put("owner_user_id", fileAsset.getOwner().getId());
+        }
+        if (uniquePostIds != null) d.put("post_ids", uniquePostIds);
+        d.put("chunk_index", chunkIndex);
+        d.put("content_hash", contentHash);
+        if (fileAsset != null && fileAsset.getOriginalName() != null && !fileAsset.getOriginalName().isBlank()) {
+            d.put("file_name", fileAsset.getOriginalName().trim());
+        }
+        if (fileAsset != null && fileAsset.getMimeType() != null && !fileAsset.getMimeType().isBlank()) {
+            d.put("mime_type", fileAsset.getMimeType().trim());
+        }
+        d.put("content_text", chunk);
+        if (fileAsset != null && fileAsset.getCreatedAt() != null) {
+            d.put("created_at", Date.from(fileAsset.getCreatedAt().toInstant(ZoneOffset.UTC)));
+        }
+        if (extraction != null && extraction.getUpdatedAt() != null) {
+            d.put("updated_at", Date.from(extraction.getUpdatedAt().toInstant(ZoneOffset.UTC)));
+        }
+        if (vector != null && vector.length > 0) {
+            List<Float> vec = new ArrayList<>(vector.length);
+            for (float v : vector) vec.add(v);
+            d.put("embedding", vec);
+        }
+        return d;
+    }
+
+    private static String buildFileAssetHeader(FileAssetsEntity fileAsset) {
+        StringBuilder header = new StringBuilder();
+        String fileName = fileAsset.getOriginalName();
+        if (fileName != null && !fileName.isBlank()) {
+            header.append("fileName: ").append(fileName.trim()).append('\n');
+        }
+        String mimeType = fileAsset.getMimeType();
+        if (mimeType != null && !mimeType.isBlank()) {
+            header.append("mimeType: ").append(mimeType.trim()).append('\n');
+        }
+        return header.toString().trim();
     }
 
     private static void validateEmbeddingDims(Integer configuredDims, Integer inferredDims) {
@@ -574,21 +550,7 @@ public class RagFileAssetIndexBuildService {
     }
 
     private static List<String> splitWithOverlap(String text, int maxChars, int overlapChars) {
-        String s = text == null ? "" : text;
-        if (s.isBlank()) return List.of();
-        int m = Math.max(1, maxChars);
-        int o = Math.max(0, Math.min(overlapChars, m - 1));
-        List<String> out = new ArrayList<>();
-        int i = 0;
-        while (i < s.length()) {
-            int end = Math.min(s.length(), i + m);
-            String part = s.substring(i, end);
-            out.add(part);
-            if (end >= s.length()) break;
-            i = end - o;
-            if (i < 0) i = 0;
-        }
-        return out;
+        return RagValueSupport.splitWithOverlap(text, maxChars, overlapChars);
     }
 
     private void deleteByQuery(String indexName, String jsonBody) {

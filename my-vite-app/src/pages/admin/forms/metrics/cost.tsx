@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import DatePicker from 'react-datepicker';
-import { adminGetAiProvidersConfig } from '../../../../services/aiProvidersAdminService';
 import {
   adminGetTokenMetrics,
   adminGetTokenTimeline,
@@ -8,113 +7,31 @@ import {
   type TokenMetricsResponseDTO,
   type TokenTimelineResponseDTO,
 } from '../../../../services/tokenMetricsAdminService';
+import {
+  computeMaxMetricChartValue,
+  type MetricsRangePreset,
+  fmtCost,
+  fmtInt,
+  formatLocalDateTime,
+  formatModelWithProvider,
+  modelKey,
+  resolveRangePresetDates,
+  toNumber,
+  useAiProviderNameMap,
+  useMetricsRangeState,
+  useMetricsRequestState,
+} from './metricsTimeUtils';
 import { TokenTimelineChart } from './TokenTimelineChart';
 import { ModelTokenCostChart } from './ModelTokenCostChart';
 
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-function formatLocalDateTime(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(
-    d.getSeconds(),
-  )}`;
-}
-
-function dayStart(d: Date): Date {
-  const x = new Date(d.getTime());
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function dayEnd(d: Date): Date {
-  const x = new Date(d.getTime());
-  x.setHours(23, 59, 59, 0);
-  return x;
-}
-
-function toNumber(v: unknown): number | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return null;
-    const n = Number(t);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function fmtCost(v: unknown): string {
-  const n = toNumber(v);
-  if (n === null) return '0';
-  return n.toFixed(6).replace(/\.?0+$/, '');
-}
-
-function fmtInt(v: unknown): string {
-  const n = toNumber(v);
-  if (n === null) return '0';
-  return String(Math.round(n));
-}
-
-function trimStr(v: unknown): string {
-  return String(v ?? '').trim();
-}
-
-function formatModelWithProvider(model: unknown, providerId: unknown, providerNameById: Record<string, string>): string {
-  const m = trimStr(model);
-  const pid = trimStr(providerId);
-  if (!pid) return m || '—';
-  const providerName = providerNameById[pid] || pid;
-  if (providerName && m) return `${providerName}：${m}`;
-  return providerName || m || '—';
-}
-
-function modelKey(model: unknown, providerId: unknown): string {
-  const m = trimStr(model);
-  const pid = trimStr(providerId);
-  return pid ? `${pid}|${m}` : m;
-}
-
-type RangePreset = 'CUSTOM' | 'LAST_30M' | 'LAST_1H' | 'LAST_6H' | 'LAST_12H' | 'LAST_24H' | 'TODAY' | 'YESTERDAY' | 'LAST_7D' | 'LAST_30D';
-
 const CostForm: React.FC = () => {
-  const [startDate, setStartDate] = useState<Date>(() => dayStart(new Date(Date.now() - 7 * 24 * 3600 * 1000)));
-  const [endDate, setEndDate] = useState<Date>(() => dayEnd(new Date()));
-  const [rangePreset, setRangePreset] = useState<RangePreset>('CUSTOM');
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [resp, setResp] = useState<TokenMetricsResponseDTO | null>(null);
-  const [timeline, setTimeline] = useState<TokenTimelineResponseDTO | null>(null);
-  const [timelineError, setTimelineError] = useState<string | null>(null);
+  const { startDate, setStartDate, endDate, setEndDate, rangePreset, setRangePreset } = useMetricsRangeState();
+  const { loading, setLoading, error, setError, resp, setResp, timeline, setTimeline, timelineError, setTimelineError } =
+    useMetricsRequestState<TokenMetricsResponseDTO, TokenTimelineResponseDTO>();
 
   const [chartBy, setChartBy] = useState<'cost' | 'tokens'>('cost');
 
-  const [providerNameById, setProviderNameById] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const cfg = await adminGetAiProvidersConfig();
-        if (cancelled) return;
-        const map: Record<string, string> = {};
-        for (const p of cfg.providers ?? []) {
-          const id = trimStr(p?.id);
-          if (!id) continue;
-          const name = trimStr(p?.name);
-          map[id] = name || id;
-        }
-        setProviderNameById(map);
-      } catch {
-        if (!cancelled) setProviderNameById({});
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const providerNameById = useAiProviderNameMap();
 
   const items: TokenMetricsModelItemDTO[] = useMemo(() => resp?.items ?? [], [resp]);
   const getModelText = useCallback((it: TokenMetricsModelItemDTO) => formatModelWithProvider(it.model, it.providerId, providerNameById), [providerNameById]);
@@ -132,38 +49,20 @@ const CostForm: React.FC = () => {
   }, [items]);
 
   const maxChartValue = useMemo(() => {
-    let max = 0;
-    for (const it of sortedItems) {
-      const v = chartBy === 'tokens' ? Number(it.totalTokens || 0) : toNumber(it.cost) ?? 0;
-      if (v > max) max = v;
-    }
-    return max <= 0 ? 1 : max;
+    return computeMaxMetricChartValue(
+      sortedItems,
+      chartBy,
+      (it) => Number(it.totalTokens || 0),
+      (it) => toNumber(it.cost) ?? 0,
+    );
   }, [sortedItems, chartBy]);
 
-  const applyRangePreset = useCallback((preset: RangePreset) => {
+  const applyRangePreset = useCallback((preset: MetricsRangePreset) => {
     setRangePreset(preset);
-    if (preset === 'CUSTOM') return;
-
-    const end = new Date();
-    if (preset === 'YESTERDAY') {
-      const y = new Date(end.getTime() - 24 * 3600 * 1000);
-      setStartDate(dayStart(y));
-      setEndDate(dayEnd(y));
-      return;
-    }
-
-    let start = new Date(end.getTime());
-    if (preset === 'LAST_30M') start = new Date(end.getTime() - 30 * 60 * 1000);
-    else if (preset === 'LAST_1H') start = new Date(end.getTime() - 1 * 3600 * 1000);
-    else if (preset === 'LAST_6H') start = new Date(end.getTime() - 6 * 3600 * 1000);
-    else if (preset === 'LAST_12H') start = new Date(end.getTime() - 12 * 3600 * 1000);
-    else if (preset === 'LAST_24H') start = new Date(end.getTime() - 24 * 3600 * 1000);
-    else if (preset === 'LAST_7D') start = new Date(end.getTime() - 7 * 24 * 3600 * 1000);
-    else if (preset === 'LAST_30D') start = new Date(end.getTime() - 30 * 24 * 3600 * 1000);
-    else if (preset === 'TODAY') start = dayStart(end);
-
-    setStartDate(start);
-    setEndDate(end);
+    const next = resolveRangePresetDates(preset);
+    if (!next) return;
+    setStartDate(next.startDate);
+    setEndDate(next.endDate);
   }, []);
 
   const load = useCallback(

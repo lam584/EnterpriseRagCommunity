@@ -39,7 +39,15 @@ public class LmStudioLegacyChatClient {
         if (model == null || model.isBlank()) throw new IllegalArgumentException("model 不能为空");
 
         String endpoint = selectEndpoint(baseUrl);
-        HttpURLConnection conn = openJsonPost(endpoint, apiKey, req.extraHeaders(), req.connectTimeoutMs(), req.readTimeoutMs());
+        HttpURLConnection conn = AiClientHttpSupport.openJsonPost(
+                endpoint,
+                apiKey,
+                req.extraHeaders(),
+                req.connectTimeoutMs(),
+                req.readTimeoutMs(),
+                DEFAULT_CONNECT_TIMEOUT_MS,
+                DEFAULT_READ_TIMEOUT_MS
+        );
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
@@ -61,47 +69,6 @@ public class LmStudioLegacyChatClient {
         return resp;
     }
 
-    private HttpURLConnection openJsonPost(
-            String endpoint,
-            String apiKey,
-            Map<String, String> extraHeaders,
-            Integer connectTimeoutMs,
-            Integer readTimeoutMs
-    ) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-
-        int cto = (connectTimeoutMs == null || connectTimeoutMs <= 0) ? DEFAULT_CONNECT_TIMEOUT_MS : connectTimeoutMs;
-        int rto = (readTimeoutMs == null || readTimeoutMs <= 0) ? DEFAULT_READ_TIMEOUT_MS : readTimeoutMs;
-        conn.setConnectTimeout(cto);
-        conn.setReadTimeout(rto);
-
-        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-        conn.setRequestProperty("Accept", "application/json");
-        applyHeaders(conn, apiKey, extraHeaders);
-        return conn;
-    }
-
-    private static void applyHeaders(HttpURLConnection conn, String apiKey, Map<String, String> extraHeaders) {
-        boolean hasAuth = false;
-        if (extraHeaders != null && !extraHeaders.isEmpty()) {
-            for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
-                String k = e.getKey();
-                String v = e.getValue();
-                if (k == null || k.isBlank()) continue;
-                if (v == null) continue;
-                conn.setRequestProperty(k, v);
-                if ("authorization".equals(k.trim().toLowerCase(Locale.ROOT))) {
-                    hasAuth = true;
-                }
-            }
-        }
-        if (!hasAuth && apiKey != null && !apiKey.isBlank()) {
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-        }
-    }
-
     private static String selectEndpoint(String baseUrl) {
         String u = baseUrl == null ? "" : baseUrl.trim();
         if (u.endsWith("/")) u = u.substring(0, u.length() - 1);
@@ -113,6 +80,42 @@ public class LmStudioLegacyChatClient {
 
     private static String readAll(InputStream is) throws IOException {
         return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+    }
+
+    private static void applyHeaders(HttpURLConnection conn, String apiKey, Map<String, String> extraHeaders) {
+        boolean hasAuth = false;
+        if (extraHeaders != null && !extraHeaders.isEmpty()) {
+            for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
+                String k = e.getKey();
+                String v = e.getValue();
+                if (k == null || k.isBlank() || v == null) continue;
+                conn.setRequestProperty(k, v);
+                if ("authorization".equals(k.trim().toLowerCase(Locale.ROOT))) {
+                    hasAuth = true;
+                }
+            }
+        }
+        if (!hasAuth && apiKey != null && !apiKey.isBlank()) {
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+        }
+    }
+
+    private static HttpURLConnection openJsonPost(
+            String endpoint,
+            String apiKey,
+            Map<String, String> extraHeaders,
+            Integer connectTimeoutMs,
+            Integer readTimeoutMs
+    ) throws IOException {
+        return AiClientHttpSupport.openJsonPost(
+                endpoint,
+                apiKey,
+                extraHeaders,
+                connectTimeoutMs,
+                readTimeoutMs,
+                DEFAULT_CONNECT_TIMEOUT_MS,
+                DEFAULT_READ_TIMEOUT_MS
+        );
     }
 
     private static String normalizeBaseUrl(String baseUrl, String fallback) {
@@ -128,4 +131,3 @@ public class LmStudioLegacyChatClient {
         return t;
     }
 }
-

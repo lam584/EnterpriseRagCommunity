@@ -5,6 +5,7 @@ import {
   type ModerationChunkContentPreview
 } from '../../services/moderationChunkReviewLogsService';
 import {expandEvidenceContext} from '../../utils/evidence-context-display';
+import { toInt } from '../../utils/numberParsers';
 
 type EvidenceAnchor = { beforeContext: string; afterContext?: string };
 type ParsedEvidence = { raw: string; text: string; anchor?: EvidenceAnchor; imagePlaceholders: string[]; imageId?: string };
@@ -27,17 +28,6 @@ const EVIDENCE_POLLUTION_MARKERS = [
 
 const cache = new Map<number, ModerationChunkContentPreview>();
 const inflight = new Map<number, Promise<ModerationChunkContentPreview>>();
-
-function toInt(v: unknown): number | null {
-  if (typeof v === 'number' && Number.isFinite(v)) return Math.floor(v);
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return null;
-    const n = Number(t);
-    if (Number.isFinite(n)) return Math.floor(n);
-  }
-  return null;
-}
 
 function toRecord(v: unknown): Record<string, unknown> | null {
   if (!v || typeof v !== 'object') return null;

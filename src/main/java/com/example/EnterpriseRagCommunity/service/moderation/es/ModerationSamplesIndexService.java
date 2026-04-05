@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationSimilarityConfigRepository;
 import com.example.EnterpriseRagCommunity.service.es.ElasticsearchIkAnalyzerProbe;
+import com.example.EnterpriseRagCommunity.service.es.ElasticsearchIndexSettingsSupport;
 import com.example.EnterpriseRagCommunity.service.safety.DependencyCircuitBreakerService;
 import com.example.EnterpriseRagCommunity.service.safety.DependencyIsolationGuard;
 
@@ -149,18 +150,7 @@ public class ModerationSamplesIndexService {
 
     @SuppressWarnings("unchecked")
     private static Integer extractEmbeddingDims(Map<String, Object> mapping) {
-        if (mapping == null) return null;
-        Object props0 = mapping.get("properties");
-        Integer dims = extractEmbeddingDimsFromProperties(props0);
-        if (dims != null) return dims;
-
-        Object mappings0 = mapping.get("mappings");
-        if (mappings0 instanceof Map<?, ?> mm) {
-            Object props1 = ((Map<String, Object>) mm).get("properties");
-            dims = extractEmbeddingDimsFromProperties(props1);
-            return dims;
-        }
-        return null;
+        return com.example.EnterpriseRagCommunity.service.retrieval.es.EmbeddingMappingSupport.extractEmbeddingDims(mapping);
     }
 
     @SuppressWarnings("unchecked")
@@ -219,31 +209,7 @@ public class ModerationSamplesIndexService {
     }
 
     private Map<String, Object> buildSettings(boolean ikEnabled) {
-        // IMPORTANT:
-        // IndexOperations.create(Document) expects *index settings* (equivalent to the body of PUT /{index}/_settings),
-        // NOT a full create-index request body. If we wrap with {"settings":{...}}, Spring Data will wrap again
-        // and Elasticsearch will see unknown settings like "index.settings.index.number_of_shards".
-
-        Map<String, Object> index = new LinkedHashMap<>();
-        index.put("number_of_shards", 1);
-        index.put("number_of_replicas", 0);
-
-        Map<String, Object> settings = new LinkedHashMap<>();
-        settings.put("index", index);
-
-        if (ikEnabled) {
-            // Requires IK plugin installed on ES node.
-            Map<String, Object> analysis = new LinkedHashMap<>();
-            Map<String, Object> analyzer = new LinkedHashMap<>();
-
-            analyzer.put("ik_max_word", Map.of("type", "ik_max_word"));
-            analyzer.put("ik_smart", Map.of("type", "ik_smart"));
-
-            analysis.put("analyzer", analyzer);
-            settings.put("analysis", analysis);
-        }
-
-        return settings;
+        return ElasticsearchIndexSettingsSupport.buildBasicIndexSettings(ikEnabled);
     }
 
     private Map<String, Object> buildMapping(boolean ikEnabled) {

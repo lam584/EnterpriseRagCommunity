@@ -196,4 +196,18 @@ class FileAssetExtractionAsyncServiceOrChainCoverageTest {
         assertTrue("MOBI_ZIP".equals(String.valueOf(meta.get("imagesExtractionMode")))
                 || "MOBI_TIKA_EMBEDDED".equals(String.valueOf(meta.get("imagesExtractionMode"))));
     }
+
+    @Test
+    void saveSlideImagePlaceholder_shouldNormalizeBlankExtAndMime() throws Exception {
+        when(derivedUploadStorageService.saveDerivedImage(any(), any(), any(), any())).thenReturn(Map.of("id", "1"));
+        when(derivedUploadStorageService.buildPlaceholder(anyInt(), anyMap())).thenReturn(Map.of("placeholder", "[[IMAGE_1]]"));
+
+        Object budget = newInner("ImageBudget", new Class<?>[]{int.class, long.class}, 10, 100000L);
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        Object result = invokeInstance("saveSlideImagePlaceholder",
+                new Class<?>[]{byte[].class, int.class, String.class, String.class, String.class, Long.class, budget.getClass(), List.class},
+                new byte[]{1, 2, 3}, 2, " ", null, "ppt_image_", 1L, budget, out);
+        assertEquals(false, result);
+        assertEquals(1, out.size());
+    }
 }

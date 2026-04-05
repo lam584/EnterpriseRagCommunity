@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CircleHelp } from 'lucide-react';
 import { getMyAssistantPreferences, updateMyAssistantPreferences } from '../../../../services/assistantPreferencesService';
 import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+import { normAssistantValue, pickAssistantModel, pickAssistantProviderId } from './assistantOptionsUtils';
 
 function buildProviderModelValue(providerId: string, model: string): string {
   const p = String(providerId ?? '').trim();
@@ -167,36 +168,11 @@ export default function AssistantSettingsPage() {
         setChatOptions(opt);
 
         const providers = (opt.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[];
-        const providerIds = new Set(providers.map((p) => String(p.id ?? '').trim()).filter(Boolean));
-        const norm = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-
-        let nextProviderId = '';
-        const storedProvider = norm(prefs.defaultProviderId);
-        if (storedProvider && providerIds.has(storedProvider)) {
-          nextProviderId = storedProvider;
-        } else {
-          const active = norm(opt.activeProviderId);
-          if (active && providerIds.has(active)) {
-            nextProviderId = active;
-          } else {
-            nextProviderId = norm(providers[0]?.id);
-          }
-        }
-
-        const p = providers.find((x) => norm(x.id) === nextProviderId) ?? null;
-        const models = Array.isArray(p?.chatModels) ? p!.chatModels!.filter(Boolean) : [];
-        const modelNames = new Set(models.map((m) => norm((m as { name?: unknown }).name)).filter(Boolean));
-        const storedModel = norm(prefs.defaultModel);
-
-        const nextModel = (() => {
-          if (storedModel && modelNames.has(storedModel)) return storedModel;
-          const directDefault = norm(p?.defaultChatModel);
-          if (directDefault && modelNames.has(directDefault)) return directDefault;
-          const flagged = models.find((m) => Boolean((m as { isDefault?: unknown }).isDefault));
-          const flaggedName = norm((flagged as { name?: unknown })?.name);
-          if (flaggedName && modelNames.has(flaggedName)) return flaggedName;
-          return norm((models[0] as { name?: unknown })?.name);
-        })();
+        const storedProvider = normAssistantValue(prefs.defaultProviderId);
+        const storedModel = normAssistantValue(prefs.defaultModel);
+        const nextProviderId = pickAssistantProviderId(opt, providers, storedProvider);
+        const p = providers.find((x) => normAssistantValue(x.id) === nextProviderId) ?? null;
+        const nextModel = pickAssistantModel(p, storedModel);
 
         setDefaultProviderId(nextProviderId);
         setDefaultModel(nextModel);

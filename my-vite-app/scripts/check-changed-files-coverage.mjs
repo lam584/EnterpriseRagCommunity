@@ -1,22 +1,19 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { execSync } from 'node:child_process';
+import {
+  buildCoverageIndex,
+  normalizeKey,
+  readCoverageSummary,
+  resolveCoverageSummaryPath,
+  toPosixPath,
+} from './coverage-summary-utils.mjs';
 
 const MIN_LINES = 100;
 const MIN_BRANCHES = 100;
 const MIN_FUNCTIONS = 100;
 const MIN_STATEMENTS = 100;
 
-const coverageSummaryPath = process.argv[2]
-  ? path.resolve(process.cwd(), process.argv[2])
-  : path.resolve(process.cwd(), 'test-reports/vitest-coverage/coverage-summary.json');
-
-const toPosixPath = (p) => p.replaceAll('\\', '/');
-
-const normalizeKey = (p) => {
-  const normalized = toPosixPath(path.normalize(p));
-  return normalized.startsWith('./') ? normalized.slice(2) : normalized;
-};
+const coverageSummaryPath = resolveCoverageSummaryPath(process.argv[2]);
 
 const readChangedFilesFromEnv = () => {
   const raw = process.env.COVERAGE_CHANGED_FILES;
@@ -90,26 +87,6 @@ const isRelevantSourceFile = (p) => {
   return true;
 };
 
-const readCoverageSummary = (filePath) => {
-  const raw = fs.readFileSync(filePath, 'utf8');
-  return JSON.parse(raw);
-};
-
-const buildCoverageIndex = (summary) => {
-  const index = new Map();
-  for (const [key, value] of Object.entries(summary)) {
-    if (key === 'total' || !value || typeof value !== 'object') continue;
-    const normalized = normalizeKey(key);
-    index.set(normalized, value);
-    index.set(normalizeKey(`./${normalized}`), value);
-    if (path.isAbsolute(key)) {
-      const rel = normalizeKey(path.relative(process.cwd(), key));
-      index.set(rel, value);
-      index.set(normalizeKey(`./${rel}`), value);
-    }
-  }
-  return index;
-};
 
 const main = () => {
   if (!fs.existsSync(coverageSummaryPath)) {

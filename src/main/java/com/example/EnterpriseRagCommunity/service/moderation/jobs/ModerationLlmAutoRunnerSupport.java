@@ -15,7 +15,14 @@ import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestReques
 import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestResponse;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationConfidenceFallbackConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.Verdict;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationAnchorSnippetSupport;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkImageSupport;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationCollectionSupport;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationFallbackDecisionService;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationMapPathSupport;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationThresholdSupport;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationViolationSnippetSupport;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagValueSupport;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -245,42 +252,15 @@ final class ModerationLlmAutoRunnerSupport {
     }
 
     static List<String> asStringList(Object v) {
-        if (v == null) return List.of();
-        if (v instanceof List<?> list) {
-            List<String> out = new ArrayList<>();
-            for (Object it : list) {
-                if (it == null) continue;
-                String s = String.valueOf(it).trim();
-                if (!s.isBlank()) out.add(s);
-            }
-            return out;
-        }
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? List.of() : List.of(s);
+        return ModerationCollectionSupport.asStringList(v);
     }
 
     static Object deepGet(Map<String, Object> root, String path) {
-        if (root == null || root.isEmpty() || path == null || path.isBlank()) return null;
-        String[] segs = path.split("\\.");
-        Object cur = root;
-        for (String seg : segs) {
-            if (seg == null || seg.isBlank()) continue;
-            Map<String, Object> m = asMap(cur);
-            if (m == null) return null;
-            cur = m.get(seg);
-        }
-        return cur;
+        return ModerationMapPathSupport.deepGet(root, path);
     }
 
     static Map<String, Object> asMap(Object v) {
-        if (!(v instanceof Map<?, ?> mm)) return null;
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (var e : mm.entrySet()) {
-            Object k = e.getKey();
-            if (k == null) continue;
-            out.put(String.valueOf(k), e.getValue());
-        }
-        return out;
+        return ModerationMapPathSupport.asMap(v);
     }
 
     static Verdict verdictFromLlm(LlmModerationTestResponse res, ModerationConfidenceFallbackConfigEntity fb) {
@@ -611,48 +591,39 @@ final class ModerationLlmAutoRunnerSupport {
 
         java.util.regex.Matcher mUrl = java.util.regex.Pattern.compile("(?i)\\bhttps?://[^\\s<>\"]{6,200}").matcher(text);
         while (mUrl.find() && out.size() < limit) {
-            String v = mUrl.group();
-            if (v == null) continue;
-            String s = v.trim();
-            if (s.isEmpty()) continue;
-            String key = "URL|" + s;
-            if (!seen.add(key)) continue;
-            out.add(Map.of("type", "URL", "value", s, "chunkIndex", chunkIndex));
+            appendUniqueRiskContact(out, seen, limit, "URL", mUrl.group(), chunkIndex);
         }
 
         java.util.regex.Matcher mWww = java.util.regex.Pattern.compile("(?i)\\bwww\\.[^\\s<>\"]{6,200}").matcher(text);
         while (mWww.find() && out.size() < limit) {
-            String v = mWww.group();
-            if (v == null) continue;
-            String s = v.trim();
-            if (s.isEmpty()) continue;
-            String key = "URL|" + s;
-            if (!seen.add(key)) continue;
-            out.add(Map.of("type", "URL", "value", s, "chunkIndex", chunkIndex));
+            appendUniqueRiskContact(out, seen, limit, "URL", mWww.group(), chunkIndex);
         }
 
         java.util.regex.Matcher mPhone = java.util.regex.Pattern.compile("\\b1\\d{10}\\b").matcher(text);
         while (mPhone.find() && out.size() < limit) {
-            String v = mPhone.group();
-            if (v == null) continue;
-            String s = v.trim();
-            if (s.isEmpty()) continue;
-            String key = "PHONE|" + s;
-            if (!seen.add(key)) continue;
-            out.add(Map.of("type", "PHONE", "value", s, "chunkIndex", chunkIndex));
+            appendUniqueRiskContact(out, seen, limit, "PHONE", mPhone.group(), chunkIndex);
         }
 
         java.util.regex.Matcher mWechat = java.util.regex.Pattern.compile("(?i)\\b(?:wx|wechat)[:闂?]?([a-zA-Z][-_a-zA-Z0-9]{5,19})\\b").matcher(text);
         while (mWechat.find() && out.size() < limit) {
-            String v = mWechat.group(1);
-            if (v == null) continue;
-            String s = v.trim();
-            if (s.isEmpty()) continue;
-            String key = "WECHAT|" + s;
-            if (!seen.add(key)) continue;
-            out.add(Map.of("type", "WECHAT", "value", s, "chunkIndex", chunkIndex));
+            appendUniqueRiskContact(out, seen, limit, "WECHAT", mWechat.group(1), chunkIndex);
         }
         return out;
+    }
+
+    private static void appendUniqueRiskContact(List<Map<String, Object>> out,
+                                                Set<String> seen,
+                                                int limit,
+                                                String type,
+                                                String rawValue,
+                                                Integer chunkIndex) {
+        if (out.size() >= limit) return;
+        if (rawValue == null) return;
+        String value = rawValue.trim();
+        if (value.isEmpty()) return;
+        String key = type + "|" + value;
+        if (!seen.add(key)) return;
+        out.add(Map.of("type", type, "value", value, "chunkIndex", chunkIndex));
     }
 
     static String normalizeForPrompt(String text) {
@@ -712,20 +683,12 @@ final class ModerationLlmAutoRunnerSupport {
         LinkedHashSet<String> placeholders = new LinkedHashSet<>();
         int current = chunkIndex == null ? Integer.MAX_VALUE : chunkIndex;
 
-        List<Integer> keys = new ArrayList<>();
-        for (Object k : byChunk.keySet()) {
-            Integer idx = toInt(k);
-            if (idx == null) continue;
-            if (idx >= current) continue;
-            keys.add(idx);
-        }
-        keys.sort(Comparator.reverseOrder());
+        List<Integer> keys = collectPreviousChunkIndexes(byChunk, current, Comparator.reverseOrder());
 
         for (Integer idx : keys) {
             if (idx == null) continue;
-            Object value = byChunk.get(String.valueOf(idx));
-            if (value == null) value = byChunk.get(idx);
-            if (!(value instanceof Collection<?> col) || col.isEmpty()) continue;
+            Collection<?> col = readChunkCollection(byChunk, idx);
+            if (col == null) continue;
 
             boolean chunkUsed = false;
             for (Object item : col) {
@@ -781,6 +744,26 @@ final class ModerationLlmAutoRunnerSupport {
         return out.isEmpty() ? List.of() : out;
     }
 
+    static List<Integer> collectPreviousChunkIndexes(Map<?, ?> byChunk, int current, Comparator<Integer> comparator) {
+        if (byChunk == null || byChunk.isEmpty()) return List.of();
+        List<Integer> keys = new ArrayList<>();
+        for (Object key : byChunk.keySet()) {
+            Integer idx = toInt(key);
+            if (idx == null || idx >= current) continue;
+            keys.add(idx);
+        }
+        if (keys.isEmpty()) return List.of();
+        keys.sort(comparator);
+        return keys;
+    }
+
+    static Collection<?> readChunkCollection(Map<?, ?> byChunk, Integer idx) {
+        if (byChunk == null || byChunk.isEmpty() || idx == null) return null;
+        Object value = byChunk.get(String.valueOf(idx));
+        if (value == null) value = byChunk.get(idx);
+        return value instanceof Collection<?> col && !col.isEmpty() ? col : null;
+    }
+
     static List<ChunkImageRef> mergeChunkImageRefs(List<ChunkImageRef> primaryRefs, List<ChunkImageRef> secondaryRefs) {
         if ((primaryRefs == null || primaryRefs.isEmpty()) && (secondaryRefs == null || secondaryRefs.isEmpty())) {
             return List.of();
@@ -812,21 +795,13 @@ final class ModerationLlmAutoRunnerSupport {
 
         int current = chunkIndex == null ? Integer.MAX_VALUE : chunkIndex;
         int limit = Math.clamp(maxLines, 1, 20);
-        List<Integer> keys = new ArrayList<>();
-        for (Object k : byChunk.keySet()) {
-            Integer idx = toInt(k);
-            if (idx == null) continue;
-            if (idx >= current) continue;
-            keys.add(idx);
-        }
-        keys.sort(Comparator.reverseOrder());
+        List<Integer> keys = collectPreviousChunkIndexes(byChunk, current, Comparator.reverseOrder());
 
         List<String> out = new ArrayList<>();
         for (Integer idx : keys) {
             if (idx == null) continue;
-            Object value = byChunk.get(String.valueOf(idx));
-            if (value == null) value = byChunk.get(idx);
-            if (!(value instanceof Collection<?> col) || col.isEmpty()) continue;
+            Collection<?> col = readChunkCollection(byChunk, idx);
+            if (col == null) continue;
 
             ArrayList<String> lines = new ArrayList<>();
             for (Object item : col) {
@@ -862,9 +837,8 @@ final class ModerationLlmAutoRunnerSupport {
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         for (Integer idx : keys) {
             if (idx == null) continue;
-            Object value = byChunk.get(String.valueOf(idx));
-            if (value == null) value = byChunk.get(idx);
-            if (!(value instanceof Collection<?> col) || col.isEmpty()) continue;
+            Collection<?> col = readChunkCollection(byChunk, idx);
+            if (col == null) continue;
             for (Object item : col) {
                 if (item == null) continue;
                 String text = String.valueOf(item).trim();
@@ -947,9 +921,8 @@ final class ModerationLlmAutoRunnerSupport {
         LinkedHashSet<String> seenUrl = new LinkedHashSet<>();
         for (Object it : list) {
             if (!(it instanceof Map<?, ?> m)) continue;
-            Integer idx = toInt(m.get("index"));
             String placeholder = toStr(m.get("placeholder"));
-            if (idx == null && placeholder != null) idx = parseImageIndexFromPlaceholder(placeholder);
+            Integer idx = ModerationChunkImageSupport.resolveImageIndex(m.get("index"), placeholder, ModerationLlmAutoRunnerSupport::toInt);
             if (idx == null || !used.contains(idx)) continue;
             String url = toStr(m.get("url"));
             if (url == null || url.isBlank()) continue;
@@ -1097,14 +1070,11 @@ final class ModerationLlmAutoRunnerSupport {
     }
 
     static String extractByContextAnchors(Map<String, Object> node, String chunkText) {
-        Object bc = node.get("before_context");
-        Object ac = node.get("after_context");
-        String before = bc == null ? null : String.valueOf(bc).trim();
-        String after = ac == null ? null : String.valueOf(ac).trim();
-        if (before == null || before.isBlank()) return null;
+        ModerationAnchorSnippetSupport.AnchorContext context = ModerationAnchorSnippetSupport.readAnchorContext(node);
+        if (context == null) return null;
 
         if (chunkText == null || chunkText.isBlank()) return null;
-        String r = extractBetweenAnchorsByRegex(chunkText, before, after);
+        String r = extractBetweenAnchorsByRegex(chunkText, context.before(), context.after());
         return r == null || r.isBlank() ? null : r;
     }
 
@@ -1180,33 +1150,14 @@ final class ModerationLlmAutoRunnerSupport {
     }
 
     static String fallbackViolationSnippet(String text, int violationStart) {
-        int end = Math.min(violationStart + 220, text.length());
-        int imageIdx = text.indexOf("[[IMAGE_", violationStart);
-        if (imageIdx >= 0 && imageIdx < end) end = imageIdx;
-        int sectionIdx = text.indexOf("\\n[", violationStart);
-        if (sectionIdx >= 0 && sectionIdx < end) end = sectionIdx;
-        int dblNl = text.indexOf("\\n\\n", violationStart);
-        if (dblNl > violationStart && dblNl < end) end = dblNl;
-        int boundary = findBoundaryEnd(text, violationStart, end);
-        if (boundary > violationStart + 4 && boundary < end) end = boundary;
-        if (end <= violationStart) return null;
-        String snippet = text.substring(violationStart, end);
-        String cleaned = cleanExtractedSnippet(snippet);
-        if (!cleaned.isEmpty()) return cleaned;
-        int altEnd = Math.min(violationStart + 80, text.length());
-        if (altEnd <= violationStart) return null;
-        return cleanExtractedSnippet(text.substring(violationStart, altEnd));
-    }
-
-    static int findBoundaryEnd(String text, int start, int maxEnd) {
-        int end = Math.min(text.length(), maxEnd);
-        for (int i = start; i < end; i++) {
-            char c = text.charAt(i);
-            if (c == '\n' || c == '\r' || c == '.' || c == ',' || c == ';' || c == '!' || c == '?') {
-                return i;
-            }
-        }
-        return end;
+        return ModerationViolationSnippetSupport.fallbackViolationSnippet(
+                text,
+                violationStart,
+                "\\n[",
+                "\\n\\n",
+                c -> c == '\n' || c == '\r' || c == '.' || c == ',' || c == ';' || c == '!' || c == '?',
+                ModerationLlmAutoRunnerSupport::cleanExtractedSnippet
+        );
     }
 
     static String cleanExtractedSnippet(String snippet) {
@@ -1218,72 +1169,14 @@ final class ModerationLlmAutoRunnerSupport {
     }
 
     static String extractBetweenAnchorsByRegex(String text, String before, String after) {
-        if (text == null || text.isEmpty() || before == null || before.isBlank()) return null;
-        int cap = Math.clamp(500, 20, 2000);
-
-        String normText = normalizeForAnchorRegex(text);
-        String normBefore = normalizeForAnchorRegex(before);
-        String normAfter = after != null && !after.isBlank() ? normalizeForAnchorRegex(after) : null;
-
-        String b = anchorToRegex(normBefore);
-        if (b.isEmpty()) return null;
-        String a = normAfter == null ? "" : anchorToRegex(normAfter);
-
-        java.util.regex.Pattern p;
-        if (a.isEmpty()) {
-            String boundary = "\\r\\n|\\r|\\n|闂備線娼уΛ妤呭焵椤掆偓閻楁捇寮\uE0A2\uE17C鍡欘洸闁告稑鐡ㄩ弲顒勬煟?|!|\\?|$";
-            p = java.util.regex.Pattern.compile(b + "(.{0," + cap + "}?)" + "(?=" + boundary + ")", java.util.regex.Pattern.DOTALL);
-        } else {
-            p = java.util.regex.Pattern.compile(b + "(.{0," + cap + "}?)" + a, java.util.regex.Pattern.DOTALL);
-        }
-
-        java.util.regex.Matcher m = p.matcher(normText);
-        String best = null;
-        int bestLen = Integer.MAX_VALUE;
-        boolean matched = false;
-        int guard = 0;
-        while (m.find() && guard < 50) {
-            guard += 1;
-            matched = true;
-            String mid = m.group(1);
-            if (mid == null) continue;
-            String cleaned = cleanExtractedSnippet(mid);
-            if (cleaned.isBlank()) continue;
-            int len = cleaned.length();
-            if (len < bestLen) {
-                best = cleaned;
-                bestLen = len;
-            }
-        }
-        if (best != null) return best;
-        if (matched) return null;
-
-        int bIdx = normText.indexOf(normBefore);
-        if (bIdx < 0) return null;
-        return fallbackViolationSnippet(normText, bIdx + normBefore.length());
-    }
-
-    static String anchorToRegex(String anchor) {
-        if (anchor == null) return "";
-        String t = anchor.trim();
-        if (t.isEmpty()) return "";
-        String[] parts = t.split("\\s+");
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p == null || p.isEmpty()) continue;
-            if (!sb.isEmpty()) sb.append("\\\\s+");
-            sb.append(java.util.regex.Pattern.quote(p));
-        }
-        return sb.toString();
-    }
-
-    static String normalizeForAnchorRegex(String s) {
-        if (s == null) return "";
-        String x = s.replace('“', '"').replace('”', '"')
-                .replace('‘', '\'').replace('’', '\'');
-        x = x.replaceAll(" ?\" ?", "\"")
-                .replaceAll(" ?' ?", "'");
-        return x;
+        return ModerationAnchorSnippetSupport.extractBetweenAnchorsByRegex(
+                text,
+                before,
+                after,
+                Math.clamp(500, 20, 2000),
+                ModerationLlmAutoRunnerSupport::cleanExtractedSnippet,
+                ModerationLlmAutoRunnerSupport::fallbackViolationSnippet
+        );
     }
 
     static String canonicalEvidenceValue(Object value) {
@@ -1428,29 +1321,12 @@ final class ModerationLlmAutoRunnerSupport {
     }
 
     static Integer parseImageIndexFromPlaceholder(String placeholder) {
-        if (placeholder == null) return null;
-        java.util.regex.Matcher m = IMAGE_PLACEHOLDER.matcher(placeholder);
-        if (!m.find()) return null;
-        return toInt(m.group(1));
+        return ModerationChunkImageSupport.parseImageIndexFromPlaceholder(placeholder);
     }
 
     @SuppressWarnings("IfCanBeSwitch")
     static Integer toInt(Object v) {
-        if (v == null) return null;
-        if (v instanceof Integer i) return i;
-        if (v instanceof Long l) {
-            if (l < Integer.MIN_VALUE) return Integer.MIN_VALUE;
-            if (l > Integer.MAX_VALUE) return Integer.MAX_VALUE;
-            return l.intValue();
-        }
-        if (v instanceof Number n) return n.intValue();
-        try {
-            String s = String.valueOf(v).trim();
-            if (s.isEmpty()) return null;
-            return Integer.parseInt(s);
-        } catch (Exception ignore) {
-            return null;
-        }
+        return RagValueSupport.toInteger(v);
     }
 
     static String toStr(Object v) {
@@ -1522,31 +1398,24 @@ final class ModerationLlmAutoRunnerSupport {
     static Map<String, Object> summarizeLlmStage(LlmModerationTestResponse.Stage s) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (s == null) return m;
-        if (s.getDecisionSuggestion() != null) m.put("decision_suggestion", s.getDecisionSuggestion());
-        if (s.getDecision() != null) m.put("decision", s.getDecision());
-        if (s.getRiskScore() != null) m.put("risk_score", s.getRiskScore());
-        if (s.getScore() != null) m.put("score", s.getScore());
-        if (s.getSeverity() != null) m.put("severity", s.getSeverity());
-        if (s.getUncertainty() != null) m.put("uncertainty", s.getUncertainty());
-        if (s.getLabels() != null && !s.getLabels().isEmpty()) m.put("labels", s.getLabels());
-        if (s.getRiskTags() != null && !s.getRiskTags().isEmpty()) m.put("riskTags", s.getRiskTags());
-        if (s.getReasons() != null && !s.getReasons().isEmpty()) {
-            int take = Math.min(10, s.getReasons().size());
-            m.put("reasons", s.getReasons().subList(0, take));
-        }
-        if (s.getEvidence() != null && !s.getEvidence().isEmpty()) {
-            int take = Math.min(10, s.getEvidence().size());
-            m.put("evidence", s.getEvidence().subList(0, take));
-        }
-        if (s.getInputMode() != null) m.put("inputMode", s.getInputMode());
-        if (s.getModel() != null) m.put("model", s.getModel());
-        if (s.getLatencyMs() != null) m.put("latencyMs", s.getLatencyMs());
+        putSummaryCommonFields(
+                m,
+                s.getDecisionSuggestion(),
+                s.getDecision(),
+                s.getRiskScore(),
+                s.getScore(),
+                s.getSeverity(),
+                s.getUncertainty(),
+                s.getLabels(),
+                s.getRiskTags(),
+                s.getReasons(),
+                s.getEvidence(),
+                s.getInputMode(),
+                s.getModel(),
+                s.getLatencyMs(),
+                s.getRawModelOutput()
+        );
         if (s.getDescription() != null) m.put("description", s.getDescription());
-        String raw = s.getRawModelOutput();
-        if (raw != null) {
-            if (raw.length() > 1000) raw = raw.substring(0, 1000);
-            m.put("rawModelOutput", raw);
-        }
         return m;
     }
 
@@ -1601,13 +1470,7 @@ final class ModerationLlmAutoRunnerSupport {
     }
 
     static double asDoubleRequired(Object v, String key) {
-        if (v == null) throw new IllegalStateException("missing threshold: " + key);
-        if (v instanceof Number n) return n.doubleValue();
-        try {
-            return Double.parseDouble(String.valueOf(v).trim());
-        } catch (Exception e) {
-            throw new IllegalStateException("invalid double threshold: " + key, e);
-        }
+        return ModerationThresholdSupport.asDoubleRequired(v, key);
     }
 
     static long asLongRequired(Object v, String key) {
@@ -1665,25 +1528,23 @@ final class ModerationLlmAutoRunnerSupport {
     static Map<String, Object> summarizeLlmRes(LlmModerationTestResponse r) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (r == null) return m;
-        if (r.getDecisionSuggestion() != null) m.put("decision_suggestion", r.getDecisionSuggestion());
-        if (r.getDecision() != null) m.put("decision", r.getDecision());
-        if (r.getRiskScore() != null) m.put("risk_score", r.getRiskScore());
-        if (r.getScore() != null) m.put("score", r.getScore());
-        if (r.getSeverity() != null) m.put("severity", r.getSeverity());
-        if (r.getUncertainty() != null) m.put("uncertainty", r.getUncertainty());
-        if (r.getLabels() != null && !r.getLabels().isEmpty()) m.put("labels", r.getLabels());
-        if (r.getRiskTags() != null && !r.getRiskTags().isEmpty()) m.put("riskTags", r.getRiskTags());
-        if (r.getReasons() != null && !r.getReasons().isEmpty()) {
-            int take = Math.min(10, r.getReasons().size());
-            m.put("reasons", r.getReasons().subList(0, take));
-        }
-        if (r.getEvidence() != null && !r.getEvidence().isEmpty()) {
-            int take = Math.min(10, r.getEvidence().size());
-            m.put("evidence", r.getEvidence().subList(0, take));
-        }
-        if (r.getInputMode() != null) m.put("inputMode", r.getInputMode());
-        if (r.getModel() != null) m.put("model", r.getModel());
-        if (r.getLatencyMs() != null) m.put("latencyMs", r.getLatencyMs());
+        putSummaryCommonFields(
+                m,
+                r.getDecisionSuggestion(),
+                r.getDecision(),
+                r.getRiskScore(),
+                r.getScore(),
+                r.getSeverity(),
+                r.getUncertainty(),
+                r.getLabels(),
+                r.getRiskTags(),
+                r.getReasons(),
+                r.getEvidence(),
+                r.getInputMode(),
+                r.getModel(),
+                r.getLatencyMs(),
+                r.getRawModelOutput()
+        );
         if (r.getUsage() != null) m.put("usage", r.getUsage());
         if (r.getStages() != null) {
             m.put("hasTextStage", r.getStages().getText() != null);
@@ -1691,12 +1552,47 @@ final class ModerationLlmAutoRunnerSupport {
             m.put("hasJudgeStage", r.getStages().getJudge() != null);
             m.put("hasUpgradeStage", r.getStages().getUpgrade() != null);
         }
-        String raw = r.getRawModelOutput();
-        if (raw != null) {
-            if (raw.length() > 1000) raw = raw.substring(0, 1000);
-            m.put("rawModelOutput", raw);
-        }
         return m;
+    }
+
+    private static void putSummaryCommonFields(Map<String, Object> target,
+                                               String decisionSuggestion,
+                                               String decision,
+                                               Double riskScore,
+                                               Double score,
+                                               String severity,
+                                               Double uncertainty,
+                                               List<String> labels,
+                                               List<String> riskTags,
+                                               List<String> reasons,
+                                               List<String> evidence,
+                                               String inputMode,
+                                               String model,
+                                               Long latencyMs,
+                                               String rawModelOutput) {
+        if (decisionSuggestion != null) target.put("decision_suggestion", decisionSuggestion);
+        if (decision != null) target.put("decision", decision);
+        if (riskScore != null) target.put("risk_score", riskScore);
+        if (score != null) target.put("score", score);
+        if (severity != null) target.put("severity", severity);
+        if (uncertainty != null) target.put("uncertainty", uncertainty);
+        if (labels != null && !labels.isEmpty()) target.put("labels", labels);
+        if (riskTags != null && !riskTags.isEmpty()) target.put("riskTags", riskTags);
+        putSummaryList(target, "reasons", reasons);
+        putSummaryList(target, "evidence", evidence);
+        if (inputMode != null) target.put("inputMode", inputMode);
+        if (model != null) target.put("model", model);
+        if (latencyMs != null) target.put("latencyMs", latencyMs);
+        if (rawModelOutput != null) {
+            String raw = rawModelOutput.length() > 1000 ? rawModelOutput.substring(0, 1000) : rawModelOutput;
+            target.put("rawModelOutput", raw);
+        }
+    }
+
+    private static void putSummaryList(Map<String, Object> target, String key, List<String> values) {
+        if (values == null || values.isEmpty()) return;
+        int take = Math.min(10, values.size());
+        target.put(key, values.subList(0, take));
     }
 
     static String buildFinalReviewInput(Map<String, Object> mem) {

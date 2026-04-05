@@ -12,15 +12,7 @@ public final class TokenCostCalculator {
     }
 
     public static BigDecimal computeCost(BigDecimal inputCostPer1k, BigDecimal outputCostPer1k, long tokensIn, long tokensOut) {
-        BigDecimal outPrice = outputCostPer1k == null ? inputCostPer1k : outputCostPer1k;
-        BigDecimal cost = BigDecimal.ZERO;
-        if (inputCostPer1k != null && tokensIn > 0) {
-            cost = cost.add(inputCostPer1k.multiply(BigDecimal.valueOf(tokensIn)).divide(ONE_THOUSAND, 8, RoundingMode.HALF_UP));
-        }
-        if (outPrice != null && tokensOut > 0) {
-            cost = cost.add(outPrice.multiply(BigDecimal.valueOf(tokensOut)).divide(ONE_THOUSAND, 8, RoundingMode.HALF_UP));
-        }
-        return cost;
+        return computeCostByUnit(inputCostPer1k, outputCostPer1k, tokensIn, tokensOut, ONE_THOUSAND);
     }
 
     public static BigDecimal computeCost(LlmPricing.Config pricing, LlmPricing.Mode mode, long tokensIn, long tokensOut) {
@@ -43,14 +35,23 @@ public final class TokenCostCalculator {
             outputCostPerUnit = LlmPricing.resolveOutputCostPerUnit(pricing, mode);
         }
 
-        BigDecimal inPrice = inputCostPerUnit;
+        return computeCostByUnit(inputCostPerUnit, outputCostPerUnit, in, out, unitDiv);
+    }
+
+    private static BigDecimal computeCostByUnit(
+            BigDecimal inputCostPerUnit,
+            BigDecimal outputCostPerUnit,
+            long tokensIn,
+            long tokensOut,
+            BigDecimal unitDiv
+    ) {
         BigDecimal outPrice = outputCostPerUnit == null ? inputCostPerUnit : outputCostPerUnit;
         BigDecimal cost = BigDecimal.ZERO;
-        if (inPrice != null && in > 0) {
-            cost = cost.add(inPrice.multiply(BigDecimal.valueOf(in)).divide(unitDiv, 8, RoundingMode.HALF_UP));
+        if (inputCostPerUnit != null && tokensIn > 0) {
+            cost = cost.add(inputCostPerUnit.multiply(BigDecimal.valueOf(tokensIn)).divide(unitDiv, 8, RoundingMode.HALF_UP));
         }
-        if (outPrice != null && out > 0) {
-            cost = cost.add(outPrice.multiply(BigDecimal.valueOf(out)).divide(unitDiv, 8, RoundingMode.HALF_UP));
+        if (outPrice != null && tokensOut > 0) {
+            cost = cost.add(outPrice.multiply(BigDecimal.valueOf(tokensOut)).divide(unitDiv, 8, RoundingMode.HALF_UP));
         }
         return cost;
     }

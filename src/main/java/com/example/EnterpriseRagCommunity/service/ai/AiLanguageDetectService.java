@@ -74,23 +74,7 @@ public class AiLanguageDetectService {
     }
 
     private String extractAssistantContent(String rawJson) {
-        try {
-            JsonNode root = objectMapper.readTree(rawJson);
-            JsonNode choices = root.path("choices");
-            if (choices.isArray() && !choices.isEmpty()) {
-                JsonNode first = choices.get(0);
-                JsonNode contentNode = first.path("message").path("content");
-                if (!contentNode.isMissingNode() && contentNode.isTextual()) {
-                    return contentNode.asText();
-                }
-                JsonNode textNode = first.path("text");
-                if (!textNode.isMissingNode() && textNode.isTextual()) {
-                    return textNode.asText();
-                }
-            }
-        } catch (Exception ignore) {
-        }
-        return rawJson;
+        return AiResponseParsingUtils.extractAssistantContent(objectMapper, rawJson);
     }
 
     private List<String> parseLanguagesFromAssistantText(String assistantText) {
@@ -117,10 +101,7 @@ public class AiLanguageDetectService {
             throw new IllegalArgumentException("AI 输出无法解析为语言标签，请重试", e);
         }
 
-        LinkedHashSet<String> set = new LinkedHashSet<>(out);
-        List<String> langs = new ArrayList<>(set);
-        if (langs.size() > 3) langs = langs.subList(0, 3);
-        return langs;
+        return AiResponseParsingUtils.deduplicateAndLimit(out, 3);
     }
 
     private static String cleanLang(String s) {

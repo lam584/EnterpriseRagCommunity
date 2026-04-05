@@ -1,16 +1,9 @@
 package com.example.EnterpriseRagCommunity.service.monitor;
 
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.text.PDFTextStripper;
-import org.apache.poi.extractor.ExtractorFactory;
-import org.apache.poi.extractor.POITextExtractor;
-import org.apache.tika.Tika;
-import org.apache.commons.compress.archivers.ArchiveInputStream;
-
-import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,6 +15,22 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+
+import javax.imageio.ImageIO;
+
+import org.apache.commons.compress.archivers.ArchiveException;
+import org.apache.commons.compress.archivers.ArchiveInputStream;
+import org.apache.commons.compress.archivers.ArchiveStreamFactory;
+import org.apache.commons.compress.compressors.CompressorException;
+import org.apache.commons.compress.compressors.CompressorStreamFactory;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.poi.extractor.ExtractorFactory;
+import org.apache.poi.extractor.POITextExtractor;
+import org.apache.tika.Tika;
+
+import com.example.EnterpriseRagCommunity.util.FileNameUtils;
 
 final class FileAssetExtractionSupport {
 
@@ -148,6 +157,37 @@ final class FileAssetExtractionSupport {
                 .replace("&quot;", "\"")
                 .replace("&#39;", "'");
         return txt.replaceAll("\\s+", " ").trim();
+    }
+
+    static ArchiveProbeResult probeArchiveStream(InputStream raw) throws IOException {
+        BufferedInputStream compressedBuffer = new BufferedInputStream(raw);
+        compressedBuffer.mark(8192);
+        InputStream decompressed = compressedBuffer;
+        String compression = null;
+        try {
+            compression = CompressorStreamFactory.detect(compressedBuffer);
+            compressedBuffer.reset();
+            decompressed = new CompressorStreamFactory().createCompressorInputStream(compression, compressedBuffer, true);
+        } catch (CompressorException ce) {
+            try {
+                compressedBuffer.reset();
+            } catch (Exception ignore) {
+            }
+        }
+
+        BufferedInputStream archiveBuffer = new BufferedInputStream(decompressed);
+        archiveBuffer.mark(8192);
+        String archiveType = null;
+        try {
+            archiveType = ArchiveStreamFactory.detect(archiveBuffer);
+            archiveBuffer.reset();
+        } catch (ArchiveException ae) {
+            try {
+                archiveBuffer.reset();
+            } catch (Exception ignore) {
+            }
+        }
+        return new ArchiveProbeResult(archiveBuffer, compression, archiveType);
     }
 
     static String extractPdf(InputStream is, int maxChars, Map<String, Object> meta) throws Exception {
@@ -340,6 +380,9 @@ final class FileAssetExtractionSupport {
         }
     }
 
+    record ArchiveProbeResult(BufferedInputStream stream, String compression, String archiveType) {
+    }
+
     static String appendImagePlaceholders(String text, List<Map<String, Object>> extractedImages) {
         String base = text == null ? "" : text;
         if (extractedImages == null || extractedImages.isEmpty()) return base;
@@ -422,17 +465,7 @@ final class FileAssetExtractionSupport {
     }
 
     static String extLowerOrNull(String fileName) {
-        if (fileName == null || fileName.isBlank()) return null;
-        String name = fileName.trim();
-        int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
-        if (slash >= 0 && slash < name.length() - 1) name = name.substring(slash + 1);
-        int idx = name.lastIndexOf('.');
-        if (idx < 0 || idx == name.length() - 1) return null;
-        String ext = name.substring(idx + 1).trim().toLowerCase(Locale.ROOT);
-        if (ext.isBlank()) return null;
-        if (!ext.matches("[a-z0-9]+")) return null;
-        if (ext.length() > 16) return null;
-        return ext;
+        return FileNameUtils.extLowerOrNull(fileName);
     }
 
     static String safeMsg(Throwable t) {

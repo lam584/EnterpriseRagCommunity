@@ -187,11 +187,7 @@ public class ModerationVecAutoRunner {
             queueService.autoReject(q.getId(), hit ? "相似检测命中自动拒绝" : "相似检测未命中自动拒绝", run == null ? null : run.getTraceId());
 
             if (vecStepId > 0) {
-                Map<String, Object> details = new LinkedHashMap<>();
-                details.put("hit", hit);
-                details.put("bestDistance", resp == null ? null : resp.getBestDistance());
-                details.put("threshold", resp == null ? null : resp.getThreshold());
-                details.put("hits", resp == null ? List.of() : resp.getHits());
+                Map<String, Object> details = ModerationVecDetailSupport.baseDetails(hit, resp);
                 details.put("action", decidedAction);
                 pipelineTraceService.finishStepOk(vecStepId, "REJECT", null, details);
             }
@@ -225,11 +221,7 @@ public class ModerationVecAutoRunner {
         queueRepository.updateStageIfPendingOrReviewing(q.getId(), next, LocalDateTime.now());
 
         if (vecStepId > 0) {
-            Map<String, Object> details = new LinkedHashMap<>();
-            details.put("hit", hit);
-            details.put("bestDistance", resp == null ? null : resp.getBestDistance());
-            details.put("threshold", resp == null ? null : resp.getThreshold());
-            details.put("hits", resp == null ? List.of() : resp.getHits());
+            Map<String, Object> details = ModerationVecDetailSupport.baseDetails(hit, resp);
             details.put("nextStage", String.valueOf(next));
             pipelineTraceService.finishStepOk(vecStepId, hit ? "HIT" : "MISS", null, details);
         }
@@ -256,13 +248,7 @@ public class ModerationVecAutoRunner {
     }
 
     private static QueueStage mapNextStage(String action) {
-        String a = normalizeAction(action);
-        if (a == null) return QueueStage.HUMAN;
-        return switch (a) {
-            case "LLM" -> QueueStage.LLM;
-            case "VEC" -> QueueStage.VEC;
-            default -> QueueStage.HUMAN;
-        };
+        return ModerationStageSupport.mapNextStage(action);
     }
 
     private static QueueStage mapAction(ModerationConfidenceFallbackConfigEntity.Action action) {
@@ -329,11 +315,7 @@ public class ModerationVecAutoRunner {
     }
 
     private static String firstNonBlank(String a, String b) {
-        String x = a == null ? null : a.trim();
-        if (x != null && !x.isBlank()) return x;
-        String y = b == null ? null : b.trim();
-        if (y != null && !y.isBlank()) return y;
-        return null;
+        return ModerationLlmAutoRunnerSupport.firstNonBlank(a, b);
     }
 
     private static Boolean deepGetVecEnabled(Map<String, Object> m) {
@@ -352,14 +334,7 @@ public class ModerationVecAutoRunner {
     }
 
     private static Boolean deepGetBool(Map<String, Object> m, String path) {
-        Object v = deepGet(m, path);
-        if (v instanceof Boolean bb) return bb;
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        if (s.isEmpty()) return null;
-        if (s.equalsIgnoreCase("true")) return Boolean.TRUE;
-        if (s.equalsIgnoreCase("false")) return Boolean.FALSE;
-        return null;
+        return ModerationJobPayloadSupport.deepGetBoolean(m, path);
     }
 
     private static Double deepGetDouble(Map<String, Object> m, String path) {
@@ -374,15 +349,7 @@ public class ModerationVecAutoRunner {
     }
 
     private static Object deepGet(Map<String, Object> m, String path) {
-        if (m == null || path == null || path.isBlank()) return null;
-        String[] segs = path.split("\\.");
-        Object cur = m;
-        for (String seg : segs) {
-            if (seg == null || seg.isBlank()) continue;
-            if (!(cur instanceof Map<?, ?> mm)) return null;
-            cur = mm.get(seg);
-        }
-        return cur;
+        return ModerationJobPayloadSupport.deepGet(m, path);
     }
 
 }

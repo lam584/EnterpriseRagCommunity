@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as echarts from 'echarts';
+import { parseTimestampMs } from './metricsTimeUtils';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 function apiUrl(path: string): string {
@@ -12,26 +13,6 @@ function getBackendMessage(data: unknown): string | undefined {
     return (data as { message: string }).message;
   }
   return undefined;
-}
-
-function parseTimestampMs(v: unknown): number | null {
-  if (typeof v === 'number' && Number.isFinite(v)) {
-    const ms = v > 1e12 ? v : v * 1000;
-    return Number.isFinite(ms) ? ms : null;
-  }
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return null;
-    const n = Number(t);
-    if (Number.isFinite(n)) {
-      const ms = n > 1e12 ? n : n * 1000;
-      return Number.isFinite(ms) ? ms : null;
-    }
-    const d = new Date(t);
-    const ms = d.getTime();
-    return Number.isFinite(ms) ? ms : null;
-  }
-  return null;
 }
 
 type LoadBalancePoint = { tsMs: number | null; qps: number; avgMs: number; errorRate: number; throttled429Rate: number; p95Ms: number };

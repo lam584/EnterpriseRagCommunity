@@ -76,6 +76,16 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
         return dto;
     }
 
+    private CommentAdminDTO toAdminDTOWithPostContext(CommentsEntity comment) {
+        PostsEntity post = comment.getPostId() == null ? null : postsRepository.findById(comment.getPostId()).orElse(null);
+        return toAdminDTO(
+                comment,
+                safeAuthorName(comment.getAuthorId()),
+                post == null ? null : post.getTitle(),
+                post == null ? null : buildPostExcerpt(post.getContent(), 80)
+        );
+    }
+
     private String safeAuthorName(Long authorId) {
         if (authorId == null) return null;
         try {
@@ -260,11 +270,7 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
                 auditDiffBuilder.build(before, summarizeForAudit(saved))
         );
         // try fill post info for single item as well
-        PostsEntity p = saved.getPostId() == null ? null : postsRepository.findById(saved.getPostId()).orElse(null);
-        return toAdminDTO(saved,
-                safeAuthorName(saved.getAuthorId()),
-                p == null ? null : p.getTitle(),
-                p == null ? null : buildPostExcerpt(p.getContent(), 80));
+        return toAdminDTOWithPostContext(saved);
     }
 
     @Override
@@ -294,11 +300,7 @@ public class AdminCommentsServiceImpl implements AdminCommentsService {
                 null,
                 auditDiffBuilder.build(before, summarizeForAudit(saved))
         );
-        PostsEntity p = saved.getPostId() == null ? null : postsRepository.findById(saved.getPostId()).orElse(null);
-        return toAdminDTO(saved,
-                safeAuthorName(saved.getAuthorId()),
-                p == null ? null : p.getTitle(),
-                p == null ? null : buildPostExcerpt(p.getContent(), 80));
+        return toAdminDTOWithPostContext(saved);
     }
 
     private static Map<String, Object> summarizeForAudit(CommentsEntity e) {

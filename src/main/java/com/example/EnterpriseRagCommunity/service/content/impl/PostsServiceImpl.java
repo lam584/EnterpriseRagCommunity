@@ -15,11 +15,10 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.dto.content.PostsPublishDTO;
+import com.example.EnterpriseRagCommunity.dto.content.PostComposeConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.content.PostsUpdateDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.content.PostAttachmentsEntity;
@@ -38,10 +37,13 @@ import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepositor
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUserIdResolver;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import com.example.EnterpriseRagCommunity.service.access.SafeTextSupport;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.ai.AiPostSummaryTriggerService;
 import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
+import com.example.EnterpriseRagCommunity.service.content.PostLookupSupport;
 import com.example.EnterpriseRagCommunity.service.content.PostComposeConfigService;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
@@ -62,6 +64,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Service
 @RequiredArgsConstructor
 public class PostsServiceImpl implements PostsService {
+    private record ComposeApplyResult(boolean chunked) {
+    }
+
     private final PostsRepository postsRepository;
     private final PostAttachmentsRepository postAttachmentsRepository;
     private final FileAssetsRepository fileAssetsRepository;
@@ -82,14 +87,11 @@ public class PostsServiceImpl implements PostsService {
     private final ModerationQueueRepository moderationQueueRepository;
 
     private Long currentUserIdOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
-        }
-        String email = auth.getName();
-        return administratorService.findByUsername(email)
-                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
-                .getId();
+        return CurrentUserIdResolver.currentUserIdOrThrow(
+                administratorService,
+                () -> new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {},
+                () -> new IllegalArgumentException("当前用户不存在")
+        );
     }
 
     @Override
@@ -116,85 +118,25 @@ public class PostsServiceImpl implements PostsService {
             post.setTenantId(null);
             post.setBoardId(boardId);
             post.setAuthorId(me);
-            String title = dto.getTitle() == null ? "" : dto.getTitle().trim();
-            if (Boolean.TRUE.equals(composeCfg.getRequireTitle()) && title.isBlank()) {
-                throw new IllegalArgumentException("标题不能为空");
-            }
-            if (title.length() > 191) {
-                throw new IllegalArgumentException("标题过长（最多 191 字符）");
-            }
-            post.setTitle(title);
-            post.setContent(dto.getContent());
-            int contentLen = dto.getContent() == null ? 0 : dto.getContent().length();
-            Integer maxContentChars = composeCfg.getMaxContentChars();
-            if (maxContentChars != null && maxContentChars > 0 && contentLen > maxContentChars) {
-                throw new IllegalArgumentException("内容过长（最多 " + maxContentChars + " 字符）");
-            }
-            post.setContentLength(contentLen);
-            post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
+            ComposeApplyResult composeResult = applyComposeFields(
+                    post,
+                    dto.getTitle(),
+                    dto.getContent(),
+                    dto.getContentFormat(),
+                    dto.getTags(),
+                    dto.getMetadata(),
+                    composeCfg
+            );
 
             post.setStatus(PostStatus.PENDING);
             post.setPublishedAt(null);
 
             post.setIsDeleted(false);
-            List<String> tags = resolveTags(dto.getTags(), dto.getMetadata());
-            if (Boolean.TRUE.equals(composeCfg.getRequireTags()) && tags.isEmpty()) {
-                throw new IllegalArgumentException("标签不能为空");
-            }
-            Map<String, Object> mergedMetadata = mergeMetadataWithTags(dto.getMetadata(), dto.getTags());
-            post.setMetadata(mergedMetadata);
-
-            Integer threshold = composeCfg.getChunkThresholdChars();
-            boolean isChunked = threshold != null && threshold > 0 && contentLen > threshold;
-            post.setIsChunkedReview(isChunked);
-            post.setChunkThresholdChars(isChunked ? threshold : null);
-            post.setChunkingStrategy(isChunked ? "CHARS" : null);
 
             post = postsRepository.save(post);
 
             List<Long> attachmentIds = dto.getAttachmentIds();
-            if (attachmentIds != null && !attachmentIds.isEmpty()) {
-                int uniqCount = new LinkedHashSet<>(attachmentIds).size();
-                Integer maxAttachments = composeCfg.getMaxAttachments();
-                boolean bypass = isChunked && Boolean.TRUE.equals(composeCfg.getBypassAttachmentLimitWhenChunked());
-                if (!bypass && maxAttachments != null && maxAttachments > 0 && uniqCount > maxAttachments) {
-                    throw new IllegalArgumentException("附件数量超限（最多 " + maxAttachments + " 个）");
-                }
-            }
-            if (attachmentIds != null && !attachmentIds.isEmpty()) {
-                LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
-                List<Long> syncedAttachmentIds = new ArrayList<>();
-                for (Long id : uniq) {
-                    if (id == null) continue;
-                    FileAssetsEntity fa = fileAssetsRepository.findById(id)
-                            .orElseThrow(() -> new IllegalArgumentException("附件不存在: " + id));
-
-                    Long ownerId = fa.getOwner() == null ? null : fa.getOwner().getId();
-                    if (ownerId == null || !ownerId.equals(me)) {
-                        throw new IllegalArgumentException("无权使用该附件: " + id);
-                    }
-                    if (fa.getStatus() != FileAssetStatus.READY) {
-                        throw new IllegalArgumentException("附件状态不可用: " + id);
-                    }
-
-                    String fileName = fa.getUrl();
-                    if (fileName != null) {
-                        int q = fileName.indexOf('?');
-                        if (q >= 0) fileName = fileName.substring(0, q);
-                        int h = fileName.indexOf('#');
-                        if (h >= 0) fileName = fileName.substring(0, h);
-                        int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
-                    }
-
-                    PostAttachmentsEntity pa = new PostAttachmentsEntity();
-                    pa.setPostId(post.getId());
-                    pa.setFileAssetId(fa.getId());
-                    pa.setCreatedAt(LocalDateTime.now());
-                    postAttachmentsRepository.save(pa);
-                    syncedAttachmentIds.add(fa.getId());
-                }
-                scheduleFileAssetRagSyncAfterCommit(syncedAttachmentIds);
-            }
+            syncPostAttachments(post.getId(), me, attachmentIds, composeCfg, composeResult.chunked());
 
             adminModerationQueueService.ensureEnqueuedPost(post.getId());
             moderationQueueRepository.flush(); // Ensure queue row is visible to native queries
@@ -295,6 +237,45 @@ public class PostsServiceImpl implements PostsService {
         return out;
     }
 
+    private static ComposeApplyResult applyComposeFields(
+            PostsEntity post,
+            String rawTitle,
+            String content,
+            ContentFormat contentFormat,
+            List<String> tags,
+            Map<String, Object> metadata,
+            PostComposeConfigDTO composeCfg
+    ) {
+        String title = rawTitle == null ? "" : rawTitle.trim();
+        if (Boolean.TRUE.equals(composeCfg.getRequireTitle()) && title.isBlank()) {
+            throw new IllegalArgumentException("标题不能为空");
+        }
+        if (title.length() > 191) {
+            throw new IllegalArgumentException("标题过长（最多 191 字符）");
+        }
+        post.setTitle(title);
+        post.setContent(content);
+        int contentLen = content == null ? 0 : content.length();
+        Integer maxContentChars = composeCfg.getMaxContentChars();
+        if (maxContentChars != null && maxContentChars > 0 && contentLen > maxContentChars) {
+            throw new IllegalArgumentException("内容过长（最多 " + maxContentChars + " 字符）");
+        }
+        post.setContentLength(contentLen);
+        post.setContentFormat(contentFormat == null ? ContentFormat.MARKDOWN : contentFormat);
+        List<String> normalizedTags = resolveTags(tags, metadata);
+        if (Boolean.TRUE.equals(composeCfg.getRequireTags()) && normalizedTags.isEmpty()) {
+            throw new IllegalArgumentException("标签不能为空");
+        }
+        post.setMetadata(mergeMetadataWithTags(metadata, tags));
+
+        Integer threshold = composeCfg.getChunkThresholdChars();
+        boolean isChunked = threshold != null && threshold > 0 && contentLen > threshold;
+        post.setIsChunkedReview(isChunked);
+        post.setChunkThresholdChars(isChunked ? threshold : null);
+        post.setChunkingStrategy(isChunked ? "CHARS" : null);
+        return new ComposeApplyResult(isChunked);
+    }
+
     private void scheduleFileAssetRagSyncAfterCommit(List<Long> fileAssetIds) {
         if (fileAssetIds == null || fileAssetIds.isEmpty()) return;
         LinkedHashSet<Long> uniqFileAssetIds = new LinkedHashSet<>();
@@ -327,6 +308,45 @@ public class PostsServiceImpl implements PostsService {
             return;
         }
         syncAction.run();
+    }
+
+    private void syncPostAttachments(Long postId, Long operatorUserId, List<Long> attachmentIds,
+                                     PostComposeConfigDTO composeCfg, boolean isChunked) {
+        if (attachmentIds == null || attachmentIds.isEmpty()) return;
+        validateAttachmentCount(attachmentIds, composeCfg, isChunked);
+
+        LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
+        List<Long> syncedAttachmentIds = new ArrayList<>();
+        for (Long attachmentId : uniq) {
+            if (attachmentId == null) continue;
+            FileAssetsEntity fa = fileAssetsRepository.findById(attachmentId)
+                    .orElseThrow(() -> new IllegalArgumentException("附件不存在: " + attachmentId));
+
+            Long ownerId = fa.getOwner() == null ? null : fa.getOwner().getId();
+            if (ownerId == null || !ownerId.equals(operatorUserId)) {
+                throw new IllegalArgumentException("无权使用该附件: " + attachmentId);
+            }
+            if (fa.getStatus() != FileAssetStatus.READY) {
+                throw new IllegalArgumentException("附件状态不可用: " + attachmentId);
+            }
+
+            PostAttachmentsEntity pa = new PostAttachmentsEntity();
+            pa.setPostId(postId);
+            pa.setFileAssetId(fa.getId());
+            pa.setCreatedAt(LocalDateTime.now());
+            postAttachmentsRepository.save(pa);
+            syncedAttachmentIds.add(fa.getId());
+        }
+        scheduleFileAssetRagSyncAfterCommit(syncedAttachmentIds);
+    }
+
+    private static void validateAttachmentCount(List<Long> attachmentIds, PostComposeConfigDTO composeCfg, boolean isChunked) {
+        int uniqCount = new LinkedHashSet<>(attachmentIds).size();
+        Integer maxAttachments = composeCfg.getMaxAttachments();
+        boolean bypass = isChunked && Boolean.TRUE.equals(composeCfg.getBypassAttachmentLimitWhenChunked());
+        if (!bypass && maxAttachments != null && maxAttachments > 0 && uniqCount > maxAttachments) {
+            throw new IllegalArgumentException("附件数量超限（最多 " + maxAttachments + " 个）");
+        }
     }
 
     private static Map<String, Object> mergeMetadataWithTags(Map<String, Object> metadata, List<String> tags) {
@@ -478,11 +498,7 @@ public class PostsServiceImpl implements PostsService {
         int end = Math.min(ids.size(), offset + safePageSize);
         List<Long> slice = ids.subList(offset, end);
 
-        Map<Long, PostsEntity> byId = new HashMap<>();
-        for (PostsEntity p : postsRepository.findByIdInAndIsDeletedFalseAndStatus(slice, PostStatus.PUBLISHED)) {
-            if (p == null || p.getId() == null) continue;
-            byId.put(p.getId(), p);
-        }
+        Map<Long, PostsEntity> byId = PostLookupSupport.loadPublishedPostsById(slice, postsRepository);
 
         LocalDateTime start = createdFrom == null ? null : createdFrom.atStartOfDay();
         LocalDateTime endExclusive = createdTo == null ? null : createdTo.plusDays(1).atStartOfDay();
@@ -596,80 +612,20 @@ public class PostsServiceImpl implements PostsService {
             var composeCfg = postComposeConfigService.getConfig();
 
             post.setBoardId(boardId);
-            String title = dto.getTitle() == null ? "" : dto.getTitle().trim();
-            if (Boolean.TRUE.equals(composeCfg.getRequireTitle()) && title.isBlank()) {
-                throw new IllegalArgumentException("标题不能为空");
-            }
-            if (title.length() > 191) {
-                throw new IllegalArgumentException("标题过长（最多 191 字符）");
-            }
-            post.setTitle(title);
-            post.setContent(dto.getContent());
-            int contentLen = dto.getContent() == null ? 0 : dto.getContent().length();
-            Integer maxContentChars = composeCfg.getMaxContentChars();
-            if (maxContentChars != null && maxContentChars > 0 && contentLen > maxContentChars) {
-                throw new IllegalArgumentException("内容过长（最多 " + maxContentChars + " 字符）");
-            }
-            post.setContentLength(contentLen);
-            post.setContentFormat(dto.getContentFormat() == null ? ContentFormat.MARKDOWN : dto.getContentFormat());
-            List<String> tags = resolveTags(dto.getTags(), dto.getMetadata());
-            if (Boolean.TRUE.equals(composeCfg.getRequireTags()) && tags.isEmpty()) {
-                throw new IllegalArgumentException("标签不能为空");
-            }
-            Map<String, Object> mergedMetadata = mergeMetadataWithTags(dto.getMetadata(), dto.getTags());
-            post.setMetadata(mergedMetadata);
-
-            Integer threshold = composeCfg.getChunkThresholdChars();
-            boolean isChunked = threshold != null && threshold > 0 && contentLen > threshold;
-            post.setIsChunkedReview(isChunked);
-            post.setChunkThresholdChars(isChunked ? threshold : null);
-            post.setChunkingStrategy(isChunked ? "CHARS" : null);
+            ComposeApplyResult composeResult = applyComposeFields(
+                    post,
+                    dto.getTitle(),
+                    dto.getContent(),
+                    dto.getContentFormat(),
+                    dto.getTags(),
+                    dto.getMetadata(),
+                    composeCfg
+            );
 
             postAttachmentsRepository.deleteByPostId(post.getId());
 
             List<Long> attachmentIds = dto.getAttachmentIds();
-            if (attachmentIds != null && !attachmentIds.isEmpty()) {
-                int uniqCount = new LinkedHashSet<>(attachmentIds).size();
-                Integer maxAttachments = composeCfg.getMaxAttachments();
-                boolean bypass = isChunked && Boolean.TRUE.equals(composeCfg.getBypassAttachmentLimitWhenChunked());
-                if (!bypass && maxAttachments != null && maxAttachments > 0 && uniqCount > maxAttachments) {
-                    throw new IllegalArgumentException("附件数量超限（最多 " + maxAttachments + " 个）");
-                }
-            }
-            if (attachmentIds != null && !attachmentIds.isEmpty()) {
-                LinkedHashSet<Long> uniq = new LinkedHashSet<>(attachmentIds);
-                List<Long> syncedAttachmentIds = new ArrayList<>();
-                for (Long faId : uniq) {
-                    if (faId == null) continue;
-                    FileAssetsEntity fa = fileAssetsRepository.findById(faId)
-                            .orElseThrow(() -> new IllegalArgumentException("附件不存在: " + faId));
-
-                    Long ownerId = fa.getOwner() == null ? null : fa.getOwner().getId();
-                    if (ownerId == null || !ownerId.equals(me)) {
-                        throw new IllegalArgumentException("无权使用该附件: " + faId);
-                    }
-                    if (fa.getStatus() != FileAssetStatus.READY) {
-                        throw new IllegalArgumentException("附件状态不可用: " + faId);
-                    }
-
-                    String fileName = fa.getUrl();
-                    if (fileName != null) {
-                        int q = fileName.indexOf('?');
-                        if (q >= 0) fileName = fileName.substring(0, q);
-                        int h = fileName.indexOf('#');
-                        if (h >= 0) fileName = fileName.substring(0, h);
-                        int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
-                    }
-
-                    PostAttachmentsEntity pa = new PostAttachmentsEntity();
-                    pa.setPostId(post.getId());
-                    pa.setFileAssetId(fa.getId());
-                    pa.setCreatedAt(LocalDateTime.now());
-                    postAttachmentsRepository.save(pa);
-                    syncedAttachmentIds.add(fa.getId());
-                }
-                scheduleFileAssetRagSyncAfterCommit(syncedAttachmentIds);
-            }
+            syncPostAttachments(post.getId(), me, attachmentIds, composeCfg, composeResult.chunked());
 
             PostsEntity saved = postsRepository.save(post);
             if (saved.getStatus() == PostStatus.PUBLISHED && !Boolean.TRUE.equals(saved.getIsDeleted())) {
@@ -767,14 +723,7 @@ public class PostsServiceImpl implements PostsService {
     }
 
     private static String currentUsernameOrNull() {
-        try {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 
     private static Map<String, Object> mapOfNonNull(Object... kv) {

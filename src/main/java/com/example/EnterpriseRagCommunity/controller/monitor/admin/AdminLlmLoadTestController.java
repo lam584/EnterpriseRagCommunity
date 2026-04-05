@@ -1,7 +1,6 @@
 package com.example.EnterpriseRagCommunity.controller.monitor.admin;
 
 import java.util.Map;
-
 import jakarta.validation.constraints.Pattern;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -31,6 +30,8 @@ import java.util.Locale;
 @RequiredArgsConstructor
 @Validated
 public class AdminLlmLoadTestController {
+    private static final java.util.regex.Pattern RUN_ID_PATTERN =
+            java.util.regex.Pattern.compile("^[A-Za-z0-9-]{1,64}$");
 
     private final AdminLlmLoadTestService service;
 
@@ -65,11 +66,23 @@ public class AdminLlmLoadTestController {
             @PathVariable @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId,
             @RequestParam(value = "format", required = false, defaultValue = "json") @Pattern(regexp = "^(json|csv)$") String format
     ) {
-        return service.export(runId.trim(), isCsvFormat(format));
+        String normalizedRunId = normalizeRunId(runId);
+        if (normalizedRunId == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        return service.export(normalizedRunId, isCsvFormat(format));
     }
 
     private static boolean isCsvFormat(String format) {
         String f = format == null ? "json" : format.trim().toLowerCase(Locale.ROOT);
         return "csv".equals(f);
+    }
+
+    private static String normalizeRunId(String runId) {
+        if (runId == null) {
+            return null;
+        }
+        String trimmed = runId.trim();
+        return RUN_ID_PATTERN.matcher(trimmed).matches() ? trimmed : null;
     }
 }

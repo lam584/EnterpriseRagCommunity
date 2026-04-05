@@ -26,54 +26,54 @@ public class TotpMasterKeyBootstrapService {
         String fallbackCommand = "setx " + ENV_NAME + " \"" + keyBase64 + "\"";
 
         if (!osName.contains("windows")) {
-            Result r = new Result();
-            r.setKeyBase64(keyBase64);
-            r.setEnvVarName(ENV_NAME);
-            r.setAttempted(true);
-            r.setSucceeded(false);
-            r.setScope(null);
-            r.setCommand(preferredCommand);
-            r.setFallbackCommand(fallbackCommand);
+            Result r = TotpBootstrapResultSupport.buildBaseResult(
+                    keyBase64,
+                    ENV_NAME,
+                    preferredCommand,
+                    fallbackCommand,
+                    false,
+                    null
+            );
             r.setMessage("当前系统非 Windows，无法自动执行 setx。请手动设置环境变量并重启后端。");
             return r;
         }
 
         int systemExitCode = runCommandExitCode("cmd.exe", "/c", preferredCommand);
         if (systemExitCode == 0) {
-            Result r = new Result();
-            r.setKeyBase64(keyBase64);
-            r.setEnvVarName(ENV_NAME);
-            r.setAttempted(true);
-            r.setSucceeded(true);
-            r.setScope("SYSTEM");
-            r.setCommand(preferredCommand);
-            r.setFallbackCommand(fallbackCommand);
+            Result r = TotpBootstrapResultSupport.buildBaseResult(
+                    keyBase64,
+                    ENV_NAME,
+                    preferredCommand,
+                    fallbackCommand,
+                    true,
+                    "SYSTEM"
+            );
             r.setMessage("已写入系统级环境变量（需重启后端进程后生效）。");
             return r;
         }
 
         int userExitCode = runCommandExitCode("cmd.exe", "/c", fallbackCommand);
         if (userExitCode == 0) {
-            Result r = new Result();
-            r.setKeyBase64(keyBase64);
-            r.setEnvVarName(ENV_NAME);
-            r.setAttempted(true);
-            r.setSucceeded(true);
-            r.setScope("USER");
-            r.setCommand(fallbackCommand);
-            r.setFallbackCommand(fallbackCommand);
+            Result r = TotpBootstrapResultSupport.buildBaseResult(
+                    keyBase64,
+                    ENV_NAME,
+                    fallbackCommand,
+                    fallbackCommand,
+                    true,
+                    "USER"
+            );
             r.setMessage("已写入用户级环境变量（需重启后端进程后生效）。");
             return r;
         }
 
-        Result r = new Result();
-        r.setKeyBase64(keyBase64);
-        r.setEnvVarName(ENV_NAME);
-        r.setAttempted(true);
-        r.setSucceeded(false);
-        r.setScope(null);
-        r.setCommand(preferredCommand);
-        r.setFallbackCommand(fallbackCommand);
+        Result r = TotpBootstrapResultSupport.buildBaseResult(
+                keyBase64,
+                ENV_NAME,
+                preferredCommand,
+                fallbackCommand,
+                false,
+                null
+        );
         r.setMessage("自动写入环境变量失败，请手动执行命令并重启后端。");
         r.setError("systemExitCode=" + systemExitCode + " userExitCode=" + userExitCode);
         return r;

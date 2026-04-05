@@ -314,23 +314,30 @@ export default function AiProvidersForm() {
     [emptyProviderModelsState, mapModelsDtoToState]
   );
 
+  const applyLoadedConfig = useCallback(
+    async (cfg: Awaited<ReturnType<typeof adminGetAiProvidersConfig>>) => {
+      const nextForm = mapDtoToForm(cfg);
+      setForm(nextForm);
+      const ids = Array.from(new Set(nextForm.providers.map((p) => (p.id ?? '').trim()).filter(Boolean)));
+      setPersistedProviderIds(ids);
+      await Promise.all(ids.map((id) => refreshProviderModels(id)));
+    },
+    [refreshProviderModels]
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     setSuccess(null);
     try {
       const cfg = await adminGetAiProvidersConfig();
-      const nextForm = mapDtoToForm(cfg);
-      setForm(nextForm);
-      const ids = Array.from(new Set(nextForm.providers.map((p) => (p.id ?? '').trim()).filter(Boolean)));
-      setPersistedProviderIds(ids);
-      await Promise.all(ids.map((id) => refreshProviderModels(id)));
+      await applyLoadedConfig(cfg);
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败');
     } finally {
       setLoading(false);
     }
-  }, [refreshProviderModels]);
+  }, [applyLoadedConfig]);
 
   useEffect(() => {
     load();
@@ -348,11 +355,7 @@ export default function AiProvidersForm() {
     try {
       const payload = buildPayload(form);
       const saved = await adminUpdateAiProvidersConfig(payload);
-      const nextForm = mapDtoToForm(saved);
-      setForm(nextForm);
-      const ids = Array.from(new Set(nextForm.providers.map((p) => (p.id ?? '').trim()).filter(Boolean)));
-      setPersistedProviderIds(ids);
-      await Promise.all(ids.map((id) => refreshProviderModels(id)));
+      await applyLoadedConfig(saved);
       setSuccess('保存成功');
       try {
         window.localStorage.removeItem('llm-routing-config.provider-models-map.v2');

@@ -9,6 +9,7 @@ import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtraction
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
 import com.example.EnterpriseRagCommunity.service.content.admin.AdminPostFilesService;
 import com.example.EnterpriseRagCommunity.service.monitor.FileAssetExtractionAsyncService;
+import com.example.EnterpriseRagCommunity.util.FileNameUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -257,16 +258,6 @@ public class AdminPostFilesServiceImpl implements AdminPostFilesService {
     }
 
     private static String extLowerOrNull(String fileName) {
-        if (fileName == null || fileName.isBlank()) return null;
-        String name = fileName.trim();
-        int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
-        if (slash >= 0 && slash < name.length() - 1) name = name.substring(slash + 1);
-        int idx = name.lastIndexOf('.');
-        if (idx < 0 || idx == name.length() - 1) return null;
-        String ext = name.substring(idx + 1).trim().toLowerCase(Locale.ROOT);
-        if (ext.isBlank()) return null;
-        if (!ext.matches("[a-z0-9]+")) return null;
-        if (ext.length() > 16) return null;
-        return ext;
+        return FileNameUtils.extLowerOrNull(fileName);
     }
 }

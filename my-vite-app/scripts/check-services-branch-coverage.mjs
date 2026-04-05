@@ -5,9 +5,21 @@ const STAGE = String(process.env.SERVICES_BRANCH_STAGE ?? '1');
 const DEFAULT_MIN_BRANCHES = STAGE === '2' ? 78 : 70;
 const MIN_BRANCHES = Number(process.env.SERVICES_BRANCH_MIN ?? DEFAULT_MIN_BRANCHES);
 
-const coverageSummaryPath = process.argv[2]
-  ? path.resolve(process.cwd(), process.argv[2])
-  : path.resolve(process.cwd(), 'test-reports/vitest-coverage/coverage-summary.json');
+const DEFAULT_COVERAGE_SUMMARY_PATH = path.resolve(process.cwd(), 'test-reports/vitest-coverage/coverage-summary.json');
+
+const resolveCoverageSummaryPath = (arg) => {
+  if (!arg) return DEFAULT_COVERAGE_SUMMARY_PATH;
+  const candidate = path.resolve(process.cwd(), arg);
+  if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+    return path.join(candidate, 'coverage-summary.json');
+  }
+  if (candidate.toLowerCase().endsWith('.json')) {
+    return candidate;
+  }
+  return DEFAULT_COVERAGE_SUMMARY_PATH;
+};
+
+const coverageSummaryPath = resolveCoverageSummaryPath(process.argv[2]);
 
 const toPosixPath = (p) => p.replaceAll('\\', '/');
 

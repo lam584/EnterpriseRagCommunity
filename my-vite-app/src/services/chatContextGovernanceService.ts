@@ -1,5 +1,6 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 import { getBackendMessage } from './serviceErrorUtils';
+import { buildPageQuery } from './servicePagingUtils';
 import { serviceApiUrl } from './serviceUrlUtils';
 import type { SpringPage } from '../types/page';
 
@@ -84,12 +85,7 @@ export async function adminListChatContextLogs(params?: {
   from?: string;
   to?: string;
 }): Promise<SpringPage<AdminChatContextEventLogDTO>> {
-  const sp = new URLSearchParams();
-  sp.set('page', String(params?.page ?? 0));
-  sp.set('size', String(params?.size ?? 20));
-  if (params?.from) sp.set('from', params.from);
-  if (params?.to) sp.set('to', params.to);
-  const res = await fetch(apiUrl(`/api/admin/ai/chat-context/logs?${sp.toString()}`), {
+  const res = await fetch(apiUrl(`/api/admin/ai/chat-context/logs?${buildPageQuery(params)}`), {
     method: 'GET',
     credentials: 'include',
   });

@@ -172,12 +172,7 @@ public class BoardAccessControlServiceImpl implements BoardAccessControlService 
     public boolean canViewBoard(Long boardId, Set<Long> roleIds) {
         if (boardId == null) return false;
         List<Long> required = boardRolePermissionsRepository.findRoleIdsByBoardIdAndPerm(boardId, BoardRolePermissionType.VIEW);
-        if (required == null || required.isEmpty()) return true;
-        if (roleIds == null || roleIds.isEmpty()) return false;
-        for (Long rid : required) {
-            if (rid != null && rid > 0 && roleIds.contains(rid)) return true;
-        }
-        return false;
+        return matchesAnyRole(required, roleIds);
     }
 
     @Override
@@ -185,6 +180,10 @@ public class BoardAccessControlServiceImpl implements BoardAccessControlService 
     public boolean canPostBoard(Long boardId, Set<Long> roleIds) {
         if (boardId == null) return false;
         List<Long> required = boardRolePermissionsRepository.findRoleIdsByBoardIdAndPerm(boardId, BoardRolePermissionType.POST);
+        return matchesAnyRole(required, roleIds);
+    }
+
+    private static boolean matchesAnyRole(List<Long> required, Set<Long> roleIds) {
         if (required == null || required.isEmpty()) return true;
         if (roleIds == null || roleIds.isEmpty()) return false;
         for (Long rid : required) {

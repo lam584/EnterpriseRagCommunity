@@ -64,6 +64,14 @@ const mockEnrollTotp = vi.mocked(enrollTotp);
 const mockVerifyTotp = vi.mocked(verifyTotp);
 const mockVerifyTotpPassword = vi.mocked(verifyTotpPassword);
 
+async function completeEnablePrecheckFlow() {
+  fireEvent.click(screen.getByRole('button', { name: '开始启用' }));
+  fireEvent.change(await screen.findByPlaceholderText('先验证密码才能继续'), { target: { value: 'p' } });
+  fireEvent.click(screen.getByRole('button', { name: '验证密码' }));
+  fireEvent.change(await screen.findByPlaceholderText('启用前必填'), { target: { value: '123456' } });
+  fireEvent.click(screen.getByRole('button', { name: '验证验证码' }));
+}
+
 describe('AccountSecurityPage (TOTP)', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -108,12 +116,7 @@ describe('AccountSecurityPage (TOTP)', () => {
 
     expect(await screen.findByText(/当前状态：未启用/)).not.toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: '开始启用' }));
-    fireEvent.change(screen.getByPlaceholderText('先验证密码才能继续'), { target: { value: 'p' } });
-    fireEvent.click(screen.getByRole('button', { name: '验证密码' }));
-
-    fireEvent.change(await screen.findByPlaceholderText('启用前必填'), { target: { value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '验证验证码' }));
+    await completeEnablePrecheckFlow();
 
     expect(await screen.findByText('绑定信息')).not.toBeNull();
     expect(screen.getByDisplayValue('ABC')).not.toBeNull();
@@ -142,12 +145,7 @@ describe('AccountSecurityPage (TOTP)', () => {
 
     expect((await screen.findAllByText('二次验证（TOTP）')).length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole('button', { name: '开始启用' }));
-    fireEvent.change(await screen.findByPlaceholderText('先验证密码才能继续'), { target: { value: 'p' } });
-    fireEvent.click(screen.getByRole('button', { name: '验证密码' }));
-
-    fireEvent.change(await screen.findByPlaceholderText('启用前必填'), { target: { value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '验证验证码' }));
+    await completeEnablePrecheckFlow();
 
     expect(mockEnrollTotp).toHaveBeenCalledTimes(1);
     expect(mockEnrollTotp).toHaveBeenCalledWith({
@@ -168,12 +166,7 @@ describe('AccountSecurityPage (TOTP)', () => {
       </MemoryRouter>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: '开始启用' }));
-    fireEvent.change(await screen.findByPlaceholderText('先验证密码才能继续'), { target: { value: 'p' } });
-    fireEvent.click(screen.getByRole('button', { name: '验证密码' }));
-
-    fireEvent.change(await screen.findByPlaceholderText('启用前必填'), { target: { value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '验证验证码' }));
+    await completeEnablePrecheckFlow();
     expect(await screen.findByText('绑定信息')).not.toBeNull();
 
     const enableCodeBox = screen.getByTestId('totp-enable-code');

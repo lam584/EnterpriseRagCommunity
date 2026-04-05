@@ -278,16 +278,7 @@ public class AccountTotpService {
 
     @Transactional
     public TotpStatusResponse disableByEmail(String email, String code) {
-        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        if (!totpCryptoService.isConfigured()) {
-            throw new IllegalStateException("TOTP 主密钥未配置，请联系管理员设置 APP_TOTP_MASTER_KEY（Base64）或 app.security.totp.master-key");
-        }
-
-        List<TotpSecretsEntity> enabled = totpSecretsRepository.findByUserIdAndEnabledTrue(user.getId());
-        TotpSecretsEntity current = enabled.stream()
-                .max(Comparator.comparing(TotpSecretsEntity::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
-                .orElseThrow(() -> new IllegalStateException("当前未启用 TOTP"));
+        TotpSecretsEntity current = requireLatestEnabledSecret(email);
 
         byte[] secret = totpCryptoService.decrypt(current.getSecretEncrypted());
         boolean ok = totpService.verifyCode(secret, code, current.getAlgorithm(), current.getDigits(), current.getPeriodSeconds(), current.getSkew());
@@ -300,6 +291,14 @@ public class AccountTotpService {
 
     @Transactional
     public TotpStatusResponse disableByEmailWithoutTotp(String email) {
+        TotpSecretsEntity current = requireLatestEnabledSecret(email);
+
+        current.setEnabled(false);
+        totpSecretsRepository.save(current);
+        return toStatus(current);
+    }
+
+    private TotpSecretsEntity requireLatestEnabledSecret(String email) {
         UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
         if (!totpCryptoService.isConfigured()) {
@@ -307,13 +306,9 @@ public class AccountTotpService {
         }
 
         List<TotpSecretsEntity> enabled = totpSecretsRepository.findByUserIdAndEnabledTrue(user.getId());
-        TotpSecretsEntity current = enabled.stream()
+        return enabled.stream()
                 .max(Comparator.comparing(TotpSecretsEntity::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
                 .orElseThrow(() -> new IllegalStateException("当前未启用 TOTP"));
-
-        current.setEnabled(false);
-        totpSecretsRepository.save(current);
-        return toStatus(current);
     }
 
     private TotpStatusResponse toStatus(TotpSecretsEntity e) {

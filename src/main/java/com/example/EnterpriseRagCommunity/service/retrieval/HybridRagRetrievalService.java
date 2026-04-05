@@ -1,5 +1,6 @@
 package com.example.EnterpriseRagCommunity.service.retrieval;
 
+import com.example.EnterpriseRagCommunity.service.ai.AiResponseParsingUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -30,6 +31,7 @@ import com.example.EnterpriseRagCommunity.dto.retrieval.HybridRetrievalConfigDTO
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
+import com.example.EnterpriseRagCommunity.service.ai.ApproxTokenSupport;
 import com.example.EnterpriseRagCommunity.service.ai.AiRerankService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
@@ -214,30 +216,17 @@ public class HybridRagRetrievalService {
 
     private List<DocHit> vecSearch(String queryText, Long boardId, int topK) {
         int k = clampInt(topK, 1, 5000);
-
-        AiEmbeddingService.EmbeddingResult er;
-        try {
-            String mo = ragProps.getEs().getEmbeddingModel();
-            er = llmGateway.embedOnceRouted(LlmQueueTaskType.POST_EMBEDDING, null, mo, queryText);
-        } catch (Exception e) {
-            throw new IllegalStateException("Embedding failed: " + e.getMessage(), e);
-        }
-        float[] vec = er == null ? null : er.vector();
-        if (vec == null || vec.length == 0) return List.of();
-
-        int configuredDims = ragProps.getEs().getEmbeddingDims();
-        int inferredDims = vec.length;
-        if (configuredDims > 0 && configuredDims != inferredDims) {
-            throw new IllegalStateException("Embedding dims mismatch: configured=" + configuredDims + " but embedding length=" + inferredDims);
-        }
-        int dimsToUse = configuredDims > 0 ? configuredDims : inferredDims;
-
         String indexName = ragProps.getEs().getIndex();
-        try {
-            indexService.ensureIndex(indexName, dimsToUse);
-        } catch (Exception e) {
-            throw new IllegalStateException("Ensure ES index failed: " + e.getMessage(), e);
-        }
+        RagSearchSupport.EmbeddedQuery embeddedQuery = RagSearchSupport.embedAndEnsureIndex(
+                llmGateway,
+                ragProps.getEs().getEmbeddingModel(),
+                queryText,
+                ragProps.getEs().getEmbeddingDims(),
+                indexName,
+                dims -> indexService.ensureIndex(indexName, dims)
+        );
+        float[] vec = embeddedQuery.vector();
+        if (vec == null || vec.length == 0) return List.of();
 
         String body = buildKnnBody(k, Math.clamp(k * 10L, 100, 20_000), boardId, vec);
         JsonNode root = postSearch(indexName, body);
@@ -344,27 +333,15 @@ public class HybridRagRetrievalService {
             double vMin = Double.POSITIVE_INFINITY, vMax = Double.NEGATIVE_INFINITY;
             double fvMin = Double.POSITIVE_INFINITY, fvMax = Double.NEGATIVE_INFINITY;
 
-            if (bm25 != null) {
-                for (DocHit h : bm25) {
-                    if (h == null || h.getScore() == null) continue;
-                    bmMin = Math.min(bmMin, h.getScore());
-                    bmMax = Math.max(bmMax, h.getScore());
-                }
-            }
-            if (vec != null) {
-                for (DocHit h : vec) {
-                    if (h == null || h.getScore() == null) continue;
-                    vMin = Math.min(vMin, h.getScore());
-                    vMax = Math.max(vMax, h.getScore());
-                }
-            }
-            if (fileVec != null) {
-                for (DocHit h : fileVec) {
-                    if (h == null || h.getScore() == null) continue;
-                    fvMin = Math.min(fvMin, h.getScore());
-                    fvMax = Math.max(fvMax, h.getScore());
-                }
-            }
+            double[] bmRange = scoreRange(bm25);
+            bmMin = bmRange[0];
+            bmMax = bmRange[1];
+            double[] vecRange = scoreRange(vec);
+            vMin = vecRange[0];
+            vMax = vecRange[1];
+            double[] fileVecRange = scoreRange(fileVec);
+            fvMin = fileVecRange[0];
+            fvMax = fileVecRange[1];
 
             for (DocHit h : m.values()) {
                 double b = h.getBm25Score() == null ? 0.0 : normalizeMinMax(h.getBm25Score(), bmMin, bmMax);
@@ -407,18 +384,18 @@ public class HybridRagRetrievalService {
         int queryTokens = approxTokens(queryText == null ? "" : queryText);
         int estimatedInputTokens = queryTokens;
 
-        for (DocHit h : candidates) {
-            if (h == null || h.getDocId() == null) continue;
-            String t = buildDocText(h);
-            t = truncateByApproxTokens(t, perDocMaxTokens);
-            int tokens = approxTokens(t);
-            if (tokens <= 0) continue;
-            int cost = tokens + Math.max(0, queryTokens);
-            if (budgetLeft - cost < 200) break;
-            budgetLeft -= cost;
-            candidatesUsed.add(h);
-            docTexts.add(t);
-            estimatedInputTokens += tokens;
+        budgetLeft = HybridRerankDocumentSupport.collectDocsWithinBudget(
+                candidates,
+                candidatesUsed,
+                docTexts,
+                HybridRagRetrievalService::buildDocText,
+                text -> truncateByApproxTokens(text, perDocMaxTokens),
+                HybridRagRetrievalService::approxTokens,
+                budgetLeft,
+                queryTokens
+        );
+        for (String text : docTexts) {
+            estimatedInputTokens += approxTokens(text);
         }
 
         if (docTexts.isEmpty()) return fused;
@@ -551,20 +528,7 @@ public class HybridRagRetrievalService {
     }
 
     private String extractAssistantContent(String rawJson) {
-        if (rawJson == null) return "";
-        try {
-            JsonNode root = objectMapper.readTree(rawJson);
-            JsonNode choices = root.path("choices");
-            if (choices.isArray() && !choices.isEmpty()) {
-                JsonNode first = choices.get(0);
-                JsonNode contentNode = first.path("message").path("content");
-                if (contentNode.isTextual()) return contentNode.asText();
-                JsonNode textNode = first.path("text");
-                if (textNode.isTextual()) return textNode.asText();
-            }
-        } catch (Exception ignore) {
-        }
-        return rawJson;
+        return rawJson == null ? "" : AiResponseParsingUtils.extractAssistantContent(objectMapper, rawJson);
     }
 
     private List<ScoredDoc> parseRankingFromAssistant(String assistantText) {
@@ -676,28 +640,7 @@ public class HybridRagRetrievalService {
     }
 
     private static String buildKnnBody(int size, int numCandidates, Long boardId, float[] vec) {
-        StringBuilder sb = new StringBuilder();
-        sb.append('{');
-        sb.append("\"size\":").append(size);
-        sb.append(",\"query\":{\"bool\":{\"filter\":[");
-        if (boardId != null) {
-            sb.append("{\"term\":{\"board_id\":").append(boardId).append("}}");
-        }
-        sb.append("]}}");
-        sb.append(",\"knn\":{");
-        sb.append("\"field\":\"embedding\"");
-        sb.append(",\"query_vector\":[");
-        for (int i = 0; i < vec.length; i++) {
-            if (i > 0) sb.append(',');
-            sb.append(vec[i]);
-        }
-        sb.append(']');
-        sb.append(",\"k\":").append(size);
-        sb.append(",\"num_candidates\":").append(numCandidates);
-        sb.append('}');
-        appendHighlightClause(sb);
-        sb.append('}');
-        return sb.toString();
+        return RagPostSearchJsonSupport.buildKnnSearchBody(size, numCandidates, boardId, vec, true);
     }
 
     private static void appendHighlightClause(StringBuilder sb) {
@@ -710,15 +653,7 @@ public class HybridRagRetrievalService {
     }
 
     private static String firstHighlightFragment(JsonNode highlightNode, String field) {
-        if (highlightNode == null || field == null || field.isBlank()) return null;
-        JsonNode arr = highlightNode.path(field);
-        if (!arr.isArray() || arr.isEmpty()) return null;
-        for (JsonNode x : arr) {
-            if (x == null || !x.isTextual()) continue;
-            String t = x.asText(null);
-            if (t != null && !t.isBlank()) return t;
-        }
-        return null;
+        return RagSearchSupport.firstHighlightFragment(highlightNode, field);
     }
 
     private static String escapeJson(String s) {
@@ -748,6 +683,19 @@ public class HybridRagRetrievalService {
         return x;
     }
 
+    private static double[] scoreRange(List<DocHit> hits) {
+        double min = Double.POSITIVE_INFINITY;
+        double max = Double.NEGATIVE_INFINITY;
+        if (hits != null) {
+            for (DocHit h : hits) {
+                if (h == null || h.getScore() == null) continue;
+                min = Math.min(min, h.getScore());
+                max = Math.max(max, h.getScore());
+            }
+        }
+        return new double[]{min, max};
+    }
+
     private static int clampInt(int v, int min, int max) {
         int x = v;
         if (x < min) x = min;
@@ -761,14 +709,7 @@ public class HybridRagRetrievalService {
     }
 
     private static int approxTokens(String s) {
-        if (s == null || s.isEmpty()) return 0;
-        double t = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c <= 0x7f) t += 0.25;
-            else t += 1.0;
-        }
-        return (int) Math.ceil(t);
+        return ApproxTokenSupport.approxTokens(s);
     }
 
     private static String truncateByApproxTokens(String s, int maxTokens) {

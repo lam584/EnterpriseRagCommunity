@@ -64,14 +64,7 @@ public class AdminModerationLlmController {
         try {
             LlmModerationTestResponse resp = service.test(req);
             try {
-                Map<String, Object> details = new LinkedHashMap<>();
-                details.put("queueId", req == null ? null : req.getQueueId());
-                details.put("hasText", req != null && req.getText() != null && !req.getText().isBlank());
-                details.put("images", req == null || req.getImages() == null ? 0 : req.getImages().size());
-                details.put("decision", resp == null ? null : resp.getDecision());
-                details.put("score", resp == null ? null : resp.getScore());
-                details.put("inputMode", resp == null ? null : resp.getInputMode());
-                details.put("latencyMs", resp == null ? null : resp.getLatencyMs());
+                Map<String, Object> details = buildTestAuditDetails(req, resp);
                 auditLogWriter.write(
                         null,
                         username,
@@ -88,10 +81,7 @@ public class AdminModerationLlmController {
             return resp;
         } catch (RuntimeException e) {
             try {
-                Map<String, Object> details = new LinkedHashMap<>();
-                details.put("queueId", req == null ? null : req.getQueueId());
-                details.put("hasText", req != null && req.getText() != null && !req.getText().isBlank());
-                details.put("images", req == null || req.getImages() == null ? 0 : req.getImages().size());
+                Map<String, Object> details = buildTestAuditDetails(req, null);
                 auditLogWriter.write(
                         null,
                         username,
@@ -107,6 +97,20 @@ public class AdminModerationLlmController {
             }
             throw e;
         }
+    }
+
+    private static Map<String, Object> buildTestAuditDetails(LlmModerationTestRequest req, LlmModerationTestResponse resp) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("queueId", req == null ? null : req.getQueueId());
+        details.put("hasText", req != null && req.getText() != null && !req.getText().isBlank());
+        details.put("images", req == null || req.getImages() == null ? 0 : req.getImages().size());
+        if (resp != null) {
+            details.put("decision", resp.getDecision());
+            details.put("score", resp.getScore());
+            details.put("inputMode", resp.getInputMode());
+            details.put("latencyMs", resp.getLatencyMs());
+        }
+        return details;
     }
 
     private static String safeText(String s, int maxLen) {

@@ -5,10 +5,12 @@ import com.example.EnterpriseRagCommunity.dto.content.PostDraftsDTO;
 import com.example.EnterpriseRagCommunity.dto.content.PostDraftsUpdateDTO;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.content.PostDraftsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
 import com.example.EnterpriseRagCommunity.repository.content.PostDraftsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import com.example.EnterpriseRagCommunity.service.content.PostDraftsService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -42,13 +44,22 @@ public class PostDraftsServiceImpl implements PostDraftsService {
 
     private static PostDraftsDTO toDTO(PostDraftsEntity e) {
         PostDraftsDTO dto = new PostDraftsDTO();
-        dto.setId(e.getId());
-        dto.setTenantId(e.getTenantId());
-        dto.setBoardId(e.getBoardId());
-        dto.setAuthorId(e.getAuthorId());
-        dto.setTitle(e.getTitle());
-        dto.setContent(e.getContent());
-        dto.setContentFormat(e.getContentFormat());
+        PostContentFieldSupport.applyCommonFields(
+                e.getId(),
+                e.getTenantId(),
+                e.getBoardId(),
+                e.getAuthorId(),
+                e.getTitle(),
+                e.getContent(),
+                e.getContentFormat(),
+                dto::setId,
+                dto::setTenantId,
+                dto::setBoardId,
+                dto::setAuthorId,
+                dto::setTitle,
+                dto::setContent,
+                dto::setContentFormat
+        );
         dto.setMetadata(e.getMetadata());
         dto.setCreatedAt(e.getCreatedAt());
         dto.setUpdatedAt(e.getUpdatedAt());
@@ -77,10 +88,7 @@ public class PostDraftsServiceImpl implements PostDraftsService {
         e.setTenantId(dto.getTenantId());
         e.setBoardId(dto.getBoardId());
         e.setAuthorId(me);
-        e.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
-        e.setContent(dto.getContent() == null ? "" : dto.getContent());
-        e.setContentFormat(dto.getContentFormat());
-        e.setMetadata(dto.getMetadata());
+        applyDraftFields(e, dto.getTitle(), dto.getContent(), dto.getContentFormat(), dto.getMetadata());
         e = postDraftsRepository.save(e);
         auditLogWriter.write(
                 me,
@@ -104,10 +112,7 @@ public class PostDraftsServiceImpl implements PostDraftsService {
                 .orElseThrow(() -> new IllegalArgumentException("草稿不存在或无权访问"));
         Map<String, Object> before = summarizeForAudit(e);
         e.setBoardId(dto.getBoardId());
-        e.setTitle(dto.getTitle() == null ? "" : dto.getTitle().trim());
-        e.setContent(dto.getContent() == null ? "" : dto.getContent());
-        e.setContentFormat(dto.getContentFormat());
-        e.setMetadata(dto.getMetadata());
+        applyDraftFields(e, dto.getTitle(), dto.getContent(), dto.getContentFormat(), dto.getMetadata());
         e = postDraftsRepository.save(e);
         auditLogWriter.write(
                 me,
@@ -165,15 +170,20 @@ public class PostDraftsServiceImpl implements PostDraftsService {
         return m;
     }
 
+    private static void applyDraftFields(
+            PostDraftsEntity entity,
+            String title,
+            String content,
+            ContentFormat contentFormat,
+            Map<String, Object> metadata
+    ) {
+        entity.setTitle(title == null ? "" : title.trim());
+        entity.setContent(content == null ? "" : content);
+        entity.setContentFormat(contentFormat);
+        entity.setMetadata(metadata);
+    }
+
     private static String currentUsernameOrNull() {
-        try {
-            var auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 }
-

@@ -84,33 +84,24 @@ public class RagCommentIndexBuildService {
         resp.setChunkOverlapChars(chunkOverlapChars);
 
         int ps = commentBatchSize == null || commentBatchSize < 1 ? 100 : Math.min(1000, commentBatchSize);
-        int maxChars = chunkMaxChars == null || chunkMaxChars < 200 ? 800 : Math.min(5000, chunkMaxChars);
-        int overlap = chunkOverlapChars == null || chunkOverlapChars < 0 ? 80 : Math.min(maxChars - 1, chunkOverlapChars);
+        RagValueSupport.ChunkingParams chunking = RagValueSupport.resolveIndexBuildChunking(chunkMaxChars, chunkOverlapChars);
+        int maxChars = chunking.maxChars();
+        int overlap = chunking.overlap();
 
         Map<String, Object> meta0ForDefaults = vi.getMetadata();
-        String fixedProviderId = meta0ForDefaults == null ? null : toNonBlankString(meta0ForDefaults.get("embeddingProviderId"));
-        String modelToUse = toNonBlankString(embeddingModelOverride);
-        if (modelToUse == null) modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
+        RagEmbeddingBuildSupport.ResolvedEmbeddingTarget embeddingTarget =
+                RagEmbeddingBuildSupport.resolveEmbeddingTarget(
+                        llmRoutingService,
+                        embeddingModelOverride,
+                        null,
+                        meta0ForDefaults,
+                        true,
+                        ragProps.getEs().getEmbeddingModel()
+                );
+        String modelToUse = embeddingTarget.model();
+        String providerToUse = embeddingTarget.providerId();
 
-        String providerToUse = fixedProviderId;
-        if (modelToUse == null) {
-            LlmRoutingService.RouteTarget target = (providerToUse == null)
-                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
-                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
-            if (target == null) {
-                throw new IllegalStateException(providerToUse == null
-                        ? "no eligible embedding target (please check embedding routing config)"
-                        : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
-            }
-            providerToUse = target.providerId();
-            modelToUse = target.modelName();
-        }
-
-        Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
-        if (configuredDims == null) {
-            Integer d = vi.getDim();
-            configuredDims = d != null && d > 0 ? d : null;
-        }
+        Integer configuredDims = RagEmbeddingBuildSupport.resolveConfiguredDims(expectedEmbeddingDims, vi.getDim());
 
         vi.setStatus(VectorIndexStatus.BUILDING);
         vectorIndicesRepository.save(vi);
@@ -196,13 +187,8 @@ public class RagCommentIndexBuildService {
 
                     String docId = "comment_" + commentId + "_chunk_" + ci;
                     try {
-                        AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnceForTask(chunk, modelToUse, providerToUse, LlmQueueTaskType.POST_EMBEDDING);
-                        if (emb == null || emb.vector() == null || emb.vector().length == 0) {
-                            throw new IllegalStateException("embedding returned empty vector");
-                        }
-                        int inferredDims = emb.vector().length;
-                        validateEmbeddingDims(configuredDims, inferredDims);
-                        int dimsToUse = configuredDims != null ? configuredDims : inferredDims;
+                        EmbeddingPayload payload = resolveEmbeddingPayload(chunk, modelToUse, providerToUse, configuredDims);
+                        int dimsToUse = payload.dimsToUse();
                         if (!ensured) {
                             if (clearPending) {
                                 try {
@@ -232,30 +218,20 @@ public class RagCommentIndexBuildService {
                             ensured = true;
                         }
 
-                        String contentHash = ModerationSampleTextUtils.sha256Hex(chunk);
-
-                        Document d = Document.create();
-                        d.setId(docId);
-                        d.put("id", docId);
-                        d.put("comment_id", commentId);
-                        d.put("post_id", postId);
-                        if (parentId != null) d.put("parent_id", parentId);
-                        if (authorId != null) d.put("author_id", authorId);
-                        d.put("comment_floor", commentFloor);
-                        d.put("comment_level", commentLevel);
-                        d.put("source_type", "comment");
-                        d.put("chunk_index", ci);
-                        d.put("content_hash", contentHash);
-                        if (excerpt != null) d.put("content_excerpt", excerpt);
-                        d.put("content_text", chunk);
-                        if (c.getCreatedAt() != null) d.put("created_at", Date.from(c.getCreatedAt().toInstant(ZoneOffset.UTC)));
-                        if (c.getUpdatedAt() != null) d.put("updated_at", Date.from(c.getUpdatedAt().toInstant(ZoneOffset.UTC)));
-
-                        float[] vector = emb.vector();
-                        List<Float> vec = new ArrayList<>(vector.length);
-                        for (float v : vector) vec.add(v);
-                        d.put("embedding", vec);
-
+                        Document d = buildCommentChunkDocument(
+                            docId,
+                            commentId,
+                            postId,
+                            parentId,
+                            authorId,
+                            commentFloor,
+                            commentLevel,
+                            ci,
+                            excerpt,
+                            chunk,
+                            c,
+                            payload.vector()
+                        );
                         esTemplate.save(d, IndexCoordinates.of(indexName));
                         successChunks++;
                     } catch (Exception ex) {
@@ -420,22 +396,17 @@ public class RagCommentIndexBuildService {
             return;
         }
 
-        String modelToUse;
-        String providerToUse = toNonBlankString(vi.getMetadata() == null ? null : vi.getMetadata().get("embeddingProviderId"));
-        modelToUse = toNonBlankString(ragProps.getEs().getEmbeddingModel());
-
-        if (modelToUse == null) {
-            LlmRoutingService.RouteTarget target = (providerToUse == null)
-                    ? llmRoutingService.pickNext(LlmQueueTaskType.POST_EMBEDDING, new HashSet<>())
-                    : llmRoutingService.pickNextInProvider(LlmQueueTaskType.POST_EMBEDDING, providerToUse, new HashSet<>());
-            if (target == null) {
-                throw new IllegalStateException(providerToUse == null
-                        ? "no eligible embedding target (please check embedding routing config)"
-                        : ("no eligible embedding target for providerId=" + providerToUse + " (please check embedding routing config)"));
-            }
-            providerToUse = target.providerId();
-            modelToUse = target.modelName();
-        }
+        RagEmbeddingBuildSupport.ResolvedEmbeddingTarget embeddingTarget =
+                RagEmbeddingBuildSupport.resolveEmbeddingTarget(
+                        llmRoutingService,
+                        toNonBlankString(ragProps.getEs().getEmbeddingModel()),
+                        null,
+                        vi.getMetadata(),
+                        true,
+                        null
+                );
+        String modelToUse = embeddingTarget.model();
+        String providerToUse = embeddingTarget.providerId();
 
         Integer configuredDims;
         Integer d = vi.getDim();
@@ -471,42 +442,27 @@ public class RagCommentIndexBuildService {
             if (chunk == null || chunk.isBlank()) continue;
             String docId = "comment_" + commentId + "_chunk_" + ci;
             try {
-                AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnceForTask(chunk, modelToUse, providerToUse, LlmQueueTaskType.POST_EMBEDDING);
-                if (emb == null || emb.vector() == null || emb.vector().length == 0) {
-                    throw new IllegalStateException("embedding returned empty vector");
-                }
-                int inferredDims = emb.vector().length;
-                validateEmbeddingDims(configuredDims, inferredDims);
-                int dimsToUse = configuredDims != null ? configuredDims : inferredDims;
+                EmbeddingPayload payload = resolveEmbeddingPayload(chunk, modelToUse, providerToUse, configuredDims);
+                int dimsToUse = payload.dimsToUse();
                 if (!ensured) {
                     indexService.ensureIndex(indexName, dimsToUse);
                     ensured = true;
                 }
 
-                String contentHash = ModerationSampleTextUtils.sha256Hex(chunk);
-
-                Document d0 = Document.create();
-                d0.setId(docId);
-                d0.put("id", docId);
-                d0.put("comment_id", commentId);
-                d0.put("post_id", postId);
-                if (c.getParentId() != null) d0.put("parent_id", c.getParentId());
-                if (c.getAuthorId() != null) d0.put("author_id", c.getAuthorId());
-                d0.put("comment_floor", floor);
-                d0.put("comment_level", level);
-                d0.put("source_type", "comment");
-                d0.put("chunk_index", ci);
-                d0.put("content_hash", contentHash);
-                if (excerpt != null) d0.put("content_excerpt", excerpt);
-                d0.put("content_text", chunk);
-                if (c.getCreatedAt() != null) d0.put("created_at", Date.from(c.getCreatedAt().toInstant(ZoneOffset.UTC)));
-                if (c.getUpdatedAt() != null) d0.put("updated_at", Date.from(c.getUpdatedAt().toInstant(ZoneOffset.UTC)));
-
-                float[] vector = emb.vector();
-                List<Float> vec = new ArrayList<>(vector.length);
-                for (float v : vector) vec.add(v);
-                d0.put("embedding", vec);
-
+                Document d0 = buildCommentChunkDocument(
+                    docId,
+                    commentId,
+                    postId,
+                    c.getParentId(),
+                    c.getAuthorId(),
+                    floor,
+                    level,
+                    ci,
+                    excerpt,
+                    chunk,
+                    c,
+                    payload.vector()
+                );
                 esTemplate.save(d0, IndexCoordinates.of(indexName));
             } catch (Exception ex) {
                 log.warn("RAG single-comment chunk upsert failed. vectorIndexId={}, commentId={}, docId={}, err={}", vectorIndexId, commentId, docId, summarizeException(ex), ex);
@@ -530,6 +486,49 @@ public class RagCommentIndexBuildService {
             if (src.hasNonNull("comment_floor")) return src.path("comment_floor").asInt();
         }
         return null;
+    }
+
+    private Document buildCommentChunkDocument(String docId,
+                                               Long commentId,
+                                               Long postId,
+                                               Long parentId,
+                                               Long authorId,
+                                               Integer commentFloor,
+                                               Integer commentLevel,
+                                               int chunkIndex,
+                                               String excerpt,
+                                               String chunk,
+                                               CommentsEntity comment,
+                                               float[] vector) {
+        Document d = Document.create();
+        d.setId(docId);
+        d.put("id", docId);
+        d.put("comment_id", commentId);
+        d.put("post_id", postId);
+        if (parentId != null) d.put("parent_id", parentId);
+        if (authorId != null) d.put("author_id", authorId);
+        d.put("comment_floor", commentFloor);
+        d.put("comment_level", commentLevel);
+        d.put("source_type", "comment");
+        d.put("chunk_index", chunkIndex);
+        d.put("content_hash", ModerationSampleTextUtils.sha256Hex(chunk));
+        if (excerpt != null) d.put("content_excerpt", excerpt);
+        d.put("content_text", chunk);
+        if (comment.getCreatedAt() != null) d.put("created_at", Date.from(comment.getCreatedAt().toInstant(ZoneOffset.UTC)));
+        if (comment.getUpdatedAt() != null) d.put("updated_at", Date.from(comment.getUpdatedAt().toInstant(ZoneOffset.UTC)));
+        d.put("embedding", toFloatList(vector));
+        return d;
+    }
+
+    private List<Float> toFloatList(float[] vector) {
+        if (vector == null || vector.length == 0) {
+            return List.of();
+        }
+        List<Float> vec = new ArrayList<>(vector.length);
+        for (float v : vector) {
+            vec.add(v);
+        }
+        return vec;
     }
 
     private Integer findExistingPostMaxFloor(String indexName, Long postId) {
@@ -585,83 +584,19 @@ public class RagCommentIndexBuildService {
     }
 
     private void deleteByQuery(String indexName, String body) {
-        if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
-        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
-
-        try {
-            URL url = java.net.URI.create(endpoint + "/" + indexName.trim() + "/_delete_by_query?conflicts=proceed&refresh=true").toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(30_000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
-
-            String payload = body == null ? "{\"query\":{\"match_all\":{}}}" : body;
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(payload.getBytes(StandardCharsets.UTF_8));
-            }
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String json = is == null ? "" : new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            if (code < 200 || code >= 300) {
-                throw new IllegalStateException("ES delete_by_query HTTP " + code + ": " + json);
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("ES delete_by_query failed: " + e.getMessage(), e);
-        }
+        ElasticsearchHttpSupport.deleteByQuery(systemConfigurationService, indexName, body);
     }
 
     private void deleteIndexViaHttp(String indexName) {
-        if (indexName == null || indexName.isBlank()) throw new IllegalArgumentException("indexName is blank");
-        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
-
-        try {
-            String idx = URLEncoder.encode(indexName.trim(), StandardCharsets.UTF_8);
-            URL url = java.net.URI.create(endpoint + "/" + idx + "?ignore_unavailable=true").toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("DELETE");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(30_000);
-            conn.setRequestProperty("Content-Type", "application/json");
-            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String json = is == null ? "" : new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            if ((code >= 200 && code < 300) || code == 404) return;
-            throw new IllegalStateException("ES delete index HTTP " + code + ": " + json);
-        } catch (Exception e) {
-            throw new IllegalStateException("ES delete index failed: " + e.getMessage(), e);
-        }
+        ElasticsearchHttpSupport.deleteIndex(systemConfigurationService, indexName);
     }
 
     private void touchMetadata(Long vectorIndexId, java.util.function.Consumer<Map<String, Object>> mutator) {
-        if (vectorIndexId == null) return;
-        VectorIndicesEntity vi = vectorIndicesRepository.findById(vectorIndexId).orElse(null);
-        if (vi == null) return;
-        Map<String, Object> meta0 = vi.getMetadata();
-        Map<String, Object> meta = meta0 == null ? new LinkedHashMap<>() : new LinkedHashMap<>(meta0);
-        if (mutator != null) mutator.accept(meta);
-        vi.setMetadata(meta);
-        vectorIndicesRepository.save(vi);
+        VectorIndexMetadataSupport.touchMetadata(vectorIndexId, vectorIndicesRepository, mutator);
     }
 
     private static Long toLong(Object v) {
-        if (v == null) return null;
-        if (v instanceof Number n) return n.longValue();
-        if (v instanceof String s) {
-            String t = s.trim();
-            if (t.isBlank()) return null;
-            try {
-                return Long.parseLong(t);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
+        return RagValueSupport.toLong(v);
     }
 
     private static int toInt(Object v) {
@@ -670,24 +605,33 @@ public class RagCommentIndexBuildService {
     }
 
     private static Integer toIntBoxed(Object v) {
-        if (v == null) return null;
-        if (v instanceof Number n) return n.intValue();
-        if (v instanceof String s) {
-            String t = s.trim();
-            if (t.isBlank()) return null;
-            try {
-                return Integer.parseInt(t);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
+        return RagValueSupport.toInteger(v);
     }
 
     private static String toNonBlankString(Object v) {
         if (v == null) return null;
         String s = String.valueOf(v).trim();
         return s.isBlank() ? null : s;
+    }
+
+    private EmbeddingPayload resolveEmbeddingPayload(
+            String chunk,
+            String modelToUse,
+            String providerToUse,
+            Integer configuredDims
+    ) throws java.io.IOException {
+        AiEmbeddingService.EmbeddingResult emb = embeddingService.embedOnceForTask(
+                chunk,
+                modelToUse,
+                providerToUse,
+                LlmQueueTaskType.POST_EMBEDDING
+        );
+        if (emb == null || emb.vector() == null || emb.vector().length == 0) {
+            throw new IllegalStateException("embedding returned empty vector");
+        }
+        int inferredDims = emb.vector().length;
+        validateEmbeddingDims(configuredDims, inferredDims);
+        return new EmbeddingPayload(emb.vector(), configuredDims != null ? configuredDims : inferredDims);
     }
 
     static void validateEmbeddingDims(Integer configuredDims, Integer inferredDims) {
@@ -697,28 +641,13 @@ public class RagCommentIndexBuildService {
     }
 
     private static String summarizeException(Throwable ex) {
-        if (ex == null) return null;
-        String type = ex.getClass().getSimpleName();
-        String msg = ex.getMessage();
-        String out = (msg == null || msg.isBlank()) ? type : (type + ": " + msg);
-        out = out.replaceAll("\\s+", " ").trim();
-        if (out.length() > 800) out = out.substring(0, 800) + "...";
-        return out;
+        return ExceptionSummaryUtils.summarizeException(ex);
     }
 
     private static List<String> splitWithOverlap(String text, int maxChars, int overlap) {
-        String s = text == null ? "" : text.trim();
-        if (s.isBlank()) return List.of();
-        if (s.length() <= maxChars) return List.of(s);
+        return RagValueSupport.splitWithOverlap(text, maxChars, overlap);
+    }
 
-        int step = Math.max(1, maxChars - Math.max(0, overlap));
-        List<String> out = new ArrayList<>();
-        for (int start = 0; start < s.length(); start += step) {
-            int end = Math.min(s.length(), start + maxChars);
-            String part = s.substring(start, end).trim();
-            if (!part.isBlank()) out.add(part);
-            if (end >= s.length()) break;
-        }
-        return out;
+    private record EmbeddingPayload(float[] vector, int dimsToUse) {
     }
 }

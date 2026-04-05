@@ -146,6 +146,12 @@ const waitCsrfReady = async () => {
   await Promise.resolve();
 };
 
+const submitLoginAttempt = (email: string, password: string) => {
+  fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: email } });
+  fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: password } });
+  fireEvent.click(screen.getByRole('button', { name: '登录' }));
+};
+
 describe('Login', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -164,9 +170,7 @@ describe('Login', () => {
     mockCsrfFetch('');
     renderLogin();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('test@example.com', '123456');
 
     expect(screen.getByText('安全令牌缺失，请刷新页面重试')).not.toBeNull();
     expect(mockLogin).not.toHaveBeenCalled();
@@ -251,9 +255,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'verify@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('verify@example.com', '123456');
 
     expect(await screen.findByText('账号未完成邮箱验证')).not.toBeNull();
 
@@ -276,9 +278,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'fallback@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('fallback@example.com', '123456');
 
     await screen.findByText('账号未完成邮箱验证');
 
@@ -297,9 +297,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'verify@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('verify@example.com', '123456');
 
     await screen.findByText('账号未完成邮箱验证');
 
@@ -319,9 +317,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'cooldown2@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('cooldown2@example.com', '123456');
 
     await screen.findByText('账号未完成邮箱验证');
 
@@ -345,9 +341,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'expire@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('expire@example.com', '123456');
 
     await screen.findByText('账号未完成邮箱验证');
     await Promise.resolve();
@@ -367,9 +361,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'invalid@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('invalid@example.com', '123456');
 
     await screen.findByText('账号未完成邮箱验证');
 
@@ -387,9 +379,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'resendfail@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('resendfail@example.com', '123456');
 
     await screen.findByText('账号未完成邮箱验证');
 
@@ -406,10 +396,7 @@ describe('Login', () => {
 
     const { unmount } = renderLogin();
     await waitCsrfReady();
-
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'cooldown@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('cooldown@example.com', '123456');
 
     await screen.findByText('账号未完成邮箱验证');
 
@@ -419,10 +406,7 @@ describe('Login', () => {
     unmount();
     renderLogin();
     await waitCsrfReady();
-
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'cooldown@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('cooldown@example.com', '123456');
 
     await screen.findByText('账号未完成邮箱验证');
 
@@ -444,9 +428,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('test@example.com', '123456');
 
     expect(await screen.findByText('登录需要二次验证')).not.toBeNull();
 
@@ -476,9 +458,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('test@example.com', '123456');
 
     await screen.findByText('登录需要二次验证');
 
@@ -496,9 +476,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('test@example.com', '123456');
 
     await screen.findByText('登录需要二次验证');
 
@@ -521,9 +499,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('test@example.com', '123456');
 
     await screen.findByText('登录需要二次验证');
 
@@ -542,9 +518,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('test@example.com', '123456');
 
     await screen.findByText('登录需要二次验证');
 
@@ -564,9 +538,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('test@example.com', '123456');
 
     await screen.findByText('登录需要二次验证');
 
@@ -586,9 +558,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('test@example.com', '123456');
 
     await screen.findByText('登录需要二次验证');
 
@@ -609,9 +579,7 @@ describe('Login', () => {
     renderLogin();
     await waitCsrfReady();
 
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { name: 'email', value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { name: 'password', value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '登录' }));
+    submitLoginAttempt('test@example.com', '123456');
 
     await screen.findByText('登录需要二次验证');
 

@@ -1,16 +1,16 @@
-  import { getCsrfToken } from '../utils/csrfUtils';
+import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { consumeSseResponse } from './serviceSseUtils';
+import { parseSseBlock } from './serviceSseUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
-function getBackendMessage(data: unknown): string | null {
-  if (!data || typeof data !== 'object') return null;
-  const d = data as Record<string, unknown>;
-  const msg = d.message ?? d.error;
-  return msg == null ? null : String(msg);
+function getLooseBackendMessage(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const record = data as Record<string, unknown>;
+  const value = record.message ?? record.error;
+  return value == null ? undefined : String(value);
 }
 
 export type AiStreamEvent =
@@ -70,27 +70,7 @@ export type AiChatResponse = {
 };
 
 function parseEventBlock(block: string): AiStreamEvent | null {
-  // block contains lines like:
-  // event: delta
-  // data: {...}
-  const lines = block
-    .split(/\r?\n/)
-    .map((l) => l.trimEnd())
-    .filter((l) => l.trim() !== '');
-
-  let eventType: string | undefined;
-  const dataLines: string[] = [];
-
-  for (const line of lines) {
-    if (line.startsWith('event:')) {
-      eventType = line.slice('event:'.length).trim();
-    } else if (line.startsWith('data:')) {
-      dataLines.push(line.slice('data:'.length).trim());
-    }
-  }
-
-  const dataStr = dataLines.join('\n');
-
+  const { eventType, dataStr } = parseSseBlock(block);
   if (!eventType) return null;
 
   try {
@@ -163,35 +143,7 @@ export async function chatStream(
     signal
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `请求失败: ${res.status}`);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) {
-    throw new Error('浏览器不支持流式响应');
-  }
-
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    // SSE events are separated by double newline
-    let idx: number;
-    while ((idx = buffer.indexOf('\n\n')) >= 0) {
-      const block = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-
-      const ev = parseEventBlock(block);
-      if (ev) onEvent(ev);
-    }
-  }
+  await consumeSseResponse(res, parseEventBlock, onEvent);
 }
 
 export async function chatOnce(payload: AiChatStreamRequest, signal?: AbortSignal): Promise<AiChatResponse> {
@@ -215,9 +167,7 @@ export async function chatOnce(payload: AiChatStreamRequest, signal?: AbortSigna
   });
 
   const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(getBackendMessage(data) || `请求失败: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(getLooseBackendMessage(data) || getBackendMessage(data) || `请求失败: ${res.status}`);
   return data as AiChatResponse;
 }
 
@@ -246,34 +196,7 @@ export async function regenerateStream(
     signal
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `请求失败: ${res.status}`);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) {
-    throw new Error('浏览器不支持流式响应');
-  }
-
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    let idx: number;
-    while ((idx = buffer.indexOf('\n\n')) >= 0) {
-      const block = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-
-      const ev = parseEventBlock(block);
-      if (ev) onEvent(ev);
-    }
-  }
+  await consumeSseResponse(res, parseEventBlock, onEvent);
 }
 
 export async function regenerateOnce(
@@ -301,8 +224,6 @@ export async function regenerateOnce(
   });
 
   const data: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(getBackendMessage(data) || `请求失败: ${res.status}`);
-  }
+  if (!res.ok) throw new Error(getLooseBackendMessage(data) || getBackendMessage(data) || `请求失败: ${res.status}`);
   return data as AiChatResponse;
 }

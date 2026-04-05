@@ -1,10 +1,8 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { consumeSseResponse } from './serviceSseUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
 export type PostComposeAiStreamEvent =
   | { type: 'meta'; snapshotId: number }
@@ -87,31 +85,5 @@ export async function postComposeEditStream(
     signal,
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `请求失败: ${res.status}`);
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) {
-    throw new Error('浏览器不支持流式响应');
-  }
-
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-
-    let idx: number;
-    while ((idx = buffer.indexOf('\n\n')) >= 0) {
-      const block = buffer.slice(0, idx);
-      buffer = buffer.slice(idx + 2);
-      const ev = parseEventBlock(block);
-      if (ev) onEvent(ev);
-    }
-  }
+  await consumeSseResponse(res, parseEventBlock, onEvent);
 }

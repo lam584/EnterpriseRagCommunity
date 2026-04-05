@@ -2,6 +2,7 @@ import type {MouseEvent, RefObject} from 'react';
 import {Send, Square} from 'lucide-react';
 
 import type {UploadResult} from '../../../../services/uploadService';
+import { extractImageFilesFromClipboardData } from '../../../../utils/clipboardImageFiles';
 
 type AssistantChatComposerProps = {
     fileInputRef: RefObject<HTMLInputElement | null>;
@@ -94,14 +95,7 @@ export function AssistantChatComposer(props: AssistantChatComposerProps) {
                     onQuestionChange(e.target.value);
                 }}
                 onPaste={(e) => {
-                    const items = Array.from(e.clipboardData?.items ?? []);
-                    const files: File[] = [];
-                    for (const it of items) {
-                        if (it.kind !== 'file') continue;
-                        if (!String(it.type ?? '').toLowerCase().startsWith('image/')) continue;
-                        const f = it.getAsFile();
-                        if (f) files.push(f);
-                    }
+                    const files = extractImageFilesFromClipboardData(e.clipboardData);
                     if (files.length === 0) return;
                     onPasteImages(files);
                 }}

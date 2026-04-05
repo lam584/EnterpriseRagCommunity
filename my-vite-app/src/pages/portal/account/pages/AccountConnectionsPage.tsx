@@ -263,6 +263,107 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
     }
   };
 
+  const oldVerifyActionLabel = verifyingOld ? '验证中...' : oldVerified ? '已验证' : '验证';
+  const oldVerifyActionDisabled = verifyingOld || oldVerified || saving;
+
+  const renderOldEmailVerificationFields = () => (
+    <div className="space-y-2">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">旧邮箱验证码</label>
+          <input
+            type="text"
+            value={oldEmailCode}
+            onChange={(ev) => setOldEmailCode(ev.target.value)}
+            disabled={oldVerifyActionDisabled}
+            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+            placeholder="请输入验证码"
+          />
+        </div>
+        <button
+          type="button"
+          disabled={sendingOldCode || saving || oldCountdown > 0 || oldVerified}
+          onClick={handleSendOldCode}
+          className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+        >
+          {sendingOldCode ? '发送中...' : oldCountdown > 0 ? `${oldCountdown}s` : '发送验证码'}
+        </button>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={oldVerifyActionDisabled}
+          onClick={handleVerifyOld}
+          className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
+        >
+          {oldVerifyActionLabel}
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderOldVerificationStep = () => {
+    if (!totpEnabled) {
+      return renderOldEmailVerificationFields();
+    }
+    return (
+      <div className="space-y-3">
+        <div className="flex gap-6">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="oldVerifyMethod"
+              checked={oldVerifyMethod === 'totp'}
+              onChange={() => setOldVerifyMethod('totp')}
+              disabled={oldVerifyActionDisabled}
+              className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700">动态验证码</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="oldVerifyMethod"
+              checked={oldVerifyMethod === 'email'}
+              onChange={() => setOldVerifyMethod('email')}
+              disabled={oldVerifyActionDisabled}
+              className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700">旧邮箱验证码</span>
+          </label>
+        </div>
+
+        {oldVerifyMethod === 'totp' ? (
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">动态验证码</label>
+              <OtpCodeInput
+                digits={totpDigits}
+                value={totpCode}
+                onChange={setTotpCode}
+                onComplete={() => {
+                  if (oldVerifyActionDisabled) return;
+                  void handleVerifyOld();
+                }}
+                disabled={oldVerifyActionDisabled}
+                autoFocus
+              />
+            </div>
+            <button
+              type="button"
+              disabled={oldVerifyActionDisabled}
+              onClick={handleVerifyOld}
+              className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
+            >
+              {oldVerifyActionLabel}
+            </button>
+          </div>
+        ) : renderOldEmailVerificationFields()}
+      </div>
+    );
+  };
+
   return (
     mode === 'embedded' ? (
       <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
@@ -344,131 +445,7 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
                 <div className="text-sm font-medium text-gray-900">验证旧邮箱或动态验证码</div>
               </div>
 
-              {totpEnabled ? (
-                <div className="space-y-3">
-                  <div className="flex gap-6">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="oldVerifyMethod"
-                        checked={oldVerifyMethod === 'totp'}
-                        onChange={() => setOldVerifyMethod('totp')}
-                        disabled={oldVerified || verifyingOld || saving}
-                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">动态验证码</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="oldVerifyMethod"
-                        checked={oldVerifyMethod === 'email'}
-                        onChange={() => setOldVerifyMethod('email')}
-                        disabled={oldVerified || verifyingOld || saving}
-                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">旧邮箱验证码</span>
-                    </label>
-                  </div>
-
-                  {oldVerifyMethod === 'totp' ? (
-                    <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">动态验证码</label>
-                        <OtpCodeInput
-                          digits={totpDigits}
-                          value={totpCode}
-                          onChange={setTotpCode}
-                          onComplete={() => {
-                            if (verifyingOld || oldVerified || saving) return;
-                            void handleVerifyOld();
-                          }}
-                          disabled={verifyingOld || oldVerified || saving}
-                          autoFocus
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        disabled={verifyingOld || oldVerified || saving}
-                        onClick={handleVerifyOld}
-                        className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                      >
-                        {verifyingOld ? '验证中...' : oldVerified ? '已验证' : '验证'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">旧邮箱验证码</label>
-                          <input
-                            type="text"
-                            value={oldEmailCode}
-                            onChange={(ev) => setOldEmailCode(ev.target.value)}
-                            disabled={verifyingOld || oldVerified || saving}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                            placeholder="请输入验证码"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          disabled={sendingOldCode || saving || oldCountdown > 0 || oldVerified}
-                          onClick={handleSendOldCode}
-                          className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-                        >
-                          {sendingOldCode ? '发送中...' : oldCountdown > 0 ? `${oldCountdown}s` : '发送验证码'}
-                        </button>
-                      </div>
-
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          disabled={verifyingOld || oldVerified || saving}
-                          onClick={handleVerifyOld}
-                          className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                        >
-                          {verifyingOld ? '验证中...' : oldVerified ? '已验证' : '验证'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">旧邮箱验证码</label>
-                      <input
-                        type="text"
-                        value={oldEmailCode}
-                        onChange={(ev) => setOldEmailCode(ev.target.value)}
-                        disabled={verifyingOld || oldVerified || saving}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                        placeholder="请输入验证码"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      disabled={sendingOldCode || saving || oldCountdown > 0 || oldVerified}
-                      onClick={handleSendOldCode}
-                      className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-                    >
-                      {sendingOldCode ? '发送中...' : oldCountdown > 0 ? `${oldCountdown}s` : '发送验证码'}
-                    </button>
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      disabled={verifyingOld || oldVerified || saving}
-                      onClick={handleVerifyOld}
-                      className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                    >
-                      {verifyingOld ? '验证中...' : oldVerified ? '已验证' : '验证'}
-                    </button>
-                  </div>
-                </div>
-              )}
+              {renderOldVerificationStep()}
             </div>
           ) : null}
 
@@ -572,131 +549,7 @@ export function ChangeEmailSection({ mode = 'page' }: { mode?: ChangeEmailSectio
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">步骤 2：验证旧邮箱或动态验证码（二选一）</label>
 
-                {totpEnabled ? (
-                  <div className="space-y-3">
-                    <div className="flex gap-6">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="oldVerifyMethod"
-                          checked={oldVerifyMethod === 'totp'}
-                          onChange={() => setOldVerifyMethod('totp')}
-                          disabled={oldVerified || verifyingOld || saving}
-                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                        />
-                        <span className="text-sm font-medium text-gray-700">动态验证码</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="oldVerifyMethod"
-                          checked={oldVerifyMethod === 'email'}
-                          onChange={() => setOldVerifyMethod('email')}
-                          disabled={oldVerified || verifyingOld || saving}
-                          className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                        />
-                        <span className="text-sm font-medium text-gray-700">旧邮箱验证码</span>
-                      </label>
-                    </div>
-
-                    {oldVerifyMethod === 'totp' ? (
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">动态验证码</label>
-                          <OtpCodeInput
-                            digits={totpDigits}
-                            value={totpCode}
-                            onChange={setTotpCode}
-                            onComplete={() => {
-                              if (verifyingOld || oldVerified || saving) return;
-                              void handleVerifyOld();
-                            }}
-                            disabled={verifyingOld || oldVerified || saving}
-                            autoFocus
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          disabled={verifyingOld || oldVerified || saving}
-                          onClick={handleVerifyOld}
-                          className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                        >
-                          {verifyingOld ? '验证中...' : oldVerified ? '已验证' : '验证'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">旧邮箱验证码</label>
-                            <input
-                              type="text"
-                              value={oldEmailCode}
-                              onChange={(ev) => setOldEmailCode(ev.target.value)}
-                              disabled={verifyingOld || oldVerified || saving}
-                              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                              placeholder="请输入验证码"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            disabled={sendingOldCode || saving || oldCountdown > 0 || oldVerified}
-                            onClick={handleSendOldCode}
-                            className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-                          >
-                            {sendingOldCode ? '发送中...' : oldCountdown > 0 ? `${oldCountdown}s` : '发送验证码'}
-                          </button>
-                        </div>
-
-                        <div className="flex justify-end">
-                          <button
-                            type="button"
-                            disabled={verifyingOld || oldVerified || saving}
-                            onClick={handleVerifyOld}
-                            className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                          >
-                            {verifyingOld ? '验证中...' : oldVerified ? '已验证' : '验证'}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">旧邮箱验证码</label>
-                        <input
-                          type="text"
-                          value={oldEmailCode}
-                          onChange={(ev) => setOldEmailCode(ev.target.value)}
-                          disabled={verifyingOld || oldVerified || saving}
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
-                          placeholder="请输入验证码"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        disabled={sendingOldCode || saving || oldCountdown > 0 || oldVerified}
-                        onClick={handleSendOldCode}
-                        className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-                      >
-                        {sendingOldCode ? '发送中...' : oldCountdown > 0 ? `${oldCountdown}s` : '发送验证码'}
-                      </button>
-                    </div>
-
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        disabled={verifyingOld || oldVerified || saving}
-                        onClick={handleVerifyOld}
-                        className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                      >
-                        {verifyingOld ? '验证中...' : oldVerified ? '已验证' : '验证'}
-                      </button>
-                    </div>
-                  </div>
-                )}
+                {renderOldVerificationStep()}
               </div>
             ) : null}
 

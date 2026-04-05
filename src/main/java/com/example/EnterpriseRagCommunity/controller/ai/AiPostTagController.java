@@ -4,12 +4,11 @@ import com.example.EnterpriseRagCommunity.dto.ai.AiPostTagSuggestRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.AiPostTagSuggestResponse;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTagGenPublicConfigDTO;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUserIdResolver;
 import com.example.EnterpriseRagCommunity.service.ai.AiPostTagService;
 import com.example.EnterpriseRagCommunity.service.ai.PostTagGenConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -22,15 +21,12 @@ public class AiPostTagController {
     private final PostTagGenConfigService postTagGenConfigService;
 
     private Long currentUserIdOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
-            };
-        }
-        String email = auth.getName();
-        return administratorService.findByUsername(email)
-                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
-                .getId();
+        return CurrentUserIdResolver.currentUserIdOrThrow(
+                administratorService,
+                () -> new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
+                },
+                () -> new IllegalArgumentException("当前用户不存在")
+        );
     }
 
     @PostMapping("/tag-suggestions")
@@ -44,4 +40,3 @@ public class AiPostTagController {
         return postTagGenConfigService.getPublicConfig();
     }
 }
-

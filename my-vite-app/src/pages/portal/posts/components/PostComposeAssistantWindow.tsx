@@ -15,7 +15,13 @@ import {
 } from '../../../../services/postComposeAiSnapshotService';
 import { stripThinkBlocks } from '../../../../utils/thinkTags';
 import { createAiComposeChannelRouterState, routeAiComposeDelta } from '../../../../utils/aiComposeChannelRouter';
+import { extractImageFilesFromClipboardData } from '../../../../utils/clipboardImageFiles';
 import { normalizeMarkdownForPreview } from '../../../../utils/markdownUtils';
+import {
+  buildProviderModelValue,
+  flattenProviderModelOptions,
+  parseProviderModelValue,
+} from '../../assistant/pages/AssistantChatPage.shared';
 
 const MAX_VISION_IMAGES = 10;
 
@@ -40,30 +46,6 @@ function parseIsoMs(s: string | null | undefined): number | null {
   if (!s) return null;
   const t = Date.parse(s);
   return Number.isFinite(t) ? t : null;
-}
-
-function buildProviderModelValue(providerId: string, model: string): string {
-  const p = String(providerId ?? '').trim();
-  const m = String(model ?? '').trim();
-  if (!p || !m) return '';
-  return `${encodeURIComponent(p)}|${encodeURIComponent(m)}`;
-}
-
-function parseProviderModelValue(value: string): { providerId: string; model: string } | null {
-  const v = String(value ?? '').trim();
-  if (!v) return null;
-  const idx = v.indexOf('|');
-  if (idx <= 0) return null;
-  const p = v.slice(0, idx);
-  const m = v.slice(idx + 1);
-  try {
-    const providerId = decodeURIComponent(p).trim();
-    const model = decodeURIComponent(m).trim();
-    if (!providerId || !model) return null;
-    return { providerId, model };
-  } catch {
-    return null;
-  }
 }
 
 function isLikelyImageUrl(url: string): boolean {
@@ -222,36 +204,7 @@ export default function PostComposeAssistantWindow(props: Props) {
   }, [chatOptions]);
 
   const flatModelOptions = useMemo(() => {
-    const uniq: { providerId: string; providerLabel: string; model: string; value: string }[] = [];
-    const seen = new Set<string>();
-    for (const p of providerOptions) {
-      const providerId = String(p.id ?? '').trim();
-      if (!providerId) continue;
-      const providerName = String(p.name ?? '').trim();
-      const providerLabel = providerName || providerId;
-      const rows = Array.isArray(p.chatModels) ? p.chatModels.filter(Boolean) : [];
-      for (const m of rows) {
-        const modelName = String((m as { name?: unknown }).name ?? '').trim();
-        if (!modelName) continue;
-        const key = `${providerId}::${modelName}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        uniq.push({
-          providerId,
-          providerLabel,
-          model: modelName,
-          value: buildProviderModelValue(providerId, modelName),
-        });
-      }
-    }
-    uniq.sort((a, b) => {
-      const pa = `${a.providerLabel} (${a.providerId})`;
-      const pb = `${b.providerLabel} (${b.providerId})`;
-      const pCmp = pa.localeCompare(pb, 'zh-Hans-CN');
-      if (pCmp !== 0) return pCmp;
-      return a.model.localeCompare(b.model, 'zh-Hans-CN');
-    });
-    return uniq;
+    return flattenProviderModelOptions(providerOptions);
   }, [providerOptions]);
 
   const selectedProviderModelValue = useMemo(
@@ -905,14 +858,7 @@ export default function PostComposeAssistantWindow(props: Props) {
               placeholder="告诉 AI 你想怎么改写正文…"
               disabled={streaming}
               onPaste={(e) => {
-                const items = Array.from(e.clipboardData?.items ?? []);
-                const files: File[] = [];
-                for (const it of items) {
-                  if (it.kind !== 'file') continue;
-                  if (!String(it.type ?? '').toLowerCase().startsWith('image/')) continue;
-                  const f = it.getAsFile();
-                  if (f) files.push(f);
-                }
+                const files = extractImageFilesFromClipboardData(e.clipboardData);
                 if (files.length === 0) return;
                 void handleUploadFiles(files);
               }}

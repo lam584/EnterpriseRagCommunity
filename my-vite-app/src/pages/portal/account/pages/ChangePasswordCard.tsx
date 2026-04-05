@@ -52,6 +52,46 @@ export default function ChangePasswordCard(props: {
 
   const canUseTotpForPwd = props.enabled && props.totpAllowedByPolicy;
   const canUseEmailForPwd = props.emailOtpAllowedByPolicy;
+  const emailCodeButtonLabel = sendingChangeEmailCode ? "发送中..." : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : "发送";
+
+  const handleSendChangeEmailCode = async () => {
+    try {
+      setSendingChangeEmailCode(true);
+      const resp = await sendAccountEmailVerificationCode("CHANGE_PASSWORD");
+      const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 180;
+      setPwdEmailCountdown(wait);
+      toast.success("验证码已发送");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "发送失败";
+      props.setErrorMsg(msg);
+      toast.error(msg);
+    } finally {
+      setSendingChangeEmailCode(false);
+    }
+  };
+
+  const renderEmailCodeInput = (placeholder: string, disabled: boolean) => (
+    <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+        <input
+          type="text"
+          value={changeEmailCode}
+          onChange={(e) => setChangeEmailCode(e.target.value)}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder={placeholder}
+        />
+      </div>
+      <button
+        type="button"
+        disabled={disabled || sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
+        onClick={handleSendChangeEmailCode}
+        className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
+      >
+        {emailCodeButtonLabel}
+      </button>
+    </div>
+  );
 
   const handleNext = () => {
     const err = validateChangePasswordForm({ oldPwd, newPwd, confirmNewPwd });
@@ -339,42 +379,7 @@ export default function ChangePasswordCard(props: {
                       </div>
                     ) : null}
 
-                    {props.emailOtpRequiredByPolicy ? (
-                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
-                          <input
-                            type="text"
-                            value={changeEmailCode}
-                            onChange={(e) => setChangeEmailCode(e.target.value)}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="请输入验证码"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          disabled={!canUseEmailForPwd || sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
-                          onClick={async () => {
-                            try {
-                              setSendingChangeEmailCode(true);
-                              const resp = await sendAccountEmailVerificationCode("CHANGE_PASSWORD");
-                              const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 180;
-                              setPwdEmailCountdown(wait);
-                              toast.success("验证码已发送");
-                            } catch (e) {
-                              const msg = e instanceof Error ? e.message : "发送失败";
-                              props.setErrorMsg(msg);
-                              toast.error(msg);
-                            } finally {
-                              setSendingChangeEmailCode(false);
-                            }
-                          }}
-                          className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                        >
-                          {sendingChangeEmailCode ? "发送中..." : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : "发送"}
-                        </button>
-                      </div>
-                    ) : null}
+                    {props.emailOtpRequiredByPolicy ? renderEmailCodeInput("请输入验证码", !canUseEmailForPwd) : null}
 
                     {!props.totpRequiredByPolicy && !props.emailOtpRequiredByPolicy ? (
                       canUseTotpForPwd && canUseEmailForPwd ? (
@@ -413,40 +418,7 @@ export default function ChangePasswordCard(props: {
                               />
                             </div>
                           ) : (
-                            <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                              <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
-                                <input
-                                  type="text"
-                                  value={changeEmailCode}
-                                  onChange={(e) => setChangeEmailCode(e.target.value)}
-                                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  placeholder="请输入验证码"
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                disabled={!canUseEmailForPwd || sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
-                                onClick={async () => {
-                                  try {
-                                    setSendingChangeEmailCode(true);
-                                    const resp = await sendAccountEmailVerificationCode("CHANGE_PASSWORD");
-                                    const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 180;
-                                    setPwdEmailCountdown(wait);
-                                    toast.success("验证码已发送");
-                                  } catch (e) {
-                                    const msg = e instanceof Error ? e.message : "发送失败";
-                                    props.setErrorMsg(msg);
-                                    toast.error(msg);
-                                  } finally {
-                                    setSendingChangeEmailCode(false);
-                                  }
-                                }}
-                                className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                              >
-                                {sendingChangeEmailCode ? "发送中..." : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : "发送"}
-                              </button>
-                            </div>
+                            renderEmailCodeInput("请输入验证码", !canUseEmailForPwd)
                           )}
                         </div>
                       ) : canUseTotpForPwd ? (
@@ -460,40 +432,7 @@ export default function ChangePasswordCard(props: {
                           />
                         </div>
                       ) : canUseEmailForPwd ? (
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
-                            <input
-                              type="text"
-                              value={changeEmailCode}
-                              onChange={(e) => setChangeEmailCode(e.target.value)}
-                              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="请输入验证码"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            disabled={!canUseEmailForPwd || sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
-                            onClick={async () => {
-                              try {
-                                setSendingChangeEmailCode(true);
-                                const resp = await sendAccountEmailVerificationCode("CHANGE_PASSWORD");
-                                const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 180;
-                                setPwdEmailCountdown(wait);
-                                toast.success("验证码已发送");
-                              } catch (e) {
-                                const msg = e instanceof Error ? e.message : "发送失败";
-                                props.setErrorMsg(msg);
-                                toast.error(msg);
-                              } finally {
-                                setSendingChangeEmailCode(false);
-                              }
-                            }}
-                            className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                          >
-                            {sendingChangeEmailCode ? "发送中..." : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : "发送"}
-                          </button>
-                        </div>
+                        renderEmailCodeInput("请输入验证码", !canUseEmailForPwd)
                       ) : (
                         <div className="text-sm text-gray-500">当前无需验证码。</div>
                       )
@@ -537,78 +476,10 @@ export default function ChangePasswordCard(props: {
                         </div>
                       )}
 
-                      {verifyMethod === "email" && (
-                        <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
-                            <input
-                              type="text"
-                              value={changeEmailCode}
-                              onChange={(e) => setChangeEmailCode(e.target.value)}
-                              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="请输入验证码"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            disabled={sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
-                            onClick={async () => {
-                              try {
-                                setSendingChangeEmailCode(true);
-                                const resp = await sendAccountEmailVerificationCode("CHANGE_PASSWORD");
-                                const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 180;
-                                setPwdEmailCountdown(wait);
-                                toast.success("验证码已发送");
-                              } catch (e) {
-                                const msg = e instanceof Error ? e.message : "发送失败";
-                                props.setErrorMsg(msg);
-                                toast.error(msg);
-                              } finally {
-                                setSendingChangeEmailCode(false);
-                              }
-                            }}
-                            className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                          >
-                            {sendingChangeEmailCode ? "发送中..." : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : "发送"}
-                          </button>
-                        </div>
-                      )}
+                      {verifyMethod === "email" && renderEmailCodeInput("请输入验证码", false)}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
-                        <input
-                          type="text"
-                          value={changeEmailCode}
-                          onChange={(e) => setChangeEmailCode(e.target.value)}
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          placeholder="开启邮箱验证时必填"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        disabled={sendingChangeEmailCode || saving || pwdEmailCountdown > 0}
-                        onClick={async () => {
-                          try {
-                            setSendingChangeEmailCode(true);
-                            const resp = await sendAccountEmailVerificationCode("CHANGE_PASSWORD");
-                            const wait = Number.isFinite(Number(resp?.resendWaitSeconds)) ? Number(resp.resendWaitSeconds) : 180;
-                            setPwdEmailCountdown(wait);
-                            toast.success("验证码已发送");
-                          } catch (e) {
-                            const msg = e instanceof Error ? e.message : "发送失败";
-                            props.setErrorMsg(msg);
-                            toast.error(msg);
-                          } finally {
-                            setSendingChangeEmailCode(false);
-                          }
-                        }}
-                        className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed w-28"
-                      >
-                        {sendingChangeEmailCode ? "发送中..." : pwdEmailCountdown > 0 ? `${pwdEmailCountdown}s` : "发送"}
-                      </button>
-                    </div>
+                    renderEmailCodeInput("开启邮箱验证时必填", false)
                   )
                 )}
               </div>
@@ -643,4 +514,3 @@ export default function ChangePasswordCard(props: {
     </div>
   );
 }
-

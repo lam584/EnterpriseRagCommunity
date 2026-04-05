@@ -7,12 +7,19 @@ import {
   type PostTitleGenConfigDTO,
   type PostTitleGenHistoryDTO,
 } from '../../../../services/titleGenAdminService';
-import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
-import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
-import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { suggestPostTitles, type AiPostTitleSuggestResponse } from '../../../../services/aiTitleService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
+import { EditToggleButton } from '../../../../components/admin/EditToggleButton';
 import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
+import {
+  applySavedConfigState,
+  applyUnavailableFallback,
+  buildSuggestionPayload,
+  loadPromptDraftState,
+  useAiProviderOptions,
+  usePromptConfigEditorState,
+  validateSuggestionConfigForm,
+} from './semanticConfigShared';
 
 type FormState = {
   enabled: boolean;
@@ -53,14 +60,6 @@ function defaultConfig(): PostTitleGenConfigDTO {
   };
 }
 
-function toPromptDraft(dto?: PromptContentDTO | null): PromptContentDraft {
-  return {
-    name: dto?.name ?? '',
-    systemPrompt: dto?.systemPrompt ?? '',
-    userPromptTemplate: dto?.userPromptTemplate ?? '',
-  };
-}
-
 function toFormState(cfg?: PostTitleGenConfigDTO | null): FormState {
   const base = defaultConfig();
   return {
@@ -98,67 +97,35 @@ function toFormState(cfg?: PostTitleGenConfigDTO | null): FormState {
 }
 
 function validateForm(s: FormState): string[] {
-  const errors: string[] = [];
-
-  if (!s.promptCode.trim()) errors.push('promptCode 不能为空');
-
-  const temp = parseOptionalNumber(s.temperature);
-  if (temp !== undefined && (temp < 0 || temp > 2)) errors.push('temperature 需在 [0, 2] 范围内');
-
-  const topP = parseOptionalNumber(s.topP);
-  if (topP !== undefined && (topP < 0 || topP > 1)) errors.push('topP 需在 [0, 1] 范围内');
-
-  const dc = parseOptionalNumber(s.defaultCount);
-  const mc = parseOptionalNumber(s.maxCount);
-  if (dc !== undefined && (!Number.isInteger(dc) || dc < 1 || dc > 50)) errors.push('defaultCount 需为 1~50 的整数');
-  if (mc !== undefined && (!Number.isInteger(mc) || mc < 1 || mc > 50)) errors.push('maxCount 需为 1~50 的整数');
-  if (dc !== undefined && mc !== undefined && dc > mc) errors.push('defaultCount 不能大于 maxCount');
-
-  const mcc = parseOptionalNumber(s.maxContentChars);
-  if (mcc !== undefined && (!Number.isInteger(mcc) || mcc < 200 || mcc > 50000)) errors.push('maxContentChars 需为 200~50000 的整数');
-
-  const hkd = parseOptionalNumber(s.historyKeepDays);
-  if (hkd !== undefined && (!Number.isInteger(hkd) || hkd < 1)) errors.push('historyKeepDays 必须为正整数');
-  const hkr = parseOptionalNumber(s.historyKeepRows);
-  if (hkr !== undefined && (!Number.isInteger(hkr) || hkr < 1)) errors.push('historyKeepRows 必须为正整数');
-
-  return errors;
+  return validateSuggestionConfigForm(s);
 }
 
 function buildPayload(s: FormState) {
-  const defaultCount = parseOptionalNumber(s.defaultCount);
-  const maxCount = parseOptionalNumber(s.maxCount);
-  const maxContentChars = parseOptionalNumber(s.maxContentChars);
-  const historyKeepDays = parseOptionalNumber(s.historyKeepDays);
-  const historyKeepRows = parseOptionalNumber(s.historyKeepRows);
-
-  return {
-    enabled: s.enabled,
-    promptCode: s.promptCode,
-    defaultCount: defaultCount === undefined ? 5 : Math.trunc(defaultCount),
-    maxCount: maxCount === undefined ? 10 : Math.trunc(maxCount),
-    maxContentChars: maxContentChars === undefined ? 4000 : Math.trunc(maxContentChars),
-    historyEnabled: s.historyEnabled,
-    historyKeepDays: historyKeepDays === undefined ? null : Math.trunc(historyKeepDays),
-    historyKeepRows: historyKeepRows === undefined ? null : Math.trunc(historyKeepRows),
-  };
+  return buildSuggestionPayload(s);
 }
 
 const TitleGenForm: React.FC = () => {
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [savedHint, setSavedHint] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-
-  const [providers, setProviders] = useState<AiProviderDTO[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState<string>('');
-  const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
-
-  const [promptLoadError, setPromptLoadError] = useState<string | null>(null);
-  const [committedPromptDraft, setCommittedPromptDraft] = useState<PromptContentDraft | null>(null);
-  const [promptDraft, setPromptDraft] = useState<PromptContentDraft | null>(null);
+  const {
+    loading,
+    setLoading,
+    saving,
+    setSaving,
+    testing,
+    setTesting,
+    error,
+    setError,
+    savedHint,
+    setSavedHint,
+    editing,
+    setEditing,
+    promptLoadError,
+    setPromptLoadError,
+    committedPromptDraft,
+    setCommittedPromptDraft,
+    promptDraft,
+    setPromptDraft,
+  } = usePromptConfigEditorState();
+  const { providers, activeProviderId, chatProviders } = useAiProviderOptions();
 
   const [form, setForm] = useState<FormState>(() => toFormState(defaultConfig()));
   const [committedForm, setCommittedForm] = useState<FormState>(() => toFormState(defaultConfig()));
@@ -189,42 +156,6 @@ const TitleGenForm: React.FC = () => {
   );
   const hasUnsavedChanges = formHasUnsavedChanges || promptHasUnsavedChanges;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const cfg = await adminGetAiProvidersConfig();
-        if (cancelled) return;
-        setProviders((cfg.providers ?? []).filter(Boolean) as AiProviderDTO[]);
-        setActiveProviderId(cfg.activeProviderId ?? '');
-      } catch {
-        if (cancelled) return;
-        setProviders([]);
-        setActiveProviderId('');
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const opts = await getAiChatOptions();
-        if (cancelled) return;
-        setChatProviders((opts.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[]);
-      } catch {
-        if (cancelled) return;
-        setChatProviders([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const loadConfig = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -238,31 +169,19 @@ const TitleGenForm: React.FC = () => {
       setEditing(false);
       if (!cfg.promptCode) setSavedHint('后端配置为空，已加载内置默认值（可编辑后保存写入数据库）');
 
-      try {
-        const resp = await adminBatchGetPrompts([next.promptCode]);
-        const dto = resp.prompts?.[0];
-        if (!dto || (resp.missingCodes ?? []).length) {
-          setCommittedPromptDraft(null);
-          setPromptDraft(null);
-        } else {
-          const draft = toPromptDraft(dto);
-          setCommittedPromptDraft(draft);
-          setPromptDraft(draft);
-        }
-      } catch (e: unknown) {
-        setPromptLoadError(e instanceof Error ? e.message : String(e));
-        setCommittedPromptDraft(null);
-        setPromptDraft(null);
-      }
+      await loadPromptDraftState(next.promptCode, setPromptLoadError, setCommittedPromptDraft, setPromptDraft);
     } catch (e) {
-      const next = toFormState(defaultConfig());
-      setForm(next);
-      setCommittedForm(next);
-      setEditing(false);
-      setError(e instanceof Error ? e.message : String(e));
-      setSavedHint('后端接口不可用，已加载前端默认配置（可用于演示）');
-      setCommittedPromptDraft(null);
-      setPromptDraft(null);
+      applyUnavailableFallback(
+        toFormState(defaultConfig()),
+        e,
+        setForm,
+        setCommittedForm,
+        setEditing,
+        setError,
+        setSavedHint,
+        setCommittedPromptDraft,
+        setPromptDraft,
+      );
     } finally {
       setLoading(false);
     }
@@ -279,31 +198,19 @@ const TitleGenForm: React.FC = () => {
     setError(null);
     setSavedHint(null);
     try {
-      const payload = buildPayload(form);
-      const saved = await adminUpsertPostTitleGenConfig(payload);
-
-      let promptUpdateErr: string | null = null;
-      if (promptDraft && promptHasUnsavedChanges) {
-        try {
-          await adminUpdatePromptContent(form.promptCode, {
-            systemPrompt: promptDraft.systemPrompt,
-            userPromptTemplate: promptDraft.userPromptTemplate,
-          });
-          setCommittedPromptDraft(promptDraft);
-        } catch (e: unknown) {
-          promptUpdateErr = e instanceof Error ? e.message : String(e);
-        }
-      }
-
-      const next = toFormState(saved);
-      setForm(next);
-      setCommittedForm(next);
-      setEditing(false);
-      if (promptUpdateErr) {
-        setError(`配置已保存，但提示词保存失败：${promptUpdateErr}`);
-      } else {
-        setSavedHint('保存成功');
-      }
+      await applySavedConfigState({
+        saveConfig: () => adminUpsertPostTitleGenConfig(buildPayload(form)),
+        toFormState,
+        promptCode: form.promptCode,
+        promptDraft,
+        promptHasUnsavedChanges,
+        setCommittedPromptDraft,
+        setForm,
+        setCommittedForm,
+        setEditing,
+        setError,
+        setSavedHint,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -415,26 +322,19 @@ const TitleGenForm: React.FC = () => {
             >
               {loading ? '刷新中...' : '刷新配置'}
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (editing) {
-                  setForm(committedForm);
-                  setPromptDraft(committedPromptDraft);
-                  setEditing(false);
-                  setError(null);
-                  setSavedHint(null);
-                } else {
-                  setEditing(true);
-                }
+            <EditToggleButton
+              editing={editing}
+              loading={loading}
+              saving={saving}
+              onEdit={() => setEditing(true)}
+              onCancel={() => {
+                setForm(committedForm);
+                setPromptDraft(committedPromptDraft);
+                setEditing(false);
+                setError(null);
+                setSavedHint(null);
               }}
-              disabled={loading || saving}
-              className={`px-3 py-1.5 rounded-md border border-gray-300 hover:bg-gray-50 disabled:opacity-60 text-sm ${
-                editing ? 'bg-gray-50' : 'bg-white'
-              }`}
-            >
-              {editing ? '取消编辑' : '编辑'}
-            </button>
+            />
             {editing && (
               <button
                 type="button"

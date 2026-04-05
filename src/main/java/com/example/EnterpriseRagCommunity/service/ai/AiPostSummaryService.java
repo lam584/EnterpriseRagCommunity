@@ -91,9 +91,7 @@ public class AiPostSummaryService {
 
         String userPrompt = renderPrompt(prompt.getUserPromptTemplate(), rawTitle, clippedContent, extractTagsLine(post.getMetadata()));
 
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(prompt.getSystemPrompt()));
-        messages.add(ChatMessage.user(userPrompt));
+        List<ChatMessage> messages = ChatMessageSupport.buildSystemUserMessages(prompt.getSystemPrompt(), userPrompt);
 
         long started = System.currentTimeMillis();
         String rawJson;
@@ -148,12 +146,7 @@ public class AiPostSummaryService {
         job.setTargetType(GenerationTargetType.POST);
         job.setTargetId(postId);
         job.setStatus(GenerationJobStatus.SUCCEEDED);
-        job.setModel(model);
-        job.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
-        job.setTemperature(temperature);
-        job.setTopP(topP);
-        job.setLatencyMs(latency);
-        job.setPromptVersion(promptVersion);
+        applyJobLlmSettings(job, model, providerId, temperature, topP, latency, promptVersion);
         job.setCreatedAt(now);
         job.setUpdatedAt(now);
         generationJobsRepository.save(job);
@@ -166,8 +159,7 @@ public class AiPostSummaryService {
         s.setAppliedMaxContentChars(maxChars);
         s.setGeneratedAt(now);
         s.setErrorMessage(null);
-        s.setJobId(job.getId());
-        s.setUpdatedAt(now);
+        applySummaryJobMetadata(s, job, now);
         postAiSummaryRepository.save(s);
 
         PostSummaryGenHistoryEntity h = new PostSummaryGenHistoryEntity();
@@ -203,12 +195,7 @@ public class AiPostSummaryService {
         job.setTargetType(GenerationTargetType.POST);
         job.setTargetId(postId);
         job.setStatus(GenerationJobStatus.FAILED);
-        job.setModel(model);
-        job.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
-        job.setTemperature(temperature);
-        job.setTopP(topP);
-        job.setLatencyMs(latency);
-        job.setPromptVersion(promptVersion);
+        applyJobLlmSettings(job, model, providerId, temperature, topP, latency, promptVersion);
         job.setErrorMessage(err.length() > 255 ? err.substring(0, 255) : err);
         job.setCreatedAt(now);
         job.setUpdatedAt(now);
@@ -222,8 +209,7 @@ public class AiPostSummaryService {
         s.setAppliedMaxContentChars(maxChars);
         s.setGeneratedAt(now);
         s.setErrorMessage(err);
-        s.setJobId(job.getId());
-        s.setUpdatedAt(now);
+        applySummaryJobMetadata(s, job, now);
         postAiSummaryRepository.save(s);
 
         PostSummaryGenHistoryEntity h = new PostSummaryGenHistoryEntity();
@@ -235,6 +221,28 @@ public class AiPostSummaryService {
         h.setErrorMessage(err);
         h.setJobId(job.getId());
         postSummaryGenConfigService.recordHistory(h);
+    }
+
+    private static void applyJobLlmSettings(GenerationJobsEntity job,
+                                            String model,
+                                            String providerId,
+                                            Double temperature,
+                                            Double topP,
+                                            long latency,
+                                            Integer promptVersion) {
+        job.setModel(model);
+        job.setProviderId(providerId == null || providerId.isBlank() ? null : providerId.trim());
+        job.setTemperature(temperature);
+        job.setTopP(topP);
+        job.setLatencyMs(latency);
+        job.setPromptVersion(promptVersion);
+    }
+
+    private static void applySummaryJobMetadata(PostAiSummaryEntity summary,
+                                                GenerationJobsEntity job,
+                                                LocalDateTime now) {
+        summary.setJobId(job.getId());
+        summary.setUpdatedAt(now);
     }
 
     private String extractAssistantContent(String rawJson) {

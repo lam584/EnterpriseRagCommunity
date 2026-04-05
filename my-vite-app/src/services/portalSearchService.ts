@@ -1,4 +1,6 @@
 import type { SpringPage } from '../types/page';
+import { serviceApiUrl } from './serviceUrlUtils';
+import { getBackendMessage } from './serviceErrorUtils';
 
 export type PortalSearchHitType = 'POST' | 'COMMENT' | 'FILE';
 
@@ -26,18 +28,8 @@ function buildQueryString(query: Record<string, unknown>): string {
   return params.toString();
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
 
 export async function portalSearch(
   q: string,

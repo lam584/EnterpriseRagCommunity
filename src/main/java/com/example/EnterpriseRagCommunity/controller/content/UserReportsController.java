@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import com.example.EnterpriseRagCommunity.service.content.PortalReportsService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import jakarta.validation.Valid;
@@ -47,11 +48,7 @@ public class UserReportsController {
         try {
             PortalReportsService.ReportSubmitResult r = portalReportsService.reportProfile(userId, req.getReasonCode(), req.getReasonText());
             if (reporterId != null) {
-                java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
-                details.put("targetType", "PROFILE");
-                details.put("targetId", userId);
-                details.put("reasonCode", req.getReasonCode());
-                details.put("reasonTextLen", req.getReasonText() == null ? 0 : req.getReasonText().length());
+                java.util.Map<String, Object> details = ReportAuditSupport.buildReportDetails("PROFILE", userId, req.getReasonCode(), req.getReasonText());
                 if (r != null) {
                     details.put("queueId", r.getQueueId());
                 }
@@ -86,15 +83,13 @@ public class UserReportsController {
         } catch (RuntimeException ex) {
             if (reporterId != null) {
                 try {
-                    java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
-                    details.put("targetType", "PROFILE");
-                    details.put("targetId", userId);
-                    if (req != null) {
-                        details.put("reasonCode", req.getReasonCode());
-                        details.put("reasonTextLen", req.getReasonText() == null ? 0 : req.getReasonText().length());
-                    }
-                    details.put("error", ex.getClass().getName());
-                    details.put("message", safeMsg(ex.getMessage()));
+                    java.util.Map<String, Object> details = ReportAuditSupport.buildReportDetails(
+                            "PROFILE",
+                            userId,
+                            req == null ? null : req.getReasonCode(),
+                            req == null ? null : req.getReasonText()
+                    );
+                    ReportAuditSupport.appendFailure(details, ex, UserReportsController::safeMsg);
                     auditLogWriter.write(
                             reporterId,
                             actorName,
@@ -130,10 +125,7 @@ public class UserReportsController {
     }
 
     private static String currentUsernameOrNull() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-        String name = auth.getName();
-        return name == null || name.isBlank() ? null : name.trim();
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 
     private static String safeMsg(String s) {
@@ -143,4 +135,3 @@ public class UserReportsController {
         return t.substring(0, 256);
     }
 }
-

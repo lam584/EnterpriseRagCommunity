@@ -70,12 +70,10 @@ public class AiProviderModelsAdminService {
 
     @Transactional
     public AiProviderModelsDTO addProviderModel(String providerId, String purpose, String modelName, Long actorUserId) {
-        String pid = toNonBlank(providerId);
-        if (pid == null) throw new IllegalArgumentException("providerId 不能为空");
-        String purp = toPurposeOrNull(purpose);
-        if (purp == null) throw new IllegalArgumentException("purpose 不合法");
-        String name = toNonBlank(modelName);
-        if (name == null) throw new IllegalArgumentException("modelName 不能为空");
+        ModelIdentity identity = requireModelIdentity(providerId, purpose, modelName);
+        String pid = identity.providerId();
+        String purp = identity.purpose();
+        String name = identity.modelName();
 
         boolean providerExists = llmProviderRepository.findByEnvAndProviderId(ENV_DEFAULT, pid).isPresent();
         if (!providerExists) {
@@ -133,12 +131,10 @@ public class AiProviderModelsAdminService {
 
     @Transactional
     public AiProviderModelsDTO deleteProviderModel(String providerId, String purpose, String modelName) {
-        String pid = toNonBlank(providerId);
-        if (pid == null) throw new IllegalArgumentException("providerId 不能为空");
-        String purp = toPurposeOrNull(purpose);
-        if (purp == null) throw new IllegalArgumentException("purpose 不合法");
-        String name = toNonBlank(modelName);
-        if (name == null) throw new IllegalArgumentException("modelName 不能为空");
+        ModelIdentity identity = requireModelIdentity(providerId, purpose, modelName);
+        String pid = identity.providerId();
+        String purp = identity.purpose();
+        String name = identity.modelName();
 
         llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(ENV_DEFAULT, pid, purp, name).ifPresent(llmModelRepository::delete);
         llmRoutingService.resetRuntimeState();
@@ -339,5 +335,18 @@ public class AiProviderModelsAdminService {
         } catch (Exception ignore) {
             return null;
         }
+    }
+
+    private static ModelIdentity requireModelIdentity(String providerId, String purpose, String modelName) {
+        String pid = toNonBlank(providerId);
+        if (pid == null) throw new IllegalArgumentException("providerId 不能为空");
+        String purp = toPurposeOrNull(purpose);
+        if (purp == null) throw new IllegalArgumentException("purpose 不合法");
+        String name = toNonBlank(modelName);
+        if (name == null) throw new IllegalArgumentException("modelName 不能为空");
+        return new ModelIdentity(pid, purp, name);
+    }
+
+    private record ModelIdentity(String providerId, String purpose, String modelName) {
     }
 }

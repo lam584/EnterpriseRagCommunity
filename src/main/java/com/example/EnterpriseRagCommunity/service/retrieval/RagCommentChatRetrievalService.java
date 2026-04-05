@@ -1,11 +1,8 @@
 package com.example.EnterpriseRagCommunity.service.retrieval;
 
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
-import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
-import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
-import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagCommentsIndexService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -14,11 +11,6 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -37,24 +29,14 @@ public class RagCommentChatRetrievalService {
 
     public List<Hit> retrieve(String queryText, int topK) {
         if (queryText == null || queryText.isBlank()) return List.of();
-        int k = Math.max(1, Math.min(50, topK));
-
-        AiEmbeddingService.EmbeddingResult er;
-        try {
-            String mo = ragProps.getEs().getEmbeddingModel();
-            er = llmGateway.embedOnceRouted(LlmQueueTaskType.POST_EMBEDDING, null, mo, queryText);
-        } catch (Exception e) {
-            throw new IllegalStateException("Embedding failed: " + e.getMessage(), e);
-        }
-        float[] vec = er == null ? null : er.vector();
+        int k = RagSearchSupport.clampTopK(topK);
+        float[] vec = RagSearchSupport.embedQuery(llmGateway, ragProps.getEs().getEmbeddingModel(), queryText);
         if (vec == null || vec.length == 0) return List.of();
-
-        int configuredDims = ragProps.getEs().getEmbeddingDims();
-        int inferredDims = vec.length;
-        if (configuredDims > 0 && configuredDims != inferredDims) {
-            throw new IllegalStateException("Embedding dims mismatch: configured=" + configuredDims + " but embedding length=" + inferredDims);
-        }
-        int dimsToUse = configuredDims > 0 ? configuredDims : inferredDims;
+        int dimsToUse = RagSearchSupport.resolveConfiguredDims(
+                ragProps.getEs().getEmbeddingDims(),
+                vec.length,
+                "Embedding dims mismatch: configured="
+        );
 
         String indexName = indexService.defaultIndexName();
         try {
@@ -63,23 +45,24 @@ public class RagCommentChatRetrievalService {
             throw new IllegalStateException("Ensure ES index failed: " + e.getMessage(), e);
         }
 
-        String body = buildKnnSearchBody(k, Math.max(100, k * 10), vec, queryText);
+        String body = buildKnnSearchBody(k, RagSearchSupport.resolveNumCandidates(null, k), vec, queryText);
         JsonNode root = postSearch(indexName, body);
 
         List<Hit> hits = new ArrayList<>();
         JsonNode arr = root.path("hits").path("hits");
         if (arr.isArray()) {
             for (JsonNode h : arr) {
+                RagSearchSupport.SearchHitEnvelope envelope = RagSearchSupport.readSearchHit(h);
                 Hit out = new Hit();
-                out.setDocId(h.path("_id").asText(null));
-                if (h.hasNonNull("_score")) out.setScore(h.path("_score").asDouble());
-                JsonNode src = h.path("_source");
-                JsonNode hl = h.path("highlight");
+                out.setDocId(envelope.docId());
+                out.setScore(envelope.score());
+                JsonNode src = envelope.source();
+                JsonNode hl = envelope.highlight();
                 if (src.hasNonNull("comment_id")) out.setCommentId(src.path("comment_id").asLong());
                 if (src.hasNonNull("post_id")) out.setPostId(src.path("post_id").asLong());
                 if (src.hasNonNull("chunk_index")) out.setChunkIndex(src.path("chunk_index").asInt());
                 out.setContentText(src.path("content_text").asText(null));
-                out.setContentHighlight(firstHighlightFragment(hl, "content_text"));
+                out.setContentHighlight(RagSearchSupport.firstHighlightFragment(hl, "content_text"));
                 hits.add(out);
             }
         }
@@ -95,12 +78,7 @@ public class RagCommentChatRetrievalService {
         }
         if (postIds.isEmpty()) return hits;
 
-        List<Long> ids = new ArrayList<>(postIds);
-        Set<Long> ok = new java.util.HashSet<>();
-        postsRepository.findByIdInAndIsDeletedFalseAndStatus(ids, PostStatus.PUBLISHED)
-                .forEach(p -> {
-                    if (p != null && p.getId() != null) ok.add(p.getId());
-                });
+        Set<Long> ok = RagSearchSupport.publishedPostIds(postsRepository, postIds);
 
         List<Hit> out = new ArrayList<>();
         for (Hit h : hits) {
@@ -111,31 +89,14 @@ public class RagCommentChatRetrievalService {
     }
 
     private JsonNode postSearch(String indexName, String body) {
-        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
-
-        try {
-            URL url = java.net.URI.create(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source,hits.hits.highlight").toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(10_000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
-
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(body.getBytes(StandardCharsets.UTF_8));
-            }
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            if (is == null) return objectMapper.createObjectNode();
-            String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            if (code < 200 || code >= 300) throw new IllegalStateException("ES error HTTP " + code + ": " + json);
-            return objectMapper.readTree(json);
-        } catch (Exception e) {
-            throw new IllegalStateException("ES search failed: " + e.getMessage(), e);
-        }
+        return RagSearchSupport.postSearch(
+                objectMapper,
+                systemConfigurationService,
+                indexName,
+                body,
+                "hits.hits._id,hits.hits._score,hits.hits._source,hits.hits.highlight",
+                true
+        );
     }
 
     private static String buildKnnSearchBody(int size, int numCandidates, float[] vec) {
@@ -143,64 +104,14 @@ public class RagCommentChatRetrievalService {
     }
 
     private static String buildKnnSearchBody(int size, int numCandidates, float[] vec, String queryText) {
-        StringBuilder sb = new StringBuilder();
-        sb.append('{');
-        sb.append("\"size\":").append(size);
-        sb.append(",\"knn\":{");
-        sb.append("\"field\":\"embedding\"");
-        sb.append(",\"query_vector\":[");
-        for (int i = 0; i < vec.length; i++) {
-            if (i > 0) sb.append(',');
-            sb.append(vec[i]);
-        }
-        sb.append(']');
-        sb.append(",\"k\":").append(size);
-        sb.append(",\"num_candidates\":").append(numCandidates);
-        sb.append('}');
-        appendHighlightClause(sb, queryText);
-        sb.append('}');
-        return sb.toString();
+        return RagSearchJsonSupport.buildKnnSearchBody(
+                size,
+                numCandidates,
+                vec,
+                queryText,
+                "\"content_text\":{\"number_of_fragments\":1,\"fragment_size\":220}"
+        );
     }
-
-    private static void appendHighlightClause(StringBuilder sb, String queryText) {
-        sb.append(",\"highlight\":{");
-        sb.append("\"pre_tags\":[\"<em>\"],\"post_tags\":[\"</em>\"],");
-        sb.append("\"fields\":{\"content_text\":{\"number_of_fragments\":1,\"fragment_size\":220}}");
-        appendHighlightQuery(sb, queryText);
-        sb.append('}');
-    }
-
-    private static void appendHighlightQuery(StringBuilder sb, String queryText) {
-        String q = queryText == null ? "" : queryText.trim();
-        if (q.isBlank()) return;
-        sb.append(",\"highlight_query\":{");
-        sb.append("\"simple_query_string\":{");
-        sb.append("\"query\":\"").append(escapeJson(q)).append("\",");
-        sb.append("\"fields\":[\"content_text\"],\"default_operator\":\"or\"}}");
-    }
-
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
-    }
-
-    private static String firstHighlightFragment(JsonNode highlightNode, String field) {
-        if (highlightNode == null || field == null || field.isBlank()) return null;
-        JsonNode arr = highlightNode.path(field);
-        if (!arr.isArray() || arr.isEmpty()) return null;
-        for (JsonNode x : arr) {
-            if (x == null || !x.isTextual()) continue;
-            String t = x.asText(null);
-            if (t != null && !t.isBlank()) return t;
-        }
-        return null;
-    }
-
     @Data
     public static class Hit {
         private String docId;

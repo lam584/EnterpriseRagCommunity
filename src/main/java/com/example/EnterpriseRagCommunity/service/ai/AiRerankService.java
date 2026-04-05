@@ -470,61 +470,19 @@ public class AiRerankService {
     }
 
     private String normalizeRerankJsonFromChatResponse(String rawJson) throws IOException {
-        String assistantText = extractAssistantContent(rawJson);
-        String t = assistantText == null ? "" : assistantText.trim();
-        if (t.isEmpty()) throw new IOException("Upstream returned empty response");
-
-        t = stripCodeFences(t);
-
-        int lArr = t.indexOf('[');
-        int lObj = t.indexOf('{');
-        if (lArr >= 0 && (lObj < 0 || lArr < lObj)) {
-            int rArr = t.lastIndexOf(']');
-            if (rArr > lArr) {
-                String arr = t.substring(lArr, rArr + 1);
-                return "{\"results\":" + arr + "}";
-            }
-        }
-
-        int rObj = t.lastIndexOf('}');
-        if (lObj >= 0 && rObj > lObj) {
-            return t.substring(lObj, rObj + 1);
-        }
-        int rArr = t.lastIndexOf(']');
-        if (lArr >= 0 && rArr > lArr) {
-            String arr = t.substring(lArr, rArr + 1);
-            return "{\"results\":" + arr + "}";
-        }
-        throw new IOException("Upstream response does not contain JSON: " + shrink(t, 240));
+        return AiResponseParsingUtils.normalizeJsonPayload(extractAssistantContent(rawJson));
     }
 
     String normalizeRerankJsonFromResponsesResponse(String rawJson) throws IOException {
-        String outputText = extractResponsesOutputText(rawJson);
-        String t = outputText == null ? "" : outputText.trim();
-        if (t.isEmpty()) throw new IOException("Upstream returned empty response");
+        return AiResponseParsingUtils.normalizeJsonPayload(extractResponsesOutputText(rawJson));
+    }
 
-        t = stripCodeFences(t);
+    private static String stripCodeFences(String text) {
+        return AiResponseParsingUtils.stripCodeFences(text);
+    }
 
-        int lArr = t.indexOf('[');
-        int lObj = t.indexOf('{');
-        if (lArr >= 0 && (lObj < 0 || lArr < lObj)) {
-            int rArr = t.lastIndexOf(']');
-            if (rArr > lArr) {
-                String arr = t.substring(lArr, rArr + 1);
-                return "{\"results\":" + arr + "}";
-            }
-        }
-
-        int rObj = t.lastIndexOf('}');
-        if (lObj >= 0 && rObj > lObj) {
-            return t.substring(lObj, rObj + 1);
-        }
-        int rArr = t.lastIndexOf(']');
-        if (lArr >= 0 && rArr > lArr) {
-            String arr = t.substring(lArr, rArr + 1);
-            return "{\"results\":" + arr + "}";
-        }
-        throw new IOException("Upstream response does not contain JSON: " + shrink(t, 240));
+    private static String shrink(String text, int maxChars) {
+        return AiResponseParsingUtils.shrink(text, maxChars);
     }
 
     private String extractAssistantContent(String rawJson) {
@@ -549,30 +507,36 @@ public class AiRerankService {
                     if (text != null && text.isTextual()) return text.asText();
                     JsonNode content = output.get("content");
                     if (content != null && content.isTextual()) return content.asText();
-                    JsonNode msg = output.get("message");
-                    if (msg != null && msg.isTextual()) return msg.asText();
-                    if (msg != null && msg.isObject()) {
-                        JsonNode c = msg.get("content");
-                        if (c != null && c.isTextual()) return c.asText();
-                    }
+                    String messageText = extractMessageText(output.get("message"));
+                    if (messageText != null) return messageText;
                 }
             }
             JsonNode response = root.get("response");
             if (response != null && response.isTextual()) return response.asText();
             JsonNode result = root.get("result");
             if (result != null && result.isTextual()) return result.asText();
-            JsonNode message = root.get("message");
-            if (message != null && message.isTextual()) return message.asText();
-            if (message != null && message.isObject()) {
-                JsonNode c = message.get("content");
-                if (c != null && c.isTextual()) return c.asText();
-            }
+            String messageText = extractMessageText(root.get("message"));
+            if (messageText != null) return messageText;
         } catch (Exception ignore) {
         }
         return s;
     }
 
+    private static String extractMessageText(JsonNode messageNode) {
+        if (messageNode == null || messageNode.isNull()) return null;
+        if (messageNode.isTextual()) return messageNode.asText();
+        if (messageNode.isObject()) {
+            JsonNode content = messageNode.get("content");
+            if (content != null && content.isTextual()) return content.asText();
+        }
+        return null;
+    }
+
     private String extractResponsesOutputText(String rawJson) {
+        return extractResponsesOutputText(objectMapper, rawJson);
+    }
+
+    static String extractResponsesOutputText(ObjectMapper objectMapper, String rawJson) {
         if (rawJson == null) return null;
         String s = rawJson.trim();
         if (s.isEmpty()) return s;
@@ -606,26 +570,6 @@ public class AiRerankService {
         } catch (Exception ignore) {
         }
         return s;
-    }
-
-    private static String stripCodeFences(String s) {
-        String t = s == null ? "" : s.trim();
-        if (t.startsWith("```")) {
-            int firstNl = t.indexOf('\n');
-            if (firstNl >= 0) {
-                t = t.substring(firstNl + 1);
-                int lastFence = t.lastIndexOf("```");
-                if (lastFence >= 0) t = t.substring(0, lastFence);
-            }
-        }
-        return t.trim();
-    }
-
-    private static String shrink(String s, int maxChars) {
-        if (s == null) return "";
-        String t = s.trim();
-        if (t.length() <= maxChars) return t;
-        return t.substring(0, Math.max(0, maxChars - 3)) + "...";
     }
 
     static String normalizeModel(String modelOverride, Map<String, Object> providerMetadata) {
@@ -699,21 +643,7 @@ public class AiRerankService {
     }
 
     private static Integer readIntLike(JsonNode v) {
-        if (v == null || v.isNull()) return null;
-        try {
-            if (v.isInt() || v.isLong()) return v.intValue();
-            if (v.isNumber()) return (int) Math.round(v.doubleValue());
-            if (v.isTextual()) {
-                String t = v.asText().trim();
-                if (t.isEmpty()) return null;
-                double n = Double.parseDouble(t);
-                if (!Double.isFinite(n)) return null;
-                return (int) Math.round(n);
-            }
-        } catch (Exception ignore) {
-            return null;
-        }
-        return null;
+        return AiResponseParsingUtils.readIntLike(v);
     }
 
     private static Double readDoubleLike(JsonNode v) {

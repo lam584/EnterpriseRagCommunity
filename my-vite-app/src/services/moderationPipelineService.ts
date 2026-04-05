@@ -1,22 +1,9 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
-function getApiBase(): string {
-  const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: string }).__VITE_API_BASE_URL__;
-  if (typeof globalBase === 'string') return globalBase;
-  return (((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '') || '';
-}
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  const base = getApiBase();
-  return base ? `${base}${path}` : path;
-}
+const apiUrl = serviceApiUrl;
 
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
 
 export type PipelineStepStage = 'RULE' | 'VEC' | 'TEXT' | 'VISION' | 'JUDGE' | 'UPGRADE' | 'LLM' | string;
 

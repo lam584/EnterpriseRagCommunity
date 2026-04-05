@@ -1,39 +1,9 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 import { getBackendMessage } from './serviceErrorUtils';
+import { createFetchSignal } from './serviceQueryUtils';
 import { serviceApiUrl } from './serviceUrlUtils';
 
 const apiUrl = serviceApiUrl;
-
-function createFetchSignal(args: { signal?: AbortSignal; timeoutMs?: number }): { signal?: AbortSignal; cleanup: () => void } {
-  const hasOuter = Boolean(args.signal);
-  const hasTimeout = typeof args.timeoutMs === 'number' && Number.isFinite(args.timeoutMs) && args.timeoutMs > 0;
-  if (!hasOuter && !hasTimeout) return { signal: undefined, cleanup: () => {} };
-
-  const controller = new AbortController();
-  const onAbort = () => {
-    try {
-      controller.abort();
-    } catch {}
-  };
-
-  let timeoutId: number | null = null;
-  if (hasTimeout) {
-    timeoutId = window.setTimeout(() => onAbort(), Math.max(1, Math.floor(args.timeoutMs as number)));
-  }
-
-  if (args.signal) {
-    if (args.signal.aborted) onAbort();
-    else args.signal.addEventListener('abort', onAbort, { once: true });
-  }
-
-  return {
-    signal: controller.signal,
-    cleanup: () => {
-      if (timeoutId != null) window.clearTimeout(timeoutId);
-      if (args.signal) args.signal.removeEventListener('abort', onAbort);
-    },
-  };
-}
 
 export type LlmModerationDecision = 'APPROVE' | 'REJECT' | 'HUMAN';
 

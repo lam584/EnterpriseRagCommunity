@@ -11,19 +11,11 @@ import {
   type AdminLlmRoutingPolicyDTO,
   type AdminLlmRoutingTargetDTO,
 } from '../../../../services/llmRoutingAdminService';
+import { getBackendMessage } from '../../../../services/serviceErrorUtils';
+import { serviceApiUrl } from '../../../../services/serviceUrlUtils';
+import { formatMmddHms, parseTimestampMs } from './metricsTimeUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
+const apiUrl = serviceApiUrl;
 
 function normTaskType(s: string | null | undefined): string {
   return String(s || '').trim().toUpperCase();
@@ -124,37 +116,6 @@ function buildProviderLabel(p: AiProviderDTO): string {
   const id = String(p.id ?? '');
   const name = String(p.name ?? '').trim();
   return name ? `${name} (${id})` : id;
-}
-
-function parseTimestampMs(v: unknown): number | null {
-  if (typeof v === 'number' && Number.isFinite(v)) {
-    const ms = v > 1e12 ? v : v * 1000;
-    return Number.isFinite(ms) ? ms : null;
-  }
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return null;
-    const n = Number(t);
-    if (Number.isFinite(n)) {
-      const ms = n > 1e12 ? n : n * 1000;
-      return Number.isFinite(ms) ? ms : null;
-    }
-    const d = new Date(t);
-    const ms = d.getTime();
-    return Number.isFinite(ms) ? ms : null;
-  }
-  return null;
-}
-
-function formatMmddHms(ms: number | null | undefined): string {
-  if (!ms || !Number.isFinite(ms)) return '';
-  const d = new Date(ms);
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
 const SEEN_MODELS_STORAGE_KEY = 'llm-routing-config.seen-models.v1';

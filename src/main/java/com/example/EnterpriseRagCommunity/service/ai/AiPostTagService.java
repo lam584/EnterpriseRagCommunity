@@ -72,21 +72,18 @@ public class AiPostTagService {
             0.8
         );
 
-        String modelOverride = resolveModelOverride(req.getModel(), params.model());
-
-        Double temperature = req.getTemperature() != null ? req.getTemperature() : params.temperature();
-        if (temperature == null) temperature = 0.4;
-        if (temperature < 0 || temperature > 2) throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
-
-        Double topP = req.getTopP() != null ? req.getTopP() : params.topP();
-        if (topP == null) topP = 0.8;
-        if (topP < 0 || topP > 1) throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
+        AiPromptSamplingSupport.PromptSampling sampling = AiPromptSamplingSupport.resolve(
+                req.getModel(), params.model(),
+                req.getTemperature(), params.temperature(), 0.4,
+                req.getTopP(), params.topP(), 0.8
+        );
+        String modelOverride = sampling.modelOverride();
+        Double temperature = sampling.temperature();
+        Double topP = sampling.topP();
 
         String userPrompt = renderPrompt(prompt.getUserPromptTemplate(), count, req.getBoardName(), req.getTitle(), req.getTags(), content);
 
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(prompt.getSystemPrompt()));
-        messages.add(ChatMessage.user(userPrompt));
+        List<ChatMessage> messages = ChatMessageSupport.buildSystemUserMessages(prompt.getSystemPrompt(), userPrompt);
 
         long started = System.currentTimeMillis();
         String rawJson;
@@ -117,34 +114,21 @@ public class AiPostTagService {
         long latency = System.currentTimeMillis() - started;
 
         if (Boolean.TRUE.equals(cfg.getHistoryEnabled()) && actorUserId != null) {
-            GenerationJobsEntity job = new GenerationJobsEntity();
-            job.setJobType(GenerationJobType.SUGGESTION);
-            job.setTargetType(GenerationTargetType.POST);
-            job.setTargetId(0L);
-            job.setStatus(GenerationJobStatus.SUCCEEDED);
-            job.setPromptCode(promptCode);
-            job.setModel(usedModel);
-            job.setProviderId(usedProviderId);
-            job.setTemperature(temperature);
-            job.setTopP(topP);
-            job.setLatencyMs(latency);
-            job.setPromptVersion(cfg.getVersion());
-            job.setCreatedAt(LocalDateTime.now());
-            job.setUpdatedAt(job.getCreatedAt());
+            GenerationJobsEntity job = AiSuggestionSupport.buildSucceededSuggestionJob(
+                    promptCode,
+                    usedModel,
+                    usedProviderId,
+                    temperature,
+                    topP,
+                    latency,
+                    cfg.getVersion()
+            );
             generationJobsRepository.save(job);
 
-            PostSuggestionGenHistoryEntity h = new PostSuggestionGenHistoryEntity();
-            h.setKind(SuggestionKind.TOPIC_TAG);
-            h.setUserId(actorUserId);
-            h.setCreatedAt(LocalDateTime.now());
+            PostSuggestionGenHistoryEntity h = AiSuggestionSupport.newSuggestionHistory(SuggestionKind.TOPIC_TAG, actorUserId);
             h.setBoardName(blankToNull(req.getBoardName()));
             h.setTitleExcerpt(buildTitleExcerpt(req.getTitle()));
-            h.setRequestedCount(count);
-            h.setAppliedMaxContentChars(maxChars);
-            h.setContentLen(contentLen);
-            h.setContentExcerpt(buildExcerpt(req.getContent()));
-            h.setOutputJson(new ArrayList<>(tags));
-            h.setJobId(job.getId());
+            applyCommonHistoryFields(h, count, maxChars, contentLen, req.getContent(), tags, job.getId());
             postTagGenConfigService.recordHistory(h);
         }
 
@@ -152,23 +136,7 @@ public class AiPostTagService {
     }
 
     private String extractAssistantContent(String rawJson) {
-        try {
-            JsonNode root = objectMapper.readTree(rawJson);
-            JsonNode choices = root.path("choices");
-            if (choices.isArray() && !choices.isEmpty()) {
-                JsonNode first = choices.get(0);
-                JsonNode contentNode = first.path("message").path("content");
-                if (!contentNode.isMissingNode() && contentNode.isTextual()) {
-                    return contentNode.asText();
-                }
-                JsonNode textNode = first.path("text");
-                if (!textNode.isMissingNode() && textNode.isTextual()) {
-                    return textNode.asText();
-                }
-            }
-        } catch (Exception ignore) {
-        }
-        return rawJson;
+        return AiResponseParsingUtils.extractAssistantContent(objectMapper, rawJson);
     }
 
     List<String> parseTagsFromAssistantText(String assistantText, int expectedCount) {
@@ -196,13 +164,7 @@ public class AiPostTagService {
             throw new IllegalArgumentException("AI 输出无法解析为标签列表，请重试", e);
         }
 
-        LinkedHashSet<String> set = new LinkedHashSet<>(tags);
-
-        List<String> out = new ArrayList<>(set);
-        if (out.size() > expectedCount) {
-            out = out.subList(0, expectedCount);
-        }
-        return out;
+        return AiResponseParsingUtils.deduplicateAndLimit(tags, expectedCount);
     }
 
     private String cleanTag(String t) {
@@ -238,16 +200,26 @@ public class AiPostTagService {
         return t;
     }
 
+    private static void applyCommonHistoryFields(PostSuggestionGenHistoryEntity history,
+                                                 int requestedCount,
+                                                 int maxChars,
+                                                 int contentLen,
+                                                 String content,
+                                                 List<String> output,
+                                                 Long jobId) {
+        history.setRequestedCount(requestedCount);
+        history.setAppliedMaxContentChars(maxChars);
+        history.setContentLen(contentLen);
+        history.setContentExcerpt(buildExcerpt(content));
+        history.setOutputJson(output == null ? List.of() : new ArrayList<>(output));
+        history.setJobId(jobId);
+    }
+
     private static int resolveRequestedCount(Integer requestedCount, int defaultCount, int maxCount) {
         int count = requestedCount == null ? defaultCount : requestedCount;
         if (count <= 0) count = defaultCount;
         if (count > maxCount) count = maxCount;
         return count;
-    }
-
-    private static String resolveModelOverride(String requestedModel, String defaultModel) {
-        if (requestedModel == null || requestedModel.isBlank()) return defaultModel;
-        return requestedModel.trim();
     }
 
     private static String buildTitleExcerpt(String title) {

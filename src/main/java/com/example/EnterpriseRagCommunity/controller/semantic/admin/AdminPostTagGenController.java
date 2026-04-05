@@ -30,11 +30,8 @@ public class AdminPostTagGenController {
     @PutMapping("/config")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_semantic_multi_label','action'))")
     public PostTagGenConfigDTO upsertConfig(@RequestBody PostTagGenConfigDTO payload, Principal principal) {
-        String username = principal == null ? null : principal.getName();
-        Long userId = null;
-        if (username != null) {
-            userId = administratorService.findByUsername(username).map(u -> u.getId()).orElse(null);
-        }
+        String username = AdminSemanticControllerSupport.resolveUsername(principal);
+        Long userId = AdminSemanticControllerSupport.resolveActorUserId(administratorService, principal);
         return postTagGenConfigService.upsertAdminConfig(payload, userId, username);
     }
 
@@ -48,4 +45,3 @@ public class AdminPostTagGenController {
         return ResponseEntity.ok(postTagGenConfigService.listHistory(userId, page, size));
     }
 }
-

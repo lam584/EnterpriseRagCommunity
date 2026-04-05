@@ -5,11 +5,10 @@ import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
 import com.example.EnterpriseRagCommunity.repository.content.BoardModeratorsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUserIdResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -54,14 +53,10 @@ public class ModeratorBoardsController {
     }
 
     private Long currentUserIdOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.access.AccessDeniedException("未登录或会话已过期");
-        }
-        String email = auth.getName();
-        return administratorService.findByUsername(email)
-                .orElseThrow(() -> new org.springframework.security.access.AccessDeniedException("当前用户不存在"))
-                .getId();
+        return CurrentUserIdResolver.currentUserIdOrThrow(
+                administratorService,
+                () -> new org.springframework.security.access.AccessDeniedException("未登录或会话已过期"),
+                () -> new org.springframework.security.access.AccessDeniedException("当前用户不存在")
+        );
     }
 }
-

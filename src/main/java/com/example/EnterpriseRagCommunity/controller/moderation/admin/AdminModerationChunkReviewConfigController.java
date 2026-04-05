@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.dto.moderation.ModerationChunkReviewCo
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkReviewConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -49,13 +50,6 @@ public class AdminModerationChunkReviewConfigController {
     }
 
     private static String currentUsernameOrNull() {
-        try {
-            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 }

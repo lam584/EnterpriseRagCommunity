@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAccess } from '../../../../contexts/AccessContext';
 import Modal from '../users/roles/Modal';
+import { EditSaveActions } from '../../../../components/admin/EditSaveActions';
+import { AdminLoadingCard, computeLogsTotalPages, copyTextWithFeedback } from '../shared/adminFormUiShared';
 import {
   adminGetContextClipConfig,
   adminGetContextWindow,
@@ -251,23 +253,14 @@ const ContextClipForm: React.FC = () => {
     }
   }, []);
 
-  const logsTotalPages = useMemo(() => Math.max(1, Math.ceil((logsTotal || 0) / 20)), [logsTotal]);
+  const logsTotalPages = useMemo(() => computeLogsTotalPages(logsTotal), [logsTotal]);
 
   const copyText = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setMessage('已复制到剪贴板');
-    } catch {
-      setError('复制失败（浏览器权限限制）');
-    }
+    await copyTextWithFeedback(text, setMessage, setError);
   }, []);
 
   if (accessLoading || !configLoaded) {
-    return (
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="text-gray-500">加载中…</div>
-      </div>
-    );
+    return <AdminLoadingCard />;
   }
 
   if (!canAccess) {
@@ -309,37 +302,24 @@ const ContextClipForm: React.FC = () => {
           <button className={btnSecondaryClass} onClick={loadConfig} disabled={loading}>
             刷新
           </button>
-          {!editing ? (
-            <button
-              className={btnSecondaryClass}
-              onClick={() => {
-                setEditing(true);
-                setError(null);
-                setMessage(null);
-              }}
-              disabled={loading || !canWrite}
-            >
-              编辑
-            </button>
-          ) : (
-            <>
-              <button
-                className={btnSecondaryClass}
-                onClick={() => {
-                  setConfig(committedConfig);
-                  setEditing(false);
-                  setError(null);
-                  setMessage(null);
-                }}
-                disabled={loading}
-              >
-                取消
-              </button>
-              <button className={btnPrimaryClass} onClick={onSave} disabled={loading || !canWrite || !hasUnsavedChanges}>
-                保存
-              </button>
-            </>
-          )}
+          <EditSaveActions
+            editing={editing}
+            loading={loading}
+            canWrite={canWrite}
+            hasUnsavedChanges={hasUnsavedChanges}
+            onEdit={() => {
+              setEditing(true);
+              setError(null);
+              setMessage(null);
+            }}
+            onCancel={() => {
+              setConfig(committedConfig);
+              setEditing(false);
+              setError(null);
+              setMessage(null);
+            }}
+            onSave={onSave}
+          />
         </div>
       </div>
 

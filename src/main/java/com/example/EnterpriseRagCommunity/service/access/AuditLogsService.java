@@ -89,11 +89,7 @@ public class AuditLogsService {
                 ps.add(cb.equal(root.get("result"), result));
             }
 
-            if (createdFrom != null || createdTo != null) {
-                LocalDateTime start = createdFrom == null ? LocalDateTime.of(1970, 1, 1, 0, 0) : createdFrom;
-                LocalDateTime end = createdTo == null ? LocalDateTime.now().plusYears(100) : createdTo;
-                ps.add(cb.between(root.get("createdAt"), start, end));
-            }
+            LogTimeRangeSupport.addCreatedAtBetween(ps, root, cb, createdFrom, createdTo);
 
             // Keyword search over core columns
             if (kw != null) {
@@ -197,24 +193,6 @@ public class AuditLogsService {
     }
 
     private static Sort parseSort(String sort) {
-        // Accept "createdAt,desc" (frontend default)
-        if (!StringUtils.hasText(sort)) {
-            return Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
-        }
-
-        String[] parts = sort.split(",");
-        String field = parts.length > 0 ? parts[0].trim() : "createdAt";
-        String dir = parts.length > 1 ? parts[1].trim() : "desc";
-
-        if (!StringUtils.hasText(field)) field = "createdAt";
-
-        Sort.Direction d;
-        try {
-            d = Sort.Direction.fromString(dir);
-        } catch (Exception ex) {
-            d = Sort.Direction.DESC;
-        }
-
-        return Sort.by(new Sort.Order(d, field), new Sort.Order(Sort.Direction.DESC, "id"));
+        return SortParsingSupport.parseCreatedAtIdSort(sort);
     }
 }

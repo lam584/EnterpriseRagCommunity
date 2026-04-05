@@ -585,47 +585,11 @@ public class LlmCallQueueService {
     }
 
     private static Integer pickIntLoose(JsonNode obj, String... keys) {
-        if (obj == null || !obj.isObject() || keys == null) return null;
-        for (String k : keys) {
-            if (k == null || k.isBlank()) continue;
-            Integer v = asIntLoose(obj.path(k));
-            if (v != null) return v;
-        }
-        return null;
+        return LlmGatewaySupport.pickIntLoose(obj, keys);
     }
 
     private static UsageMetrics normalizeOpenAiCompatUsage(Integer prompt, Integer completion, Integer total) {
-        Integer p = prompt;
-        Integer c = completion;
-        Integer t = total;
-        if (p != null && p < 0) p = null;
-        if (c != null && c < 0) c = null;
-        if (t != null && t < 0) t = null;
-
-        if (p != null && c != null && t != null) {
-            if (t < p) {
-                c = t;
-                t = p + c;
-            } else if (c <= 0 && t - p > 0) {
-                c = t - p;
-            } else {
-                t = p + c;
-            }
-        } else if (p != null && c != null) {
-            t = p + c;
-        } else if (p != null && t != null) {
-            if (t >= p) {
-                c = t - p;
-            } else {
-                c = t;
-                t = p + c;
-            }
-        } else if (p == null && c != null && t != null) {
-            if (t >= c) p = t - c;
-        }
-
-        if (p == null && c == null && t == null) return null;
-        return new UsageMetrics(p, c, t, null);
+        return LlmGatewaySupport.normalizeOpenAiCompatUsage(prompt, completion, total);
     }
 
     public UsageMetrics parseOpenAiUsageFromJson(String rawJson) {
@@ -796,13 +760,7 @@ public class LlmCallQueueService {
     ) {
         ensureDispatcherStarted();
         CompletableFuture<Object> future = new CompletableFuture<>();
-        CheckedTaskSupplier<Object> sup = supplier::get;
-        ResultMetricsExtractor<Object> mex = metricsExtractor == null ? null : (Object r) -> {
-            @SuppressWarnings("unchecked")
-            T casted = (T) r;
-            return metricsExtractor.extract(casted);
-        };
-        Task task = createTask(type, providerId, model, priority, label, sup, mex, future);
+        Task task = createTypedTask(type, providerId, model, priority, label, supplier, metricsExtractor, future);
         enqueuePending(task);
         @SuppressWarnings("unchecked")
         CompletableFuture<T> out = (CompletableFuture<T>) future;
@@ -872,13 +830,7 @@ public class LlmCallQueueService {
             return reused;
         }
 
-        CheckedTaskSupplier<Object> sup = supplier::get;
-        ResultMetricsExtractor<Object> mex = metricsExtractor == null ? null : (Object r) -> {
-            @SuppressWarnings("unchecked")
-            T casted = (T) r;
-            return metricsExtractor.extract(casted);
-        };
-        Task task = createTask(type, providerId, model, priority, label, sup, mex, mine);
+        Task task = createTypedTask(type, providerId, model, priority, label, supplier, metricsExtractor, mine);
         mine.whenComplete((r, e) -> {
             recordRecentDedup(key, mine);
             inFlight.remove(key, mine);
@@ -887,6 +839,24 @@ public class LlmCallQueueService {
         @SuppressWarnings("unchecked")
         CompletableFuture<T> out = (CompletableFuture<T>) mine;
         return out;
+    }
+
+    private <T> Task createTypedTask(
+            LlmQueueTaskType type,
+            String providerId,
+            String model,
+            int priority,
+            String label,
+            CheckedTaskSupplier<T> supplier,
+            ResultMetricsExtractor<T> metricsExtractor,
+            CompletableFuture<Object> future
+    ) {
+        ResultMetricsExtractor<Object> adaptedMetricsExtractor = metricsExtractor == null ? null : (Object r) -> {
+            @SuppressWarnings("unchecked")
+            T casted = (T) r;
+            return metricsExtractor.extract(casted);
+        };
+        return createTask(type, providerId, model, priority, label, supplier::get, adaptedMetricsExtractor, future);
     }
 
     private Task createTask(
@@ -1128,32 +1098,18 @@ public class LlmCallQueueService {
         if (snap == null) return;
         try {
             String truncSuffix = "\n...(truncated)...";
+            LlmQueueTaskMappingSupport.TaskMappedData mapped = LlmQueueTaskMappingSupport.from(snap);
+            if (mapped == null) {
+                return;
+            }
 
-            String input = snap.input();
-            String output = snap.output();
+            String input = mapped.input();
+            String output = mapped.output();
             boolean inputTruncated = input != null && input.endsWith(truncSuffix);
             boolean outputTruncated = output != null && output.endsWith(truncSuffix);
 
             LlmQueueTaskHistoryEntity e = new LlmQueueTaskHistoryEntity();
-            e.setTaskId(snap.id());
-            e.setSeq(snap.seq());
-            e.setPriority(snap.priority());
-            e.setType(snap.type());
-            e.setStatus(snap.status());
-            e.setProviderId(snap.providerId());
-            e.setModel(snap.model());
-            e.setCreatedAt(snap.createdAt());
-            e.setStartedAt(snap.startedAt());
-            e.setFinishedAt(snap.finishedAt());
-            e.setWaitMs(snap.waitMs());
-            e.setDurationMs(snap.durationMs());
-            e.setTokensIn(snap.tokensIn());
-            e.setTokensOut(snap.tokensOut());
-            e.setTotalTokens(snap.totalTokens());
-            e.setTokensPerSec(snap.tokensPerSec());
-            e.setError(snap.error());
-            e.setInput(input);
-            e.setOutput(output);
+            mapped.applyTo(e);
             e.setInputChars(input == null ? null : input.length());
             e.setOutputChars(output == null ? null : output.length());
             e.setInputTruncated(inputTruncated);

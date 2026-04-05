@@ -773,8 +773,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 "p1", "OPENAI_COMPAT", "http://example.invalid", "k", "m1", "e1", Map.of(), Map.of(), 1000, 1000
         );
 
-        when(llmCallQueueService.parseOpenAiUsageFromJson(org.mockito.ArgumentMatchers.anyString()))
-                .thenReturn(null);
         when(tokenCountService.decideChatTokens(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
@@ -785,16 +783,17 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 org.mockito.ArgumentMatchers.eq(true)
         )).thenReturn(new TokenCountService.TokenDecision(11, 7, 18, null, "mock"));
 
-        LlmCallQueueService.UsageMetrics usage = (LlmCallQueueService.UsageMetrics) callCallChatOnceSingleLambda(
+        LlmCallQueueService.UsageMetrics usage = (LlmCallQueueService.UsageMetrics) callInstance(
                 gateway,
-                new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
-                List.of(ChatMessage.user("hi")),
-                false,
+                "buildChatUsageMetrics",
                 LlmQueueTaskType.MODERATION_CHUNK,
-                provider,
+                provider.id(),
                 "m1",
                 Boolean.TRUE,
-                "{\"choices\":[{\"message\":{\"content\":\"xyz\"}}]}"
+                null,
+                List.of(ChatMessage.user("hi")),
+                "xyz",
+                true
         );
         assertNotNull(usage);
         assertEquals(11, usage.promptTokens());
@@ -927,11 +926,6 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
                 "p1", "OPENAI_COMPAT", "http://example.invalid", "k", "m1", "e1", Map.of(), Map.of(), 1000, 1000
         );
 
-        when(llmCallQueueService.parseOpenAiUsageFromJson(org.mockito.ArgumentMatchers.anyString()))
-                .thenReturn(null)
-                .thenReturn(new LlmCallQueueService.UsageMetrics(3, null, null, null))
-                .thenReturn(new LlmCallQueueService.UsageMetrics(2, 2, 4, 2))
-                .thenReturn(new LlmCallQueueService.UsageMetrics(2, 2, 4, 2));
         when(tokenCountService.decideChatTokens(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
@@ -946,31 +940,59 @@ class LlmGatewayPrivateHelpersCoveragePart2Test {
         );
 
         List<ChatMessage> patched = List.of(ChatMessage.user("hi"));
-        Object u1 = callCallChatOnceSingleLambda(
+        Object u1 = callInstance(
                 gateway,
-                new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
-                patched, false, LlmQueueTaskType.TEXT_CHAT, provider, "m1", Boolean.TRUE, "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}"
+                "buildChatUsageMetrics",
+                LlmQueueTaskType.TEXT_CHAT,
+                provider.id(),
+                "m1",
+                Boolean.TRUE,
+                null,
+                patched,
+                "ok",
+                true
         );
         assertNotNull(u1);
 
-        Object u2 = callCallChatOnceSingleLambda(
+        Object u2 = callInstance(
                 gateway,
-                new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
-                patched, true, LlmQueueTaskType.TEXT_CHAT, provider, "m1", Boolean.FALSE, "{\"choices\":[{\"message\":{\"content\":\"<think>x</think>ok\"}}]}"
+                "buildChatUsageMetrics",
+                LlmQueueTaskType.TEXT_CHAT,
+                provider.id(),
+                "m1",
+                Boolean.FALSE,
+                new LlmCallQueueService.UsageMetrics(3, null, null, null),
+                patched,
+                "ok",
+                true
         );
         assertNotNull(u2);
 
-        Object u3 = callCallChatOnceSingleLambda(
+        Object u3 = callInstance(
                 gateway,
-                new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
-                patched, false, LlmQueueTaskType.MODERATION_CHUNK, provider, "m1", Boolean.TRUE, "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}"
+                "buildChatUsageMetrics",
+                LlmQueueTaskType.MODERATION_CHUNK,
+                provider.id(),
+                "m1",
+                Boolean.TRUE,
+                new LlmCallQueueService.UsageMetrics(2, 2, 4, 2),
+                patched,
+                "ok",
+                true
         );
         assertNotNull(u3);
 
-        Object u4 = callCallChatOnceSingleLambda(
+        Object u4 = callInstance(
                 gateway,
-                new Class[]{List.class, boolean.class, LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, Boolean.class, String.class},
-                patched, false, LlmQueueTaskType.MODERATION_CHUNK, provider, "m1", Boolean.TRUE, "{\"choices\":[{\"message\":{\"content\":\"ok2\"}}]}"
+                "buildChatUsageMetrics",
+                LlmQueueTaskType.MODERATION_CHUNK,
+                provider.id(),
+                "m1",
+                Boolean.TRUE,
+                new LlmCallQueueService.UsageMetrics(2, 2, 4, 2),
+                patched,
+                "ok2",
+                true
         );
         assertNotNull(u4);
     }

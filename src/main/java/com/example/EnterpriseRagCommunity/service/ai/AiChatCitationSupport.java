@@ -8,6 +8,7 @@ import java.util.Set;
 
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatResponseDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
+import com.example.EnterpriseRagCommunity.service.retrieval.CitationModeSupport;
 
 final class AiChatCitationSupport {
 
@@ -23,14 +24,7 @@ final class AiChatCitationSupport {
     }
 
     static String normalizeCitationMode(CitationConfigDTO citationCfg) {
-        if (citationCfg == null) return "MODEL_INLINE";
-        String mode = citationCfg.getCitationMode() == null
-                ? ""
-                : citationCfg.getCitationMode().trim().toUpperCase(Locale.ROOT);
-        if (!mode.equals("MODEL_INLINE") && !mode.equals("SOURCES_SECTION") && !mode.equals("BOTH")) {
-            return "MODEL_INLINE";
-        }
-        return mode;
+        return CitationModeSupport.normalizeCitationMode(citationCfg);
     }
 
     static boolean shouldExposeCitationSources(CitationConfigDTO citationCfg) {

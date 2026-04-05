@@ -5,6 +5,7 @@ import com.example.EnterpriseRagCommunity.dto.content.BoardsCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.content.BoardsDTO;
 import com.example.EnterpriseRagCommunity.dto.content.BoardsQueryDTO;
 import com.example.EnterpriseRagCommunity.dto.content.BoardsUpdateDTO;
+import com.example.EnterpriseRagCommunity.controller.BoardDtoSupport;
 import com.example.EnterpriseRagCommunity.service.BoardService;
 import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
 import io.swagger.annotations.Api;
@@ -15,7 +16,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -27,27 +27,12 @@ public class AdminBoardsController {
     private final BoardService boardService;
     private final BoardAccessControlService boardAccessControlService;
 
-    private static BoardsDTO sanitizeBoard(BoardsDTO in) {
-        if (in == null) return null;
-        BoardsDTO out = new BoardsDTO();
-        out.setId(in.getId());
-        out.setTenantId(in.getTenantId());
-        out.setParentId(in.getParentId());
-        out.setName(in.getName() == null ? null : HtmlUtils.htmlEscape(in.getName()));
-        out.setDescription(in.getDescription() == null ? null : HtmlUtils.htmlEscape(in.getDescription()));
-        out.setVisible(in.getVisible());
-        out.setSortOrder(in.getSortOrder());
-        out.setCreatedAt(in.getCreatedAt());
-        out.setUpdatedAt(in.getUpdatedAt());
-        return out;
-    }
-
     @GetMapping
     @ApiOperation("后台查询板块列表（不默认过滤 visible）")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_boards','read'))")
     public ResponseEntity<Page<BoardsDTO>> queryBoards(@ModelAttribute BoardsQueryDTO queryDTO) {
         Page<BoardsDTO> result = boardService.queryBoards(queryDTO);
-        return ResponseEntity.ok(result.map(AdminBoardsController::sanitizeBoard));
+        return ResponseEntity.ok(result.map(BoardDtoSupport::sanitizeBoard));
     }
 
     @PostMapping
@@ -55,7 +40,7 @@ public class AdminBoardsController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_boards','write'))")
     public ResponseEntity<BoardsDTO> createBoard(@Valid @RequestBody BoardsCreateDTO createDTO) {
         BoardsDTO result = boardService.createBoard(createDTO);
-        return ResponseEntity.status(HttpStatus.CREATED).body(sanitizeBoard(result));
+        return ResponseEntity.status(HttpStatus.CREATED).body(BoardDtoSupport.sanitizeBoard(result));
     }
 
     @PutMapping("/{id}")
@@ -64,7 +49,7 @@ public class AdminBoardsController {
     public ResponseEntity<BoardsDTO> updateBoard(@PathVariable Long id, @RequestBody BoardsUpdateDTO updateDTO) {
         updateDTO.setId(id);
         BoardsDTO result = boardService.updateBoard(updateDTO);
-        return ResponseEntity.ok(sanitizeBoard(result));
+        return ResponseEntity.ok(BoardDtoSupport.sanitizeBoard(result));
     }
 
     @DeleteMapping("/{id}")

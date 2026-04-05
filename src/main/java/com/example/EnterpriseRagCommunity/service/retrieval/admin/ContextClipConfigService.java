@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.service.retrieval.admin;
 
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.semantic.enums.ContextWindowPolicy;
+import com.example.EnterpriseRagCommunity.service.NumericClampSupport;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -167,11 +168,7 @@ public class ContextClipConfigService {
     }
 
     private static double clampDouble(Double v, double min, double max, double def) {
-        double x = v == null ? def : v;
-        if (Double.isNaN(x) || Double.isInfinite(x)) x = def;
-        if (x < min) x = min;
-        if (x > max) x = max;
-        return x;
+        return NumericClampSupport.clampDouble(v, min, max, def);
     }
 
     private static Double clampDoubleNullable(Double v, double min, double max) {

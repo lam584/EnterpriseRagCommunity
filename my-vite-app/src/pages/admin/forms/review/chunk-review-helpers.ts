@@ -210,6 +210,24 @@ export function toUrlString(v: unknown): string | null {
     return s ? s : null;
 }
 
+export type ImageSizeLike = {
+    url?: unknown;
+    width?: number | null;
+    height?: number | null;
+};
+
+export function hasResolvedImageSize(img: ImageSizeLike): boolean {
+    const w = img.width;
+    const h = img.height;
+    return typeof w === 'number' && Number.isFinite(w) && w > 0 && typeof h === 'number' && Number.isFinite(h) && h > 0;
+}
+
+export function collectMissingImageSizeEntries<T extends ImageSizeLike>(imgs: T[]) {
+    return imgs
+        .map((img, idx) => ({img, idx, url: toUrlString(img.url)}))
+        .filter(({img, url}) => Boolean(url) && !hasResolvedImageSize(img));
+}
+
 export function createImageSizeProbe(opts: { concurrency: number }) {
     const cache = new Map<string, ImageNaturalSize | null>();
     const inflight = new Map<string, Promise<ImageNaturalSize | null>>();

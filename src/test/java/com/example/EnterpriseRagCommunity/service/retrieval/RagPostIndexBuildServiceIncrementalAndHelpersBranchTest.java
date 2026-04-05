@@ -12,9 +12,11 @@ import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationServ
 import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
+import org.springframework.data.elasticsearch.core.document.Document;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -183,6 +185,13 @@ class RagPostIndexBuildServiceIncrementalAndHelpersBranchTest {
         assertNull(invokeStatic("toNonBlankString", new Class[]{Object.class}, new Object[]{"   "}));
         assertEquals("a", invokeStatic("toNonBlankString", new Class[]{Object.class}, new Object[]{" a "}));
 
+        @SuppressWarnings("unchecked")
+        List<Float> empty = (List<Float>) invokeStatic("toFloatList", new Class[]{float[].class}, new Object[]{new float[0]});
+        assertEquals(List.of(), empty);
+        @SuppressWarnings("unchecked")
+        List<Float> floats = (List<Float>) invokeStatic("toFloatList", new Class[]{float[].class}, new Object[]{new float[]{0.1f, 0.2f}});
+        assertEquals(List.of(0.1f, 0.2f), floats);
+
         assertNull(invokeStatic("summarizeException", new Class[]{Throwable.class}, new Object[]{null}));
         assertEquals("IllegalStateException", invokeStatic("summarizeException", new Class[]{Throwable.class}, new Object[]{new IllegalStateException()}));
         String longMsg = "x".repeat(2000);
@@ -215,6 +224,39 @@ class RagPostIndexBuildServiceIncrementalAndHelpersBranchTest {
         @SuppressWarnings("unchecked")
         List<String> e = (List<String>) invokeStatic("splitWithOverlap", new Class[]{String.class, int.class, int.class}, new Object[]{s, 10, 3});
         assertTrue(e.size() > 1);
+    }
+
+    @Test
+    void buildPostChunkDocument_shouldPopulateFieldsAndSkipEmptyEmbedding() throws Exception {
+        com.example.EnterpriseRagCommunity.entity.content.PostsEntity post = new com.example.EnterpriseRagCommunity.entity.content.PostsEntity();
+        post.setId(9L);
+        post.setBoardId(7L);
+        post.setAuthorId(5L);
+        post.setTitle("title");
+        post.setCreatedAt(LocalDateTime.of(2024, 1, 2, 3, 4, 5));
+        post.setUpdatedAt(LocalDateTime.of(2024, 1, 2, 4, 5, 6));
+
+        Document withEmbedding = (Document) invokeStatic(
+                "buildPostChunkDocument",
+                new Class[]{com.example.EnterpriseRagCommunity.entity.content.PostsEntity.class, String.class, int.class, String.class, String.class, float[].class},
+                new Object[]{post, "doc1", 2, "hash1", "chunk1", new float[]{0.3f}}
+        );
+        assertEquals("doc1", withEmbedding.getId());
+        assertEquals("doc1", withEmbedding.get("id"));
+        assertEquals(9L, withEmbedding.get("post_id"));
+        assertEquals(2, withEmbedding.get("chunk_index"));
+        assertEquals("hash1", withEmbedding.get("content_hash"));
+        assertEquals("chunk1", withEmbedding.get("content_text"));
+        assertNotNull(withEmbedding.get("created_at"));
+        assertNotNull(withEmbedding.get("updated_at"));
+        assertEquals(List.of(0.3f), withEmbedding.get("embedding"));
+
+        Document withoutEmbedding = (Document) invokeStatic(
+                "buildPostChunkDocument",
+                new Class[]{com.example.EnterpriseRagCommunity.entity.content.PostsEntity.class, String.class, int.class, String.class, String.class, float[].class},
+                new Object[]{post, "doc2", 3, "hash2", "chunk2", new float[0]}
+        );
+        assertNull(withoutEmbedding.get("embedding"));
     }
 
     @Test

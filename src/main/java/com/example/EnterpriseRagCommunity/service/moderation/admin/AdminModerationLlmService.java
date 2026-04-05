@@ -26,6 +26,8 @@ import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.PromptLlmParams;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationTagSupport;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationThresholdSupport;
 
 import lombok.RequiredArgsConstructor;
 
@@ -75,13 +77,10 @@ public class AdminModerationLlmService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public LlmModerationTestResponse test(LlmModerationTestRequest req) {
-        if (req == null) throw new IllegalArgumentException("request cannot be null");
+        TestRequestContext requestContext = resolveTestRequestContext(req);
         boolean useQueue = !Boolean.FALSE.equals(req.getUseQueue());
-
-        ModerationLlmConfigEntity base = configSupport.loadBaseConfigCached();
-        ModerationLlmConfigEntity merged = configSupport.merge(base, req.getConfigOverride());
-
-        PromptVars vars = contextBuilder.resolvePromptVarsSafe(req);
+        ModerationLlmConfigEntity merged = requestContext.merged();
+        PromptVars vars = requestContext.vars();
         String text = vars == null ? null : vars.text();
         if (text == null || text.isBlank()) throw new IllegalArgumentException("text cannot be empty (or queueId cannot resolve content)");
         if (text.length() > 6000) {
@@ -110,17 +109,9 @@ public class AdminModerationLlmService {
 
         PromptLlmParams visionInvoke = resolveVisionPromptInvocation(multimodalPromptEntity);
 
-        String visionSystemPrompt = baseVisionSystemPrompt == null ? "" : baseVisionSystemPrompt.trim();
-        String trace = contextBuilder.buildQueueTraceLine(req);
-        if (trace != null && !trace.isBlank()) {
-            String t = trace.trim();
-            visionSystemPrompt = visionSystemPrompt.isBlank() ? t : (visionSystemPrompt + "\n" + t);
-        }
+        String visionSystemPrompt = appendPromptLine(baseVisionSystemPrompt, contextBuilder.buildQueueTraceLine(req));
         String policyBlock = contextBuilder.buildPolicyContextBlock(req, useQueue);
-        if (policyBlock != null && !policyBlock.isBlank()) {
-            String t = policyBlock.trim();
-            visionSystemPrompt = visionSystemPrompt.isBlank() ? t : (visionSystemPrompt + "\n" + t);
-        }
+        visionSystemPrompt = appendPromptLine(visionSystemPrompt, policyBlock);
 
         ModerationConfidenceFallbackConfigEntity fb = loadFallbackRequired();
         double rejectThreshold = require01(fb.getLlmRejectThreshold(), "llmRejectThreshold");
@@ -207,25 +198,17 @@ public class AdminModerationLlmService {
             );
         }
 
-        StageCallResult imageStage0 = upstreamSupport.callImageDescribeOnce(
+        StageCallResult imageStage = callVisionStage(
                 visionSystemPrompt,
                 vars,
                 images,
                 visionPromptTemplate,
                 visionInputJsonList,
-                visionInvoke.temperature(),
-                visionInvoke.topP(),
-                visionInvoke.maxTokens(),
-                visionInvoke.providerId(),
-                visionInvoke.model(),
-                visionInvoke.enableThinking(),
-                multimodalPromptEntity.getVisionImageTokenBudget(),
-                multimodalPromptEntity.getVisionMaxImagesPerRequest(),
-                multimodalPromptEntity.getVisionHighResolutionImages(),
-                multimodalPromptEntity.getVisionMaxPixels(),
-                useQueue
+                visionInvoke,
+                multimodalPromptEntity,
+                useQueue,
+                labelTaxonomy
         );
-        StageCallResult imageStage = enforceRiskTagsWhitelist(imageStage0, labelTaxonomy);
         stages.setImage(toStage(imageStage, imageStage == null ? null : imageStage.description()));
         if (isStageCallFailed(imageStage)) {
             return finalizeMultiStage("HUMAN", imageStage == null ? null : imageStage.score(), List.of("Multimodal moderation output invalid, routed to HUMAN"), imageStage == null ? null : imageStage.riskTags(), stages, urls, labelTaxonomy, imageStage);
@@ -272,13 +255,10 @@ public class AdminModerationLlmService {
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public LlmModerationTestResponse testImageOnly(LlmModerationTestRequest req) {
-        if (req == null) throw new IllegalArgumentException("request cannot be null");
+        TestRequestContext requestContext = resolveTestRequestContext(req);
         boolean useQueue = !Boolean.FALSE.equals(req.getUseQueue());
-
-        ModerationLlmConfigEntity base = configSupport.loadBaseConfigCached();
-        ModerationLlmConfigEntity merged = configSupport.merge(base, req.getConfigOverride());
-
-        PromptVars vars = contextBuilder.resolvePromptVarsSafe(req);
+        ModerationLlmConfigEntity merged = requestContext.merged();
+        PromptVars vars = requestContext.vars();
         if (vars == null) vars = new PromptVars("", "", "");
 
         LlmModerationTestRequest.LlmModerationConfigOverrideDTO override = req.getConfigOverride();
@@ -300,12 +280,7 @@ public class AdminModerationLlmService {
         if (visionPromptTemplate == null || visionPromptTemplate.isBlank()) {
             throw new IllegalStateException("Vision moderation prompt template is not configured");
         }
-        String visionSystemPrompt = baseVisionSystemPrompt == null ? "" : baseVisionSystemPrompt.trim();
-        String trace = contextBuilder.buildQueueTraceLine(req);
-        if (trace != null && !trace.isBlank()) {
-            String t = trace.trim();
-            visionSystemPrompt = visionSystemPrompt.isBlank() ? t : (visionSystemPrompt + "\n" + t);
-        }
+        String visionSystemPrompt = appendPromptLine(baseVisionSystemPrompt, contextBuilder.buildQueueTraceLine(req));
 
         ModerationConfidenceFallbackConfigEntity fb = loadFallbackRequired();
         double imageRiskThreshold = clamp01(fb.getLlmImageRiskThreshold(), 0.30);
@@ -325,25 +300,17 @@ public class AdminModerationLlmService {
         LlmModerationTestResponse.Stages stages = new LlmModerationTestResponse.Stages();
         QueueCtx ctx = contextBuilder.resolveQueueCtx(req, useQueue);
         String visionInputJsonList = contextBuilder.buildVisionAuditInputJsonList(req, ctx, images);
-        StageCallResult imageStage0 = upstreamSupport.callImageDescribeOnce(
+        StageCallResult imageStage = callVisionStage(
                 visionSystemPrompt,
                 vars,
                 images,
                 visionPromptTemplate,
                 visionInputJsonList,
-                visionInvoke.temperature(),
-                visionInvoke.topP(),
-                visionInvoke.maxTokens(),
-                visionInvoke.providerId(),
-                visionInvoke.model(),
-                visionInvoke.enableThinking(),
-                multimodalPromptEntity.getVisionImageTokenBudget(),
-                multimodalPromptEntity.getVisionMaxImagesPerRequest(),
-                multimodalPromptEntity.getVisionHighResolutionImages(),
-                multimodalPromptEntity.getVisionMaxPixels(),
-                useQueue
+                visionInvoke,
+                multimodalPromptEntity,
+                useQueue,
+                labelTaxonomy
         );
-        StageCallResult imageStage = enforceRiskTagsWhitelist(imageStage0, labelTaxonomy);
         stages.setImage(toStage(imageStage, imageStage == null ? null : imageStage.description()));
 
         if (imageStage != null && "HUMAN".equalsIgnoreCase(imageStage.decision())) {
@@ -369,6 +336,38 @@ public class AdminModerationLlmService {
         Integer maxTokens = prompt.getMaxTokens();
         Boolean enableThinking = prompt.getEnableDeepThinking() != null ? prompt.getEnableDeepThinking() : Boolean.FALSE;
         return new PromptLlmParams(providerId, model, temperature, topP, maxTokens, enableThinking);
+    }
+
+    private StageCallResult callVisionStage(
+            String visionSystemPrompt,
+            PromptVars vars,
+            List<ImageRef> images,
+            String visionPromptTemplate,
+            String visionInputJsonList,
+            PromptLlmParams visionInvoke,
+            PromptsEntity multimodalPromptEntity,
+            boolean useQueue,
+            LlmModerationTestResponse.LabelTaxonomy labelTaxonomy
+    ) {
+        StageCallResult imageStage0 = upstreamSupport.callImageDescribeOnce(
+                visionSystemPrompt,
+                vars,
+                images,
+                visionPromptTemplate,
+                visionInputJsonList,
+                visionInvoke.temperature(),
+                visionInvoke.topP(),
+                visionInvoke.maxTokens(),
+                visionInvoke.providerId(),
+                visionInvoke.model(),
+                visionInvoke.enableThinking(),
+                multimodalPromptEntity.getVisionImageTokenBudget(),
+                multimodalPromptEntity.getVisionMaxImagesPerRequest(),
+                multimodalPromptEntity.getVisionHighResolutionImages(),
+                multimodalPromptEntity.getVisionMaxPixels(),
+                useQueue
+        );
+        return enforceRiskTagsWhitelist(imageStage0, labelTaxonomy);
     }
 
     private static PromptLlmParams resolveVisionPromptInvocation(PromptsEntity prompt) {
@@ -543,23 +542,11 @@ public class AdminModerationLlmService {
     }
 
     private static boolean asBooleanRequired(Object v, String key) {
-        if (v == null) throw new IllegalStateException("missing threshold: " + key);
-        if (v instanceof Boolean b) return b;
-        if (v instanceof Number n) return n.intValue() != 0;
-        String s = String.valueOf(v).trim().toLowerCase(Locale.ROOT);
-        if (s.equals("true") || s.equals("1") || s.equals("yes") || s.equals("y")) return true;
-        if (s.equals("false") || s.equals("0") || s.equals("no") || s.equals("n")) return false;
-        throw new IllegalStateException("invalid boolean threshold: " + key);
+        return com.example.EnterpriseRagCommunity.service.moderation.ModerationThresholdSupport.asBooleanRequired(v, key);
     }
 
     private static double asDoubleRequired(Object v, String key) {
-        if (v == null) throw new IllegalStateException("missing threshold: " + key);
-        if (v instanceof Number n) return n.doubleValue();
-        try {
-            return Double.parseDouble(String.valueOf(v).trim());
-        } catch (Exception e) {
-            throw new IllegalStateException("invalid double threshold: " + key, e);
-        }
+        return ModerationThresholdSupport.asDoubleRequired(v, key);
     }
 
     private static double clamp01Strict(double v) {
@@ -605,11 +592,15 @@ public class AdminModerationLlmService {
         return imageStage != null ? imageStage : textStage;
     }
 
+    private static String appendPromptLine(String prompt, String line) {
+        if (line == null || line.isBlank()) return prompt == null ? "" : prompt;
+        String base = prompt == null ? "" : prompt.trim();
+        String value = line.trim();
+        return base.isBlank() ? value : (base + "\n" + value);
+    }
+
     private static List<String> mergeTags(List<String> a, List<String> b) {
-        LinkedHashSet<String> set = new LinkedHashSet<>();
-        if (a != null) set.addAll(a);
-        if (b != null) set.addAll(b);
-        return set.isEmpty() ? null : new ArrayList<>(set);
+        return ModerationTagSupport.mergeTags(a, b);
     }
 
     private static boolean isStageCallFailed(StageCallResult r) {
@@ -658,6 +649,42 @@ public class AdminModerationLlmService {
         return s;
     }
 
+    private static void applyStageMetadata(LlmModerationTestResponse target, StageCallResult source) {
+        if (target == null || source == null) return;
+        target.setSeverity(source.severity());
+        target.setUncertainty(source.uncertainty());
+        target.setEvidence(source.evidence());
+        target.setRawModelOutput(source.rawModelOutput());
+        target.setModel(source.model());
+        target.setLatencyMs(source.latencyMs());
+        target.setUsage(source.usage());
+    }
+
+    private static void applyStageMetadata(LlmModerationTestResponse target, LlmModerationTestResponse.Stage source) {
+        if (target == null || source == null) return;
+        target.setSeverity(source.getSeverity());
+        target.setUncertainty(source.getUncertainty());
+        target.setEvidence(source.getEvidence());
+        target.setRawModelOutput(source.getRawModelOutput());
+        target.setModel(source.getModel());
+        target.setLatencyMs(source.getLatencyMs());
+        target.setUsage(source.getUsage());
+    }
+
+    private TestRequestContext resolveTestRequestContext(LlmModerationTestRequest req) {
+        if (req == null) throw new IllegalArgumentException("request cannot be null");
+        ModerationLlmConfigEntity base = configSupport.loadBaseConfigCached();
+        ModerationLlmConfigEntity merged = configSupport.merge(base, req.getConfigOverride());
+        PromptVars vars = contextBuilder.resolvePromptVarsSafe(req);
+        return new TestRequestContext(merged, vars);
+    }
+
+    private record TestRequestContext(
+            ModerationLlmConfigEntity merged,
+            PromptVars vars
+    ) {
+    }
+
     private LlmModerationTestResponse finalizeMultiStage(
             String decision,
             Double score,
@@ -698,38 +725,14 @@ public class AdminModerationLlmService {
         boolean hasSecondaryStage = stages != null && (stages.getJudge() != null || stages.getUpgrade() != null || stages.getText() != null);
         resp.setInputMode(hasSecondaryStage ? "multistage" : "multimodal");
         if (finalStage != null) {
-            resp.setSeverity(finalStage.severity());
-            resp.setUncertainty(finalStage.uncertainty());
-            resp.setEvidence(finalStage.evidence());
-            resp.setRawModelOutput(finalStage.rawModelOutput());
-            resp.setModel(finalStage.model());
-            resp.setLatencyMs(finalStage.latencyMs());
-            resp.setUsage(finalStage.usage());
+            applyStageMetadata(resp, finalStage);
             resp.setPromptMessages(finalStage.promptMessages());
         } else if (stages != null && stages.getJudge() != null) {
-            resp.setSeverity(stages.getJudge().getSeverity());
-            resp.setUncertainty(stages.getJudge().getUncertainty());
-            resp.setEvidence(stages.getJudge().getEvidence());
-            resp.setRawModelOutput(stages.getJudge().getRawModelOutput());
-            resp.setModel(stages.getJudge().getModel());
-            resp.setLatencyMs(stages.getJudge().getLatencyMs());
-            resp.setUsage(stages.getJudge().getUsage());
+            applyStageMetadata(resp, stages.getJudge());
         } else if (stages != null && stages.getImage() != null) {
-            resp.setSeverity(stages.getImage().getSeverity());
-            resp.setUncertainty(stages.getImage().getUncertainty());
-            resp.setEvidence(stages.getImage().getEvidence());
-            resp.setRawModelOutput(stages.getImage().getRawModelOutput());
-            resp.setModel(stages.getImage().getModel());
-            resp.setLatencyMs(stages.getImage().getLatencyMs());
-            resp.setUsage(stages.getImage().getUsage());
+            applyStageMetadata(resp, stages.getImage());
         } else if (stages != null && stages.getText() != null) {
-            resp.setSeverity(stages.getText().getSeverity());
-            resp.setUncertainty(stages.getText().getUncertainty());
-            resp.setEvidence(stages.getText().getEvidence());
-            resp.setRawModelOutput(stages.getText().getRawModelOutput());
-            resp.setModel(stages.getText().getModel());
-            resp.setLatencyMs(stages.getText().getLatencyMs());
-            resp.setUsage(stages.getText().getUsage());
+            applyStageMetadata(resp, stages.getText());
         }
         return resp;
     }

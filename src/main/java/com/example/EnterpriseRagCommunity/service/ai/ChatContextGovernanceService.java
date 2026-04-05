@@ -479,14 +479,7 @@ public class ChatContextGovernanceService {
     }
 
     private static int approxTokens(String s) {
-        if (s == null || s.isEmpty()) return 0;
-        double t = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c <= 0x7f) t += 0.25;
-            else t += 1.0;
-        }
-        return (int) Math.ceil(t);
+        return ApproxTokenSupport.approxTokens(s);
     }
 
     private static String truncateByApproxTokens(String s, int maxTokens) {

@@ -34,19 +34,10 @@ public class QaMessageService {
 
     @Transactional
     public void updateMyMessage(Long userId, Long messageId, String content) {
-        if (userId == null) throw new IllegalArgumentException("userId is required");
-        if (messageId == null) throw new IllegalArgumentException("messageId is required");
         if (content == null || content.isBlank()) throw new IllegalArgumentException("content is required");
-
-        QaMessagesEntity msg = qaMessagesRepository.findById(messageId)
-                .orElseThrow(() -> new ResourceNotFoundException("message not found"));
-        Map<String, Object> before = summarizeMessageForAudit(msg);
-
-        QaSessionsEntity session = qaSessionsRepository.findByIdAndUserId(msg.getSessionId(), userId)
-                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
-        if (Boolean.FALSE.equals(session.getIsActive())) {
-            throw new IllegalArgumentException("session inactive");
-        }
+        MessageContext ctx = loadMessageContext(userId, messageId, true);
+        QaMessagesEntity msg = ctx.message();
+        Map<String, Object> before = ctx.before();
 
         msg.setContent(content);
         if (msg.getRole() == MessageRole.USER) {
@@ -68,18 +59,9 @@ public class QaMessageService {
 
     @Transactional
     public void deleteMyMessage(Long userId, Long messageId) {
-        if (userId == null) throw new IllegalArgumentException("userId is required");
-        if (messageId == null) throw new IllegalArgumentException("messageId is required");
-
-        QaMessagesEntity msg = qaMessagesRepository.findById(messageId)
-                .orElseThrow(() -> new ResourceNotFoundException("message not found"));
-        Map<String, Object> before = summarizeMessageForAudit(msg);
-
-        QaSessionsEntity session = qaSessionsRepository.findByIdAndUserId(msg.getSessionId(), userId)
-                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
-        if (Boolean.FALSE.equals(session.getIsActive())) {
-            throw new IllegalArgumentException("session inactive");
-        }
+        MessageContext ctx = loadMessageContext(userId, messageId, true);
+        QaMessagesEntity msg = ctx.message();
+        Map<String, Object> before = ctx.before();
 
         if (msg.getRole() == MessageRole.USER) {
             Optional<QaTurnsEntity> t = qaTurnsRepository.findByQuestionMessageId(msg.getId());
@@ -131,15 +113,9 @@ public class QaMessageService {
 
     @Transactional
     public boolean toggleMyMessageFavorite(Long userId, Long messageId) {
-        if (userId == null) throw new IllegalArgumentException("userId is required");
-        if (messageId == null) throw new IllegalArgumentException("messageId is required");
-
-        QaMessagesEntity msg = qaMessagesRepository.findById(messageId)
-                .orElseThrow(() -> new ResourceNotFoundException("message not found"));
-        Map<String, Object> before = summarizeMessageForAudit(msg);
-
-        QaSessionsEntity session = qaSessionsRepository.findByIdAndUserId(msg.getSessionId(), userId)
-                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
+        MessageContext ctx = loadMessageContext(userId, messageId, false);
+        QaMessagesEntity msg = ctx.message();
+        Map<String, Object> before = ctx.before();
 
         msg.setIsFavorite(!Boolean.TRUE.equals(msg.getIsFavorite()));
         qaMessagesRepository.save(msg);
@@ -164,6 +140,25 @@ public class QaMessageService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private MessageContext loadMessageContext(Long userId, Long messageId, boolean requireActiveSession) {
+        if (userId == null) throw new IllegalArgumentException("userId is required");
+        if (messageId == null) throw new IllegalArgumentException("messageId is required");
+
+        QaMessagesEntity msg = qaMessagesRepository.findById(messageId)
+                .orElseThrow(() -> new ResourceNotFoundException("message not found"));
+        Map<String, Object> before = summarizeMessageForAudit(msg);
+
+        QaSessionsEntity session = qaSessionsRepository.findByIdAndUserId(msg.getSessionId(), userId)
+                .orElseThrow(() -> new ResourceNotFoundException("session not found"));
+        if (requireActiveSession && Boolean.FALSE.equals(session.getIsActive())) {
+            throw new IllegalArgumentException("session inactive");
+        }
+        return new MessageContext(msg, before, session);
+    }
+
+    private record MessageContext(QaMessagesEntity message, Map<String, Object> before, QaSessionsEntity session) {
     }
 
     private static Map<String, Object> summarizeMessageForAudit(QaMessagesEntity m) {

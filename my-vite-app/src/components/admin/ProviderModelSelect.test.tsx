@@ -2,6 +2,14 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { ProviderModelSelect } from './ProviderModelSelect';
 
+function appendOptionAndSelect(select: HTMLSelectElement, value: string, text: string) {
+  const option = document.createElement('option');
+  option.value = value;
+  option.textContent = text;
+  select.appendChild(option);
+  fireEvent.change(select, { target: { value } });
+}
+
 describe('ProviderModelSelect', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -142,11 +150,7 @@ describe('ProviderModelSelect', () => {
     fireEvent.change(select, { target: { value: '%' } });
     expect(onChange).toHaveBeenCalledWith({ providerId: '', model: '' });
 
-    const modelOnly = document.createElement('option');
-    modelOnly.value = 'm|m1';
-    modelOnly.textContent = 'model-only';
-    select.appendChild(modelOnly);
-    fireEvent.change(select, { target: { value: 'm|m1' } });
+    appendOptionAndSelect(select, 'm|m1', 'model-only');
     expect(onChange).toHaveBeenLastCalledWith({ providerId: '', model: '' });
   });
 
@@ -185,12 +189,7 @@ describe('ProviderModelSelect', () => {
     );
 
     const select = screen.getByRole('combobox') as HTMLSelectElement;
-    const legacy = document.createElement('option');
-    legacy.value = 'p1|legacy-model';
-    legacy.textContent = 'legacy';
-    select.appendChild(legacy);
-
-    fireEvent.change(select, { target: { value: legacy.value } });
+    appendOptionAndSelect(select, 'p1|legacy-model', 'legacy');
     expect(onChange).toHaveBeenCalledWith({ providerId: 'p1', model: 'legacy-model' });
   });
 
@@ -248,12 +247,7 @@ describe('ProviderModelSelect', () => {
     fireEvent.change(select, { target: { value: opt.value } });
     expect(onChange).toHaveBeenCalledWith({ providerId: 'p1', model: 'm1' });
 
-    const modelOnly = document.createElement('option');
-    modelOnly.value = 'm|m1';
-    modelOnly.textContent = 'model-only';
-    select.appendChild(modelOnly);
-
-    fireEvent.change(select, { target: { value: 'm|m1' } });
+    appendOptionAndSelect(select, 'm|m1', 'model-only');
     expect(onChange).toHaveBeenLastCalledWith({ providerId: '', model: '' });
   });
 
@@ -272,39 +266,19 @@ describe('ProviderModelSelect', () => {
 
     const select = screen.getByRole('combobox') as HTMLSelectElement;
 
-    const badPmNoSep = document.createElement('option');
-    badPmNoSep.value = 'pm|p1';
-    badPmNoSep.textContent = 'bad-pm-no-sep';
-    select.appendChild(badPmNoSep);
-    fireEvent.change(select, { target: { value: badPmNoSep.value } });
+    appendOptionAndSelect(select, 'pm|p1', 'bad-pm-no-sep');
     expect(onChange).toHaveBeenLastCalledWith({ providerId: '', model: '' });
 
-    const badPEmpty = document.createElement('option');
-    badPEmpty.value = 'p|%20';
-    badPEmpty.textContent = 'bad-p-empty';
-    select.appendChild(badPEmpty);
-    fireEvent.change(select, { target: { value: badPEmpty.value } });
+    appendOptionAndSelect(select, 'p|%20', 'bad-p-empty');
     expect(onChange).toHaveBeenLastCalledWith({ providerId: '', model: '' });
 
-    const badMEmpty = document.createElement('option');
-    badMEmpty.value = 'm|%20';
-    badMEmpty.textContent = 'bad-m-empty';
-    select.appendChild(badMEmpty);
-    fireEvent.change(select, { target: { value: badMEmpty.value } });
+    appendOptionAndSelect(select, 'm|%20', 'bad-m-empty');
     expect(onChange).toHaveBeenLastCalledWith({ providerId: '', model: '' });
 
-    const badPmEmptyParts = document.createElement('option');
-    badPmEmptyParts.value = 'pm|%20|%20';
-    badPmEmptyParts.textContent = 'bad-pm-empty-parts';
-    select.appendChild(badPmEmptyParts);
-    fireEvent.change(select, { target: { value: badPmEmptyParts.value } });
+    appendOptionAndSelect(select, 'pm|%20|%20', 'bad-pm-empty-parts');
     expect(onChange).toHaveBeenLastCalledWith({ providerId: '', model: '' });
 
-    const badLegacyEmptyProvider = document.createElement('option');
-    badLegacyEmptyProvider.value = '|m1';
-    badLegacyEmptyProvider.textContent = 'bad-legacy';
-    select.appendChild(badLegacyEmptyProvider);
-    fireEvent.change(select, { target: { value: badLegacyEmptyProvider.value } });
+    appendOptionAndSelect(select, '|m1', 'bad-legacy');
     expect(onChange).toHaveBeenLastCalledWith({ providerId: '', model: '' });
   });
 
@@ -373,11 +347,7 @@ describe('ProviderModelSelect', () => {
     );
 
     const select = screen.getByRole('combobox') as HTMLSelectElement;
-    const opt = document.createElement('option');
-    opt.value = 'p1';
-    opt.textContent = 'plain-provider';
-    select.appendChild(opt);
-    fireEvent.change(select, { target: { value: 'p1' } });
+    appendOptionAndSelect(select, 'p1', 'plain-provider');
     expect(onChange).toHaveBeenCalledWith({ providerId: 'p1', model: '' });
   });
 

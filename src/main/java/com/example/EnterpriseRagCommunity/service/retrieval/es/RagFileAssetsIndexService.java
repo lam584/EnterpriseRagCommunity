@@ -78,27 +78,8 @@ public class RagFileAssetsIndexService {
     }
 
     private void tryCreate(IndexOperations ops, boolean ikEnabled, int embeddingDims) {
-        Document settings = Document.from(buildSettings(ikEnabled));
-        Document mapping = Document.from(buildMapping(ikEnabled, embeddingDims));
-
-        try {
-            ops.create(settings);
-            ops.putMapping(mapping);
-        } catch (Exception first) {
-            if (ikEnabled) {
-                log.warn("Create ES index failed with IK enabled. Retrying with IK disabled. err={}", first.getMessage());
-                try {
-                    if (ops.exists()) ops.delete();
-                } catch (Exception ignore) {
-                }
-                Document settings2 = Document.from(buildSettings(false));
-                Document mapping2 = Document.from(buildMapping(false, embeddingDims));
-                ops.create(settings2);
-                ops.putMapping(mapping2);
-                return;
-            }
-            throw first;
-        }
+        EsIndexSupport.tryCreateWithIkFallback(ops, ikEnabled, embeddingDims, log,
+                this::buildSettings, enabled -> buildMapping(enabled, embeddingDims));
     }
 
     private Map<String, Object> buildSettings(boolean ikEnabled) {
@@ -137,22 +118,8 @@ public class RagFileAssetsIndexService {
         propsMap.put("file_name", Map.of("type", "keyword"));
         propsMap.put("mime_type", Map.of("type", "keyword"));
 
-        Map<String, Object> contentText = new LinkedHashMap<>();
-        contentText.put("type", "text");
-        if (ikEnabled) {
-            contentText.put("analyzer", "ik_max_word");
-            contentText.put("search_analyzer", "ik_smart");
-        }
-        propsMap.put("content_text", contentText);
-
-        if (embeddingDims > 0) {
-            Map<String, Object> emb = new LinkedHashMap<>();
-            emb.put("type", "dense_vector");
-            emb.put("dims", embeddingDims);
-            emb.put("index", true);
-            emb.put("similarity", "cosine");
-            propsMap.put("embedding", emb);
-        }
+        EsIndexSupport.putTextField(propsMap, "content_text", ikEnabled);
+        EsIndexSupport.putDenseVectorField(propsMap, "embedding", embeddingDims);
 
         root.put("properties", propsMap);
         return root;

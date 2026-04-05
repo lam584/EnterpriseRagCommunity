@@ -16,7 +16,9 @@ import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepo
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationChunkRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationChunkSetRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkImageSupport;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkReviewService;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagValueSupport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -50,15 +52,7 @@ public class AdminModerationChunkReviewLogsService {
             dto.setContentId(s.getContentId());
         }
 
-        dto.setSourceType(enumName(c.getSourceType()));
-        dto.setSourceKey(c.getSourceKey());
-        dto.setFileAssetId(c.getFileAssetId());
-        dto.setFileName(c.getFileName());
-        dto.setChunkIndex(c.getChunkIndex());
-        dto.setStartOffset(c.getStartOffset());
-        dto.setEndOffset(c.getEndOffset());
-
-        dto.setStatus(enumName(c.getStatus()));
+        AdminModerationLogDtoSupport.applyChunkSourceFields(dto, c);
         dto.setVerdict(enumName(c.getVerdict()));
         dto.setConfidence(toDoubleOrNull(c.getConfidence()));
         dto.setAttempts(c.getAttempts());
@@ -77,12 +71,9 @@ public class AdminModerationChunkReviewLogsService {
     }
 
     public AdminModerationChunkLogDetailDTO getDetail(long chunkId) {
-        ModerationChunkEntity c = chunkRepository.findById(chunkId)
-                .orElseThrow(() -> new ResourceNotFoundException("分片记录不存在"));
-        ModerationChunkSetEntity s = c.getChunkSetId() == null ? null : chunkSetRepository.findById(c.getChunkSetId()).orElse(null);
-        if (s == null) {
-            throw new ResourceNotFoundException("分片集合不存在");
-        }
+        ChunkDetailContext detail = requireChunkDetailContext(chunkId);
+        ModerationChunkEntity c = detail.chunk();
+        ModerationChunkSetEntity s = detail.chunkSet();
 
         AdminModerationChunkLogDetailDTO dto = new AdminModerationChunkLogDetailDTO();
         dto.setChunk(toChunkDetailDTO(c, s));
@@ -99,15 +90,7 @@ public class AdminModerationChunkReviewLogsService {
         dto.setContentType(enumName(s.getContentType()));
         dto.setContentId(s.getContentId());
 
-        dto.setSourceType(enumName(c.getSourceType()));
-        dto.setSourceKey(c.getSourceKey());
-        dto.setFileAssetId(c.getFileAssetId());
-        dto.setFileName(c.getFileName());
-        dto.setChunkIndex(c.getChunkIndex());
-        dto.setStartOffset(c.getStartOffset());
-        dto.setEndOffset(c.getEndOffset());
-
-        dto.setStatus(enumName(c.getStatus()));
+        AdminModerationLogDtoSupport.applyChunkSourceFields(dto, c);
         dto.setAttempts(c.getAttempts());
         dto.setLastError(c.getLastError());
         dto.setModel(c.getModel());
@@ -146,9 +129,8 @@ public class AdminModerationChunkReviewLogsService {
         for (Object it : list) {
             if (!(it instanceof Map<?, ?> m)) continue;
             AdminModerationChunkContentPreviewDTO.Image img = new AdminModerationChunkContentPreviewDTO.Image();
-            Integer idx = toInt(m.get("index"));
             String placeholder = toStr(m.get("placeholder"));
-            if (idx == null && placeholder != null) idx = parseImageIndexFromPlaceholder(placeholder);
+            Integer idx = ModerationChunkImageSupport.resolveImageIndex(m.get("index"), placeholder, AdminModerationChunkReviewLogsService::toInt);
             if (idx == null || !used.contains(idx)) continue;
             img.setIndex(idx);
             img.setPlaceholder(placeholder);
@@ -199,10 +181,7 @@ public class AdminModerationChunkReviewLogsService {
     }
 
     private static Integer parseImageIndexFromPlaceholder(String placeholder) {
-        if (placeholder == null) return null;
-        Matcher m = IMAGE_PLACEHOLDER.matcher(placeholder);
-        if (!m.find()) return null;
-        return toInt(m.group(1));
+        return ModerationChunkImageSupport.parseImageIndexFromPlaceholder(placeholder);
     }
 
     private static int safeOffset(Integer v) {
@@ -212,17 +191,7 @@ public class AdminModerationChunkReviewLogsService {
     }
 
     private static Integer toInt(Object v) {
-        if (v == null) return null;
-        if (v instanceof Integer i) return i;
-        if (v instanceof Long l) return (int) Math.min(Integer.MAX_VALUE, Math.max(Integer.MIN_VALUE, l));
-        if (v instanceof Number n) return n.intValue();
-        try {
-            String s = String.valueOf(v).trim();
-            if (s.isEmpty()) return null;
-            return Integer.parseInt(s);
-        } catch (Exception ignore) {
-            return null;
-        }
+        return RagValueSupport.toInteger(v);
     }
 
     private static Long toLong(Object v) {
@@ -294,12 +263,9 @@ public class AdminModerationChunkReviewLogsService {
     }
 
     public AdminModerationChunkContentPreviewDTO getContentPreview(long chunkId) {
-        ModerationChunkEntity c = chunkRepository.findById(chunkId)
-                .orElseThrow(() -> new ResourceNotFoundException("分片记录不存在"));
-        ModerationChunkSetEntity s = c.getChunkSetId() == null ? null : chunkSetRepository.findById(c.getChunkSetId()).orElse(null);
-        if (s == null) {
-            throw new ResourceNotFoundException("分片集合不存在");
-        }
+        ChunkDetailContext detail = requireChunkDetailContext(chunkId);
+        ModerationChunkEntity c = detail.chunk();
+        ModerationChunkSetEntity s = detail.chunkSet();
 
         AdminModerationChunkContentPreviewDTO dto = new AdminModerationChunkContentPreviewDTO();
         AdminModerationChunkContentPreviewDTO.Source src = new AdminModerationChunkContentPreviewDTO.Source();
@@ -340,6 +306,21 @@ public class AdminModerationChunkReviewLogsService {
         }
 
         return dto;
+    }
+
+    private ChunkDetailContext requireChunkDetailContext(long chunkId) {
+        ModerationChunkEntity chunk = chunkRepository.findById(chunkId)
+                .orElseThrow(() -> new ResourceNotFoundException("分片记录不存在"));
+        ModerationChunkSetEntity chunkSet = chunk.getChunkSetId() == null
+                ? null
+                : chunkSetRepository.findById(chunk.getChunkSetId()).orElse(null);
+        if (chunkSet == null) {
+            throw new ResourceNotFoundException("分片集合不存在");
+        }
+        return new ChunkDetailContext(chunk, chunkSet);
+    }
+
+    private record ChunkDetailContext(ModerationChunkEntity chunk, ModerationChunkSetEntity chunkSet) {
     }
 
     private static Double toDoubleOrNull(BigDecimal v) {

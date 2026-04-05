@@ -94,7 +94,7 @@ class ImageStorageConfigServiceTest {
         ImageStorageConfigService service = new ImageStorageConfigService(scs);
 
         when(scs.getConfig("image.storage.mode")).thenReturn("LOCAL", "LOCAL");
-        when(scs.getConfig("image.storage.oss.access_key_secret")).thenReturn("abc", null);
+        when(scs.getConfig("image.storage.oss.access_key_secret")).thenReturn("abc", (String) null);
 
         assertEquals("***", service.getConfig().getOssAccessKeySecret());
         assertEquals("***", service.getConfig().getOssAccessKeySecret());

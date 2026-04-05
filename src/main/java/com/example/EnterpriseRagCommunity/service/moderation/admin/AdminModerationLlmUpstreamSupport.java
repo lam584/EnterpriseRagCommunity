@@ -1,5 +1,6 @@
 package com.example.EnterpriseRagCommunity.service.moderation.admin;
 
+import com.example.EnterpriseRagCommunity.service.ai.AiResponseParsingUtils;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -15,6 +16,9 @@ import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestRespon
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationAnchorSnippetSupport;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationTagSupport;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationViolationSnippetSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -327,12 +331,10 @@ class AdminModerationLlmUpstreamSupport {
             List<String> textReasons,
             List<String> imageReasons
     ) {
-        String t = originalText == null ? "" : originalText.trim();
-        if (t.length() > 3000) t = t.substring(0, 3000);
-        String desc = imageDescription == null ? "" : imageDescription.trim();
-        if (desc.length() > 2000) desc = desc.substring(0, 2000);
-        String tr = (textReasons == null || textReasons.isEmpty()) ? "" : String.join("；", textReasons);
-        String ir = (imageReasons == null || imageReasons.isEmpty()) ? "" : String.join("；", imageReasons);
+        String t = trimToMax(originalText, 3000);
+        String desc = trimToMax(imageDescription, 2000);
+        String tr = joinWithCnSemicolon(textReasons);
+        String ir = joinWithCnSemicolon(imageReasons);
         return (tpl == null ? "" : tpl)
                 .replace("{{text}}", t)
                 .replace("{{imageDescription}}", desc)
@@ -357,19 +359,14 @@ class AdminModerationLlmUpstreamSupport {
             List<String> imageEvidence,
             List<String> judgeEvidence
     ) {
-        String t = originalText == null ? "" : originalText.trim();
-        if (t.length() > 3000) t = t.substring(0, 3000);
-        String desc = imageDescription == null ? "" : imageDescription.trim();
-        if (desc.length() > 2000) desc = desc.substring(0, 2000);
-        String tr = (textReasons == null || textReasons.isEmpty()) ? "" : String.join("；", textReasons);
-        String ir = (imageReasons == null || imageReasons.isEmpty()) ? "" : String.join("；", imageReasons);
-        String cr = (judgeReasons == null || judgeReasons.isEmpty()) ? "" : String.join("；", judgeReasons);
-        String tev = (textEvidence == null || textEvidence.isEmpty()) ? "" : String.join("\n", textEvidence);
-        String iev = (imageEvidence == null || imageEvidence.isEmpty()) ? "" : String.join("\n", imageEvidence);
-        String cev = (judgeEvidence == null || judgeEvidence.isEmpty()) ? "" : String.join("\n", judgeEvidence);
-        if (tev.length() > 1200) tev = tev.substring(0, 1200);
-        if (iev.length() > 1200) iev = iev.substring(0, 1200);
-        if (cev.length() > 1200) cev = cev.substring(0, 1200);
+        String t = trimToMax(originalText, 3000);
+        String desc = trimToMax(imageDescription, 2000);
+        String tr = joinWithCnSemicolon(textReasons);
+        String ir = joinWithCnSemicolon(imageReasons);
+        String cr = joinWithCnSemicolon(judgeReasons);
+        String tev = trimToMax(joinWithNewline(textEvidence), 1200);
+        String iev = trimToMax(joinWithNewline(imageEvidence), 1200);
+        String cev = trimToMax(joinWithNewline(judgeEvidence), 1200);
         return (tpl == null ? "" : tpl)
                 .replace("{{text}}", t)
                 .replace("{{imageDescription}}", desc)
@@ -383,6 +380,20 @@ class AdminModerationLlmUpstreamSupport {
                 .replace("{{textEvidence}}", tev)
                 .replace("{{imageEvidence}}", iev)
                 .replace("{{judgeEvidence}}", cev);
+    }
+
+    private static String trimToMax(String value, int maxLength) {
+        String text = value == null ? "" : value.trim();
+        if (text.length() > maxLength) return text.substring(0, maxLength);
+        return text;
+    }
+
+    private static String joinWithCnSemicolon(List<String> values) {
+        return values == null || values.isEmpty() ? "" : String.join("；", values);
+    }
+
+    private static String joinWithNewline(List<String> values) {
+        return values == null || values.isEmpty() ? "" : String.join("\n", values);
     }
 
     static String mergePromptAndJson(String promptTemplate, String renderedPrompt, String inputJson) {
@@ -708,17 +719,17 @@ class AdminModerationLlmUpstreamSupport {
     }
 
     private static List<String> extractImagePlaceholders(String text) {
-        if (text == null || text.isBlank()) return List.of();
-        Matcher m = IMAGE_PLACEHOLDER.matcher(text);
+        if (text == null) return List.of();
+        Matcher matcher = IMAGE_PLACEHOLDER.matcher(text);
         LinkedHashSet<String> out = new LinkedHashSet<>();
-        while (m.find()) {
-            String idx = m.group(1);
+        while (matcher.find()) {
+            String idx = matcher.group(1);
             if (idx == null) continue;
-            String n = idx.trim();
-            if (n.isEmpty()) continue;
-            out.add("[[IMAGE_" + n + "]]");
+            String trimmed = idx.trim();
+            if (trimmed.isEmpty()) continue;
+            out.add("[[IMAGE_" + trimmed + "]]");
         }
-        return out.isEmpty() ? List.of() : new ArrayList<>(out);
+        return new ArrayList<>(out);
     }
 
     private boolean hasVerifiableJsonEvidence(String inputText, String json) {
@@ -766,19 +777,7 @@ class AdminModerationLlmUpstreamSupport {
     }
 
     private String extractAssistantContent(String rawJson) {
-        try {
-            JsonNode root = objectMapper.readTree(rawJson);
-            JsonNode choices = root.path("choices");
-            if (choices.isArray() && !choices.isEmpty()) {
-                JsonNode first = choices.get(0);
-                JsonNode contentNode = first.path("message").path("content");
-                if (contentNode.isTextual()) return contentNode.asText();
-                JsonNode textNode = first.path("text");
-                if (textNode.isTextual()) return textNode.asText();
-            }
-        } catch (Exception ignore) {
-        }
-        return rawJson;
+        return AiResponseParsingUtils.extractAssistantContent(objectMapper, rawJson);
     }
 
     ParsedDecision parseDecisionFromAssistantText(String assistantText) {
@@ -845,38 +844,12 @@ class AdminModerationLlmUpstreamSupport {
         }
 
         out.labels = new ArrayList<>();
-        JsonNode imageLabels = root.path("image_labels");
-        if (imageLabels.isArray()) {
-            for (JsonNode n : imageLabels) {
-                if (!n.isTextual()) continue;
-                String tag = n.asText();
-                if (tag == null || tag.isBlank()) continue;
-                if (!out.labels.contains(tag)) out.labels.add(tag);
-            }
-        }
+        appendUniqueTextualLabels(out.labels, root.path("image_labels"));
         List<String> riskTagsList = new ArrayList<>();
-        for (String key : List.of("riskTags", "risk_tags")) {
-            JsonNode riskTags = root.path(key);
-            if (!riskTags.isArray()) continue;
-            for (JsonNode n : riskTags) {
-                if (!n.isTextual()) continue;
-                String tag = n.asText();
-                if (tag == null || tag.isBlank()) continue;
-                if (!riskTagsList.contains(tag)) riskTagsList.add(tag);
-            }
-        }
+        appendUniqueTextualLabels(riskTagsList, root.path("riskTags"));
+        appendUniqueTextualLabels(riskTagsList, root.path("risk_tags"));
         JsonNode labels = root.path("labels");
-        if (labels.isArray()) {
-            for (JsonNode n : labels) {
-                if (!n.isTextual()) continue;
-                String tag = n.asText();
-                if (tag == null || tag.isBlank()) continue;
-                if (!out.labels.contains(tag)) out.labels.add(tag);
-            }
-        } else if (labels.isTextual()) {
-            String tag = labels.asText();
-            if (tag != null && !tag.isBlank() && !out.labels.contains(tag)) out.labels.add(tag);
-        }
+        appendUniqueTextualLabels(out.labels, labels);
         if (!riskTagsList.isEmpty()) out.riskTags = riskTagsList;
         else out.riskTags = out.labels == null ? List.of() : out.labels;
 
@@ -937,6 +910,20 @@ class AdminModerationLlmUpstreamSupport {
             }
         }
         return out;
+    }
+
+    private static void appendUniqueTextualLabels(List<String> out, JsonNode node) {
+        if (out == null || node == null || node.isMissingNode() || node.isNull()) return;
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                appendUniqueTextualLabels(out, item);
+            }
+            return;
+        }
+        if (!node.isTextual()) return;
+        String tag = node.asText();
+        if (tag == null || tag.isBlank() || out.contains(tag)) return;
+        out.add(tag);
     }
 
     private static String recoverTruncatedJson(String text) {
@@ -1074,10 +1061,7 @@ class AdminModerationLlmUpstreamSupport {
     }
 
     private static List<String> mergeTags(List<String> a, List<String> b) {
-        LinkedHashSet<String> set = new LinkedHashSet<>();
-        if (a != null) set.addAll(a);
-        if (b != null) set.addAll(b);
-        return set.isEmpty() ? null : new ArrayList<>(set);
+        return ModerationTagSupport.mergeTags(a, b);
     }
 
     private static String maxSeverity(String a, String b) {
@@ -1180,14 +1164,11 @@ class AdminModerationLlmUpstreamSupport {
     }
 
     private static String extractByContextAnchors(Map<String, Object> node, String auditText) {
-        Object bc = node.get("before_context");
-        Object ac = node.get("after_context");
-        String before = bc == null ? null : String.valueOf(bc).trim();
-        String after = ac == null ? null : String.valueOf(ac).trim();
-        if (before == null || before.isBlank()) return null;
+        ModerationAnchorSnippetSupport.AnchorContext context = ModerationAnchorSnippetSupport.readAnchorContext(node);
+        if (context == null) return null;
 
         if (auditText == null || auditText.isBlank()) return null;
-        String r = extractBetweenAnchorsByRegex(auditText, before, after);
+        String r = extractBetweenAnchorsByRegex(auditText, context.before(), context.after());
         return r == null || r.isBlank() ? null : r;
     }
 
@@ -1200,34 +1181,41 @@ class AdminModerationLlmUpstreamSupport {
                 .replaceAll(" ?' ?", "'");
     }
 
-    private static String fallbackViolationSnippet(String text, int violationStart) {
-        int end = Math.min(violationStart + 220, text.length());
-        int imageIdx = text.indexOf("[[IMAGE_", violationStart);
-        if (imageIdx >= 0 && imageIdx < end) end = imageIdx;
-        int sectionIdx = text.indexOf("\n[", violationStart);
-        if (sectionIdx >= 0 && sectionIdx < end) end = sectionIdx;
-        int dblNl = text.indexOf("\n\n", violationStart);
-        if (dblNl > violationStart && dblNl < end) end = dblNl;
-        int boundary = findBoundaryEnd(text, violationStart, end);
-        if (boundary > violationStart + 4 && boundary < end) end = boundary;
-        if (end <= violationStart) return null;
-        String snippet = text.substring(violationStart, end);
-        String cleaned = cleanExtractedSnippet(snippet);
-        if (!cleaned.isEmpty()) return cleaned;
-        int altEnd = Math.min(violationStart + 80, text.length());
-        if (altEnd <= violationStart) return null;
-        return cleanExtractedSnippet(text.substring(violationStart, altEnd));
+    @SuppressWarnings("unused")
+    private static String normalizeForAnchorRegex(String s) {
+        return normalizeForAnchorMatch(s);
     }
 
+    @SuppressWarnings("unused")
+    private static String anchorToRegex(String anchor) {
+        return ModerationAnchorSnippetSupport.anchorToRegex(anchor);
+    }
+
+    @SuppressWarnings("unused")
     private static int findBoundaryEnd(String text, int start, int maxEnd) {
-        int end = Math.min(text.length(), maxEnd);
-        for (int i = start; i < end; i++) {
-            char c = text.charAt(i);
-            if (c == '\n' || c == '\r' || c == '。' || c == '！' || c == '？' || c == ';' || c == '!' || c == '?') {
+        if (text == null || text.isEmpty()) return 0;
+        int s = Math.max(0, start);
+        int end = Math.min(Math.max(s, maxEnd), text.length());
+        for (int i = s; i < end; i++) {
+            char ch = text.charAt(i);
+            if (ch == '\n' || ch == '\r') return i;
+            if (ch == ',' || ch == '，' || ch == '.' || ch == '!' || ch == '?' || ch == ';' || ch == ':'
+                    || ch == '。' || ch == '！' || ch == '？' || ch == '；' || ch == '：') {
                 return i;
             }
         }
         return end;
+    }
+
+    private static String fallbackViolationSnippet(String text, int violationStart) {
+        return ModerationViolationSnippetSupport.fallbackViolationSnippet(
+                text,
+                violationStart,
+                "\n[",
+                "\n\n",
+                c -> c == '\n' || c == '\r' || c == '。' || c == '！' || c == '？' || c == ';' || c == '!' || c == '?',
+                AdminModerationLlmUpstreamSupport::cleanExtractedSnippet
+        );
     }
 
     private static String cleanExtractedSnippet(String snippet) {
@@ -1250,72 +1238,14 @@ class AdminModerationLlmUpstreamSupport {
     }
 
     private static String extractBetweenAnchorsByRegex(String text, String before, String after) {
-        if (text == null || text.isEmpty() || before == null || before.isBlank()) return null;
-        int cap = Math.clamp(500, 20, 2000);
-
-        String normText = normalizeForAnchorRegex(text);
-        String normBefore = normalizeForAnchorRegex(before);
-        String normAfter = after != null && !after.isBlank() ? normalizeForAnchorRegex(after) : null;
-
-        String b = anchorToRegex(normBefore);
-        if (b.isEmpty()) return null;
-        String a = normAfter == null ? "" : anchorToRegex(normAfter);
-
-        Pattern p;
-        if (a.isEmpty()) {
-            String boundary = "\\r\\n|\\r|\\n|。|！|？|;|!|\\?|$";
-            p = Pattern.compile(b + "(.{0," + cap + "}?)" + "(?=" + boundary + ")", Pattern.DOTALL);
-        } else {
-            p = Pattern.compile(b + "(.{0," + cap + "}?)" + a, Pattern.DOTALL);
-        }
-
-        Matcher m = p.matcher(normText);
-        String best = null;
-        int bestLen = Integer.MAX_VALUE;
-        boolean matched = false;
-        int guard = 0;
-        while (m.find() && guard < 50) {
-            guard += 1;
-            matched = true;
-            String mid = m.group(1);
-            if (mid == null) continue;
-            String cleaned = cleanExtractedSnippet(mid);
-            if (cleaned.isBlank()) continue;
-            int len = cleaned.length();
-            if (len < bestLen) {
-                best = cleaned;
-                bestLen = len;
-            }
-        }
-        if (best != null) return best;
-        if (matched) return null;
-
-        int bIdx = normText.indexOf(normBefore);
-        if (bIdx < 0) return null;
-        return fallbackViolationSnippet(normText, bIdx + normBefore.length());
-    }
-
-    private static String anchorToRegex(String anchor) {
-        if (anchor == null) return "";
-        String t = anchor.trim();
-        if (t.isEmpty()) return "";
-        String[] parts = t.split("\\s+");
-        StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p == null || p.isEmpty()) continue;
-            if (!sb.isEmpty()) sb.append("\\s+");
-            sb.append(Pattern.quote(p));
-        }
-        return sb.toString();
-    }
-
-    private static String normalizeForAnchorRegex(String s) {
-        if (s == null) return "";
-        String x = s.replace('“', '"').replace('”', '"')
-                .replace('‘', '\'').replace('’', '\'');
-        x = x.replaceAll(" ?\" ?", "\"")
-                .replaceAll(" ?' ?", "'");
-        return x;
+        return ModerationAnchorSnippetSupport.extractBetweenAnchorsByRegex(
+                text,
+                before,
+                after,
+                Math.clamp(500, 20, 2000),
+                AdminModerationLlmUpstreamSupport::cleanExtractedSnippet,
+                AdminModerationLlmUpstreamSupport::fallbackViolationSnippet
+        );
     }
 
 }

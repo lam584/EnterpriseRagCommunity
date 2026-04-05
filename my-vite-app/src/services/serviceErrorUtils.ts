@@ -21,4 +21,3 @@ export function readNumberField(data: Record<string, unknown>, key: string): num
   const value = data[key];
   return typeof value === 'number' ? value : undefined;
 }
-

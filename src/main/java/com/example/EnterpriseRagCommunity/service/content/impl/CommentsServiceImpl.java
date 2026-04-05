@@ -14,8 +14,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -37,6 +35,8 @@ import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUserIdResolver;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import com.example.EnterpriseRagCommunity.service.access.SafeTextSupport;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.ai.AiLanguageDetectService;
@@ -61,25 +61,15 @@ public class CommentsServiceImpl implements CommentsService {
     private final com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner moderationRuleAutoRunner;
 
     private Long currentUserIdOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
-        }
-        String email = auth.getName();
-        return administratorService.findByUsername(email)
-                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
-                .getId();
+        return CurrentUserIdResolver.currentUserIdOrThrow(
+                administratorService,
+                () -> new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {},
+                () -> new IllegalArgumentException("当前用户不存在")
+        );
     }
 
     private Long currentUserIdOrNull() {
-        try {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String email = auth.getName();
-            return administratorService.findByUsername(email).map(UsersEntity::getId).orElse(null);
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUserIdResolver.currentUserIdOrNull(administratorService);
     }
     private final UsersRepository usersRepository;
     private final ReactionsRepository reactionsRepository;
@@ -109,12 +99,27 @@ public class CommentsServiceImpl implements CommentsService {
         return dto;
     }
 
+    private static Pageable commentsPageable(int page, int pageSize) {
+        int safePage = Math.max(page, 1);
+        int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
+        return PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+    }
+
+    private static List<CommentDTO> toCommentDtos(List<CommentsEntity> entities) {
+        return entities.stream().map(CommentsServiceImpl::toDTO).toList();
+    }
+
+    private static Set<Long> collectAuthorIds(List<CommentsEntity> entities) {
+        return entities.stream()
+                .map(CommentsEntity::getAuthorId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+    }
+
     @Override
     public Page<CommentDTO> listByPostId(Long postId, int page, int pageSize, boolean includeMinePending) {
         if (postId == null) throw new IllegalArgumentException("postId 不能为空");
-        int safePage = Math.max(page, 1);
-        int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
-        Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = commentsPageable(page, pageSize);
         Page<CommentsEntity> entityPage;
         Long mineUserId = includeMinePending ? currentUserIdOrNull() : null;
         if (includeMinePending && mineUserId != null) {
@@ -123,12 +128,9 @@ public class CommentsServiceImpl implements CommentsService {
             entityPage = commentsRepository.findByPostIdAndStatusAndIsDeletedFalse(postId, CommentStatus.VISIBLE, pageable);
         }
         List<CommentsEntity> entities = entityPage.getContent();
-        List<CommentDTO> dtos = entities.stream().map(CommentsServiceImpl::toDTO).toList();
+        List<CommentDTO> dtos = toCommentDtos(entities);
 
-        Set<Long> authorIds = entities.stream()
-                .map(CommentsEntity::getAuthorId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        Set<Long> authorIds = collectAuthorIds(entities);
         Map<Long, UsersEntity> usersById = usersRepository.findAllById(authorIds).stream()
                 .collect(Collectors.toMap(UsersEntity::getId, x -> x));
 
@@ -137,15 +139,11 @@ public class CommentsServiceImpl implements CommentsService {
                 .filter(Objects::nonNull)
                 .toList();
 
-        Map<Long, Long> likeCountByCommentId = new HashMap<>();
-        if (!commentIds.isEmpty()) {
-            for (Object[] row : reactionsRepository.countByTargetIdsGrouped(ReactionTargetType.COMMENT, ReactionType.LIKE, commentIds)) {
-                if (row == null || row.length < 2) continue;
-                Long targetId = row[0] == null ? null : ((Number) row[0]).longValue();
-                Long cnt = row[1] == null ? 0L : ((Number) row[1]).longValue();
-                if (targetId != null) likeCountByCommentId.put(targetId, cnt);
-            }
-        }
+        Map<Long, Long> likeCountByCommentId = commentIds.isEmpty()
+                ? new HashMap<>()
+                : ReactionCountSupport.toCountMap(
+                        reactionsRepository.countByTargetIdsGrouped(ReactionTargetType.COMMENT, ReactionType.LIKE, commentIds)
+                );
 
         Long viewerId = currentUserIdOrNull();
         Set<Long> likedIds = viewerId == null || commentIds.isEmpty()
@@ -331,9 +329,7 @@ public class CommentsServiceImpl implements CommentsService {
     @Override
     public Page<CommentDTO> listMyComments(int page, int pageSize, String keyword) {
         Long me = currentUserIdOrThrow();
-        int safePage = Math.max(page, 1);
-        int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
-        Pageable pageable = PageRequest.of(safePage - 1, safePageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = commentsPageable(page, pageSize);
 
         Page<CommentsEntity> entityPage;
         if (keyword != null && !keyword.isBlank()) {
@@ -348,7 +344,7 @@ public class CommentsServiceImpl implements CommentsService {
         }
 
         List<CommentsEntity> entities = entityPage.getContent();
-        List<CommentDTO> dtos = entities.stream().map(CommentsServiceImpl::toDTO).toList();
+        List<CommentDTO> dtos = toCommentDtos(entities);
 
         // 批量获取帖子信息以填充标题（用于前端展示）
         Set<Long> postIds = entities.stream().map(CommentsEntity::getPostId).filter(Objects::nonNull).collect(Collectors.toSet());
@@ -397,14 +393,7 @@ public class CommentsServiceImpl implements CommentsService {
     }
 
     private static String currentUsernameOrNull() {
-        try {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 
     private static String safeText(String s, int maxLen) {

@@ -18,12 +18,13 @@ import {
 import { listTags, type TagDTO } from '../../../../services/tagService';
 import { getTranslateConfig, translateComment, translatePost, type TranslateResultDTO } from '../../../../services/translateService';
 import { getMyTranslatePreferences, type TranslatePreferencesDTO } from '../../../../services/accountPreferencesService';
-import { listSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
+import { listSupportedLanguages, normalizeSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
 import { reportComment, reportPost } from '../../../../services/reportService';
 import { extractLanguagesFromMetadata, normalizeLangBase, normalizeTargetLanguageBase } from '../../../../utils/langUtils';
 import { parseTranslateMarkdown } from '../../../../utils/translateOutputUtils';
 import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';
 import {useAuth} from '../../../../contexts/AuthContext';
+import { pickStatButton } from '../../../../components/ui/statButtonSupport';
 
 function clamp0(n: number) {
   return n < 0 ? 0 : n;
@@ -41,33 +42,6 @@ type CommentNode = {
   comment: CommentDTO;
   children: CommentNode[];
 };
-
-type StatButtonProps = {
-  label: string;
-  count: number;
-  onClick?: () => void;
-  tone?: string;
-  active?: boolean;
-  disabled?: boolean;
-};
-
-type StatButtonComponent = (props: StatButtonProps) => JSX.Element;
-
-function pickStatButton(mod: unknown): StatButtonComponent {
-  if (mod && typeof mod === 'object') {
-    const m = mod as Record<string, unknown>;
-
-    const candidate =
-      (m.default as unknown) ??
-      (m.StatButton as unknown) ??
-      Object.values(m).find((v) => typeof v === 'function');
-
-    if (typeof candidate === 'function') return candidate as StatButtonComponent;
-  }
-
-  // Fallback so the page won't crash if the module shape changes.
-  return (() => <span />) as StatButtonComponent;
-}
 
 const StatButton = pickStatButton(StatButtonModule);
 
@@ -217,7 +191,7 @@ export default function PostDetailPage() {
       try {
         const langs = await listSupportedLanguages();
         if (!mounted) return;
-        setSupportedLanguages((langs ?? []).filter((x) => x && typeof x.languageCode === 'string' && typeof x.displayName === 'string'));
+        setSupportedLanguages(normalizeSupportedLanguages(langs));
       } catch {
         if (!mounted) return;
         setSupportedLanguages([]);

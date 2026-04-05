@@ -123,18 +123,8 @@ public class RiskLabelingService {
 
     @Transactional(readOnly = true)
     public Map<Long, List<String>> getRiskTagSlugsByTargets(ContentType targetType, Collection<Long> targetIds) {
-        if (targetType == null || targetIds == null || targetIds.isEmpty()) return Map.of();
-        List<Long> ids = targetIds.stream().filter(Objects::nonNull).distinct().toList();
-        if (ids.isEmpty()) return Map.of();
-
-        List<RiskLabelingEntity> rows = riskLabelingRepository.findAllByTargetTypeAndTargetIdIn(targetType, ids);
-        if (rows.isEmpty()) return Map.of();
-
-        Map<Long, List<RiskLabelingEntity>> byTarget = new HashMap<>();
-        for (RiskLabelingEntity rl : rows) {
-            if (rl == null || rl.getTargetId() == null) continue;
-            byTarget.computeIfAbsent(rl.getTargetId(), k -> new ArrayList<>()).add(rl);
-        }
+        Map<Long, List<RiskLabelingEntity>> byTarget = groupByTarget(targetType, targetIds);
+        if (byTarget.isEmpty()) return Map.of();
 
         Map<Long, List<String>> out = new HashMap<>();
         for (Map.Entry<Long, List<RiskLabelingEntity>> e : byTarget.entrySet()) {
@@ -145,6 +135,17 @@ public class RiskLabelingService {
 
     @Transactional(readOnly = true)
     public Map<Long, List<RiskTagItem>> getRiskTagItemsByTargets(ContentType targetType, Collection<Long> targetIds) {
+        Map<Long, List<RiskLabelingEntity>> byTarget = groupByTarget(targetType, targetIds);
+        if (byTarget.isEmpty()) return Map.of();
+
+        Map<Long, List<RiskTagItem>> out = new HashMap<>();
+        for (Map.Entry<Long, List<RiskLabelingEntity>> e : byTarget.entrySet()) {
+            out.put(e.getKey(), mapToItems(e.getValue()));
+        }
+        return out;
+    }
+
+    private Map<Long, List<RiskLabelingEntity>> groupByTarget(ContentType targetType, Collection<Long> targetIds) {
         if (targetType == null || targetIds == null || targetIds.isEmpty()) return Map.of();
         List<Long> ids = targetIds.stream().filter(Objects::nonNull).distinct().toList();
         if (ids.isEmpty()) return Map.of();
@@ -157,19 +158,11 @@ public class RiskLabelingService {
             if (rl == null || rl.getTargetId() == null) continue;
             byTarget.computeIfAbsent(rl.getTargetId(), k -> new ArrayList<>()).add(rl);
         }
-
-        Map<Long, List<RiskTagItem>> out = new HashMap<>();
-        for (Map.Entry<Long, List<RiskLabelingEntity>> e : byTarget.entrySet()) {
-            out.put(e.getKey(), mapToItems(e.getValue()));
-        }
-        return out;
+        return byTarget;
     }
 
     private List<String> mapToSlugs(List<RiskLabelingEntity> rows) {
-        LinkedHashSet<Long> tagIds = new LinkedHashSet<>();
-        for (RiskLabelingEntity rl : rows) {
-            if (rl != null && rl.getTagId() != null) tagIds.add(rl.getTagId());
-        }
+        LinkedHashSet<Long> tagIds = collectDistinctTagIds(rows);
         if (tagIds.isEmpty()) return List.of();
 
         Map<Long, String> slugById = new HashMap<>();
@@ -184,10 +177,7 @@ public class RiskLabelingService {
     }
 
     private List<RiskTagItem> mapToItems(List<RiskLabelingEntity> rows) {
-        LinkedHashSet<Long> tagIds = new LinkedHashSet<>();
-        for (RiskLabelingEntity rl : rows) {
-            if (rl != null && rl.getTagId() != null) tagIds.add(rl.getTagId());
-        }
+        LinkedHashSet<Long> tagIds = collectDistinctTagIds(rows);
         if (tagIds.isEmpty()) return List.of();
 
         Map<Long, TagsEntity> byId = new HashMap<>();
@@ -208,6 +198,19 @@ public class RiskLabelingService {
             out.add(new RiskTagItem(slug, name));
         }
         return out;
+    }
+
+    private static LinkedHashSet<Long> collectDistinctTagIds(List<RiskLabelingEntity> rows) {
+        LinkedHashSet<Long> tagIds = new LinkedHashSet<>();
+        if (rows == null) {
+            return tagIds;
+        }
+        for (RiskLabelingEntity row : rows) {
+            if (row != null && row.getTagId() != null) {
+                tagIds.add(row.getTagId());
+            }
+        }
+        return tagIds;
     }
 
     static List<String> normalizeSlugs(List<String> rawTags) {

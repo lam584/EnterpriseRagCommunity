@@ -56,28 +56,71 @@ public class UserRoleServiceImpl implements UserRoleService {
         if (entity == null) return null;
         UserRolesCreateDTO dto = new UserRolesCreateDTO();
         dto.setId(entity.getId());
-        dto.setRoles(entity.getRoles()); // 对齐: 旧name → 新roles
-        dto.setNotes(entity.getNotes()); // 对齐: 旧description → 新notes
-        dto.setTenantId(entity.getTenantId()); // 对齐: 直接使用tenantId字段
-        // 权限字段直接映射
-        dto.setCanLogin(entity.getCanLogin());
-        dto.setCanViewAnnouncement(entity.getCanViewAnnouncement());
-        dto.setCanViewHelpArticles(entity.getCanViewHelpArticles());
-        dto.setCanResetOwnPassword(entity.getCanResetOwnPassword());
-        dto.setCanComment(entity.getCanComment());
+        snapshotOf(entity).applyTo(dto);
         return dto;
     }
 
     private void updateEntityFromDto(UserRolesCreateDTO dto, UserRolesEntity entity) { // 对齐: 参数类型改为新类
-        entity.setRoles(dto.getRoles()); // 对齐: 旧name → 新roles
-        entity.setNotes(dto.getNotes()); // 对齐: 旧description → 新notes
-        entity.setTenantId(dto.getTenantId()); // 对齐: 直接设置tenantId
-        // 权限字段直接映射
-        entity.setCanLogin(dto.getCanLogin());
-        entity.setCanViewAnnouncement(dto.getCanViewAnnouncement());
-        entity.setCanViewHelpArticles(dto.getCanViewHelpArticles());
-        entity.setCanResetOwnPassword(dto.getCanResetOwnPassword());
-        entity.setCanComment(dto.getCanComment());
+        snapshotOf(dto).applyTo(entity);
+    }
+
+    private static RoleFieldSnapshot snapshotOf(UserRolesEntity entity) {
+        return new RoleFieldSnapshot(
+                entity.getRoles(),
+                entity.getNotes(),
+                entity.getTenantId(),
+                entity.getCanLogin(),
+                entity.getCanViewAnnouncement(),
+                entity.getCanViewHelpArticles(),
+                entity.getCanResetOwnPassword(),
+                entity.getCanComment()
+        );
+    }
+
+    private static RoleFieldSnapshot snapshotOf(UserRolesCreateDTO dto) {
+        return new RoleFieldSnapshot(
+                dto.getRoles(),
+                dto.getNotes(),
+                dto.getTenantId(),
+                dto.getCanLogin(),
+                dto.getCanViewAnnouncement(),
+                dto.getCanViewHelpArticles(),
+                dto.getCanResetOwnPassword(),
+                dto.getCanComment()
+        );
+    }
+
+    private record RoleFieldSnapshot(
+            String roles,
+            String notes,
+            Long tenantId,
+            Boolean canLogin,
+            Boolean canViewAnnouncement,
+            Boolean canViewHelpArticles,
+            Boolean canResetOwnPassword,
+            Boolean canComment
+    ) {
+        private void applyTo(UserRolesCreateDTO dto) {
+            dto.setRoles(roles);
+            dto.setNotes(notes);
+            dto.setTenantId(tenantId);
+            dto.setCanLogin(canLogin);
+            dto.setCanViewAnnouncement(canViewAnnouncement);
+            dto.setCanViewHelpArticles(canViewHelpArticles);
+            dto.setCanResetOwnPassword(canResetOwnPassword);
+            dto.setCanComment(canComment);
+        }
+
+        private void applyTo(UserRolesEntity entity) {
+            entity.setRoles(roles);
+            entity.setNotes(notes);
+            entity.setTenantId(tenantId);
+            entity.setCanLogin(canLogin);
+            entity.setCanViewAnnouncement(canViewAnnouncement);
+            entity.setCanViewHelpArticles(canViewHelpArticles);
+            entity.setCanResetOwnPassword(canResetOwnPassword);
+            entity.setCanComment(canComment);
+        }
     }
 
     @Override

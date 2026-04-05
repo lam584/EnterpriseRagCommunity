@@ -2,13 +2,13 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { Compass, FileText, MessageCircle, Bot, User, LogOut, Search, PencilLine, Shield } from 'lucide-react';
 import { portalSections } from './portalMenu';
 import { useAuth } from '../../contexts/AuthContext';
-import { logout } from '../../services/authService';
-import { getMyProfile } from '../../services/accountService';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import HotSidebar from './discover/components/HotSidebar';
 import AssistantRecentSessionsSidebar from './assistant/components/AssistantRecentSessionsSidebar';
 import BeianFooter from '../../components/common/BeianFooter';
+import { getAvatarFallbackText, getDisplayUsername } from '../../utils/userDisplay';
+import { useAuthenticatedAvatarMenu } from '../../hooks/useAuthenticatedAvatarMenu';
 
 export type PortalOutletContext = {
   composePreviewOpen: boolean;
@@ -43,9 +43,11 @@ export default function CommunityPortalLayout() {
   const location = useLocation();
 
   const { currentUser, isAuthenticated, setCurrentUser, setIsAuthenticated, refreshAuth } = useAuth();
-  const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | undefined>(undefined);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const { profileAvatarUrl, userMenuOpen, userMenuRef, setUserMenuOpen, handleLogout } = useAuthenticatedAvatarMenu({
+    isAuthenticated,
+    setCurrentUser,
+    setIsAuthenticated,
+  });
 
   const composePreviewOpenKey = 'portal.posts.compose.previewPaneOpen';
   const [composePreviewOpen, setComposePreviewOpen] = useState<boolean>(() => {
@@ -66,16 +68,8 @@ export default function CommunityPortalLayout() {
     }
   }, [composePreviewOpen]);
 
-  const displayUsername = useMemo(() => {
-    const name = currentUser?.username?.trim();
-    return name && name.length > 0 ? name : '未登录';
-  }, [currentUser?.username]);
-
-  const avatarFallbackText = useMemo(() => {
-    const name = currentUser?.username?.trim();
-    if (!name) return 'U';
-    return name.slice(0, 1).toUpperCase();
-  }, [currentUser?.username]);
+  const displayUsername = useMemo(() => getDisplayUsername(currentUser?.username), [currentUser?.username]);
+  const avatarFallbackText = useMemo(() => getAvatarFallbackText(currentUser?.username), [currentUser?.username]);
 
   // React 18 StrictMode(dev) 会让 effect 挂载/卸载/再挂载一次，
   // 如果这里每次都 refreshAuth，可能导致 isAuthenticated 短时间抖动，引发重定向风暴。
@@ -96,62 +90,6 @@ export default function CommunityPortalLayout() {
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [refreshAuth]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadProfileAvatar() {
-      if (!isAuthenticated) {
-        setProfileAvatarUrl(undefined);
-        return;
-      }
-
-      try {
-        const p = await getMyProfile();
-        if (!cancelled) setProfileAvatarUrl(p.avatarUrl);
-      } catch {
-        // ignore; avatar is optional and we have fallbacks
-        if (!cancelled) setProfileAvatarUrl(undefined);
-      }
-    }
-
-    loadProfileAvatar();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    function onDocumentMouseDown(e: MouseEvent) {
-      if (!userMenuOpen) return;
-      const el = userMenuRef.current;
-      if (!el) return;
-      if (e.target instanceof Node && !el.contains(e.target)) {
-        setUserMenuOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', onDocumentMouseDown);
-    return () => document.removeEventListener('mousedown', onDocumentMouseDown);
-  }, [userMenuOpen]);
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } finally {
-      // 无论退出接口成功与否，都清理本地态，避免 UI 卡在已登录
-      try {
-        localStorage.removeItem('userData');
-      } catch {
-        // ignore
-      }
-      setCurrentUser(null);
-      setIsAuthenticated(false);
-      setUserMenuOpen(false);
-      window.location.href = '/login';
-    }
-  };
 
   const isTopNavActive = (navId: string, pathname: string, isActiveFromNavLink: boolean) => {
     // 约束一级菜单 active 规则：

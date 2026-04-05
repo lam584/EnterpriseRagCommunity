@@ -14,6 +14,7 @@ import {
   type RetrievalEventLogDTO,
   type RetrievalHitLogDTO,
 } from '../../../../services/retrievalHybridService';
+import { EditSaveActions } from '../../../../components/admin/EditSaveActions';
 import HybridLogsSection from './hybridLogs';
 import HybridTestSection from './hybridTest';
 
@@ -481,37 +482,24 @@ const HybridSearchForm: React.FC = () => {
           <button className={btnSecondaryClass} onClick={loadConfig} disabled={loading}>
             刷新
           </button>
-          {!editing ? (
-            <button
-              className={btnSecondaryClass}
-              onClick={() => {
-                setEditing(true);
-                setError(null);
-                setMessage(null);
-              }}
-              disabled={loading || !canWrite}
-            >
-              编辑
-            </button>
-          ) : (
-            <>
-              <button
-                className={btnSecondaryClass}
-                onClick={() => {
-                  setConfig(committedConfig);
-                  setEditing(false);
-                  setError(null);
-                  setMessage(null);
-                }}
-                disabled={loading}
-              >
-                取消
-              </button>
-              <button className={btnPrimaryClass} onClick={onSave} disabled={loading || !canWrite || !hasUnsavedChanges}>
-                保存
-              </button>
-            </>
-          )}
+          <EditSaveActions
+            editing={editing}
+            loading={loading}
+            canWrite={canWrite}
+            hasUnsavedChanges={hasUnsavedChanges}
+            onEdit={() => {
+              setEditing(true);
+              setError(null);
+              setMessage(null);
+            }}
+            onCancel={() => {
+              setConfig(committedConfig);
+              setEditing(false);
+              setError(null);
+              setMessage(null);
+            }}
+            onSave={onSave}
+          />
         </div>
       </div>
 

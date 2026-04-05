@@ -2,20 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getMyProfile, updateMyProfile } from '../../../../services/accountService';
 import { listMyPostsPage, type PostDTO } from '../../../../services/postService';
-import type { SpringPage } from '../../../../types/page';
-import type { UpdateUserProfileRequest, UserProfile } from '../../../../types/userProfile';
 import ProfileAvatarUploader from '../components/ProfileAvatarUploader';
 import PostFeed from '../../discover/components/PostFeed';
-
-function isValidWebsite(v: string): boolean {
-  if (!v.trim()) return true;
-  try {
-    const u = new URL(v);
-    return u.protocol === 'http:' || u.protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
+import { formatProfileModerationStatus } from '../../profileModerationText';
+import { hasProfileDraftChanges, validateProfileFields } from './profileValidationUtils';
+import { toProfileUpdateRequest, useProfilePageState } from './profilePageShared';
 
 export default function AccountProfilePage() {
   const navigate = useNavigate();
@@ -23,32 +14,37 @@ export default function AccountProfilePage() {
   const [saving, setSaving] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
-  const [saveOk, setSaveOk] = useState<string | null>(null);
-
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [baseProfile, setBaseProfile] = useState<UserProfile | null>(null);
-
-  const [isEditing, setIsEditing] = useState(false);
-
-  const [username, setUsername] = useState('');
-  const [bio, setBio] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState('');
-  const [location, setLocation] = useState('');
-  const [website, setWebsite] = useState('');
-
-  const [postsLoading, setPostsLoading] = useState(false);
-  const [postsErr, setPostsErr] = useState<string | null>(null);
-  const [postsPage, setPostsPage] = useState<SpringPage<PostDTO> | null>(null);
-  const [postsPageNo, setPostsPageNo] = useState(1);
-  const [postsReloadTick, setPostsReloadTick] = useState(0);
-
-  function resetDraftFrom(p: UserProfile) {
-    setUsername(p.username ?? '');
-    setBio(p.bio ?? '');
-    setAvatarUrl(p.avatarUrl ?? '');
-    setLocation(p.location ?? '');
-    setWebsite(p.website ?? '');
-  }
+  const {
+    saveOk,
+    setSaveOk,
+    profile,
+    setProfile,
+    baseProfile,
+    setBaseProfile,
+    isEditing,
+    setIsEditing,
+    username,
+    setUsername,
+    bio,
+    setBio,
+    avatarUrl,
+    setAvatarUrl,
+    location,
+    setLocation,
+    website,
+    setWebsite,
+    postsLoading,
+    setPostsLoading,
+    postsErr,
+    setPostsErr,
+    postsPage,
+    setPostsPage,
+    postsPageNo,
+    setPostsPageNo,
+    postsReloadTick,
+    setPostsReloadTick,
+    resetDraftFrom,
+  } = useProfilePageState();
 
   useEffect(() => {
     let cancelled = false;
@@ -112,56 +108,13 @@ export default function AccountProfilePage() {
     };
   }, [profile, postsPageNo, postsReloadTick]);
 
-  const validationError = useMemo(() => {
-    const u = username.trim();
-    if (!u) return '昵称不能为空';
-    if (u.length > 64) return '昵称不能超过 64 个字符';
-
-    const b = bio.trim();
-    if (b.length > 500) return '简介不能超过 500 个字符';
-
-    const loc = location.trim();
-    if (loc.length > 64) return '地区不能超过 64 个字符';
-
-    const w = website.trim();
-    if (w.length > 191) return '网站不能超过 191 个字符';
-    if (!isValidWebsite(w)) return '网站链接格式不正确（需要 http/https）';
-
-    return null;
-  }, [username, bio, location, website]);
+  const validationError = useMemo(
+    () => validateProfileFields({ username, bio, location, website }),
+    [username, bio, location, website]
+  );
 
   const isDirty = useMemo(() => {
-    if (!baseProfile) return false;
-
-    const norm = (v: string) => v.trim();
-    const emptyToUndef = (v: string) => {
-      const t = norm(v);
-      return t ? t : undefined;
-    };
-
-    const curr = {
-      username: norm(username),
-      bio: emptyToUndef(bio),
-      avatarUrl: emptyToUndef(avatarUrl),
-      location: emptyToUndef(location),
-      website: emptyToUndef(website),
-    };
-
-    const base = {
-      username: norm(baseProfile.username ?? ''),
-      bio: emptyToUndef(baseProfile.bio ?? ''),
-      avatarUrl: emptyToUndef(baseProfile.avatarUrl ?? ''),
-      location: emptyToUndef(baseProfile.location ?? ''),
-      website: emptyToUndef(baseProfile.website ?? ''),
-    };
-
-    return (
-      curr.username !== base.username ||
-      curr.bio !== base.bio ||
-      curr.avatarUrl !== base.avatarUrl ||
-      curr.location !== base.location ||
-      curr.website !== base.website
-    );
+    return hasProfileDraftChanges(baseProfile, { username, bio, avatarUrl, location, website });
   }, [avatarUrl, baseProfile, bio, location, username, website]);
 
   function handleStartEditing() {
@@ -197,22 +150,7 @@ export default function AccountProfilePage() {
       return;
     }
 
-    const toPatchValue = (v: string): string | null | undefined => {
-      // undefined means "don't send / no change"
-      // null means "clear"
-      // string means "set"
-      const t = v.trim();
-      if (t === '') return null;
-      return t;
-    };
-
-    const body: UpdateUserProfileRequest = {
-      username: username.trim(),
-      bio: toPatchValue(bio),
-      avatarUrl: toPatchValue(avatarUrl),
-      location: toPatchValue(location),
-      website: toPatchValue(website),
-    };
+    const body = toProfileUpdateRequest({ username, bio, avatarUrl, location, website });
 
     setSaving(true);
     try {
@@ -260,17 +198,7 @@ export default function AccountProfilePage() {
         {profile.profileModeration?.status ? (
           <div className="text-sm text-gray-600">
             审核状态：
-            {profile.profileModeration.status === 'PENDING'
-              ? '待审核'
-              : profile.profileModeration.status === 'REVIEWING'
-                ? '审核中'
-                : profile.profileModeration.status === 'HUMAN'
-                  ? '待人工审核'
-                  : profile.profileModeration.status === 'REJECTED'
-                    ? '已驳回'
-                    : profile.profileModeration.status === 'APPROVED'
-                      ? '已通过'
-                      : profile.profileModeration.status}
+            {formatProfileModerationStatus(profile.profileModeration.status)}
             {profile.profileModeration.reason ? `（${profile.profileModeration.reason}）` : null}
           </div>
         ) : null}

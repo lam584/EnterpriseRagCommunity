@@ -78,12 +78,7 @@ public class AuthPasswordResetService {
         TotpSecretsEntity enabled = totpSecretsRepository.findTopByUserIdAndEnabledTrueOrderByCreatedAtDesc(user.getId())
                 .orElseThrow(() -> new IllegalArgumentException("该账号未启用 TOTP，暂不支持找回密码"));
 
-        if (newPassword == null || newPassword.isBlank()) {
-            throw new IllegalArgumentException("请输入新密码");
-        }
-        if (newPassword.length() < 6) {
-            throw new IllegalArgumentException("新密码长度至少 6 位");
-        }
+        PasswordValidationSupport.requireNewPassword(newPassword);
 
         String normalized = totpCode == null ? "" : totpCode.trim();
         int digits = requireValidTotpDigits(enabled.getDigits());
@@ -125,12 +120,7 @@ public class AuthPasswordResetService {
         }
         UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
                 .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
-        if (newPassword == null || newPassword.isBlank()) {
-            throw new IllegalArgumentException("请输入新密码");
-        }
-        if (newPassword.length() < 6) {
-            throw new IllegalArgumentException("新密码长度至少 6 位");
-        }
+        PasswordValidationSupport.requireNewPassword(newPassword);
         String code = emailCode == null ? "" : emailCode.trim();
         if (code.isEmpty()) throw new IllegalArgumentException("请输入邮箱验证码");
         emailVerificationService.verifyAndConsume(user.getId(), EmailVerificationPurpose.PASSWORD_RESET, code);

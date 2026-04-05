@@ -7,6 +7,7 @@ import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
+import com.example.EnterpriseRagCommunity.service.content.PostQueryStatusSupport;
 import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -131,12 +132,7 @@ public class PostsController {
                 .getId();
 
         // status==null 表示 ALL：不加 status 过滤。
-        PostStatus effectiveStatus;
-        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status)) {
-            effectiveStatus = null;
-        } else {
-            effectiveStatus = PostStatus.valueOf(status);
-        }
+        PostStatus effectiveStatus = PostQueryStatusSupport.parseEffectiveStatus(status);
 
         return portalPostsService.query(keyword, postId, searchMode, boardId, effectiveStatus, me, createdFrom, createdTo,
                 page, pageSize, sortBy, sortOrderDirection);

@@ -8,8 +8,11 @@ import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
 import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.service.BoardService;
+import com.example.EnterpriseRagCommunity.service.JpaQueryPredicateSupport;
+import com.example.EnterpriseRagCommunity.service.PageableSupport;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -40,12 +43,8 @@ public class BoardServiceImpl implements BoardService {
         Specification<BoardsEntity> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            if (queryDTO.getId() != null) {
-                predicates.add(cb.equal(root.get("id"), queryDTO.getId()));
-            }
-            if (queryDTO.getTenantId() != null) {
-                predicates.add(cb.equal(root.get("tenantId"), queryDTO.getTenantId()));
-            }
+            JpaQueryPredicateSupport.addEqualIfPresent(predicates, cb, root.get("id"), queryDTO.getId());
+            JpaQueryPredicateSupport.addEqualIfPresent(predicates, cb, root.get("tenantId"), queryDTO.getTenantId());
             if (queryDTO.getParentId() != null) {
                 predicates.add(cb.equal(root.get("parentId"), queryDTO.getParentId()));
             }
@@ -99,10 +98,7 @@ public class BoardServiceImpl implements BoardService {
         }
 
         // Handle page number: DTO is 1-based, Spring is 0-based
-        int pageNumber = (queryDTO.getPage() != null && queryDTO.getPage() > 0) ? queryDTO.getPage() - 1 : 0;
-        int pageSize = (queryDTO.getPageSize() != null && queryDTO.getPageSize() > 0) ? queryDTO.getPageSize() : 20;
-
-        Pageable pageable = PageRequest.of(pageNumber, pageSize, sort);
+        Pageable pageable = PageableSupport.oneBased(queryDTO.getPage(), queryDTO.getPageSize(), sort);
 
         Page<BoardsEntity> page = boardsRepository.findAll(spec, pageable);
 
@@ -244,13 +240,6 @@ public class BoardServiceImpl implements BoardService {
     }
 
     private static String currentUsernameOrNull() {
-        try {
-            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 }

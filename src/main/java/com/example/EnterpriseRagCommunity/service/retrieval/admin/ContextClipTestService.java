@@ -106,13 +106,14 @@ public class ContextClipTestService {
             c.setUsedTokens(assembled == null ? 0 : safeInt(assembled.getUsedTokens()));
             c.setUsedTokensDiff((assembled == null ? 0 : safeInt(assembled.getUsedTokens())) - baseUsedTokens);
             c.setBudgetTokensDiff((assembled == null ? 0 : safeInt(assembled.getBudgetTokens())) - baseBudgetTokens);
-            c.setContextPrompt(assembled == null ? "" : safeString(assembled.getContextPrompt()));
-            List<ContextClipTestResponse.Item> selected = mapItems(assembled == null ? null : assembled.getSelected());
-            List<ContextClipTestResponse.Item> dropped = mapItems(assembled == null ? null : assembled.getDropped());
-            c.setSelected(selected);
-            c.setDropped(dropped);
-            c.setItemsSelected(selected.size());
-            c.setItemsDropped(dropped.size());
+            applyAssembleResult(
+                    c::setContextPrompt,
+                    c::setSelected,
+                    c::setDropped,
+                    c::setItemsSelected,
+                    c::setItemsDropped,
+                    assembled
+            );
             out.add(c);
         }
         return out;
@@ -121,14 +122,31 @@ public class ContextClipTestService {
     private void fillPrimaryResult(ContextClipTestResponse out, RagContextPromptService.AssembleResult assembled) {
         out.setBudgetTokens(assembled == null ? null : assembled.getBudgetTokens());
         out.setUsedTokens(assembled == null ? 0 : safeInt(assembled.getUsedTokens()));
-        out.setContextPrompt(assembled == null ? "" : safeString(assembled.getContextPrompt()));
+        applyAssembleResult(
+                out::setContextPrompt,
+                out::setSelected,
+                out::setDropped,
+                out::setItemsSelected,
+                out::setItemsDropped,
+                assembled
+        );
+    }
 
+    private void applyAssembleResult(
+            java.util.function.Consumer<String> contextPromptSetter,
+            java.util.function.Consumer<List<ContextClipTestResponse.Item>> selectedSetter,
+            java.util.function.Consumer<List<ContextClipTestResponse.Item>> droppedSetter,
+            java.util.function.IntConsumer itemsSelectedSetter,
+            java.util.function.IntConsumer itemsDroppedSetter,
+            RagContextPromptService.AssembleResult assembled
+    ) {
+        contextPromptSetter.accept(assembled == null ? "" : safeString(assembled.getContextPrompt()));
         List<ContextClipTestResponse.Item> selected = mapItems(assembled == null ? null : assembled.getSelected());
         List<ContextClipTestResponse.Item> dropped = mapItems(assembled == null ? null : assembled.getDropped());
-        out.setSelected(selected);
-        out.setDropped(dropped);
-        out.setItemsSelected(selected.size());
-        out.setItemsDropped(dropped.size());
+        selectedSetter.accept(selected);
+        droppedSetter.accept(dropped);
+        itemsSelectedSetter.accept(selected.size());
+        itemsDroppedSetter.accept(dropped.size());
     }
 
     private static List<ContextClipTestResponse.Item> mapItems(List<RagContextPromptService.Item> items) {

@@ -1,5 +1,6 @@
 import { getCsrfToken } from '../utils/csrfUtils';
 import { getBackendMessage } from './serviceErrorUtils';
+import { buildQuery } from './serviceQueryUtils';
 import { serviceApiUrl } from './serviceUrlUtils';
 
 export type ModerationSample = {
@@ -64,16 +65,6 @@ export type ModerationSamplesReindexResponse = {
 };
 
 const apiUrl = serviceApiUrl;
-
-function buildQuery(params: Record<string, unknown>): string {
-  const sp = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null || v === '') continue;
-    sp.set(k, String(v));
-  }
-  const qs = sp.toString();
-  return qs ? `?${qs}` : '';
-}
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const isWrite = !!init?.method && init.method !== 'GET';

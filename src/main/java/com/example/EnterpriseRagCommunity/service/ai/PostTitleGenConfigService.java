@@ -6,14 +6,11 @@ import com.example.EnterpriseRagCommunity.dto.ai.PostTitleGenPublicConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenHistoryEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
-import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenHistoryRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,18 +66,13 @@ public class PostTitleGenConfigService {
                 .orElseGet(this::defaultEntity);
 
         PostSuggestionGenConfigEntity merged = mergeAndValidate(cfg, payload);
-        merged.setUpdatedAt(LocalDateTime.now());
-        merged.setUpdatedBy(actorUserId);
-
-        merged = configRepository.save(merged);
+        merged = PostSuggestionConfigSupport.saveUpdatedConfig(merged, actorUserId, configRepository::save);
         return toDto(merged, actorUsername);
     }
 
     @Transactional(readOnly = true)
     public Page<PostTitleGenHistoryDTO> listHistory(Long userId, int page, int size) {
-        int safePage = Math.max(0, page);
-        int safeSize = Math.min(100, Math.max(1, size));
-        Pageable pageable = PageRequest.of(safePage, safeSize);
+        var pageable = PostSuggestionConfigSupport.buildHistoryPageable(page, size);
 
         Page<PostSuggestionGenHistoryEntity> rows = (userId == null)
                 ? historyRepository.findByKindOrderByCreatedAtDesc(KIND, pageable)
@@ -102,21 +94,14 @@ public class PostTitleGenConfigService {
     }
 
     private PostSuggestionGenConfigEntity defaultEntity() {
-        PostSuggestionGenConfigEntity e = new PostSuggestionGenConfigEntity();
-        e.setGroupCode(GROUP_CODE);
-        e.setKind(KIND);
-        e.setEnabled(Boolean.TRUE);
-        e.setPromptCode(DEFAULT_PROMPT_CODE);
-        e.setDefaultCount(DEFAULT_DEFAULT_COUNT);
-        e.setMaxCount(DEFAULT_MAX_COUNT);
-        e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
-        e.setHistoryEnabled(Boolean.TRUE);
-        e.setHistoryKeepDays(30);
-        e.setHistoryKeepRows(5000);
-        e.setVersion(0);
-        e.setUpdatedAt(LocalDateTime.now());
-        e.setUpdatedBy(null);
-        return e;
+        return PostSuggestionGenConfigSupport.defaultEntity(
+                GROUP_CODE,
+                KIND,
+                DEFAULT_PROMPT_CODE,
+                DEFAULT_DEFAULT_COUNT,
+                DEFAULT_MAX_COUNT,
+                DEFAULT_MAX_CONTENT_CHARS
+        );
     }
 
     private PostSuggestionGenConfigEntity mergeAndValidate(PostSuggestionGenConfigEntity base, PostTitleGenConfigDTO payload) {
@@ -164,28 +149,7 @@ public class PostTitleGenConfigService {
     }
 
     private PostTitleGenConfigDTO toDto(PostSuggestionGenConfigEntity e, String updatedByName) {
-        PostTitleGenConfigDTO dto = new PostTitleGenConfigDTO();
-        dto.setId(e.getId());
-        dto.setVersion(e.getVersion());
-        dto.setEnabled(e.getEnabled());
-        dto.setPromptCode(e.getPromptCode());
-        PromptsEntity prompt = (e.getPromptCode() == null || e.getPromptCode().isBlank())
-            ? null
-            : promptsRepository.findByPromptCode(e.getPromptCode()).orElse(null);
-        dto.setModel(prompt != null ? prompt.getModelName() : null);
-        dto.setProviderId(prompt != null ? prompt.getProviderId() : null);
-        dto.setTemperature(prompt != null ? prompt.getTemperature() : null);
-        dto.setTopP(prompt != null ? prompt.getTopP() : null);
-        dto.setEnableThinking(prompt != null ? prompt.getEnableDeepThinking() : null);
-        dto.setDefaultCount(e.getDefaultCount());
-        dto.setMaxCount(e.getMaxCount());
-        dto.setMaxContentChars(e.getMaxContentChars());
-        dto.setHistoryEnabled(e.getHistoryEnabled());
-        dto.setHistoryKeepDays(e.getHistoryKeepDays());
-        dto.setHistoryKeepRows(e.getHistoryKeepRows());
-        dto.setUpdatedAt(e.getUpdatedAt());
-        dto.setUpdatedBy(updatedByName);
-        return dto;
+        return PostSuggestionGenConfigSupport.toTitleAdminConfigDto(e, updatedByName, promptsRepository::findByPromptCode);
     }
 
     @SuppressWarnings("unchecked")

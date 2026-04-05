@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.service.moderation.impl;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -63,6 +62,8 @@ import com.example.EnterpriseRagCommunity.service.access.UsersService;
 import com.example.EnterpriseRagCommunity.service.moderation.AdminModerationQueueService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationChunkReviewService;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationPipelineRunSupport;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationRiskTagSupport;
 import com.example.EnterpriseRagCommunity.service.moderation.RiskLabelingService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 
@@ -93,10 +94,16 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     private final RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
     private final AuditLogWriter auditLogWriter;
     private final UsersService usersService;
+    private AdminModerationQueueService self;
 
     @Autowired
     void setModerationAutoKickService(@Lazy ModerationAutoKickService moderationAutoKickService) {
         this.moderationAutoKickService = moderationAutoKickService;
+    }
+
+    @Autowired
+    void setSelf(@Lazy AdminModerationQueueService self) {
+        this.self = self;
     }
 
     @Override
@@ -229,16 +236,8 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 case COMMENT -> commentRiskTagItemsById.getOrDefault(e.getContentId(), List.of());
                 case PROFILE -> profileRiskTagItemsById.getOrDefault(e.getContentId(), List.of());
             };
-            List<String> riskTags = new ArrayList<>();
-            List<AdminModerationQueueRiskTagItemDTO> riskTagItemDTOs = new ArrayList<>();
-            for (RiskLabelingService.RiskTagItem it : riskTagItems) {
-                if (it == null || it.slug() == null || it.slug().isBlank()) continue;
-                riskTags.add(it.slug());
-                AdminModerationQueueRiskTagItemDTO x = new AdminModerationQueueRiskTagItemDTO();
-                x.setSlug(it.slug());
-                x.setName(it.name());
-                riskTagItemDTOs.add(x);
-            }
+            List<String> riskTags = ModerationRiskTagSupport.collectRiskTags(riskTagItems);
+            List<AdminModerationQueueRiskTagItemDTO> riskTagItemDTOs = ModerationRiskTagSupport.toRiskTagItemDtos(riskTagItems);
             AdminModerationQueueItemDTO dto = toItemDTO(
                     e,
                     postsById.get(e.getContentId()),
@@ -249,15 +248,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             );
             dto.setRiskTagItems(riskTagItemDTOs);
             ModerationChunkReviewService.ProgressSummary ps = chunkProgressByQueueId.get(e.getId());
-            if (ps != null && ps.total > 0) {
-                AdminModerationQueueItemDTO.ChunkProgress cp = new AdminModerationQueueItemDTO.ChunkProgress();
-                cp.setStatus(ps.status);
-                cp.setTotalChunks(ps.total);
-                cp.setCompletedChunks(ps.completed);
-                cp.setFailedChunks(ps.failed);
-                cp.setUpdatedAt(ps.updatedAt);
-                dto.setChunkProgress(cp);
-            }
+            dto.setChunkProgress(toChunkProgress(ps));
             return dto;
         });
     }
@@ -288,6 +279,19 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     private static String enumName(Enum<?> value) {
         return value == null ? null : value.name();
+    }
+
+    private static AdminModerationQueueItemDTO.ChunkProgress toChunkProgress(ModerationChunkReviewService.ProgressSummary ps) {
+        if (ps == null || ps.total <= 0) {
+            return null;
+        }
+        AdminModerationQueueItemDTO.ChunkProgress cp = new AdminModerationQueueItemDTO.ChunkProgress();
+        cp.setStatus(ps.status);
+        cp.setTotalChunks(ps.total);
+        cp.setCompletedChunks(ps.completed);
+        cp.setFailedChunks(ps.failed);
+        cp.setUpdatedAt(ps.updatedAt);
+        return cp;
     }
 
     @Override
@@ -332,29 +336,13 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
         AdminModerationQueueDetailDTO dto = baseDetail(q);
         List<RiskLabelingService.RiskTagItem> riskTagItems = riskLabelingService.getRiskTagItems(q.getContentType(), q.getContentId());
-        List<String> riskTags = new ArrayList<>();
-        List<AdminModerationQueueRiskTagItemDTO> riskTagItemDTOs = new ArrayList<>();
-        for (RiskLabelingService.RiskTagItem it : riskTagItems) {
-            if (it == null || it.slug() == null || it.slug().isBlank()) continue;
-            riskTags.add(it.slug());
-            AdminModerationQueueRiskTagItemDTO x = new AdminModerationQueueRiskTagItemDTO();
-            x.setSlug(it.slug());
-            x.setName(it.name());
-            riskTagItemDTOs.add(x);
-        }
+        List<String> riskTags = ModerationRiskTagSupport.collectRiskTags(riskTagItems);
+        List<AdminModerationQueueRiskTagItemDTO> riskTagItemDTOs = ModerationRiskTagSupport.toRiskTagItemDtos(riskTagItems);
         dto.setRiskTags(riskTags);
         dto.setRiskTagItems(riskTagItemDTOs);
         try {
             ModerationChunkReviewService.ProgressSummary ps = moderationChunkReviewService.loadProgressSummaries(List.of(q.getId())).get(q.getId());
-            if (ps != null && ps.total > 0) {
-                AdminModerationQueueItemDTO.ChunkProgress cp = new AdminModerationQueueItemDTO.ChunkProgress();
-                cp.setStatus(ps.status);
-                cp.setTotalChunks(ps.total);
-                cp.setCompletedChunks(ps.completed);
-                cp.setFailedChunks(ps.failed);
-                cp.setUpdatedAt(ps.updatedAt);
-                dto.setChunkProgress(cp);
-            }
+            dto.setChunkProgress(toChunkProgress(ps));
         } catch (Exception ignore) {
         }
 
@@ -452,16 +440,9 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         }
         if (q.getCaseType() == ModerationCaseType.REPORT) {
             Long actorId = actor == null ? null : actor.getId();
-            Map<Long, Integer> reportCountByReporterId = new HashMap<>();
+            Map<Long, Integer> reportCountByReporterId = new HashMap<>(countPendingReportsByReporter(q));
             try {
                 ReportTargetType t = toReportTargetType(q.getContentType());
-                List<ReportsEntity> pending = reportsRepository.findAllByTargetTypeAndTargetIdAndStatus(t, q.getContentId(), ReportStatus.PENDING);
-                if (pending != null) {
-                    for (ReportsEntity r : pending) {
-                        if (r == null || r.getReporterId() == null) continue;
-                        reportCountByReporterId.merge(r.getReporterId(), 1, Integer::sum);
-                    }
-                }
                 reportsRepository.resolveAllPendingByTarget(t, q.getContentId(), ReportStatus.REJECTED, actorId, LocalDateTime.now(), reason == null ? "REPORT_DISMISSED" : reason);
             } catch (Exception ignore) {
             }
@@ -509,19 +490,11 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 PostsEntity saved = postsRepository.save(post);
                 ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
             } else if (q.getContentType() == ContentType.COMMENT) {
-                CommentsEntity c = commentsRepository.findById(q.getContentId())
-                        .orElseThrow(() -> new IllegalArgumentException("评论不存在: " + q.getContentId()));
-                if (Boolean.TRUE.equals(c.getIsDeleted())) throw new IllegalArgumentException("评论已删除: " + c.getId());
-                c.setStatus(CommentStatus.VISIBLE);
-                c.setUpdatedAt(LocalDateTime.now());
-                CommentsEntity saved = commentsRepository.save(c);
-                ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+                updateCommentStatusAndScheduleSync(q, CommentStatus.VISIBLE);
             } else if (q.getContentType() == ContentType.PROFILE) {
-                UsersEntity u = usersRepository.findById(q.getContentId())
-                        .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + q.getContentId()));
-                if (Boolean.TRUE.equals(u.getIsDeleted())) throw new IllegalArgumentException("用户已删除: " + u.getId());
-                Map<String, Object> md0 = u.getMetadata();
-                Map<String, Object> md = md0 == null ? new HashMap<>() : new HashMap<>(md0);
+                ProfileUserState state = loadProfileUserStateOrThrow(q);
+                UsersEntity u = state.user();
+                Map<String, Object> md = state.metadata();
                 Map<String, Object> pending = readMap(md, "profilePending");
                 String pendingUsername = strOrNull(pending.get("username"));
                 if (pendingUsername != null) u.setUsername(pendingUsername);
@@ -755,31 +728,15 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         }
 
         if (q.getCaseType() == ModerationCaseType.REPORT) {
-            Map<Long, Integer> reportCountByReporterId = new HashMap<>();
+            Map<Long, Integer> reportCountByReporterId = new HashMap<>(countPendingReportsByReporter(q));
             if (q.getContentType() == ContentType.POST) {
-                PostsEntity post = postsRepository.findById(q.getContentId())
-                        .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + q.getContentId()));
-                if (Boolean.TRUE.equals(post.getIsDeleted()))
-                    throw new IllegalArgumentException("帖子已删除: " + post.getId());
-                post.setStatus(PostStatus.REJECTED);
-                PostsEntity saved = postsRepository.save(post);
-                ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+                rejectPostAndScheduleSync(q);
             } else if (q.getContentType() == ContentType.COMMENT) {
-                CommentsEntity c = commentsRepository.findById(q.getContentId())
-                        .orElseThrow(() -> new IllegalArgumentException("评论不存在: " + q.getContentId()));
-                if (Boolean.TRUE.equals(c.getIsDeleted()))
-                    throw new IllegalArgumentException("评论已删除: " + c.getId());
-                c.setStatus(CommentStatus.REJECTED);
-                c.setUpdatedAt(LocalDateTime.now());
-                CommentsEntity saved = commentsRepository.save(c);
-                ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+                updateCommentStatusAndScheduleSync(q, CommentStatus.REJECTED);
             } else if (q.getContentType() == ContentType.PROFILE) {
-                UsersEntity u = usersRepository.findById(q.getContentId())
-                        .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + q.getContentId()));
-                if (Boolean.TRUE.equals(u.getIsDeleted()))
-                    throw new IllegalArgumentException("用户已删除: " + u.getId());
-                Map<String, Object> md0 = u.getMetadata();
-                Map<String, Object> md = md0 == null ? new HashMap<>() : new HashMap<>(md0);
+                ProfileUserState state = loadProfileUserStateOrThrow(q);
+                UsersEntity u = state.user();
+                Map<String, Object> md = state.metadata();
                 Map<String, Object> publicProfile0 = readMap(md, "profile");
                 Map<String, Object> publicProfile = new HashMap<>(publicProfile0);
                 publicProfile.put("avatarUrl", null);
@@ -796,13 +753,6 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             Long actorId = actor == null ? null : actor.getId();
             try {
                 ReportTargetType t = toReportTargetType(q.getContentType());
-                List<ReportsEntity> pending = reportsRepository.findAllByTargetTypeAndTargetIdAndStatus(t, q.getContentId(), ReportStatus.PENDING);
-                if (pending != null) {
-                    for (ReportsEntity r : pending) {
-                        if (r == null || r.getReporterId() == null) continue;
-                        reportCountByReporterId.merge(r.getReporterId(), 1, Integer::sum);
-                    }
-                }
                 reportsRepository.resolveAllPendingByTarget(t, q.getContentId(), ReportStatus.RESOLVED, actorId, LocalDateTime.now(), reason == null ? "REPORT_CONFIRMED" : reason);
             } catch (Exception ignore) {
             }
@@ -822,13 +772,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             }
         } else {
             if (q.getContentType() == ContentType.POST) {
-                PostsEntity post = postsRepository.findById(q.getContentId())
-                        .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + q.getContentId()));
-                if (Boolean.TRUE.equals(post.getIsDeleted()))
-                    throw new IllegalArgumentException("帖子已删除: " + post.getId());
-                post.setStatus(PostStatus.REJECTED);
-                PostsEntity saved = postsRepository.save(post);
-                ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+                rejectPostAndScheduleSync(q);
             } else if (q.getContentType() == ContentType.COMMENT) {
                 CommentsEntity c = commentsRepository.findById(q.getContentId())
                         .orElseThrow(() -> new IllegalArgumentException("评论不存在: " + q.getContentId()));
@@ -839,12 +783,9 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 CommentsEntity saved = commentsRepository.save(c);
                 ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
             } else if (q.getContentType() == ContentType.PROFILE) {
-                UsersEntity u = usersRepository.findById(q.getContentId())
-                        .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + q.getContentId()));
-                if (Boolean.TRUE.equals(u.getIsDeleted()))
-                    throw new IllegalArgumentException("用户已删除: " + u.getId());
-                Map<String, Object> md0 = u.getMetadata();
-                Map<String, Object> md = md0 == null ? new HashMap<>() : new HashMap<>(md0);
+                ProfileUserState state = loadProfileUserStateOrThrow(q);
+                UsersEntity u = state.user();
+                Map<String, Object> md = state.metadata();
                 md.remove("profilePending");
                 md.remove("profilePendingSubmittedAt");
                 Map<String, Object> pm = new HashMap<>();
@@ -879,19 +820,64 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         return detail;
     }
 
+    private void rejectPostAndScheduleSync(ModerationQueueEntity q) {
+        PostsEntity post = postsRepository.findById(q.getContentId())
+                .orElseThrow(() -> new IllegalArgumentException("帖子不存在: " + q.getContentId()));
+        if (Boolean.TRUE.equals(post.getIsDeleted())) {
+            throw new IllegalArgumentException("帖子已删除: " + post.getId());
+        }
+        post.setStatus(PostStatus.REJECTED);
+        PostsEntity saved = postsRepository.save(post);
+        ragPostIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+    }
+
+    private CommentsEntity loadRejectableComment(ModerationQueueEntity queue) {
+        CommentsEntity comment = commentsRepository.findById(queue.getContentId())
+                .orElseThrow(() -> new IllegalArgumentException("评论不存在: " + queue.getContentId()));
+        if (Boolean.TRUE.equals(comment.getIsDeleted())) {
+            throw new IllegalArgumentException("评论已删除: " + comment.getId());
+        }
+        return comment;
+    }
+
+    private void updateCommentStatusAndScheduleSync(ModerationQueueEntity queue, CommentStatus status) {
+        CommentsEntity comment = loadRejectableComment(queue);
+        comment.setStatus(status);
+        comment.setUpdatedAt(LocalDateTime.now());
+        CommentsEntity saved = commentsRepository.save(comment);
+        ragCommentIndexVisibilitySyncService.scheduleSyncAfterCommit(saved.getId());
+    }
+
     private AdminModerationQueueDetailDTO baseDetail(ModerationQueueEntity q) {
         AdminModerationQueueDetailDTO dto = new AdminModerationQueueDetailDTO();
-        dto.setId(q.getId());
-        dto.setCaseType(q.getCaseType());
-        dto.setContentType(q.getContentType());
-        dto.setContentId(q.getContentId());
-        dto.setStatus(q.getStatus());
-        dto.setCurrentStage(q.getCurrentStage());
-        dto.setPriority(q.getPriority());
-        dto.setAssignedToId(q.getAssignedToId());
-        dto.setCreatedAt(q.getCreatedAt());
-        dto.setUpdatedAt(q.getUpdatedAt());
+        applyBaseQueueFields(dto, q);
         return dto;
+    }
+
+    private static void applyBaseQueueFields(AdminModerationQueueDetailDTO dto, ModerationQueueEntity queue) {
+        dto.setId(queue.getId());
+        dto.setCaseType(queue.getCaseType());
+        dto.setContentType(queue.getContentType());
+        dto.setContentId(queue.getContentId());
+        dto.setStatus(queue.getStatus());
+        dto.setCurrentStage(queue.getCurrentStage());
+        dto.setPriority(queue.getPriority());
+        dto.setAssignedToId(queue.getAssignedToId());
+        dto.setCreatedAt(queue.getCreatedAt());
+        dto.setUpdatedAt(queue.getUpdatedAt());
+    }
+
+    private static void applyBaseQueueFields(AdminModerationQueueItemDTO dto, ModerationQueueEntity queue) {
+        dto.setId(queue.getId());
+        dto.setCaseType(queue.getCaseType());
+        dto.setContentType(queue.getContentType());
+        dto.setContentId(queue.getContentId());
+        dto.setStatus(queue.getStatus());
+        dto.setCurrentStage(queue.getCurrentStage());
+        dto.setPriority(queue.getPriority());
+        dto.setAssignedToId(queue.getAssignedToId());
+        dto.setCreatedAt(queue.getCreatedAt());
+        dto.setUpdatedAt(queue.getUpdatedAt());
     }
 
     private AdminModerationQueueItemDTO.Summary buildPostSummary(PostsEntity p) {
@@ -1040,16 +1026,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     private AdminModerationQueueItemDTO toItemDTO(ModerationQueueEntity q, PostsEntity post, CommentsEntity comment, UsersEntity user, Map<Long, PostsEntity> commentPostsById, List<String> riskTags) {
         AdminModerationQueueItemDTO dto = new AdminModerationQueueItemDTO();
-        dto.setId(q.getId());
-        dto.setCaseType(q.getCaseType());
-        dto.setContentType(q.getContentType());
-        dto.setContentId(q.getContentId());
-        dto.setStatus(q.getStatus());
-        dto.setCurrentStage(q.getCurrentStage());
-        dto.setPriority(q.getPriority());
-        dto.setAssignedToId(q.getAssignedToId());
-        dto.setCreatedAt(q.getCreatedAt());
-        dto.setUpdatedAt(q.getUpdatedAt());
+        applyBaseQueueFields(dto, q);
         dto.setRiskTags(riskTags == null ? List.of() : riskTags);
 
         if (q.getContentType() == ContentType.POST) {
@@ -1092,12 +1069,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
         Map<String, Object> md = u.getMetadata();
         Map<String, Object> pending = readMap(md, "profilePending");
-        pc.setPendingUsername(strOrNull(pending.get("username")));
-        pc.setPendingAvatarUrl(strOrNull(pending.get("avatarUrl")));
-        pc.setPendingBio(strOrNull(pending.get("bio")));
-        pc.setPendingLocation(strOrNull(pending.get("location")));
-        pc.setPendingWebsite(strOrNull(pending.get("website")));
-        pc.setPendingSubmittedAt(strOrNull(md == null ? null : md.get("profilePendingSubmittedAt")));
+        applyPendingProfile(pc, pending, strOrNull(md == null ? null : md.get("profilePendingSubmittedAt")));
 
         boolean missingPending =
                 pc.getPendingUsername() == null
@@ -1109,15 +1081,20 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         if (missingPending && queueId != null) {
             Map<String, Object> snap = readLatestProfilePendingSnapshot(queueId);
             Map<String, Object> snapPending = readMap(snap, "pending_profile");
-            String snapSubmittedAt = strOrNull(snap.get("pending_submitted_at"));
-            pc.setPendingUsername(strOrNull(snapPending.get("username")));
-            pc.setPendingAvatarUrl(strOrNull(snapPending.get("avatarUrl")));
-            pc.setPendingBio(strOrNull(snapPending.get("bio")));
-            pc.setPendingLocation(strOrNull(snapPending.get("location")));
-            pc.setPendingWebsite(strOrNull(snapPending.get("website")));
-            pc.setPendingSubmittedAt(snapSubmittedAt);
+            applyPendingProfile(pc, snapPending, strOrNull(snap.get("pending_submitted_at")));
         }
         return pc;
+    }
+
+    private static void applyPendingProfile(AdminModerationQueueDetailDTO.ProfileContent pc, Map<String, Object> pending, String submittedAt) {
+        if (pc == null) return;
+        Map<String, Object> source = pending == null ? Map.of() : pending;
+        pc.setPendingUsername(strOrNull(source.get("username")));
+        pc.setPendingAvatarUrl(strOrNull(source.get("avatarUrl")));
+        pc.setPendingBio(strOrNull(source.get("bio")));
+        pc.setPendingLocation(strOrNull(source.get("location")));
+        pc.setPendingWebsite(strOrNull(source.get("website")));
+        pc.setPendingSubmittedAt(submittedAt);
     }
 
     private Map<String, Object> readLatestProfilePendingSnapshot(Long queueId) {
@@ -1308,26 +1285,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     }
 
     private void sealRunningPipelineRun(Long queueId) {
-        if (queueId == null) return;
-        ModerationPipelineRunEntity run = null;
-        try {
-            run = moderationPipelineRunRepository.findFirstByQueueIdOrderByCreatedAtDesc(queueId).orElse(null);
-        } catch (Exception ignore) {
-        }
-        if (run == null || run.getStatus() != ModerationPipelineRunEntity.RunStatus.RUNNING) return;
-        try {
-            LocalDateTime now = LocalDateTime.now();
-            run.setStatus(ModerationPipelineRunEntity.RunStatus.FAIL);
-            run.setFinalDecision(ModerationPipelineRunEntity.FinalDecision.HUMAN);
-            run.setErrorCode("REQUEUED");
-            run.setErrorMessage("Requeued to auto");
-            run.setEndedAt(now);
-            if (run.getStartedAt() != null) {
-                run.setTotalMs(Duration.between(run.getStartedAt(), now).toMillis());
-            }
-            moderationPipelineRunRepository.save(run);
-        } catch (Exception ignore) {
-        }
+        ModerationPipelineRunSupport.sealRunningPipelineRun(queueId, moderationPipelineRunRepository);
     }
 
     private static String normalizeReviewStageInput(String reviewStage) {
@@ -1432,27 +1390,80 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     private Map<String, Object> buildQueueAuditDetails(AdminModerationQueueDetailDTO detail) {
         Map<String, Object> details = new HashMap<>();
-        details.put("queueId", detail.getId());
-        details.put("caseType", enumName(detail.getCaseType()));
-        details.put("contentType", enumName(detail.getContentType()));
-        details.put("contentId", detail.getContentId());
-        details.put("status", enumName(detail.getStatus()));
-        details.put("stage", enumName(detail.getCurrentStage()));
-        details.put("assignedToId", detail.getAssignedToId());
+        if (detail == null) return details;
+        putQueueAuditDetails(
+                details,
+                detail.getId(),
+                detail.getCaseType(),
+                detail.getContentType(),
+                detail.getContentId(),
+                detail.getStatus(),
+                detail.getCurrentStage(),
+                detail.getAssignedToId()
+        );
         return details;
     }
 
     private Map<String, Object> buildQueueAuditDetails(ModerationQueueEntity queue) {
         Map<String, Object> details = new HashMap<>();
         if (queue == null) return details;
-        details.put("queueId", queue.getId());
-        details.put("caseType", enumName(queue.getCaseType()));
-        details.put("contentType", enumName(queue.getContentType()));
-        details.put("contentId", queue.getContentId());
-        details.put("status", enumName(queue.getStatus()));
-        details.put("stage", enumName(queue.getCurrentStage()));
-        details.put("assignedToId", queue.getAssignedToId());
+        putQueueAuditDetails(
+                details,
+                queue.getId(),
+                queue.getCaseType(),
+                queue.getContentType(),
+                queue.getContentId(),
+                queue.getStatus(),
+                queue.getCurrentStage(),
+                queue.getAssignedToId()
+        );
         return details;
+    }
+
+    private static void putQueueAuditDetails(
+            Map<String, Object> details,
+            Long queueId,
+            ModerationCaseType caseType,
+            ContentType contentType,
+            Long contentId,
+            QueueStatus status,
+            QueueStage stage,
+            Long assignedToId
+    ) {
+        if (details == null) return;
+        details.put("queueId", queueId);
+        details.put("caseType", enumName(caseType));
+        details.put("contentType", enumName(contentType));
+        details.put("contentId", contentId);
+        details.put("status", enumName(status));
+        details.put("stage", enumName(stage));
+        details.put("assignedToId", assignedToId);
+    }
+
+    private Map<Long, Integer> countPendingReportsByReporter(ModerationQueueEntity queue) {
+        Map<Long, Integer> reportCountByReporterId = new HashMap<>();
+        if (queue == null || queue.getContentType() == null || queue.getContentId() == null) return reportCountByReporterId;
+        try {
+            ReportTargetType targetType = toReportTargetType(queue.getContentType());
+            List<ReportsEntity> pending = reportsRepository.findAllByTargetTypeAndTargetIdAndStatus(targetType, queue.getContentId(), ReportStatus.PENDING);
+            if (pending == null) return reportCountByReporterId;
+            for (ReportsEntity report : pending) {
+                if (report == null || report.getReporterId() == null) continue;
+                reportCountByReporterId.merge(report.getReporterId(), 1, Integer::sum);
+            }
+        } catch (Exception ignore) {
+        }
+        return reportCountByReporterId;
+    }
+
+    private ProfileUserState loadProfileUserStateOrThrow(ModerationQueueEntity queue) {
+        UsersEntity user = usersRepository.findById(queue.getContentId())
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在: " + queue.getContentId()));
+        if (Boolean.TRUE.equals(user.getIsDeleted())) {
+            throw new IllegalArgumentException("用户已删除: " + user.getId());
+        }
+        Map<String, Object> metadata = user.getMetadata() == null ? new HashMap<>() : new HashMap<>(user.getMetadata());
+        return new ProfileUserState(user, metadata);
     }
 
     private void writeManualQueueAudit(UsersEntity actor, String action, Long queueId, String message, Map<String, Object> details) {
@@ -1481,9 +1492,13 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             return getDetail(id);
         }
         if (isOppositeTerminalStatus(q.getStatus(), targetStatus)) {
-            toHuman(id, reason);
+            transactionalSelf().toHuman(id, reason);
         }
         return action.apply(id, reason);
+    }
+
+    private AdminModerationQueueService transactionalSelf() {
+        return self != null ? self : this;
     }
 
     private static boolean isOppositeTerminalStatus(QueueStatus currentStatus, QueueStatus targetStatus) {
@@ -1511,27 +1526,29 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         AdminModerationQueueDetailDTO apply(Long id, String reason);
     }
 
+    private record ProfileUserState(UsersEntity user, Map<String, Object> metadata) {
+    }
+
     private Long currentUserIdOrThrow() {
-        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
-            };
-        }
-        String email = auth.getName();
+        String email = requireAuthenticatedEmail();
         return administratorService.findByUsername(email)
                 .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
                 .getId();
     }
 
     private UsersEntity currentUserOrThrow() {
+        String email = requireAuthenticatedEmail();
+        return administratorService.findByUsername(email)
+                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"));
+    }
+
+    private String requireAuthenticatedEmail() {
         org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
             throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
             };
         }
-        String email = auth.getName();
-        return administratorService.findByUsername(email)
-                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"));
+        return auth.getName();
     }
 
     private String actorName(UsersEntity user) {

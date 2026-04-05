@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import com.example.EnterpriseRagCommunity.service.content.PortalReportsService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 
@@ -49,11 +50,7 @@ public class PostReportsController {
         try {
             PortalReportsService.ReportSubmitResult r = portalReportsService.reportPost(postId, req.getReasonCode(), req.getReasonText());
             if (userId != null) {
-                java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
-                details.put("targetType", "POST");
-                details.put("targetId", postId);
-                details.put("reasonCode", req.getReasonCode());
-                details.put("reasonTextLen", req.getReasonText() == null ? 0 : req.getReasonText().length());
+                java.util.Map<String, Object> details = ReportAuditSupport.buildReportDetails("POST", postId, req.getReasonCode(), req.getReasonText());
                 if (r != null) {
                     details.put("queueId", r.getQueueId());
                 }
@@ -88,15 +85,13 @@ public class PostReportsController {
         } catch (RuntimeException ex) {
             if (userId != null) {
                 try {
-                    java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
-                    details.put("targetType", "POST");
-                    details.put("targetId", postId);
-                    if (req != null) {
-                        details.put("reasonCode", req.getReasonCode());
-                        details.put("reasonTextLen", req.getReasonText() == null ? 0 : req.getReasonText().length());
-                    }
-                    details.put("error", ex.getClass().getName());
-                    details.put("message", safeMsg(ex.getMessage()));
+                    java.util.Map<String, Object> details = ReportAuditSupport.buildReportDetails(
+                            "POST",
+                            postId,
+                            req == null ? null : req.getReasonCode(),
+                            req == null ? null : req.getReasonText()
+                    );
+                    ReportAuditSupport.appendFailure(details, ex, PostReportsController::safeMsg);
                     auditLogWriter.write(
                             userId,
                             actorName,
@@ -132,10 +127,7 @@ public class PostReportsController {
     }
 
     private static String currentUsernameOrNull() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-        String name = auth.getName();
-        return name == null || name.isBlank() ? null : name.trim();
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 
     private static String safeMsg(String s) {

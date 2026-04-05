@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
 import com.example.EnterpriseRagCommunity.service.es.ElasticsearchIkAnalyzerProbe;
+import com.example.EnterpriseRagCommunity.service.es.ElasticsearchIndexSettingsSupport;
 import com.example.EnterpriseRagCommunity.service.safety.DependencyCircuitBreakerService;
 import com.example.EnterpriseRagCommunity.service.safety.DependencyIsolationGuard;
 
@@ -37,139 +38,57 @@ public class RagPostsIndexService {
     }
 
     public void recreateIndex(String indexName, int embeddingDims) {
-        dependencyIsolationGuard.requireElasticsearchAllowed();
-        dependencyCircuitBreakerService.run("ES", () -> {
-            String idx = (indexName == null || indexName.isBlank()) ? defaultIndexName() : indexName.trim();
-            IndexOperations ops = template.indexOps(IndexCoordinates.of(idx));
-            if (ops.exists()) {
-                ops.delete();
-            }
+        EsIndexSupport.recreateIndex(
+                dependencyIsolationGuard,
+                dependencyCircuitBreakerService,
+                template,
+                indexName,
+                this::defaultIndexName,
+                ops -> {
             tryCreate(ops, resolveIkEnabled(), embeddingDims);
-            return null;
-        });
+                }
+        );
     }
 
     public void ensureIndex(String indexName, int embeddingDims) {
-        dependencyIsolationGuard.requireElasticsearchAllowed();
-        dependencyCircuitBreakerService.run("ES", () -> {
-            String idx = (indexName == null || indexName.isBlank()) ? defaultIndexName() : indexName.trim();
-            IndexOperations ops = template.indexOps(IndexCoordinates.of(idx));
-            if (!ops.exists()) {
-                tryCreate(ops, resolveIkEnabled(), embeddingDims);
-                return null;
-            }
-            if (embeddingDims > 0) {
-                Integer existingDims = readEmbeddingDims(ops);
-                if (existingDims == null) {
-                    throw new IllegalStateException("ES index mapping mismatch: index='" + idx + "' has no embedding.dims but expected " + embeddingDims + ". Rebuild with clear=true (delete index) to recreate mapping.");
-                }
-                if (existingDims != embeddingDims) {
-                    throw new IllegalStateException("ES index mapping mismatch: index='" + idx + "' embedding.dims=" + existingDims + " but expected " + embeddingDims + ". Rebuild with clear=true (delete index) to recreate mapping.");
-                }
-            }
-            return null;
-        });
+        EsIndexSupport.ensureIndex(
+                dependencyIsolationGuard,
+                dependencyCircuitBreakerService,
+                template,
+                indexName,
+                this::defaultIndexName,
+                embeddingDims,
+                this::resolveIkEnabled,
+                this::readEmbeddingDims,
+                this::tryCreate
+        );
     }
 
     private boolean resolveIkEnabled() {
-        boolean configured = props.getEs().isIkEnabled();
-        if (!configured) return false;
-        boolean supported = ikProbe.isIkSupported();
-        if (!supported && ikDisabledWarned.compareAndSet(false, true)) {
-            log.warn("IK analyzer is enabled in config but not available on this Elasticsearch cluster. Falling back to standard analyzer. index={}", defaultIndexName());
-        }
-        return supported;
+        return EsIndexSupport.resolveIkEnabled(props, ikProbe, ikDisabledWarned, log, defaultIndexName());
     }
 
     private Integer readEmbeddingDims(IndexOperations ops) {
         try {
             Map<String, Object> mapping = ops.getMapping();
-            return extractEmbeddingDims(mapping);
+            return EmbeddingMappingSupport.extractEmbeddingDims(mapping);
         } catch (Exception e) {
             log.warn("Read ES mapping failed. err={}", e.getMessage());
             return null;
         }
     }
 
-    @SuppressWarnings("unchecked")
     public static Integer extractEmbeddingDims(Map<String, Object> mapping) {
-        if (mapping == null) return null;
-        Object props0 = mapping.get("properties");
-        Integer dims = extractEmbeddingDimsFromProperties(props0);
-        if (dims != null) return dims;
-
-        Object mappings0 = mapping.get("mappings");
-        if (mappings0 instanceof Map<?, ?> mm) {
-            Object props1 = ((Map<String, Object>) mm).get("properties");
-            dims = extractEmbeddingDimsFromProperties(props1);
-            return dims;
-        }
-        return null;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Integer extractEmbeddingDimsFromProperties(Object props0) {
-        if (!(props0 instanceof Map<?, ?>)) return null;
-        Map<String, Object> props = (Map<String, Object>) props0;
-        Object emb0 = props.get("embedding");
-        if (!(emb0 instanceof Map<?, ?>)) return null;
-        Map<String, Object> emb = (Map<String, Object>) emb0;
-        Object dims0 = emb.get("dims");
-        if (dims0 instanceof Number n) return n.intValue();
-        if (dims0 instanceof String s) {
-            String t = s.trim();
-            if (t.isBlank()) return null;
-            try {
-                return Integer.parseInt(t);
-            } catch (NumberFormatException ignored) {
-                return null;
-            }
-        }
-        return null;
+        return EmbeddingMappingSupport.extractEmbeddingDims(mapping);
     }
 
     private void tryCreate(IndexOperations ops, boolean ikEnabled, int embeddingDims) {
-        Document settings = Document.from(buildSettings(ikEnabled));
-        Document mapping = Document.from(buildMapping(ikEnabled, embeddingDims));
-
-        try {
-            ops.create(settings);
-            ops.putMapping(mapping);
-        } catch (Exception first) {
-            if (ikEnabled) {
-                log.warn("Create ES index failed with IK enabled. Retrying with IK disabled. err={}", first.getMessage());
-                try {
-                    if (ops.exists()) ops.delete();
-                } catch (Exception ignore) {
-                }
-                Document settings2 = Document.from(buildSettings(false));
-                Document mapping2 = Document.from(buildMapping(false, embeddingDims));
-                ops.create(settings2);
-                ops.putMapping(mapping2);
-                return;
-            }
-            throw first;
-        }
+        EsIndexSupport.tryCreateWithIkFallback(ops, ikEnabled, embeddingDims, log,
+                this::buildSettings, enabled -> buildMapping(enabled, embeddingDims));
     }
 
     private Map<String, Object> buildSettings(boolean ikEnabled) {
-        Map<String, Object> index = new LinkedHashMap<>();
-        index.put("number_of_shards", 1);
-        index.put("number_of_replicas", 0);
-
-        Map<String, Object> settings = new LinkedHashMap<>();
-        settings.put("index", index);
-
-        if (ikEnabled) {
-            Map<String, Object> analysis = new LinkedHashMap<>();
-            Map<String, Object> analyzer = new LinkedHashMap<>();
-            analyzer.put("ik_max_word", Map.of("type", "ik_max_word"));
-            analyzer.put("ik_smart", Map.of("type", "ik_smart"));
-            analysis.put("analyzer", analyzer);
-            settings.put("analysis", analysis);
-        }
-
-        return settings;
+        return ElasticsearchIndexSettingsSupport.buildBasicIndexSettings(ikEnabled);
     }
 
     private Map<String, Object> buildMapping(boolean ikEnabled, int embeddingDims) {
@@ -187,22 +106,8 @@ public class RagPostsIndexService {
 
         propsMap.put("title", Map.of("type", "text"));
 
-        Map<String, Object> contentText = new LinkedHashMap<>();
-        contentText.put("type", "text");
-        if (ikEnabled) {
-            contentText.put("analyzer", "ik_max_word");
-            contentText.put("search_analyzer", "ik_smart");
-        }
-        propsMap.put("content_text", contentText);
-
-        if (embeddingDims > 0) {
-            Map<String, Object> emb = new LinkedHashMap<>();
-            emb.put("type", "dense_vector");
-            emb.put("dims", embeddingDims);
-            emb.put("index", true);
-            emb.put("similarity", "cosine");
-            propsMap.put("embedding", emb);
-        }
+        EsIndexSupport.putTextField(propsMap, "content_text", ikEnabled);
+        EsIndexSupport.putDenseVectorField(propsMap, "embedding", embeddingDims);
 
         root.put("properties", propsMap);
         return root;

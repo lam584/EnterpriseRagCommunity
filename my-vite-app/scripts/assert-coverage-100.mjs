@@ -1,37 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  buildCoverageIndex,
+  normalizeKey,
+  readCoverageSummary,
+  resolveCoverageSummaryPath,
+  toPosixPath,
+} from './coverage-summary-utils.mjs';
 
-const coverageSummaryPath = process.argv[2]
-  ? path.resolve(process.cwd(), process.argv[2])
-  : path.resolve(process.cwd(), 'test-reports/vitest-coverage/coverage-summary.json');
-
-const toPosixPath = (p) => p.replaceAll('\\', '/');
-
-const normalizeKey = (p) => {
-  const normalized = toPosixPath(path.normalize(p));
-  return normalized.startsWith('./') ? normalized.slice(2) : normalized;
-};
-
-const readCoverageSummary = (filePath) => {
-  const raw = fs.readFileSync(filePath, 'utf8');
-  return JSON.parse(raw);
-};
-
-const buildCoverageIndex = (summary) => {
-  const index = new Map();
-  for (const [key, value] of Object.entries(summary)) {
-    if (key === 'total' || !value || typeof value !== 'object') continue;
-    const normalized = normalizeKey(key);
-    index.set(normalized, value);
-    index.set(normalizeKey(`./${normalized}`), value);
-    if (path.isAbsolute(key)) {
-      const rel = normalizeKey(path.relative(process.cwd(), key));
-      index.set(rel, value);
-      index.set(normalizeKey(`./${rel}`), value);
-    }
-  }
-  return index;
-};
+const coverageSummaryPath = resolveCoverageSummaryPath(process.argv[2]);
 
 const isRelevantSourceFile = (n) => {
   if (!n.startsWith('src/')) return false;

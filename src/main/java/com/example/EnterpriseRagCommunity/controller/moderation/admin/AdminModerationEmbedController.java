@@ -19,6 +19,7 @@ import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesIndexS
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesSyncResult;
 import com.example.EnterpriseRagCommunity.dto.moderation.ModerationSamplesAutoSyncConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesSyncService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexConfigService;
 import com.example.EnterpriseRagCommunity.service.moderation.es.ModerationSamplesIndexService;
@@ -71,17 +72,9 @@ public class AdminModerationEmbedController {
     @GetMapping("/config")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
     public ResponseEntity<ModerationSimilarityConfigEntity> getConfig() {
-        ModerationSimilarityConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(() -> {
-            ModerationSimilarityConfigEntity e = new ModerationSimilarityConfigEntity();
-            e.setEnabled(true);
-            e.setEmbeddingModel(null);
-            e.setEmbeddingDims(indexConfigService.getEmbeddingDimsOrDefault());
-            e.setMaxInputChars(0);
-            e.setDefaultTopK(5);
-            e.setDefaultNumCandidates(0);
-            e.setUpdatedAt(LocalDateTime.now());
-            return configRepository.save(e);
-        });
+        ModerationSimilarityConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(() ->
+                configRepository.save(newDefaultConfig())
+        );
         return ResponseEntity.ok(cfg);
     }
 
@@ -91,17 +84,7 @@ public class AdminModerationEmbedController {
         Boolean enabled = payload == null ? null : payload.getEnabled();
         if (enabled == null) throw new IllegalArgumentException("enabled 不能为空");
 
-        ModerationSimilarityConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(() -> {
-            ModerationSimilarityConfigEntity e = new ModerationSimilarityConfigEntity();
-            e.setEnabled(true);
-            e.setEmbeddingModel(null);
-            e.setEmbeddingDims(indexConfigService.getEmbeddingDimsOrDefault());
-            e.setMaxInputChars(0);
-            e.setDefaultTopK(5);
-            e.setDefaultNumCandidates(0);
-            e.setUpdatedAt(LocalDateTime.now());
-            return e;
-        });
+        ModerationSimilarityConfigEntity cfg = configRepository.findAll().stream().findFirst().orElseGet(this::newDefaultConfig);
 
         Map<String, Object> before = summarizeConfig(cfg);
         cfg.setEnabled(enabled);
@@ -129,6 +112,18 @@ public class AdminModerationEmbedController {
                 auditDiffBuilder.build(before, summarizeConfig(cfg))
         );
         return ResponseEntity.ok(cfg);
+    }
+
+    private ModerationSimilarityConfigEntity newDefaultConfig() {
+        ModerationSimilarityConfigEntity entity = new ModerationSimilarityConfigEntity();
+        entity.setEnabled(true);
+        entity.setEmbeddingModel(null);
+        entity.setEmbeddingDims(indexConfigService.getEmbeddingDimsOrDefault());
+        entity.setMaxInputChars(0);
+        entity.setDefaultTopK(5);
+        entity.setDefaultNumCandidates(0);
+        entity.setUpdatedAt(LocalDateTime.now());
+        return entity;
     }
 
     @GetMapping("/index-status")
@@ -424,18 +419,7 @@ public class AdminModerationEmbedController {
             @RequestParam(value = "fromId", required = false) Long fromId
     ) {
         ModerationSamplesReindexResponse res = samplesSyncService.reindexAll(onlyEnabled, batchSize, fromId);
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("onlyEnabled", onlyEnabled);
-        details.put("batchSize", batchSize);
-        details.put("fromId", fromId);
-        if (res != null) {
-            details.put("total", res.getTotal());
-            details.put("success", res.getSuccess());
-            details.put("failed", res.getFailed());
-            details.put("lastId", res.getLastId());
-            details.put("cleared", res.getCleared());
-            details.put("clearError", res.getClearError());
-        }
+        Map<String, Object> details = buildBatchSyncAuditDetails(onlyEnabled, batchSize, fromId, res);
         auditLogWriter.write(
                 null,
                 currentUsernameOrNull(),
@@ -457,11 +441,7 @@ public class AdminModerationEmbedController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
     public ResponseEntity<ModerationSamplesSyncResult> syncOne(@PathVariable Long id) {
         ModerationSamplesSyncResult res = samplesSyncService.upsertById(id);
-        Map<String, Object> details = new LinkedHashMap<>();
-        if (res != null) {
-            details.put("success", res.isSuccess());
-            details.put("message", res.getMessage());
-        }
+        Map<String, Object> details = buildSyncOneAuditDetails(res);
         auditLogWriter.write(
                 null,
                 currentUsernameOrNull(),
@@ -520,18 +500,7 @@ public class AdminModerationEmbedController {
             @RequestParam(value = "fromId", required = false) Long fromId
     ) {
         ModerationSamplesReindexResponse res = samplesSyncService.syncIncremental(onlyEnabled, batchSize, fromId);
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("onlyEnabled", onlyEnabled);
-        details.put("batchSize", batchSize);
-        details.put("fromId", fromId);
-        if (res != null) {
-            details.put("total", res.getTotal());
-            details.put("success", res.getSuccess());
-            details.put("failed", res.getFailed());
-            details.put("lastId", res.getLastId());
-            details.put("cleared", res.getCleared());
-            details.put("clearError", res.getClearError());
-        }
+        Map<String, Object> details = buildBatchSyncAuditDetails(onlyEnabled, batchSize, fromId, res);
         auditLogWriter.write(
                 null,
                 currentUsernameOrNull(),
@@ -559,6 +528,36 @@ public class AdminModerationEmbedController {
         return m;
     }
 
+    private static Map<String, Object> buildBatchSyncAuditDetails(
+            Boolean onlyEnabled,
+            Integer batchSize,
+            Long fromId,
+            ModerationSamplesReindexResponse res
+    ) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("onlyEnabled", onlyEnabled);
+        details.put("batchSize", batchSize);
+        details.put("fromId", fromId);
+        if (res != null) {
+            details.put("total", res.getTotal());
+            details.put("success", res.getSuccess());
+            details.put("failed", res.getFailed());
+            details.put("lastId", res.getLastId());
+            details.put("cleared", res.getCleared());
+            details.put("clearError", res.getClearError());
+        }
+        return details;
+    }
+
+    private static Map<String, Object> buildSyncOneAuditDetails(ModerationSamplesSyncResult res) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        if (res != null) {
+            details.put("success", res.isSuccess());
+            details.put("message", res.getMessage());
+        }
+        return details;
+    }
+
     private static Map<String, Object> summarizeSample(ModerationSamplesEntity e) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (e == null) return m;
@@ -576,13 +575,6 @@ public class AdminModerationEmbedController {
     }
 
     private static String currentUsernameOrNull() {
-        try {
-            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 }

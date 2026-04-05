@@ -102,21 +102,7 @@ public class RolePermissionsService {
             throw new EntityNotFoundException("Some permissionId not found");
         }
 
-        // 4) 批量写入
-        List<RolePermissionsEntity> entities = new ArrayList<>();
-        for (RolePermissionUpsertDTO dto : latestByPermId.values()) {
-            RolePermissionsEntity e = new RolePermissionsEntity();
-            e.setRoleId(roleId);
-            e.setRoleName(roleName);
-            e.setPermissionId(dto.getPermissionId());
-            e.setAllow(dto.getAllow());
-            entities.add(e);
-        }
-
-        List<RolePermissionsEntity> saved = rolePermissionsRepository.saveAll(entities);
-        // RBAC changed -> touch users with this role
-        touchUsersByRoleId(roleId);
-        List<RolePermissionViewDTO> after = saved.stream().map(RolePermissionsService::toView).toList();
+        List<RolePermissionViewDTO> after = saveRolePermissionsAndTouchUsers(roleId, roleName, latestByPermId);
         rbacAuditService.record("ROLE_MATRIX_REPLACE", "role_permissions", "roleId=" + roleId, before, after);
         return after;
     }
@@ -167,22 +153,28 @@ public class RolePermissionsService {
         long nextRoleId = (maxRoleId == null ? 1L : (maxRoleId + 1L));
         upsertRoleMeta(nextRoleId, roleName.trim());
 
+        List<RolePermissionViewDTO> after = saveRolePermissionsAndTouchUsers(nextRoleId, roleName, latestByPermId);
+        rbacAuditService.record("ROLE_CREATE_WITH_MATRIX", "role_permissions", "roleId=" + nextRoleId, null, after);
+        return after;
+    }
+
+    private List<RolePermissionViewDTO> saveRolePermissionsAndTouchUsers(
+            Long roleId,
+            String roleName,
+            Map<Long, RolePermissionUpsertDTO> latestByPermId
+    ) {
         List<RolePermissionsEntity> entities = new ArrayList<>();
         for (RolePermissionUpsertDTO dto : latestByPermId.values()) {
             RolePermissionsEntity e = new RolePermissionsEntity();
-            e.setRoleId(nextRoleId);
+            e.setRoleId(roleId);
             e.setRoleName(roleName);
             e.setPermissionId(dto.getPermissionId());
             e.setAllow(dto.getAllow());
             entities.add(e);
         }
-
         List<RolePermissionsEntity> saved = rolePermissionsRepository.saveAll(entities);
-        // New role created; no users yet, but harmless to touch if somebody links later.
-        touchUsersByRoleId(nextRoleId);
-        List<RolePermissionViewDTO> after = saved.stream().map(RolePermissionsService::toView).toList();
-        rbacAuditService.record("ROLE_CREATE_WITH_MATRIX", "role_permissions", "roleId=" + nextRoleId, null, after);
-        return after;
+        touchUsersByRoleId(roleId);
+        return saved.stream().map(RolePermissionsService::toView).toList();
     }
 
     @Transactional

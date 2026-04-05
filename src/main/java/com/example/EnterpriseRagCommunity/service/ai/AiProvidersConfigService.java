@@ -247,14 +247,14 @@ public class AiProvidersConfigService {
             return defaultResolvedProvider();
         }
 
-        String id = toNonBlank(selected.getProviderId());
-        if (id == null) id = "provider";
-        String type = toNonBlank(selected.getType());
-        if (type == null) type = "OPENAI_COMPAT";
-        type = type.trim().toUpperCase(Locale.ROOT);
-
-        String baseUrl = toNonBlank(selected.getBaseUrl());
-        if (baseUrl == null) baseUrl = getDefaultBaseUrl();
+        ResolvedProviderBase base = resolveProviderBase(
+                selected.getProviderId(),
+                selected.getType(),
+                selected.getBaseUrl()
+        );
+        String id = base.id();
+        String type = base.type();
+        String baseUrl = base.baseUrl();
 
         String apiKey = null;
         if (selected.getApiKeyEncrypted() != null && llmSecretsCryptoService.isConfigured()) {
@@ -325,14 +325,14 @@ public class AiProvidersConfigService {
             return defaultResolvedProvider();
         }
 
-        String id = toNonBlank(selected.getId());
-        if (id == null) id = "provider";
-        String type = toNonBlank(selected.getType());
-        if (type == null) type = "OPENAI_COMPAT";
-        type = type.trim().toUpperCase(Locale.ROOT);
-
-        String baseUrl = toNonBlank(selected.getBaseUrl());
-        if (baseUrl == null) baseUrl = getDefaultBaseUrl();
+        ResolvedProviderBase base = resolveProviderBase(
+                selected.getId(),
+                selected.getType(),
+                selected.getBaseUrl()
+        );
+        String id = base.id();
+        String type = base.type();
+        String baseUrl = base.baseUrl();
 
         String apiKey = toNonBlank(selected.getApiKey());
         if (MASK.equals(apiKey)) apiKey = null;
@@ -361,6 +361,20 @@ public class AiProvidersConfigService {
 
     private ResolvedProvider defaultResolvedProvider() {
         throw new IllegalStateException("未配置任何有效的 AI 模型提供商(Provider)，请在系统管理中配置。");
+    }
+
+    private ResolvedProviderBase resolveProviderBase(String providerId, String type, String baseUrl) {
+        String resolvedId = toNonBlank(providerId);
+        if (resolvedId == null) resolvedId = "provider";
+        String resolvedType = toNonBlank(type);
+        if (resolvedType == null) resolvedType = "OPENAI_COMPAT";
+        resolvedType = resolvedType.trim().toUpperCase(Locale.ROOT);
+        String resolvedBaseUrl = toNonBlank(baseUrl);
+        if (resolvedBaseUrl == null) resolvedBaseUrl = getDefaultBaseUrl();
+        return new ResolvedProviderBase(resolvedId, resolvedType, resolvedBaseUrl);
+    }
+
+    private record ResolvedProviderBase(String id, String type, String baseUrl) {
     }
     
     private String getDefaultBaseUrl() {

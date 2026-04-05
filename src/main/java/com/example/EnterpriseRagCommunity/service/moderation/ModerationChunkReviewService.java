@@ -105,26 +105,16 @@ public class ModerationChunkReviewService {
         for (int i = 0; i < 3; i++) {
             try {
                 Boolean done = requiresNewTx().execute((status) -> {
-                    ModerationChunkSetEntity set = chunkSetRepository.findById(chunkSetId).orElse(null);
-                    if (set == null || set.getStatus() == ChunkSetStatus.CANCELLED) return Boolean.TRUE;
-                    Map<String, Object> mem = set.getMemoryJson() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(set.getMemoryJson());
+                    MutableChunkSetMemory state = loadMutableChunkSetMemory(chunkSetId);
+                    if (state == null) return Boolean.TRUE;
+                    ModerationChunkSetEntity set = state.chunkSet();
+                    Map<String, Object> mem = state.memory();
                     if (imageScore != null) mem.put("imageScore", clamp01(imageScore));
                     if (imageRiskTags != null && !imageRiskTags.isEmpty()) {
                         mem.put("imageRiskTags", imageRiskTags);
                         LinkedHashSet<String> risk = new LinkedHashSet<>();
-                        Object r0 = mem.get("riskTags");
-                        if (r0 instanceof Collection<?> col) {
-                            for (Object o : col) {
-                                if (o == null) continue;
-                                String s = String.valueOf(o).trim();
-                                if (!s.isEmpty()) risk.add(s);
-                            }
-                        }
-                        for (String tag : imageRiskTags) {
-                            if (tag == null) continue;
-                            String s = tag.trim();
-                            if (!s.isEmpty()) risk.add(s);
-                        }
+                        appendTrimmedStrings(risk, mem.get("riskTags"));
+                        appendTrimmedStrings(risk, imageRiskTags);
                         if (!risk.isEmpty()) mem.put("riskTags", new ArrayList<>(risk));
                     }
                     if (imageDescription != null && !imageDescription.isBlank()) {
@@ -144,6 +134,31 @@ public class ModerationChunkReviewService {
                 sleepQuietly(10L + (long) (Math.random() * 40));
             } catch (Exception e) {
                 return;
+            }
+        }
+    }
+
+    private MutableChunkSetMemory loadMutableChunkSetMemory(Long chunkSetId) {
+        ModerationChunkSetEntity set = chunkSetRepository.findById(chunkSetId).orElse(null);
+        if (set == null || set.getStatus() == ChunkSetStatus.CANCELLED) {
+            return null;
+        }
+        Map<String, Object> mem = set.getMemoryJson() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(set.getMemoryJson());
+        return new MutableChunkSetMemory(set, mem);
+    }
+
+    private record MutableChunkSetMemory(ModerationChunkSetEntity chunkSet, Map<String, Object> memory) {
+    }
+
+    private static void appendTrimmedStrings(LinkedHashSet<String> out, Object source) {
+        if (out == null || !(source instanceof Collection<?> col)) {
+            return;
+        }
+        for (Object item : col) {
+            if (item == null) continue;
+            String text = String.valueOf(item).trim();
+            if (!text.isEmpty()) {
+                out.add(text);
             }
         }
     }
@@ -419,14 +434,7 @@ public class ModerationChunkReviewService {
         if (list == null || list.isEmpty()) return Optional.empty();
         ModerationChunkEntity c = list.getFirst();
         if (c == null) return Optional.empty();
-        int attempts = c.getAttempts() == null ? 0 : c.getAttempts();
-        if (attempts >= maxAttempts) return Optional.empty();
-        c.setAttempts(attempts + 1);
-        c.setStatus(ChunkStatus.RUNNING);
-        c.setLastError(null);
-        c.setUpdatedAt(LocalDateTime.now());
-        chunkRepository.save(c);
-        return Optional.of(new ChunkToProcess(c.getId(), c.getSourceType(), c.getFileAssetId(), c.getFileName(), c.getChunkIndex(), c.getStartOffset(), c.getEndOffset()));
+        return claimChunk(c, maxAttempts);
     }
 
     public record ChunkCandidate(
@@ -480,14 +488,26 @@ public class ModerationChunkReviewService {
         if (c == null) return Optional.empty();
         ChunkStatus st = c.getStatus();
         if (!(st == ChunkStatus.PENDING || st == ChunkStatus.FAILED)) return Optional.empty();
-        int attempts = c.getAttempts() == null ? 0 : c.getAttempts();
+        return claimChunk(c, maxAttempts);
+    }
+
+    private Optional<ChunkToProcess> claimChunk(ModerationChunkEntity chunk, int maxAttempts) {
+        int attempts = chunk.getAttempts() == null ? 0 : chunk.getAttempts();
         if (attempts >= maxAttempts) return Optional.empty();
-        c.setAttempts(attempts + 1);
-        c.setStatus(ChunkStatus.RUNNING);
-        c.setLastError(null);
-        c.setUpdatedAt(LocalDateTime.now());
-        chunkRepository.save(c);
-        return Optional.of(new ChunkToProcess(c.getId(), c.getSourceType(), c.getFileAssetId(), c.getFileName(), c.getChunkIndex(), c.getStartOffset(), c.getEndOffset()));
+        chunk.setAttempts(attempts + 1);
+        chunk.setStatus(ChunkStatus.RUNNING);
+        chunk.setLastError(null);
+        chunk.setUpdatedAt(LocalDateTime.now());
+        chunkRepository.save(chunk);
+        return Optional.of(new ChunkToProcess(
+                chunk.getId(),
+                chunk.getSourceType(),
+                chunk.getFileAssetId(),
+                chunk.getFileName(),
+                chunk.getChunkIndex(),
+                chunk.getStartOffset(),
+                chunk.getEndOffset()
+        ));
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -684,42 +704,15 @@ public class ModerationChunkReviewService {
         for (int i = 0; i < 3; i++) {
             try {
                 Boolean done = requiresNewTx().execute((status) -> {
-                    ModerationChunkSetEntity set = chunkSetRepository.findById(chunkSetId).orElse(null);
-                    if (set == null || set.getStatus() == ChunkSetStatus.CANCELLED) return Boolean.TRUE;
-                    Map<String, Object> mem = set.getMemoryJson() == null ? new LinkedHashMap<>() : new LinkedHashMap<>(set.getMemoryJson());
+                    MutableChunkSetMemory state = loadMutableChunkSetMemory(chunkSetId);
+                    if (state == null) return Boolean.TRUE;
+                    ModerationChunkSetEntity set = state.chunkSet();
+                    Map<String, Object> mem = state.memory();
                     LinkedHashSet<String> risk = new LinkedHashSet<>();
-                    Object r0 = mem.get("riskTags");
-                    if (r0 instanceof Collection<?> col) {
-                        for (Object o : col) {
-                            if (o == null) continue;
-                            String s = String.valueOf(o).trim();
-                            if (!s.isEmpty()) risk.add(s);
-                        }
-                    }
-                    Object rImg0 = mem.get("imageRiskTags");
-                    if (rImg0 instanceof Collection<?> col) {
-                        for (Object o : col) {
-                            if (o == null) continue;
-                            String s = String.valueOf(o).trim();
-                            if (!s.isEmpty()) risk.add(s);
-                        }
-                    }
-                    Object rt = labels == null ? null : labels.get("riskTags");
-                    if (rt instanceof Collection<?> col) {
-                        for (Object o : col) {
-                            if (o == null) continue;
-                            String s = String.valueOf(o).trim();
-                            if (!s.isEmpty()) risk.add(s);
-                        }
-                    }
-                    Object lb = labels == null ? null : labels.get("labels");
-                    if (lb instanceof Collection<?> col) {
-                        for (Object o : col) {
-                            if (o == null) continue;
-                            String s = String.valueOf(o).trim();
-                            if (!s.isEmpty()) risk.add(s);
-                        }
-                    }
+                    appendTrimmedStrings(risk, mem.get("riskTags"));
+                    appendTrimmedStrings(risk, mem.get("imageRiskTags"));
+                    appendTrimmedStrings(risk, labels == null ? null : labels.get("riskTags"));
+                    appendTrimmedStrings(risk, labels == null ? null : labels.get("labels"));
                     if (!risk.isEmpty()) mem.put("riskTags", new ArrayList<>(risk));
                     if (score != null) mem.put("maxScore", Math.max(asDouble(mem.get("maxScore")), clamp01(score)));
                     if (verdict != null) mem.put("lastVerdict", verdict.name());
@@ -766,17 +759,7 @@ public class ModerationChunkReviewService {
                                 if (kk.isEmpty()) continue;
                                 Object vv = en.getValue();
                                 if (!(vv instanceof Collection<?> col)) continue;
-                                ArrayList<String> out = new ArrayList<>();
-                                for (Object o : col) {
-                                    if (o == null) continue;
-                                    String t = sanitizeEvidenceItemForMemory(String.valueOf(o), MAX_EVIDENCE_ITEM_CHARS);
-                                    if (t == null || t.isEmpty()) continue;
-                                    String fp = evidenceFingerprint(t);
-                                    if (fp.isBlank()) fp = "raw|" + normalizeForEvidenceFingerprint(t);
-                                    if (!fingerprints.add(fp)) continue;
-                                    out.add(t);
-                                    if (out.size() >= 20) break;
-                                }
+                                ArrayList<String> out = new ArrayList<>(collectUniqueEvidenceItems(col, fingerprints, 20));
                                 if (out.isEmpty()) continue;
                                 byChunk.put(kk, out);
                             }
@@ -784,17 +767,7 @@ public class ModerationChunkReviewService {
                         byChunk.remove(k);
 
                         if (!llmEvidence0.isEmpty()) {
-                            ArrayList<String> llmEvidence = new ArrayList<>();
-                            for (String s : llmEvidence0) {
-                                if (s == null) continue;
-                                String t = sanitizeEvidenceItemForMemory(s, MAX_EVIDENCE_ITEM_CHARS);
-                                if (t == null || t.isEmpty()) continue;
-                                String fp = evidenceFingerprint(t);
-                                if (fp.isBlank()) fp = "raw|" + normalizeForEvidenceFingerprint(t);
-                                if (!fingerprints.add(fp)) continue;
-                                llmEvidence.add(t);
-                                if (llmEvidence.size() >= 20) break;
-                            }
+                            ArrayList<String> llmEvidence = new ArrayList<>(collectUniqueEvidenceItems(llmEvidence0, fingerprints, 20));
                             if (!llmEvidence.isEmpty()) {
                                 byChunk.put(k, llmEvidence);
                             }
@@ -816,15 +789,15 @@ public class ModerationChunkReviewService {
                         LinkedHashSet<String> dedup = new LinkedHashSet<>();
                         for (Map<String, Object> e0 : entities) {
                             if (e0 == null) continue;
-                            String type = e0.get("type") == null ? "" : String.valueOf(e0.get("type")).trim();
-                            String value = e0.get("value") == null ? "" : String.valueOf(e0.get("value")).trim();
+                            String type = normalizeEntityValue(e0.get("type"));
+                            String value = normalizeEntityValue(e0.get("value"));
                             if (type.isEmpty() || value.isEmpty()) continue;
                             dedup.add(type + "|" + value);
                         }
                         for (Object o : col) {
                             if (o instanceof Map<?, ?> m) {
-                                String type = m.get("type") == null ? "" : String.valueOf(m.get("type")).trim();
-                                String value = m.get("value") == null ? "" : String.valueOf(m.get("value")).trim();
+                                String type = normalizeEntityValue(m.get("type"));
+                                String value = normalizeEntityValue(m.get("value"));
                                 if (type.isEmpty() || value.isEmpty()) continue;
                                 String k = type + "|" + value;
                                 if (!dedup.add(k)) continue;
@@ -891,6 +864,10 @@ public class ModerationChunkReviewService {
         }
     }
 
+    private static String normalizeEntityValue(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
+    }
+
     private static long clampLong(long v, long min, long max) {
         if (v < min) return min;
         return Math.min(v, max);
@@ -943,6 +920,22 @@ public class ModerationChunkReviewService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private static List<String> collectUniqueEvidenceItems(Collection<?> values, Collection<String> fingerprints, int limit) {
+        ArrayList<String> out = new ArrayList<>();
+        if (values == null || fingerprints == null || limit <= 0) return out;
+        for (Object value : values) {
+            if (value == null) continue;
+            String t = sanitizeEvidenceItemForMemory(String.valueOf(value), MAX_EVIDENCE_ITEM_CHARS);
+            if (t == null || t.isEmpty()) continue;
+            String fp = evidenceFingerprint(t);
+            if (fp.isBlank()) fp = "raw|" + normalizeForEvidenceFingerprint(t);
+            if (!fingerprints.add(fp)) continue;
+            out.add(t);
+            if (out.size() >= limit) break;
+        }
+        return out;
     }
 
     private static String evidenceFingerprint(String raw) {
@@ -1072,21 +1065,7 @@ public class ModerationChunkReviewService {
 
             for (int i = 0; i < spans.size(); i++) {
                 Span sp = spans.get(i);
-                ModerationChunkEntity c = new ModerationChunkEntity();
-                c.setChunkSetId(set.getId());
-                c.setSourceType(ChunkSourceType.POST_TEXT);
-                c.setSourceKey("POST");
-                c.setFileAssetId(null);
-                c.setFileName(null);
-                c.setChunkIndex(i);
-                c.setStartOffset(sp.start);
-                c.setEndOffset(sp.end);
-                c.setStatus(ChunkStatus.PENDING);
-                c.setAttempts(0);
-                c.setCreatedAt(now);
-                c.setUpdatedAt(now);
-                c.setVersion(0);
-                chunks.add(c);
+                chunks.add(newPendingChunk(set.getId(), ChunkSourceType.POST_TEXT, "POST", null, null, i, sp, now));
             }
         }
 
@@ -1110,21 +1089,16 @@ public class ModerationChunkReviewService {
 
             for (int i = 0; i < spans.size(); i++) {
                 Span sp = spans.get(i);
-                ModerationChunkEntity c = new ModerationChunkEntity();
-                c.setChunkSetId(set.getId());
-                c.setSourceType(ChunkSourceType.FILE_TEXT);
-                c.setSourceKey("FILE:" + e.getFileAssetId());
-                c.setFileAssetId(e.getFileAssetId());
-                c.setFileName(fileNameById.get(e.getFileAssetId()));
-                c.setChunkIndex(i);
-                c.setStartOffset(sp.start);
-                c.setEndOffset(sp.end);
-                c.setStatus(ChunkStatus.PENDING);
-                c.setAttempts(0);
-                c.setCreatedAt(now);
-                c.setUpdatedAt(now);
-                c.setVersion(0);
-                chunks.add(c);
+                chunks.add(newPendingChunk(
+                        set.getId(),
+                        ChunkSourceType.FILE_TEXT,
+                        "FILE:" + e.getFileAssetId(),
+                        e.getFileAssetId(),
+                        fileNameById.get(e.getFileAssetId()),
+                        i,
+                        sp,
+                        now
+                ));
             }
         }
 
@@ -1432,6 +1406,31 @@ public class ModerationChunkReviewService {
             r.chunkSetId = set == null ? null : set.getId();
             return r;
         }
+    }
+
+    private static ModerationChunkEntity newPendingChunk(Long chunkSetId,
+                                                         ChunkSourceType sourceType,
+                                                         String sourceKey,
+                                                         Long fileAssetId,
+                                                         String fileName,
+                                                         int chunkIndex,
+                                                         Span span,
+                                                         LocalDateTime now) {
+        ModerationChunkEntity chunk = new ModerationChunkEntity();
+        chunk.setChunkSetId(chunkSetId);
+        chunk.setSourceType(sourceType);
+        chunk.setSourceKey(sourceKey);
+        chunk.setFileAssetId(fileAssetId);
+        chunk.setFileName(fileName);
+        chunk.setChunkIndex(chunkIndex);
+        chunk.setStartOffset(span.start);
+        chunk.setEndOffset(span.end);
+        chunk.setStatus(ChunkStatus.PENDING);
+        chunk.setAttempts(0);
+        chunk.setCreatedAt(now);
+        chunk.setUpdatedAt(now);
+        chunk.setVersion(0);
+        return chunk;
     }
 
     private record Span(int start, int end) {}

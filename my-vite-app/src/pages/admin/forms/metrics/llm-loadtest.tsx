@@ -13,6 +13,7 @@ import {
   type AdminLlmLoadTestStatus,
 } from '../../../../services/llmLoadtestAdminService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
+import { fmtCost, fmtInt, formatDurationMs as formatDurationText, formatLocalDateTime, toNumber } from './metricsTimeUtils';
  
 type RequestKind = 'CHAT_STREAM' | 'MODERATION_TEST';
  
@@ -81,54 +82,15 @@ type LoadTestSummary = {
   tokenMetrics?: TokenMetricsResponseDTO | null;
 };
  
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
- 
-function formatLocalDateTime(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-}
- 
-function toNum(v: unknown): number | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return null;
-    const n = Number(t);
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
- 
-function fmtCost(v: unknown): string {
-  const n = toNum(v);
-  if (n === null) return '0';
-  return n.toFixed(6).replace(/\.?0+$/, '');
-}
- 
-function fmtInt(v: unknown): string {
-  const n = toNum(v);
-  if (n === null) return '0';
-  return String(Math.round(n));
-}
- 
 function fmtRate(v: unknown): string {
-  const n = toNum(v);
+  const n = toNumber(v);
   if (n === null) return '—';
   if (Math.abs(n) >= 1000) return String(Math.round(n));
   return n.toFixed(2).replace(/\.?0+$/, '');
 }
 
 function fmtDurationMs(v: unknown): string {
-  const n = toNum(v);
-  if (n === null || n < 0) return '—';
-  if (n < 1000) return `${Math.round(n)}ms`;
-  const s = n / 1000;
-  if (s < 60) return `${s.toFixed(2).replace(/\.?0+$/, '')}s`;
-  const m = Math.floor(s / 60);
-  const r = s - m * 60;
-  return `${m}m${Math.round(r)}s`;
+  return formatDurationText(v);
 }
 
 function fmtDate(v: string | number | Date): string {

@@ -83,26 +83,20 @@ public class PostLangLabelGenConfigService {
 
     private PostLangLabelGenConfigEntity mergeAndValidate(PostLangLabelGenConfigEntity base, PostLangLabelGenConfigDTO payload) {
         if (payload == null) throw new IllegalArgumentException("payload 不能为空");
-
-        String promptCode = payload.getPromptCode();
-        if (promptCode == null || promptCode.isBlank()) {
-            throw new IllegalArgumentException("promptCode 不能为空");
-        }
-        if (promptCode.length() > 64) {
-             throw new IllegalArgumentException("promptCode 长度不能超过 64");
-        }
-
-        Integer maxContentChars = payload.getMaxContentChars();
-        if (maxContentChars == null) maxContentChars = DEFAULT_MAX_CONTENT_CHARS;
-        if (maxContentChars < 200 || maxContentChars > 100000) throw new IllegalArgumentException("maxContentChars 需在 [200,100000] 范围内");
+        PromptConfigValidationSupport.ValidatedPromptConfig validated =
+                PromptConfigValidationSupport.validatePromptCodeAndMaxContentChars(
+                        payload.getPromptCode(),
+                        payload.getMaxContentChars(),
+                        DEFAULT_MAX_CONTENT_CHARS,
+                        100000
+                );
 
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
-        base.setPromptCode(promptCode);
+        base.setPromptCode(validated.promptCode());
+        base.setMaxContentChars(validated.maxContentChars());
 
-        base.setMaxContentChars(maxContentChars);
-
-        promptsRepository.findByPromptCode(promptCode)
-            .orElseThrow(() -> new IllegalArgumentException("promptCode 不存在: " + promptCode));
+        promptsRepository.findByPromptCode(validated.promptCode())
+            .orElseThrow(() -> new IllegalArgumentException("promptCode 不存在: " + validated.promptCode()));
         return base;
     }
 

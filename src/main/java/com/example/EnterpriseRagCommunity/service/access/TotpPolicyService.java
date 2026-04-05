@@ -81,23 +81,20 @@ public class TotpPolicyService {
 
     @Transactional(readOnly = true)
     public TotpAdminSettingsDTO getSettingsOrDefault() {
-        TotpAdminSettingsDTO dto = new TotpAdminSettingsDTO();
-        dto.setIssuer(appSettingsService.getString(KEY_TOTP_ISSUER).orElse("EnterpriseRagCommunity"));
-        dto.setAllowedAlgorithms(parseStringList(appSettingsService.getString(KEY_TOTP_ALLOWED_ALG).orElse(null)).orElse(List.of("SHA1", "SHA256", "SHA512")));
-        dto.setAllowedDigits(parseIntList(appSettingsService.getString(KEY_TOTP_ALLOWED_DIGITS).orElse(null)).orElse(List.of(6, 8)));
-        dto.setAllowedPeriodSeconds(parseIntList(appSettingsService.getString(KEY_TOTP_ALLOWED_PERIOD).orElse(null)).orElse(List.of(30)));
-        int maxSkew = (int) appSettingsService.getLongOrDefault(KEY_TOTP_MAX_SKEW, 1L);
-        if (maxSkew < 0) maxSkew = 0;
-        if (maxSkew > 10) maxSkew = 10;
-        dto.setMaxSkew(maxSkew);
-        dto.setDefaultAlgorithm(appSettingsService.getString(KEY_TOTP_DEFAULT_ALG).orElse("SHA1"));
-        dto.setDefaultDigits((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_DIGITS, 6L));
-        dto.setDefaultPeriodSeconds((int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_PERIOD, 30L));
-        int defaultSkew = (int) appSettingsService.getLongOrDefault(KEY_TOTP_DEFAULT_SKEW, 1L);
-        if (defaultSkew < 0) defaultSkew = 0;
-        if (defaultSkew > maxSkew) defaultSkew = maxSkew;
-        dto.setDefaultSkew(defaultSkew);
-        return dto;
+        return TotpPolicySettingsSupport.buildSettings(
+                appSettingsService,
+                TotpPolicyService::parseStringList,
+                TotpPolicyService::parseIntList,
+                KEY_TOTP_ISSUER,
+                KEY_TOTP_ALLOWED_ALG,
+                KEY_TOTP_ALLOWED_DIGITS,
+                KEY_TOTP_ALLOWED_PERIOD,
+                KEY_TOTP_MAX_SKEW,
+                KEY_TOTP_DEFAULT_ALG,
+                KEY_TOTP_DEFAULT_DIGITS,
+                KEY_TOTP_DEFAULT_PERIOD,
+                KEY_TOTP_DEFAULT_SKEW
+        );
     }
 
     public record ResolvedTotpConfig(String issuer, String algorithm, int digits, int periodSeconds, int skew) {

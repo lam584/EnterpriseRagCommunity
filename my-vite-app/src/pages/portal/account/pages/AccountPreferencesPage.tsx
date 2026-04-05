@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getMyTranslatePreferences, updateMyTranslatePreferences } from '../../../../services/accountPreferencesService';
 import { getTranslateConfig } from '../../../../services/translateService';
-import { listSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
+import { listSupportedLanguages, normalizeSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
 import { getPostTitleGenPublicConfig, type PostTitleGenPublicConfigDTO } from '../../../../services/titleGenPublicService';
 import { getPostTagGenPublicConfig, type PostTagGenPublicConfigDTO } from '../../../../services/tagGenPublicService';
 
@@ -150,7 +150,7 @@ export default function AccountPreferencesPage() {
       try {
         const langs = await listSupportedLanguages();
         if (!mounted) return;
-        setSupportedLanguages((langs ?? []).filter((x) => x && typeof x.languageCode === 'string' && typeof x.displayName === 'string'));
+        setSupportedLanguages(normalizeSupportedLanguages(langs));
       } catch {
         if (!mounted) return;
         setSupportedLanguages([]);

@@ -1,27 +1,22 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
+import java.util.List;
+
+import org.springframework.data.domain.Page;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.example.EnterpriseRagCommunity.dto.ai.PostTagGenConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTagGenHistoryDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTagGenPublicConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenHistoryEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
-import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.ai.PostSuggestionGenHistoryRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -70,18 +65,13 @@ public class PostTagGenConfigService {
                 .orElseGet(this::defaultEntity);
 
         PostSuggestionGenConfigEntity merged = mergeAndValidate(cfg, payload);
-        merged.setUpdatedAt(LocalDateTime.now());
-        merged.setUpdatedBy(actorUserId);
-
-        merged = configRepository.save(merged);
+        merged = PostSuggestionConfigSupport.saveUpdatedConfig(merged, actorUserId, configRepository::save);
         return toDto(merged, actorUsername);
     }
 
     @Transactional(readOnly = true)
     public Page<PostTagGenHistoryDTO> listHistory(Long userId, int page, int size) {
-        int safePage = Math.max(0, page);
-        int safeSize = Math.min(100, Math.max(1, size));
-        Pageable pageable = PageRequest.of(safePage, safeSize);
+        var pageable = PostSuggestionConfigSupport.buildHistoryPageable(page, size);
 
         Page<PostSuggestionGenHistoryEntity> rows = (userId == null)
                 ? historyRepository.findByKindOrderByCreatedAtDesc(KIND, pageable)
@@ -103,50 +93,36 @@ public class PostTagGenConfigService {
     }
 
     private PostSuggestionGenConfigEntity defaultEntity() {
-        PostSuggestionGenConfigEntity e = new PostSuggestionGenConfigEntity();
-        e.setGroupCode(GROUP_CODE);
-        e.setKind(KIND);
-        e.setEnabled(Boolean.TRUE);
-        e.setPromptCode(DEFAULT_PROMPT_CODE);
-        e.setDefaultCount(DEFAULT_DEFAULT_COUNT);
-        e.setMaxCount(DEFAULT_MAX_COUNT);
-        e.setMaxContentChars(DEFAULT_MAX_CONTENT_CHARS);
-        e.setHistoryEnabled(Boolean.TRUE);
-        e.setHistoryKeepDays(30);
-        e.setHistoryKeepRows(5000);
-        e.setVersion(0);
-        e.setUpdatedAt(LocalDateTime.now());
-        e.setUpdatedBy(null);
-        return e;
+        return PostSuggestionGenConfigSupport.defaultEntity(
+                GROUP_CODE,
+                KIND,
+                DEFAULT_PROMPT_CODE,
+                DEFAULT_DEFAULT_COUNT,
+                DEFAULT_MAX_COUNT,
+                DEFAULT_MAX_CONTENT_CHARS
+        );
     }
 
     private PostSuggestionGenConfigEntity mergeAndValidate(PostSuggestionGenConfigEntity base, PostTagGenConfigDTO payload) {
         if (payload == null) throw new IllegalArgumentException("payload 不能为空");
 
-        String promptCode = payload.getPromptCode();
-        if (promptCode == null || promptCode.isBlank()) {
-            throw new IllegalArgumentException("promptCode 不能为空");
-        }
-        if (promptCode.length() > 64) {
-             throw new IllegalArgumentException("promptCode 长度不能超过 64");
-        }
-
-        Integer defaultCount = payload.getDefaultCount();
-        Integer maxCount = payload.getMaxCount();
-        if (defaultCount == null) defaultCount = DEFAULT_DEFAULT_COUNT;
-        if (maxCount == null) maxCount = DEFAULT_MAX_COUNT;
-        if (defaultCount < 1 || defaultCount > 50) throw new IllegalArgumentException("defaultCount 需在 [1,50] 范围内");
-        if (maxCount < 1 || maxCount > 50) throw new IllegalArgumentException("maxCount 需在 [1,50] 范围内");
+        PromptConfigValidationSupport.ValidatedPromptConfig validatedPrompt =
+                PromptConfigValidationSupport.validatePromptCodeAndMaxContentChars(
+                        payload.getPromptCode(),
+                        payload.getMaxContentChars(),
+                        DEFAULT_MAX_CONTENT_CHARS,
+                        50000
+                );
+        String promptCode = validatedPrompt.promptCode();
+        int maxContentChars = validatedPrompt.maxContentChars();
+        int defaultCount = PostSuggestionGenConfigSupport.resolveCount(payload.getDefaultCount(), DEFAULT_DEFAULT_COUNT, "defaultCount");
+        int maxCount = PostSuggestionGenConfigSupport.resolveCount(payload.getMaxCount(), DEFAULT_MAX_COUNT, "maxCount");
         if (defaultCount > maxCount) throw new IllegalArgumentException("defaultCount 不能大于 maxCount");
 
-        Integer maxContentChars = payload.getMaxContentChars();
-        if (maxContentChars == null) maxContentChars = DEFAULT_MAX_CONTENT_CHARS;
-        if (maxContentChars < 200 || maxContentChars > 50000) throw new IllegalArgumentException("maxContentChars 需在 [200,50000] 范围内");
-
         Integer historyKeepDays = payload.getHistoryKeepDays();
-        if (historyKeepDays != null && historyKeepDays < 1) throw new IllegalArgumentException("historyKeepDays 必须为正数");
         Integer historyKeepRows = payload.getHistoryKeepRows();
-        if (historyKeepRows != null && historyKeepRows < 1) throw new IllegalArgumentException("historyKeepRows 必须为正数");
+        PostSuggestionGenConfigSupport.validatePositiveNullable(historyKeepDays, "historyKeepDays");
+        PostSuggestionGenConfigSupport.validatePositiveNullable(historyKeepRows, "historyKeepRows");
 
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
         base.setPromptCode(promptCode);
@@ -165,28 +141,7 @@ public class PostTagGenConfigService {
     }
 
     private PostTagGenConfigDTO toDto(PostSuggestionGenConfigEntity e, String updatedByName) {
-        PostTagGenConfigDTO dto = new PostTagGenConfigDTO();
-        dto.setId(e.getId());
-        dto.setVersion(e.getVersion());
-        dto.setEnabled(e.getEnabled());
-        dto.setPromptCode(e.getPromptCode());
-        PromptsEntity prompt = (e.getPromptCode() == null || e.getPromptCode().isBlank())
-            ? null
-            : promptsRepository.findByPromptCode(e.getPromptCode()).orElse(null);
-        dto.setModel(prompt != null ? prompt.getModelName() : null);
-        dto.setProviderId(prompt != null ? prompt.getProviderId() : null);
-        dto.setTemperature(prompt != null ? prompt.getTemperature() : null);
-        dto.setTopP(prompt != null ? prompt.getTopP() : null);
-        dto.setEnableThinking(prompt != null ? prompt.getEnableDeepThinking() : null);
-        dto.setDefaultCount(e.getDefaultCount());
-        dto.setMaxCount(e.getMaxCount());
-        dto.setMaxContentChars(e.getMaxContentChars());
-        dto.setHistoryEnabled(e.getHistoryEnabled());
-        dto.setHistoryKeepDays(e.getHistoryKeepDays());
-        dto.setHistoryKeepRows(e.getHistoryKeepRows());
-        dto.setUpdatedAt(e.getUpdatedAt());
-        dto.setUpdatedBy(updatedByName);
-        return dto;
+        return PostSuggestionGenConfigSupport.toTagAdminConfigDto(e, updatedByName, promptsRepository::findByPromptCode);
     }
 
     @SuppressWarnings("unchecked")
@@ -208,22 +163,6 @@ public class PostTagGenConfigService {
     }
 
     private static List<String> toStringList(Object v) {
-        if (v == null) return List.of();
-        if (v instanceof List<?> list) {
-            List<String> out = new ArrayList<>();
-            for (Object o : list) {
-                if (o == null) continue;
-                String s = Objects.toString(o, "").trim();
-                if (!s.isBlank()) out.add(s);
-            }
-            return out;
-        }
-        if (v instanceof Map<?, ?> map) {
-            Object tags = map.get("tags");
-            if (tags instanceof List<?> list) {
-                return toStringList(list);
-            }
-        }
-        return List.of();
+        return PostSuggestionGenConfigSupport.toStringList(v, "tags");
     }
 }

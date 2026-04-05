@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.service.monitor.impl;
 import com.example.EnterpriseRagCommunity.entity.monitor.NotificationsEntity;
 import com.example.EnterpriseRagCommunity.repository.monitor.NotificationsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUserIdResolver;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
@@ -10,8 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -25,15 +24,21 @@ public class NotificationsServiceImpl implements NotificationsService {
     private final AdministratorService administratorService;
 
     private Long currentUserIdOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
-            };
-        }
-        String email = auth.getName();
-        return administratorService.findByUsername(email)
-                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
-                .getId();
+        return CurrentUserIdResolver.currentUserIdOrThrow(
+                administratorService,
+                () -> new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
+                },
+                () -> new IllegalArgumentException("当前用户不存在")
+        );
+    }
+
+    private NotificationsEntity getOwnedNotificationOrThrow(Long id) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        Long me = currentUserIdOrThrow();
+        NotificationsEntity e = notificationsRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("通知不存在"));
+        if (!me.equals(e.getUserId())) throw new org.springframework.security.access.AccessDeniedException("无权限");
+        return e;
     }
 
     @Override
@@ -64,12 +69,7 @@ public class NotificationsServiceImpl implements NotificationsService {
     @Override
     @Transactional
     public NotificationsEntity markMyNotificationRead(Long id) {
-        if (id == null) throw new IllegalArgumentException("id 不能为空");
-        Long me = currentUserIdOrThrow();
-
-        NotificationsEntity e = notificationsRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("通知不存在"));
-        if (!me.equals(e.getUserId())) throw new org.springframework.security.access.AccessDeniedException("无权限");
+        NotificationsEntity e = getOwnedNotificationOrThrow(id);
 
         if (e.getReadAt() == null) {
             e.setReadAt(LocalDateTime.now());
@@ -102,13 +102,7 @@ public class NotificationsServiceImpl implements NotificationsService {
     @Override
     @Transactional
     public void deleteMyNotification(Long id) {
-        if (id == null) throw new IllegalArgumentException("id 不能为空");
-        Long me = currentUserIdOrThrow();
-
-        NotificationsEntity e = notificationsRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("通知不存在"));
-        if (!me.equals(e.getUserId())) throw new org.springframework.security.access.AccessDeniedException("无权限");
-
+        NotificationsEntity e = getOwnedNotificationOrThrow(id);
         notificationsRepository.delete(e);
     }
 

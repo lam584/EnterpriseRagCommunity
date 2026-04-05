@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import ImageLightbox from './ImageLightbox';
+import { renderLightboxAndGetKeyHandler } from './ImageLightbox.test-support';
 
 afterEach(() => {
   cleanup();
@@ -16,26 +17,14 @@ describe('ImageLightbox', () => {
   });
 
   it('closes on Escape when open', async () => {
-    const onClose = vi.fn();
-    const addSpy = vi.spyOn(window, 'addEventListener');
-    render(<ImageLightbox open={true} src={'/a.png'} alt="photo" onClose={onClose} />);
-    await waitFor(() => {
-      expect(addSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
-    });
-    const handler = addSpy.mock.calls.find((c) => c[0] === 'keydown')?.[1] as ((e: KeyboardEvent) => void) | undefined;
+    const { addSpy, handler, onClose } = await renderLightboxAndGetKeyHandler();
     handler?.(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(onClose).toHaveBeenCalledTimes(1);
     addSpy.mockRestore();
   });
 
   it('does not close on non-Escape keys', async () => {
-    const onClose = vi.fn();
-    const addSpy = vi.spyOn(window, 'addEventListener');
-    render(<ImageLightbox open={true} src={'/a.png'} alt="photo" onClose={onClose} />);
-    await waitFor(() => {
-      expect(addSpy).toHaveBeenCalledWith('keydown', expect.any(Function));
-    });
-    const handler = addSpy.mock.calls.find((c) => c[0] === 'keydown')?.[1] as ((e: KeyboardEvent) => void) | undefined;
+    const { addSpy, handler, onClose } = await renderLightboxAndGetKeyHandler();
     handler?.(new KeyboardEvent('keydown', { key: 'Enter' }));
     expect(onClose).toHaveBeenCalledTimes(0);
     addSpy.mockRestore();

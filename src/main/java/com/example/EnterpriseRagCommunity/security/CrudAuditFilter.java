@@ -50,11 +50,8 @@ public class CrudAuditFilter extends OncePerRequestFilter {
     @Value("${app.logging.audit.auto-crud.exclude-path-prefixes:}")
     private String excludePathPrefixesRaw;
 
-    private static final ConcurrentHashMap<String, UserIdCacheEntry> USER_ID_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, UserIdCacheSupport.UserIdCacheEntry> USER_ID_CACHE = new ConcurrentHashMap<>();
     private static final long USER_ID_CACHE_TTL_MS = 5 * 60 * 1000L;
-
-    private record UserIdCacheEntry(Long userId, long expiresAtMs) {
-    }
 
     @Override
     protected void doFilterInternal(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response, @NonNull FilterChain filterChain)
@@ -256,15 +253,7 @@ public class CrudAuditFilter extends OncePerRequestFilter {
 
     private Long resolveUserId(String username) {
         if (username == null) return null;
-
-        long now = System.currentTimeMillis();
-        UserIdCacheEntry cached = USER_ID_CACHE.get(username);
-        if (cached != null && cached.expiresAtMs() > now) return cached.userId();
-
-        Optional<UsersEntity> user = administratorService.findByUsername(username);
-        Long id = user.map(UsersEntity::getId).orElse(null);
-        USER_ID_CACHE.put(username, new UserIdCacheEntry(id, now + USER_ID_CACHE_TTL_MS));
-        return id;
+        return UserIdCacheSupport.resolveUserId(USER_ID_CACHE, USER_ID_CACHE_TTL_MS, administratorService, username);
     }
 
     private static String resolveUsername(Authentication auth) {

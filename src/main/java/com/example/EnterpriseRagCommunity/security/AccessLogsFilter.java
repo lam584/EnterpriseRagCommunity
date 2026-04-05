@@ -66,11 +66,8 @@ public class AccessLogsFilter extends OncePerRequestFilter {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final ConcurrentHashMap<String, UserIdCacheEntry> USER_ID_CACHE = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, UserIdCacheSupport.UserIdCacheEntry> USER_ID_CACHE = new ConcurrentHashMap<>();
     private static final long USER_ID_CACHE_TTL_MS = 5 * 60 * 1000L;
-
-    private record UserIdCacheEntry(Long userId, long expiresAtMs) {
-    }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -88,17 +85,8 @@ public class AccessLogsFilter extends OncePerRequestFilter {
 
     private Long resolveUserId(Authentication auth) {
         String username = resolveUsername(auth);
-        if (username != null) {
-            long now = System.currentTimeMillis();
-            UserIdCacheEntry cached = USER_ID_CACHE.get(username);
-            if (cached != null && cached.expiresAtMs() > now) return cached.userId();
-
-            Optional<UsersEntity> user = administratorService.findByUsername(username);
-            Long id = user.map(UsersEntity::getId).orElse(null);
-            USER_ID_CACHE.put(username, new UserIdCacheEntry(id, now + USER_ID_CACHE_TTL_MS));
-            return id;
-        }
-        return null;
+        if (username == null) return null;
+        return UserIdCacheSupport.resolveUserId(USER_ID_CACHE, USER_ID_CACHE_TTL_MS, administratorService, username);
     }
 
     private static String resolveUsername(Authentication auth) {
@@ -122,22 +110,13 @@ public class AccessLogsFilter extends OncePerRequestFilter {
         byte[] bytes = cachingRequest.getContentAsByteArray();
         if (bytes.length == 0) return null;
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        putCaptureMeta(out, rawRequest.getContentType(), bytes.length, maxBytes, sha256Hex(bytes));
-
-        String encoding = rawRequest.getCharacterEncoding();
-        if (encoding == null || encoding.isBlank()) encoding = StandardCharsets.UTF_8.name();
-
-        String bodyText = safeDecode(bytes, encoding);
-        bodyText = sanitizeBodyText(contentType, bodyText);
-        BodySnippet snippet = snippet(bodyText, maxBytes);
+        Map<String, Object> out = captureTextBody(rawRequest.getContentType(), contentType, bytes, maxBytes, rawRequest.getCharacterEncoding());
         boolean declaredTooLarge = false;
         try {
             if (maxBytes > 0 && rawRequest.getContentLengthLong() > maxBytes) declaredTooLarge = true;
         } catch (Exception ignored) {
         }
-        out.put("truncated", snippet.truncated() || declaredTooLarge);
-        out.put("body", snippet.text());
+        out.put("truncated", Boolean.TRUE.equals(out.get("truncated")) || declaredTooLarge);
         return out;
     }
 
@@ -251,17 +230,24 @@ public class AccessLogsFilter extends OncePerRequestFilter {
             return out;
         }
 
-        Map<String, Object> out = new LinkedHashMap<>();
-        putCaptureMeta(out, response.getContentType(), bytes.length, maxBytes, sha256Hex(bytes));
-
-        String encoding = response.getCharacterEncoding();
-        if (encoding == null || encoding.isBlank()) encoding = StandardCharsets.UTF_8.name();
-        String bodyText = safeDecode(bytes, encoding);
-        bodyText = sanitizeBodyText(contentType, bodyText);
-        BodySnippet snippet = snippet(bodyText, maxBytes);
-        out.put("truncated", snippet.truncated() || cachingResponse.isTruncated());
-        out.put("body", snippet.text());
+        Map<String, Object> out = captureTextBody(response.getContentType(), contentType, bytes, maxBytes, response.getCharacterEncoding());
+        out.put("truncated", Boolean.TRUE.equals(out.get("truncated")) || cachingResponse.isTruncated());
         out.put("status", response.getStatus());
+        return out;
+    }
+
+    private static Map<String, Object> captureTextBody(String rawContentType, String normalizedContentType,
+                                                       byte[] bytes, int maxBytes, String encoding) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        putCaptureMeta(out, rawContentType, bytes.length, maxBytes, sha256Hex(bytes));
+
+        String encodingToUse = encoding;
+        if (encodingToUse == null || encodingToUse.isBlank()) encodingToUse = StandardCharsets.UTF_8.name();
+        String bodyText = safeDecode(bytes, encodingToUse);
+        bodyText = sanitizeBodyText(normalizedContentType, bodyText);
+        BodySnippet snippet = snippet(bodyText, maxBytes);
+        out.put("truncated", snippet.truncated());
+        out.put("body", snippet.text());
         return out;
     }
 

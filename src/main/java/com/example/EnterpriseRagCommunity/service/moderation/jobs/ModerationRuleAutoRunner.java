@@ -104,27 +104,15 @@ public class ModerationRuleAutoRunner {
     }
 
     private static QueueStage mapNextStage(String action) {
-        String a = normalizeAction(action);
-        if (a == null) return QueueStage.HUMAN;
-        return switch (a) {
-            case "LLM" -> QueueStage.LLM;
-            case "VEC" -> QueueStage.VEC;
-            default -> QueueStage.HUMAN;
-        };
+        return ModerationStageSupport.mapNextStage(action);
     }
 
     private static String normalizeAction(String action) {
-        String a = action == null ? null : action.trim().toUpperCase(Locale.ROOT);
-        if (a == null || a.isBlank()) return null;
-        return a;
+        return ModerationStageSupport.normalizeAction(action);
     }
 
     private static String firstNonBlank(String a, String b) {
-        String x = a == null ? null : a.trim();
-        if (x != null && !x.isBlank()) return x;
-        String y = b == null ? null : b.trim();
-        if (y != null && !y.isBlank()) return y;
-        return null;
+        return ModerationLlmAutoRunnerSupport.firstNonBlank(a, b);
     }
 
     private static Boolean deepGetBool(Map<String, Object> m) {
@@ -139,14 +127,7 @@ public class ModerationRuleAutoRunner {
     }
 
     private static Boolean deepGetBool(Map<String, Object> m, String path) {
-        Object v = deepGet(m, path);
-        if (v instanceof Boolean b) return b;
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        if (s.isEmpty()) return null;
-        if (s.equalsIgnoreCase("true")) return Boolean.TRUE;
-        if (s.equalsIgnoreCase("false")) return Boolean.FALSE;
-        return null;
+        return ModerationJobPayloadSupport.deepGetBoolean(m, path);
     }
 
     private static String deepGetString(Map<String, Object> m, String path) {
@@ -157,15 +138,7 @@ public class ModerationRuleAutoRunner {
     }
 
     private static Object deepGet(Map<String, Object> m, String path) {
-        if (m == null || path == null || path.isBlank()) return null;
-        String[] segs = path.split("\\.");
-        Object cur = m;
-        for (String seg : segs) {
-            if (seg == null || seg.isBlank()) continue;
-            if (!(cur instanceof Map<?, ?> mm)) return null;
-            cur = mm.get(seg);
-        }
-        return cur;
+        return ModerationJobPayloadSupport.deepGet(m, path);
     }
 
     private void handleOne(ModerationQueueEntity q) {

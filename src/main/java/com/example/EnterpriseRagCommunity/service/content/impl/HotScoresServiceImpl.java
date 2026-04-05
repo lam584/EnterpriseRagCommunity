@@ -224,14 +224,6 @@ public class HotScoresServiceImpl implements HotScoresService {
     }
 
     private static Map<Long, Long> toCountMap(List<Object[]> rows) {
-        Map<Long, Long> map = new HashMap<>();
-        if (rows == null) return map;
-        for (Object[] r : rows) {
-            if (r == null || r.length < 2) continue;
-            Long postId = r[0] == null ? null : ((Number) r[0]).longValue();
-            Long cnt = r[1] == null ? 0L : ((Number) r[1]).longValue();
-            if (postId != null) map.put(postId, cnt);
-        }
-        return map;
+        return ReactionCountSupport.toCountMap(rows);
     }
 }

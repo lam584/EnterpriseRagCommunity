@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.es;
 
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
+import com.example.EnterpriseRagCommunity.service.retrieval.ElasticsearchHttpSupport;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,10 +33,7 @@ public class ElasticsearchIkAnalyzerProbe {
     }
 
     private boolean probeOnce() {
-        String endpoint = systemConfigurationService.getConfig("spring.elasticsearch.uris");
-        if (endpoint == null || endpoint.isBlank()) endpoint = "http://127.0.0.1:9200";
-        if (endpoint.contains(",")) endpoint = endpoint.split(",")[0].trim();
-        if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
+        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
 
         try {
             URL url = java.net.URI.create(endpoint + "/_analyze").toURL();
@@ -46,10 +44,7 @@ public class ElasticsearchIkAnalyzerProbe {
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
 
-            String elasticsearchApiKey = systemConfigurationService.getConfig("APP_ES_API_KEY");
-            if (elasticsearchApiKey != null && !elasticsearchApiKey.isBlank()) {
-                conn.setRequestProperty("Authorization", "ApiKey " + elasticsearchApiKey.trim());
-            }
+            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
 
             String payload = "{\"analyzer\":\"ik_smart\",\"text\":\"test\"}";
             try (OutputStream os = conn.getOutputStream()) {
@@ -75,4 +70,3 @@ public class ElasticsearchIkAnalyzerProbe {
         }
     }
 }
-

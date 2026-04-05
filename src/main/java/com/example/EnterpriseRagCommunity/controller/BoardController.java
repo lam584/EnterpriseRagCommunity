@@ -15,7 +15,6 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Set;
@@ -29,21 +28,6 @@ public class BoardController {
     private final BoardService boardService;
     private final BoardAccessControlService boardAccessControlService;
 
-    private static BoardsDTO sanitizeBoard(BoardsDTO in) {
-        if (in == null) return null;
-        BoardsDTO out = new BoardsDTO();
-        out.setId(in.getId());
-        out.setTenantId(in.getTenantId());
-        out.setParentId(in.getParentId());
-        out.setName(in.getName() == null ? null : HtmlUtils.htmlEscape(in.getName()));
-        out.setDescription(in.getDescription() == null ? null : HtmlUtils.htmlEscape(in.getDescription()));
-        out.setVisible(in.getVisible());
-        out.setSortOrder(in.getSortOrder());
-        out.setCreatedAt(in.getCreatedAt());
-        out.setUpdatedAt(in.getUpdatedAt());
-        return out;
-    }
-
     @GetMapping
     @ApiOperation("查询板块列表")
     public ResponseEntity<Page<BoardsDTO>> queryBoards(@ModelAttribute BoardsQueryDTO queryDTO) {
@@ -55,7 +39,7 @@ public class BoardController {
         Set<Long> roleIds = boardAccessControlService.currentUserRoleIds();
         var filtered = result.getContent().stream()
                 .filter(b -> b != null && b.getId() != null && boardAccessControlService.canViewBoard(b.getId(), roleIds))
-                .map(BoardController::sanitizeBoard)
+                .map(BoardDtoSupport::sanitizeBoard)
                 .toList();
         return ResponseEntity.ok(new PageImpl<>(filtered, result.getPageable(), filtered.size()));
     }
@@ -65,7 +49,7 @@ public class BoardController {
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_boards','write'))")
     public ResponseEntity<BoardsDTO> createBoard(@Valid @RequestBody BoardsCreateDTO createDTO) {
         BoardsDTO result = boardService.createBoard(createDTO);
-        return ResponseEntity.status(HttpStatus.CREATED).body(sanitizeBoard(result));
+        return ResponseEntity.status(HttpStatus.CREATED).body(BoardDtoSupport.sanitizeBoard(result));
     }
 
     @PutMapping("/{id}")
@@ -75,7 +59,7 @@ public class BoardController {
         // Ensure ID matches path variable
         updateDTO.setId(id);
         BoardsDTO result = boardService.updateBoard(updateDTO);
-        return ResponseEntity.ok(sanitizeBoard(result));
+        return ResponseEntity.ok(BoardDtoSupport.sanitizeBoard(result));
     }
 
     @DeleteMapping("/{id}")

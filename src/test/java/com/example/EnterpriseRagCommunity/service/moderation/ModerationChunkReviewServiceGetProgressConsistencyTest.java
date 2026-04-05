@@ -37,11 +37,12 @@ class ModerationChunkReviewServiceGetProgressConsistencyTest {
     @Test
     void getProgress_shouldDeriveCountersFromChunks() {
         LocalDateTime now = LocalDateTime.now();
+        long contentId = Math.abs(System.nanoTime());
 
         ModerationQueueEntity q = new ModerationQueueEntity();
         q.setCaseType(ModerationCaseType.CONTENT);
         q.setContentType(ContentType.POST);
-        q.setContentId(1001L);
+        q.setContentId(contentId);
         q.setStatus(QueueStatus.REVIEWING);
         q.setCurrentStage(QueueStage.LLM);
         q.setPriority(0);
@@ -55,7 +56,7 @@ class ModerationChunkReviewServiceGetProgressConsistencyTest {
         set.setQueueId(queueId);
         set.setCaseType(ModerationCaseType.CONTENT);
         set.setContentType(ContentType.POST);
-        set.setContentId(1001L);
+        set.setContentId(contentId);
         set.setStatus(ChunkSetStatus.RUNNING);
         set.setTotalChunks(3);
         set.setCompletedChunks(0);
@@ -84,11 +85,12 @@ class ModerationChunkReviewServiceGetProgressConsistencyTest {
     @Test
     void refreshSetCountersDebounced_shouldNotMissFinalRefreshWithinInterval() {
         LocalDateTime now = LocalDateTime.now();
+        long contentId = Math.abs(System.nanoTime()) + 1;
 
         ModerationQueueEntity q = new ModerationQueueEntity();
         q.setCaseType(ModerationCaseType.CONTENT);
         q.setContentType(ContentType.POST);
-        q.setContentId(1002L);
+        q.setContentId(contentId);
         q.setStatus(QueueStatus.REVIEWING);
         q.setCurrentStage(QueueStage.LLM);
         q.setPriority(0);
@@ -102,7 +104,7 @@ class ModerationChunkReviewServiceGetProgressConsistencyTest {
         set.setQueueId(queueId);
         set.setCaseType(ModerationCaseType.CONTENT);
         set.setContentType(ContentType.POST);
-        set.setContentId(1002L);
+        set.setContentId(contentId);
         set.setStatus(ChunkSetStatus.RUNNING);
         set.setTotalChunks(1);
         set.setCompletedChunks(0);

@@ -47,7 +47,15 @@ public class DashscopeRerankClient {
         List<?> documents = req.documents() == null ? List.of() : req.documents();
 
         String endpoint = selectEndpoint(baseUrl, model);
-        HttpURLConnection conn = openJsonPost(endpoint, apiKey, req.extraHeaders(), req.connectTimeoutMs(), req.readTimeoutMs());
+        HttpURLConnection conn = AiClientHttpSupport.openJsonPost(
+                endpoint,
+                apiKey,
+                req.extraHeaders(),
+                req.connectTimeoutMs(),
+                req.readTimeoutMs(),
+                DEFAULT_CONNECT_TIMEOUT_MS,
+                DEFAULT_READ_TIMEOUT_MS
+        );
         String body = objectMapper.writeValueAsString(buildBody(model, query, documents, req.topN(), req.returnDocuments(), req.instruct(), req.fps()));
         try (OutputStream os = conn.getOutputStream()) {
             os.write(body.getBytes(StandardCharsets.UTF_8));
@@ -97,47 +105,6 @@ public class DashscopeRerankClient {
         return body;
     }
 
-    private HttpURLConnection openJsonPost(
-            String endpoint,
-            String apiKey,
-            Map<String, String> extraHeaders,
-            Integer connectTimeoutMs,
-            Integer readTimeoutMs
-    ) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-
-        int cto = (connectTimeoutMs == null || connectTimeoutMs <= 0) ? DEFAULT_CONNECT_TIMEOUT_MS : connectTimeoutMs;
-        int rto = (readTimeoutMs == null || readTimeoutMs <= 0) ? DEFAULT_READ_TIMEOUT_MS : readTimeoutMs;
-        conn.setConnectTimeout(cto);
-        conn.setReadTimeout(rto);
-
-        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-        conn.setRequestProperty("Accept", "application/json");
-        applyHeaders(conn, apiKey, extraHeaders);
-        return conn;
-    }
-
-    private static void applyHeaders(HttpURLConnection conn, String apiKey, Map<String, String> extraHeaders) {
-        boolean hasAuth = false;
-        if (extraHeaders != null && !extraHeaders.isEmpty()) {
-            for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
-                String k = e.getKey();
-                String v = e.getValue();
-                if (k == null || k.isBlank()) continue;
-                if (v == null) continue;
-                conn.setRequestProperty(k, v);
-                if ("authorization".equals(k.trim().toLowerCase(Locale.ROOT))) {
-                    hasAuth = true;
-                }
-            }
-        }
-        if (!hasAuth && apiKey != null && !apiKey.isBlank()) {
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-        }
-    }
-
     private static String selectEndpoint(String baseUrl, String model) {
         String m = model == null ? "" : model.trim().toLowerCase(Locale.ROOT);
         if ("qwen3-rerank".equals(m)) {
@@ -174,6 +141,42 @@ public class DashscopeRerankClient {
         return new String(is.readAllBytes(), StandardCharsets.UTF_8);
     }
 
+    private static void applyHeaders(HttpURLConnection conn, String apiKey, Map<String, String> extraHeaders) {
+        boolean hasAuth = false;
+        if (extraHeaders != null && !extraHeaders.isEmpty()) {
+            for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
+                String k = e.getKey();
+                String v = e.getValue();
+                if (k == null || k.isBlank() || v == null) continue;
+                conn.setRequestProperty(k, v);
+                if ("authorization".equals(k.trim().toLowerCase(Locale.ROOT))) {
+                    hasAuth = true;
+                }
+            }
+        }
+        if (!hasAuth && apiKey != null && !apiKey.isBlank()) {
+            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
+        }
+    }
+
+    private static HttpURLConnection openJsonPost(
+            String endpoint,
+            String apiKey,
+            Map<String, String> extraHeaders,
+            Integer connectTimeoutMs,
+            Integer readTimeoutMs
+    ) throws IOException {
+        return AiClientHttpSupport.openJsonPost(
+                endpoint,
+                apiKey,
+                extraHeaders,
+                connectTimeoutMs,
+                readTimeoutMs,
+                DEFAULT_CONNECT_TIMEOUT_MS,
+                DEFAULT_READ_TIMEOUT_MS
+        );
+    }
+
     private static String normalizeBaseUrl(String baseUrl, String fallback) {
         String u = normalizeString(baseUrl, fallback);
         if (u == null) return "";
@@ -187,4 +190,3 @@ public class DashscopeRerankClient {
         return t;
     }
 }
-

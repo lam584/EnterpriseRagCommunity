@@ -61,7 +61,10 @@ import com.example.EnterpriseRagCommunity.repository.monitor.LlmLoadTestRunHisto
 import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.ai.LlmTextSupport;
 import com.example.EnterpriseRagCommunity.service.ai.TokenCountService;
+import com.example.EnterpriseRagCommunity.service.ai.JsonStringFieldSupport;
+import com.example.EnterpriseRagCommunity.service.ai.ThinkingDirectiveModelSupport;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmService;
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -151,7 +154,7 @@ public class AdminLlmLoadTestService {
             return ResponseEntity.notFound().build();
         }
 
-        String filename = csv ? ("llm-loader-" + safeRunId + ".csv") : ("llm-loader-" + safeRunId + ".json");
+        String filename = exportFilename(csv);
         MediaType mt = csv ? MediaType.valueOf("text/csv; charset=UTF-8") : MediaType.APPLICATION_JSON;
 
         StreamingResponseBody body = outputStream -> {
@@ -181,6 +184,10 @@ public class AdminLlmLoadTestService {
         if (safe.isBlank()) safe = "export.txt";
         if (safe.length() > 128) safe = safe.substring(0, 128);
         return ContentDisposition.attachment().filename(safe, StandardCharsets.UTF_8).build().toString();
+    }
+
+    private static String exportFilename(boolean csv) {
+        return csv ? "llm-loader.csv" : "llm-loader.json";
     }
 
     private static void pauseMillis(long ms) throws InterruptedException {
@@ -567,56 +574,15 @@ public class AdminLlmLoadTestService {
     }
 
     private static int indexOfIgnoreCase(String haystack, String needle, int fromIndex) {
-        if (haystack == null || needle == null) return -1;
-        int start = Math.max(0, fromIndex);
-        if (needle.isEmpty()) return start <= haystack.length() ? start : -1;
-        int n = haystack.length();
-        int m = needle.length();
-        if (m > n) return -1;
-        for (int i = start; i + m <= n; i++) {
-            boolean ok = true;
-            for (int j = 0; j < m; j++) {
-                char a = haystack.charAt(i + j);
-                char b = needle.charAt(j);
-                if (a == b) continue;
-                if (Character.toLowerCase(a) != Character.toLowerCase(b)) {
-                    ok = false;
-                    break;
-                }
-            }
-            if (ok) return i;
-        }
-        return -1;
+        return LlmTextSupport.indexOfIgnoreCase(haystack, needle, fromIndex);
     }
 
     private static String removeMarkerWordIgnoreCase(String text, String marker) {
-        if (text == null || text.isBlank()) return text;
-        if (marker == null || marker.isBlank()) return text;
-        String m = marker.trim();
-        int first = indexOfIgnoreCase(text, m, 0);
-        if (first < 0) return text;
-        StringBuilder sb = new StringBuilder(text.length());
-        int i = 0;
-        while (true) {
-            int idx = indexOfIgnoreCase(text, m, i);
-            if (idx < 0) {
-                sb.append(text, i, text.length());
-                break;
-            }
-            sb.append(text, i, idx);
-            i = idx + m.length();
-        }
-        return sb.toString();
+        return LlmTextSupport.removeMarkerWordIgnoreCase(text, marker);
     }
 
     private static String stripReasoningArtifacts(String text) {
-        if (text == null || text.isBlank()) return text;
-        String t = removeMarkerWordIgnoreCase(text, "reasoning_content");
-        t = removeMarkerWordIgnoreCase(t, "<reasoning_content>");
-        t = removeMarkerWordIgnoreCase(t, "</reasoning_content>");
-        t = removeMarkerWordIgnoreCase(t, "&lt;reasoning_content&gt;");
-        t = removeMarkerWordIgnoreCase(t, "&lt;/reasoning_content&gt;");
-        return t;
+        return LlmTextSupport.stripReasoningArtifacts(text);
     }
 
     private String extractAssistantContentFromRawModelOutput(String raw) {
@@ -656,55 +622,7 @@ public class AdminLlmLoadTestService {
     }
 
     private static String extractDeltaStringField(String json, String field) {
-        if (json == null) return null;
-        String f = field == null ? "" : field.trim();
-        if (f.isEmpty()) return null;
-        int idx = json.indexOf("\"" + f + "\"");
-        if (idx < 0) return null;
-        int colon = json.indexOf(':', idx);
-        if (colon < 0) return null;
-        int firstQuote = json.indexOf('"', colon + 1);
-        if (firstQuote < 0) return null;
-        int i = firstQuote + 1;
-        StringBuilder sb = new StringBuilder();
-        boolean esc = false;
-        while (i < json.length()) {
-            char c = json.charAt(i);
-            if (esc) {
-                switch (c) {
-                    case '"' -> sb.append('"');
-                    case '\\' -> sb.append('\\');
-                    case '/' -> sb.append('/');
-                    case 'b' -> sb.append('\b');
-                    case 'f' -> sb.append('\f');
-                    case 'n' -> sb.append('\n');
-                    case 'r' -> sb.append('\r');
-                    case 't' -> sb.append('\t');
-                    case 'u' -> {
-                        if (i + 4 < json.length()) {
-                            String hex = json.substring(i + 1, i + 5);
-                            try {
-                                sb.append((char) Integer.parseInt(hex, 16));
-                            } catch (Exception ignore) {
-                            }
-                            i += 4;
-                        }
-                    }
-                    default -> sb.append(c);
-                }
-                esc = false;
-            } else {
-                if (c == '\\') {
-                    esc = true;
-                } else if (c == '"') {
-                    break;
-                } else {
-                    sb.append(c);
-                }
-            }
-            i++;
-        }
-        return sb.toString();
+        return JsonStringFieldSupport.extractStringField(json, field);
     }
 
     private <T> T runWithTimeout(CheckedCallable<T> fn, int timeoutMs) throws Exception {
@@ -810,21 +728,7 @@ public class AdminLlmLoadTestService {
     }
 
     private static boolean supportsThinkingDirectiveModel(String modelName) {
-        String raw = modelName == null ? "" : modelName.trim().toLowerCase(Locale.ROOT);
-        if (raw.isEmpty()) return false;
-
-        String base = raw;
-        int slash = base.lastIndexOf('/');
-        if (slash >= 0 && slash + 1 < base.length()) base = base.substring(slash + 1);
-        int colon = base.lastIndexOf(':');
-        if (colon >= 0 && colon + 1 < base.length()) base = base.substring(colon + 1);
-
-        if (raw.contains("thinking") || base.contains("thinking")) return false;
-        if (base.startsWith("qwen3-") || raw.startsWith("qwen3-")) return true;
-        return base.startsWith("qwen-plus-2025-04-28")
-                || base.startsWith("qwen-turbo-2025-04-28")
-                || raw.startsWith("qwen-plus-2025-04-28")
-                || raw.startsWith("qwen-turbo-2025-04-28");
+        return ThinkingDirectiveModelSupport.supportsThinkingDirectiveModel(modelName);
     }
 
     private static String toNonBlank(Object v) {

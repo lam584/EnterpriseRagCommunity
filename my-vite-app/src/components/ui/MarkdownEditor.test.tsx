@@ -59,6 +59,31 @@ async function flushMicrotasks(times = 3) {
   }
 }
 
+function renderPreviewCodeCopy(markdown: string) {
+  const view = render(<MarkdownEditor value={{ markdown }} onChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: '预览' }));
+  const button = within(view.container).getByRole('button', { name: '复制代码' }) as HTMLButtonElement;
+  return { ...view, button };
+}
+
+function renderEditorWithUploadHandlers() {
+  const onChange = vi.fn();
+  const onInsertImage = vi.fn(async () => '![](https://img.example/p.png)');
+  const onInsertAttachment = vi.fn(async () => '[p.txt](https://file.example/p.txt)');
+  render(
+    <MarkdownEditor
+      value={{ markdown: 'x' }}
+      onChange={onChange}
+      onInsertImage={onInsertImage}
+      onInsertAttachment={onInsertAttachment}
+    />,
+  );
+  const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+  textarea.focus();
+  textarea.setSelectionRange(1, 1);
+  return { onChange, onInsertImage, onInsertAttachment, textarea };
+}
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -247,22 +272,7 @@ describe('MarkdownEditor', () => {
   });
 
   it('粘贴上传：clipboardData.files 存在时拦截默认粘贴并逐个处理', async () => {
-    const onChange = vi.fn();
-    const onInsertImage = vi.fn(async () => '![](https://img.example/p.png)');
-    const onInsertAttachment = vi.fn(async () => '[p.txt](https://file.example/p.txt)');
-
-    render(
-      <MarkdownEditor
-        value={{ markdown: 'x' }}
-        onChange={onChange}
-        onInsertImage={onInsertImage}
-        onInsertAttachment={onInsertAttachment}
-      />,
-    );
-
-    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
-    textarea.focus();
-    textarea.setSelectionRange(1, 1);
+    const { onChange, onInsertImage, onInsertAttachment, textarea } = renderEditorWithUploadHandlers();
 
     const pastedImg = new File(['img'], 'p.png', { type: 'image/png' });
     const eFiles = createEvent.paste(textarea, { clipboardData: { files: [pastedImg], items: [] } });
@@ -289,22 +299,7 @@ describe('MarkdownEditor', () => {
   });
 
   it('粘贴上传：优先使用 clipboardData.files，其次使用 clipboardData.items；空集合 early return', async () => {
-    const onChange = vi.fn();
-    const onInsertImage = vi.fn(async () => '![](https://img.example/p.png)');
-    const onInsertAttachment = vi.fn(async () => '[p.txt](https://file.example/p.txt)');
-
-    render(
-      <MarkdownEditor
-        value={{ markdown: 'x' }}
-        onChange={onChange}
-        onInsertImage={onInsertImage}
-        onInsertAttachment={onInsertAttachment}
-      />,
-    );
-
-    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
-    textarea.focus();
-    textarea.setSelectionRange(1, 1);
+    const { onChange, onInsertImage, onInsertAttachment, textarea } = renderEditorWithUploadHandlers();
 
     const empty = createEvent.paste(textarea, { clipboardData: { files: [], items: [] } });
     fireEvent(textarea, empty);
@@ -540,11 +535,7 @@ describe('MarkdownEditor', () => {
     expect(writeText).not.toHaveBeenCalled();
     empty.unmount();
 
-    const md: MarkdownEditorValue = { markdown: ['```js', 'const x = 1', '```'].join('\n') };
-    const { container } = render(<MarkdownEditor value={md} onChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: '预览' }));
-
-    const btn = within(container).getByRole('button', { name: '复制代码' }) as HTMLButtonElement;
+    const { button: btn } = renderPreviewCodeCopy(['```js', 'const x = 1', '```'].join('\n'));
     expect(btn.disabled).toBe(false);
 
     fireEvent.click(btn);
@@ -565,11 +556,7 @@ describe('MarkdownEditor', () => {
 
     vi.useFakeTimers();
 
-    const md: MarkdownEditorValue = { markdown: ['```js', 'const x = 1', '```'].join('\n') };
-    const { container } = render(<MarkdownEditor value={md} onChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: '预览' }));
-
-    const btn = within(container).getByRole('button', { name: '复制代码' }) as HTMLButtonElement;
+    const { button: btn } = renderPreviewCodeCopy(['```js', 'const x = 1', '```'].join('\n'));
     expect(btn.disabled).toBe(false);
 
     fireEvent.click(btn);

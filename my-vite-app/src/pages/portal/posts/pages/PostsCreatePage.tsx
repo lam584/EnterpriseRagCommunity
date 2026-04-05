@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
 import MarkdownEditor from '../../../../components/ui/MarkdownEditor';
 import { createPost, getPost, updatePost, type PostDTO } from '../../../../services/postService';
@@ -20,7 +20,7 @@ import {
 import { listBoards, type BoardDTO } from '../../../../services/boardService';
 import { suggestPostTitles } from '../../../../services/aiTitleService';
 import { getPostTitleGenPublicConfig, type PostTitleGenPublicConfigDTO } from '../../../../services/titleGenPublicService';
-import { createTag, listTags, slugify, type TagDTO } from '../../../../services/tagService';
+import { createTag, listTags, type TagDTO } from '../../../../services/tagService';
 import { suggestPostTags } from '../../../../services/aiTagService';
 import { getPostTagGenPublicConfig, type PostTagGenPublicConfigDTO } from '../../../../services/tagGenPublicService';
 import { getLangLabelGenConfig, suggestPostLangLabels, type LangLabelGenPublicConfigDTO } from '../../../../services/aiLangLabelService';
@@ -40,9 +40,13 @@ import PostUploadTransferWindow, { type UploadItem as TransferUploadItem } from 
 import {PostsBasicSection} from './PostsCreatePage.sections';
 import {
     clampCount,
+    ensureTagSlugsWithAvailableTags,
+    formatUploadRetryMessage,
     getErrorMessage,
     getFieldErrors,
     normalizeCount,
+    shouldReportThrottledProgress,
+    suggestLanguagesToPublish,
     type UploadItem,
     type UploadItemStatus,
 } from './PostsCreatePage.shared';
@@ -828,6 +832,26 @@ export default function PostsCreatePage() {
     );
   };
 
+  const updateHashProgressThrottled = (
+    id: string,
+    progress: { loaded: number; total: number },
+    lastReportAtMs: number,
+  ): number => {
+    if (!mountedRef.current) return lastReportAtMs;
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (!shouldReportThrottledProgress({ loaded: progress.loaded, total: progress.total, nowMs, lastReportAtMs })) {
+      return lastReportAtMs;
+    }
+    setUploadItems((prev) =>
+      prev.map((item) =>
+        item.id === id && item.dedupeStatus === 'hashing'
+          ? { ...item, hashLoaded: progress.loaded, hashTotal: progress.total }
+          : item,
+      ),
+    );
+    return nowMs;
+  };
+
   const resumeUploadWithFile = async (id: string, file: File) => {
     const item = uploadItemsRef.current.find((x) => x.id === id);
     if (!item) throw new Error('上传任务不存在');
@@ -888,10 +912,7 @@ export default function PostsCreatePage() {
       onProgress: (p) => queueUploadProgress(id, p.loaded, p.total),
       onRetry: (p) => {
         if (!mountedRef.current) return;
-        const seconds = Math.max(1, Math.ceil(p.delayMs / 1000));
-        const statusText = p.status != null ? `HTTP ${p.status}` : '网络错误';
-        const rid = p.requestId ? ` requestId=${p.requestId}` : '';
-        const msg = `重试中（${p.attempt}/${p.maxAttempts}，${seconds}s 后）${statusText}${rid}`;
+        const msg = formatUploadRetryMessage(p);
         setUploadItems((prev) => prev.map((x) => (x.id === id && x.status === 'uploading' ? { ...x, errorMessage: msg } : x)));
       },
     });
@@ -921,14 +942,7 @@ export default function PostsCreatePage() {
           const sha = await computeFileSha256(file, {
             signal: abortSignal,
             onProgress: (p) => {
-              if (!mountedRef.current) return;
-              const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-              const isFinal = p.total > 0 && p.loaded >= p.total;
-              if (!isFinal && nowMs - lastReportAtMs < 250) return;
-              lastReportAtMs = nowMs;
-              setUploadItems((prev) =>
-                prev.map((x) => (x.id === id && x.dedupeStatus === 'hashing' ? { ...x, hashLoaded: p.loaded, hashTotal: p.total } : x)),
-              );
+              lastReportAtMs = updateHashProgressThrottled(id, p, lastReportAtMs);
             },
           });
 
@@ -1191,10 +1205,7 @@ export default function PostsCreatePage() {
       onProgress: (p) => queueUploadProgress(id, p.loaded, p.total),
       onRetry: (p) => {
         if (!mountedRef.current) return;
-        const seconds = Math.max(1, Math.ceil(p.delayMs / 1000));
-        const statusText = p.status != null ? `HTTP ${p.status}` : '网络错误';
-        const rid = p.requestId ? ` requestId=${p.requestId}` : '';
-        const msg = `重试中（${p.attempt}/${p.maxAttempts}，${seconds}s 后）${statusText}${rid}`;
+        const msg = formatUploadRetryMessage(p);
         setUploadItems((prev) =>
           prev.map((item) => (item.id === id && item.status === 'uploading' ? { ...item, errorMessage: msg } : item)),
         );
@@ -1242,18 +1253,7 @@ export default function PostsCreatePage() {
           const sha = await computeFileSha256(file, {
             signal: abortSignal,
             onProgress: (p) => {
-              if (!mountedRef.current) return;
-              const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
-              const isFinal = p.total > 0 && p.loaded >= p.total;
-              if (!isFinal && nowMs - lastReportAtMs < 250) return;
-              lastReportAtMs = nowMs;
-              setUploadItems((prev) =>
-                prev.map((item) =>
-                  item.id === id && item.dedupeStatus === 'hashing'
-                    ? { ...item, hashLoaded: p.loaded, hashTotal: p.total }
-                    : item,
-                ),
-              );
+              lastReportAtMs = updateHashProgressThrottled(id, p, lastReportAtMs);
             },
           });
 
@@ -1451,46 +1451,26 @@ export default function PostsCreatePage() {
         requireTags && useAiTags === true && tagGenConfig?.enabled !== false && tagsToPublish.length === 0;
 
       const ensureTagSlugs = async (names: string[]): Promise<string[]> => {
-        const requested = names
-          .map((x) => String(x || '').trim())
-          .filter((x) => x.length > 0)
-          .slice(0, Math.max(1, tagGenCount));
-        if (!requested.length) return [];
-
         setLoadingTags(true);
         setTagsError(null);
         try {
-          let localAvailable = availableTags;
-          const slugs: string[] = [];
-
-          for (const n of requested) {
-            const targetSlug = slugify(n);
-            const exists =
-              localAvailable.find((t) => t.slug === targetSlug) ??
-              localAvailable.find((t) => t.name === n);
-            if (exists) {
-              slugs.push(exists.slug);
-              continue;
-            }
-
-            try {
-              const created = await createTag({
+          const result = await ensureTagSlugsWithAvailableTags({
+            names,
+            availableTags,
+            limit: tagGenCount,
+            createTag: (name, slug) =>
+              createTag({
                 tenantId: 1,
                 type: 'TOPIC',
-                name: n,
-                slug: targetSlug,
+                name,
+                slug,
                 system: false,
                 active: true,
-              });
-              localAvailable = [created, ...localAvailable.filter((x) => x.id !== created.id)];
-              slugs.push(created.slug);
-            } catch (e: unknown) {
-              setTagsError(getErrorMessage(e, '新增标签失败'));
-            }
-          }
-
-          setAvailableTags(localAvailable);
-          return slugs;
+              }),
+            onCreateError: (e) => setTagsError(getErrorMessage(e, '新增标签失败')),
+          });
+          setAvailableTags(result.availableTags);
+          return result.slugs;
         } finally {
           setLoadingTags(false);
         }
@@ -1536,21 +1516,14 @@ export default function PostsCreatePage() {
         setTagSuggestError(null);
       }
 
+      const languagesToPublish = await suggestLanguagesToPublish({
+        enabled: langLabelGenConfig?.enabled !== false,
+        title: draft.title,
+        content: draft.content,
+        suggest: suggestPostLangLabels,
+      });
+
       if (postId !== null) {
-        let languagesToPublish: string[] = [];
-        if (langLabelGenConfig?.enabled !== false) {
-          try {
-            const resp = await suggestPostLangLabels({
-              title: draft.title?.trim() || undefined,
-              content: (draft.content ?? '').trim(),
-            });
-            languagesToPublish = Array.isArray(resp.languages)
-              ? resp.languages.map((x) => String(x || '').trim()).filter((x) => x.length > 0).slice(0, 3)
-              : [];
-          } catch {
-            languagesToPublish = [];
-          }
-        }
 
         await updatePost(postId, {
           boardId: draft.boardId,
@@ -1567,21 +1540,6 @@ export default function PostsCreatePage() {
 
         navigate('/portal/posts/mine');
         return;
-      }
-
-      let languagesToPublish: string[] = [];
-      if (langLabelGenConfig?.enabled !== false) {
-        try {
-          const resp = await suggestPostLangLabels({
-            title: draft.title?.trim() || undefined,
-            content: (draft.content ?? '').trim(),
-          });
-          languagesToPublish = Array.isArray(resp.languages)
-            ? resp.languages.map((x) => String(x || '').trim()).filter((x) => x.length > 0).slice(0, 3)
-            : [];
-        } catch {
-          languagesToPublish = [];
-        }
       }
 
       await createPost({
@@ -1647,42 +1605,25 @@ export default function PostsCreatePage() {
   };
 
   const ensureTagSlugs = async (names: string[]): Promise<string[]> => {
-    const requested = names.map((x) => String(x || '').trim()).filter((x) => x.length > 0);
-    if (!requested.length) return [];
-
     setLoadingTags(true);
     setTagsError(null);
     try {
-      let localAvailable = availableTags;
-      const slugs: string[] = [];
-
-      for (const n of requested) {
-        const targetSlug = slugify(n);
-        const exists =
-          localAvailable.find((t) => t.slug === targetSlug) ?? localAvailable.find((t) => t.name === n);
-        if (exists) {
-          slugs.push(exists.slug);
-          continue;
-        }
-
-        try {
-          const created = await createTag({
+      const result = await ensureTagSlugsWithAvailableTags({
+        names,
+        availableTags,
+        createTag: (name, slug) =>
+          createTag({
             tenantId: 1,
             type: 'TOPIC',
-            name: n,
-            slug: targetSlug,
+            name,
+            slug,
             system: false,
             active: true,
-          });
-          localAvailable = [created, ...localAvailable.filter((x) => x.id !== created.id)];
-          slugs.push(created.slug);
-        } catch (e: unknown) {
-          setTagsError(getErrorMessage(e, '新增标签失败'));
-        }
-      }
-
-      setAvailableTags(localAvailable);
-      return slugs;
+          }),
+        onCreateError: (e) => setTagsError(getErrorMessage(e, '新增标签失败')),
+      });
+      setAvailableTags(result.availableTags);
+      return result.slugs;
     } finally {
       setLoadingTags(false);
     }

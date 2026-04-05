@@ -31,6 +31,8 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationAction
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPolicyConfigRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetExtractionsRepository;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationCollectionSupport;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationMapPathSupport;
 import com.example.EnterpriseRagCommunity.service.moderation.web.WebContentFetchService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -69,25 +71,15 @@ class AdminModerationLlmContextBuilder {
 
     PromptVars resolvePromptVarsSafe(LlmModerationTestRequest req) {
         if (req == null) return null;
-        if (req.getText() != null && !req.getText().isBlank()) {
-            String content = req.getText();
-            return new PromptVars("", content, content);
-        }
+        PromptVars direct = promptVarsFromDirectText(req.getText());
+        if (direct != null) return direct;
         if (req.getQueueId() == null) return null;
 
         ModerationQueueEntity q = queueRepository.findById(req.getQueueId()).orElse(null);
         if (q == null) return null;
 
         if (q.getContentType() == ContentType.POST) {
-            var p = postsRepository.findById(q.getContentId()).orElse(null);
-            if (p == null) return null;
-            String title = p.getTitle() == null ? "" : p.getTitle();
-            String content = p.getContent() == null ? "" : p.getContent();
-            String files = buildPostFilesBlock(q.getContentId());
-            String web = buildPostWebBlock(q.getContentId(), content);
-            String contentNormalized = mergePostSupplements(content, files, web);
-            String base = ("[POST]\n标题: " + title + "\n内容: " + contentNormalized).trim();
-            return new PromptVars(title, contentNormalized, base);
+            return buildPostPromptVars(q, false);
         }
         if (q.getContentType() == ContentType.COMMENT) {
             var c = commentsRepository.findById(q.getContentId()).orElse(null);
@@ -101,32 +93,9 @@ class AdminModerationLlmContextBuilder {
             if (u == null) return null;
             Map<String, Object> meta = u.getMetadata();
             String reviewStage = blankToNull(req.getReviewStage());
-            Map<String, Object> profile = null;
-            if (q.getCaseType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.REPORT
-                    && "reported".equalsIgnoreCase(reviewStage)) {
-                profile = resolveReportProfileSnapshotFields(q);
-            }
-            if (profile == null
-                    && q.getCaseType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.CONTENT) {
-                profile = asMap(meta == null ? null : meta.get("profilePending"));
-            }
+            Map<String, Object> profile = resolveEffectiveProfileFields(q, reviewStage, meta, null);
             if (profile == null) profile = asMap(meta == null ? null : meta.get("profile"));
-
-            String username = safeString(profile == null ? null : profile.get("username"));
-            if (username == null) username = nullToEmpty(safeString(u.getUsername()));
-
-            String bio = profile == null ? "" : nullToEmpty(safeString(profile.get("bio")));
-            String location = profile == null ? "" : nullToEmpty(safeString(profile.get("location")));
-            String website = profile == null ? "" : nullToEmpty(safeString(profile.get("website")));
-            String avatarUrl = profile == null ? "" : nullToEmpty(safeString(profile.get("avatarUrl")));
-
-            String content = ("username: " + username
-                    + "\nbio: " + bio
-                    + "\nlocation: " + location
-                    + "\nwebsite: " + website
-                    + "\navatarUrl: " + avatarUrl).trim();
-            String base = ("[PROFILE]\n" + content).trim();
-            return new PromptVars(username, content, base);
+            return buildProfilePromptVars(profile, nullToEmpty(safeString(u.getUsername())), false, q.getContentId());
         }
 
         return null;
@@ -136,8 +105,42 @@ class AdminModerationLlmContextBuilder {
         return block == null || block.isBlank() ? "" : ("\n\n" + block);
     }
 
+    private Map<String, Object> resolveEffectiveProfileFields(
+            ModerationQueueEntity q,
+            String reviewStage,
+            Map<String, Object> meta,
+            Map<String, Object> fallbackProfile
+    ) {
+        Map<String, Object> profile = null;
+        if (q.getCaseType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.REPORT
+                && "reported".equalsIgnoreCase(reviewStage)) {
+            profile = resolveReportProfileSnapshotFields(q);
+        }
+        if (profile == null
+                && q.getCaseType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.CONTENT) {
+            profile = asMap(meta == null ? null : meta.get("profilePending"));
+        }
+        return profile == null ? fallbackProfile : profile;
+    }
+
     private static String mergePostSupplements(String content, String files, String web) {
         return (nullToEmpty(content) + appendSectionBlock(files) + appendSectionBlock(web)).trim();
+    }
+
+    private static PromptVars promptVarsFromDirectText(String text) {
+        if (text == null || text.isBlank()) return null;
+        return new PromptVars("", text, text);
+    }
+
+    private static String prependReportsBlock(String reports, String content) {
+        if (reports == null || reports.isBlank()) return content;
+        return (reports + "\n\n" + nullToEmpty(content)).trim();
+    }
+
+    private static PromptVars buildPromptVarsWithReports(String title, String content, String base, String reports) {
+        String text = prependReportsBlock(reports, base);
+        String contentWithReports = prependReportsBlock(reports, content);
+        return new PromptVars(title, contentWithReports, text);
     }
 
     private static void putTextIfPresent(Map<String, Object> root, PromptVars vars) {
@@ -147,30 +150,15 @@ class AdminModerationLlmContextBuilder {
 
     PromptVars resolvePromptVars(LlmModerationTestRequest req) {
         if (req == null) return null;
-        if (req.getText() != null && !req.getText().isBlank()) {
-            String content = req.getText();
-            return new PromptVars("", content, content);
-        }
+        PromptVars direct = promptVarsFromDirectText(req.getText());
+        if (direct != null) return direct;
         if (req.getQueueId() == null) return null;
 
         ModerationQueueEntity q = queueRepository.findById(req.getQueueId()).orElse(null);
         if (q == null) return null;
 
         if (q.getContentType() == ContentType.POST) {
-            var p = postsRepository.findById(q.getContentId()).orElse(null);
-            if (p == null) return null;
-            String title = p.getTitle() == null ? "" : p.getTitle();
-            String content = p.getContent() == null ? "" : p.getContent();
-            String files = buildPostFilesBlock(q.getContentId());
-            String web = buildPostWebBlock(q.getContentId(), content);
-            String contentNormalized = mergePostSupplements(content, files, web);
-            String base = ("[POST]\n标题: " + title + "\n内容: " + contentNormalized).trim();
-            String reports = buildReportsBlock(ReportTargetType.POST, q.getContentId());
-            String text = (reports != null && !reports.isBlank()) ? (reports + "\n\n" + base).trim() : base;
-            String contentWithReports = (reports != null && !reports.isBlank())
-                    ? (reports + "\n\n" + contentNormalized).trim()
-                    : contentNormalized;
-            return new PromptVars(title, contentWithReports, text);
+            return buildPostPromptVars(q, true);
         }
         if (q.getContentType() == ContentType.COMMENT) {
             var c = commentsRepository.findById(q.getContentId()).orElse(null);
@@ -178,43 +166,15 @@ class AdminModerationLlmContextBuilder {
             String content = c.getContent() == null ? "" : c.getContent();
             String base = ("[COMMENT]\n内容: " + content).trim();
             String reports = buildReportsBlock(ReportTargetType.COMMENT, q.getContentId());
-            String text = (reports != null && !reports.isBlank()) ? (reports + "\n\n" + base).trim() : base;
-            String contentWithReports = (reports != null && !reports.isBlank()) ? (reports + "\n\n" + content).trim() : content;
-            return new PromptVars("", contentWithReports, text);
+            return buildPromptVarsWithReports("", content, base, reports);
         }
         if (q.getContentType() == ContentType.PROFILE) {
             UsersEntity u = usersRepository.findById(q.getContentId()).orElse(null);
             if (u == null) return null;
             Map<String, Object> meta = u.getMetadata();
-            Map<String, Object> profile = null;
             String reviewStage = blankToNull(req.getReviewStage());
-            if (q.getCaseType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.REPORT
-                    && "reported".equalsIgnoreCase(reviewStage)) {
-                profile = resolveReportProfileSnapshotFields(q);
-            }
-            if (profile == null
-                    && q.getCaseType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.CONTENT) {
-                profile = asMap(meta == null ? null : meta.get("profilePending"));
-            }
-            if (profile == null) profile = asMap(meta == null ? null : meta.get("profile"));
-
-            String username = safeString(profile == null ? null : profile.get("username"));
-            if (username == null || username.isBlank()) username = u.getUsername() == null ? "" : u.getUsername();
-            String bio = profile == null ? "" : nullToEmpty(safeString(profile.get("bio")));
-            String location = profile == null ? "" : nullToEmpty(safeString(profile.get("location")));
-            String website = profile == null ? "" : nullToEmpty(safeString(profile.get("website")));
-            String avatarUrl = profile == null ? "" : nullToEmpty(safeString(profile.get("avatarUrl")));
-
-            String content = ("username: " + username
-                    + "\nbio: " + bio
-                    + "\nlocation: " + location
-                    + "\nwebsite: " + website
-                    + "\navatarUrl: " + avatarUrl).trim();
-            String base = ("[PROFILE]\n" + content).trim();
-            String reports = buildReportsBlock(ReportTargetType.PROFILE, q.getContentId());
-            String text = (reports != null && !reports.isBlank()) ? (reports + "\n\n" + base).trim() : base;
-            String contentWithReports = (reports != null && !reports.isBlank()) ? (reports + "\n\n" + content).trim() : content;
-            return new PromptVars(username, contentWithReports, text);
+            Map<String, Object> profile = resolveEffectiveProfileFields(q, reviewStage, meta, asMap(meta == null ? null : meta.get("profile")));
+            return buildProfilePromptVars(profile, u.getUsername() == null ? "" : u.getUsername(), true, q.getContentId());
         }
 
         return null;
@@ -222,6 +182,45 @@ class AdminModerationLlmContextBuilder {
 
     private static String enumName(Enum<?> value) {
         return value == null ? null : value.name();
+    }
+
+    private PromptVars buildPostPromptVars(ModerationQueueEntity queue, boolean includeReports) {
+        var post = postsRepository.findById(queue.getContentId()).orElse(null);
+        if (post == null) return null;
+        String title = post.getTitle() == null ? "" : post.getTitle();
+        String content = post.getContent() == null ? "" : post.getContent();
+        String files = buildPostFilesBlock(queue.getContentId());
+        String web = buildPostWebBlock(queue.getContentId(), content);
+        String contentNormalized = mergePostSupplements(content, files, web);
+        String base = ("[POST]\n标题: " + title + "\n内容: " + contentNormalized).trim();
+        if (!includeReports) {
+            return new PromptVars(title, contentNormalized, base);
+        }
+        String reports = buildReportsBlock(ReportTargetType.POST, queue.getContentId());
+        return buildPromptVarsWithReports(title, contentNormalized, base, reports);
+    }
+
+    private PromptVars buildProfilePromptVars(Map<String, Object> profile,
+                                              String fallbackUsername,
+                                              boolean includeReports,
+                                              Long contentId) {
+        String username = safeString(profile == null ? null : profile.get("username"));
+        if (username == null || username.isBlank()) username = nullToEmpty(fallbackUsername);
+        String bio = profile == null ? "" : nullToEmpty(safeString(profile.get("bio")));
+        String location = profile == null ? "" : nullToEmpty(safeString(profile.get("location")));
+        String website = profile == null ? "" : nullToEmpty(safeString(profile.get("website")));
+        String avatarUrl = profile == null ? "" : nullToEmpty(safeString(profile.get("avatarUrl")));
+        String content = ("username: " + username
+                + "\nbio: " + bio
+                + "\nlocation: " + location
+                + "\nwebsite: " + website
+                + "\navatarUrl: " + avatarUrl).trim();
+        String base = ("[PROFILE]\n" + content).trim();
+        if (!includeReports) {
+            return new PromptVars(username, content, base);
+        }
+        String reports = buildReportsBlock(ReportTargetType.PROFILE, contentId);
+        return buildPromptVarsWithReports(username, content, base, reports);
     }
 
     private static String buildSyntheticSnapshotId(ModerationQueueEntity q) {
@@ -381,25 +380,7 @@ class AdminModerationLlmContextBuilder {
     String buildTextAuditInputJson(LlmModerationTestRequest req, PromptVars vars, QueueCtx ctx) {
         if (ctx == null || ctx.queue() == null || ctx.queue().getContentType() == null || ctx.queue().getContentId() == null) return null;
         if (ctx.policyVersion() == null || ctx.policyVersion().isBlank()) return null;
-        Map<String, Object> labelTax = new LinkedHashMap<>();
-        List<RiskTagItem> dbTags = resolveActiveRiskTagItems();
-        if (!dbTags.isEmpty()) {
-            labelTax.put("taxonomy_id", "risk_tags");
-            LinkedHashSet<String> allowed = new LinkedHashSet<>();
-            List<Map<String, Object>> labelMap = new ArrayList<>();
-            for (RiskTagItem it : dbTags) {
-                if (it == null) continue;
-                String name = it.name();
-                if (name == null || name.isBlank()) continue;
-                allowed.add(name);
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("slug", it.slug());
-                m.put("name", name);
-                labelMap.add(m);
-            }
-            if (!allowed.isEmpty()) labelTax.put("allowed_labels", new ArrayList<>(allowed));
-            if (!labelMap.isEmpty()) labelTax.put("label_map", labelMap);
-        }
+        Map<String, Object> labelTax = ModerationLabelTaxonomySupport.buildRiskTagTaxonomy(resolveActiveRiskTagItems());
 
         ModerationQueueEntity q = ctx.queue();
         Map<String, Object> root = new LinkedHashMap<>();
@@ -447,47 +428,16 @@ class AdminModerationLlmContextBuilder {
                 if (reviewStage == null) root.put("profile_stage", "update");
                 Map<String, Object> meta = u.getMetadata();
                 Map<String, Object> publicProfile = asMap(meta == null ? null : meta.get("profile"));
-
-                Map<String, Object> effective = null;
-                if (q.getCaseType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.REPORT
-                        && "reported".equalsIgnoreCase(reviewStage)) {
-                    effective = resolveReportProfileSnapshotFields(q);
-                }
-                if (effective == null
-                        && q.getCaseType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.CONTENT) {
-                    effective = asMap(meta == null ? null : meta.get("profilePending"));
-                }
-                if (effective == null) effective = publicProfile;
+                Map<String, Object> effective = resolveEffectiveProfileFields(q, reviewStage, meta, publicProfile);
 
                 String username = safeString(effective == null ? null : effective.get("username"));
                 if (username == null) username = safeString(u.getUsername());
 
-                String bio = nullToEmpty(safeString(effective == null ? null : effective.get("bio")));
-                String location = nullToEmpty(safeString(effective == null ? null : effective.get("location")));
-                String website = nullToEmpty(safeString(effective == null ? null : effective.get("website")));
-                String avatarUrl = nullToEmpty(safeString(effective == null ? null : effective.get("avatarUrl")));
-
-                Map<String, Object> profileFields = new LinkedHashMap<>();
-                profileFields.put("username", nullToEmpty(username));
-                profileFields.put("bio", bio);
-                profileFields.put("location", location);
-                profileFields.put("website", website);
-                profileFields.put("avatarUrl", avatarUrl);
-                root.put("profile_fields", profileFields);
+                root.put("profile_fields", buildProfileFields(username, effective));
 
                 if (q.getCaseType() == com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType.CONTENT) {
                     String oldUsername = safeString(u.getUsername());
-                    String oldBio = nullToEmpty(safeString(publicProfile == null ? null : publicProfile.get("bio")));
-                    String oldLocation = nullToEmpty(safeString(publicProfile == null ? null : publicProfile.get("location")));
-                    String oldWebsite = nullToEmpty(safeString(publicProfile == null ? null : publicProfile.get("website")));
-                    String oldAvatarUrl = nullToEmpty(safeString(publicProfile == null ? null : publicProfile.get("avatarUrl")));
-                    Map<String, Object> oldProfileFields = new LinkedHashMap<>();
-                    oldProfileFields.put("username", nullToEmpty(oldUsername));
-                    oldProfileFields.put("bio", oldBio);
-                    oldProfileFields.put("location", oldLocation);
-                    oldProfileFields.put("website", oldWebsite);
-                    oldProfileFields.put("avatarUrl", oldAvatarUrl);
-                    root.put("old_profile_fields", oldProfileFields);
+                    root.put("old_profile_fields", buildProfileFields(oldUsername, publicProfile));
                 }
                 root.put("related_ocr", resolveRelatedOcr(ctx));
                 if ("reported".equalsIgnoreCase(reviewStage)) {
@@ -507,25 +457,7 @@ class AdminModerationLlmContextBuilder {
     String buildVisionAuditInputJsonList(LlmModerationTestRequest req, QueueCtx ctx, List<ImageRef> images) {
         if (ctx == null || ctx.queue() == null || ctx.queue().getContentType() == null || ctx.queue().getContentId() == null) return null;
         if (ctx.policyVersion() == null || ctx.policyVersion().isBlank()) return null;
-        Map<String, Object> labelTax = new LinkedHashMap<>();
-        List<RiskTagItem> dbTags = resolveActiveRiskTagItems();
-        if (!dbTags.isEmpty()) {
-            labelTax.put("taxonomy_id", "risk_tags");
-            LinkedHashSet<String> allowed = new LinkedHashSet<>();
-            List<Map<String, Object>> labelMap = new ArrayList<>();
-            for (RiskTagItem it : dbTags) {
-                if (it == null) continue;
-                String name = it.name();
-                if (name == null || name.isBlank()) continue;
-                allowed.add(name);
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("slug", it.slug());
-                m.put("name", name);
-                labelMap.add(m);
-            }
-            if (!allowed.isEmpty()) labelTax.put("allowed_labels", new ArrayList<>(allowed));
-            if (!labelMap.isEmpty()) labelTax.put("label_map", labelMap);
-        }
+        Map<String, Object> labelTax = ModerationLabelTaxonomySupport.buildRiskTagTaxonomy(resolveActiveRiskTagItems());
 
         String contentType = ctx.queue().getContentType().name().toLowerCase(Locale.ROOT);
         Long contentId = ctx.queue().getContentId();
@@ -935,42 +867,15 @@ class AdminModerationLlmContextBuilder {
     }
 
     private static Object deepGet(Map<String, Object> root, String path) {
-        if (root == null || root.isEmpty() || path == null || path.isBlank()) return null;
-        String[] segs = path.split("\\.");
-        Object cur = root;
-        for (String seg : segs) {
-            if (seg == null || seg.isBlank()) continue;
-            Map<String, Object> m = asMap(cur);
-            if (m == null) return null;
-            cur = m.get(seg);
-        }
-        return cur;
+        return ModerationMapPathSupport.deepGet(root, path);
     }
 
     private static Map<String, Object> asMap(Object v) {
-        if (!(v instanceof Map<?, ?> mm)) return null;
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (var e : mm.entrySet()) {
-            Object k = e.getKey();
-            if (k == null) continue;
-            out.put(String.valueOf(k), e.getValue());
-        }
-        return out;
+        return ModerationMapPathSupport.asMap(v);
     }
 
     private static List<String> asStringList(Object v) {
-        if (v == null) return List.of();
-        if (v instanceof List<?> list) {
-            List<String> out = new ArrayList<>();
-            for (Object it : list) {
-                if (it == null) continue;
-                String s = String.valueOf(it).trim();
-                if (!s.isBlank()) out.add(s);
-            }
-            return out;
-        }
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? List.of() : List.of(s);
+        return ModerationCollectionSupport.asStringList(v);
     }
 
     private static String safeString(Object v) {
@@ -983,6 +888,16 @@ class AdminModerationLlmContextBuilder {
 
     private static String nullToEmpty(String s) {
         return s == null ? "" : s;
+    }
+
+    private static Map<String, Object> buildProfileFields(String username, Map<String, Object> profile) {
+        Map<String, Object> profileFields = new LinkedHashMap<>();
+        profileFields.put("username", nullToEmpty(username));
+        profileFields.put("bio", nullToEmpty(safeString(profile == null ? null : profile.get("bio"))));
+        profileFields.put("location", nullToEmpty(safeString(profile == null ? null : profile.get("location"))));
+        profileFields.put("website", nullToEmpty(safeString(profile == null ? null : profile.get("website"))));
+        profileFields.put("avatarUrl", nullToEmpty(safeString(profile == null ? null : profile.get("avatarUrl"))));
+        return profileFields;
     }
 
     private static double clamp01(Double v) {

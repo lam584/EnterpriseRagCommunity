@@ -14,6 +14,7 @@ import {
   adminGetDependencyCircuitBreakerConfig,
   adminUpdateDependencyCircuitBreakerConfig,
 } from '../../../../services/dependencyCircuitBreakerAdminService';
+import { clampMetricInt } from './metricsTimeUtils';
 
 type LoadState = 'idle' | 'loading' | 'saving';
 
@@ -32,24 +33,22 @@ type CommittedState = {
   esCooldownSeconds: number;
 };
 
-function toBool(v: unknown, def: boolean): boolean {
-  if (typeof v === 'boolean') return v;
-  return def;
+function readScopeState(scope: {
+  all?: unknown;
+  userIds?: unknown;
+  postIds?: unknown;
+  entrypoints?: unknown;
+}) {
+  return {
+    scopeAll: toBool(scope.all, true),
+    userIdsRaw: joinIdList(scope.userIds),
+    postIdsRaw: joinIdList(scope.postIds),
+    entrypoints: (scope.entrypoints || []).map((x) => String(x || '').trim()).filter(Boolean),
+  };
 }
 
-function clampInt(v: unknown, min: number, max: number, def: number): number {
-  if (typeof v === 'number' && Number.isFinite(v)) {
-    const t = Math.trunc(v);
-    return Math.max(min, Math.min(max, t));
-  }
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (!t) return def;
-    const n = Number(t);
-    if (!Number.isFinite(n)) return def;
-    const x = Math.trunc(n);
-    return Math.max(min, Math.min(max, x));
-  }
+function toBool(v: unknown, def: boolean): boolean {
+  if (typeof v === 'boolean') return v;
   return def;
 }
 
@@ -137,13 +136,13 @@ function normalizeConfig(s: ContentSafetyCircuitBreakerStatusDTO | null): Requir
   };
   const autoTrigger: ContentSafetyCircuitBreakerAutoTriggerDTO = {
     enabled: toBool(at0.enabled, false),
-    windowSeconds: clampInt(at0.windowSeconds, 5, 3600, 60),
-    thresholdCount: clampInt(at0.thresholdCount, 1, 1_000_000, 10),
+    windowSeconds: clampMetricInt(at0.windowSeconds, 5, 3600, 60),
+    thresholdCount: clampMetricInt(at0.thresholdCount, 1, 1_000_000, 10),
     minConfidence: clampNum(at0.minConfidence, 0, 1, 0.9),
     verdicts: Array.isArray(at0.verdicts) ? at0.verdicts : ['REJECT', 'REVIEW'],
     triggerMode: String(at0.triggerMode || 'S1'),
-    coolDownSeconds: clampInt(at0.coolDownSeconds, 0, 86400, 300),
-    autoRecoverSeconds: clampInt(at0.autoRecoverSeconds, 0, 7 * 86400, 0),
+    coolDownSeconds: clampMetricInt(at0.coolDownSeconds, 0, 86400, 300),
+    autoRecoverSeconds: clampMetricInt(at0.autoRecoverSeconds, 0, 7 * 86400, 0),
   };
 
   return {
@@ -180,13 +179,13 @@ function buildConfig(
   };
   const autoTrigger: ContentSafetyCircuitBreakerAutoTriggerDTO = {
     enabled: toBool(at.enabled, false),
-    windowSeconds: clampInt(at.windowSeconds, 5, 3600, 60),
-    thresholdCount: clampInt(at.thresholdCount, 1, 1_000_000, 10),
+    windowSeconds: clampMetricInt(at.windowSeconds, 5, 3600, 60),
+    thresholdCount: clampMetricInt(at.thresholdCount, 1, 1_000_000, 10),
     minConfidence: clampNum(at.minConfidence, 0, 1, 0.9),
     verdicts: Array.isArray(at.verdicts) ? at.verdicts : ['REJECT', 'REVIEW'],
     triggerMode: String(at.triggerMode || 'S1'),
-    coolDownSeconds: clampInt(at.coolDownSeconds, 0, 86400, 300),
-    autoRecoverSeconds: clampInt(at.autoRecoverSeconds, 0, 7 * 86400, 0),
+    coolDownSeconds: clampMetricInt(at.coolDownSeconds, 0, 86400, 300),
+    autoRecoverSeconds: clampMetricInt(at.autoRecoverSeconds, 0, 7 * 86400, 0),
   };
   return {
     enabled,
@@ -269,15 +268,11 @@ export default function CircuitBreakerAdminForm() {
       setMode(modeNext);
       setMessage(messageNext);
 
-      const sc = cfg.scope || {};
-      const scopeAllNext = toBool(sc.all, true);
-      const userIdsRawNext = joinIdList(sc.userIds);
-      const postIdsRawNext = joinIdList(sc.postIds);
-      const entrypointsNext = (sc.entrypoints || []).map(x => String(x || '').trim()).filter(Boolean);
-      setScopeAll(scopeAllNext);
-      setUserIdsRaw(userIdsRawNext);
-      setPostIdsRaw(postIdsRawNext);
-      setEntrypoints(new Set(entrypointsNext));
+      const scopeState = readScopeState(cfg.scope || {});
+      setScopeAll(scopeState.scopeAll);
+      setUserIdsRaw(scopeState.userIdsRaw);
+      setPostIdsRaw(scopeState.postIdsRaw);
+      setEntrypoints(new Set(scopeState.entrypoints));
 
       const di = cfg.dependencyIsolation || {};
       const diMysqlNext = toBool(di.mysql, false);
@@ -291,8 +286,8 @@ export default function CircuitBreakerAdminForm() {
       let esFailureThresholdNext = 5;
       let esCooldownSecondsNext = 30;
       if (esCfg) {
-        esFailureThresholdNext = clampInt(esCfg.failureThreshold, 0, 1000, 5);
-        esCooldownSecondsNext = clampInt(esCfg.cooldownSeconds, 0, 3600, 30);
+        esFailureThresholdNext = clampMetricInt(esCfg.failureThreshold, 0, 1000, 5);
+        esCooldownSecondsNext = clampMetricInt(esCfg.cooldownSeconds, 0, 3600, 30);
         setEsFailureThreshold(esFailureThresholdNext);
         setEsCooldownSeconds(esCooldownSecondsNext);
       }
@@ -301,10 +296,10 @@ export default function CircuitBreakerAdminForm() {
         enabled: enabledNext,
         mode: modeNext,
         message: messageNext,
-        scopeAll: scopeAllNext,
-        userIdsRaw: userIdsRawNext,
-        postIdsRaw: postIdsRawNext,
-        entrypoints: entrypointsNext.sort(),
+        scopeAll: scopeState.scopeAll,
+        userIdsRaw: scopeState.userIdsRaw,
+        postIdsRaw: scopeState.postIdsRaw,
+        entrypoints: [...scopeState.entrypoints].sort(),
         diMysql: diMysqlNext,
         diEs: diEsNext,
         autoTrigger: autoTriggerNext,
@@ -344,15 +339,11 @@ export default function CircuitBreakerAdminForm() {
       setMode(modeNext);
       setMessage(messageNext);
 
-      const sc = normalized.scope || {};
-      const scopeAllNext = toBool(sc.all, true);
-      const userIdsRawNext = joinIdList(sc.userIds);
-      const postIdsRawNext = joinIdList(sc.postIds);
-      const entrypointsNext = (sc.entrypoints || []).map(x => String(x || '').trim()).filter(Boolean);
-      setScopeAll(scopeAllNext);
-      setUserIdsRaw(userIdsRawNext);
-      setPostIdsRaw(postIdsRawNext);
-      setEntrypoints(new Set(entrypointsNext));
+      const scopeState = readScopeState(normalized.scope || {});
+      setScopeAll(scopeState.scopeAll);
+      setUserIdsRaw(scopeState.userIdsRaw);
+      setPostIdsRaw(scopeState.postIdsRaw);
+      setEntrypoints(new Set(scopeState.entrypoints));
 
       const di = normalized.dependencyIsolation || {};
       const diMysqlNext = toBool(di.mysql, false);
@@ -365,10 +356,10 @@ export default function CircuitBreakerAdminForm() {
         enabled: enabledNext,
         mode: modeNext,
         message: messageNext,
-        scopeAll: scopeAllNext,
-        userIdsRaw: userIdsRawNext,
-        postIdsRaw: postIdsRawNext,
-        entrypoints: entrypointsNext.sort(),
+        scopeAll: scopeState.scopeAll,
+        userIdsRaw: scopeState.userIdsRaw,
+        postIdsRaw: scopeState.postIdsRaw,
+        entrypoints: [...scopeState.entrypoints].sort(),
         diMysql: diMysqlNext,
         diEs: diEsNext,
         autoTrigger: autoTriggerNext,
@@ -606,7 +597,7 @@ export default function CircuitBreakerAdminForm() {
             <div className="text-sm text-gray-700">失败阈值（0=关闭）</div>
             <input
               value={esFailureThreshold}
-              onChange={(e) => setEsFailureThreshold(clampInt(e.target.value, 0, 1000, 5))}
+              onChange={(e) => setEsFailureThreshold(clampMetricInt(e.target.value, 0, 1000, 5))}
               disabled={!editable}
               className="w-full border rounded px-2 py-1 text-sm"
             />
@@ -615,7 +606,7 @@ export default function CircuitBreakerAdminForm() {
             <div className="text-sm text-gray-700">冷却窗口（秒）</div>
             <input
               value={esCooldownSeconds}
-              onChange={(e) => setEsCooldownSeconds(clampInt(e.target.value, 0, 3600, 30))}
+              onChange={(e) => setEsCooldownSeconds(clampMetricInt(e.target.value, 0, 3600, 30))}
               disabled={!editable}
               className="w-full border rounded px-2 py-1 text-sm"
             />
@@ -641,7 +632,7 @@ export default function CircuitBreakerAdminForm() {
             <input
               value={autoTrigger.windowSeconds ?? 60}
               disabled={!editable}
-              onChange={(e) => setAutoTrigger((prev) => ({ ...prev, windowSeconds: clampInt(e.target.value, 5, 3600, 60) }))}
+              onChange={(e) => setAutoTrigger((prev) => ({ ...prev, windowSeconds: clampMetricInt(e.target.value, 5, 3600, 60) }))}
               className="w-full border rounded px-2 py-1 text-sm"
             />
           </div>
@@ -650,7 +641,7 @@ export default function CircuitBreakerAdminForm() {
             <input
               value={autoTrigger.thresholdCount ?? 10}
               disabled={!editable}
-              onChange={(e) => setAutoTrigger((prev) => ({ ...prev, thresholdCount: clampInt(e.target.value, 1, 1_000_000, 10) }))}
+              onChange={(e) => setAutoTrigger((prev) => ({ ...prev, thresholdCount: clampMetricInt(e.target.value, 1, 1_000_000, 10) }))}
               className="w-full border rounded px-2 py-1 text-sm"
             />
           </div>
@@ -681,7 +672,7 @@ export default function CircuitBreakerAdminForm() {
             <input
               value={autoTrigger.coolDownSeconds ?? 300}
               disabled={!editable}
-              onChange={(e) => setAutoTrigger((prev) => ({ ...prev, coolDownSeconds: clampInt(e.target.value, 0, 86400, 300) }))}
+              onChange={(e) => setAutoTrigger((prev) => ({ ...prev, coolDownSeconds: clampMetricInt(e.target.value, 0, 86400, 300) }))}
               className="w-full border rounded px-2 py-1 text-sm"
             />
           </div>
@@ -690,7 +681,7 @@ export default function CircuitBreakerAdminForm() {
             <input
               value={autoTrigger.autoRecoverSeconds ?? 0}
               disabled={!editable}
-              onChange={(e) => setAutoTrigger((prev) => ({ ...prev, autoRecoverSeconds: clampInt(e.target.value, 0, 7 * 86400, 0) }))}
+              onChange={(e) => setAutoTrigger((prev) => ({ ...prev, autoRecoverSeconds: clampMetricInt(e.target.value, 0, 7 * 86400, 0) }))}
               className="w-full border rounded px-2 py-1 text-sm"
             />
           </div>

@@ -113,37 +113,10 @@ public class AuditLogsController {
                 sort
         );
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("id,createdAt,actorId,actorName,action,entityType,entityId,result,traceId,method,path,autoCrud,message\n");
-        for (AuditLogsViewDTO it : pageRes.getContent()) {
-            sb.append(csv(it.id())).append(',')
-                    .append(csv(it.createdAt())).append(',')
-                    .append(csv(it.actorId())).append(',')
-                    .append(csv(it.actorName())).append(',')
-                    .append(csv(it.action())).append(',')
-                    .append(csv(it.entityType())).append(',')
-                    .append(csv(it.entityId())).append(',')
-                    .append(csv(it.result())).append(',')
-                    .append(csv(it.traceId())).append(',')
-                    .append(csv(it.method())).append(',')
-                    .append(csv(it.path())).append(',')
-                    .append(csv(it.autoCrud())).append(',')
-                    .append(csv(it.message()))
-                    .append('\n');
-        }
-
-        sb.insert(0, '\uFEFF');
         String filename = "audit-logs.csv";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-                .body(sb.toString().getBytes(StandardCharsets.UTF_8));
-    }
-
-    private static String csv(Object v) {
-        if (v == null) return "\"\"";
-        String s = String.valueOf(v);
-        s = s.replace("\"", "\"\"");
-        return "\"" + s + "\"";
+                .body(AuditLogsCsvSupport.toCsvBytes(pageRes.getContent()));
     }
 }

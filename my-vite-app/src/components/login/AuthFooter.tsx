@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import beianIcon from '../../assets/images/备案编号图标.png';
 import { getPublicSiteConfig, type PublicSiteConfig } from '../../services/publicSiteConfigService';
+import { applySiteConfigIfActive, fallbackSiteConfigIfActive } from '../common/beianFooterShared';
 
 export interface AuthFooterProps {
   className?: string;
@@ -16,10 +17,10 @@ export default function AuthFooter(props: AuthFooterProps) {
     let cancelled = false;
     getPublicSiteConfig()
       .then((cfg) => {
-        if (!cancelled) setSiteConfig(cfg);
+        applySiteConfigIfActive(cancelled, setSiteConfig, cfg);
       })
       .catch(() => {
-        if (!cancelled) setSiteConfig({ beianText: null, beianHref: null, copyrightText: null });
+        fallbackSiteConfigIfActive(cancelled, setSiteConfig);
       });
     return () => {
       cancelled = true;

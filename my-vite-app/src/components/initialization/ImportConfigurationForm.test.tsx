@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react';
 import ImportConfigurationForm from './ImportConfigurationForm';
@@ -87,6 +88,38 @@ const getVisibilityButtonByKey = (key: string) => {
   const btn = icon?.closest('button') as HTMLButtonElement | null;
   if (!btn) throw new Error(`Visibility button not found for key: ${key}`);
   return btn;
+};
+
+const goToEsStep = async () => {
+  render(<ImportConfigurationForm />);
+  fireEvent.click(screen.getByText('下一步'));
+  await screen.findByText('ES 初始化');
+};
+
+const fillAdminAccountForm = () => {
+  fireEvent.change(screen.getByPlaceholderText('请输入管理员邮箱'), { target: { value: 'a@b.com' } });
+  fireEvent.change(screen.getByPlaceholderText('请输入用户名'), { target: { value: 'u' } });
+  fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: 'p' } });
+  fireEvent.change(screen.getByPlaceholderText('请再次输入密码'), { target: { value: 'p' } });
+};
+
+const renderAndGoToAdminAccountStep = async () => {
+  render(<ImportConfigurationForm />);
+  fireEvent.click(screen.getByText('跳过'));
+  await screen.findByText('创建管理员账户');
+};
+
+const renderAndFillAdminAccountStep = async (values?: {
+  email?: string;
+  username?: string;
+  password?: string;
+  confirmPassword?: string;
+}) => {
+  await renderAndGoToAdminAccountStep();
+  fireEvent.change(screen.getByPlaceholderText('请输入管理员邮箱'), { target: { value: values?.email ?? 'a@b.com' } });
+  fireEvent.change(screen.getByPlaceholderText('请输入用户名'), { target: { value: values?.username ?? 'u' } });
+  fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: values?.password ?? 'p' } });
+  fireEvent.change(screen.getByPlaceholderText('请再次输入密码'), { target: { value: values?.confirmPassword ?? values?.password ?? 'p' } });
 };
 
 describe('ImportConfigurationForm', () => {
@@ -235,14 +268,7 @@ describe('ImportConfigurationForm', () => {
   });
 
   it('validates password mismatch', async () => {
-    render(<ImportConfigurationForm />);
-    fireEvent.click(screen.getByText('跳过'));
-    await screen.findByText('创建管理员账户');
-
-    fireEvent.change(screen.getByPlaceholderText('请输入管理员邮箱'), { target: { value: 'a@b.com' } });
-    fireEvent.change(screen.getByPlaceholderText('请输入用户名'), { target: { value: 'u' } });
-    fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: 'p1' } });
-    fireEvent.change(screen.getByPlaceholderText('请再次输入密码'), { target: { value: 'p2' } });
+    await renderAndFillAdminAccountStep({ password: 'p1', confirmPassword: 'p2' });
 
     fireEvent.click(screen.getByText('完成设置'));
     await screen.findByText('密码不匹配');
@@ -495,10 +521,7 @@ describe('ImportConfigurationForm', () => {
   it('creates indices with selected indices and proceeds to step3', async () => {
     setupServiceMocks.testEsConnection.mockResolvedValue({ success: true });
     setupServiceMocks.initIndices.mockResolvedValue(undefined);
-    render(<ImportConfigurationForm />);
-
-    fireEvent.click(screen.getByText('下一步'));
-    await screen.findByText('ES 初始化');
+    await goToEsStep();
     fireEvent.change(getInputByKey('APP_ES_API_KEY'), { target: { value: 'ESK' } });
 
     const toUncheck = screen.getByRole('checkbox', { name: 'rag_post_chunks_v1' });
@@ -516,10 +539,7 @@ describe('ImportConfigurationForm', () => {
   it('re-checks an index and includes it again in initIndices args', async () => {
     setupServiceMocks.testEsConnection.mockResolvedValue({ success: true });
     setupServiceMocks.initIndices.mockResolvedValue(undefined);
-    render(<ImportConfigurationForm />);
-
-    fireEvent.click(screen.getByText('下一步'));
-    await screen.findByText('ES 初始化');
+    await goToEsStep();
     fireEvent.change(getInputByKey('APP_ES_API_KEY'), { target: { value: 'ESK' } });
 
     const cb = screen.getByRole('checkbox', { name: 'rag_post_chunks_v1' });
@@ -535,14 +555,7 @@ describe('ImportConfigurationForm', () => {
 
   it('shows friendly error and toast when final submit fails', async () => {
     setupServiceMocks.saveSetupConfig.mockRejectedValue({ message: '401 Unauthorized' });
-    render(<ImportConfigurationForm />);
-    fireEvent.click(screen.getByText('跳过'));
-    await screen.findByText('创建管理员账户');
-
-    fireEvent.change(screen.getByPlaceholderText('请输入管理员邮箱'), { target: { value: 'a@b.com' } });
-    fireEvent.change(screen.getByPlaceholderText('请输入用户名'), { target: { value: 'u' } });
-    fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: 'p' } });
-    fireEvent.change(screen.getByPlaceholderText('请再次输入密码'), { target: { value: 'p' } });
+    await renderAndFillAdminAccountStep();
 
     fireEvent.click(screen.getByText('完成设置'));
     await screen.findByText('认证失败：请检查 ES API Key 或密码是否正确');
@@ -554,14 +567,7 @@ describe('ImportConfigurationForm', () => {
     setupServiceMocks.initIndices.mockResolvedValue(undefined);
     setupServiceMocks.completeSetup.mockResolvedValue(undefined);
 
-    render(<ImportConfigurationForm />);
-    fireEvent.click(screen.getByText('跳过'));
-    await screen.findByText('创建管理员账户');
-
-    fireEvent.change(screen.getByPlaceholderText('请输入管理员邮箱'), { target: { value: 'a@b.com' } });
-    fireEvent.change(screen.getByPlaceholderText('请输入用户名'), { target: { value: 'u' } });
-    fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: 'p' } });
-    fireEvent.change(screen.getByPlaceholderText('请再次输入密码'), { target: { value: 'p' } });
+    await renderAndFillAdminAccountStep();
 
     fireEvent.click(screen.getByText('完成设置'));
 
@@ -588,10 +594,7 @@ describe('ImportConfigurationForm', () => {
     fireEvent.click(screen.getByText('创建'));
     await screen.findByText('创建管理员账户');
 
-    fireEvent.change(screen.getByPlaceholderText('请输入管理员邮箱'), { target: { value: 'a@b.com' } });
-    fireEvent.change(screen.getByPlaceholderText('请输入用户名'), { target: { value: 'u' } });
-    fireEvent.change(screen.getByPlaceholderText('请输入密码'), { target: { value: 'p' } });
-    fireEvent.change(screen.getByPlaceholderText('请再次输入密码'), { target: { value: 'p' } });
+    fillAdminAccountForm();
     fireEvent.click(screen.getByText('完成设置'));
 
     await waitFor(() => {

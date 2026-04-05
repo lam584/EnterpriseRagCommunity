@@ -123,9 +123,6 @@ function extractHighlightTerms(text: string): string[] {
 export function buildCitationFallbackTerms(md: string): Map<number, string[]> {
   const out = new Map<number, string[]>();
   if (!md) return out;
-  const reCode = /```[\s\S]*?```/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
   const collect = (txt: string) => {
     for (const m of txt.matchAll(/\[(\d{1,3})](?!\()/g)) {
       const idx = Number(m[1]);
@@ -150,21 +147,14 @@ export function buildCitationFallbackTerms(md: string): Map<number, string[]> {
       out.set(idx, merged);
     }
   };
-  while ((match = reCode.exec(md)) !== null) {
-    collect(md.slice(lastIndex, match.index));
-    lastIndex = match.index + match[0].length;
-  }
-  collect(md.slice(lastIndex));
+  collectOutsideCodeBlocks(md, collect);
   return out;
 }
 
 export function buildCitationExactQuoteTerms(md: string): Map<number, string[]> {
   const out = new Map<number, string[]>();
   if (!md) return out;
-  const reCode = /```[\s\S]*?```/g;
   const quoteRe = /[“"「『]([^“"”「」『』\n]{2,120}?)[”"」』]/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
   const collect = (txt: string) => {
     for (const m of txt.matchAll(/\[(\d{1,3})](?!\()/g)) {
       const idx = Number(m[1]);
@@ -195,12 +185,19 @@ export function buildCitationExactQuoteTerms(md: string): Map<number, string[]> 
       if (merged.length > 0) out.set(idx, merged);
     }
   };
+  collectOutsideCodeBlocks(md, collect);
+  return out;
+}
+
+function collectOutsideCodeBlocks(md: string, collect: (txt: string) => void): void {
+  const reCode = /```[\s\S]*?```/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
   while ((match = reCode.exec(md)) !== null) {
     collect(md.slice(lastIndex, match.index));
     lastIndex = match.index + match[0].length;
   }
   collect(md.slice(lastIndex));
-  return out;
 }
 
 export function pickCitationHighlightTerms(

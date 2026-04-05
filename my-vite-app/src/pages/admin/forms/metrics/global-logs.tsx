@@ -16,6 +16,7 @@ import { downloadBlob } from '../../../../utils/download';
 import { adminGetLogRetentionConfig, adminUpdateLogRetentionConfig } from '../../../../services/logRetentionService';
 import type { LogRetentionConfigDTO } from '../../../../services/logRetentionService';
 import DetailDialog from '../../../../components/common/DetailDialog';
+import { resolveMetricsPageMeta } from './metricsPageMeta';
 
 const PAGE_SIZE_OPTIONS = [15, 30, 100, 500, 1000, 5000, 20000] as const;
 
@@ -78,12 +79,6 @@ function parsePositiveInt(s: string | null): number | undefined {
   const n = Number(s);
   if (!Number.isFinite(n) || n <= 0) return undefined;
   return Math.floor(n);
-}
-
-function toNonNegativeNumber(v: unknown): number | null {
-  const n = typeof v === 'number' ? v : Number(v);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n;
 }
 
 type LogBodyInfo = {
@@ -334,20 +329,12 @@ const GlobalLogsForm: React.FC = () => {
         });
 
         if (!mountedRef.current) return;
-        const nextTotalPages = Math.max(1, toNonNegativeNumber(res.totalPages) ?? 1);
-        const nextTotalElements = Math.max(0, toNonNegativeNumber(res.totalElements) ?? 0);
-        const rawNumber = toNonNegativeNumber(res.number);
-        const backendPageIndex =
-          rawNumber == null ? Math.max(0, page - 1) : rawNumber >= 1 && rawNumber <= nextTotalPages ? Math.max(0, rawNumber - 1) : Math.max(0, rawNumber);
-        const hasMoreByFlag = res.last === false;
-        const hasMoreByPageCount = backendPageIndex + 1 < nextTotalPages;
-        const hasMoreByTotal = nextTotalElements > (backendPageIndex + 1) * pageSize;
-        const hasMoreByContent = res.last !== true && (res.content ?? []).length >= pageSize;
+        const pageMeta = resolveMetricsPageMeta(page, pageSize, res);
         setAuditItems(res.content ?? []);
         setAccessItems([]);
-        setTotalPages(nextTotalPages);
-        setTotalElements(nextTotalElements);
-        setHasNextPage(hasMoreByFlag || hasMoreByPageCount || hasMoreByTotal || hasMoreByContent);
+        setTotalPages(pageMeta.totalPages);
+        setTotalElements(pageMeta.totalElements);
+        setHasNextPage(pageMeta.hasNextPage);
         syncToUrl(tab, page, pageSize, auditQuery, accessQuery);
       } else {
         const res = await adminListAccessLogs({
@@ -368,20 +355,12 @@ const GlobalLogsForm: React.FC = () => {
         });
 
         if (!mountedRef.current) return;
-        const nextTotalPages = Math.max(1, toNonNegativeNumber(res.totalPages) ?? 1);
-        const nextTotalElements = Math.max(0, toNonNegativeNumber(res.totalElements) ?? 0);
-        const rawNumber = toNonNegativeNumber(res.number);
-        const backendPageIndex =
-          rawNumber == null ? Math.max(0, page - 1) : rawNumber >= 1 && rawNumber <= nextTotalPages ? Math.max(0, rawNumber - 1) : Math.max(0, rawNumber);
-        const hasMoreByFlag = res.last === false;
-        const hasMoreByPageCount = backendPageIndex + 1 < nextTotalPages;
-        const hasMoreByTotal = nextTotalElements > (backendPageIndex + 1) * pageSize;
-        const hasMoreByContent = res.last !== true && (res.content ?? []).length >= pageSize;
+        const pageMeta = resolveMetricsPageMeta(page, pageSize, res);
         setAccessItems(res.content ?? []);
         setAuditItems([]);
-        setTotalPages(nextTotalPages);
-        setTotalElements(nextTotalElements);
-        setHasNextPage(hasMoreByFlag || hasMoreByPageCount || hasMoreByTotal || hasMoreByContent);
+        setTotalPages(pageMeta.totalPages);
+        setTotalElements(pageMeta.totalElements);
+        setHasNextPage(pageMeta.hasNextPage);
         syncToUrl(tab, page, pageSize, auditQuery, accessQuery);
       }
     } catch (e) {

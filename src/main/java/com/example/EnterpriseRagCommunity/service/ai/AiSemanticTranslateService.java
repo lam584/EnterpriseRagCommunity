@@ -23,8 +23,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,43 +44,47 @@ public class AiSemanticTranslateService {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public SemanticTranslateResultDTO translatePost(Long postId, String targetLang, Long actorUserId) {
-        if (postId == null) throw new IllegalArgumentException("postId 不能为空");
-        PostsEntity post = postsRepository.findByIdAndIsDeletedFalse(postId)
-                .orElseThrow(() -> new IllegalArgumentException("帖子不存在"));
-
-        String title = post.getTitle() == null ? "" : post.getTitle().trim();
-        String content = post.getContent() == null ? "" : post.getContent().trim();
+        PostTranslateSource post = requirePostTranslateSource(postId);
+        String title = post.title();
+        String content = post.content();
         return translateOnce("POST", postId, title, content, targetLang, actorUserId);
     }
 
     public SemanticTranslateResultDTO translateComment(Long commentId, String targetLang, Long actorUserId) {
-        if (commentId == null) throw new IllegalArgumentException("commentId 不能为空");
-        CommentsEntity c = commentsRepository.findById(commentId)
-                .filter(x -> !Boolean.TRUE.equals(x.getIsDeleted()))
-                .orElseThrow(() -> new IllegalArgumentException("评论不存在"));
-
-        String content = c.getContent() == null ? "" : c.getContent().trim();
+        String content = requireCommentTranslateContent(commentId);
         return translateOnce("COMMENT", commentId, null, content, targetLang, actorUserId);
     }
 
     public SseEmitter translatePostStream(Long postId, String targetLang, Long actorUserId) {
-        if (postId == null) throw new IllegalArgumentException("postId 不能为空");
-        PostsEntity post = postsRepository.findByIdAndIsDeletedFalse(postId)
-                .orElseThrow(() -> new IllegalArgumentException("帖子不存在"));
-
-        String title = post.getTitle() == null ? "" : post.getTitle().trim();
-        String content = post.getContent() == null ? "" : post.getContent().trim();
+        PostTranslateSource post = requirePostTranslateSource(postId);
+        String title = post.title();
+        String content = post.content();
         return translateStreamOnce("POST", postId, title, content, targetLang, actorUserId);
     }
 
+    private PostTranslateSource requirePostTranslateSource(Long postId) {
+        if (postId == null) throw new IllegalArgumentException("postId 不能为空");
+        PostsEntity post = postsRepository.findByIdAndIsDeletedFalse(postId)
+                .orElseThrow(() -> new IllegalArgumentException("帖子不存在"));
+        String title = post.getTitle() == null ? "" : post.getTitle().trim();
+        String content = post.getContent() == null ? "" : post.getContent().trim();
+        return new PostTranslateSource(title, content);
+    }
+
+    private record PostTranslateSource(String title, String content) {
+    }
+
     public SseEmitter translateCommentStream(Long commentId, String targetLang, Long actorUserId) {
+        String content = requireCommentTranslateContent(commentId);
+        return translateStreamOnce("COMMENT", commentId, null, content, targetLang, actorUserId);
+    }
+
+    private String requireCommentTranslateContent(Long commentId) {
         if (commentId == null) throw new IllegalArgumentException("commentId 不能为空");
-        CommentsEntity c = commentsRepository.findById(commentId)
+        CommentsEntity comment = commentsRepository.findById(commentId)
                 .filter(x -> !Boolean.TRUE.equals(x.getIsDeleted()))
                 .orElseThrow(() -> new IllegalArgumentException("评论不存在"));
-
-        String content = c.getContent() == null ? "" : c.getContent().trim();
-        return translateStreamOnce("COMMENT", commentId, null, content, targetLang, actorUserId);
+        return comment.getContent() == null ? "" : comment.getContent().trim();
     }
 
     private SseEmitter translateStreamOnce(
@@ -146,14 +148,7 @@ public class AiSemanticTranslateService {
 
         if (cached != null) {
             try {
-                SemanticTranslateResultDTO out = new SemanticTranslateResultDTO();
-                out.setTargetLang(safeTargetLang);
-                out.setTranslatedTitle(cached.getTranslatedTitle());
-                out.setTranslatedMarkdown(cached.getTranslatedMarkdown());
-                out.setModel(null);
-                out.setLatencyMs(null);
-                out.setCached(Boolean.TRUE);
-                emitter.send(out);
+                emitter.send(buildCachedResult(safeTargetLang, cached));
                 emitter.complete();
             } catch (IOException e) {
                 emitter.completeWithError(e);
@@ -335,14 +330,7 @@ public class AiSemanticTranslateService {
                 )
                 .orElse(null);
         if (cached != null) {
-            SemanticTranslateResultDTO out = new SemanticTranslateResultDTO();
-            out.setTargetLang(safeTargetLang);
-            out.setTranslatedTitle(cached.getTranslatedTitle());
-            out.setTranslatedMarkdown(cached.getTranslatedMarkdown());
-            out.setModel(null);
-            out.setLatencyMs(null);
-            out.setCached(Boolean.TRUE);
-            return out;
+            return buildCachedResult(safeTargetLang, cached);
         }
 
         String modelOverride = params.model();
@@ -350,9 +338,7 @@ public class AiSemanticTranslateService {
         Double topP = params.topP();
 
         String userPrompt = renderPrompt(prompt.getUserPromptTemplate(), safeTargetLang, normalizedTitle, normalizedContent);
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(prompt.getSystemPrompt()));
-        messages.add(ChatMessage.user(userPrompt));
+        List<ChatMessage> messages = ChatMessageSupport.buildSystemUserMessages(prompt.getSystemPrompt(), userPrompt);
 
         long started = System.currentTimeMillis();
         String rawJson;
@@ -429,23 +415,7 @@ public class AiSemanticTranslateService {
     }
 
     private String extractAssistantContent(String rawJson) {
-        try {
-            JsonNode root = objectMapper.readTree(rawJson);
-            JsonNode choices = root.path("choices");
-            if (choices.isArray() && !choices.isEmpty()) {
-                JsonNode first = choices.get(0);
-                JsonNode contentNode = first.path("message").path("content");
-                if (!contentNode.isMissingNode() && contentNode.isTextual()) {
-                    return contentNode.asText();
-                }
-                JsonNode textNode = first.path("text");
-                if (!textNode.isMissingNode() && textNode.isTextual()) {
-                    return textNode.asText();
-                }
-            }
-        } catch (Exception ignore) {
-        }
-        return rawJson;
+        return AiResponseParsingUtils.extractAssistantContent(objectMapper, rawJson);
     }
 
     private ParsedTranslate parseTranslateFromAssistantText(String assistantText) {
@@ -471,6 +441,17 @@ public class AiSemanticTranslateService {
         }
     }
 
+    private SemanticTranslateResultDTO buildCachedResult(String safeTargetLang, SemanticTranslateHistoryEntity cached) {
+        SemanticTranslateResultDTO out = new SemanticTranslateResultDTO();
+        out.setTargetLang(safeTargetLang);
+        out.setTranslatedTitle(cached.getTranslatedTitle());
+        out.setTranslatedMarkdown(cached.getTranslatedMarkdown());
+        out.setModel(null);
+        out.setLatencyMs(null);
+        out.setCached(Boolean.TRUE);
+        return out;
+    }
+
     private static String renderPrompt(String template, String targetLang, String title, String content) {
         String out = (template == null || template.isBlank())
                 ? ""
@@ -494,18 +475,7 @@ public class AiSemanticTranslateService {
     }
 
     private static String sha256Hex(String s) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] dig = md.digest((s == null ? "" : s).getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder(dig.length * 2);
-            for (byte b : dig) {
-                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-                sb.append(Character.forDigit(b & 0xF, 16));
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            throw new IllegalStateException("sha256 failed: " + e.getMessage(), e);
-        }
+        return HashingUtils.sha256Hex(s);
     }
 
     private static String buildExcerpt(String content) {

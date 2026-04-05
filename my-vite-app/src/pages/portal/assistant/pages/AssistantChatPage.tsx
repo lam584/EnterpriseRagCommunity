@@ -15,15 +15,15 @@ import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO }
 import { getMyAssistantPreferences, updateMyAssistantPreferences } from '../../../../services/assistantPreferencesService';
 import { uploadFile, type UploadResult } from '../../../../services/uploadService';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { getMyProfile } from '../../../../services/accountService';
 import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';
 import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
+import { getAvatarFallbackText, getDisplayUsername } from '../../../../utils/userDisplay';
+import { useProfileAvatarUrl } from '../../../../hooks/useProfileAvatarUrl';
 import {
   deleteQaMessage,
   compressQaSessionContext,
   getQaSessionMessages,
   listQaSessions,
-  type QaMessageDTO,
   updateQaMessage,
   toggleQaMessageFavorite
 } from '../../../../services/qaHistoryService';
@@ -33,12 +33,14 @@ import {
     buildProviderModelValue,
     colorClassForCitationIndex,
     extractCitationIndexes,
+    flattenProviderModelOptions,
     formatDateTime,
     formatDurationMs,
     formatMsgTokensInfo,
     isPersistedId,
     isThinkingOnlyModel,
     linkifyCitations,
+    mapQaMessagesToChatState,
     parseProviderModelValue,
     toNullableNumber,
     uid,
@@ -50,6 +52,7 @@ import {
     type ThinkPerf,
     type ThinkUi,
 } from './AssistantChatPage.shared';
+import { normAssistantValue, pickAssistantModel, pickAssistantProviderId } from './assistantOptionsUtils';
 import {AssistantChatComposer} from './AssistantChatComposer';
 import {useResizableInputHeight} from './use-resizable-input-height';
 
@@ -67,6 +70,33 @@ export default function AssistantChatPage() {
   useEffect(() => {
     latestLocationRef.current = location;
   }, [location]);
+
+  const scheduleSessionUrlSync = useCallback((nextId: number) => {
+    if (lastSyncedSessionIdRef.current === nextId) return;
+    lastSyncedSessionIdRef.current = nextId;
+
+    pendingUrlSyncRef.current = nextId;
+    if (urlSyncScheduledRef.current) return;
+    urlSyncScheduledRef.current = true;
+    queueMicrotask(() => {
+      urlSyncScheduledRef.current = false;
+      const idToSync = pendingUrlSyncRef.current;
+      pendingUrlSyncRef.current = null;
+      if (idToSync == null) return;
+
+      const loc = latestLocationRef.current;
+      const currentParams = new URLSearchParams(loc.search);
+      const currentUrlId = currentParams.get('sessionId');
+      const nextUrl = `/portal/assistant/chat?sessionId=${idToSync}`;
+      const currentUrl = `${loc.pathname}${loc.search}`;
+
+      if (currentUrl === nextUrl) return;
+      if (loc.pathname !== '/portal/assistant/chat') return;
+      if (currentUrlId !== String(idToSync)) {
+        navigate(nextUrl, { replace: true });
+      }
+    });
+  }, [navigate]);
 
   // Coalesce multiple meta events into at most 1 navigation.
   const pendingUrlSyncRef = useRef<number | null>(null);
@@ -112,22 +142,14 @@ export default function AssistantChatPage() {
   const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null);
   const [compressingContext, setCompressingContext] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | undefined>(undefined);
+  const profileAvatarUrl = useProfileAvatarUrl(isAuthenticated);
     const {inputHeight, handleResizeMouseDown} = useResizableInputHeight(120, 80, 600);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeBranchContextRef = useRef<{ anchorId: string; branchId: string } | null>(null);
   const prevPersistedMsgIdsRef = useRef<Set<string>>(new Set());
 
-  const displayUsername = useMemo(() => {
-    const name = currentUser?.username?.trim();
-    return name && name.length > 0 ? name : '未登录';
-  }, [currentUser?.username]);
-
-  const avatarFallbackText = useMemo(() => {
-    const name = currentUser?.username?.trim();
-    if (!name) return 'U';
-    return name.slice(0, 1).toUpperCase();
-  }, [currentUser?.username]);
+  const displayUsername = useMemo(() => getDisplayUsername(currentUser?.username), [currentUser?.username]);
+  const avatarFallbackText = useMemo(() => getAvatarFallbackText(currentUser?.username), [currentUser?.username]);
 
   const abortRef = useRef<AbortController | null>(null);
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -191,6 +213,20 @@ export default function AssistantChatPage() {
     setShowScrollToBottom(false);
     scheduleScrollToBottom('smooth');
   };
+
+  const resetConversationState = useCallback(() => {
+    setSessionId(undefined);
+    setMessages([]);
+    setSourcesByMsgId({});
+    setPerfByMsgId({});
+    setDeepThinkByMsgId({});
+    setThinkPerfByMsgId({});
+    setThinkUiByMsgId({});
+    setEditedAtByMsgId({});
+    setBranchAnchorsByMsgId({});
+    setBranchMembershipByMsgId({});
+    setStreamingAssistantId(null);
+  }, []);
 
   const thinkingOnly = useMemo(() => isThinkingOnlyModel(selectedModel), [selectedModel]);
   const effectiveDeepThink = thinkingOnly ? true : deepThink;
@@ -275,36 +311,7 @@ export default function AssistantChatPage() {
   }, [chatOptions]);
 
   const flatModelOptions = useMemo(() => {
-    const uniq: { providerId: string; providerLabel: string; model: string; value: string }[] = [];
-    const seen = new Set<string>();
-    for (const p of providerOptions) {
-      const providerId = String(p.id ?? '').trim();
-      if (!providerId) continue;
-      const providerName = String(p.name ?? '').trim();
-      const providerLabel = providerName || providerId;
-      const rows = Array.isArray(p.chatModels) ? p.chatModels.filter(Boolean) : [];
-      for (const m of rows) {
-        const modelName = String((m as { name?: unknown }).name ?? '').trim();
-        if (!modelName) continue;
-        const key = `${providerId}::${modelName}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        uniq.push({
-          providerId,
-          providerLabel,
-          model: modelName,
-          value: buildProviderModelValue(providerId, modelName)
-        });
-      }
-    }
-    uniq.sort((a, b) => {
-      const pa = `${a.providerLabel} (${a.providerId})`;
-      const pb = `${b.providerLabel} (${b.providerId})`;
-      const pCmp = pa.localeCompare(pb, 'zh-Hans-CN');
-      if (pCmp !== 0) return pCmp;
-      return a.model.localeCompare(b.model, 'zh-Hans-CN');
-    });
-    return uniq;
+    return flattenProviderModelOptions(providerOptions);
   }, [providerOptions]);
 
   const selectedProviderModelValue = useMemo(
@@ -381,30 +388,6 @@ export default function AssistantChatPage() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadProfileAvatar() {
-      if (!isAuthenticated) {
-        setProfileAvatarUrl(undefined);
-        return;
-      }
-
-      try {
-        const p = await getMyProfile();
-        if (!cancelled) setProfileAvatarUrl(p.avatarUrl);
-      } catch {
-        if (!cancelled) setProfileAvatarUrl(undefined);
-      }
-    }
-
-    loadProfileAvatar();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated]);
-
-  useEffect(() => {
     return () => {
       if (scrollRafRef.current != null) {
         cancelAnimationFrame(scrollRafRef.current);
@@ -442,11 +425,8 @@ export default function AssistantChatPage() {
         if (cancelled) return;
         setChatOptions(opt);
         const providers = (opt.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[];
-        const providerIds = new Set(providers.map((p) => String(p.id ?? '').trim()).filter(Boolean));
-
-        const norm = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
-        const storedProvider = prefs ? norm(prefs.defaultProviderId) : '';
-        const storedModel = prefs ? norm(prefs.defaultModel) : '';
+        const storedProvider = prefs ? normAssistantValue(prefs.defaultProviderId) : '';
+        const storedModel = prefs ? normAssistantValue(prefs.defaultModel) : '';
 
         if (prefs) {
           setDeepThink(!!prefs.defaultDeepThink);
@@ -464,30 +444,9 @@ export default function AssistantChatPage() {
           return;
         }
 
-        let nextProviderId = '';
-        if (storedProvider && providerIds.has(storedProvider)) {
-          nextProviderId = storedProvider;
-        } else {
-          const active = norm(opt.activeProviderId);
-          if (active && providerIds.has(active)) {
-            nextProviderId = active;
-          } else {
-            nextProviderId = norm(providers[0]?.id);
-          }
-        }
-
-        const p = providers.find((x) => norm(x.id) === nextProviderId) ?? null;
-        const models = Array.isArray(p?.chatModels) ? p!.chatModels!.filter(Boolean) : [];
-        const modelNames = new Set(models.map((m) => norm((m as { name?: unknown }).name)).filter(Boolean));
-        const nextModel = (() => {
-          if (storedModel && modelNames.has(storedModel)) return storedModel;
-          const directDefault = norm(p?.defaultChatModel);
-          if (directDefault && modelNames.has(directDefault)) return directDefault;
-          const flagged = models.find((m) => Boolean((m as { isDefault?: unknown }).isDefault));
-          const flaggedName = norm((flagged as { name?: unknown })?.name);
-          if (flaggedName && modelNames.has(flaggedName)) return flaggedName;
-          return norm((models[0] as { name?: unknown })?.name);
-        })();
+        const nextProviderId = pickAssistantProviderId(opt, providers, storedProvider);
+        const p = providers.find((x) => normAssistantValue(x.id) === nextProviderId) ?? null;
+        const nextModel = pickAssistantModel(p, storedModel);
 
         setSelectedProviderId(nextProviderId);
         setSelectedModel(nextModel);
@@ -535,17 +494,7 @@ export default function AssistantChatPage() {
     setError(null);
     setNotice(null);
     setIsStreaming(false);
-    setSessionId(undefined);
-    setMessages([]);
-    setSourcesByMsgId({});
-    setPerfByMsgId({});
-    setDeepThinkByMsgId({});
-    setThinkPerfByMsgId({});
-    setThinkUiByMsgId({});
-    setEditedAtByMsgId({});
-    setBranchAnchorsByMsgId({});
-    setBranchMembershipByMsgId({});
-    setStreamingAssistantId(null);
+    resetConversationState();
     activeBranchContextRef.current = null;
     prevPersistedMsgIdsRef.current = new Set();
 
@@ -553,28 +502,7 @@ export default function AssistantChatPage() {
       try {
         const list = await getQaSessionMessages(initialSessionId);
         if (cancelled) return;
-        const mapped: ChatMsg[] = list
-          .filter((m) => m.role === 'USER' || m.role === 'ASSISTANT' || m.role === 'SYSTEM')
-          .map((m: QaMessageDTO) => ({
-            id: String(m.id),
-            role: m.role === 'USER' ? 'user' : m.role === 'SYSTEM' ? 'system' : 'assistant',
-            content: m.content,
-            createdAt: m.createdAt,
-            model: m.model ?? null,
-            tokensIn: toNullableNumber(m.tokensIn),
-            tokensOut: toNullableNumber(m.tokensOut),
-            latencyMs: toNullableNumber(m.latencyMs),
-            isFavorite: m.isFavorite,
-            firstTokenLatencyMs: toNullableNumber(m.firstTokenLatencyMs)
-          }));
-        const nextSources: Record<string, AiCitationSource[]> = {};
-        for (const m of list) {
-          if (m.role !== 'ASSISTANT') continue;
-          const src = m.sources;
-          if (Array.isArray(src) && src.length > 0) {
-            nextSources[String(m.id)] = src;
-          }
-        }
+        const { messages: mapped, sourcesByMsgId: nextSources } = mapQaMessagesToChatState(list);
         setSessionId(initialSessionId);
         setMessages(mapped);
         setSourcesByMsgId(nextSources);
@@ -590,32 +518,11 @@ export default function AssistantChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [initialSessionId]);
+  }, [initialSessionId, isStreaming, resetConversationState]);
 
   async function reloadSessionMessages(id: number, transferPerfFromAssistantId?: string) {
     const list = await getQaSessionMessages(id);
-    const mapped: ChatMsg[] = list
-      .filter((m) => m.role === 'USER' || m.role === 'ASSISTANT' || m.role === 'SYSTEM')
-      .map((m: QaMessageDTO) => ({
-        id: String(m.id),
-        role: m.role === 'USER' ? 'user' : m.role === 'SYSTEM' ? 'system' : 'assistant',
-        content: m.content,
-        createdAt: m.createdAt,
-        model: m.model ?? null,
-        tokensIn: toNullableNumber(m.tokensIn),
-        tokensOut: toNullableNumber(m.tokensOut),
-        latencyMs: toNullableNumber(m.latencyMs),
-        isFavorite: m.isFavorite,
-        firstTokenLatencyMs: toNullableNumber(m.firstTokenLatencyMs)
-      }));
-    const nextSources: Record<string, AiCitationSource[]> = {};
-    for (const m of list) {
-      if (m.role !== 'ASSISTANT') continue;
-      const src = m.sources;
-      if (Array.isArray(src) && src.length > 0) {
-        nextSources[String(m.id)] = src;
-      }
-    }
+    const { messages: mapped, sourcesByMsgId: nextSources } = mapQaMessagesToChatState(list);
     setMessages(mapped);
     setSourcesByMsgId(nextSources);
 
@@ -900,35 +807,7 @@ export default function AssistantChatPage() {
               if (Number.isFinite(ev.sessionId)) {
                 const nextId = ev.sessionId as number;
                 setSessionId(nextId);
-
-                if (lastSyncedSessionIdRef.current !== nextId) {
-                  lastSyncedSessionIdRef.current = nextId;
-
-                  pendingUrlSyncRef.current = nextId;
-                  if (!urlSyncScheduledRef.current) {
-                    urlSyncScheduledRef.current = true;
-                    queueMicrotask(() => {
-                      urlSyncScheduledRef.current = false;
-                      const idToSync = pendingUrlSyncRef.current;
-                      pendingUrlSyncRef.current = null;
-                      if (idToSync == null) return;
-
-                      const loc = latestLocationRef.current;
-                      const currentParams = new URLSearchParams(loc.search);
-                      const currentUrlId = currentParams.get('sessionId');
-                      const nextUrl = `/portal/assistant/chat?sessionId=${idToSync}`;
-                      const currentUrl = `${loc.pathname}${loc.search}`;
-
-                      if (currentUrl === nextUrl) return;
-                      if (loc.pathname !== '/portal/assistant/chat') {
-                        return;
-                      }
-                      if (currentUrlId !== String(idToSync)) {
-                        navigate(nextUrl, { replace: true });
-                      }
-                    });
-                  }
-                }
+                scheduleSessionUrlSync(nextId);
               }
             } else if (ev.type === 'delta') {
               if (!ev.content) return;
@@ -1003,35 +882,7 @@ export default function AssistantChatPage() {
         if (!ac.signal.aborted && Number.isFinite(res.sessionId)) {
           const nextId = res.sessionId as number;
           setSessionId(nextId);
-
-          if (lastSyncedSessionIdRef.current !== nextId) {
-            lastSyncedSessionIdRef.current = nextId;
-
-            pendingUrlSyncRef.current = nextId;
-            if (!urlSyncScheduledRef.current) {
-              urlSyncScheduledRef.current = true;
-              queueMicrotask(() => {
-                urlSyncScheduledRef.current = false;
-                const idToSync = pendingUrlSyncRef.current;
-                pendingUrlSyncRef.current = null;
-                if (idToSync == null) return;
-
-                const loc = latestLocationRef.current;
-                const currentParams = new URLSearchParams(loc.search);
-                const currentUrlId = currentParams.get('sessionId');
-                const nextUrl = `/portal/assistant/chat?sessionId=${idToSync}`;
-                const currentUrl = `${loc.pathname}${loc.search}`;
-
-                if (currentUrl === nextUrl) return;
-                if (loc.pathname !== '/portal/assistant/chat') {
-                  return;
-                }
-                if (currentUrlId !== String(idToSync)) {
-                  navigate(nextUrl, { replace: true });
-                }
-              });
-            }
-          }
+          scheduleSessionUrlSync(nextId);
         }
         if (!ac.signal.aborted) {
           const raw = String(res.content ?? '');
@@ -1217,17 +1068,7 @@ export default function AssistantChatPage() {
     setIsStreaming(false);
     setError(null);
     setNotice(null);
-    setSessionId(undefined);
-    setMessages([]);
-    setSourcesByMsgId({});
-    setPerfByMsgId({});
-    setDeepThinkByMsgId({});
-    setThinkPerfByMsgId({});
-    setThinkUiByMsgId({});
-    setEditedAtByMsgId({});
-    setBranchAnchorsByMsgId({});
-    setBranchMembershipByMsgId({});
-    setStreamingAssistantId(null);
+    resetConversationState();
     streamRawByMsgIdRef.current = {};
     activeBranchContextRef.current = null;
     prevPersistedMsgIdsRef.current = new Set();

@@ -1,22 +1,8 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
-function getApiBase(): string {
-  const globalBase = (globalThis as unknown as { __VITE_API_BASE_URL__?: string }).__VITE_API_BASE_URL__;
-  if (typeof globalBase === 'string') return globalBase;
-  return (((import.meta as unknown as { env?: Record<string, unknown> })?.env?.VITE_API_BASE_URL as string) ?? '') || '';
-}
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  const base = getApiBase();
-  return base ? `${base}${path}` : path;
-}
-
-function getBackendMessage(data: unknown): string | null {
-  if (!data || typeof data !== 'object') return null;
-  const d = data as Record<string, unknown>;
-  const msg = d.message ?? d.error;
-  return msg == null ? null : String(msg);
-}
+const apiUrl = serviceApiUrl;
 
 export type PostComposeAiSnapshotTargetType = 'DRAFT' | 'POST';
 export type PostComposeAiSnapshotStatus = 'PENDING' | 'APPLIED' | 'REVERTED' | 'EXPIRED';

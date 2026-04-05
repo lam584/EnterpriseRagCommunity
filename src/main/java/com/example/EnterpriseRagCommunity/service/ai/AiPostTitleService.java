@@ -72,21 +72,18 @@ public class AiPostTitleService {
             0.9
         );
 
-        String modelOverride = resolveModelOverride(req.getModel(), params.model());
-
-        Double temperature = req.getTemperature() != null ? req.getTemperature() : params.temperature();
-        if (temperature == null) temperature = 0.4;
-        if (temperature < 0 || temperature > 2) throw new IllegalArgumentException("temperature 需在 [0,2] 范围内");
-
-        Double topP = req.getTopP() != null ? req.getTopP() : params.topP();
-        if (topP == null) topP = 0.9;
-        if (topP < 0 || topP > 1) throw new IllegalArgumentException("topP 需在 [0,1] 范围内");
+        AiPromptSamplingSupport.PromptSampling sampling = AiPromptSamplingSupport.resolve(
+                req.getModel(), params.model(),
+                req.getTemperature(), params.temperature(), 0.4,
+                req.getTopP(), params.topP(), 0.9
+        );
+        String modelOverride = sampling.modelOverride();
+        Double temperature = sampling.temperature();
+        Double topP = sampling.topP();
 
         String userPrompt = renderPrompt(prompt.getUserPromptTemplate(), count, req.getBoardName(), req.getTags(), content);
 
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(prompt.getSystemPrompt()));
-        messages.add(ChatMessage.user(userPrompt));
+        List<ChatMessage> messages = ChatMessageSupport.buildSystemUserMessages(prompt.getSystemPrompt(), userPrompt);
 
         long started = System.currentTimeMillis();
         String rawJson;
@@ -139,12 +136,7 @@ public class AiPostTitleService {
             h.setCreatedAt(LocalDateTime.now());
             h.setBoardName(blankToNull(req.getBoardName()));
             h.setInputTagsJson(req.getTags() == null ? List.of() : new ArrayList<>(req.getTags()));
-            h.setRequestedCount(count);
-            h.setAppliedMaxContentChars(maxChars);
-            h.setContentLen(contentLen);
-            h.setContentExcerpt(buildExcerpt(req.getContent()));
-            h.setOutputJson(new ArrayList<>(titles));
-            h.setJobId(job.getId());
+            applyCommonHistoryFields(h, count, maxChars, contentLen, req.getContent(), titles, job.getId());
             postTitleGenConfigService.recordHistory(h);
         }
 
@@ -152,26 +144,7 @@ public class AiPostTitleService {
     }
 
     private String extractAssistantContent(String rawJson) {
-        try {
-            JsonNode root = objectMapper.readTree(rawJson);
-            JsonNode choices = root.path("choices");
-            if (choices.isArray() && !choices.isEmpty()) {
-                JsonNode first = choices.get(0);
-                // non-streaming usually: choices[0].message.content
-                JsonNode contentNode = first.path("message").path("content");
-                if (!contentNode.isMissingNode() && contentNode.isTextual()) {
-                    return contentNode.asText();
-                }
-                // fallback: choices[0].text
-                JsonNode textNode = first.path("text");
-                if (!textNode.isMissingNode() && textNode.isTextual()) {
-                    return textNode.asText();
-                }
-            }
-        } catch (Exception ignore) {
-        }
-        // last resort: return raw
-        return rawJson;
+        return AiResponseParsingUtils.extractAssistantContent(objectMapper, rawJson);
     }
 
     List<String> parseTitlesFromAssistantText(String assistantText, int expectedCount) {
@@ -205,14 +178,7 @@ public class AiPostTitleService {
             throw new IllegalArgumentException("AI 输出无法解析为标题列表，请重试", e);
         }
 
-        // normalize: dedup + limit
-        LinkedHashSet<String> set = new LinkedHashSet<>(titles);
-
-        List<String> out = new ArrayList<>(set);
-        if (out.size() > expectedCount) {
-            out = out.subList(0, expectedCount);
-        }
-        return out;
+        return AiResponseParsingUtils.deduplicateAndLimit(titles, expectedCount);
     }
 
     private String cleanTitle(String t) {
@@ -233,16 +199,26 @@ public class AiPostTitleService {
         return t;
     }
 
+    private static void applyCommonHistoryFields(PostSuggestionGenHistoryEntity history,
+                                                 int requestedCount,
+                                                 int maxChars,
+                                                 int contentLen,
+                                                 String content,
+                                                 List<String> output,
+                                                 Long jobId) {
+        history.setRequestedCount(requestedCount);
+        history.setAppliedMaxContentChars(maxChars);
+        history.setContentLen(contentLen);
+        history.setContentExcerpt(buildExcerpt(content));
+        history.setOutputJson(output == null ? List.of() : new ArrayList<>(output));
+        history.setJobId(jobId);
+    }
+
     private static int resolveRequestedCount(Integer requestedCount, int defaultCount, int maxCount) {
         int count = requestedCount == null ? defaultCount : requestedCount;
         if (count <= 0) count = defaultCount;
         if (count > maxCount) count = maxCount;
         return count;
-    }
-
-    private static String resolveModelOverride(String requestedModel, String defaultModel) {
-        if (requestedModel == null || requestedModel.isBlank()) return defaultModel;
-        return requestedModel.trim();
     }
 
     private static String renderPrompt(String template, int count, String boardName, List<String> tags, String content) {

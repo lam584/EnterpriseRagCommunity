@@ -106,6 +106,7 @@ public class AdminLlmLoadTestExportTest {
         ResponseEntity<StreamingResponseBody> res = svc.export(runId, false);
         assertEquals(200, res.getStatusCode().value());
         assertNotNull(res.getBody());
+        assertTrue(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION).contains("llm-loader.json"));
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         res.getBody().writeTo(out);
@@ -171,6 +172,7 @@ public class AdminLlmLoadTestExportTest {
         ResponseEntity<StreamingResponseBody> res = svc.export(runId, true);
         assertEquals(200, res.getStatusCode().value());
         assertNotNull(res.getBody());
+        assertTrue(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION).contains("llm-loader.csv"));
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         res.getBody().writeTo(out);
@@ -222,6 +224,8 @@ public class AdminLlmLoadTestExportTest {
         ResponseEntity<StreamingResponseBody> res = svc.export(runId, true);
         assertEquals(200, res.getStatusCode().value());
         assertNotNull(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION));
+        assertTrue(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION).contains("llm-loader.csv"));
+        assertFalse(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION).contains(runId));
         assertFalse(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION).contains("\r"));
         assertFalse(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION).contains("\n"));
 

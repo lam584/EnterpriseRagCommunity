@@ -30,11 +30,8 @@ public class AdminSemanticTranslateController {
     @PutMapping("/config")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_semantic_translate','action'))")
     public SemanticTranslateConfigDTO upsertConfig(@RequestBody SemanticTranslateConfigDTO payload, Principal principal) {
-        String username = principal == null ? null : principal.getName();
-        Long userId = null;
-        if (username != null) {
-            userId = administratorService.findByUsername(username).map(u -> u.getId()).orElse(null);
-        }
+        String username = AdminSemanticControllerSupport.resolveUsername(principal);
+        Long userId = AdminSemanticControllerSupport.resolveActorUserId(administratorService, principal);
         return semanticTranslateConfigService.upsertAdminConfig(payload, userId, username);
     }
 
@@ -48,4 +45,3 @@ public class AdminSemanticTranslateController {
         return ResponseEntity.ok(semanticTranslateConfigService.listHistory(userId, page, size));
     }
 }
-

@@ -3,7 +3,6 @@ package com.example.EnterpriseRagCommunity.service.ai.client;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
@@ -57,65 +56,21 @@ public class ResponsesStyleRerankClient {
         body.put("input", payload);
         body.put("max_output_tokens", 1024);
 
-        HttpURLConnection conn = openJsonPost(endpoint, apiKey, req.extraHeaders(), req.connectTimeoutMs(), req.readTimeoutMs());
+        HttpURLConnection conn = AiClientHttpSupport.openJsonPost(
+                endpoint,
+                apiKey,
+                req.extraHeaders(),
+                req.connectTimeoutMs(),
+                req.readTimeoutMs(),
+                DEFAULT_CONNECT_TIMEOUT_MS,
+                DEFAULT_READ_TIMEOUT_MS
+        );
         String json = objectMapper.writeValueAsString(body);
         try (OutputStream os = conn.getOutputStream()) {
             os.write(json.getBytes(StandardCharsets.UTF_8));
         }
 
-        int code = conn.getResponseCode();
-        InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-        if (is == null) throw new IOException("Upstream returned HTTP " + code + " without body");
-        String resp = readAll(is);
-        if (code < 200 || code >= 300) {
-            throw new IOException("Upstream returned HTTP " + code + ": " + resp);
-        }
-        return resp;
-    }
-
-    private HttpURLConnection openJsonPost(
-            String endpoint,
-            String apiKey,
-            Map<String, String> extraHeaders,
-            Integer connectTimeoutMs,
-            Integer readTimeoutMs
-    ) throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) java.net.URI.create(endpoint).toURL().openConnection();
-        conn.setRequestMethod("POST");
-        conn.setDoOutput(true);
-
-        int cto = (connectTimeoutMs == null || connectTimeoutMs <= 0) ? DEFAULT_CONNECT_TIMEOUT_MS : connectTimeoutMs;
-        int rto = (readTimeoutMs == null || readTimeoutMs <= 0) ? DEFAULT_READ_TIMEOUT_MS : readTimeoutMs;
-        conn.setConnectTimeout(cto);
-        conn.setReadTimeout(rto);
-
-        conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-        conn.setRequestProperty("Accept", "application/json");
-        applyHeaders(conn, apiKey, extraHeaders);
-        return conn;
-    }
-
-    private static void applyHeaders(HttpURLConnection conn, String apiKey, Map<String, String> extraHeaders) {
-        boolean hasAuth = false;
-        if (extraHeaders != null && !extraHeaders.isEmpty()) {
-            for (Map.Entry<String, String> e : extraHeaders.entrySet()) {
-                String k = e.getKey();
-                String v = e.getValue();
-                if (k == null || k.isBlank()) continue;
-                if (v == null) continue;
-                conn.setRequestProperty(k, v);
-                if ("authorization".equals(k.trim().toLowerCase(Locale.ROOT))) {
-                    hasAuth = true;
-                }
-            }
-        }
-        if (!hasAuth && apiKey != null && !apiKey.isBlank()) {
-            conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-        }
-    }
-
-    private static String readAll(InputStream is) throws IOException {
-        return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        return RerankHttpResponseSupport.readJsonResponse(conn);
     }
 
     private static String normalizeBaseUrlWithV1(String baseUrl) {

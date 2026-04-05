@@ -67,6 +67,24 @@ public class AdminRetrievalVectorIndexController {
         return value == null ? null : value.name();
     }
 
+    private static Map<String, Object> buildCommonTestQueryDetails(
+            Integer topK,
+            Integer numCandidates,
+            String embeddingModel,
+            String embeddingProviderId,
+            String queryText,
+            int hitCount
+    ) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("topK", topK);
+        details.put("numCandidates", numCandidates);
+        details.put("embeddingModel", embeddingModel);
+        details.put("embeddingProviderId", embeddingProviderId);
+        details.put("queryText", truncateQueryText(queryText));
+        details.put("hitCount", hitCount);
+        return details;
+    }
+
     @PostMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<VectorIndicesEntity> create(@RequestBody @Valid VectorIndicesCreateDTO dto, Principal principal) {
@@ -558,39 +576,43 @@ public class AdminRetrievalVectorIndexController {
 
     private static Map<String, Object> buildCommentsTestQueryDetails(RagCommentsTestQueryRequest req,
                                                                       RagCommentsTestQueryResponse resp) {
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("topK", req == null ? null : req.getTopK());
-        details.put("numCandidates", req == null ? null : req.getNumCandidates());
-        details.put("embeddingModel", req == null ? null : req.getEmbeddingModel());
-        details.put("queryText", truncateQueryText(req == null ? null : req.getQueryText()));
-        details.put("hitCount", resp.getHits() == null ? 0 : resp.getHits().size());
+        Map<String, Object> details = buildCommonTestQueryDetails(
+                req == null ? null : req.getTopK(),
+                req == null ? null : req.getNumCandidates(),
+                req == null ? null : req.getEmbeddingModel(),
+                null,
+                req == null ? null : req.getQueryText(),
+                resp.getHits() == null ? 0 : resp.getHits().size()
+        );
         return details;
     }
 
     private static Map<String, Object> buildFilesTestQueryDetails(RagFilesTestQueryRequest req,
                                                                    RagFilesTestQueryResponse resp) {
-        Map<String, Object> details = new LinkedHashMap<>();
+        Map<String, Object> details = buildCommonTestQueryDetails(
+                req == null ? null : req.getTopK(),
+                req == null ? null : req.getNumCandidates(),
+                req == null ? null : req.getEmbeddingModel(),
+                req == null ? null : req.getEmbeddingProviderId(),
+                req == null ? null : req.getQueryText(),
+                resp.getHits() == null ? 0 : resp.getHits().size()
+        );
         details.put("fileAssetId", req == null ? null : req.getFileAssetId());
         details.put("postId", req == null ? null : req.getPostId());
-        details.put("topK", req == null ? null : req.getTopK());
-        details.put("numCandidates", req == null ? null : req.getNumCandidates());
-        details.put("embeddingModel", req == null ? null : req.getEmbeddingModel());
-        details.put("embeddingProviderId", req == null ? null : req.getEmbeddingProviderId());
-        details.put("queryText", truncateQueryText(req == null ? null : req.getQueryText()));
-        details.put("hitCount", resp.getHits() == null ? 0 : resp.getHits().size());
         return details;
     }
 
     private static Map<String, Object> buildPostsTestQueryDetails(RagPostsTestQueryRequest req,
                                                                    RagPostsTestQueryResponse resp) {
-        Map<String, Object> details = new LinkedHashMap<>();
+        Map<String, Object> details = buildCommonTestQueryDetails(
+                req == null ? null : req.getTopK(),
+                req == null ? null : req.getNumCandidates(),
+                req == null ? null : req.getEmbeddingModel(),
+                req == null ? null : req.getEmbeddingProviderId(),
+                req == null ? null : req.getQueryText(),
+                resp.getHits() == null ? 0 : resp.getHits().size()
+        );
         details.put("boardId", req == null ? null : req.getBoardId());
-        details.put("topK", req == null ? null : req.getTopK());
-        details.put("numCandidates", req == null ? null : req.getNumCandidates());
-        details.put("embeddingModel", req == null ? null : req.getEmbeddingModel());
-        details.put("embeddingProviderId", req == null ? null : req.getEmbeddingProviderId());
-        details.put("queryText", truncateQueryText(req == null ? null : req.getQueryText()));
-        details.put("hitCount", resp.getHits() == null ? 0 : resp.getHits().size());
         return details;
     }
 }

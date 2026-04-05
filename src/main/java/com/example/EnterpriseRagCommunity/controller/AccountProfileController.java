@@ -154,25 +154,8 @@ public class AccountProfileController {
         Map<String, Object> metadata0 = user.getMetadata();
         Map<String, Object> metadata = (metadata0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata0);
 
-        Object prefsObj = metadata.get("preferences");
-        Map<String, Object> prefs0;
-        if (prefsObj instanceof Map) {
-            //noinspection unchecked
-            prefs0 = (Map<String, Object>) prefsObj;
-        } else {
-            prefs0 = null;
-        }
-        Map<String, Object> prefs = (prefs0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(prefs0);
-
-        Object secObj = prefs.get("security");
-        Map<String, Object> sec0;
-        if (secObj instanceof Map) {
-            //noinspection unchecked
-            sec0 = (Map<String, Object>) secObj;
-        } else {
-            sec0 = null;
-        }
-        Map<String, Object> security = (sec0 == null) ? new LinkedHashMap<>() : new LinkedHashMap<>(sec0);
+        Map<String, Object> prefs = mutableObjectMap(metadata.get("preferences"));
+        Map<String, Object> security = mutableObjectMap(prefs.get("security"));
 
         boolean enabled = req.getEnabled() != null && req.getEnabled();
         security.put("login2faEnabled", enabled);
@@ -494,15 +477,7 @@ public class AccountProfileController {
     }
 
     private static UsersDTO toSafeDTO(UsersEntity user) {
-        UsersDTO dto = new UsersDTO();
-        dto.setId(user.getId());
-        if (user.getTenantId() != null) {
-            dto.setTenantId(user.getTenantId().getId());
-        }
-        dto.setEmail(user.getEmail());
-        dto.setUsername(user.getUsername());
-        dto.setStatus(user.getStatus());
-        dto.setIsDeleted(user.getIsDeleted());
+        UsersDTO dto = UserDtoSupport.toBasicDto(user);
         dto.setMetadata(sanitizeMetadataForJson(user.getMetadata()));
         return dto;
     }
@@ -615,6 +590,14 @@ public class AccountProfileController {
         Object v = sec.get("login2faEnabled");
         m.put("login2faEnabled", v);
         return m;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mutableObjectMap(Object value) {
+        if (value instanceof Map) {
+            return new LinkedHashMap<>((Map<String, Object>) value);
+        }
+        return new LinkedHashMap<>();
     }
 
     private static Map<String, Object> summarizeProfileForAudit(UsersEntity user) {

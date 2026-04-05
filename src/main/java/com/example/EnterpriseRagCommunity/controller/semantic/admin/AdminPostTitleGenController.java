@@ -30,11 +30,8 @@ public class AdminPostTitleGenController {
     @PutMapping("/config")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_semantic_title_gen','action'))")
     public PostTitleGenConfigDTO upsertConfig(@RequestBody PostTitleGenConfigDTO payload, Principal principal) {
-        String username = principal == null ? null : principal.getName();
-        Long userId = null;
-        if (username != null) {
-            userId = administratorService.findByUsername(username).map(u -> u.getId()).orElse(null);
-        }
+        String username = AdminSemanticControllerSupport.resolveUsername(principal);
+        Long userId = AdminSemanticControllerSupport.resolveActorUserId(administratorService, principal);
         return postTitleGenConfigService.upsertAdminConfig(payload, userId, username);
     }
 

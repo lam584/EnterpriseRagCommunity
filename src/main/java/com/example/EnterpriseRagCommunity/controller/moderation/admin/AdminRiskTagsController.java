@@ -32,6 +32,7 @@ import com.example.EnterpriseRagCommunity.repository.content.TagsRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.RiskLabelingRepository;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import com.example.EnterpriseRagCommunity.service.content.TagsService;
 
 import jakarta.validation.Valid;
@@ -150,14 +151,7 @@ public class AdminRiskTagsController {
     }
 
     private static String currentUsernameOrNull() {
-        try {
-            var auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 
     private TagsDTO toDTO(TagsEntity entity, Long usageCount) {

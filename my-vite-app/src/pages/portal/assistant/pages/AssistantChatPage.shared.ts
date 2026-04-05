@@ -1,3 +1,7 @@
+import type { AiCitationSource } from '../../../../services/aiChatService';
+import type { AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+import type { QaMessageDTO } from '../../../../services/qaHistoryService';
+
 export const MAX_VISION_IMAGES = 10;
 export const MAX_CHAT_FILES = 10;
 
@@ -45,6 +49,18 @@ export type BranchMembership = {
     branchId: string;
 };
 
+export type AssistantSessionMessagesState = {
+    messages: ChatMsg[];
+    sourcesByMsgId: Record<string, AiCitationSource[]>;
+};
+
+export type FlatProviderModelOption = {
+    providerId: string;
+    providerLabel: string;
+    model: string;
+    value: string;
+};
+
 export function uid(): string {
     return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -71,6 +87,39 @@ export function parseProviderModelValue(value: string): { providerId: string; mo
     } catch {
         return null;
     }
+}
+
+export function flattenProviderModelOptions(providerOptions: AiChatProviderOptionDTO[]): FlatProviderModelOption[] {
+    const uniq: FlatProviderModelOption[] = [];
+    const seen = new Set<string>();
+    for (const provider of providerOptions) {
+        const providerId = String(provider.id ?? '').trim();
+        if (!providerId) continue;
+        const providerName = String(provider.name ?? '').trim();
+        const providerLabel = providerName || providerId;
+        const rows = Array.isArray(provider.chatModels) ? provider.chatModels.filter(Boolean) : [];
+        for (const model of rows) {
+            const modelName = String((model as { name?: unknown }).name ?? '').trim();
+            if (!modelName) continue;
+            const key = `${providerId}::${modelName}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            uniq.push({
+                providerId,
+                providerLabel,
+                model: modelName,
+                value: buildProviderModelValue(providerId, modelName)
+            });
+        }
+    }
+    uniq.sort((a, b) => {
+        const pa = `${a.providerLabel} (${a.providerId})`;
+        const pb = `${b.providerLabel} (${b.providerId})`;
+        const pCmp = pa.localeCompare(pb, 'zh-Hans-CN');
+        if (pCmp !== 0) return pCmp;
+        return a.model.localeCompare(b.model, 'zh-Hans-CN');
+    });
+    return uniq;
 }
 
 export function isPersistedId(id: string): boolean {
@@ -102,6 +151,38 @@ export function toNullableNumber(v: unknown): number | null {
         return Number.isFinite(n) ? n : null;
     }
     return null;
+}
+
+function toChatRole(role: QaMessageDTO['role']): ChatMsg['role'] | null {
+    if (role === 'USER') return 'user';
+    if (role === 'SYSTEM') return 'system';
+    if (role === 'ASSISTANT') return 'assistant';
+    return null;
+}
+
+export function mapQaMessagesToChatState(list: QaMessageDTO[]): AssistantSessionMessagesState {
+    const messages: ChatMsg[] = [];
+    const sourcesByMsgId: Record<string, AiCitationSource[]> = {};
+    for (const message of list) {
+        const role = toChatRole(message.role);
+        if (!role) continue;
+        messages.push({
+            id: String(message.id),
+            role,
+            content: message.content,
+            createdAt: message.createdAt,
+            model: message.model ?? null,
+            tokensIn: toNullableNumber(message.tokensIn),
+            tokensOut: toNullableNumber(message.tokensOut),
+            latencyMs: toNullableNumber(message.latencyMs),
+            isFavorite: message.isFavorite,
+            firstTokenLatencyMs: toNullableNumber(message.firstTokenLatencyMs)
+        });
+        if (role === 'assistant' && Array.isArray(message.sources) && message.sources.length > 0) {
+            sourcesByMsgId[String(message.id)] = message.sources;
+        }
+    }
+    return {messages, sourcesByMsgId};
 }
 
 export function colorClassForCitationIndex(index: number): string {

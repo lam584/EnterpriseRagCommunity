@@ -17,6 +17,7 @@ import com.example.EnterpriseRagCommunity.service.content.PostsService;
 import com.example.EnterpriseRagCommunity.repository.content.PostViewsDailyRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUserIdResolver;
 import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,14 +73,22 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
     private static PostDetailDTO toBaseDto(PostsEntity e) {
         PostDetailDTO dto = new PostDetailDTO();
-        dto.setId(e.getId());
-        dto.setTenantId(e.getTenantId());
-        dto.setBoardId(e.getBoardId());
-        dto.setAuthorId(e.getAuthorId());
-
-        dto.setTitle(e.getTitle());
-        dto.setContent(e.getContent());
-        dto.setContentFormat(e.getContentFormat());
+        PostContentFieldSupport.applyCommonFields(
+                e.getId(),
+                e.getTenantId(),
+                e.getBoardId(),
+                e.getAuthorId(),
+                e.getTitle(),
+                e.getContent(),
+                e.getContentFormat(),
+                dto::setId,
+                dto::setTenantId,
+                dto::setBoardId,
+                dto::setAuthorId,
+                dto::setTitle,
+                dto::setContent,
+                dto::setContentFormat
+        );
         dto.setStatus(e.getStatus());
 
         dto.setAuthorName(null);
@@ -175,6 +184,34 @@ public class PortalPostsServiceImpl implements PortalPostsService {
         return m;
     }
 
+    private Long currentUserIdOrThrow() {
+        return CurrentUserIdResolver.currentUserIdOrThrow(
+                administratorService,
+                () -> new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {},
+                () -> new IllegalArgumentException("当前用户不存在")
+        );
+    }
+
+    private Long currentUserIdOrNull() {
+        return CurrentUserIdResolver.currentUserIdOrNull(administratorService);
+    }
+
+    private UsersEntity loadAuthorOrNull(Long authorId) {
+        try {
+            return authorId == null ? null : usersRepository.findByIdAndIsDeletedFalse(authorId).orElse(null);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private BoardsEntity loadBoardOrNull(Long boardId) {
+        try {
+            return boardId == null ? null : boardsRepository.findById(boardId).orElse(null);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     @Override
     public Page<PostDetailDTO> query(String keyword,
                                     Long postId,
@@ -223,16 +260,7 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
         // 访问控制：待审核/草稿/驳回/归档 等非已发布内容，仅作者本人可查看
         if (e.getStatus() != PostStatus.PUBLISHED) {
-            Long me = null;
-            try {
-                var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-                if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
-                    String email = auth.getName();
-                    me = administratorService.findByUsername(email).map(UsersEntity::getId).orElse(null);
-                }
-            } catch (Exception ignored) {
-            }
-
+            Long me = currentUserIdOrNull();
             boolean isAuthor = me != null && e.getAuthorId() != null && me.equals(e.getAuthorId());
             if (!isAuthor) {
                 // 用 404 语义更贴近“不可见”，避免泄露存在性
@@ -256,18 +284,7 @@ public class PortalPostsServiceImpl implements PortalPostsService {
             }
         }
 
-        UsersEntity author = null;
-        BoardsEntity board = null;
-        try {
-            if (e.getAuthorId() != null) author = usersRepository.findByIdAndIsDeletedFalse(e.getAuthorId()).orElse(null);
-        } catch (Exception ignored) {
-        }
-        try {
-            if (e.getBoardId() != null) board = boardsRepository.findById(e.getBoardId()).orElse(null);
-        } catch (Exception ignored) {
-        }
-
-        return enrichAggregates(enrichDisplay(toBaseDto(e), author, board));
+        return enrichAggregates(enrichDisplay(toBaseDto(e), loadAuthorOrNull(e.getAuthorId()), loadBoardOrNull(e.getBoardId())));
     }
 
     @Override
@@ -276,34 +293,14 @@ public class PortalPostsServiceImpl implements PortalPostsService {
         int safePage = Math.max(page, 1);
         int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
 
-        // 获取 userId：沿用 PostInteractionsServiceImpl 的做法：从 SecurityContext 取 email 再查 users。
-        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {};
-        }
-        String email = auth.getName();
-        Long userId = administratorService.findByUsername(email)
-                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
-                .getId();
+        Long userId = currentUserIdOrThrow();
 
         Pageable pageable = PageRequest.of(safePage - 1, safePageSize);
         var rs = reactionsRepository.findBookmarkedPostsByUserId(userId, ReactionTargetType.POST, ReactionType.FAVORITE, pageable);
 
         var content = rs.getContent().stream()
                 .map(PortalPostsServiceImpl::toBaseDto)
-                .map(dto -> {
-                    UsersEntity author = null;
-                    BoardsEntity board = null;
-                    try {
-                        if (dto.getAuthorId() != null) author = usersRepository.findByIdAndIsDeletedFalse(dto.getAuthorId()).orElse(null);
-                    } catch (Exception ignored) {
-                    }
-                    try {
-                        if (dto.getBoardId() != null) board = boardsRepository.findById(dto.getBoardId()).orElse(null);
-                    } catch (Exception ignored) {
-                    }
-                    return enrichDisplay(dto, author, board);
-                })
+                .map(dto -> enrichDisplay(dto, loadAuthorOrNull(dto.getAuthorId()), loadBoardOrNull(dto.getBoardId())))
                 .map(this::enrichAggregates)
                 .toList();
 

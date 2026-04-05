@@ -26,21 +26,20 @@ import com.example.EnterpriseRagCommunity.repository.moderation.ModerationPipeli
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationQueueRepository;
 import com.example.EnterpriseRagCommunity.repository.moderation.ModerationActionsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUserIdResolver;
 import com.example.EnterpriseRagCommunity.service.content.PortalReportsService;
 import com.example.EnterpriseRagCommunity.service.moderation.ModerationAutoKickService;
+import com.example.EnterpriseRagCommunity.service.moderation.ModerationPipelineRunSupport;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationLlmAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationRuleAutoRunner;
 import com.example.EnterpriseRagCommunity.service.moderation.jobs.ModerationVecAutoRunner;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -425,15 +424,12 @@ public class PortalReportsServiceImpl implements PortalReportsService {
     }
 
     private Long currentUserIdOrThrow() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            throw new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
-            };
-        }
-        String email = auth.getName();
-        return administratorService.findByUsername(email)
-                .orElseThrow(() -> new IllegalArgumentException("当前用户不存在"))
-                .getId();
+        return CurrentUserIdResolver.currentUserIdOrThrow(
+                administratorService,
+                () -> new org.springframework.security.core.AuthenticationException("未登录或会话已过期") {
+                },
+                () -> new IllegalArgumentException("当前用户不存在")
+        );
     }
 
     private static String normalizeReasonCode(String code) {
@@ -453,25 +449,6 @@ public class PortalReportsServiceImpl implements PortalReportsService {
     }
 
     private void sealRunningPipelineRun(Long queueId) {
-        if (queueId == null) return;
-        ModerationPipelineRunEntity run = null;
-        try {
-            run = moderationPipelineRunRepository.findFirstByQueueIdOrderByCreatedAtDesc(queueId).orElse(null);
-        } catch (Exception ignore) {
-        }
-        if (run == null || run.getStatus() != ModerationPipelineRunEntity.RunStatus.RUNNING) return;
-        try {
-            LocalDateTime now = LocalDateTime.now();
-            run.setStatus(ModerationPipelineRunEntity.RunStatus.FAIL);
-            run.setFinalDecision(ModerationPipelineRunEntity.FinalDecision.HUMAN);
-            run.setErrorCode("REQUEUED");
-            run.setErrorMessage("Requeued to auto");
-            run.setEndedAt(now);
-            if (run.getStartedAt() != null) {
-                run.setTotalMs(Duration.between(run.getStartedAt(), now).toMillis());
-            }
-            moderationPipelineRunRepository.save(run);
-        } catch (Exception ignore) {
-        }
+        ModerationPipelineRunSupport.sealRunningPipelineRun(queueId, moderationPipelineRunRepository);
     }
 }

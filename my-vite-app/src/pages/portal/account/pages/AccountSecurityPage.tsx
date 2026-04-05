@@ -87,6 +87,18 @@ export default function AccountSecurityPage() {
   const [showEnableInput, setShowEnableInput] = useState(false);
   const [showDisableInput, setShowDisableInput] = useState(false);
 
+  const resetTotpEnableForm = () => {
+    setEnablePassword('');
+    setEnablePasswordVerified(false);
+    setEnablePasswordVerifying(false);
+    setTotpEmailCode('');
+    setTotpEmailCountdown(0);
+    setSendingTotpEmailCode(false);
+    setEnrollResult(null);
+    setVerifyCode('');
+    setTotpErrorMsg(null);
+  };
+
   // Countdown state for email verification codes
   const [totpEmailCountdown, setTotpEmailCountdown] = useState(0);
   const [disableEmailCountdown, setDisableEmailCountdown] = useState(0);
@@ -333,15 +345,7 @@ export default function AccountSecurityPage() {
                   disabled={totpLoading || totpEnrollSaving || !masterKeyConfigured || (policyLoaded && (!totpAllowedByPolicy || !emailOtpAllowedByPolicy))}
                   onClick={() => {
                     setShowEnableInput(true);
-                    setEnablePassword('');
-                    setEnablePasswordVerified(false);
-                    setEnablePasswordVerifying(false);
-                    setTotpEmailCode('');
-                    setTotpEmailCountdown(0);
-                    setSendingTotpEmailCode(false);
-                    setEnrollResult(null);
-                    setVerifyCode('');
-                    setTotpErrorMsg(null);
+                    resetTotpEnableForm();
                   }}
                   className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
@@ -356,15 +360,7 @@ export default function AccountSecurityPage() {
                     disabled={totpEnrollSaving || totpVerifySaving || totpLoading}
                     onClick={() => {
                       setShowEnableInput(false);
-                      setEnablePassword('');
-                      setEnablePasswordVerified(false);
-                      setEnablePasswordVerifying(false);
-                      setTotpEmailCode('');
-                      setTotpEmailCountdown(0);
-                      setSendingTotpEmailCode(false);
-                      setEnrollResult(null);
-                      setVerifyCode('');
-                      setTotpErrorMsg(null);
+                      resetTotpEnableForm();
                     }}
                     className="px-4 py-2 rounded-md border bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed"
                   >

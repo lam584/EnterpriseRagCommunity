@@ -347,15 +347,13 @@ public class PortalSearchService {
             return 0;
         });
 
-        int offset = (safePage - 1) * safePageSize;
-        if (offset >= scored.size()) {
+        ContentPagingSupport.SliceWindow slice = ContentPagingSupport.sliceWindow(safePage, safePageSize, scored.size());
+        if (slice.offset() >= scored.size()) {
             return new PageImpl<>(List.of(), PageRequest.of(safePage - 1, safePageSize), scored.size());
         }
-        int end = Math.min(scored.size(), offset + safePageSize);
-        List<PortalSearchHitDTO> content = scored.subList(offset, end).stream().map(x -> x.dto).toList();
+        List<PortalSearchHitDTO> content = scored.subList(slice.offset(), slice.end()).stream().map(x -> x.dto).toList();
 
-        boolean hasMore = scored.size() > end;
-        long totalElements = hasMore ? (long) offset + content.size() + 1 : (long) offset + content.size();
+        long totalElements = slice.hasMore() ? (long) slice.offset() + content.size() + 1 : (long) slice.offset() + content.size();
         return new PageImpl<>(content, PageRequest.of(safePage - 1, safePageSize), totalElements);
     }
 

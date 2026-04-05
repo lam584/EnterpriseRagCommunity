@@ -74,6 +74,36 @@ function renderForgotPassword() {
   );
 }
 
+function mockBothVerifyMethods() {
+  mockGetPasswordResetStatus.mockResolvedValue({
+    allowed: true,
+    totpEnabled: true,
+    emailEnabled: true,
+    message: null,
+  } as never);
+}
+
+async function enterBothVerifyMethodsStep() {
+  renderForgotPassword();
+  fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'both@example.com' } });
+  fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+  await screen.findByText(/请选择其中一种方式验证/);
+}
+
+async function submitTotpReset(password = '123456', code = '123456') {
+  fireEvent.change(screen.getByLabelText('动态验证码'), { target: { value: code } });
+  fireEvent.change(screen.getByLabelText('新密码'), { target: { value: password } });
+  fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: password } });
+  fireEvent.click(screen.getByRole('button', { name: '重置密码' }));
+}
+
+async function enterEmailResetFlow(email = 'email@example.com') {
+  fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: email } });
+  fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+  await screen.findByText('该账号可通过邮箱验证码找回密码。');
+  fireEvent.click(screen.getByRole('button', { name: '发送邮箱验证码' }));
+}
+
 describe('ForgotPassword', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -117,11 +147,7 @@ describe('ForgotPassword', () => {
 
     expect(await screen.findByText('该账号已启用 TOTP，请输入动态验证码并设置新密码。')).not.toBeNull();
 
-    fireEvent.change(screen.getByLabelText('动态验证码'), { target: { value: '123456' } });
-    fireEvent.change(screen.getByLabelText('新密码'), { target: { value: '123456' } });
-    fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: '123456' } });
-
-    fireEvent.click(screen.getByRole('button', { name: '重置密码' }));
+    await submitTotpReset();
 
     expect(await screen.findByText('密码已重置，请使用新密码登录')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '去登录' }));
@@ -229,13 +255,7 @@ describe('ForgotPassword', () => {
     mockSendPasswordResetEmailCode.mockResolvedValue({} as never);
 
     renderForgotPassword();
-
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'email@example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
-
-    await screen.findByText('该账号可通过邮箱验证码找回密码。');
-
-    fireEvent.click(screen.getByRole('button', { name: '发送邮箱验证码' }));
+    await enterEmailResetFlow();
     expect(await screen.findByText('验证码已发送，请检查邮箱')).not.toBeNull();
     expect((screen.getByRole('button', { name: '60s' }) as HTMLButtonElement).disabled).toBe(true);
   });
@@ -250,13 +270,7 @@ describe('ForgotPassword', () => {
     mockSendPasswordResetEmailCode.mockResolvedValue({ resendWaitSeconds: 1 } as never);
 
     renderForgotPassword();
-
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'email@example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
-
-    await screen.findByText('该账号可通过邮箱验证码找回密码。');
-
-    fireEvent.click(screen.getByRole('button', { name: '发送邮箱验证码' }));
+    await enterEmailResetFlow();
     expect(await screen.findByText('验证码已发送，请检查邮箱')).not.toBeNull();
 
     expect((screen.getByRole('button', { name: '1s' }) as HTMLButtonElement).disabled).toBe(true);
@@ -281,10 +295,7 @@ describe('ForgotPassword', () => {
 
     await screen.findByText('该账号已启用 TOTP，请输入动态验证码并设置新密码。');
 
-    fireEvent.change(screen.getByLabelText('动态验证码'), { target: { value: '123456' } });
-    fireEvent.change(screen.getByLabelText('新密码'), { target: { value: '123456' } });
-    fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: '123456' } });
-    fireEvent.click(screen.getByRole('button', { name: '重置密码' }));
+    await submitTotpReset();
 
     expect(await screen.findByText('重置失败')).not.toBeNull();
   });
@@ -328,19 +339,8 @@ describe('ForgotPassword', () => {
   });
 
   it('switches verify method to totp when both methods are enabled', async () => {
-    mockGetPasswordResetStatus.mockResolvedValue({
-      allowed: true,
-      totpEnabled: true,
-      emailEnabled: true,
-      message: null,
-    } as never);
-
-    renderForgotPassword();
-
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'both@example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
-
-    await screen.findByText(/请选择其中一种方式验证/);
+    mockBothVerifyMethods();
+    await enterBothVerifyMethodsStep();
 
     fireEvent.click(screen.getByRole('button', { name: '使用 TOTP 验证' }));
     expect(await screen.findByLabelText('动态验证码')).not.toBeNull();
@@ -348,19 +348,8 @@ describe('ForgotPassword', () => {
   });
 
   it('goes back to email step via 上一步', async () => {
-    mockGetPasswordResetStatus.mockResolvedValue({
-      allowed: true,
-      totpEnabled: true,
-      emailEnabled: true,
-      message: null,
-    } as never);
-
-    renderForgotPassword();
-
-    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'both@example.com' } });
-    fireEvent.click(screen.getByRole('button', { name: '下一步' }));
-
-    await screen.findByText(/请选择其中一种方式验证/);
+    mockBothVerifyMethods();
+    await enterBothVerifyMethodsStep();
 
     fireEvent.click(screen.getByRole('button', { name: '上一步' }));
     expect(await screen.findByRole('button', { name: '下一步' })).not.toBeNull();

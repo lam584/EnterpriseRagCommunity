@@ -37,32 +37,17 @@ public class AiAssistantPreferencesController {
 
     @GetMapping
     public ResponseEntity<?> getPreferences() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "未登录或会话已过期");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-        }
-
-        String email = auth.getName();
-        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        UsersEntity user = resolveCurrentUserOrNull();
+        if (user == null) return unauthorizedResponse();
 
         return ResponseEntity.ok(toAssistantPreferencesDto(user.getMetadata()));
     }
 
     @PutMapping
     public ResponseEntity<?> updatePreferences(@RequestBody @Valid UpdateAssistantPreferencesRequest req) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
-            Map<String, String> response = new HashMap<>();
-            response.put("message", "未登录或会话已过期");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
-        }
-
-        String email = auth.getName();
-        UsersEntity user = usersRepository.findByEmailAndIsDeletedFalse(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        UsersEntity user = resolveCurrentUserOrNull();
+        if (user == null) return unauthorizedResponse();
+        String email = user.getEmail();
         Map<String, Object> beforeAudit = summarizeAssistantPrefsForAudit(user.getMetadata());
 
         Map<String, Object> metadata0 = user.getMetadata();
@@ -134,6 +119,22 @@ public class AiAssistantPreferencesController {
         return ResponseEntity.ok(toAssistantPreferencesDto(saved.getMetadata()));
     }
 
+    private UsersEntity resolveCurrentUserOrNull() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return null;
+        }
+        String email = auth.getName();
+        return usersRepository.findByEmailAndIsDeletedFalse(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+    }
+
+    private static ResponseEntity<Map<String, String>> unauthorizedResponse() {
+        Map<String, String> response = new HashMap<>();
+        response.put("message", "未登录或会话已过期");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
     private static String normalizeOptionalString(String s) {
         if (s == null) return null;
         String t = s.trim();
@@ -150,20 +151,18 @@ public class AiAssistantPreferencesController {
     }
 
     @SuppressWarnings("unchecked")
+    private static Map<String, Object> copyObjectMap(Object value) {
+        if (value instanceof Map) {
+            return new LinkedHashMap<>((Map<String, Object>) value);
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
     private static AssistantPreferencesDTO toAssistantPreferencesDto(Map<String, Object> metadata) {
         AssistantPreferencesDTO dto = new AssistantPreferencesDTO();
-
-        Map<String, Object> prefs = null;
-        if (metadata != null) {
-            Object p = metadata.get("preferences");
-            if (p instanceof Map) prefs = (Map<String, Object>) p;
-        }
-
-        Map<String, Object> assistant = null;
-        if (prefs != null) {
-            Object a = prefs.get("assistant");
-            if (a instanceof Map) assistant = (Map<String, Object>) a;
-        }
+        Map<String, Object> prefs = metadata == null ? null : copyObjectMap(metadata.get("preferences"));
+        Map<String, Object> assistant = prefs == null ? null : copyObjectMap(prefs.get("assistant"));
 
         String defaultProviderId = null;
         String defaultModel = null;
@@ -225,16 +224,8 @@ public class AiAssistantPreferencesController {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> summarizeAssistantPrefsForAudit(Map<String, Object> metadata) {
         Map<String, Object> m = new LinkedHashMap<>();
-        Map<String, Object> prefs = null;
-        if (metadata != null) {
-            Object p = metadata.get("preferences");
-            if (p instanceof Map) prefs = (Map<String, Object>) p;
-        }
-        Map<String, Object> assistant = null;
-        if (prefs != null) {
-            Object a = prefs.get("assistant");
-            if (a instanceof Map) assistant = (Map<String, Object>) a;
-        }
+        Map<String, Object> prefs = metadata == null ? null : copyObjectMap(metadata.get("preferences"));
+        Map<String, Object> assistant = prefs == null ? null : copyObjectMap(prefs.get("assistant"));
         if (assistant == null) return m;
         m.put("defaultProviderId", assistant.get("defaultProviderId"));
         m.put("defaultModel", assistant.get("defaultModel"));

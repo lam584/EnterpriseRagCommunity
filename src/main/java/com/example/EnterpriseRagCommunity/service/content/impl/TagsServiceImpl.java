@@ -21,6 +21,7 @@ import com.example.EnterpriseRagCommunity.entity.content.TagsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.TagType;
 import com.example.EnterpriseRagCommunity.repository.content.PostTagRepository;
 import com.example.EnterpriseRagCommunity.repository.content.TagsRepository;
+import com.example.EnterpriseRagCommunity.service.PageableSupport;
 import com.example.EnterpriseRagCommunity.service.content.TagsService;
 
 import jakarta.persistence.criteria.Predicate;
@@ -103,9 +104,7 @@ public class TagsServiceImpl implements TagsService {
             sort = Sort.by(Sort.Direction.DESC, "createdAt");
         }
 
-        int pageNumber = (queryDTO.getPage() != null && queryDTO.getPage() > 0) ? queryDTO.getPage() - 1 : 0;
-        int pageSize = (queryDTO.getPageSize() != null && queryDTO.getPageSize() > 0) ? queryDTO.getPageSize() : 20;
-        Pageable pageable = PageRequest.of(pageNumber, pageSize, sort);
+        Pageable pageable = PageableSupport.oneBased(queryDTO.getPage(), queryDTO.getPageSize(), sort);
 
         return tagsRepository.findAll(spec, pageable);
     }

@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.example.EnterpriseRagCommunity.service.ai.ApproxTokenSupport;
+
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -30,6 +32,7 @@ import com.example.EnterpriseRagCommunity.service.ai.AiRerankService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
 import com.example.EnterpriseRagCommunity.service.access.DateTimeParamSupport;
+import com.example.EnterpriseRagCommunity.service.retrieval.HybridRerankDocumentSupport;
 import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalLogsService;
@@ -114,18 +117,16 @@ public class AdminRetrievalHybridController {
 
         List<HybridRerankTestDocumentDTO> docsUsed = new ArrayList<>();
         List<String> docTexts = new ArrayList<>();
-        for (HybridRerankTestDocumentDTO d : docs) {
-            if (d == null) continue;
-            String t = buildDocText(d);
-            t = truncateByApproxTokens(t, perDocMaxTokens);
-            int tokens = approxTokens(t);
-            if (tokens <= 0) continue;
-            int cost = tokens + Math.max(0, queryTokens);
-            if (budgetLeft - cost < 200) break;
-            budgetLeft -= cost;
-            docsUsed.add(d);
-            docTexts.add(t);
-        }
+        budgetLeft = HybridRerankDocumentSupport.collectDocsWithinBudget(
+                docs,
+                docsUsed,
+                docTexts,
+                AdminRetrievalHybridController::buildDocText,
+                text -> truncateByApproxTokens(text, perDocMaxTokens),
+                AdminRetrievalHybridController::approxTokens,
+                budgetLeft,
+                queryTokens
+        );
 
         if (docTexts.isEmpty()) {
             out.setOk(false);
@@ -250,14 +251,7 @@ public class AdminRetrievalHybridController {
     }
 
     private static int approxTokens(String s) {
-        if (s == null || s.isEmpty()) return 0;
-        double t = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            if (c <= 0x7f) t += 0.25;
-            else t += 1.0;
-        }
-        return (int) Math.ceil(t);
+        return ApproxTokenSupport.approxTokens(s);
     }
 
     private static String truncateByApproxTokens(String s, int maxTokens) {

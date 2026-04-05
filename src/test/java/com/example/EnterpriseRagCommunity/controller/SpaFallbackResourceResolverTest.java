@@ -27,11 +27,11 @@ class SpaFallbackResourceResolverTest {
     }
 
     @Test
-    void getResource_shouldReturnNull_whenPathBlank_andIndexMissing(@TempDir Path tmp) throws Exception {
+    void getResource_shouldReturnNull_whenBlankPath_andIndexMissing(@TempDir Path tmp) throws Exception {
         Resource location = new FileSystemResource(tmp.toFile());
         SpaController.SpaFallbackResourceResolver r = new SpaController.SpaFallbackResourceResolver();
 
-        Resource out = r.getResource(null, location);
+        Resource out = r.getResource("", location);
 
         assertThat(out).isNull();
     }
@@ -84,4 +84,3 @@ class SpaFallbackResourceResolverTest {
         assertThat(out).isNull();
     }
 }
-

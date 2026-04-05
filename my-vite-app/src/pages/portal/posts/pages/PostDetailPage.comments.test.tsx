@@ -56,7 +56,7 @@ describe('PostDetailPage (comments)', () => {
     cleanup();
   });
 
-  const renderPage = async (comments: any[]) => {
+  const mockPageData = (comments: any[], commentResponse?: any) => {
     (listTags as any).mockResolvedValue([]);
     (getTranslateConfig as any).mockResolvedValue({ enabled: true, allowedTargetLanguages: [] });
     (getMyTranslatePreferences as any).mockResolvedValue({
@@ -79,22 +79,33 @@ describe('PostDetailPage (comments)', () => {
       favoriteCount: 0,
       commentCount: comments.length,
     });
-    (listPostComments as any).mockResolvedValue({
+    (listPostComments as any).mockResolvedValue(commentResponse ?? {
       content: comments,
       totalPages: 1,
       totalElements: comments.length,
       number: 0,
       size: 20,
     });
+  };
+
+  const renderCommentsPage = (options: {
+    comments: any[];
+    commentResponse?: any;
+    initialEntry?: string;
+  }) => {
+    mockPageData(options.comments, options.commentResponse);
 
     render(
-      <MemoryRouter initialEntries={['/posts/1']}>
+      <MemoryRouter initialEntries={[options.initialEntry ?? '/posts/1']}>
         <Routes>
           <Route path="/posts/:postId" element={<PostDetailPage />} />
         </Routes>
       </MemoryRouter>,
     );
+  };
 
+  const renderPage = async (comments: any[], initialEntry = '/posts/1') => {
+    renderCommentsPage({ comments, initialEntry });
     await screen.findByText(comments[0].content);
   };
 
@@ -199,45 +210,7 @@ describe('PostDetailPage (comments)', () => {
       { id: 104, postId: 1, parentId: 100, content: 'c4', authorName: 'Eve', createdAt: '2026-01-01T00:00:00Z', metadata: { languages: ['en'] } },
     ];
 
-    (listTags as any).mockResolvedValue([]);
-    (getTranslateConfig as any).mockResolvedValue({ enabled: true, allowedTargetLanguages: [] });
-    (getMyTranslatePreferences as any).mockResolvedValue({
-      targetLanguage: '简体中文（Simplified Chinese）',
-      autoTranslatePosts: false,
-      autoTranslateComments: false,
-    });
-    (getPost as any).mockResolvedValue({
-      id: 1,
-      boardId: 1,
-      title: 't',
-      content: 'c',
-      contentFormat: 'MARKDOWN',
-      metadata: { languages: ['zh'] },
-      tags: [],
-      hotScore: 0,
-      likedByMe: false,
-      favoritedByMe: false,
-      reactionCount: 0,
-      favoriteCount: 0,
-      commentCount: comments.length,
-    });
-    (listPostComments as any).mockResolvedValue({
-      content: comments,
-      totalPages: 1,
-      totalElements: comments.length,
-      number: 0,
-      size: 20,
-    });
-
-    render(
-      <MemoryRouter initialEntries={['/posts/1?commentId=104#comment-104']}>
-        <Routes>
-          <Route path="/posts/:postId" element={<PostDetailPage />} />
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    await screen.findByText('root');
+    await renderPage(comments, '/posts/1?commentId=104#comment-104');
     await screen.findByText('c4');
     expect(document.getElementById('comment-104')).not.toBeNull();
     await new Promise((r) => setTimeout(r, 80));
@@ -275,43 +248,7 @@ describe('PostDetailPage (comments)', () => {
                 },
             ];
 
-            (listTags as any).mockResolvedValue([]);
-            (getTranslateConfig as any).mockResolvedValue({enabled: true, allowedTargetLanguages: []});
-            (getMyTranslatePreferences as any).mockResolvedValue({
-                targetLanguage: '简体中文（Simplified Chinese）',
-                autoTranslatePosts: false,
-                autoTranslateComments: false,
-            });
-            (getPost as any).mockResolvedValue({
-                id: 1,
-                boardId: 1,
-                title: 't',
-                content: 'c',
-                contentFormat: 'MARKDOWN',
-                metadata: {languages: ['zh']},
-                tags: [],
-                hotScore: 0,
-                likedByMe: false,
-                favoritedByMe: false,
-                reactionCount: 0,
-                favoriteCount: 0,
-                commentCount: comments.length,
-            });
-            (listPostComments as any).mockResolvedValue({
-                content: comments,
-                totalPages: 1,
-                totalElements: comments.length,
-                number: 0,
-                size: 20,
-            });
-
-            render(
-                <MemoryRouter initialEntries={['/posts/1']}>
-                    <Routes>
-                        <Route path="/posts/:postId" element={<PostDetailPage/>}/>
-                    </Routes>
-                </MemoryRouter>,
-            );
+            renderCommentsPage({ comments });
 
             const contentEl = await screen.findByTestId('comment-content-301');
             const expandBtn = await screen.findByRole('button', {name: '展开'});
@@ -358,28 +295,6 @@ describe('PostDetailPage (comments)', () => {
             },
         ];
 
-        (listTags as any).mockResolvedValue([]);
-        (getTranslateConfig as any).mockResolvedValue({enabled: true, allowedTargetLanguages: []});
-        (getMyTranslatePreferences as any).mockResolvedValue({
-            targetLanguage: '简体中文（Simplified Chinese）',
-            autoTranslatePosts: false,
-            autoTranslateComments: false,
-        });
-        (getPost as any).mockResolvedValue({
-            id: 1,
-            boardId: 1,
-            title: 't',
-            content: 'c',
-            contentFormat: 'MARKDOWN',
-            metadata: {languages: ['zh']},
-            tags: [],
-            hotScore: 0,
-            likedByMe: false,
-            favoritedByMe: false,
-            reactionCount: 0,
-            favoriteCount: 0,
-            commentCount: comments.length,
-        });
         (listPostComments as any)
             .mockResolvedValueOnce({
                 content: comments,
@@ -398,13 +313,7 @@ describe('PostDetailPage (comments)', () => {
         (deleteMyComment as any).mockResolvedValue(undefined);
         const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
-        render(
-            <MemoryRouter initialEntries={['/posts/1']}>
-                <Routes>
-                    <Route path="/posts/:postId" element={<PostDetailPage/>}/>
-                </Routes>
-            </MemoryRouter>,
-        );
+        renderCommentsPage({ comments });
 
         const mineCard = (await screen.findByText('mine')).closest('.rounded-lg') as HTMLElement;
         const otherCard = (await screen.findByText('other')).closest('.rounded-lg') as HTMLElement;

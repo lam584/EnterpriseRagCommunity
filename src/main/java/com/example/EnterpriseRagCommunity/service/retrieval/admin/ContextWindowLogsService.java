@@ -8,9 +8,7 @@ import com.example.EnterpriseRagCommunity.repository.semantic.ContextWindowsRepo
 import com.example.EnterpriseRagCommunity.repository.semantic.RetrievalEventsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,13 +27,10 @@ public class ContextWindowLogsService {
 
     @Transactional(readOnly = true)
     public Page<ContextWindowLogDTO> listWindows(LocalDateTime from, LocalDateTime to, int page, int size) {
-        int safePage = Math.max(0, page);
-        int safeSize = Math.min(200, Math.max(1, size));
-        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime start = from == null ? now.minusDays(7) : from;
-        LocalDateTime end = to == null ? now.plusSeconds(1) : to;
+        Pageable pageable = RetrievalLogPageSupport.pageable(page, size);
+        LocalDateTime start = RetrievalLogPageSupport.defaultFrom(from, now);
+        LocalDateTime end = RetrievalLogPageSupport.defaultTo(to, now);
 
         Page<ContextWindowsEntity> rows = contextWindowsRepository.findAll(
                 (root, _query, cb) -> cb.between(root.get("createdAt"), start, end),

@@ -3,10 +3,11 @@ import { FaClipboardList, FaCheckCircle, FaMagic, FaSearch, FaChartLine, FaUsers
 import { useAccess } from '../../contexts/AccessContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { logout } from '../../services/authService';
-import { getMyProfile } from '../../services/accountService';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import BeianFooter from '../../components/common/BeianFooter';
+import { getAvatarFallbackText, getDisplayUsername } from '../../utils/userDisplay';
+import { useProfileAvatarUrl } from '../../hooks/useProfileAvatarUrl';
 
 /**
  * 后台管理布局（统一风格）：采用与 NewsSystemLayout 相同的左侧紫色渐变侧边栏
@@ -19,18 +20,10 @@ export default function AdminDashboardLayout() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const displayUsername = useMemo(() => {
-    const name = currentUser?.username?.trim();
-    return name && name.length > 0 ? name : '未登录';
-  }, [currentUser?.username]);
+  const displayUsername = useMemo(() => getDisplayUsername(currentUser?.username), [currentUser?.username]);
+  const avatarFallbackText = useMemo(() => getAvatarFallbackText(currentUser?.username), [currentUser?.username]);
 
-  const avatarFallbackText = useMemo(() => {
-    const name = currentUser?.username?.trim();
-    if (!name) return 'U';
-    return name.slice(0, 1).toUpperCase();
-  }, [currentUser?.username]);
-
-  const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | undefined>(undefined);
+  const profileAvatarUrl = useProfileAvatarUrl(isAuthenticated);
 
   // 避免 React 18 StrictMode(dev) 下重复 refreshAuth 造成短时间抖动。
   const didInitialRefreshRef = useRef(false);
@@ -45,30 +38,6 @@ export default function AdminDashboardLayout() {
       void refreshAuth?.();
     }
   }, [isAuthenticated, refreshAuth]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadProfileAvatar() {
-      if (!isAuthenticated) {
-        setProfileAvatarUrl(undefined);
-        return;
-      }
-
-      try {
-        const p = await getMyProfile();
-        if (!cancelled) setProfileAvatarUrl(p.avatarUrl);
-      } catch {
-        if (!cancelled) setProfileAvatarUrl(undefined);
-      }
-    }
-
-    loadProfileAvatar();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated]);
 
   useEffect(() => {
     function onDocumentMouseDown(e: MouseEvent) {

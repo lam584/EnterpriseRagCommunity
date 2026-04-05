@@ -1,15 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LlmQueueSampleDTO, LlmQueueTaskType } from '../../../../services/llmQueueAdminService';
+import { formatDurationMs, formatHmsTime } from './metricsTimeUtils';
 
 export function fmtMs(v: unknown): string {
-  const n = typeof v === 'number' ? v : Number(v);
-  if (!Number.isFinite(n) || n <= 0) return '—';
-  if (n < 1000) return `${Math.round(n)}ms`;
-  const s = n / 1000;
-  if (s < 60) return `${s.toFixed(2).replace(/\.?0+$/, '')}s`;
-  const m = Math.floor(s / 60);
-  const r = s - m * 60;
-  return `${m}m${Math.round(r)}s`;
+  return formatDurationMs(v);
 }
 
 export function fmtNum(v: unknown): string {
@@ -20,22 +14,11 @@ export function fmtNum(v: unknown): string {
 }
 
 export function fmtTs(v: string): string {
-  const d = new Date(v);
-  if (!Number.isFinite(d.getTime())) return v;
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
+  return formatHmsTime(v, v);
 }
 
 export function fmtHmsTs(v: string | null | undefined): string {
-  if (!v) return '—';
-  const d = new Date(v);
-  if (!Number.isFinite(d.getTime())) return v;
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
+  return formatHmsTime(v);
 }
 
 export function fmtType(t: LlmQueueTaskType | string | undefined | null): string {
@@ -225,4 +208,3 @@ export const SparkLine: React.FC<{
     </div>
   );
 };
-

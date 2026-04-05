@@ -1,29 +1,23 @@
 package com.example.EnterpriseRagCommunity.service.retrieval;
 
-import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
-import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
-import com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType;
-import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
-import com.example.EnterpriseRagCommunity.service.ai.AiEmbeddingService;
-import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
-import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
-import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
-import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.Data;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+
+import org.springframework.stereotype.Service;
+
+import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
+import com.example.EnterpriseRagCommunity.entity.semantic.enums.RetrievalHitType;
+import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
+import com.example.EnterpriseRagCommunity.service.retrieval.es.RagPostsIndexService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import lombok.Data;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -39,23 +33,13 @@ public class RagPostChatRetrievalService {
     public List<Hit> retrieve(String queryText, int topK, Long boardId) {
         if (queryText == null || queryText.isBlank()) return List.of();
         int k = Math.max(1, Math.min(20, topK));
-
-        AiEmbeddingService.EmbeddingResult er;
-        try {
-            String mo = ragProps.getEs().getEmbeddingModel();
-            er = llmGateway.embedOnceRouted(LlmQueueTaskType.POST_EMBEDDING, null, mo, queryText);
-        } catch (Exception e) {
-            throw new IllegalStateException("Embedding failed: " + e.getMessage(), e);
-        }
-        float[] vec = er == null ? null : er.vector();
+        float[] vec = RagSearchSupport.embedQuery(llmGateway, ragProps.getEs().getEmbeddingModel(), queryText);
         if (vec == null || vec.length == 0) return List.of();
-
-        int configuredDims = ragProps.getEs().getEmbeddingDims();
-        int inferredDims = vec.length;
-        if (configuredDims > 0 && configuredDims != inferredDims) {
-            throw new IllegalStateException("Embedding dims mismatch: configured=" + configuredDims + " but embedding length=" + inferredDims);
-        }
-        int dimsToUse = configuredDims > 0 ? configuredDims : inferredDims;
+        int dimsToUse = RagSearchSupport.resolveConfiguredDims(
+                ragProps.getEs().getEmbeddingDims(),
+                vec.length,
+                "Embedding dims mismatch: configured="
+        );
 
         String indexName = ragProps.getEs().getIndex();
         try {
@@ -64,7 +48,7 @@ public class RagPostChatRetrievalService {
             throw new IllegalStateException("Ensure ES index failed: " + e.getMessage(), e);
         }
 
-        String body = buildKnnSearchBody(k, Math.max(100, k * 10), boardId, vec);
+        String body = buildKnnSearchBody(k, RagSearchSupport.resolveNumCandidates(null, k), boardId, vec);
         JsonNode root = postSearch(indexName, body);
 
         List<Hit> hits = new ArrayList<>();
@@ -95,12 +79,7 @@ public class RagPostChatRetrievalService {
         }
         if (postIds.isEmpty()) return hits;
 
-        List<Long> ids = new ArrayList<>(postIds);
-        Set<Long> ok = new java.util.HashSet<>();
-        postsRepository.findByIdInAndIsDeletedFalseAndStatus(ids, PostStatus.PUBLISHED)
-                .forEach(p -> {
-                    if (p != null && p.getId() != null) ok.add(p.getId());
-                });
+        Set<Long> ok = RagSearchSupport.publishedPostIds(postsRepository, postIds);
 
         List<Hit> out = new ArrayList<>();
         for (Hit h : hits) {
@@ -111,55 +90,18 @@ public class RagPostChatRetrievalService {
     }
 
     private JsonNode postSearch(String indexName, String body) {
-        String endpoint = ElasticsearchHttpSupport.resolveEndpoint(systemConfigurationService);
-
-        try {
-            URL url = java.net.URI.create(endpoint + "/" + indexName + "/_search?filter_path=hits.hits._id,hits.hits._score,hits.hits._source").toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(10_000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-            ElasticsearchHttpSupport.applyApiKey(conn, systemConfigurationService);
-
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(body.getBytes(StandardCharsets.UTF_8));
-            }
-
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            if (is == null) return objectMapper.createObjectNode();
-            String json = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-            if (code < 200 || code >= 300) throw new IllegalStateException("ES error HTTP " + code + ": " + json);
-            return objectMapper.readTree(json);
-        } catch (Exception e) {
-            throw new IllegalStateException("ES search failed: " + e.getMessage(), e);
-        }
+        return RagSearchSupport.postSearch(
+                objectMapper,
+                systemConfigurationService,
+                indexName,
+                body,
+                "hits.hits._id,hits.hits._score,hits.hits._source",
+                true
+        );
     }
 
     private static String buildKnnSearchBody(int size, int numCandidates, Long boardId, float[] vec) {
-        StringBuilder sb = new StringBuilder();
-        sb.append('{');
-        sb.append("\"size\":").append(size);
-        sb.append(",\"query\":{\"bool\":{\"filter\":[");
-        if (boardId != null) {
-            sb.append("{\"term\":{\"board_id\":").append(boardId).append("}}");
-        }
-        sb.append("]}}");
-        sb.append(",\"knn\":{");
-        sb.append("\"field\":\"embedding\"");
-        sb.append(",\"query_vector\":[");
-        for (int i = 0; i < vec.length; i++) {
-            if (i > 0) sb.append(',');
-            sb.append(vec[i]);
-        }
-        sb.append(']');
-        sb.append(",\"k\":").append(size);
-        sb.append(",\"num_candidates\":").append(numCandidates);
-        sb.append('}');
-        sb.append('}');
-        return sb.toString();
+        return RagPostSearchJsonSupport.buildKnnSearchBody(size, numCandidates, boardId, vec);
     }
 
     @Data

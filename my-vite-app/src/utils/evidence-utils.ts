@@ -170,6 +170,17 @@ function readNonEmptyString(v: unknown): string | null {
   return t ? t : null;
 }
 
+function extractEvidenceFingerprintFields(o: Record<string, unknown>) {
+  return {
+    imageId: readNonEmptyString(o.image_id ?? o.imageId ?? o.image),
+    type: readNonEmptyString(o.type ?? o.source_type ?? o.sourceType),
+    quote: readNonEmptyString(o.quote),
+    text: readNonEmptyString(o.text),
+    before: readNonEmptyString(o.before_context ?? o.beforeContext),
+    after: readNonEmptyString(o.after_context ?? o.afterContext),
+  };
+}
+
 export function fingerprintEvidenceItem(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === 'string') {
@@ -181,47 +192,21 @@ export function fingerprintEvidenceItem(v: unknown): string | null {
       const parsed = JSON.parse(cleaned) as unknown;
       const o = toRecord(parsed);
       if (o) {
-        const imageId = readNonEmptyString(o.image_id ?? o.imageId ?? o.image);
-        const type = readNonEmptyString(o.type ?? o.source_type ?? o.sourceType);
-        const quote = readNonEmptyString(o.quote);
-        const text = readNonEmptyString(o.text);
-        const before = readNonEmptyString(o.before_context ?? o.beforeContext);
-        const after = readNonEmptyString(o.after_context ?? o.afterContext);
-        const keyObj = {
-          imageId,
-          type,
-          quote,
-          text,
-          before,
-          after,
-        };
-        return JSON.stringify(keyObj);
+        return JSON.stringify(extractEvidenceFingerprintFields(o));
       }
     } catch {
     }
     const parsed2 = tryParseFirstJson(cleaned);
     const o2 = toRecord(parsed2);
     if (o2) {
-      const imageId = readNonEmptyString(o2.image_id ?? o2.imageId ?? o2.image);
-      const type = readNonEmptyString(o2.type ?? o2.source_type ?? o2.sourceType);
-      const quote = readNonEmptyString(o2.quote);
-      const text = readNonEmptyString(o2.text);
-      const before = readNonEmptyString(o2.before_context ?? o2.beforeContext);
-      const after = readNonEmptyString(o2.after_context ?? o2.afterContext);
-      return JSON.stringify({ imageId, type, quote, text, before, after });
+      return JSON.stringify(extractEvidenceFingerprintFields(o2));
     }
     return JSON.stringify({ raw: cleaned });
   }
   if (typeof v === 'object') {
     const o = toRecord(v);
     if (!o) return JSON.stringify({ raw: String(v) });
-    const imageId = readNonEmptyString(o.image_id ?? o.imageId ?? o.image);
-    const type = readNonEmptyString(o.type ?? o.source_type ?? o.sourceType);
-    const quote = readNonEmptyString(o.quote);
-    const text = readNonEmptyString(o.text);
-    const before = readNonEmptyString(o.before_context ?? o.beforeContext);
-    const after = readNonEmptyString(o.after_context ?? o.afterContext);
-    return JSON.stringify({ imageId, type, quote, text, before, after });
+    return JSON.stringify(extractEvidenceFingerprintFields(o));
   }
   return JSON.stringify({ raw: String(v) });
 }

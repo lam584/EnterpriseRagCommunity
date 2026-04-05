@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -82,27 +83,21 @@ final class AiChatInputSupport {
     }
 
     static boolean isLikelyImageUrl(String url) {
-        String u = toNonBlank(url);
-        if (u == null) return false;
-        String lower = u.toLowerCase();
-        if (lower.startsWith("/uploads/")) return true;
-        return lower.endsWith(".png")
-                || lower.endsWith(".jpg")
-                || lower.endsWith(".jpeg")
-                || lower.endsWith(".gif")
-                || lower.endsWith(".webp")
-                || lower.endsWith(".bmp")
-                || lower.endsWith(".svg");
+        return LikelyImageUrlSupport.isLikelyImageUrl(url);
     }
 
     static String appendImagesAsText(String userMsg, List<AiChatStreamRequest.ImageInput> images) {
+        return appendImageUrlsAsText(userMsg, images, AiChatStreamRequest.ImageInput::getUrl);
+    }
+
+    static <T> String appendImageUrlsAsText(String userMsg, List<T> images, Function<T, Object> urlGetter) {
         String base = userMsg == null ? "" : userMsg;
         StringBuilder sb = new StringBuilder(base);
         sb.append("\n\n[IMAGES]\n");
         int take = 0;
-        for (AiChatStreamRequest.ImageInput img : images) {
+        for (T img : images) {
             if (img == null) continue;
-            String url = toNonBlank(img.getUrl());
+            String url = toNonBlank(urlGetter.apply(img));
             if (url == null) continue;
             sb.append("- ").append(url).append("\n");
             take += 1;

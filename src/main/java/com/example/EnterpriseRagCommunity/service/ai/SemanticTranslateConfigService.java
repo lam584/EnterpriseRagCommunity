@@ -135,18 +135,13 @@ public class SemanticTranslateConfigService {
 
     private SemanticTranslateConfigEntity mergeAndValidate(SemanticTranslateConfigEntity base, SemanticTranslateConfigDTO payload) {
         if (payload == null) throw new IllegalArgumentException("payload 不能为空");
-
-        String promptCode = payload.getPromptCode();
-        if (promptCode == null || promptCode.isBlank()) {
-            throw new IllegalArgumentException("promptCode 不能为空");
-        }
-        if (promptCode.length() > 64) {
-             throw new IllegalArgumentException("promptCode 长度不能超过 64");
-        }
-
-        Integer maxContentChars = payload.getMaxContentChars();
-        if (maxContentChars == null) maxContentChars = DEFAULT_MAX_CONTENT_CHARS;
-        if (maxContentChars < 200 || maxContentChars > 100000) throw new IllegalArgumentException("maxContentChars 需在 [200,100000] 范围内");
+        PromptConfigValidationSupport.ValidatedPromptConfig validated =
+                PromptConfigValidationSupport.validatePromptCodeAndMaxContentChars(
+                        payload.getPromptCode(),
+                        payload.getMaxContentChars(),
+                        DEFAULT_MAX_CONTENT_CHARS,
+                        100000
+                );
 
         Integer historyKeepDays = payload.getHistoryKeepDays();
         if (historyKeepDays != null && historyKeepDays < 1) throw new IllegalArgumentException("historyKeepDays 必须为正数");
@@ -162,11 +157,11 @@ public class SemanticTranslateConfigService {
         }
 
         base.setEnabled(Boolean.TRUE.equals(payload.getEnabled()));
-        base.setPromptCode(promptCode);
-        base.setMaxContentChars(maxContentChars);
+        base.setPromptCode(validated.promptCode());
+        base.setMaxContentChars(validated.maxContentChars());
 
-        promptsRepository.findByPromptCode(promptCode)
-            .orElseThrow(() -> new IllegalArgumentException("promptCode 不存在: " + promptCode));
+        promptsRepository.findByPromptCode(validated.promptCode())
+            .orElseThrow(() -> new IllegalArgumentException("promptCode 不存在: " + validated.promptCode()));
 
         base.setHistoryEnabled(Boolean.TRUE.equals(payload.getHistoryEnabled()));
         base.setHistoryKeepDays(historyKeepDays);

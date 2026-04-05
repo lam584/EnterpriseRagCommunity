@@ -1,17 +1,8 @@
 import { getCsrfToken } from '../utils/csrfUtils';
+import { getBackendMessage } from './serviceErrorUtils';
+import { serviceApiUrl } from './serviceUrlUtils';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
-function apiUrl(path: string): string {
-  if (!path.startsWith('/')) path = `/${path}`;
-  return API_BASE ? `${API_BASE}${path}` : path;
-}
-
-function getBackendMessage(data: unknown): string | undefined {
-  if (data && typeof data === 'object' && 'message' in data && typeof (data as { message?: unknown }).message === 'string') {
-    return (data as { message: string }).message;
-  }
-  return undefined;
-}
+const apiUrl = serviceApiUrl;
 
 export type ModerationPolicyContentType = 'POST' | 'COMMENT' | 'PROFILE';
 
@@ -53,4 +44,3 @@ export async function adminUpsertModerationPolicyConfig(payload: ModerationPolic
   if (!res.ok) throw new Error(getBackendMessage(data) || '保存审核策略配置失败');
   return data as ModerationPolicyConfigDTO;
 }
-
