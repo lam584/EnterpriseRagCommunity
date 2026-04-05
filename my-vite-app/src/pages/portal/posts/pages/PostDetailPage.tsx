@@ -1,4 +1,4 @@
-import {JSX, useEffect, useMemo, useRef, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
 import ImageLightbox from '../../../../components/ui/ImageLightbox';

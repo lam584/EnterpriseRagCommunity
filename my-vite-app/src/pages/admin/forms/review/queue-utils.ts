@@ -4,7 +4,7 @@ import type {
     ModerationQueueDetail,
     ModerationQueueItem,
 } from '../../../../services/moderationQueueService';
-import { toInt } from '../../../../utils/numberParsers';
+export { toInt } from '../../../../utils/numberParsers';
 
 export function formatDateTime(s?: string | null): string {
     if (!s) return '—';

@@ -694,8 +694,8 @@ export const LlmLoadTestPanel: React.FC = () => {
 
     const getDiffInfo = (valA: unknown, valB: unknown, better: 'higher' | 'lower', unit: string = '') => {
       if (!runA || !runB) return null;
-      const va = toNum(valA);
-      const vb = toNum(valB);
+      const va = toNumber(valA);
+      const vb = toNumber(valB);
       if (va === null || vb === null) return null;
       const diff = vb - va;
       const pct = va === 0 ? null : (diff / va) * 100;

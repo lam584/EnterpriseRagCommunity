@@ -10,7 +10,7 @@ import {
 import { suggestPostTitles, type AiPostTitleSuggestResponse } from '../../../../services/aiTitleService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 import { EditToggleButton } from '../../../../components/admin/EditToggleButton';
-import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
+import PromptContentCard from '../../../../components/admin/PromptContentCard';
 import {
   applySavedConfigState,
   applyUnavailableFallback,

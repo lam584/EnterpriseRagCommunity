@@ -62,11 +62,11 @@ function sourceCountOfIndex(it?: VectorIndexDTO): number | undefined {
 }
 
 function buildIndexRunPayload(
-  selectedIndexId: string,
+  selectedIndexId: number,
   indexConfig: {
-    defaultChunkMaxChars: string;
-    defaultChunkOverlapChars: string;
-    dim: string;
+    defaultChunkMaxChars: number | string;
+    defaultChunkOverlapChars: number | string;
+    dim: number | string;
     embeddingProviderId: string;
   }
 ) {

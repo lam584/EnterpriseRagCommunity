@@ -43,7 +43,9 @@ function readScopeState(scope: {
     scopeAll: toBool(scope.all, true),
     userIdsRaw: joinIdList(scope.userIds),
     postIdsRaw: joinIdList(scope.postIds),
-    entrypoints: (scope.entrypoints || []).map((x) => String(x || '').trim()).filter(Boolean),
+    entrypoints: (Array.isArray(scope.entrypoints) ? scope.entrypoints : [])
+      .map((x: unknown) => String(x ?? '').trim())
+      .filter(Boolean),
   };
 }
 
@@ -79,8 +81,10 @@ function parseIdList(raw: string): number[] {
   return Array.from(new Set(out));
 }
 
-function joinIdList(ids: number[] | null | undefined): string {
-  const arr = Array.isArray(ids) ? ids.filter(x => typeof x === 'number' && Number.isFinite(x) && x > 0) : [];
+function joinIdList(ids: unknown): string {
+  const arr = Array.isArray(ids)
+    ? ids.filter((x): x is number => typeof x === 'number' && Number.isFinite(x) && x > 0)
+    : [];
   return arr.join(', ');
 }
 

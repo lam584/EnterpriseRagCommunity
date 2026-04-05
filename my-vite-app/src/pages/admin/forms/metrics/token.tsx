@@ -222,7 +222,7 @@ const TokenForm: React.FC = () => {
     load();
   }, [load]);
 
-  const applyRangePreset = useCallback((preset: RangePreset) => {
+  const applyRangePreset = useCallback((preset: MetricsRangePreset) => {
     setRangePreset(preset);
     const next = resolveRangePresetDates(preset);
     if (!next) return;
@@ -444,7 +444,7 @@ const TokenForm: React.FC = () => {
               className="w-full rounded border px-3 py-2 text-sm"
               value={rangePreset}
               onChange={(e) => {
-                const v = e.target.value as RangePreset;
+                  const v = e.target.value as MetricsRangePreset;
                 applyRangePreset(v);
               }}
             >

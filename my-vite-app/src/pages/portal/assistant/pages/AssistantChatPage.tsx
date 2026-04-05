@@ -42,7 +42,6 @@ import {
     linkifyCitations,
     mapQaMessagesToChatState,
     parseProviderModelValue,
-    toNullableNumber,
     uid,
     type BranchAnchorState,
     type BranchInfo,

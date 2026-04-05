@@ -394,7 +394,7 @@ const LlmRoutingMonitorForm: React.FC = () => {
         setRoutingEventsLastAtMs={setRoutingEventsLastAtMs}
         setRoutingEventsPageSize={setRoutingEventsPageSize}
         setRoutingEventsPageIndex={setRoutingEventsPageIndex}
-        clampInt={clampInt}
+        clampInt={clampMetricInt}
         formatMmddHms={formatMmddHms}
         draft={{}}
       />

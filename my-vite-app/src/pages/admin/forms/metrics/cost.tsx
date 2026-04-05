@@ -112,7 +112,7 @@ const CostForm: React.FC = () => {
           <select
             className="rounded border px-3 py-2 w-full"
             value={rangePreset}
-            onChange={(e) => applyRangePreset(e.target.value as RangePreset)}
+            onChange={(e) => applyRangePreset(e.target.value as MetricsRangePreset)}
           >
             <option value="CUSTOM">自定义</option>
             <option value="LAST_30M">近 30 分钟</option>

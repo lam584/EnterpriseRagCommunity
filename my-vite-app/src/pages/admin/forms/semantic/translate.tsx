@@ -8,7 +8,7 @@ import {
   type SemanticTranslateConfigDTO,
   type SemanticTranslateHistoryDTO,
 } from '../../../../services/translateAdminService';
-import { adminBatchGetPrompts, adminUpdatePromptContent } from '../../../../services/promptsAdminService';
+import { adminUpdatePromptContent } from '../../../../services/promptsAdminService';
 import {
   adminDeleteSupportedLanguage,
   adminUpdateSupportedLanguage,
