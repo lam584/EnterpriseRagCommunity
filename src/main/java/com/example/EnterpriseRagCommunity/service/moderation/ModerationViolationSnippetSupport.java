@@ -43,7 +43,7 @@ public final class ModerationViolationSnippetSupport {
         int altEnd = Math.min(start + 80, text.length());
         if (altEnd <= start) return null;
         String alt = text.substring(start, altEnd);
-        return cleaner == null ? alt : cleaner.apply(alt);
+        return cleaner.apply(alt);
     }
 
     private static int findBoundaryEnd(String text, int start, int maxEnd, IntPredicate boundaryMatcher) {

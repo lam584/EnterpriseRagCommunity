@@ -1,5 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.ai;
 
+import com.example.EnterpriseRagCommunity.service.retrieval.RagSearchSupport;
+
 final class LikelyImageUrlSupport {
 
     private LikelyImageUrlSupport() {
@@ -20,8 +22,6 @@ final class LikelyImageUrlSupport {
     }
 
     private static String toNonBlank(Object value) {
-        if (value == null) return null;
-        String text = String.valueOf(value).trim();
-        return text.isBlank() ? null : text;
+        return RagSearchSupport.toNonBlank(value);
     }
 }

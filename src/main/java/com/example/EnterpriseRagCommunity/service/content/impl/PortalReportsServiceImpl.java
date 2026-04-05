@@ -7,7 +7,6 @@ import com.example.EnterpriseRagCommunity.entity.content.enums.ReportStatus;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReportTargetType;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRunEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationActionsEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
@@ -323,7 +322,7 @@ public class PortalReportsServiceImpl implements PortalReportsService {
                     if (u != null && u.getMetadata() != null) {
                         Object raw = u.getMetadata().get("trust_score");
                         if (raw instanceof Number n) {
-                            trust = Math.max(0D, Math.min(1D, n.doubleValue()));
+                            trust = Math.clamp(n.doubleValue(), 0D, 1D);
                         }
                     }
                 } catch (Exception ignore) {

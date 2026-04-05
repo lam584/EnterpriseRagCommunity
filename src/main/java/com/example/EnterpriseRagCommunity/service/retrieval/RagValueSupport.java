@@ -12,29 +12,47 @@ public final class RagValueSupport {
     }
 
     public static Long toLong(Object value) {
-        if (value == null) return null;
-        if (value instanceof Number number) return number.longValue();
-        if (value instanceof String text) {
-            String trimmed = text.trim();
-            if (trimmed.isBlank()) return null;
-            try {
-                return Long.parseLong(trimmed);
-            } catch (NumberFormatException ignored) {
+        switch (value) {
+            case null -> {
                 return null;
+            }
+            case Number number -> {
+                return number.longValue();
+            }
+            case String text -> {
+                String trimmed = text.trim();
+                if (trimmed.isBlank()) return null;
+                try {
+                    return Long.parseLong(trimmed);
+                } catch (NumberFormatException ignored) {
+                    return null;
+                }
+            }
+            default -> {
             }
         }
         return null;
     }
 
     public static Integer toInteger(Object value) {
-        if (value == null) return null;
-        if (value instanceof Integer integer) return integer;
-        if (value instanceof Long longValue) {
-            if (longValue < Integer.MIN_VALUE) return Integer.MIN_VALUE;
-            if (longValue > Integer.MAX_VALUE) return Integer.MAX_VALUE;
-            return longValue.intValue();
+        switch (value) {
+            case null -> {
+                return null;
+            }
+            case Integer integer -> {
+                return integer;
+            }
+            case Long longValue -> {
+                if (longValue < Integer.MIN_VALUE) return Integer.MIN_VALUE;
+                if (longValue > Integer.MAX_VALUE) return Integer.MAX_VALUE;
+                return longValue.intValue();
+            }
+            case Number number -> {
+                return number.intValue();
+            }
+            default -> {
+            }
         }
-        if (value instanceof Number number) return number.intValue();
         try {
             String trimmed = String.valueOf(value).trim();
             if (trimmed.isBlank()) return null;

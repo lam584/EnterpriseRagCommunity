@@ -15,8 +15,6 @@ import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.ArchiveException;
 import org.apache.commons.compress.archivers.ArchiveInputStream;
 import org.apache.commons.compress.archivers.ArchiveStreamFactory;
-import org.apache.commons.compress.compressors.CompressorException;
-import org.apache.commons.compress.compressors.CompressorStreamFactory;
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry;
 import org.apache.commons.compress.archivers.sevenz.SevenZFile;
 import org.apache.commons.compress.utils.SeekableInMemoryByteChannel;
@@ -223,7 +221,7 @@ public class FileAssetExtractionAsyncService {
         try {
             var list = vectorIndicesRepository.findByCollectionName("rag_file_assets_v1");
             if (list == null || list.isEmpty()) return;
-            Long vectorIndexId = list.get(0) == null ? null : list.get(0).getId();
+            Long vectorIndexId = list.getFirst() == null ? null : list.getFirst().getId();
             if (vectorIndexId == null) return;
             ragFileAssetIndexAsyncService.syncSingleFileAssetAsync(vectorIndexId, fileAssetId);
         } catch (Exception ignored) {
@@ -240,24 +238,26 @@ public class FileAssetExtractionAsyncService {
         if (isArchiveExt(e)) {
             return extractArchive(path, e, maxChars, meta, fileAssetId, imageBudget);
         }
-        if (e.equals("pdf")) {
-            return extractPdf(path, maxChars, meta);
-        }
-        if (e.equals("txt") || e.equals("md") || e.equals("markdown") || e.equals("csv") || e.equals("json")) {
-            return extractPlain(path, maxChars);
-        }
-        if (e.equals("html") || e.equals("htm")) {
-            return extractHtml(path, maxChars);
-        }
-        if (e.equals("epub")) {
-            return extractEpubText(path, maxChars, meta);
-        }
-        if (e.equals("mobi")) {
-            try {
-                return extractWithTika(path, maxChars, meta);
-            } catch (Exception ex) {
-                meta.put("tikaParseError", safeMsg(ex));
-                return "";
+        switch (e) {
+            case "pdf" -> {
+                return extractPdf(path, maxChars, meta);
+            }
+            case "txt", "md", "markdown", "csv", "json" -> {
+                return extractPlain(path, maxChars);
+            }
+            case "html", "htm" -> {
+                return extractHtml(path, maxChars);
+            }
+            case "epub" -> {
+                return extractEpubText(path, maxChars, meta);
+            }
+            case "mobi" -> {
+                try {
+                    return extractWithTika(path, maxChars, meta);
+                } catch (Exception ex) {
+                    meta.put("tikaParseError", safeMsg(ex));
+                    return "";
+                }
             }
         }
         return extractOffice(path, maxChars);
@@ -436,7 +436,7 @@ public class FileAssetExtractionAsyncService {
             return;
         }
 
-        ArchiveInputStream archiveIn = null;
+        ArchiveInputStream<?> archiveIn = null;
         try {
             archiveIn = new ArchiveStreamFactory().createArchiveInputStream(archiveType, aisBuf);
             ArchiveEntry entry;
@@ -450,7 +450,7 @@ public class FileAssetExtractionAsyncService {
 
     private boolean handleArchiveStreamEntry(
             ArchiveEntry entry,
-            ArchiveInputStream archiveIn,
+            ArchiveInputStream<?> archiveIn,
             String virtualPrefix,
             int depth,
             Path outDir,
@@ -518,7 +518,7 @@ public class FileAssetExtractionAsyncService {
         return FileAssetExtractionSupport.safeNestedUnpackDir(target, outDir);
     }
 
-    private static void closeArchiveInputStreamQuietly(ArchiveInputStream archiveIn) {
+    private static void closeArchiveInputStreamQuietly(ArchiveInputStream<?> archiveIn) {
         FileAssetExtractionSupport.closeArchiveInputStreamQuietly(archiveIn);
     }
 
@@ -613,7 +613,7 @@ public class FileAssetExtractionAsyncService {
         if (compression != null && !compression.isBlank()) {
             archiveMeta.putIfAbsent("compression", compression);
         }
-        try (ArchiveInputStream archiveIn = new ArchiveStreamFactory().createArchiveInputStream(archiveType, aisBuf)) {
+        try (ArchiveInputStream<?> archiveIn = new ArchiveStreamFactory().createArchiveInputStream(archiveType, aisBuf)) {
             ArchiveEntry entry;
             while ((entry = archiveIn.getNextEntry()) != null) {
                 if (markTimeLimitAndStop(c, startNs) || markEntryCountLimitAndStop(c)) break;
@@ -1087,21 +1087,23 @@ public class FileAssetExtractionAsyncService {
     private String extractEntryBytesAsText(String entryName, String ext, byte[] bytes, int maxChars) throws Exception {
         if (bytes == null || bytes.length == 0) return "";
         String e = ext == null ? "" : ext.trim().toLowerCase(Locale.ROOT);
-        if (e.equals("pdf")) {
-            return extractPdf(new ByteArrayInputStream(bytes), maxChars, null);
-        }
-        if (e.equals("txt") || e.equals("md") || e.equals("markdown") || e.equals("csv") || e.equals("json") || e.equals("xml") || e.equals("yaml") || e.equals("yml")) {
-            return truncate(new String(bytes, StandardCharsets.UTF_8), maxChars);
-        }
-        if (e.equals("html") || e.equals("htm")) {
-            String html = truncate(new String(bytes, StandardCharsets.UTF_8), maxChars * 2);
-            return truncate(stripHtmlToText(html), maxChars);
-        }
-        if (e.equals("epub")) {
-            return extractEpubText(bytes, maxChars);
-        }
-        if (e.equals("mobi")) {
-            return extractWithTika(new ByteArrayInputStream(bytes), maxChars, null);
+        switch (e) {
+            case "pdf" -> {
+                return extractPdf(new ByteArrayInputStream(bytes), maxChars, null);
+            }
+            case "txt", "md", "markdown", "csv", "json", "xml", "yaml", "yml" -> {
+                return truncate(new String(bytes, StandardCharsets.UTF_8), maxChars);
+            }
+            case "html", "htm" -> {
+                String html = truncate(new String(bytes, StandardCharsets.UTF_8), maxChars * 2);
+                return truncate(stripHtmlToText(html), maxChars);
+            }
+            case "epub" -> {
+                return extractEpubText(bytes, maxChars);
+            }
+            case "mobi" -> {
+                return extractWithTika(new ByteArrayInputStream(bytes), maxChars, null);
+            }
         }
         if (isOfficeExt(e)) {
             return extractOffice(new ByteArrayInputStream(bytes), maxChars);
@@ -1124,7 +1126,7 @@ public class FileAssetExtractionAsyncService {
                     .filter(en -> en != null && !en.isDirectory())
                     .sorted(Comparator.comparing(ZipEntry::getName, String.CASE_INSENSITIVE_ORDER))
                     .toList();
-            return extractEpubTextFromEntries(entries, maxChars, meta, en -> zf.getInputStream(en));
+            return extractEpubTextFromEntries(entries, maxChars, meta, zf::getInputStream);
         } catch (Exception ex) {
             if (meta != null) meta.put("epubParseError", safeMsg(ex));
             return "";
@@ -1544,7 +1546,7 @@ public class FileAssetExtractionAsyncService {
 
             meta.put("imagesExtractionMode", "PDF_RENDER");
             PDFRenderer renderer = new PDFRenderer(doc);
-            int dpi = Math.max(36, Math.min(600, pdfRenderDpi));
+            int dpi = Math.clamp(pdfRenderDpi, 36, 600);
             for (int i = 0; i < toRender; i++) {
                 if (budget != null && budget.canAdd(1)) break;
                 BufferedImage bi = renderer.renderImageWithDPI(i, dpi);

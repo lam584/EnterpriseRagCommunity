@@ -9,6 +9,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatStreamRequest;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagSearchSupport;
 
 final class AiChatInputSupport {
 
@@ -129,8 +130,6 @@ final class AiChatInputSupport {
     }
 
     private static String toNonBlank(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? null : s;
+        return RagSearchSupport.toNonBlank(v);
     }
 }

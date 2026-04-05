@@ -233,16 +233,26 @@ final class LlmGatewaySupport {
     static boolean isRetriable(Throwable e) {
         Throwable cur = e;
         while (cur != null) {
-            if (cur instanceof SocketTimeoutException) return true;
-            if (cur instanceof ConnectException) return true;
-            if (cur instanceof UnknownHostException) return true;
-            if (cur instanceof IOException) {
-                String msg = cur.getMessage();
-                if (msg != null) {
-                    if (msg.contains("HTTP 429")) return true;
-                    if (msg.contains("HTTP 5")) return true;
-                    if (msg.contains("Connection reset")) return true;
-                    if (msg.contains("timed out")) return true;
+            switch (cur) {
+                case SocketTimeoutException socketTimeoutException -> {
+                    return true;
+                }
+                case ConnectException connectException -> {
+                    return true;
+                }
+                case UnknownHostException unknownHostException -> {
+                    return true;
+                }
+                case IOException ioException -> {
+                    String msg = cur.getMessage();
+                    if (msg != null) {
+                        if (msg.contains("HTTP 429")) return true;
+                        if (msg.contains("HTTP 5")) return true;
+                        if (msg.contains("Connection reset")) return true;
+                        if (msg.contains("timed out")) return true;
+                    }
+                }
+                default -> {
                 }
             }
             cur = cur.getCause();
@@ -262,9 +272,19 @@ final class LlmGatewaySupport {
                 if (msg.contains("Connection reset")) return "reset";
                 if (msg.toLowerCase(Locale.ROOT).contains("timed out")) return "timeout";
             }
-            if (cur instanceof SocketTimeoutException) return "timeout";
-            if (cur instanceof ConnectException) return "connect";
-            if (cur instanceof UnknownHostException) return "dns";
+            switch (cur) {
+                case SocketTimeoutException socketTimeoutException -> {
+                    return "timeout";
+                }
+                case ConnectException connectException -> {
+                    return "connect";
+                }
+                case UnknownHostException unknownHostException -> {
+                    return "dns";
+                }
+                default -> {
+                }
+            }
             cur = cur.getCause();
         }
         return "";

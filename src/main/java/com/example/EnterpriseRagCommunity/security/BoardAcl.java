@@ -1,5 +1,6 @@
 package com.example.EnterpriseRagCommunity.security;
 
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.repository.content.BoardModeratorsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
@@ -54,6 +55,6 @@ public class BoardAcl {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
         String email = auth.getName();
-        return administratorService.findByUsername(email).map(u -> u.getId()).orElse(null);
+        return administratorService.findByUsername(email).map(UsersEntity::getId).orElse(null);
     }
 }

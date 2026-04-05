@@ -609,7 +609,7 @@ public class AiRerankService {
                 if (idxObj == null) idxObj = readIntLike(n.get("i"));
                 if (idxObj == null) idxObj = readIntLike(n.get("position"));
                 if (idxObj == null) idxObj = readIntLike(n.get("id"));
-                int idx = idxObj == null ? pos : idxObj.intValue();
+                int idx = idxObj == null ? pos : idxObj;
                 Double score = readDoubleLike(n.get("relevance_score"));
                 if (score == null) score = readDoubleLike(n.get("score"));
                 if (score == null) score = readDoubleLike(n.get("relevanceScore"));

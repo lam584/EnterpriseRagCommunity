@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.controller.semantic.admin;
 import com.example.EnterpriseRagCommunity.dto.ai.PostSummaryGenConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostSummaryGenHistoryDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostSummaryRegenerateRequestDTO;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSummaryGenConfigEntity;
 import com.example.EnterpriseRagCommunity.exception.ResourceNotFoundException;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
@@ -70,7 +71,7 @@ public class AdminPostSummaryController {
         String username = principal == null ? null : principal.getName();
         Long actorUserId = null;
         if (username != null) {
-            actorUserId = administratorService.findByUsername(username).map(u -> u.getId()).orElse(null);
+            actorUserId = administratorService.findByUsername(username).map(UsersEntity::getId).orElse(null);
         }
 
         aiPostSummaryService.generateForPostIdAsync(postId, actorUserId);

@@ -8,8 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.elasticsearch.client.elc.ElasticsearchTemplate;
 import org.springframework.data.elasticsearch.core.IndexOperations;
-import org.springframework.data.elasticsearch.core.document.Document;
-import org.springframework.data.elasticsearch.core.mapping.IndexCoordinates;
 import org.springframework.stereotype.Service;
 
 import com.example.EnterpriseRagCommunity.config.RetrievalRagProperties;
@@ -44,9 +42,7 @@ public class RagPostsIndexService {
                 template,
                 indexName,
                 this::defaultIndexName,
-                ops -> {
-            tryCreate(ops, resolveIkEnabled(), embeddingDims);
-                }
+                ops -> tryCreate(ops, resolveIkEnabled(), embeddingDims)
         );
     }
 

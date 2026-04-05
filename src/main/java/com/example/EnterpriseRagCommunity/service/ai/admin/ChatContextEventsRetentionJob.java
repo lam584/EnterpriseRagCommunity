@@ -21,7 +21,7 @@ public class ChatContextEventsRetentionJob {
     public void run() {
         ChatContextGovernanceConfigDTO cfg = configService.getConfigOrDefault();
         if (cfg == null || !Boolean.TRUE.equals(cfg.getLogEnabled())) return;
-        int keepDays = cfg.getLogMaxDays() == null ? 30 : Math.max(1, Math.min(3650, cfg.getLogMaxDays()));
+        int keepDays = cfg.getLogMaxDays() == null ? 30 : Math.clamp(cfg.getLogMaxDays(), 1, 3650);
         LocalDateTime cutoff = LocalDateTime.now().minusDays(keepDays);
         eventsRepository.deleteByCreatedAtBefore(cutoff);
     }

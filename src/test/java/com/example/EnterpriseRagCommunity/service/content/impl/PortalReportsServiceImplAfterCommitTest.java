@@ -117,7 +117,7 @@ class PortalReportsServiceImplAfterCommitTest {
 
         PortalReportsService.ReportSubmitResult out = svc.reportComment(8L, "SPAM", "x");
 
-        assertEquals(901L, out.getQueueId());
+        assertEquals(901L, out.queueId());
         verify(moderationAutoKickService, never()).kickQueueId(901L);
 
         List<TransactionSynchronization> syncs = TransactionSynchronizationManager.getSynchronizations();

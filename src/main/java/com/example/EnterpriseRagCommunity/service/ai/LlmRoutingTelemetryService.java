@@ -53,7 +53,7 @@ public class LlmRoutingTelemetryService {
 
     public List<RoutingDecisionEvent> list(String taskType, int limit) {
         String tt = normalizeTaskType(taskType);
-        int lim = Math.max(1, Math.min(10_000, limit));
+        int lim = Math.clamp(limit, 1, 10_000);
         List<RoutingDecisionEvent> out = new ArrayList<>(Math.min(lim, 256));
         lock.lock();
         try {

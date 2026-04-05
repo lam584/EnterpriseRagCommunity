@@ -56,7 +56,7 @@ final class FileAssetExtractionSupport {
         return subDir;
     }
 
-    static void closeArchiveInputStreamQuietly(ArchiveInputStream archiveIn) {
+    static void closeArchiveInputStreamQuietly(ArchiveInputStream<?> archiveIn) {
         if (archiveIn == null) return;
         try {
             archiveIn.close();
@@ -442,7 +442,7 @@ final class FileAssetExtractionSupport {
                 }
             }
 
-            if (pos < 0) pos = Math.min(len, Math.max(minBasePos, target));
+            if (pos < 0) pos = Math.clamp(minBasePos, target, len);
 
             String token = "\n\n" + placeholders.get(i) + "\n\n";
             sb.insert(pos + insertedChars, token);
@@ -456,12 +456,14 @@ final class FileAssetExtractionSupport {
     static String guessMimeFromExt(String ext) {
         if (ext == null) return null;
         String e = ext.toLowerCase(Locale.ROOT);
-        if (e.equals("png")) return "image/png";
-        if (e.equals("jpg") || e.equals("jpeg")) return "image/jpeg";
-        if (e.equals("gif")) return "image/gif";
-        if (e.equals("bmp")) return "image/bmp";
-        if (e.equals("webp")) return "image/webp";
-        return null;
+        return switch (e) {
+            case "png" -> "image/png";
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "gif" -> "image/gif";
+            case "bmp" -> "image/bmp";
+            case "webp" -> "image/webp";
+            default -> null;
+        };
     }
 
     static String extLowerOrNull(String fileName) {

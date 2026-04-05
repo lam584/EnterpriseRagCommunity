@@ -472,7 +472,7 @@ public class PostsServiceImpl implements PostsService {
     private Page<PostsEntity> vectorSearchPublished(String keyword, Long boardId, Long authorId, LocalDate createdFrom, LocalDate createdTo, int page, int pageSize) {
         int safePage = Math.max(page, 1);
         int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);
-        int fetchLimit = Math.min(500, Math.max(50, (safePage + 1) * safePageSize * 5));
+        int fetchLimit = Math.clamp((long) (safePage + 1) * safePageSize * 5, 50, 500);
 
         HybridRetrievalConfigDTO cfg = new HybridRetrievalConfigDTO();
         cfg.setBm25K(0);

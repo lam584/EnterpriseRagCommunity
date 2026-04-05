@@ -39,7 +39,7 @@ public class DashscopeRerankClient {
     }
 
     public String rerankOnce(RerankRequest req) throws IOException {
-        String baseUrl = normalizeBaseUrl(req.baseUrl(), null);
+        String baseUrl = normalizeBaseUrl(req.baseUrl());
         String apiKey = normalizeString(req.apiKey(), null);
         String model = normalizeString(req.model(), null);
         if (model == null || model.isBlank()) throw new IllegalArgumentException("model 不能为空");
@@ -177,6 +177,10 @@ public class DashscopeRerankClient {
         );
     }
 
+    private static String normalizeBaseUrl(String baseUrl) {
+        return normalizeBaseUrl(baseUrl, null);
+    }
+
     private static String normalizeBaseUrl(String baseUrl, String fallback) {
         String u = normalizeString(baseUrl, fallback);
         if (u == null) return "";
@@ -185,8 +189,6 @@ public class DashscopeRerankClient {
     }
 
     private static String normalizeString(String s, String fallback) {
-        String t = s == null ? null : s.trim();
-        if (t == null || t.isBlank()) return fallback;
-        return t;
+        return RerankUrlSupport.normalizeString(s, fallback);
     }
 }

@@ -11,7 +11,7 @@ class LogQuerySupportTest {
 
     @Test
     void buildPageable_should_apply_defaults_and_bounds() {
-        Pageable pageable = LogQuerySupport.buildPageable(0, 999, 20, 200, Sort.unsorted());
+        Pageable pageable = LogQuerySupport.buildPageable(Sort.unsorted());
 
         assertEquals(0, pageable.getPageNumber());
         assertEquals(200, pageable.getPageSize());

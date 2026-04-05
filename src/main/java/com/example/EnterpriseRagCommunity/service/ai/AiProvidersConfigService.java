@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import com.example.EnterpriseRagCommunity.service.retrieval.RagSearchSupport;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,7 +45,7 @@ public class AiProvidersConfigService {
 
     @Transactional(readOnly = true)
     public AiProvidersConfigDTO getAdminConfig() {
-        AiProvidersConfigDTO cfg = loadAdminConfigOrLegacyOrDefault(ENV_DEFAULT);
+        AiProvidersConfigDTO cfg = loadAdminConfigOrLegacyOrDefault();
         return maskSecrets(cfg);
     }
 
@@ -461,14 +462,14 @@ public class AiProvidersConfigService {
         out.setProviders(providers);
 
         String active = toNonBlank(out.getActiveProviderId());
-        if (active == null && !providers.isEmpty()) active = toNonBlank(providers.get(0).getId());
+        if (active == null && !providers.isEmpty()) active = toNonBlank(providers.getFirst().getId());
         out.setActiveProviderId(active);
         return out;
     }
 
-    private AiProvidersConfigDTO loadAdminConfigOrLegacyOrDefault(String env) {
-        List<LlmProviderEntity> providers = llmProviderRepository.findByEnvOrderByPriorityAscIdAsc(env);
-        if (!providers.isEmpty()) return loadAdminConfigFromDb(env);
+    private AiProvidersConfigDTO loadAdminConfigOrLegacyOrDefault() {
+        List<LlmProviderEntity> providers = llmProviderRepository.findByEnvOrderByPriorityAscIdAsc(AiProvidersConfigService.ENV_DEFAULT);
+        if (!providers.isEmpty()) return loadAdminConfigFromDb(AiProvidersConfigService.ENV_DEFAULT);
         return normalize(loadLegacyOrDefault());
     }
 
@@ -581,9 +582,7 @@ public class AiProvidersConfigService {
     }
 
     private static String toNonBlank(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? null : s;
+        return RagSearchSupport.toNonBlank(v);
     }
 
     public record ResolvedProvider(

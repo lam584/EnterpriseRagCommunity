@@ -1515,7 +1515,7 @@ public class LlmGateway {
                     true
             );
             if (dec != null) {
-                Integer estOut = usage == null ? null : usage.estimatedCompletionTokens();
+                Integer estOut = usage.estimatedCompletionTokens();
                 usage = new LlmCallQueueService.UsageMetrics(dec.tokensIn(), dec.tokensOut(), dec.totalTokens(), estOut);
             }
         }
@@ -1840,18 +1840,16 @@ public class LlmGateway {
                     }
                     return raw;
                 },
-                (raw) -> {
-                    return buildChatUsageMetrics(
-                            taskType,
-                            provider.id(),
-                            model,
-                            enableThinking,
-                            llmCallQueueService.parseOpenAiUsageFromJson(raw),
-                            patchedMessages,
-                            extractAssistantForUsage(raw, stripThink),
-                            true
-                    );
-                }
+                (raw) -> buildChatUsageMetrics(
+                        taskType,
+                        provider.id(),
+                        model,
+                        enableThinking,
+                        llmCallQueueService.parseOpenAiUsageFromJson(raw),
+                        patchedMessages,
+                        extractAssistantForUsage(raw, stripThink),
+                        true
+                )
         );
 
         LlmCallQueueService.UsageMetrics usage = buildChatUsageMetrics(

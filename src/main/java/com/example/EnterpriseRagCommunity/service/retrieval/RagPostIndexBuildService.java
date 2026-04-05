@@ -1,17 +1,10 @@
 package com.example.EnterpriseRagCommunity.service.retrieval;
 
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -236,7 +229,7 @@ public class RagPostIndexBuildService {
                 int d0 = ragProps.getEs().getEmbeddingDims();
                 fallbackDims = d0 > 0 ? d0 : null;
             }
-            if (fallbackDims != null && fallbackDims > 0) {
+            if (fallbackDims != null) {
                 try {
                     dimsToUse = fallbackDims;
                     if (clearPending) {
@@ -258,7 +251,7 @@ public class RagPostIndexBuildService {
                             }
                         }
                         if (!clearedOk) {
-                            throw new IllegalStateException("清空 ES 索引失败（需要先删除索引才能全量重建）: " + (clearError == null ? "" : clearError));
+                            throw new IllegalStateException("清空 ES 索引失败（需要先删除索引才能全量重建）: " + clearError);
                         }
                     }
                     indexService.ensureIndex(indexName, fallbackDims);
@@ -501,9 +494,7 @@ public class RagPostIndexBuildService {
     }
 
     private static String toNonBlankString(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? null : s;
+        return RagSearchSupport.toNonBlank(v);
     }
 
     private static Document buildPostChunkDocument(
@@ -585,11 +576,7 @@ public class RagPostIndexBuildService {
     }
 
     private static Integer resolveConfiguredDims(Integer expectedEmbeddingDims, Integer vectorIndexDims) {
-        Integer configuredDims = expectedEmbeddingDims != null && expectedEmbeddingDims > 0 ? expectedEmbeddingDims : null;
-        if (configuredDims == null) {
-            configuredDims = vectorIndexDims != null && vectorIndexDims > 0 ? vectorIndexDims : null;
-        }
-        return configuredDims;
+        return RagEmbeddingBuildSupport.resolveConfiguredDims(expectedEmbeddingDims, vectorIndexDims);
     }
 
     private static String summarizeException(Throwable ex) {

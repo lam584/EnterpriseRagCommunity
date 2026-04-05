@@ -55,7 +55,7 @@ public class AdminModerationPipelineTraceService {
         boolean hasContent = contentType != null && contentId != null;
 
         int p = page == null ? 1 : Math.max(1, page);
-        int ps = pageSize == null ? 20 : Math.min(Math.max(pageSize, 1), 200);
+        int ps = pageSize == null ? 20 : Math.clamp(pageSize, 1, 200);
 
         // Always return newest first
         Pageable pageable = PageRequest.of(p - 1, ps, Sort.by(Sort.Direction.DESC, "createdAt"));

@@ -66,7 +66,7 @@ public class PostSummaryGenConfigService {
     @Transactional(readOnly = true)
     public Page<PostSummaryGenHistoryDTO> listHistory(Long postId, int page, int size) {
         int safePage = Math.max(0, page);
-        int safeSize = Math.min(100, Math.max(1, size));
+        int safeSize = Math.clamp(size, 1, 100);
         Pageable pageable = PageRequest.of(safePage, safeSize);
         if (postId == null) {
             return historyRepository.findAllByOrderByCreatedAtDesc(pageable).map(this::toHistoryDto);

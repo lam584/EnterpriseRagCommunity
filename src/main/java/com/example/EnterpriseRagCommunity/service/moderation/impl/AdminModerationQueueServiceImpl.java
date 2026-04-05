@@ -41,7 +41,6 @@ import com.example.EnterpriseRagCommunity.entity.content.enums.ReportStatus;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReportTargetType;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.ModerationActionsEntity;
-import com.example.EnterpriseRagCommunity.entity.moderation.ModerationPipelineRunEntity;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ActionType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ContentType;
 import com.example.EnterpriseRagCommunity.entity.moderation.enums.ModerationCaseType;
@@ -126,7 +125,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         final LocalDateTime qUpdatedTo = query.getUpdatedTo();
 
         int page = query.getPageNum() == null ? 1 : Math.max(query.getPageNum(), 1);
-        int pageSize = query.getPageSize() == null ? 20 : Math.min(Math.max(query.getPageSize(), 1), 500);
+        int pageSize = query.getPageSize() == null ? 20 : Math.clamp(query.getPageSize(), 1, 500);
 
         String orderBy = query.getOrderBy();
         String sortDir = query.getSort();
@@ -562,7 +561,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         // defaults
         boolean dryRun = req != null && Boolean.TRUE.equals(req.getDryRun());
         int limit = req != null && req.getLimit() != null ? req.getLimit() : 500;
-        limit = Math.min(Math.max(limit, 1), 5000);
+        limit = Math.clamp(limit, 1, 5000);
 
         Set<ContentType> types = new HashSet<>();
         if (req == null || req.getContentTypes() == null || req.getContentTypes().isEmpty()) {
@@ -1044,7 +1043,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
                 ReportTargetType t = toReportTargetType(q.getContentType());
                 Pageable pageable = PageRequest.of(0, 1, Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
                 Page<ReportsEntity> page = reportsRepository.findByTargetTypeAndTargetId(t, q.getContentId(), pageable);
-                ReportsEntity latest = page.getContent().isEmpty() ? null : page.getContent().get(0);
+                ReportsEntity latest = page.getContent().isEmpty() ? null : page.getContent().getFirst();
                 if (latest != null) {
                     AdminModerationQueueItemDTO.Summary s = dto.getSummary();
                     if (s == null) s = new AdminModerationQueueItemDTO.Summary();

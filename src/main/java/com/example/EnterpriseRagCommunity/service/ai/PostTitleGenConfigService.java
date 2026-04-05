@@ -14,7 +14,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -152,7 +151,6 @@ public class PostTitleGenConfigService {
         return PostSuggestionGenConfigSupport.toTitleAdminConfigDto(e, updatedByName, promptsRepository::findByPromptCode);
     }
 
-    @SuppressWarnings("unchecked")
     private PostTitleGenHistoryDTO toHistoryDto(PostSuggestionGenHistoryEntity e) {
         PostTitleGenHistoryDTO dto = new PostTitleGenHistoryDTO();
         dto.setId(e.getId());
@@ -171,20 +169,26 @@ public class PostTitleGenConfigService {
     }
 
     private static List<String> toStringList(Object v) {
-        if (v == null) return List.of();
-        if (v instanceof List<?> list) {
-            List<String> out = new ArrayList<>();
-            for (Object o : list) {
-                if (o == null) continue;
-                String s = Objects.toString(o, "").trim();
-                if (!s.isBlank()) out.add(s);
+        switch (v) {
+            case null -> {
+                return List.of();
             }
-            return out;
-        }
-        if (v instanceof Map<?, ?> map) {
-            Object titles = map.get("titles");
-            if (titles instanceof List<?> list) {
-                return toStringList(list);
+            case List<?> list -> {
+                List<String> out = new ArrayList<>();
+                for (Object o : list) {
+                    if (o == null) continue;
+                    String s = Objects.toString(o, "").trim();
+                    if (!s.isBlank()) out.add(s);
+                }
+                return out;
+            }
+            case Map<?, ?> map -> {
+                Object titles = map.get("titles");
+                if (titles instanceof List<?> list) {
+                    return toStringList(list);
+                }
+            }
+            default -> {
             }
         }
         return List.of();

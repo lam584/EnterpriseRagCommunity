@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.DoubleAdder;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
 
+import com.example.EnterpriseRagCommunity.service.retrieval.RagSearchSupport;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ContentDisposition;
@@ -732,9 +733,7 @@ public class AdminLlmLoadTestService {
     }
 
     private static String toNonBlank(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? null : s;
+        return RagSearchSupport.toNonBlank(v);
     }
 
     private interface CheckedCallable<T> {

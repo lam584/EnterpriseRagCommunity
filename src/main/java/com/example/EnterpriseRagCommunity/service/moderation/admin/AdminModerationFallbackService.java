@@ -137,61 +137,34 @@ public class AdminModerationFallbackService {
                 out.put(key, null);
                 continue;
             }
-            if (key.equals("chunk.memory.maxChars")) {
-                out.put(key, clampLong(asLongStrict(key, v), 500L, 200_000L));
-                continue;
-            }
-            if (key.equals("chunk.memory.maxEvidenceItems")) {
-                out.put(key, clampLong(asLongStrict(key, v), 0L, 1_000L));
-                continue;
-            }
-            if (key.equals("chunk.memory.maxEntities")) {
-                out.put(key, clampLong(asLongStrict(key, v), 0L, 1_000L));
-                continue;
-            }
-            if (key.equals("chunk.prevSummary.maxChars")) {
-                out.put(key, clampLong(asLongStrict(key, v), 0L, 2_000L));
-                continue;
-            }
-            if (key.equals("chunk.finalReview.enable")
-                    || key.equals("chunk.finalReview.triggerOpenQuestions")
-                    || key.equals("chunk.imageStage.enable")
-                    || key.equals("chunk.global.enable")
-                    || key.equals("chunk.conflict.forceHuman")) {
-                out.put(key, asBooleanStrict(key, v));
-                continue;
-            }
-            if (key.equals("chunk.finalReview.triggerScoreMin")
-                    || key.equals("chunk.withImages.imageStrongRejectThreshold")
-                    || key.equals("chunk.withImages.crossModalThreshold")) {
-                out.put(key, clamp01(asDoubleStrict(key, v)));
-                continue;
-            }
-            if (key.equals("chunk.finalReview.triggerRiskTagCount")) {
-                out.put(key, clampLong(asLongStrict(key, v), 0L, 1_000L));
-                continue;
-            }
-            if (key.equals("llm.text.upgrade.enable")) {
-                out.put(key, asBooleanStrict(key, v));
-                continue;
-            }
-            if (key.equals("llm.text.upgrade.scoreMin")
-                    || key.equals("llm.text.upgrade.scoreMax")
-                    || key.equals("llm.text.upgrade.uncertaintyMin")) {
-                out.put(key, clamp01(asDoubleStrict(key, v)));
-                continue;
-            }
-            if (key.equals("llm.cross.upgrade.enable")
-                    || key.equals("llm.cross.upgrade.onConflict")
-                    || key.equals("llm.cross.upgrade.onUncertainty")
-                    || key.equals("llm.cross.upgrade.onGray")) {
-                out.put(key, asBooleanStrict(key, v));
-                continue;
-            }
-            if (key.equals("llm.cross.upgrade.uncertaintyMin")
-                    || key.equals("llm.cross.upgrade.scoreGrayMargin")) {
-                out.put(key, clamp01(asDoubleStrict(key, v)));
-                continue;
+            switch (key) {
+                case "chunk.memory.maxChars" -> {
+                    out.put(key, clampLong(asLongStrict(key, v), 500L, 200_000L));
+                    continue;
+                }
+                case "chunk.memory.maxEvidenceItems", "chunk.memory.maxEntities",
+                     "chunk.finalReview.triggerRiskTagCount" -> {
+                    out.put(key, clampLong(asLongStrict(key, v), 0L, 1_000L));
+                    continue;
+                }
+                case "chunk.prevSummary.maxChars" -> {
+                    out.put(key, clampLong(asLongStrict(key, v), 0L, 2_000L));
+                    continue;
+                }
+                case "chunk.finalReview.enable", "chunk.finalReview.triggerOpenQuestions", "chunk.imageStage.enable",
+                     "chunk.global.enable", "chunk.conflict.forceHuman", "llm.text.upgrade.enable",
+                     "llm.cross.upgrade.enable", "llm.cross.upgrade.onConflict", "llm.cross.upgrade.onUncertainty",
+                     "llm.cross.upgrade.onGray" -> {
+                    out.put(key, asBooleanStrict(key, v));
+                    continue;
+                }
+                case "chunk.finalReview.triggerScoreMin", "chunk.withImages.imageStrongRejectThreshold",
+                     "chunk.withImages.crossModalThreshold", "llm.cross.upgrade.uncertaintyMin",
+                     "llm.cross.upgrade.scoreGrayMargin", "llm.text.upgrade.scoreMin", "llm.text.upgrade.scoreMax",
+                     "llm.text.upgrade.uncertaintyMin" -> {
+                    out.put(key, clamp01(asDoubleStrict(key, v)));
+                    continue;
+                }
             }
             if (v instanceof String || v instanceof Number || v instanceof Boolean) {
                 out.put(key, v);

@@ -67,7 +67,7 @@ public class EmailInboxService {
 
         Properties props = new Properties();
         props.put("mail.store.protocol", protocol);
-        props.put("mail.debug", debug ? "true" : "false");
+        props.put("mail.debug", Boolean.toString(debug));
         if (connectTimeoutMs > 0) props.put("mail." + protocol + ".connectiontimeout", String.valueOf(connectTimeoutMs));
         if (timeoutMs > 0) props.put("mail." + protocol + ".timeout", String.valueOf(timeoutMs));
         if (writeTimeoutMs > 0) props.put("mail." + protocol + ".writetimeout", String.valueOf(writeTimeoutMs));

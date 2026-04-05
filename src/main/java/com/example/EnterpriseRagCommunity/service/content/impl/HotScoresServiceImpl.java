@@ -61,7 +61,7 @@ public class HotScoresServiceImpl implements HotScoresService {
     @Override
     public Page<HotPostDTO> listHot(HotScoresService.Window window, int page, int pageSize) {
         int safePage = Math.max(page, 1);
-        int safeSize = Math.min(Math.max(pageSize, 1), 100);
+        int safeSize = Math.clamp(pageSize, 1, 100);
 
         PageRequest pr;
         Page<HotScoresEntity> hsPage;

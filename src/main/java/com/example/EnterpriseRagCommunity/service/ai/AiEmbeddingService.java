@@ -185,27 +185,13 @@ public class AiEmbeddingService {
     }
 
     private static Integer readIntLike(JsonNode v) {
-        if (v == null || v.isNull()) return null;
-        try {
-            if (v.isInt() || v.isLong()) return v.intValue();
-            if (v.isNumber()) return (int) Math.round(v.doubleValue());
-            if (v.isTextual()) {
-                String t = v.asText().trim();
-                if (t.isEmpty()) return null;
-                double n = Double.parseDouble(t);
-                if (!Double.isFinite(n)) return null;
-                return (int) Math.round(n);
-            }
-        } catch (Exception ignore) {
-            return null;
-        }
-        return null;
+        return AiResponseParsingUtils.readIntLike(v);
     }
 
     /**
      * Extremely small JSON extractor:
      * It finds the first "embedding":[...] array under data[0].
-     *
+     * <p>
      * Not a full JSON parser, but works for common OpenAI-compatible embedding responses.
      */
     static float[] extractFirstEmbeddingVector(String json) {

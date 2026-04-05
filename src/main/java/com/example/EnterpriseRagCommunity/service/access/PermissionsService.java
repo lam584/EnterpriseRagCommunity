@@ -4,6 +4,8 @@ import com.example.EnterpriseRagCommunity.dto.access.PermissionsCreateDTO;
 import com.example.EnterpriseRagCommunity.dto.access.PermissionsQueryDTO;
 import com.example.EnterpriseRagCommunity.dto.access.PermissionsUpdateDTO;
 import com.example.EnterpriseRagCommunity.entity.access.PermissionsEntity;
+import com.example.EnterpriseRagCommunity.entity.access.RolePermissionsEntity;
+import com.example.EnterpriseRagCommunity.entity.access.UserRoleLinksEntity;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.PermissionsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.RolePermissionsRepository;
@@ -136,13 +138,13 @@ public class PermissionsService {
         try {
             var rps = rolePermissionsRepository.findByPermissionId(permissionId);
             if (rps == null || rps.isEmpty()) return;
-            var roleIds = rps.stream().map(rp -> rp.getRoleId()).filter(java.util.Objects::nonNull).distinct().toList();
+            var roleIds = rps.stream().map(RolePermissionsEntity::getRoleId).filter(java.util.Objects::nonNull).distinct().toList();
             if (roleIds.isEmpty()) return;
             var links = roleIds.stream()
                     .flatMap(roleId -> userRoleLinksRepository.findByRoleId(roleId).stream())
                     .toList();
             if (links.isEmpty()) return;
-            var userIds = links.stream().map(l -> l.getUserId()).filter(java.util.Objects::nonNull).distinct().toList();
+            var userIds = links.stream().map(UserRoleLinksEntity::getUserId).filter(java.util.Objects::nonNull).distinct().toList();
             if (userIds.isEmpty()) return;
             var users = usersRepository.findAllById(userIds);
             for (UsersEntity u : users) {

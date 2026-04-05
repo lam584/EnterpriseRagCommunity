@@ -37,7 +37,7 @@ public class AdminLlmRoutingMonitorController {
             @RequestParam(value = "taskType", required = false) String taskType,
             @RequestParam(value = "limit", required = false) Integer limit
     ) {
-        int lim = limit == null ? 200 : Math.max(1, Math.min(10_000, limit));
+        int lim = limit == null ? 200 : Math.clamp(limit, 1, 10_000);
         List<LlmRoutingTelemetryService.RoutingDecisionEvent> list = llmRoutingTelemetryService.list(taskType, lim);
 
         List<AdminLlmRoutingDecisionEventDTO> items = new ArrayList<>(list.size());

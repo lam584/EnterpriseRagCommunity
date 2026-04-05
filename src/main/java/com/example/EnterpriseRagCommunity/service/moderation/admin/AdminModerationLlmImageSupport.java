@@ -3,9 +3,6 @@ package com.example.EnterpriseRagCommunity.service.moderation.admin;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
@@ -70,7 +67,7 @@ class AdminModerationLlmImageSupport {
 
     List<ImageRef> resolveImages(LlmModerationTestRequest req, int maxImages) {
         if (req == null) return List.of();
-        int max = Math.max(1, Math.min(50, maxImages));
+        int max = Math.clamp(maxImages, 1, 50);
         List<ImageRef> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         if (req.getImages() != null) {
@@ -280,7 +277,7 @@ class AdminModerationLlmImageSupport {
             ImageWriteParam param = writer.getDefaultWriteParam();
             if (param.canWriteCompressed()) {
                 param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
-                param.setCompressionQuality(Math.max(0.1f, Math.min(1.0f, quality)));
+                param.setCompressionQuality(Math.clamp(quality, 0.1f, 1.0f));
             }
             writer.write(null, new IIOImage(image, null, null), param);
             writer.dispose();
@@ -385,7 +382,7 @@ class AdminModerationLlmImageSupport {
             if (root == null || root.isMissingNode() || root.isNull()) return List.of();
             JsonNode arr = root.get("extractedImages");
             if (arr == null || !arr.isArray() || arr.isEmpty()) return List.of();
-            int max = Math.max(1, Math.min(50, maxImages));
+            int max = Math.clamp(maxImages, 1, 50);
             List<ImageRef> out = new ArrayList<>();
             for (JsonNode it : arr) {
                 if (it == null || it.isNull() || it.isMissingNode()) continue;

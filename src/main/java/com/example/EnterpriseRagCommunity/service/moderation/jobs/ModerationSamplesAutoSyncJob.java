@@ -24,7 +24,7 @@ public class ModerationSamplesAutoSyncJob {
         if (cfg == null || !Boolean.TRUE.equals(cfg.getEnabled())) return;
 
         long intervalMs = (cfg.getIntervalSeconds() == null ? 60 : cfg.getIntervalSeconds()) * 1000L;
-        intervalMs = Math.max(5000L, Math.min(3_600_000L, intervalMs));
+        intervalMs = Math.clamp(intervalMs, 5000L, 3_600_000L);
 
         long now = System.currentTimeMillis();
         long prev = lastRunAtMs.get();

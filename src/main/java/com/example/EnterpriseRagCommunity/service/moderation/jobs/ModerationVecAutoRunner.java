@@ -309,9 +309,7 @@ public class ModerationVecAutoRunner {
     }
 
     private static String normalizeAction(String action) {
-        String a = action == null ? null : action.trim().toUpperCase(Locale.ROOT);
-        if (a == null || a.isBlank()) return null;
-        return a;
+        return ModerationStageSupport.normalizeAction(action);
     }
 
     private static String firstNonBlank(String a, String b) {

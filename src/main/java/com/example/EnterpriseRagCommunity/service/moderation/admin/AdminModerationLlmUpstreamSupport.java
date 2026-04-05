@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.example.EnterpriseRagCommunity.service.ai.ChatMessageSupport;
 import org.springframework.stereotype.Component;
 
 import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestResponse;
@@ -79,9 +80,7 @@ class AdminModerationLlmUpstreamSupport {
             Boolean enableThinking,
             boolean useQueue
     ) {
-        List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system(systemPrompt));
-        messages.add(ChatMessage.user(userPrompt));
+        List<ChatMessage> messages = ChatMessageSupport.buildSystemUserMessages(systemPrompt, userPrompt);
         return callOnce(LlmQueueTaskType.MULTIMODAL_MODERATION, providerId, modelOverride, messages, temperature, topP, maxTokens, enableThinking, null, "multimodal", useQueue, null);
     }
 
@@ -199,7 +198,7 @@ class AdminModerationLlmUpstreamSupport {
                 if (sendMaxPixels) part.put("max_pixels", maxPixels);
                 parts.add(part);
             }
-            parts.add(0, Map.of("type", "text", "text", instr.toString().trim()));
+            parts.addFirst(Map.of("type", "text", "text", instr.toString().trim()));
             List<ChatMessage> messages = new ArrayList<>();
             messages.add(ChatMessage.system(systemPrompt));
             messages.add(ChatMessage.userParts(parts));
@@ -483,11 +482,12 @@ class AdminModerationLlmUpstreamSupport {
                     String role = m.role();
                     if (role == null || role.isBlank()) continue;
                     Object c = m.content();
-                    String content;
-                    if (c == null) content = "";
-                    else if (c instanceof String s) content = s;
-                    else if (c instanceof List<?> list) content = partsToDebugText(list);
-                    else content = "[non_text_content]";
+                    String content = switch (c) {
+                        case null -> "";
+                        case String s -> s;
+                        case List<?> list -> partsToDebugText(list);
+                        default -> "[non_text_content]";
+                    };
                     LlmModerationTestResponse.Message pm = new LlmModerationTestResponse.Message();
                     pm.setRole(role);
                     pm.setContent(content);
@@ -945,7 +945,7 @@ class AdminModerationLlmUpstreamSupport {
         int open = countChar(head, '{');
         int close = countChar(head, '}');
         StringBuilder sb = new StringBuilder(head);
-        for (int i = 0; i < Math.min(8, open - close); i++) sb.append('}');
+        sb.repeat("}", Math.clamp(open - close, 0, 8));
         String out = sb.toString().trim();
         return out.endsWith("}") ? out : (out + "}");
     }
@@ -1073,19 +1073,29 @@ class AdminModerationLlmUpstreamSupport {
     private static int severityRank(String s) {
         if (s == null) return 0;
         String t = s.trim().toUpperCase(Locale.ROOT);
-        if (t.equals("LOW")) return 1;
-        if (t.equals("MID") || t.equals("MEDIUM")) return 2;
-        if (t.equals("HIGH")) return 3;
-        if (t.equals("CRITICAL")) return 4;
-        return 0;
+        return switch (t) {
+            case "LOW" -> 1;
+            case "MID", "MEDIUM" -> 2;
+            case "HIGH" -> 3;
+            case "CRITICAL" -> 4;
+            default -> 0;
+        };
     }
 
     private static String normalizeDecision(String decision, Double score) {
         if (decision == null) return null;
         String d = decision.trim().toUpperCase(Locale.ROOT);
-        if (d.equals("APPROVE") || d.equals("REJECT") || d.equals("HUMAN")) return d;
-        if (d.equals("ALLOW")) return "APPROVE";
-        if (d.equals("ESCALATE")) return "HUMAN";
+        switch (d) {
+            case "APPROVE", "REJECT", "HUMAN" -> {
+                return d;
+            }
+            case "ALLOW" -> {
+                return "APPROVE";
+            }
+            case "ESCALATE" -> {
+                return "HUMAN";
+            }
+        }
         if (decision.contains("通过")) return "APPROVE";
         if (decision.contains("拒绝") || decision.contains("违规")) return "REJECT";
         if (decision.contains("人工")) return "HUMAN";
@@ -1096,9 +1106,17 @@ class AdminModerationLlmUpstreamSupport {
     private static String normalizeSuggestion(String decisionSuggestion) {
         if (decisionSuggestion == null) return null;
         String d = decisionSuggestion.trim().toUpperCase(Locale.ROOT);
-        if (d.equals("ALLOW") || d.equals("REJECT") || d.equals("ESCALATE")) return d;
-        if (d.equals("APPROVE")) return "ALLOW";
-        if (d.equals("HUMAN")) return "ESCALATE";
+        switch (d) {
+            case "ALLOW", "REJECT", "ESCALATE" -> {
+                return d;
+            }
+            case "APPROVE" -> {
+                return "ALLOW";
+            }
+            case "HUMAN" -> {
+                return "ESCALATE";
+            }
+        }
         if (decisionSuggestion.contains("通过")) return "ALLOW";
         if (decisionSuggestion.contains("拒绝") || decisionSuggestion.contains("违规")) return "REJECT";
         if (decisionSuggestion.contains("人工")) return "ESCALATE";
@@ -1116,10 +1134,12 @@ class AdminModerationLlmUpstreamSupport {
     static String decisionToSuggestion(String decision) {
         if (decision == null) return null;
         String d = decision.trim().toUpperCase(Locale.ROOT);
-        if (d.equals("REJECT")) return "REJECT";
-        if (d.equals("APPROVE")) return "ALLOW";
-        if (d.equals("HUMAN")) return "ESCALATE";
-        return null;
+        return switch (d) {
+            case "REJECT" -> "REJECT";
+            case "APPROVE" -> "ALLOW";
+            case "HUMAN" -> "ESCALATE";
+            default -> null;
+        };
     }
 
     private static String nullToEmpty(String s) {
@@ -1195,7 +1215,7 @@ class AdminModerationLlmUpstreamSupport {
     private static int findBoundaryEnd(String text, int start, int maxEnd) {
         if (text == null || text.isEmpty()) return 0;
         int s = Math.max(0, start);
-        int end = Math.min(Math.max(s, maxEnd), text.length());
+        int end = Math.clamp(s, maxEnd, text.length());
         for (int i = s; i < end; i++) {
             char ch = text.charAt(i);
             if (ch == '\n' || ch == '\r') return i;

@@ -8,9 +8,17 @@ public final class ModerationThresholdSupport {
     }
 
     public static boolean asBooleanRequired(Object value, String key) {
-        if (value == null) throw new IllegalStateException("missing threshold: " + key);
-        if (value instanceof Boolean b) return b;
-        if (value instanceof Number n) return n.intValue() != 0;
+        switch (value) {
+            case null -> throw new IllegalStateException("missing threshold: " + key);
+            case Boolean b -> {
+                return b;
+            }
+            case Number n -> {
+                return n.intValue() != 0;
+            }
+            default -> {
+            }
+        }
         String s = String.valueOf(value).trim().toLowerCase(Locale.ROOT);
         if (s.equals("true") || s.equals("1") || s.equals("yes") || s.equals("y")) return true;
         if (s.equals("false") || s.equals("0") || s.equals("no") || s.equals("n")) return false;

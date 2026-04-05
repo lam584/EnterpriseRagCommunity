@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -161,7 +162,7 @@ public class PostDraftsServiceImpl implements PostDraftsService {
         m.put("contentFormat", e.getContentFormat());
         Object meta = e.getMetadata();
         if (meta instanceof Map<?, ?> mm) {
-            m.put("metadataKeys", mm.keySet().stream().filter(k -> k != null).map(String::valueOf).limit(20).toList());
+            m.put("metadataKeys", mm.keySet().stream().filter(Objects::nonNull).map(String::valueOf).limit(20).toList());
             m.put("metadataKeyCount", mm.size());
         } else {
             m.put("metadataKeys", null);

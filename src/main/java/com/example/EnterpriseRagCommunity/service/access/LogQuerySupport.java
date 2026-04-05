@@ -10,10 +10,9 @@ final class LogQuerySupport {
     private LogQuerySupport() {
     }
 
-    static Pageable buildPageable(Integer page, Integer pageSize, int defaultPageSize, int maxPageSize, Sort sort) {
-        int safePage = page == null ? 1 : Math.max(page, 1);
-        int safePageSize = pageSize == null ? defaultPageSize : Math.min(Math.max(pageSize, 1), maxPageSize);
-        return PageRequest.of(safePage - 1, safePageSize, sort);
+    static Pageable buildPageable(Sort sort) {
+        int safePageSize = Math.clamp(999, 1, 200);
+        return PageRequest.of(0, safePageSize, sort);
     }
 
     static String trimToNull(String value) {

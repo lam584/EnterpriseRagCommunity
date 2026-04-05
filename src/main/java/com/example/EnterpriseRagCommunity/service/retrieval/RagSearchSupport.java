@@ -30,7 +30,7 @@ public final class RagSearchSupport {
 
     public static int clampTopK(Integer topK) {
         int value = topK == null ? 8 : topK;
-        return Math.max(1, Math.min(50, value));
+        return Math.clamp(value, 1, 50);
     }
 
     public static void requireVectorIndexId(Long vectorIndexId) {
@@ -85,7 +85,7 @@ public final class RagSearchSupport {
         if (numCandidates == null) {
             return Math.max(100, topK * 10);
         }
-        return Math.max(10, Math.min(10_000, numCandidates));
+        return Math.clamp(numCandidates, 10, 10_000);
     }
 
     public static String toNonBlank(Object value) {

@@ -399,8 +399,8 @@ class PortalReportsServiceImplBranchCoverage95Test {
                 .thenReturn(1);
 
         PortalReportsService.ReportSubmitResult out = svc.reportPost(9L, "a".repeat(100), "  hello  ");
-        assertEquals(300L, out.getReportId());
-        assertEquals(200L, out.getQueueId());
+        assertEquals(300L, out.reportId());
+        assertEquals(200L, out.queueId());
 
         ArgumentCaptor<ReportsEntity> repCap = ArgumentCaptor.forClass(ReportsEntity.class);
         verify(reportsRepository).save(repCap.capture());
@@ -425,7 +425,7 @@ class PortalReportsServiceImplBranchCoverage95Test {
         when(moderationQueueRepository.requeueToAutoWithReviewStage(eq(11L), eq(QueueStatus.PENDING), eq(QueueStage.RULE), eq("reported"), any()))
                 .thenReturn(1);
         PortalReportsService.ReportSubmitResult out2 = svc.reportComment(7L, "SPAM", "   ");
-        assertEquals(11L, out2.getQueueId());
+        assertEquals(11L, out2.queueId());
 
         UsersEntity profile = new UsersEntity();
         profile.setId(500L);
@@ -446,7 +446,7 @@ class PortalReportsServiceImplBranchCoverage95Test {
                 .thenReturn(1);
         when(moderationActionsRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         PortalReportsService.ReportSubmitResult out3 = svc.reportProfile(500L, "spam", "x");
-        assertEquals(2L, out3.getQueueId());
+        assertEquals(2L, out3.queueId());
         verify(moderationActionsRepository, times(1)).save(any());
     }
 

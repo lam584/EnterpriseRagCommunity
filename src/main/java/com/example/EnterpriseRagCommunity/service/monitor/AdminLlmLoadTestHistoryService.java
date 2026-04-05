@@ -62,7 +62,7 @@ public class AdminLlmLoadTestHistoryService {
 
     @Transactional(readOnly = true)
     public List<AdminLlmLoadTestHistoryRecordDTO> list(int limit) {
-        int size = Math.max(1, Math.min(200, limit));
+        int size = Math.clamp(limit, 1, 200);
         List<LlmLoadTestRunHistoryEntity> rows = repository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, size));
         List<AdminLlmLoadTestHistoryRecordDTO> out = new ArrayList<>(rows.size());
         for (LlmLoadTestRunHistoryEntity e : rows) out.add(toDto(e));

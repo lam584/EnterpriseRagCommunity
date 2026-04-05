@@ -273,7 +273,7 @@ public class OpenAiCompatClient {
         StringBuilder sb = new StringBuilder();
         sb.append('{');
         sb.append("\"model\":\"").append(escapeJson(model)).append("\"");
-        sb.append(",\"stream\":").append(stream ? "true" : "false");
+        sb.append(",\"stream\":").append(stream);
         if (stream) {
             sb.append(",\"stream_options\":{\"include_usage\":true}");
         }

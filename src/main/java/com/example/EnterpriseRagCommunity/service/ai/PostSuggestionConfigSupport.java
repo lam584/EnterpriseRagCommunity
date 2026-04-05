@@ -14,7 +14,7 @@ public final class PostSuggestionConfigSupport {
 
     public static Pageable buildHistoryPageable(int page, int size) {
         int safePage = Math.max(0, page);
-        int safeSize = Math.min(100, Math.max(1, size));
+        int safeSize = Math.clamp(size, 1, 100);
         return PageRequest.of(safePage, safeSize);
     }
 

@@ -223,7 +223,7 @@ public class QaHistoryService {
         summaryMsg.setSessionId(sessionId);
         summaryMsg.setRole(MessageRole.SYSTEM);
         summaryMsg.setContent(summary);
-        summaryMsg.setCreatedAt(toCompress.get(0) != null ? toCompress.get(0).getCreatedAt() : java.time.LocalDateTime.now());
+        summaryMsg.setCreatedAt(toCompress.getFirst() != null ? toCompress.getFirst().getCreatedAt() : java.time.LocalDateTime.now());
         summaryMsg = qaMessagesRepository.save(summaryMsg);
 
         List<Long> deleteIds = toCompress.stream()
@@ -277,13 +277,13 @@ public class QaHistoryService {
         }
 
         int safePage = Math.max(0, page);
-        int safeSize = Math.max(1, Math.min(size, 200));
+        int safeSize = Math.clamp(size, 1, 200);
 
         // BOOLEAN MODE: append * for prefix matching to make UX friendlier.
         String booleanQ = toBooleanModeQuery(query);
 
         int from = safePage * safeSize;
-        int fetchLimit = Math.min(2000, Math.max(safeSize * 2, from + safeSize));
+        int fetchLimit = Math.clamp(safeSize * 2L, from + safeSize, 2000);
         Pageable fetchPageable = PageRequest.of(0, fetchLimit);
 
         Page<QaSessionsEntity> sessionHits = qaSessionsRepository.searchByTitleFulltext(userId, booleanQ, fetchPageable);

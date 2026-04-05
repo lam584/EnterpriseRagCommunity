@@ -164,8 +164,8 @@ class PortalReportsServiceImplReportEntryTest {
         String longCode = "a".repeat(100);
         PortalReportsService.ReportSubmitResult out = svc.reportPost(9L, longCode, "  hello  ");
 
-        assertEquals(300L, out.getReportId());
-        assertEquals(200L, out.getQueueId());
+        assertEquals(300L, out.reportId());
+        assertEquals(200L, out.queueId());
 
         ArgumentCaptor<ReportsEntity> repCap = ArgumentCaptor.forClass(ReportsEntity.class);
         verify(reportsRepository).save(repCap.capture());
@@ -240,8 +240,8 @@ class PortalReportsServiceImplReportEntryTest {
 
         PortalReportsService.ReportSubmitResult out = svc.reportComment(7L, "SPAM", "   ");
 
-        assertEquals(22L, out.getReportId());
-        assertEquals(11L, out.getQueueId());
+        assertEquals(22L, out.reportId());
+        assertEquals(11L, out.queueId());
 
         ArgumentCaptor<ReportsEntity> repCap = ArgumentCaptor.forClass(ReportsEntity.class);
         verify(reportsRepository).save(repCap.capture());
@@ -347,8 +347,8 @@ class PortalReportsServiceImplReportEntryTest {
 
         PortalReportsService.ReportSubmitResult out = svc.reportProfile(500L, "spam", "x");
 
-        assertEquals(301L, out.getReportId());
-        assertEquals(201L, out.getQueueId());
+        assertEquals(301L, out.reportId());
+        assertEquals(201L, out.queueId());
 
         ArgumentCaptor<ModerationActionsEntity> cap = ArgumentCaptor.forClass(ModerationActionsEntity.class);
         verify(moderationActionsRepository).save(cap.capture());
@@ -424,8 +424,8 @@ class PortalReportsServiceImplReportEntryTest {
 
         PortalReportsService.ReportSubmitResult out = svc.reportProfile(500L, "spam", "x");
 
-        assertEquals(1L, out.getReportId());
-        assertEquals(2L, out.getQueueId());
+        assertEquals(1L, out.reportId());
+        assertEquals(2L, out.queueId());
         verify(moderationActionsRepository).save(any());
         verify(moderationQueueRepository, never()).save(any());
     }

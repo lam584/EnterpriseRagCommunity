@@ -6,9 +6,6 @@ import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntit
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenHistoryEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
 import com.example.EnterpriseRagCommunity.entity.semantic.GenerationJobsEntity;
-import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationJobStatus;
-import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationJobType;
-import com.example.EnterpriseRagCommunity.entity.semantic.enums.GenerationTargetType;
 import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 import com.example.EnterpriseRagCommunity.repository.semantic.GenerationJobsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
@@ -18,7 +15,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
 import java.util.*;
 
 @Service

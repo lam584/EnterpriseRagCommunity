@@ -300,16 +300,7 @@ public class ModerationSamplesSyncService {
         }
     }
 
-    private static class OrphanCleanupStat {
-        final long deleted;
-        final long failed;
-        final List<Long> failedIds;
-
-        private OrphanCleanupStat(long deleted, long failed, List<Long> failedIds) {
-            this.deleted = deleted;
-            this.failed = failed;
-            this.failedIds = failedIds;
-        }
+    private record OrphanCleanupStat(long deleted, long failed, List<Long> failedIds) {
     }
 
     /**

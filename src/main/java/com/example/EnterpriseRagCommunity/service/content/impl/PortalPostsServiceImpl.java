@@ -32,11 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -230,7 +226,7 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
         Set<Long> roleIds = boardAccessControlService.currentUserRoleIds();
         var visiblePosts = rs.getContent().stream()
-                .filter(e -> e != null)
+                .filter(Objects::nonNull)
                 .filter(e -> e.getBoardId() == null || boardAccessControlService.canViewBoard(e.getBoardId(), roleIds))
                 .toList();
 

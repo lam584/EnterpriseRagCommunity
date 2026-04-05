@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.dto.ai.PromptBatchRequest;
 import com.example.EnterpriseRagCommunity.dto.ai.PromptBatchResponse;
 import com.example.EnterpriseRagCommunity.dto.ai.PromptContentDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PromptContentUpdateRequest;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.PromptsAdminService;
 import lombok.RequiredArgsConstructor;
@@ -57,7 +58,7 @@ public class AdminPromptsController {
         String username = principal == null ? null : principal.getName();
         Long userId = null;
         if (username != null) {
-            userId = administratorService.findByUsername(username).map(u -> u.getId()).orElse(null);
+            userId = administratorService.findByUsername(username).map(UsersEntity::getId).orElse(null);
         }
         try {
             return promptsAdminService.updateContent(promptCode, req, userId);

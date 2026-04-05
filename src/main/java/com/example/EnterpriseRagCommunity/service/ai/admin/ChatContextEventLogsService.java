@@ -20,7 +20,7 @@ public class ChatContextEventLogsService {
     @Transactional(readOnly = true)
     public Page<AdminChatContextEventLogDTO> list(LocalDateTime from, LocalDateTime to, int page, int size) {
         int safePage = Math.max(0, page);
-        int safeSize = Math.max(1, Math.min(200, size));
+        int safeSize = Math.clamp(size, 1, 200);
         var pageable = PageRequest.of(safePage, safeSize);
 
         Page<AiChatContextEventsEntity> p;

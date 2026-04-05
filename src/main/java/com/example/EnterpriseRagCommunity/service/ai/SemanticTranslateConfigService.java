@@ -93,7 +93,7 @@ public class SemanticTranslateConfigService {
     @Transactional(readOnly = true)
     public Page<SemanticTranslateHistoryDTO> listHistory(Long userId, int page, int size) {
         int safePage = Math.max(0, page);
-        int safeSize = Math.min(100, Math.max(1, size));
+        int safeSize = Math.clamp(size, 1, 100);
         Pageable pageable = PageRequest.of(safePage, safeSize);
 
         Page<SemanticTranslateHistoryEntity> rows = (userId == null)

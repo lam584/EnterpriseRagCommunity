@@ -36,7 +36,7 @@ public class AdminAiModelProbeService {
         String kind = normalizeKind(kindRaw);
         String providerId = trimOrEmpty(providerIdRaw);
         String modelName = trimOrEmpty(modelNameRaw);
-        long timeoutMs = timeoutMsRaw == null ? 15000L : Math.max(1000L, timeoutMsRaw.longValue());
+        long timeoutMs = timeoutMsRaw == null ? 15000L : Math.max(1000L, timeoutMsRaw);
 
         if (kind.isBlank()) throw new IllegalArgumentException("kind 不能为空");
         if (providerId.isBlank()) throw new IllegalArgumentException("providerId 不能为空");
@@ -49,50 +49,53 @@ public class AdminAiModelProbeService {
         out.setKind(kind);
 
         try {
-            if ("EMBEDDING".equals(kind)) {
-                AiEmbeddingService.EmbeddingResult res = withTimeout(
-                        () -> aiEmbeddingService.embedOnce("ping", modelName, providerId),
-                        timeoutMs
-                );
-                boolean ok = res != null && res.vector() != null && res.vector().length > 0;
-                out.setOk(ok);
-                out.setUsedProviderId(providerId);
-                out.setUsedModel(res == null ? modelName : Objects.requireNonNullElse(res.model(), modelName));
-                if (!ok) out.setErrorMessage("embedding 响应为空或向量为空");
-            } else if ("RERANK".equals(kind)) {
-                AiRerankService.RerankResult res = withTimeout(
-                        () -> aiRerankService.rerankOnce(
-                                providerId,
-                                modelName,
-                                "ping",
-                                List.of("ping"),
-                                1,
-                                "Given a web search query, retrieve relevant passages that answer the query.",
-                                false,
-                                null
-                        ),
-                        timeoutMs
-                );
-                boolean ok = res != null && res.results() != null && !res.results().isEmpty();
-                out.setOk(ok);
-                out.setUsedProviderId(res == null ? providerId : Objects.requireNonNullElse(res.providerId(), providerId));
-                out.setUsedModel(res == null ? modelName : Objects.requireNonNullElse(res.model(), modelName));
-                if (!ok) out.setErrorMessage("rerank 响应为空");
-            } else if ("CHAT".equals(kind)) {
-                LlmQueueTaskType tt = LlmQueueTaskType.MULTIMODAL_CHAT;
-                List<ChatMessage> messages = buildProbeMessages();
-                LlmGateway.RoutedChatOnceResult routed = withTimeout(
-                        () -> llmGateway.chatOnceRouted(tt, providerId, modelName, messages, 0.0, 8, List.of("\n")),
-                        timeoutMs
-                );
-                String text = routed == null ? null : routed.text();
-                boolean ok = text != null && !text.trim().isEmpty();
-                out.setOk(ok);
-                out.setUsedProviderId(routed == null ? providerId : Objects.requireNonNullElse(routed.providerId(), providerId));
-                out.setUsedModel(routed == null ? modelName : Objects.requireNonNullElse(routed.model(), modelName));
-                if (!ok) out.setErrorMessage("chat 响应为空");
-            } else {
-                throw new IllegalArgumentException("不支持的 kind: " + kind);
+            switch (kind) {
+                case "EMBEDDING" -> {
+                    AiEmbeddingService.EmbeddingResult res = withTimeout(
+                            () -> aiEmbeddingService.embedOnce("ping", modelName, providerId),
+                            timeoutMs
+                    );
+                    boolean ok = res != null && res.vector() != null && res.vector().length > 0;
+                    out.setOk(ok);
+                    out.setUsedProviderId(providerId);
+                    out.setUsedModel(res == null ? modelName : Objects.requireNonNullElse(res.model(), modelName));
+                    if (!ok) out.setErrorMessage("embedding 响应为空或向量为空");
+                }
+                case "RERANK" -> {
+                    AiRerankService.RerankResult res = withTimeout(
+                            () -> aiRerankService.rerankOnce(
+                                    providerId,
+                                    modelName,
+                                    "ping",
+                                    List.of("ping"),
+                                    1,
+                                    "Given a web search query, retrieve relevant passages that answer the query.",
+                                    false,
+                                    null
+                            ),
+                            timeoutMs
+                    );
+                    boolean ok = res != null && res.results() != null && !res.results().isEmpty();
+                    out.setOk(ok);
+                    out.setUsedProviderId(res == null ? providerId : Objects.requireNonNullElse(res.providerId(), providerId));
+                    out.setUsedModel(res == null ? modelName : Objects.requireNonNullElse(res.model(), modelName));
+                    if (!ok) out.setErrorMessage("rerank 响应为空");
+                }
+                case "CHAT" -> {
+                    LlmQueueTaskType tt = LlmQueueTaskType.MULTIMODAL_CHAT;
+                    List<ChatMessage> messages = buildProbeMessages();
+                    LlmGateway.RoutedChatOnceResult routed = withTimeout(
+                            () -> llmGateway.chatOnceRouted(tt, providerId, modelName, messages, 0.0, 8, List.of("\n")),
+                            timeoutMs
+                    );
+                    String text = routed == null ? null : routed.text();
+                    boolean ok = text != null && !text.trim().isEmpty();
+                    out.setOk(ok);
+                    out.setUsedProviderId(routed == null ? providerId : Objects.requireNonNullElse(routed.providerId(), providerId));
+                    out.setUsedModel(routed == null ? modelName : Objects.requireNonNullElse(routed.model(), modelName));
+                    if (!ok) out.setErrorMessage("chat 响应为空");
+                }
+                default -> throw new IllegalArgumentException("不支持的 kind: " + kind);
             }
         } catch (TimeoutException te) {
             out.setOk(false);

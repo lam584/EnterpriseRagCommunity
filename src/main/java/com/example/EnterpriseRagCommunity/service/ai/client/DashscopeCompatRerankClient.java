@@ -7,7 +7,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -37,7 +36,7 @@ public class DashscopeCompatRerankClient {
     }
 
     public String rerankOnce(RerankRequest req) throws IOException {
-        String root = normalizeRootUrl(req.baseUrl(), null);
+        String root = normalizeRootUrl(req.baseUrl());
         String apiKey = RerankUrlSupport.normalizeString(req.apiKey(), null);
         String model = RerankUrlSupport.normalizeString(req.model(), null);
         if (model == null || model.isBlank()) throw new IllegalArgumentException("model 不能为空");
@@ -73,12 +72,11 @@ public class DashscopeCompatRerankClient {
     }
 
     private static String buildEndpoint(String rootUrl, String pathOrUrl) {
-        String p = pathOrUrl == null ? "" : pathOrUrl.trim();
-        if (p.startsWith("http://") || p.startsWith("https://")) return p;
-        if (!p.startsWith("/")) p = "/" + p;
-        String root = rootUrl == null ? "" : rootUrl.trim();
-        if (root.endsWith("/")) root = root.substring(0, root.length() - 1);
-        return root + p;
+        return RerankUrlSupport.buildEndpoint(rootUrl, pathOrUrl);
+    }
+
+    private static String normalizeRootUrl(String baseUrl) {
+        return normalizeRootUrl(baseUrl, null);
     }
 
     private static String normalizeRootUrl(String baseUrl, String fallback) {

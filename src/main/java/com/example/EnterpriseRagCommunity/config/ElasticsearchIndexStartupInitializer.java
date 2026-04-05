@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationSimilarityConfigEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -69,7 +70,7 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
     }
 
     private void tryInitModerationSamplesIndex() {
-        Integer dims0 = moderationSimilarityConfigRepository.findAll().stream().findFirst().map(c -> c.getEmbeddingDims()).orElse(null);
+        Integer dims0 = moderationSimilarityConfigRepository.findAll().stream().findFirst().map(ModerationSimilarityConfigEntity::getEmbeddingDims).orElse(null);
         int dims = dims0 == null ? moderationSamplesIndexConfigService.getEmbeddingDimsOrDefault() : dims0;
         if (dims <= 0) {
             log.info("ES init skip moderation samples index recreate: embeddingDims not configured (<=0)");
@@ -157,34 +158,38 @@ public class ElasticsearchIndexStartupInitializer implements ApplicationRunner {
 
     private void ensureIndexBySourceType(String indexName, int dims, String sourceType) {
         String st = sourceType == null ? "" : sourceType.trim().toUpperCase();
-        if ("COMMENT".equals(st)) {
-            ragCommentsIndexService.ensureIndex(indexName, dims);
-            return;
-        }
-        if ("FILE_ASSET".equals(st)) {
-            ragFileAssetsIndexService.ensureIndex(indexName, dims, ragProps.getEs().isIkEnabled());
-            return;
-        }
-        if ("TEMP".equals(st)) {
-            log.info("ES init skip TEMP index. index={}, dims={}", indexName, dims);
-            return;
+        switch (st) {
+            case "COMMENT" -> {
+                ragCommentsIndexService.ensureIndex(indexName, dims);
+                return;
+            }
+            case "FILE_ASSET" -> {
+                ragFileAssetsIndexService.ensureIndex(indexName, dims, ragProps.getEs().isIkEnabled());
+                return;
+            }
+            case "TEMP" -> {
+                log.info("ES init skip TEMP index. index={}, dims={}", indexName, dims);
+                return;
+            }
         }
         ragPostsIndexService.ensureIndex(indexName, dims);
     }
 
     private void recreateIndexBySourceType(String indexName, int dims, String sourceType) {
         String st = sourceType == null ? "" : sourceType.trim().toUpperCase();
-        if ("COMMENT".equals(st)) {
-            ragCommentsIndexService.recreateIndex(indexName, dims);
-            return;
-        }
-        if ("FILE_ASSET".equals(st)) {
-            ragFileAssetsIndexService.recreateIndex(indexName, dims, ragProps.getEs().isIkEnabled());
-            return;
-        }
-        if ("TEMP".equals(st)) {
-            log.info("ES init skip TEMP index recreate. index={}, dims={}", indexName, dims);
-            return;
+        switch (st) {
+            case "COMMENT" -> {
+                ragCommentsIndexService.recreateIndex(indexName, dims);
+                return;
+            }
+            case "FILE_ASSET" -> {
+                ragFileAssetsIndexService.recreateIndex(indexName, dims, ragProps.getEs().isIkEnabled());
+                return;
+            }
+            case "TEMP" -> {
+                log.info("ES init skip TEMP index recreate. index={}, dims={}", indexName, dims);
+                return;
+            }
         }
         ragPostsIndexService.recreateIndex(indexName, dims);
     }

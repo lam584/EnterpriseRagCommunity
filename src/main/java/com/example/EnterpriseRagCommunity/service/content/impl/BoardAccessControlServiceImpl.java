@@ -140,7 +140,7 @@ public class BoardAccessControlServiceImpl implements BoardAccessControlService 
             return Set.of();
         }
         String email = auth.getName();
-        Long userId = administratorService.findByUsername(email).map(x -> x.getId()).orElse(null);
+        Long userId = administratorService.findByUsername(email).map(UsersEntity::getId).orElse(null);
         if (userId == null) return Set.of();
 
         List<UserRoleLinksEntity> links = userRoleLinksRepository.findByUserId(userId);
@@ -158,7 +158,7 @@ public class BoardAccessControlServiceImpl implements BoardAccessControlService 
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
         String email = auth.getName();
-        return administratorService.findByUsername(email).map(x -> x.getId()).orElse(null);
+        return administratorService.findByUsername(email).map(UsersEntity::getId).orElse(null);
     }
 
     private String currentActorNameOrNull() {

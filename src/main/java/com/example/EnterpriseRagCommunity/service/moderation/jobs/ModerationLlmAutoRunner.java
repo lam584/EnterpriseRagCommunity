@@ -646,7 +646,7 @@ public class ModerationLlmAutoRunner {
         LlmModerationTestResponse effectiveRes = upgradeRes != null ? upgradeRes : res;
         Map<String, Double> tagThresholds = resolveRiskTagThresholdsCached();
         PolicyEval policyEval = evaluatePolicyVerdict(policyConfig, reviewStage, effectiveRes, tagThresholds, upgraded, upgradeRes == null);
-        Verdict verdict = policyEval.verdict;
+        Verdict verdict = policyEval.verdict();
 
         // Save step details
         if (llmStepId != null) {
@@ -654,7 +654,7 @@ public class ModerationLlmAutoRunner {
             details.put("upgraded", upgraded);
             details.put("reviewStage", reviewStage);
             details.put("policyVersion", policyVersion);
-            if (policyEval.details != null && !policyEval.details.isEmpty()) details.put("policyEval", policyEval.details);
+            if (policyEval.details() != null && !policyEval.details().isEmpty()) details.put("policyEval", policyEval.details());
             if (res != null) details.put("primary", summarizeLlmRes(res));
             if (upgradeRes != null) details.put("upgrade", summarizeLlmRes(upgradeRes));
             if (effectiveRes != null) {
@@ -873,15 +873,15 @@ public class ModerationLlmAutoRunner {
                         g.put("inputMode", globalRes.getInputMode());
                     }
                     ChunkedVerdict chunkedVerdict = verdictFromLlmInChunked(globalRes, fb, policyConfig, reviewStage);
-                    Verdict v = chunkedVerdict.verdict;
-                    Thresholds vth = chunkedVerdict.thresholds;
+                    Verdict v = chunkedVerdict.verdict();
+                    Thresholds vth = chunkedVerdict.thresholds();
                     if (v == Verdict.REJECT) {
                         if (llmStepId != null) {
                             Map<String, Object> d = new LinkedHashMap<>();
                             d.put("chunkedFinalFromGlobal", true);
                             d.put("chunkedGlobal", g);
-                            d.put("thresholdSource", vth.source);
-                            d.put("thresholdsEffective", Map.of("T_allow", vth.tAllow, "T_reject", vth.tReject));
+                            d.put("thresholdSource", vth.source());
+                            d.put("thresholdsEffective", Map.of("T_allow", vth.tAllow(), "T_reject", vth.tReject()));
                             try {
                                 AdminModerationChunkProgressDTO p = chunkReviewService.getProgress(q.getId(), false, 0);
                                 if (p != null) {
@@ -903,8 +903,8 @@ public class ModerationLlmAutoRunner {
                         Map<String, Object> auditDetails = new LinkedHashMap<>();
                         auditDetails.put("scope", "global");
                         auditDetails.put("chunkedFinalFromGlobal", true);
-                        auditDetails.put("thresholdSource", vth.source);
-                        auditDetails.put("thresholdsEffective", Map.of("T_allow", vth.tAllow, "T_reject", vth.tReject));
+                        auditDetails.put("thresholdSource", vth.source());
+                        auditDetails.put("thresholdsEffective", Map.of("T_allow", vth.tAllow(), "T_reject", vth.tReject()));
                         writeChunkedDecisionAuditLog(q, run, llmStepId, chunkSetId, "REJECT", globalRes, auditDetails);
                         return;
                     }
@@ -913,8 +913,8 @@ public class ModerationLlmAutoRunner {
                             Map<String, Object> d = new LinkedHashMap<>();
                             d.put("chunkedFinalFromGlobal", true);
                             d.put("chunkedGlobal", g);
-                            d.put("thresholdSource", vth.source);
-                            d.put("thresholdsEffective", Map.of("T_allow", vth.tAllow, "T_reject", vth.tReject));
+                            d.put("thresholdSource", vth.source());
+                            d.put("thresholdsEffective", Map.of("T_allow", vth.tAllow(), "T_reject", vth.tReject()));
                             try {
                                 AdminModerationChunkProgressDTO p = chunkReviewService.getProgress(q.getId(), false, 0);
                                 if (p != null) {
@@ -938,8 +938,8 @@ public class ModerationLlmAutoRunner {
                         Map<String, Object> auditDetails = new LinkedHashMap<>();
                         auditDetails.put("scope", "global");
                         auditDetails.put("chunkedFinalFromGlobal", true);
-                        auditDetails.put("thresholdSource", vth.source);
-                        auditDetails.put("thresholdsEffective", Map.of("T_allow", vth.tAllow, "T_reject", vth.tReject));
+                        auditDetails.put("thresholdSource", vth.source());
+                        auditDetails.put("thresholdsEffective", Map.of("T_allow", vth.tAllow(), "T_reject", vth.tReject()));
                         writeChunkedDecisionAuditLog(q, run, llmStepId, chunkSetId, "HUMAN", globalRes, auditDetails);
                         return;
                     }
@@ -1131,10 +1131,10 @@ public class ModerationLlmAutoRunner {
                                     if (res.getSeverity() != null) labels.put("severity", res.getSeverity());
                                     if (res.getUncertainty() != null) labels.put("uncertainty", res.getUncertainty());
                                     PolicyEval policyEval = evaluatePolicyVerdict(policyConfig, reviewStage, res, resolveRiskTagThresholdsCached(), false, false);
-                                    if (policyEval.verdict != null) {
-                                        labels.put("policyVerdict", policyEval.verdict.name());
+                                    if (policyEval.verdict() != null) {
+                                        labels.put("policyVerdict", policyEval.verdict().name());
                                     }
-                                    Verdict policyVerdict = policyEval.verdict;
+                                    Verdict policyVerdict = policyEval.verdict();
                                     boolean keepEvidence = policyVerdict == Verdict.REJECT || policyVerdict == Verdict.REVIEW;
                                     List<String> evidenceBeforeNormalize = filterChunkEvidence(res.getEvidence());
                                     List<String> evidence = keepEvidence
@@ -1297,8 +1297,8 @@ public class ModerationLlmAutoRunner {
                 finalReviewRes = llmService.test(req);
 
                 Thresholds finalTh = resolveThresholdsPreferred(policyConfig, reviewStage, coalesceLabels(finalReviewRes), fb);
-                double rejectT = finalTh.tReject;
-                double humanT = finalTh.tAllow;
+                double rejectT = finalTh.tReject();
+                double humanT = finalTh.tAllow();
                 String d = normalizeDecisionOrNull(finalReviewRes == null ? null : finalReviewRes.getDecision());
                 Double sc = finalReviewRes == null ? null : finalReviewRes.getScore();
                 finalReviewVerdict = verdictFromDecisionAndScore(d, sc, rejectT, humanT);
@@ -1316,8 +1316,8 @@ public class ModerationLlmAutoRunner {
                     stepDetails.put("chunkedFinal", "APPROVE");
                     stepDetails.put("scope", "finalReview");
                     stepDetails.put("chunkProgressFinal", chunkProgressFinal);
-                    stepDetails.put("thresholdSource", finalTh.source);
-                    stepDetails.put("thresholdsEffective", Map.of("T_allow", finalTh.tAllow, "T_reject", finalTh.tReject));
+                    stepDetails.put("thresholdSource", finalTh.source());
+                    stepDetails.put("thresholdsEffective", Map.of("T_allow", finalTh.tAllow(), "T_reject", finalTh.tReject()));
                     if (!finalReviewEvidence.isEmpty()) stepDetails.put("evidence", finalReviewEvidence);
                     pipelineTraceService.finishStepOk(llmStepId, "APPROVE", finalReviewRes == null ? null : finalReviewRes.getScore(), stepDetails);
                 }
@@ -1334,8 +1334,8 @@ public class ModerationLlmAutoRunner {
                     stepDetails.put("chunkedFinal", "REJECT");
                     stepDetails.put("scope", "finalReview");
                     stepDetails.put("chunkProgressFinal", chunkProgressFinal);
-                    stepDetails.put("thresholdSource", finalTh.source);
-                    stepDetails.put("thresholdsEffective", Map.of("T_allow", finalTh.tAllow, "T_reject", finalTh.tReject));
+                    stepDetails.put("thresholdSource", finalTh.source());
+                    stepDetails.put("thresholdsEffective", Map.of("T_allow", finalTh.tAllow(), "T_reject", finalTh.tReject()));
                     if (!finalReviewEvidence.isEmpty()) stepDetails.put("evidence", finalReviewEvidence);
                     pipelineTraceService.finishStepOk(llmStepId, "REJECT", finalReviewRes == null ? null : finalReviewRes.getScore(), stepDetails);
                 }
@@ -1351,8 +1351,8 @@ public class ModerationLlmAutoRunner {
                 stepDetails.put("chunkedFinal", "HUMAN");
                 stepDetails.put("scope", "finalReview");
                 stepDetails.put("chunkProgressFinal", chunkProgressFinal);
-                stepDetails.put("thresholdSource", finalTh.source);
-                stepDetails.put("thresholdsEffective", Map.of("T_allow", finalTh.tAllow, "T_reject", finalTh.tReject));
+                stepDetails.put("thresholdSource", finalTh.source());
+                stepDetails.put("thresholdsEffective", Map.of("T_allow", finalTh.tAllow(), "T_reject", finalTh.tReject()));
                 if (!finalReviewEvidence.isEmpty()) stepDetails.put("evidence", finalReviewEvidence);
                 pipelineTraceService.finishStepOk(llmStepId, "HUMAN", finalReviewRes == null ? null : finalReviewRes.getScore(), stepDetails);
             }
@@ -1392,15 +1392,15 @@ public class ModerationLlmAutoRunner {
                 Map<String, Object> stepDetails = new LinkedHashMap<>();
                 stepDetails.put("chunkedFinal", "APPROVE");
                 stepDetails.put("chunkProgressFinal", chunkProgressFinal);
-                stepDetails.put("thresholdSource", aggregateThresholds.source);
-                stepDetails.put("thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow, "T_reject", aggregateThresholds.tReject));
+                stepDetails.put("thresholdSource", aggregateThresholds.source());
+                stepDetails.put("thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow(), "T_reject", aggregateThresholds.tReject()));
                 if (!aggregateEvidence.isEmpty()) stepDetails.put("evidence", aggregateEvidence);
                 pipelineTraceService.finishStepOk(llmStepId, "APPROVE", null, stepDetails);
             }
             queueService.autoApprove(q.getId(), "", run.getTraceId());
             applyChunkedRiskTags(q, chunkSetId, globalRes);
             pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.APPROVE);
-            writeChunkedDecisionAuditLog(q, run, llmStepId, chunkSetId, "APPROVE", globalRes, Map.of("scope", "chunks", "chunkProgressFinal", chunkProgressFinal, "thresholdSource", aggregateThresholds.source, "thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow, "T_reject", aggregateThresholds.tReject)));
+            writeChunkedDecisionAuditLog(q, run, llmStepId, chunkSetId, "APPROVE", globalRes, Map.of("scope", "chunks", "chunkProgressFinal", chunkProgressFinal, "thresholdSource", aggregateThresholds.source(), "thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow(), "T_reject", aggregateThresholds.tReject())));
             return;
         }
         if (finalVerdict == Verdict.REJECT) {
@@ -1408,15 +1408,15 @@ public class ModerationLlmAutoRunner {
                 Map<String, Object> stepDetails = new LinkedHashMap<>();
                 stepDetails.put("chunkedFinal", "REJECT");
                 stepDetails.put("chunkProgressFinal", chunkProgressFinal);
-                stepDetails.put("thresholdSource", aggregateThresholds.source);
-                stepDetails.put("thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow, "T_reject", aggregateThresholds.tReject));
+                stepDetails.put("thresholdSource", aggregateThresholds.source());
+                stepDetails.put("thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow(), "T_reject", aggregateThresholds.tReject()));
                 if (!aggregateEvidence.isEmpty()) stepDetails.put("evidence", aggregateEvidence);
                 pipelineTraceService.finishStepOk(llmStepId, "REJECT", null, stepDetails);
             }
             queueService.autoReject(q.getId(), buildUserFacingRejectReason(globalRes, "Content violates policy"), run.getTraceId());
             applyChunkedRiskTags(q, chunkSetId, globalRes);
             pipelineTraceService.finishRunSuccess(run.getId(), ModerationPipelineRunEntity.FinalDecision.REJECT);
-            writeChunkedDecisionAuditLog(q, run, llmStepId, chunkSetId, "REJECT", globalRes, Map.of("scope", "chunks", "chunkProgressFinal", chunkProgressFinal, "thresholdSource", aggregateThresholds.source, "thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow, "T_reject", aggregateThresholds.tReject)));
+            writeChunkedDecisionAuditLog(q, run, llmStepId, chunkSetId, "REJECT", globalRes, Map.of("scope", "chunks", "chunkProgressFinal", chunkProgressFinal, "thresholdSource", aggregateThresholds.source(), "thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow(), "T_reject", aggregateThresholds.tReject())));
             return;
         }
 
@@ -1424,8 +1424,8 @@ public class ModerationLlmAutoRunner {
             Map<String, Object> stepDetails = new LinkedHashMap<>();
             stepDetails.put("chunkedFinal", "HUMAN");
             stepDetails.put("chunkProgressFinal", chunkProgressFinal);
-            stepDetails.put("thresholdSource", aggregateThresholds.source);
-            stepDetails.put("thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow, "T_reject", aggregateThresholds.tReject));
+            stepDetails.put("thresholdSource", aggregateThresholds.source());
+            stepDetails.put("thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow(), "T_reject", aggregateThresholds.tReject()));
             if (!aggregateEvidence.isEmpty()) stepDetails.put("evidence", aggregateEvidence);
             pipelineTraceService.finishStepOk(llmStepId, "HUMAN", null, stepDetails);
         }
@@ -1437,8 +1437,8 @@ public class ModerationLlmAutoRunner {
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("scope", "chunks");
         details.put("chunkProgressFinal", chunkProgressFinal);
-        details.put("thresholdSource", aggregateThresholds.source);
-        details.put("thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow, "T_reject", aggregateThresholds.tReject));
+        details.put("thresholdSource", aggregateThresholds.source());
+        details.put("thresholdsEffective", Map.of("T_allow", aggregateThresholds.tAllow(), "T_reject", aggregateThresholds.tReject()));
         if (!memoryGuardDetails.isEmpty()) details.putAll(memoryGuardDetails);
         writeChunkedDecisionAuditLog(q, run, llmStepId, chunkSetId, "HUMAN", globalRes, details);
     }
@@ -1508,17 +1508,14 @@ public class ModerationLlmAutoRunner {
         }
     }
 
-    static final class EvidenceImageSelection {
-        final List<ChunkImageRef> selectedRefs;
-        final List<Integer> sourceChunkIndexes;
-        final List<String> placeholders;
-
-        EvidenceImageSelection(List<ChunkImageRef> selectedRefs, List<Integer> sourceChunkIndexes, List<String> placeholders) {
-            this.selectedRefs = selectedRefs == null ? List.of() : selectedRefs;
-            this.sourceChunkIndexes = sourceChunkIndexes == null ? List.of() : sourceChunkIndexes;
-            this.placeholders = placeholders == null ? List.of() : placeholders;
+    record EvidenceImageSelection(List<ChunkImageRef> selectedRefs, List<Integer> sourceChunkIndexes,
+                                  List<String> placeholders) {
+            EvidenceImageSelection(List<ChunkImageRef> selectedRefs, List<Integer> sourceChunkIndexes, List<String> placeholders) {
+                this.selectedRefs = selectedRefs == null ? List.of() : selectedRefs;
+                this.sourceChunkIndexes = sourceChunkIndexes == null ? List.of() : sourceChunkIndexes;
+                this.placeholders = placeholders == null ? List.of() : placeholders;
+            }
         }
-    }
 
     static Object deepGet(Map<String, Object> root, String path) {
         return ModerationLlmAutoRunnerSupport.deepGet(root, path);
@@ -1558,9 +1555,9 @@ public class ModerationLlmAutoRunner {
         ModerationLlmAutoRunnerSupport.EvidenceImageSelection selection =
                 ModerationLlmAutoRunnerSupport.selectEvidenceDrivenChunkImages(mem, chunkIndex, toSupportRefs(candidateRefs));
         return new EvidenceImageSelection(
-                fromSupportRefs(selection.selectedRefs),
-                selection.sourceChunkIndexes,
-                selection.placeholders
+                fromSupportRefs(selection.selectedRefs()),
+                selection.sourceChunkIndexes(),
+                selection.placeholders()
         );
     }
 
@@ -1865,7 +1862,7 @@ public class ModerationLlmAutoRunner {
     static int findBoundaryEnd(String text, int start, int maxEnd) {
         if (text == null || text.isEmpty()) return 0;
         int s = Math.max(0, start);
-        int end = Math.min(Math.max(s, maxEnd), text.length());
+        int end = Math.clamp(s, maxEnd, text.length());
         for (int i = s; i < end; i++) {
             char ch = text.charAt(i);
             if (ch == '\n' || ch == '\r') return i;
@@ -1901,7 +1898,7 @@ public class ModerationLlmAutoRunner {
         List<ChunkImageRef> out = new ArrayList<>();
         for (ModerationLlmAutoRunnerSupport.ChunkImageRef ref : refs) {
             if (ref == null) continue;
-            out.add(new ChunkImageRef(ref.index, ref.placeholder, ref.url, ref.mimeType, ref.fileAssetId));
+            out.add(new ChunkImageRef(ref.index(), ref.placeholder(), ref.url(), ref.mimeType(), ref.fileAssetId()));
         }
         return out;
     }
@@ -2245,15 +2242,12 @@ public class ModerationLlmAutoRunner {
         return normalizeChunkEvidenceForLabels(objectMapper, evidence, chunkText, actualChunkImageRefs);
     }
 
-    private static class FilesReadiness {
-        final boolean hasAttachments;
-        final List<Long> pendingFileAssetIds;
-
-        private FilesReadiness(boolean hasAttachments, List<Long> pendingFileAssetIds) {
-            this.hasAttachments = hasAttachments;
-            this.pendingFileAssetIds = pendingFileAssetIds == null ? List.of() : pendingFileAssetIds;
+    private record FilesReadiness(boolean hasAttachments, List<Long> pendingFileAssetIds) {
+            private FilesReadiness(boolean hasAttachments, List<Long> pendingFileAssetIds) {
+                this.hasAttachments = hasAttachments;
+                this.pendingFileAssetIds = pendingFileAssetIds == null ? List.of() : pendingFileAssetIds;
+            }
         }
-    }
 
 }
 

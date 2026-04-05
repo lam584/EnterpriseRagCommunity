@@ -1,5 +1,6 @@
 package com.example.EnterpriseRagCommunity.controller.semantic.admin;
 
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 
 import java.security.Principal;
@@ -18,6 +19,6 @@ final class AdminSemanticControllerSupport {
         if (username == null) {
             return null;
         }
-        return administratorService.findByUsername(username).map(u -> u.getId()).orElse(null);
+        return administratorService.findByUsername(username).map(UsersEntity::getId).orElse(null);
     }
 }

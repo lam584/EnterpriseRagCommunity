@@ -253,7 +253,7 @@ public class HybridRagRetrievalService {
         d.setFileAssetId(h.getFileAssetId());
         d.setPostIds(h.getPostIds());
         Long firstPostId = null;
-        if (h.getPostIds() != null && !h.getPostIds().isEmpty()) firstPostId = h.getPostIds().get(0);
+        if (h.getPostIds() != null && !h.getPostIds().isEmpty()) firstPostId = h.getPostIds().getFirst();
         d.setPostId(firstPostId);
         d.setChunkIndex(h.getChunkIndex());
         d.setTitle(h.getFileName());
@@ -329,9 +329,9 @@ public class HybridRagRetrievalService {
 
         List<DocHit> out = new ArrayList<>();
         if (mode.equals("LINEAR")) {
-            double bmMin = Double.POSITIVE_INFINITY, bmMax = Double.NEGATIVE_INFINITY;
-            double vMin = Double.POSITIVE_INFINITY, vMax = Double.NEGATIVE_INFINITY;
-            double fvMin = Double.POSITIVE_INFINITY, fvMax = Double.NEGATIVE_INFINITY;
+            double bmMin, bmMax;
+            double vMin, vMax;
+            double fvMin, fvMax;
 
             double[] bmRange = scoreRange(bm25);
             bmMin = bmRange[0];
@@ -384,7 +384,7 @@ public class HybridRagRetrievalService {
         int queryTokens = approxTokens(queryText == null ? "" : queryText);
         int estimatedInputTokens = queryTokens;
 
-        budgetLeft = HybridRerankDocumentSupport.collectDocsWithinBudget(
+        HybridRerankDocumentSupport.collectDocsWithinBudget(
                 candidates,
                 candidatesUsed,
                 docTexts,
@@ -713,17 +713,7 @@ public class HybridRagRetrievalService {
     }
 
     private static String truncateByApproxTokens(String s, int maxTokens) {
-        if (s == null) return "";
-        if (maxTokens <= 0) return "";
-        double t = 0;
-        int end = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            t += (c <= 0x7f) ? 0.25 : 1.0;
-            if (t > maxTokens) break;
-            end = i + 1;
-        }
-        return s.substring(0, end);
+        return ApproxTokenSupport.truncateByApproxTokens(s, maxTokens);
     }
 
     private static Map<String, Object> buildDebugInfo(RetrieveResult r) {

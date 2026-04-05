@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.example.EnterpriseRagCommunity.entity.moderation.ModerationQueueEntity;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -204,7 +205,7 @@ public class CommentsServiceImpl implements CommentsService {
             moderationQueueRepository.flush(); // Ensure queue row is visible
             Long queueId = moderationQueueRepository
                     .findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.COMMENT, saved.getId())
-                    .map(q -> q.getId())
+                    .map(ModerationQueueEntity::getId)
                     .orElse(null);
             if (queueId != null) {
                 moderationRuleAutoRunner.runForQueueId(queueId);

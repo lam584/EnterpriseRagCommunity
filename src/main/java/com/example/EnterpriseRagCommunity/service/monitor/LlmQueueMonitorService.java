@@ -260,8 +260,8 @@ public class LlmQueueMonitorService {
 
         List<AdminLlmQueueTaskDTO> out = new ArrayList<>(byId.values());
         Comparator<AdminLlmQueueTaskDTO> order = Comparator
-                .comparing((AdminLlmQueueTaskDTO x) -> x.getFinishedAt(), Comparator.nullsLast(Comparator.reverseOrder()))
-                .thenComparing((AdminLlmQueueTaskDTO x) -> x.getSeq(), Comparator.nullsLast(Comparator.reverseOrder()));
+                .comparing(AdminLlmQueueTaskDTO::getFinishedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(AdminLlmQueueTaskDTO::getSeq, Comparator.nullsLast(Comparator.reverseOrder()));
         out.sort(order);
         if (out.size() > lim) return out.subList(0, lim);
         return out;
@@ -302,7 +302,6 @@ public class LlmQueueMonitorService {
     private AdminLlmQueueTaskDTO mapTask(LlmQueueTaskHistoryEntity e) {
         if (e == null) return null;
         LlmQueueTaskMappingSupport.TaskMappedData mapped = LlmQueueTaskMappingSupport.from(e);
-        if (mapped == null) return null;
         AdminLlmQueueTaskDTO d = new AdminLlmQueueTaskDTO();
         mapped.applyTo(d);
         return d;

@@ -152,7 +152,7 @@ public class PortalSearchService {
 
         int safePage = Math.max(1, page);
         int safePageSize = clampPageSize(pageSize);
-        int fetchLimit = Math.min(500, Math.max(50, (safePage + 1) * safePageSize * 5));
+        int fetchLimit = Math.clamp((long) (safePage + 1) * safePageSize * 5, 50, 500);
 
         HybridRetrievalConfigDTO baseCfg = hybridRetrievalConfigService.getConfigOrDefault();
         HybridRetrievalConfigDTO cfg = hybridRetrievalConfigService.normalizeConfig(baseCfg);

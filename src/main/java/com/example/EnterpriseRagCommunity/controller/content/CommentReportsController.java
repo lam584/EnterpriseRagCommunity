@@ -50,14 +50,14 @@ public class CommentReportsController {
             if (userId != null) {
                 java.util.Map<String, Object> details = ReportAuditSupport.buildReportDetails("COMMENT", commentId, req.getReasonCode(), req.getReasonText());
                 if (r != null) {
-                    details.put("queueId", r.getQueueId());
+                    details.put("queueId", r.queueId());
                 }
                 auditLogWriter.write(
                         userId,
                         actorName,
                         "REPORT_COMMENT_CREATE",
                         "REPORT",
-                        r == null ? null : r.getReportId(),
+                        r == null ? null : r.reportId(),
                         AuditResult.SUCCESS,
                         "举报评论",
                         null,
@@ -71,14 +71,14 @@ public class CommentReportsController {
                     if (r != null) {
                         content = "目标：评论#" + commentId + "；原因：" + req.getReasonCode()
                                 + (req.getReasonText() == null || req.getReasonText().isBlank() ? "" : ("；补充：" + req.getReasonText().trim()))
-                                + "；reportId=" + r.getReportId() + "；queueId=" + r.getQueueId();
+                                + "；reportId=" + r.reportId() + "；queueId=" + r.queueId();
                     }
                     notificationsService.createNotification(userId, "REPORT", title, content);
                 } catch (Exception ignore) {
                 }
             }
             if (r != null) {
-                return Map.of("reportId", r.getReportId(), "queueId", r.getQueueId());
+                return Map.of("reportId", r.reportId(), "queueId", r.queueId());
             }
         } catch (RuntimeException ex) {
             if (userId != null) {

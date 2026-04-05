@@ -25,12 +25,7 @@ public class AccountSecurityService {
         if (currentPassword == null || currentPassword.isBlank()) {
             throw new IllegalArgumentException("请输入旧密码");
         }
-        if (newPassword == null || newPassword.isBlank()) {
-            throw new IllegalArgumentException("请输入新密码");
-        }
-        if (newPassword.length() < 6) {
-            throw new IllegalArgumentException("新密码长度至少 6 位");
-        }
+        PasswordValidationSupport.requireNewPassword(newPassword);
         if (newPassword.equals(currentPassword)) {
             throw new IllegalArgumentException("新密码不能与旧密码相同");
         }

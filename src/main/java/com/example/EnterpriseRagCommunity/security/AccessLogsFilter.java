@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.security;
 
-import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AccessLogWriter;
 import com.example.EnterpriseRagCommunity.service.access.RequestAuditContextHolder;
@@ -35,7 +34,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;

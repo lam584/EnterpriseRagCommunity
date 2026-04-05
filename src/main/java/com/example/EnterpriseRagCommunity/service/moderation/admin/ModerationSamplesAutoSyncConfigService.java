@@ -36,9 +36,9 @@ public class ModerationSamplesAutoSyncConfigService {
         if (payload == null) throw new IllegalArgumentException("payload is required");
         if (payload.getEnabled() == null) throw new IllegalArgumentException("enabled 不能为空");
         long interval = payload.getIntervalSeconds() == null ? 60 : payload.getIntervalSeconds();
-        interval = Math.max(5, Math.min(3600, interval));
+        interval = Math.clamp(interval, 5, 3600);
 
-        appSettingsService.upsertString(KEY_AUTO_SYNC_ENABLED, payload.getEnabled() ? "true" : "false");
+        appSettingsService.upsertString(KEY_AUTO_SYNC_ENABLED, payload.getEnabled().toString());
         appSettingsService.upsertString(KEY_AUTO_SYNC_INTERVAL_SECONDS, Long.toString(interval));
 
         ModerationSamplesAutoSyncConfigDTO out = new ModerationSamplesAutoSyncConfigDTO();

@@ -241,7 +241,7 @@ public class AccountTotpService {
 
         Integer maxSkew = settings == null ? null : settings.getMaxSkew();
         int skew = latest.getSkew() == null ? 0 : latest.getSkew();
-        skew = Math.max(0, Math.min(10, skew));
+        skew = Math.clamp(skew, 0, 10);
         if (maxSkew != null) skew = Math.min(maxSkew, skew);
 
         String latestAlg = latest.getAlgorithm() == null ? null : latest.getAlgorithm().trim().toUpperCase();

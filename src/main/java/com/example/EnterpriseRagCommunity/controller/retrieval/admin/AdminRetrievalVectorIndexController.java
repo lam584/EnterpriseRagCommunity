@@ -59,7 +59,7 @@ public class AdminRetrievalVectorIndexController {
             @RequestParam(value = "size", defaultValue = "20") int size
     ) {
         int p = Math.max(0, page);
-        int ps = Math.max(1, Math.min(200, size));
+        int ps = Math.clamp(size, 1, 200);
         return ResponseEntity.ok(vectorIndicesRepository.findAll(PageRequest.of(p, ps, Sort.by(Sort.Direction.DESC, "id"))));
     }
 
@@ -576,7 +576,7 @@ public class AdminRetrievalVectorIndexController {
 
     private static Map<String, Object> buildCommentsTestQueryDetails(RagCommentsTestQueryRequest req,
                                                                       RagCommentsTestQueryResponse resp) {
-        Map<String, Object> details = buildCommonTestQueryDetails(
+        return buildCommonTestQueryDetails(
                 req == null ? null : req.getTopK(),
                 req == null ? null : req.getNumCandidates(),
                 req == null ? null : req.getEmbeddingModel(),
@@ -584,7 +584,6 @@ public class AdminRetrievalVectorIndexController {
                 req == null ? null : req.getQueryText(),
                 resp.getHits() == null ? 0 : resp.getHits().size()
         );
-        return details;
     }
 
     private static Map<String, Object> buildFilesTestQueryDetails(RagFilesTestQueryRequest req,

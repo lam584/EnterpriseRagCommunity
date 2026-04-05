@@ -113,7 +113,7 @@ public class AdminModerationChunkReviewLogsService {
         String metaJson = ex.getExtractedMetadataJson();
         if (metaJson == null || metaJson.isBlank()) return List.of();
 
-        Map meta;
+        Map<?, ?> meta;
         try {
             meta = objectMapper.readValue(metaJson, Map.class);
         } catch (Exception ignore) {
@@ -195,10 +195,19 @@ public class AdminModerationChunkReviewLogsService {
     }
 
     private static Long toLong(Object v) {
-        if (v == null) return null;
-        if (v instanceof Long l) return l;
-        if (v instanceof Integer i) return i.longValue();
-        if (v instanceof Number n) return n.longValue();
+        switch (v) {
+            case null -> {
+                return null;
+            }
+            case Long l -> {
+                return l;
+            }
+            case Number n -> {
+                return n.longValue();
+            }
+            default -> {
+            }
+        }
         try {
             String s = String.valueOf(v).trim();
             if (s.isEmpty()) return null;

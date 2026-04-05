@@ -2,10 +2,7 @@ package com.example.EnterpriseRagCommunity.service.access;
 
 import com.example.EnterpriseRagCommunity.dto.access.RolePermissionUpsertDTO;
 import com.example.EnterpriseRagCommunity.dto.access.RolePermissionViewDTO;
-import com.example.EnterpriseRagCommunity.entity.access.RolePermissionId;
-import com.example.EnterpriseRagCommunity.entity.access.RolePermissionsEntity;
-import com.example.EnterpriseRagCommunity.entity.access.RolesEntity;
-import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
+import com.example.EnterpriseRagCommunity.entity.access.*;
 import com.example.EnterpriseRagCommunity.repository.access.PermissionsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.RolePermissionsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.RolesRepository;
@@ -248,7 +245,7 @@ public class RolePermissionsService {
         try {
             var links = userRoleLinksRepository.findByRoleId(roleId);
             if (links == null || links.isEmpty()) return;
-            var userIds = links.stream().map(l -> l.getUserId()).filter(Objects::nonNull).distinct().toList();
+            var userIds = links.stream().map(UserRoleLinksEntity::getUserId).filter(Objects::nonNull).distinct().toList();
             if (userIds.isEmpty()) return;
             List<UsersEntity> users = usersRepository.findAllById(userIds);
             if (users.isEmpty()) return;

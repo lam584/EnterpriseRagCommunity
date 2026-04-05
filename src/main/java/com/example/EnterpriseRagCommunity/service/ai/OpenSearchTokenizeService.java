@@ -126,7 +126,7 @@ public class OpenSearchTokenizeService {
                 throw new IllegalArgumentException("messages 不能为空");
             }
 
-            String lastRole = blankToNull(out.get(out.size() - 1).get("role"));
+            String lastRole = blankToNull(out.getLast().get("role"));
             if (lastRole == null || !lastRole.equalsIgnoreCase("user")) {
                 throw new IllegalArgumentException("Messages must be end with role[user].");
             }

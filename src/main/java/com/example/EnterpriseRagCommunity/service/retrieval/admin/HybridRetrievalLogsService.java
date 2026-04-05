@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
@@ -44,10 +45,7 @@ public class HybridRetrievalLogsService {
         for (RetrievalHitsEntity e : rows) {
             out.add(toHitDto(e));
         }
-        out.sort((a, b) -> Integer.compare(
-                a.getRank() == null ? Integer.MAX_VALUE : a.getRank(),
-                b.getRank() == null ? Integer.MAX_VALUE : b.getRank()
-        ));
+        out.sort(Comparator.comparingInt(a -> a.getRank() == null ? Integer.MAX_VALUE : a.getRank()));
         return out;
     }
 

@@ -13,7 +13,7 @@ final class RetrievalLogPageSupport {
 
     static Pageable pageable(int page, int size) {
         int safePage = Math.max(0, page);
-        int safeSize = Math.min(200, Math.max(1, size));
+        int safeSize = Math.clamp(size, 1, 200);
         return PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
     }
 

@@ -30,7 +30,7 @@ public class LlmLoadBalanceMonitorService {
         long nowMs = System.currentTimeMillis();
         long startMs = nowMs - pr.rangeMs;
         long totalMs = Math.max(1L, nowMs - startMs);
-        int effectiveBuckets = Math.max(6, Math.min(120, buckets));
+        int effectiveBuckets = Math.clamp(buckets, 6, 120);
         long bucketMs = Math.max(1000L, totalMs / (long) effectiveBuckets);
         int bucketSec = (int) Math.max(1L, bucketMs / 1000L);
         double rangeSeconds = Math.max(1.0, (nowMs - startMs) / 1000.0);
@@ -145,14 +145,7 @@ public class LlmLoadBalanceMonitorService {
         return (ms / 1000L) + "s";
     }
 
-    private static final class ParsedRange {
-        private final long rangeMs;
-        private final String label;
-
-        private ParsedRange(long rangeMs, String label) {
-            this.rangeMs = rangeMs;
-            this.label = label;
-        }
+    private record ParsedRange(long rangeMs, String label) {
     }
 
 }

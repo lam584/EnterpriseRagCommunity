@@ -6,6 +6,7 @@ import com.example.EnterpriseRagCommunity.dto.ai.AdminLlmPriceConfigPricingTierD
 import com.example.EnterpriseRagCommunity.dto.ai.AdminLlmPriceConfigUpsertRequest;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmPriceConfigEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmPriceConfigRepository;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagSearchSupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -171,9 +172,7 @@ public class LlmPriceConfigAdminService {
     }
 
     private static String asString(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? null : s;
+        return RagSearchSupport.toNonBlank(v);
     }
 
     private static Long asLong(Object v) {

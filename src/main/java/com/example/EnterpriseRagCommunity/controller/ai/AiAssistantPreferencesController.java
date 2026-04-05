@@ -78,7 +78,7 @@ public class AiAssistantPreferencesController {
 
         if (req.isRagTopKPresent()) {
             Integer v = req.getRagTopK();
-            assistant.put("ragTopK", v == null ? null : Math.max(1, Math.min(50, v)));
+            assistant.put("ragTopK", v == null ? null : Math.clamp(v, 1, 50));
         }
 
         if (req.isStreamPresent()) {
@@ -87,12 +87,12 @@ public class AiAssistantPreferencesController {
 
         if (req.isTemperaturePresent()) {
             Double v = req.getTemperature();
-            assistant.put("temperature", v == null ? null : Math.max(0.0, Math.min(2.0, v)));
+            assistant.put("temperature", v == null ? null : Math.clamp(v, 0.0, 2.0));
         }
 
         if (req.isTopPPresent()) {
             Double v = req.getTopP();
-            assistant.put("topP", v == null ? null : Math.max(0.0, Math.min(1.0, v)));
+            assistant.put("topP", v == null ? null : Math.clamp(v, 0.0, 1.0));
         }
 
         if (req.isDefaultSystemPromptPresent()) {
@@ -193,14 +193,14 @@ public class AiAssistantPreferencesController {
             Object ur = assistant.get("defaultUseRag");
             if (ur instanceof Boolean) defaultUseRag = (Boolean) ur;
             Object k = assistant.get("ragTopK");
-            if (k instanceof Number) ragTopK = Math.max(1, Math.min(50, ((Number) k).intValue()));
+            if (k instanceof Number) ragTopK = Math.clamp(((Number) k).intValue(), 1, 50);
             Object st = assistant.get("stream");
             if (st instanceof Boolean) stream = (Boolean) st;
 
             Object tmp = assistant.get("temperature");
-            if (tmp instanceof Number) temperature = Math.max(0.0, Math.min(2.0, ((Number) tmp).doubleValue()));
+            if (tmp instanceof Number) temperature = Math.clamp(((Number) tmp).doubleValue(), 0.0, 2.0);
             Object tp = assistant.get("topP");
-            if (tp instanceof Number) topP = Math.max(0.0, Math.min(1.0, ((Number) tp).doubleValue()));
+            if (tp instanceof Number) topP = Math.clamp(((Number) tp).doubleValue(), 0.0, 1.0);
             Object dsp = assistant.get("defaultSystemPrompt");
             if (dsp != null) {
                 String s = String.valueOf(dsp).trim();

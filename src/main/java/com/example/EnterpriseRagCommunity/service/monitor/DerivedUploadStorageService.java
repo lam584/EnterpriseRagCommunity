@@ -117,7 +117,7 @@ public class DerivedUploadStorageService {
         String json = appSettingsService.getString(KEY_DERIVED_IMAGES_BUDGET_JSON)
                 .orElseThrow(() -> new IllegalStateException("missing app_settings: " + KEY_DERIVED_IMAGES_BUDGET_JSON));
         try {
-            Map<String, Object> m = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
+            Map<String, Object> m = objectMapper.readValue(json, new TypeReference<>() {
             });
             return Budget.fromMap(m);
         } catch (Exception e) {
@@ -125,37 +125,28 @@ public class DerivedUploadStorageService {
         }
     }
 
-    private static class Budget {
-        final int maxCount;
-        final long maxImageBytes;
-        final long maxTotalBytes;
-
-        private Budget(int maxCount, long maxImageBytes, long maxTotalBytes) {
-            this.maxCount = maxCount;
-            this.maxImageBytes = maxImageBytes;
-            this.maxTotalBytes = maxTotalBytes;
-        }
+    private record Budget(int maxCount, long maxImageBytes, long maxTotalBytes) {
 
         static Budget fromMap(Map<String, Object> m) {
-            int c = (int) clampLong(asLong(m == null ? null : m.get("maxCount")), 100000L);
-            long mib = clampLong(asLong(m.get("maxImageBytes")), 1024L * 1024 * 1024);
-            long mtb = clampLong(asLong(m.get("maxTotalBytes")), 20L * 1024 * 1024 * 1024);
-            return new Budget(c, mib, mtb);
-        }
+                int c = (int) clampLong(asLong(m == null ? null : m.get("maxCount")), 100000L);
+                long mib = clampLong(asLong(m.get("maxImageBytes")), 1024L * 1024 * 1024);
+                long mtb = clampLong(asLong(m.get("maxTotalBytes")), 20L * 1024 * 1024 * 1024);
+                return new Budget(c, mib, mtb);
+            }
 
-        private static long asLong(Object v) {
-            if (v == null) throw new IllegalStateException("missing budget field");
-            if (v instanceof Number n) return n.longValue();
-            try {
-                return Long.parseLong(String.valueOf(v).trim());
-            } catch (Exception e) {
-                throw new IllegalStateException("invalid budget field");
+            private static long asLong(Object v) {
+                if (v == null) throw new IllegalStateException("missing budget field");
+                if (v instanceof Number n) return n.longValue();
+                try {
+                    return Long.parseLong(String.valueOf(v).trim());
+                } catch (Exception e) {
+                    throw new IllegalStateException("invalid budget field");
+                }
+            }
+
+            private static long clampLong(long v, long max) {
+                if (v < 0L) return 0L;
+                return Math.min(v, max);
             }
         }
-
-        private static long clampLong(long v, long max) {
-            if (v < 0L) return 0L;
-            return Math.min(v, max);
-        }
-    }
 }

@@ -229,8 +229,7 @@ public class TokenCostMetricsService {
     }
 
     private List<UsageRow> loadScenarioRows(LocalDateTime start, LocalDateTime end, String taskType) {
-        @SuppressWarnings("unchecked")
-        List raw;
+        List<?> raw;
         if (taskType != null) {
             raw = entityManager.createNativeQuery("""
                             SELECT h.model,
@@ -272,8 +271,7 @@ public class TokenCostMetricsService {
 
     private List<TimelineRow> loadScenarioTimelineRows(LocalDateTime start, LocalDateTime end, TimelineBucket bucket, String taskType) {
         String tcol = bucketExpr("h.finished_at", bucket);
-        @SuppressWarnings("unchecked")
-        List raw;
+        List<?> raw;
         if (taskType != null) {
             raw = entityManager.createNativeQuery("""
                             SELECT %s AS t,
@@ -580,9 +578,19 @@ public class TokenCostMetricsService {
     private static LocalDateTime asLocalDateTime(Object[] row, int idx) {
         if (row == null || idx >= row.length) return null;
         Object v = row[idx];
-        if (v == null) return null;
-        if (v instanceof Timestamp ts) return ts.toLocalDateTime();
-        if (v instanceof java.util.Date d) return new Timestamp(d.getTime()).toLocalDateTime();
+        switch (v) {
+            case null -> {
+                return null;
+            }
+            case Timestamp ts -> {
+                return ts.toLocalDateTime();
+            }
+            case java.util.Date d -> {
+                return new Timestamp(d.getTime()).toLocalDateTime();
+            }
+            default -> {
+            }
+        }
         try {
             return LocalDateTime.parse(String.valueOf(v));
         } catch (Exception e) {
@@ -680,10 +688,12 @@ public class TokenCostMetricsService {
         String raw = source == null ? "" : source.trim();
         if (raw.isBlank() || raw.equalsIgnoreCase("ALL")) return new SourceFilter(SourceKind.ALL_SCENARIOS, "ALL", null);
         String up = raw.toUpperCase(Locale.ROOT);
-        if (up.equals("CHAT")) return new SourceFilter(SourceKind.LEGACY_CHAT, "CHAT", null);
-        if (up.equals("MODERATION")) return new SourceFilter(SourceKind.LEGACY_MODERATION, "MODERATION", null);
-        if (up.equals("JOB")) return new SourceFilter(SourceKind.LEGACY_JOB, "JOB", null);
-        return new SourceFilter(SourceKind.TASK_TYPE, up, up);
+        return switch (up) {
+            case "CHAT" -> new SourceFilter(SourceKind.LEGACY_CHAT, "CHAT", null);
+            case "MODERATION" -> new SourceFilter(SourceKind.LEGACY_MODERATION, "MODERATION", null);
+            case "JOB" -> new SourceFilter(SourceKind.LEGACY_JOB, "JOB", null);
+            default -> new SourceFilter(SourceKind.TASK_TYPE, up, up);
+        };
     }
 
     public enum TimelineBucket {

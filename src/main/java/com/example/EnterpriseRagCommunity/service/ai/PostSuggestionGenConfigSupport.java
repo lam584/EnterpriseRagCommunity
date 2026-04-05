@@ -3,7 +3,6 @@ package com.example.EnterpriseRagCommunity.service.ai;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTagGenConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.PostTitleGenConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
-import com.example.EnterpriseRagCommunity.entity.ai.PostSuggestionGenConfigEntity;
 import com.example.EnterpriseRagCommunity.entity.ai.SuggestionKind;
 import com.example.EnterpriseRagCommunity.entity.semantic.PromptsEntity;
 
@@ -101,20 +100,26 @@ public final class PostSuggestionGenConfigSupport {
     }
 
     public static List<String> toStringList(Object value, String fieldName) {
-        if (value == null) return List.of();
-        if (value instanceof List<?> list) {
-            List<String> out = new ArrayList<>();
-            for (Object item : list) {
-                if (item == null) continue;
-                String text = Objects.toString(item, "").trim();
-                if (!text.isBlank()) out.add(text);
+        switch (value) {
+            case null -> {
+                return List.of();
             }
-            return out;
-        }
-        if (value instanceof Map<?, ?> map) {
-            Object nested = map.get(fieldName);
-            if (nested instanceof List<?> list) {
-                return toStringList(list, fieldName);
+            case List<?> list -> {
+                List<String> out = new ArrayList<>();
+                for (Object item : list) {
+                    if (item == null) continue;
+                    String text = Objects.toString(item, "").trim();
+                    if (!text.isBlank()) out.add(text);
+                }
+                return out;
+            }
+            case Map<?, ?> map -> {
+                Object nested = map.get(fieldName);
+                if (nested instanceof List<?> list) {
+                    return toStringList(list, fieldName);
+                }
+            }
+            default -> {
             }
         }
         return List.of();
@@ -146,25 +151,46 @@ public final class PostSuggestionGenConfigSupport {
             Function<String, Optional<PromptsEntity>> promptFinder
     ) {
         PromptsEntity prompt = resolvePrompt(entity == null ? null : entity.getPromptCode(), promptFinder);
-        return new AdminConfigView(
-                entity.getId(),
-                entity.getVersion(),
-                entity.getEnabled(),
-                entity.getPromptCode(),
-                prompt == null ? null : prompt.getModelName(),
-                prompt == null ? null : prompt.getProviderId(),
-                prompt == null ? null : prompt.getTemperature(),
-                prompt == null ? null : prompt.getTopP(),
-                prompt == null ? null : prompt.getEnableDeepThinking(),
-                entity.getDefaultCount(),
-                entity.getMaxCount(),
-                entity.getMaxContentChars(),
-                entity.getHistoryEnabled(),
-                entity.getHistoryKeepDays(),
-                entity.getHistoryKeepRows(),
-                entity.getUpdatedAt(),
-                updatedByName
-        );
+        if (entity != null) {
+            return new AdminConfigView(
+                    entity.getId(),
+                    entity.getVersion(),
+                    entity.getEnabled(),
+                    entity.getPromptCode(),
+                    prompt == null ? null : prompt.getModelName(),
+                    prompt == null ? null : prompt.getProviderId(),
+                    prompt == null ? null : prompt.getTemperature(),
+                    prompt == null ? null : prompt.getTopP(),
+                    prompt == null ? null : prompt.getEnableDeepThinking(),
+                    entity.getDefaultCount(),
+                    entity.getMaxCount(),
+                    entity.getMaxContentChars(),
+                    entity.getHistoryEnabled(),
+                    entity.getHistoryKeepDays(),
+                    entity.getHistoryKeepRows(),
+                    entity.getUpdatedAt(),
+                    updatedByName
+            );
+        }
+                return new AdminConfigView(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    updatedByName
+                );
     }
 
     private static PromptsEntity resolvePrompt(

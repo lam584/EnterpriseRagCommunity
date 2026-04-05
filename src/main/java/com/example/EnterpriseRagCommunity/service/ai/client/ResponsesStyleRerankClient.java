@@ -104,8 +104,6 @@ public class ResponsesStyleRerankClient {
     }
 
     private static String normalizeString(String s, String fallback) {
-        String t = s == null ? null : s.trim();
-        if (t == null || t.isBlank()) return fallback;
-        return t;
+        return RerankUrlSupport.normalizeString(s, fallback);
     }
 }

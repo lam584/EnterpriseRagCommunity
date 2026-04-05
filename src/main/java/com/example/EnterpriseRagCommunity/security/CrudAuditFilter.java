@@ -1,6 +1,5 @@
 package com.example.EnterpriseRagCommunity.security;
 
-import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogContextHolder;
@@ -25,7 +24,6 @@ import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
 

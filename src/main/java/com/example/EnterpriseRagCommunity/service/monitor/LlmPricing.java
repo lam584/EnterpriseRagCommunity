@@ -1,6 +1,7 @@
 package com.example.EnterpriseRagCommunity.service.monitor;
 
 import com.example.EnterpriseRagCommunity.service.ai.LlmPricingValueSupport;
+import com.example.EnterpriseRagCommunity.service.retrieval.RagSearchSupport;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -169,9 +170,7 @@ public final class LlmPricing {
     }
 
     private static String asString(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? null : s;
+        return RagSearchSupport.toNonBlank(v);
     }
 
     private static Long asLong(Object v) {

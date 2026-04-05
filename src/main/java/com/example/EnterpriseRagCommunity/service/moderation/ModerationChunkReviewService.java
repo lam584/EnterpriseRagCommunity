@@ -484,7 +484,7 @@ public class ModerationChunkReviewService {
         int maxAttempts = cfg == null || cfg.getMaxAttempts() == null ? 3 : cfg.getMaxAttempts();
         List<ModerationChunkEntity> list = chunkRepository.findByIdForUpdate(chunkId);
         if (list == null || list.isEmpty()) return Optional.empty();
-        ModerationChunkEntity c = list.get(0);
+        ModerationChunkEntity c = list.getFirst();
         if (c == null) return Optional.empty();
         ChunkStatus st = c.getStatus();
         if (!(st == ChunkStatus.PENDING || st == ChunkStatus.FAILED)) return Optional.empty();
@@ -944,7 +944,7 @@ public class ModerationChunkReviewService {
         if (t.isEmpty()) return "";
         if (!(t.startsWith("{") && t.endsWith("}"))) return "raw|" + normalizeForEvidenceFingerprint(trimEvidenceNoiseTail(t));
         try {
-            Map node = MAPPER.readValue(t, Map.class);
+            Map<?, ?> node = MAPPER.readValue(t, Map.class);
             if (node == null) return "raw|" + normalizeForEvidenceFingerprint(trimEvidenceNoiseTail(t));
             String text = normalizeForEvidenceFingerprint(trimEvidenceNoiseTail(asString(node.get("text"))));
             if (!text.isBlank()) return "text|" + text;
@@ -1035,7 +1035,6 @@ public class ModerationChunkReviewService {
                 set = locked.getFirst();
             }
         }
-        if (set == null) return ChunkWorkResult.notChunked();
         if (set.getStatus() == ChunkSetStatus.CANCELLED) return ChunkWorkResult.cancelled(set);
         if (set.getTotalChunks() != null && set.getTotalChunks() > 0) return ChunkWorkResult.ready(set);
 
@@ -1160,10 +1159,13 @@ public class ModerationChunkReviewService {
         }
 
         List<ModerationChunkEntity> chunks = chunkRepository.findAllByChunkSetIdOrderBySourceKeyAscChunkIndexAsc(set.getId());
-        int take = Math.max(0, Math.min(chunkLimit, chunks == null ? 0 : chunks.size()));
+        int take = Math.clamp(chunkLimit, 0, chunks == null ? 0 : chunks.size());
         List<AdminModerationChunkProgressDTO.ChunkItem> items = new ArrayList<>();
         for (int i = 0; i < take; i++) {
-            ModerationChunkEntity c = chunks.get(i);
+            ModerationChunkEntity c = null;
+            if (chunks != null) {
+                c = chunks.get(i);
+            }
             if (c == null) continue;
             AdminModerationChunkProgressDTO.ChunkItem it = new AdminModerationChunkProgressDTO.ChunkItem();
             it.setId(c.getId());

@@ -117,7 +117,7 @@ public class AdminRetrievalHybridController {
 
         List<HybridRerankTestDocumentDTO> docsUsed = new ArrayList<>();
         List<String> docTexts = new ArrayList<>();
-        budgetLeft = HybridRerankDocumentSupport.collectDocsWithinBudget(
+        HybridRerankDocumentSupport.collectDocsWithinBudget(
                 docs,
                 docsUsed,
                 docTexts,
@@ -255,16 +255,6 @@ public class AdminRetrievalHybridController {
     }
 
     private static String truncateByApproxTokens(String s, int maxTokens) {
-        if (s == null) return "";
-        if (maxTokens <= 0) return "";
-        double t = 0;
-        int end = 0;
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            t += (c <= 0x7f) ? 0.25 : 1.0;
-            if (t > maxTokens) break;
-            end = i + 1;
-        }
-        return s.substring(0, end);
+        return ApproxTokenSupport.truncateByApproxTokens(s, maxTokens);
     }
 }

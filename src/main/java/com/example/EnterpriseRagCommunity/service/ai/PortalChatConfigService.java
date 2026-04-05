@@ -65,7 +65,7 @@ public class PortalChatConfigService {
         }
         if (v < 0.0 || v > max) {
             if (strict) throw new IllegalArgumentException(field + " 超出范围");
-            return Math.max(0.0, Math.min(max, v));
+            return Math.clamp(v, 0.0, max);
         }
         return v;
     }

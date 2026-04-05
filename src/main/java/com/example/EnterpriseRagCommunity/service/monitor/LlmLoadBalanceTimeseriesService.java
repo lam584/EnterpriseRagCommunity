@@ -138,7 +138,7 @@ public class LlmLoadBalanceTimeseriesService {
         long start = Math.max(0L, startMs);
         long end = Math.max(start, endMs);
         long totalMs = Math.max(1L, end - start);
-        int nBuckets = Math.max(1, Math.min(120, buckets));
+        int nBuckets = Math.clamp(buckets, 1, 120);
         long bucketMs = Math.max(1000L, totalMs / nBuckets);
         int bucketSec = (int) Math.max(1L, bucketMs / 1000L);
 
@@ -193,7 +193,7 @@ public class LlmLoadBalanceTimeseriesService {
 
         void addMinute(long minuteStart, MinuteAgg a, long startMs, long bucketMs) {
             long idx = (minuteStart - startMs) / bucketMs;
-            int bi = (int) Math.max(0, Math.min(buckets.length - 1, idx));
+            int bi = Math.clamp(idx, 0, buckets.length - 1);
             BucketAgg b = buckets[bi];
 
             count += a.count;
@@ -247,7 +247,7 @@ public class LlmLoadBalanceTimeseriesService {
         }
         if (list.isEmpty()) return 0.0;
         list.sort(Long::compare);
-        double pp = Math.max(0.0, Math.min(1.0, p));
+        double pp = Math.clamp(p, 0.0, 1.0);
         int idx = (int) Math.ceil(pp * list.size()) - 1;
         if (idx < 0) idx = 0;
         if (idx >= list.size()) idx = list.size() - 1;

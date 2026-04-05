@@ -523,22 +523,22 @@ public class RagContextPromptService {
             for (CitationSource s : sources) {
                 if (s == null) continue;
                 sb.append('[').append(s.getIndex() == null ? "" : s.getIndex()).append("] ");
-                if (Boolean.TRUE.equals(cfg.getIncludeTitle()) && s.getTitle() != null && !s.getTitle().isBlank()) {
+                if (cfg != null && Boolean.TRUE.equals(cfg.getIncludeTitle()) && s.getTitle() != null && !s.getTitle().isBlank()) {
                     sb.append(s.getTitle().trim()).append(' ');
                 }
-                if (Boolean.TRUE.equals(cfg.getIncludeUrl()) && s.getUrl() != null && !s.getUrl().isBlank()) {
+                if (cfg != null && Boolean.TRUE.equals(cfg.getIncludeUrl()) && s.getUrl() != null && !s.getUrl().isBlank()) {
                     sb.append(s.getUrl().trim()).append(' ');
                 }
-                if (Boolean.TRUE.equals(cfg.getIncludeScore()) && s.getScore() != null) {
+                if (cfg != null && Boolean.TRUE.equals(cfg.getIncludeScore()) && s.getScore() != null) {
                     sb.append("score=").append(String.format(Locale.ROOT, "%.4f", s.getScore())).append(' ');
                 }
-                if (Boolean.TRUE.equals(cfg.getIncludePostId()) && s.getPostId() != null) {
+                if (cfg != null && Boolean.TRUE.equals(cfg.getIncludePostId()) && s.getPostId() != null) {
                     sb.append("post_id=").append(s.getPostId()).append(' ');
                 }
                 if (s.getCommentId() != null) {
                     sb.append("comment_id=").append(s.getCommentId()).append(' ');
                 }
-                if (Boolean.TRUE.equals(cfg.getIncludeChunkIndex()) && s.getChunkIndex() != null) {
+                if (cfg != null && Boolean.TRUE.equals(cfg.getIncludeChunkIndex()) && s.getChunkIndex() != null) {
                     sb.append("chunk=").append(s.getChunkIndex()).append(' ');
                 }
                 sb.append('\n');
@@ -870,7 +870,7 @@ public class RagContextPromptService {
         if (c == null || c.item == null) return;
         double rel = c.relScore == null ? 0.0 : c.relScore;
         double imp = c.impScore == null ? 0.0 : c.impScore;
-        double redClamped = Math.max(0.0, Math.min(1.0, red));
+        double redClamped = Math.clamp(red, 0.0, 1.0);
         double finalScore = switch (ablationMode) {
             case ABLATION_NONE -> rel;
             case ABLATION_REL_ONLY -> alpha * rel;

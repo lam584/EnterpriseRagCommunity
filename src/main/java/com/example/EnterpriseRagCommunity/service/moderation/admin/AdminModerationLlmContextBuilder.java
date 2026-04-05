@@ -727,8 +727,8 @@ class AdminModerationLlmContextBuilder {
         int windowMinutes = 10;
         try {
             Object wm = deepGet(ctx == null ? null : ctx.policyConfig(), "review_trigger.window_minutes");
-            if (wm instanceof Number n) windowMinutes = Math.max(1, Math.min(60 * 24, n.intValue()));
-            else if (wm != null) windowMinutes = Math.max(1, Math.min(60 * 24, Integer.parseInt(String.valueOf(wm).trim())));
+            if (wm instanceof Number n) windowMinutes = Math.clamp(n.intValue(), 1, 60 * 24);
+            else if (wm != null) windowMinutes = Math.clamp(Integer.parseInt(String.valueOf(wm).trim()), 1, 60 * 24);
         } catch (Exception ignore) {
         }
 

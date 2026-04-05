@@ -32,7 +32,7 @@ public class RagPostChatRetrievalService {
 
     public List<Hit> retrieve(String queryText, int topK, Long boardId) {
         if (queryText == null || queryText.isBlank()) return List.of();
-        int k = Math.max(1, Math.min(20, topK));
+        int k = Math.clamp(topK, 1, 20);
         float[] vec = RagSearchSupport.embedQuery(llmGateway, ragProps.getEs().getEmbeddingModel(), queryText);
         if (vec == null || vec.length == 0) return List.of();
         int dimsToUse = RagSearchSupport.resolveConfiguredDims(

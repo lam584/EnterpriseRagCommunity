@@ -58,7 +58,7 @@ public class EmailSenderService {
         }
 
         boolean auth = username != null && !username.isBlank();
-        props.put("mail.smtp.auth", auth ? "true" : "false");
+        props.put("mail.smtp.auth", Boolean.toString(auth));
 
         if (cfg.connectTimeoutMs() > 0) props.put("mail.smtp.connectiontimeout", String.valueOf(cfg.connectTimeoutMs()));
         if (cfg.timeoutMs() > 0) props.put("mail.smtp.timeout", String.valueOf(cfg.timeoutMs()));
@@ -67,7 +67,7 @@ public class EmailSenderService {
         if (cfg.sslTrust() != null && !cfg.sslTrust().isBlank()) {
             props.put("mail.smtp.ssl.trust", cfg.sslTrust().trim());
         }
-        props.put("mail.debug", cfg.debug() ? "true" : "false");
+        props.put("mail.debug", Boolean.toString(cfg.debug()));
 
         sender.setJavaMailProperties(props);
         return sender;

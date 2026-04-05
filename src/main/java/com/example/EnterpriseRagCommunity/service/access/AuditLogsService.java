@@ -48,7 +48,7 @@ public class AuditLogsService {
             String sort
     ) {
         int safePage = page == null ? 1 : Math.max(page, 1);
-        int safePageSize = pageSize == null ? 20 : Math.min(Math.max(pageSize, 1), MAX_LOG_PAGE_SIZE);
+        int safePageSize = pageSize == null ? 20 : Math.clamp(pageSize, 1, MAX_LOG_PAGE_SIZE);
 
         Pageable pageable = PageRequest.of(safePage - 1, safePageSize, parseSort(sort));
 

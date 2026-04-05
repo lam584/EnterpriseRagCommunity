@@ -1099,9 +1099,6 @@ public class LlmCallQueueService {
         try {
             String truncSuffix = "\n...(truncated)...";
             LlmQueueTaskMappingSupport.TaskMappedData mapped = LlmQueueTaskMappingSupport.from(snap);
-            if (mapped == null) {
-                return;
-            }
 
             String input = mapped.input();
             String output = mapped.output();

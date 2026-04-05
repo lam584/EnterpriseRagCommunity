@@ -2,6 +2,7 @@ package com.example.EnterpriseRagCommunity.controller.ai.admin;
 
 import com.example.EnterpriseRagCommunity.dto.ai.AdminLlmPriceConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AdminLlmPriceConfigUpsertRequest;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmPriceConfigAdminService;
 import jakarta.validation.Valid;
@@ -38,7 +39,7 @@ public class AdminLlmPriceConfigsController {
         String username = principal == null ? null : principal.getName();
         Long userId = null;
         if (username != null) {
-            userId = administratorService.findByUsername(username).map(u -> u.getId()).orElse(null);
+            userId = administratorService.findByUsername(username).map(UsersEntity::getId).orElse(null);
         }
         return llmPriceConfigAdminService.upsert(req, userId);
     }

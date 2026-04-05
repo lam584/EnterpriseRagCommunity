@@ -50,14 +50,14 @@ public class UserReportsController {
             if (reporterId != null) {
                 java.util.Map<String, Object> details = ReportAuditSupport.buildReportDetails("PROFILE", userId, req.getReasonCode(), req.getReasonText());
                 if (r != null) {
-                    details.put("queueId", r.getQueueId());
+                    details.put("queueId", r.queueId());
                 }
                 auditLogWriter.write(
                         reporterId,
                         actorName,
                         "REPORT_PROFILE_CREATE",
                         "REPORT",
-                        r == null ? null : r.getReportId(),
+                        r == null ? null : r.reportId(),
                         AuditResult.SUCCESS,
                         "举报用户资料",
                         null,
@@ -71,14 +71,14 @@ public class UserReportsController {
                     if (r != null) {
                         content = "目标：用户#" + userId + "；原因：" + req.getReasonCode()
                                 + (req.getReasonText() == null || req.getReasonText().isBlank() ? "" : ("；补充：" + req.getReasonText().trim()))
-                                + "；reportId=" + r.getReportId() + "；queueId=" + r.getQueueId();
+                                + "；reportId=" + r.reportId() + "；queueId=" + r.queueId();
                     }
                     notificationsService.createNotification(reporterId, "REPORT", title, content);
                 } catch (Exception ignore) {
                 }
             }
             if (r != null) {
-                return Map.of("reportId", r.getReportId(), "queueId", r.getQueueId());
+                return Map.of("reportId", r.reportId(), "queueId", r.queueId());
             }
         } catch (RuntimeException ex) {
             if (reporterId != null) {

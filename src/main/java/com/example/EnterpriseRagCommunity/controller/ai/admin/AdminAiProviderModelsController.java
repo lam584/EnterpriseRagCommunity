@@ -3,6 +3,7 @@ package com.example.EnterpriseRagCommunity.controller.ai.admin;
 import com.example.EnterpriseRagCommunity.dto.ai.AiProviderAddModelRequestDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelsDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiUpstreamModelsPreviewRequestDTO;
+import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.ai.AiProviderModelsAdminService;
 import lombok.RequiredArgsConstructor;
@@ -44,7 +45,7 @@ public class AdminAiProviderModelsController {
         String username = principal == null ? null : principal.getName();
         Long userId = null;
         if (username != null) {
-            userId = administratorService.findByUsername(username).map(u -> u.getId()).orElse(null);
+            userId = administratorService.findByUsername(username).map(UsersEntity::getId).orElse(null);
         }
         String purpose = payload == null ? null : payload.getPurpose();
         String modelName = payload == null ? null : payload.getModelName();

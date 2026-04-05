@@ -205,7 +205,7 @@ public class AdminModerationEmbedController {
     ) {
         Pageable pageable = PageRequest.of(
                 Math.max(0, page - 1),
-                Math.min(Math.max(pageSize, 1), 200),
+                Math.clamp(pageSize, 1, 200),
                 Sort.by(Sort.Direction.DESC, "id")
         );
 
@@ -470,7 +470,7 @@ public class AdminModerationEmbedController {
     ) {
         Pageable pageable = PageRequest.of(
                 Math.max(0, page - 1),
-                Math.min(Math.max(pageSize, 1), 200),
+                Math.clamp(pageSize, 1, 200),
                 Sort.by(Sort.Direction.DESC, "matchedAt").and(Sort.by(Sort.Direction.DESC, "id"))
         );
 

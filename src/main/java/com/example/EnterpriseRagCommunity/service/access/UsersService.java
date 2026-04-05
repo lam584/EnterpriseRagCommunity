@@ -292,7 +292,7 @@ public class UsersService {
         if (roleIds == null) {
             throw new IllegalArgumentException("roleIds must not be null");
         }
-        if (roleIds.stream().anyMatch(id -> id == null)) {
+        if (roleIds.stream().anyMatch(Objects::isNull)) {
             throw new IllegalArgumentException("roleIds must not contain null");
         }
 

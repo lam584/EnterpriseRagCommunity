@@ -31,14 +31,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -176,7 +174,7 @@ public class RagCommentIndexBuildService {
                 });
 
                 String content = ModerationSampleTextUtils.normalize(c.getContent());
-                if (content == null || content.isBlank()) continue;
+                if (content.isBlank()) continue;
                 List<String> parts = splitWithOverlap(content, maxChars, overlap);
                 if (parts.isEmpty()) continue;
 
@@ -255,7 +253,7 @@ public class RagCommentIndexBuildService {
                 int d0 = ragProps.getEs().getEmbeddingDims();
                 fallbackDims = d0 > 0 ? d0 : null;
             }
-            if (fallbackDims != null && fallbackDims > 0) {
+            if (fallbackDims != null) {
                 try {
                     if (clearPending) {
                         try {
@@ -321,7 +319,6 @@ public class RagCommentIndexBuildService {
         long failedChunks0 = failedChunks;
         Long lastId0 = lastId;
         Integer embeddingDims0 = resp.getEmbeddingDims();
-        String modelToUse0 = modelToUse;
         Boolean cleared0 = cleared;
         String clearError0 = clearError;
 
@@ -340,7 +337,7 @@ public class RagCommentIndexBuildService {
             meta.put("lastBuildChunkMaxChars", maxChars);
             meta.put("lastBuildChunkOverlapChars", overlap);
             meta.put("lastBuildEmbeddingDims", embeddingDims0);
-            meta.put("lastBuildEmbeddingModel", modelToUse0);
+            meta.put("lastBuildEmbeddingModel", modelToUse);
             meta.put("lastBuildCleared", cleared0);
             meta.put("lastBuildClearError", clearError0);
             meta.put("lastSyncAt", LocalDateTime.now().toString());
@@ -609,9 +606,7 @@ public class RagCommentIndexBuildService {
     }
 
     private static String toNonBlankString(Object v) {
-        if (v == null) return null;
-        String s = String.valueOf(v).trim();
-        return s.isBlank() ? null : s;
+        return RagSearchSupport.toNonBlank(v);
     }
 
     private EmbeddingPayload resolveEmbeddingPayload(

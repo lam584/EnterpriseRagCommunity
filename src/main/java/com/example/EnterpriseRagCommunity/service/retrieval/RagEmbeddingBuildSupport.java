@@ -34,7 +34,7 @@ public final class RagEmbeddingBuildSupport {
             providerToUse = overrideProviderId;
         } else if (fixedProvider != null) {
             providerToUse = fixedProvider;
-        } else if (overrideProviderId != null && (!requireModelForProviderOverride || overrideModel == null)) {
+        } else if (overrideProviderId != null) {
             providerToUse = overrideProviderId;
         }
         return new SelectedEmbeddingTarget(modelToUse, providerToUse);

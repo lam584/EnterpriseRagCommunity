@@ -198,7 +198,7 @@ public class AdminPostFilesServiceImpl implements AdminPostFilesService {
     private Map<String, Object> tryParseJsonMap(String json) {
         if (json == null || json.isBlank()) return null;
         try {
-            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {
+            return objectMapper.readValue(json, new TypeReference<>() {
             });
         } catch (Exception ignored) {
             return null;

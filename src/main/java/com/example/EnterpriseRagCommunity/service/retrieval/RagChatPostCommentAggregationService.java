@@ -4,7 +4,6 @@ import com.example.EnterpriseRagCommunity.entity.content.CommentsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostAttachmentsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
-import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.entity.monitor.FileAssetExtractionsEntity;
 import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostAttachmentsRepository;
@@ -173,9 +172,9 @@ public class RagChatPostCommentAggregationService {
 
             double score = 0.0;
             if (bestPostHit != null && bestPostHit.getScore() != null) score = Math.max(score, bestPostHit.getScore());
-            if (hasComment && comms.get(0) != null && comms.get(0).getScore() != null) score = Math.max(score, comms.get(0).getScore());
-            if (hasAttachmentHit && fileHits.get(0) != null && fileHits.get(0).getScore() != null)
-                score = Math.max(score, fileHits.get(0).getScore());
+            if (hasComment && comms.getFirst() != null && comms.getFirst().getScore() != null) score = Math.max(score, comms.getFirst().getScore());
+            if (hasAttachmentHit && fileHits.getFirst() != null && fileHits.getFirst().getScore() != null)
+                score = Math.max(score, fileHits.getFirst().getScore());
 
             PostAgg a = new PostAgg();
             a.postId = postId;

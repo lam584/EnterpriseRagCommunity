@@ -45,7 +45,7 @@ public class AdminModerationRulesService {
                                            String category) {
 
         int p0 = Math.max(0, page - 1);
-        int size = Math.min(Math.max(1, pageSize), 200);
+        int size = Math.clamp(pageSize, 1, 200);
         Pageable pageable = PageRequest.of(p0, size, Sort.by(Sort.Direction.DESC, "id"));
 
         Specification<ModerationRulesEntity> spec = (root, _query, cb) -> {

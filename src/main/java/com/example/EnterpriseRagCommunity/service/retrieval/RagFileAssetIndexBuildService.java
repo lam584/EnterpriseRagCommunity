@@ -173,7 +173,7 @@ public class RagFileAssetIndexBuildService {
                     raw0 = raw0.replaceAll("\\[\\[IMAGE_\\d+]]", " ");
                 }
                 String raw = ModerationSampleTextUtils.normalize(raw0);
-                if (raw == null || raw.isBlank()) continue;
+                if (raw.isBlank()) continue;
                 totalFiles++;
 
                 if (cleanupPerFile) {
@@ -477,9 +477,7 @@ public class RagFileAssetIndexBuildService {
     }
 
     private static String toNonBlankString(Object o) {
-        if (o == null) return null;
-        String s = String.valueOf(o).trim();
-        return s.isBlank() ? null : s;
+        return RagSearchSupport.toNonBlank(o);
     }
 
     private static List<String> buildChunksForFileAsset(FileAssetsEntity fileAsset, String raw, int maxChars, int overlap) {
