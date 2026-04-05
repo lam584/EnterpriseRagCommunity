@@ -5,6 +5,7 @@ import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestReques
 import com.example.EnterpriseRagCommunity.dto.moderation.LlmModerationTestResponse;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.SafeTextSupport;
 import com.example.EnterpriseRagCommunity.service.moderation.admin.AdminModerationLlmService;
 import org.springframework.web.bind.annotation.*;
 
@@ -109,10 +110,6 @@ public class AdminModerationLlmController {
     }
 
     private static String safeText(String s, int maxLen) {
-        if (s == null) return null;
-        String t = s.replaceAll("[\\r\\n\\t]+", " ").trim();
-        if (t.isBlank()) return null;
-        if (maxLen <= 0) return "";
-        return t.length() <= maxLen ? t : t.substring(0, maxLen);
+        return SafeTextSupport.safeText(s, maxLen);
     }
 }

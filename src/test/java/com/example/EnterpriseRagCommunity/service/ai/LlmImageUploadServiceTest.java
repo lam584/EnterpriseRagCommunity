@@ -64,7 +64,7 @@ class LlmImageUploadServiceTest {
         ImageUploadLogRepository repo = mock(ImageUploadLogRepository.class);
         LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
 
-        assertNull(svc.resolveImageUrl(null, "image/png", "m"));
+        assertNull(svc.resolveImageUrl((String) null, "image/png", "m"));
         assertNull(svc.resolveImageUrl("", "image/png", "m"));
         assertNull(svc.resolveImageUrl("   ", "image/png", "m"));
     }

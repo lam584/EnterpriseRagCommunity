@@ -188,13 +188,13 @@ class AdminLlmLoadTestServiceRunFlowBranchTest {
             assertTrue(st.getQueuePeak().getMaxTotal() >= 0);
             assertTrue(st.getTokensTotal() >= 0);
 
-            ResponseEntity<StreamingResponseBody> jsonRes = svc.export(runId, "json");
+            ResponseEntity<StreamingResponseBody> jsonRes = svc.export(runId, false);
             assertEquals(200, jsonRes.getStatusCode().value());
             ByteArrayOutputStream outJson = new ByteArrayOutputStream();
             jsonRes.getBody().writeTo(outJson);
             assertTrue(outJson.toString(StandardCharsets.UTF_8).contains("details"));
 
-            ResponseEntity<StreamingResponseBody> csvRes = svc.export(runId, "csv");
+            ResponseEntity<StreamingResponseBody> csvRes = svc.export(runId, true);
             assertEquals(200, csvRes.getStatusCode().value());
             ByteArrayOutputStream outCsv = new ByteArrayOutputStream();
             csvRes.getBody().writeTo(outCsv);
@@ -320,7 +320,7 @@ class AdminLlmLoadTestServiceRunFlowBranchTest {
 
             assertFalse(svc.stop("not-exist"));
             assertTrue(svc.stop(runId));
-            assertEquals(404, svc.export("none", "json").getStatusCode().value());
+            assertEquals(404, svc.export("none", false).getStatusCode().value());
         } finally {
             svc.shutdown();
         }

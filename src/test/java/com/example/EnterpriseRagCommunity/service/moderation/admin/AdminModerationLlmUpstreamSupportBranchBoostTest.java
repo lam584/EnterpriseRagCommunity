@@ -409,8 +409,8 @@ class AdminModerationLlmUpstreamSupportBranchBoostTest {
         assertNotNull(invokeStatic("recoverTruncatedJson", new Class[]{String.class}, "{\"decision\":\"ALLOW\",\"description\":\"x"));
 
         assertEquals("a", invokeStatic("firstGroup", new Class[]{String.class, java.util.regex.Pattern.class}, "a=1", java.util.regex.Pattern.compile("(a)")));
-        assertEquals("", invokeStatic("trimToMaxChars", new Class[]{String.class, int.class}, "abc", 0));
-        assertEquals("abc", invokeStatic("trimToMaxChars", new Class[]{String.class, int.class}, "abc", 5));
+        assertEquals("abc", invokeStatic("trimToMaxChars", new Class[]{String.class}, " abc "));
+        assertEquals(400, ((String) invokeStatic("trimToMaxChars", new Class[]{String.class}, "a".repeat(500))).length());
 
         assertEquals("[non_text_content]", invokeStatic("partsToDebugText", new Class[]{List.class}, (Object) null));
         String partOut = (String) invokeStatic("partsToDebugText", new Class[]{List.class}, List.of(

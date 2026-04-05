@@ -28,6 +28,8 @@ import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.repository.access.RolesRepository;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
+import com.example.EnterpriseRagCommunity.service.access.SafeTextSupport;
 import com.example.EnterpriseRagCommunity.service.access.Security2faPolicyService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
@@ -82,7 +84,7 @@ public class AdminSettingsController {
         after.setRegistrationEnabled(enabled);
         auditLogWriter.write(
                 null,
-                currentUsernameOrNull(),
+                CurrentUsernameResolver.currentUsernameOrNull(),
                 "ADMIN_SETTINGS_UPDATE",
                 "REGISTRATION_SETTINGS",
                 null,
@@ -173,7 +175,7 @@ public class AdminSettingsController {
 
         auditLogWriter.write(
                 null,
-                currentUsernameOrNull(),
+                CurrentUsernameResolver.currentUsernameOrNull(),
                 "ADMIN_SETTINGS_UPDATE",
                 "TOTP_SETTINGS",
                 null,
@@ -198,7 +200,7 @@ public class AdminSettingsController {
         Security2faPolicySettingsDTO saved = security2faPolicyService.saveAdminSettings(dto);
         auditLogWriter.write(
                 null,
-                currentUsernameOrNull(),
+                CurrentUsernameResolver.currentUsernameOrNull(),
                 "ADMIN_SETTINGS_UPDATE",
                 "SECURITY_2FA_POLICY",
                 null,
@@ -227,7 +229,7 @@ public class AdminSettingsController {
 
         auditLogWriter.write(
                 null,
-                currentUsernameOrNull(),
+                CurrentUsernameResolver.currentUsernameOrNull(),
                 "ADMIN_SETTINGS_UPDATE",
                 "EMAIL_SETTINGS",
                 null,
@@ -255,7 +257,7 @@ public class AdminSettingsController {
         emailSenderService.sendPlainText(cfg, dto.getTo(), subject, text, "ADMIN_TEST");
         auditLogWriter.write(
                 null,
-                currentUsernameOrNull(),
+                CurrentUsernameResolver.currentUsernameOrNull(),
                 "ADMIN_EMAIL_TEST",
                 "EMAIL_SETTINGS",
                 null,
@@ -284,7 +286,7 @@ public class AdminSettingsController {
 
         auditLogWriter.write(
                 null,
-                currentUsernameOrNull(),
+                CurrentUsernameResolver.currentUsernameOrNull(),
                 "ADMIN_SETTINGS_UPDATE",
                 "EMAIL_INBOX_SETTINGS",
                 null,
@@ -326,23 +328,12 @@ public class AdminSettingsController {
         return ResponseEntity.ok(list);
     }
 
-    private static String currentUsernameOrNull() {
-        try {
-            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+    private static String safeText(String s, int maxLen) {
+        return SafeTextSupport.safeText(s, maxLen);
     }
 
-    private static String safeText(String s, int maxLen) {
-        if (s == null) return null;
-        String t = s.replaceAll("[\\r\\n\\t]+", " ").trim();
-        if (t.isBlank()) return null;
-        if (maxLen <= 0) return "";
-        return t.length() <= maxLen ? t : t.substring(0, maxLen);
+    private static String currentUsernameOrNull() {
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 
     private EmailAdminSettingsDTO loadEmailSettingsFromStorage() {

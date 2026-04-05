@@ -1,17 +1,17 @@
 package com.example.EnterpriseRagCommunity.controller;
 
 
-import org.jspecify.annotations.NonNull;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
-import org.springframework.web.servlet.resource.PathResourceResolver;
-import org.springframework.core.io.Resource;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+
+import org.jspecify.annotations.NonNull;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.Resource;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.resource.PathResourceResolver;
 
 @Configuration
 public class SpaController implements WebMvcConfigurer {
@@ -37,8 +37,8 @@ public class SpaController implements WebMvcConfigurer {
 
     static class SpaFallbackResourceResolver extends PathResourceResolver {
         @Override
-        protected Resource getResource(@NonNull String resourcePath, @NonNull Resource location) throws IOException {
-            if (resourcePath.isBlank()) {
+        protected Resource getResource(String resourcePath, @NonNull Resource location) throws IOException {
+            if (resourcePath == null || resourcePath.isBlank()) {
                 return resolveReadableResource(location, "index.html");
             }
             String normalized = resourcePath;

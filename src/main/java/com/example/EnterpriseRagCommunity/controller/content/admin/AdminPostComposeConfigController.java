@@ -4,6 +4,7 @@ import com.example.EnterpriseRagCommunity.dto.content.PostComposeConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
 import com.example.EnterpriseRagCommunity.service.content.PostComposeConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -37,7 +38,7 @@ public class AdminPostComposeConfigController {
         PostComposeConfigDTO after = postComposeConfigService.updateConfig(payload);
         auditLogWriter.write(
                 null,
-                currentUsernameOrNull(),
+                CurrentUsernameResolver.currentUsernameOrNull(),
                 "ADMIN_SETTINGS_UPDATE",
                 "POST_COMPOSE_CONFIG",
                 null,
@@ -50,13 +51,6 @@ public class AdminPostComposeConfigController {
     }
 
     private static String currentUsernameOrNull() {
-        try {
-            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 }

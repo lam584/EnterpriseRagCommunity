@@ -45,7 +45,7 @@ public class AdminLlmLoadTestController {
 
     @GetMapping("/{runId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public ResponseEntity<AdminLlmLoadTestStatusDTO> status(@PathVariable("runId") @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
+    public ResponseEntity<AdminLlmLoadTestStatusDTO> status(@PathVariable @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
         AdminLlmLoadTestStatusDTO st = service.status(runId);
         if (st == null) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(st);
@@ -53,7 +53,7 @@ public class AdminLlmLoadTestController {
 
     @PostMapping("/{runId}/stop")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public ResponseEntity<?> stop(@PathVariable("runId") @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
+    public ResponseEntity<?> stop(@PathVariable @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
         boolean ok = service.stop(runId);
         if (!ok) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(Map.of("stopped", true));
@@ -62,15 +62,14 @@ public class AdminLlmLoadTestController {
     @GetMapping("/{runId}/export")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
     public ResponseEntity<StreamingResponseBody> export(
-            @PathVariable("runId") @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId,
+            @PathVariable @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId,
             @RequestParam(value = "format", required = false, defaultValue = "json") @Pattern(regexp = "^(json|csv)$") String format
     ) {
-        String safeFormat = sanitizeFormat(format);
-        return service.export(runId.trim(), safeFormat);
+        return service.export(runId.trim(), isCsvFormat(format));
     }
 
-    private static String sanitizeFormat(String format) {
+    private static boolean isCsvFormat(String format) {
         String f = format == null ? "json" : format.trim().toLowerCase(Locale.ROOT);
-        return "csv".equals(f) ? "csv" : "json";
+        return "csv".equals(f);
     }
 }

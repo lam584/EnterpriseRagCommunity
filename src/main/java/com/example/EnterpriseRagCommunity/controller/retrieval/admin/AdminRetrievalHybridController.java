@@ -1,7 +1,6 @@
 package com.example.EnterpriseRagCommunity.controller.retrieval.admin;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,6 +29,7 @@ import com.example.EnterpriseRagCommunity.dto.retrieval.RetrievalHitLogDTO;
 import com.example.EnterpriseRagCommunity.service.ai.AiRerankService;
 import com.example.EnterpriseRagCommunity.service.ai.LlmGateway;
 import com.example.EnterpriseRagCommunity.service.ai.LlmQueueTaskType;
+import com.example.EnterpriseRagCommunity.service.access.DateTimeParamSupport;
 import com.example.EnterpriseRagCommunity.service.retrieval.HybridRagRetrievalService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.HybridRetrievalLogsService;
@@ -196,14 +196,7 @@ public class AdminRetrievalHybridController {
     }
 
     private static LocalDateTime parseTimeOrNull(String s) {
-        if (s == null) return null;
-        String t = s.trim();
-        if (t.isBlank()) return null;
-        try {
-            return LocalDateTime.parse(t);
-        } catch (DateTimeParseException ignored) {
-            return null;
-        }
+        return DateTimeParamSupport.parseOrNull(s);
     }
 
     private static String buildDocText(HybridRerankTestDocumentDTO d) {

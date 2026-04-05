@@ -86,8 +86,6 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     private final ModerationPipelineRunRepository moderationPipelineRunRepository;
     private final ModerationActionsRepository moderationActionsRepository;
 
-    @Autowired
-    @Lazy
     private ModerationAutoKickService moderationAutoKickService;
     private final RiskLabelingService riskLabelingService;
     private final ModerationChunkReviewService moderationChunkReviewService;
@@ -95,6 +93,11 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     private final RagCommentIndexVisibilitySyncService ragCommentIndexVisibilitySyncService;
     private final AuditLogWriter auditLogWriter;
     private final UsersService usersService;
+
+    @Autowired
+    void setModerationAutoKickService(@Lazy ModerationAutoKickService moderationAutoKickService) {
+        this.moderationAutoKickService = moderationAutoKickService;
+    }
 
     @Override
     public Page<AdminModerationQueueItemDTO> list(ModerationQueueQueryDTO query) {
@@ -304,17 +307,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     @Override
     @Transactional
     public AdminModerationQueueDetailDTO overrideApprove(Long id, String reason) {
-        if (id == null) throw new IllegalArgumentException("id 不能为空");
-        ModerationQueueEntity q = moderationQueueRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + id));
-
-        if (q.getStatus() == QueueStatus.APPROVED) {
-            return getDetail(id);
-        }
-        if (q.getStatus() == QueueStatus.REJECTED) {
-            toHuman(id, reason);
-        }
-        return approve(id, reason);
+        return overrideDecision(id, reason, QueueStatus.APPROVED, this::approve);
     }
 
     @Override
@@ -444,17 +437,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
     @Override
     @Transactional
     public AdminModerationQueueDetailDTO overrideReject(Long id, String reason) {
-        if (id == null) throw new IllegalArgumentException("id 不能为空");
-        ModerationQueueEntity q = moderationQueueRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + id));
-
-        if (q.getStatus() == QueueStatus.REJECTED) {
-            return getDetail(id);
-        }
-        if (q.getStatus() == QueueStatus.APPROVED) {
-            toHuman(id, reason);
-        }
-        return reject(id, reason);
+        return overrideDecision(id, reason, QueueStatus.REJECTED, this::reject);
     }
 
     private AdminModerationQueueDetailDTO approveInternal(Long id, String reason, UsersEntity actor, boolean manual, String traceId) {
@@ -573,85 +556,28 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         String message = q.getCaseType() == ModerationCaseType.REPORT
                 ? (manual ? "人工处理：驳回举报" : "自动处理：驳回举报")
                 : (manual ? "人工处理：通过内容" : "自动处理：通过内容");
-        Map<String, Object> details = new HashMap<>();
-        details.put("queueId", q.getId());
-        details.put("caseType", enumName(q.getCaseType()));
-        details.put("contentType", enumName(q.getContentType()));
-        details.put("contentId", q.getContentId());
+        Map<String, Object> details = buildQueueAuditDetails(detail);
         details.put("reason", reason);
-        details.put("status", enumName(detail.getStatus()));
-        details.put("stage", enumName(detail.getCurrentStage()));
-        details.put("assignedToId", detail.getAssignedToId());
-        if (manual) {
-            if (actor != null) {
-                auditLogWriter.write(actor.getId(), actorName(actor), action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, traceId, details);
-            }
-        } else {
-            auditLogWriter.writeSystem(action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, ensureAutoTraceId(traceId), details);
-        }
+        writeQueueAudit(actor, manual, traceId, action, q.getId(), message, details);
         return detail;
     }
 
     @Override
     @Transactional
     public void ensureEnqueuedPost(Long postId) {
-        if (postId == null) return;
-        moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.POST, postId)
-                .orElseGet(() -> {
-                    ModerationQueueEntity e = new ModerationQueueEntity();
-                    e.setCaseType(ModerationCaseType.CONTENT);
-                    e.setContentType(ContentType.POST);
-                    e.setContentId(postId);
-                    e.setStatus(QueueStatus.PENDING);
-                    // start pipeline at RULE stage
-                    e.setCurrentStage(QueueStage.RULE);
-                    e.setPriority(0);
-                    e.setAssignedToId(null);
-                    e.setCreatedAt(LocalDateTime.now());
-                    e.setUpdatedAt(LocalDateTime.now());
-                    return moderationQueueRepository.save(e);
-                });
+        ensureEnqueuedContent(ContentType.POST, postId);
     }
 
     @Override
     @Transactional
     public void ensureEnqueuedComment(Long commentId) {
-        if (commentId == null) return;
-        moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.COMMENT, commentId)
-                .orElseGet(() -> {
-                    ModerationQueueEntity e = new ModerationQueueEntity();
-                    e.setCaseType(ModerationCaseType.CONTENT);
-                    e.setContentType(ContentType.COMMENT);
-                    e.setContentId(commentId);
-                    e.setStatus(QueueStatus.PENDING);
-                    // start pipeline at RULE stage
-                    e.setCurrentStage(QueueStage.RULE);
-                    e.setPriority(0);
-                    e.setAssignedToId(null);
-                    e.setCreatedAt(LocalDateTime.now());
-                    e.setUpdatedAt(LocalDateTime.now());
-                    return moderationQueueRepository.save(e);
-                });
+        ensureEnqueuedContent(ContentType.COMMENT, commentId);
     }
 
     @Override
     @Transactional
     public void ensureEnqueuedProfile(Long userId) {
-        if (userId == null) return;
-        moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, ContentType.PROFILE, userId)
-                .orElseGet(() -> {
-                    ModerationQueueEntity e = new ModerationQueueEntity();
-                    e.setCaseType(ModerationCaseType.CONTENT);
-                    e.setContentType(ContentType.PROFILE);
-                    e.setContentId(userId);
-                    e.setStatus(QueueStatus.PENDING);
-                    e.setCurrentStage(QueueStage.RULE);
-                    e.setPriority(0);
-                    e.setAssignedToId(null);
-                    e.setCreatedAt(LocalDateTime.now());
-                    e.setUpdatedAt(LocalDateTime.now());
-                    return moderationQueueRepository.save(e);
-                });
+        ensureEnqueuedContent(ContentType.PROFILE, userId);
     }
 
     @Override
@@ -773,6 +699,27 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         if (t == null) return true;
         if (from != null && t.isBefore(from)) return false;
         return to == null || !t.isAfter(to);
+    }
+
+    private void ensureEnqueuedContent(ContentType contentType, Long contentId) {
+        if (contentType == null || contentId == null) return;
+        moderationQueueRepository.findByCaseTypeAndContentTypeAndContentId(ModerationCaseType.CONTENT, contentType, contentId)
+                .orElseGet(() -> moderationQueueRepository.save(newPendingQueue(contentType, contentId)));
+    }
+
+    private static ModerationQueueEntity newPendingQueue(ContentType contentType, Long contentId) {
+        LocalDateTime now = LocalDateTime.now();
+        ModerationQueueEntity entity = new ModerationQueueEntity();
+        entity.setCaseType(ModerationCaseType.CONTENT);
+        entity.setContentType(contentType);
+        entity.setContentId(contentId);
+        entity.setStatus(QueueStatus.PENDING);
+        entity.setCurrentStage(QueueStage.RULE);
+        entity.setPriority(0);
+        entity.setAssignedToId(null);
+        entity.setCreatedAt(now);
+        entity.setUpdatedAt(now);
+        return entity;
     }
 
     private Map<Long, PostsEntity> loadPostsByIds(Set<Long> ids) {
@@ -926,22 +873,9 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         String message = q.getCaseType() == ModerationCaseType.REPORT
                 ? (manual ? "人工处理：核实举报" : "自动处理：核实举报")
                 : (manual ? "人工处理：驳回内容" : "自动处理：驳回内容");
-        Map<String, Object> details = new HashMap<>();
-        details.put("queueId", q.getId());
-        details.put("caseType", enumName(q.getCaseType()));
-        details.put("contentType", enumName(q.getContentType()));
-        details.put("contentId", q.getContentId());
+        Map<String, Object> details = buildQueueAuditDetails(detail);
         details.put("reason", reason);
-        details.put("status", enumName(detail.getStatus()));
-        details.put("stage", enumName(detail.getCurrentStage()));
-        details.put("assignedToId", detail.getAssignedToId());
-        if (manual) {
-            if (actor != null) {
-                auditLogWriter.write(actor.getId(), actorName(actor), action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, traceId, details);
-            }
-        } else {
-            auditLogWriter.writeSystem(action, "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, message, ensureAutoTraceId(traceId), details);
-        }
+        writeQueueAudit(actor, manual, traceId, action, q.getId(), message, details);
         return detail;
     }
 
@@ -1011,16 +945,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
     private void notifyModerationResultToAuthor(ModerationQueueEntity q, boolean approved, String reason) {
         if (q == null || q.getContentType() == null || q.getContentId() == null) return;
-        Long userId = null;
-        if (q.getContentType() == ContentType.POST) {
-            PostsEntity post = postsRepository.findById(q.getContentId()).orElse(null);
-            if (post != null) userId = post.getAuthorId();
-        } else if (q.getContentType() == ContentType.COMMENT) {
-            CommentsEntity c = commentsRepository.findById(q.getContentId()).orElse(null);
-            if (c != null) userId = c.getAuthorId();
-        } else if (q.getContentType() == ContentType.PROFILE) {
-            userId = q.getContentId();
-        }
+        Long userId = resolveAuthorUserId(q);
         if (userId == null) return;
 
         String targetLabel = labelFor(q.getContentType());
@@ -1097,16 +1022,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         ModerationQueueEntity q = moderationQueueRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + id));
 
-        Long targetUserId = null;
-        if (q.getContentType() == ContentType.POST) {
-            PostsEntity p = postsRepository.findById(q.getContentId()).orElse(null);
-            if (p != null) targetUserId = p.getAuthorId();
-        } else if (q.getContentType() == ContentType.COMMENT) {
-            CommentsEntity c = commentsRepository.findById(q.getContentId()).orElse(null);
-            if (c != null) targetUserId = c.getAuthorId();
-        } else if (q.getContentType() == ContentType.PROFILE) {
-            targetUserId = q.getContentId();
-        }
+        Long targetUserId = resolveAuthorUserId(q);
 
         if (targetUserId == null) {
             throw new IllegalStateException("无法识别内容作者，不能封禁");
@@ -1114,11 +1030,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
         usersService.banUser(targetUserId, actor.getId(), actorName(actor), checkedReason, "MODERATION_QUEUE", id);
 
-        Map<String, Object> details = new HashMap<>();
-        details.put("queueId", q.getId());
-        details.put("caseType", enumName(q.getCaseType()));
-        details.put("contentType", enumName(q.getContentType()));
-        details.put("contentId", q.getContentId());
+        Map<String, Object> details = buildQueueAuditDetails(q);
         details.put("bannedUserId", targetUserId);
         details.put("reason", checkedReason);
         auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_BAN_USER", "MODERATION_QUEUE", q.getId(), AuditResult.SUCCESS, "人工操作：封禁用户", newTraceId(), details);
@@ -1309,15 +1221,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             throw new IllegalStateException("认领失败：任务不存在、不是待人工审核或已被认领");
         }
         AdminModerationQueueDetailDTO detail = getDetail(id);
-        Map<String, Object> details = new HashMap<>();
-        details.put("queueId", detail.getId());
-        details.put("caseType", enumName(detail.getCaseType()));
-        details.put("contentType", enumName(detail.getContentType()));
-        details.put("contentId", detail.getContentId());
-        details.put("status", enumName(detail.getStatus()));
-        details.put("stage", enumName(detail.getCurrentStage()));
-        details.put("assignedToId", detail.getAssignedToId());
-        auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_CLAIM", "MODERATION_QUEUE", detail.getId(), AuditResult.SUCCESS, "人工操作：认领审核任务", newTraceId(), details);
+        writeManualQueueAudit(actor, "MODERATION_MANUAL_CLAIM", detail.getId(), "人工操作：认领审核任务", buildQueueAuditDetails(detail));
         return detail;
     }
 
@@ -1332,15 +1236,7 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
             throw new IllegalStateException("释放失败：只能释放自己认领的任务");
         }
         AdminModerationQueueDetailDTO detail = getDetail(id);
-        Map<String, Object> details = new HashMap<>();
-        details.put("queueId", detail.getId());
-        details.put("caseType", enumName(detail.getCaseType()));
-        details.put("contentType", enumName(detail.getContentType()));
-        details.put("contentId", detail.getContentId());
-        details.put("status", enumName(detail.getStatus()));
-        details.put("stage", enumName(detail.getCurrentStage()));
-        details.put("assignedToId", detail.getAssignedToId());
-        auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_RELEASE", "MODERATION_QUEUE", detail.getId(), AuditResult.SUCCESS, "人工操作：释放审核任务", newTraceId(), details);
+        writeManualQueueAudit(actor, "MODERATION_MANUAL_RELEASE", detail.getId(), "人工操作：释放审核任务", buildQueueAuditDetails(detail));
         return detail;
     }
 
@@ -1469,17 +1365,10 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
 
 
         AdminModerationQueueDetailDTO detail = getDetail(id);
-        Map<String, Object> details = new HashMap<>();
-        details.put("queueId", detail.getId());
-        details.put("caseType", enumName(detail.getCaseType()));
-        details.put("contentType", enumName(detail.getContentType()));
-        details.put("contentId", detail.getContentId());
+        Map<String, Object> details = buildQueueAuditDetails(detail);
         details.put("reason", checkedReason);
         details.put("reviewStage", normalizedReviewStage);
-        details.put("status", enumName(detail.getStatus()));
-        details.put("stage", enumName(detail.getCurrentStage()));
-        details.put("assignedToId", detail.getAssignedToId());
-        auditLogWriter.write(actor.getId(), actorName(actor), "MODERATION_MANUAL_REQUEUE", "MODERATION_QUEUE", detail.getId(), AuditResult.SUCCESS, "人工操作：重新进入自动审核", newTraceId(), details);
+        writeManualQueueAudit(actor, "MODERATION_MANUAL_REQUEUE", detail.getId(), "人工操作：重新进入自动审核", details);
         return detail;
     }
 
@@ -1551,6 +1440,75 @@ public class AdminModerationQueueServiceImpl implements AdminModerationQueueServ
         details.put("stage", enumName(detail.getCurrentStage()));
         details.put("assignedToId", detail.getAssignedToId());
         return details;
+    }
+
+    private Map<String, Object> buildQueueAuditDetails(ModerationQueueEntity queue) {
+        Map<String, Object> details = new HashMap<>();
+        if (queue == null) return details;
+        details.put("queueId", queue.getId());
+        details.put("caseType", enumName(queue.getCaseType()));
+        details.put("contentType", enumName(queue.getContentType()));
+        details.put("contentId", queue.getContentId());
+        details.put("status", enumName(queue.getStatus()));
+        details.put("stage", enumName(queue.getCurrentStage()));
+        details.put("assignedToId", queue.getAssignedToId());
+        return details;
+    }
+
+    private void writeManualQueueAudit(UsersEntity actor, String action, Long queueId, String message, Map<String, Object> details) {
+        if (actor == null) return;
+        auditLogWriter.write(actor.getId(), actorName(actor), action, "MODERATION_QUEUE", queueId, AuditResult.SUCCESS, message, newTraceId(), details);
+    }
+
+    private void writeQueueAudit(UsersEntity actor, boolean manual, String traceId, String action, Long queueId, String message, Map<String, Object> details) {
+        if (manual) {
+            writeManualQueueAudit(actor, action, queueId, message, details);
+            return;
+        }
+        auditLogWriter.writeSystem(action, "MODERATION_QUEUE", queueId, AuditResult.SUCCESS, message, ensureAutoTraceId(traceId), details);
+    }
+
+    private AdminModerationQueueDetailDTO overrideDecision(
+            Long id,
+            String reason,
+            QueueStatus targetStatus,
+            QueueAction action
+    ) {
+        if (id == null) throw new IllegalArgumentException("id 不能为空");
+        ModerationQueueEntity q = moderationQueueRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("审核任务不存在: " + id));
+        if (q.getStatus() == targetStatus) {
+            return getDetail(id);
+        }
+        if (isOppositeTerminalStatus(q.getStatus(), targetStatus)) {
+            toHuman(id, reason);
+        }
+        return action.apply(id, reason);
+    }
+
+    private static boolean isOppositeTerminalStatus(QueueStatus currentStatus, QueueStatus targetStatus) {
+        return (currentStatus == QueueStatus.REJECTED && targetStatus == QueueStatus.APPROVED)
+                || (currentStatus == QueueStatus.APPROVED && targetStatus == QueueStatus.REJECTED);
+    }
+
+    private Long resolveAuthorUserId(ModerationQueueEntity q) {
+        if (q == null || q.getContentType() == null || q.getContentId() == null) return null;
+        return switch (q.getContentType()) {
+            case POST -> {
+                PostsEntity post = postsRepository.findById(q.getContentId()).orElse(null);
+                yield post == null ? null : post.getAuthorId();
+            }
+            case COMMENT -> {
+                CommentsEntity comment = commentsRepository.findById(q.getContentId()).orElse(null);
+                yield comment == null ? null : comment.getAuthorId();
+            }
+            case PROFILE -> q.getContentId();
+        };
+    }
+
+    @FunctionalInterface
+    private interface QueueAction {
+        AdminModerationQueueDetailDTO apply(Long id, String reason);
     }
 
     private Long currentUserIdOrThrow() {

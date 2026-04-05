@@ -47,6 +47,14 @@ public class LlmImageUploadService {
     @Value("${app.upload.root:uploads}")
     private String uploadRoot;
 
+    public record ValidatedLocalPath(String value) {
+        public ValidatedLocalPath {
+            if (value == null || value.isBlank()) {
+                throw new IllegalArgumentException("value must not be blank");
+            }
+        }
+    }
+
     /**
      * Resolve a local image path to a URL suitable for LLM upstream calls.
      *
@@ -65,6 +73,11 @@ public class LlmImageUploadService {
             case DASHSCOPE_TEMP -> resolveDashscope(localPath, mimeType, modelName);
             case ALIYUN_OSS -> resolveAliyunOss(localPath, mimeType);
         };
+    }
+
+    public String resolveImageUrl(ValidatedLocalPath localPath, String mimeType, String modelName) {
+        if (localPath == null) return null;
+        return resolveImageUrl(localPath.value(), mimeType, modelName);
     }
 
     /** Check if any returned URL uses oss:// protocol (for header injection). */

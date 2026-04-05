@@ -1,7 +1,6 @@
 package com.example.EnterpriseRagCommunity.controller.retrieval.admin;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeParseException;
 
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +19,7 @@ import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipTestRequest;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextClipTestResponse;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextWindowDetailDTO;
 import com.example.EnterpriseRagCommunity.dto.retrieval.ContextWindowLogDTO;
+import com.example.EnterpriseRagCommunity.service.access.DateTimeParamSupport;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextClipConfigService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextClipTestService;
 import com.example.EnterpriseRagCommunity.service.retrieval.admin.ContextWindowLogsService;
@@ -73,13 +73,6 @@ public class AdminRetrievalContextController {
     }
 
     private static LocalDateTime parseTimeOrNull(String s) {
-        if (s == null) return null;
-        String t = s.trim();
-        if (t.isBlank()) return null;
-        try {
-            return LocalDateTime.parse(t);
-        } catch (DateTimeParseException ignored) {
-            return null;
-        }
+        return DateTimeParamSupport.parseOrNull(s);
     }
 }

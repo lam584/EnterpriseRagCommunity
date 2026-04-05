@@ -926,8 +926,8 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
                 mock(PromptsRepository.class)
         );
         assertNull(svc.status("missing"));
-        assertEquals(200, svc.export("rid", null).getStatusCode().value());
-        assertEquals(404, svc.export("none", null).getStatusCode().value());
+        assertEquals(200, svc.export("rid", false).getStatusCode().value());
+        assertEquals(404, svc.export("none", false).getStatusCode().value());
         svc.shutdown();
     }
 

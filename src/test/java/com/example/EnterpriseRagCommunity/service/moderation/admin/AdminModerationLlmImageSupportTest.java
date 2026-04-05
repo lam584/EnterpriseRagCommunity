@@ -267,7 +267,8 @@ class AdminModerationLlmImageSupportTest {
         FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
         FileAssetExtractionsRepository fileAssetExtractionsRepository = mock(FileAssetExtractionsRepository.class);
         LlmImageUploadService uploader = mock(LlmImageUploadService.class);
-        when(uploader.resolveImageUrl(any(), any(), any())).thenThrow(new RuntimeException("x"));
+        when(uploader.resolveImageUrl(org.mockito.ArgumentMatchers.<String>any(), any(), any()))
+                .thenThrow(new RuntimeException("x"));
 
         AdminModerationLlmImageSupport support = newSupport(queueRepository, postAttachmentsRepository, fileAssetsRepository, fileAssetExtractionsRepository, uploader);
         Path uploadRoot = tempDir.resolve("uploads").toAbsolutePath().normalize();

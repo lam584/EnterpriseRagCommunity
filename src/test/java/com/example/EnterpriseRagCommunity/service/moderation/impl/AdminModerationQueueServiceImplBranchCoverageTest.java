@@ -423,6 +423,9 @@ class AdminModerationQueueServiceImplBranchCoverageTest {
         lenient().doReturn(detail(80L, QueueStatus.HUMAN, QueueStage.HUMAN)).when(svc).getDetail(80L);
         lenient().doReturn(detail(81L, QueueStatus.APPROVED, QueueStage.HUMAN)).when(svc).getDetail(81L);
         lenient().doReturn(detail(82L, QueueStatus.REJECTED, QueueStage.HUMAN)).when(svc).getDetail(82L);
+        lenient().doReturn(detail(84L, QueueStatus.HUMAN, QueueStage.HUMAN)).when(svc).getDetail(84L);
+        lenient().doReturn(detail(85L, QueueStatus.REJECTED, QueueStage.HUMAN)).when(svc).getDetail(85L);
+        lenient().doReturn(detail(86L, QueueStatus.APPROVED, QueueStage.HUMAN)).when(svc).getDetail(86L);
 
         ModerationQueueEntity qp = queue(80L, ModerationCaseType.CONTENT, ContentType.POST, 800L, QueueStatus.HUMAN);
         when(f.moderationQueueRepository.findById(80L)).thenReturn(Optional.of(qp));
@@ -433,6 +436,11 @@ class AdminModerationQueueServiceImplBranchCoverageTest {
         assertEquals(80L, svc.banUser(80L, "ban reason").getId());
         verify(f.usersService).banUser(99L, 902L, "moderator", "ban reason", "MODERATION_QUEUE", 80L);
 
+        ModerationQueueEntity qProfile = queue(84L, ModerationCaseType.CONTENT, ContentType.PROFILE, 804L, QueueStatus.HUMAN);
+        when(f.moderationQueueRepository.findById(84L)).thenReturn(Optional.of(qProfile));
+        assertEquals(84L, svc.banUser(84L, "profile ban").getId());
+        verify(f.usersService).banUser(804L, 902L, "moderator", "profile ban", "MODERATION_QUEUE", 84L);
+
         ModerationQueueEntity qa = queue(81L, ModerationCaseType.CONTENT, ContentType.POST, 801L, QueueStatus.APPROVED);
         when(f.moderationQueueRepository.findById(81L)).thenReturn(Optional.of(qa));
         assertEquals(81L, svc.overrideApprove(81L, "r").getId());
@@ -441,6 +449,16 @@ class AdminModerationQueueServiceImplBranchCoverageTest {
         when(f.moderationQueueRepository.findById(82L)).thenReturn(Optional.of(qr));
         doReturn(detail(82L, QueueStatus.HUMAN, QueueStage.HUMAN)).when(svc).toHuman(82L, "r2");
         assertEquals(82L, svc.overrideApprove(82L, "r2").getId());
+
+        ModerationQueueEntity qRejected = queue(85L, ModerationCaseType.CONTENT, ContentType.POST, 805L, QueueStatus.REJECTED);
+        when(f.moderationQueueRepository.findById(85L)).thenReturn(Optional.of(qRejected));
+        assertEquals(85L, svc.overrideReject(85L, "r3").getId());
+
+        ModerationQueueEntity qApproved = queue(86L, ModerationCaseType.CONTENT, ContentType.POST, 806L, QueueStatus.APPROVED);
+        when(f.moderationQueueRepository.findById(86L)).thenReturn(Optional.of(qApproved));
+        doReturn(detail(86L, QueueStatus.HUMAN, QueueStage.HUMAN)).when(svc).toHuman(86L, "r4");
+        doReturn(detail(86L, QueueStatus.REJECTED, QueueStage.HUMAN)).when(svc).reject(86L, "r4");
+        assertEquals(86L, svc.overrideReject(86L, "r4").getId());
 
         assertThrows(IllegalArgumentException.class, () -> svc.banUser(83L, " "));
     }

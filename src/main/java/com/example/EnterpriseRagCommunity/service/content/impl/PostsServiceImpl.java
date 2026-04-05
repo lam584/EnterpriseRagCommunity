@@ -38,6 +38,7 @@ import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepositor
 import com.example.EnterpriseRagCommunity.repository.semantic.VectorIndicesRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.SafeTextSupport;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.ai.AiPostSummaryTriggerService;
 import com.example.EnterpriseRagCommunity.service.content.BoardAccessControlService;
@@ -411,20 +412,7 @@ public class PostsServiceImpl implements PostsService {
         // Only allow sorting by real PostsEntity properties to avoid PropertyReferenceException (500).
         // Also keep a couple of legacy/portal-friendly aliases.
         String rawSortBy = (sortBy == null ? "" : sortBy.trim());
-        String normalizedSortBy;
-        if (rawSortBy.isEmpty()) {
-            normalizedSortBy = "createdAt";
-        } else if ("hotScore".equalsIgnoreCase(rawSortBy) || "hot_score".equalsIgnoreCase(rawSortBy)) {
-            normalizedSortBy = "createdAt";
-        } else if ("created_at".equalsIgnoreCase(rawSortBy)) {
-            normalizedSortBy = "createdAt";
-        } else if ("updated_at".equalsIgnoreCase(rawSortBy)) {
-            normalizedSortBy = "updatedAt";
-        } else if ("published_at".equalsIgnoreCase(rawSortBy)) {
-            normalizedSortBy = "publishedAt";
-        } else {
-            normalizedSortBy = rawSortBy;
-        }
+        String normalizedSortBy = normalizeSortByAlias(rawSortBy);
 
         java.util.Set<String> allowedSortBy = java.util.Set.of(
                 "id",
@@ -440,6 +428,25 @@ public class PostsServiceImpl implements PostsService {
                 "updatedAt"
         );
         return allowedSortBy.contains(normalizedSortBy) ? normalizedSortBy : "createdAt";
+    }
+
+    private static String normalizeSortByAlias(String rawSortBy) {
+        if (rawSortBy.isEmpty()) {
+            return "createdAt";
+        }
+        if ("hotScore".equalsIgnoreCase(rawSortBy) || "hot_score".equalsIgnoreCase(rawSortBy)) {
+            return "createdAt";
+        }
+        if ("created_at".equalsIgnoreCase(rawSortBy)) {
+            return "createdAt";
+        }
+        if ("updated_at".equalsIgnoreCase(rawSortBy)) {
+            return "updatedAt";
+        }
+        if ("published_at".equalsIgnoreCase(rawSortBy)) {
+            return "publishedAt";
+        }
+        return rawSortBy;
     }
 
     private Page<PostsEntity> vectorSearchPublished(String keyword, Long boardId, Long authorId, LocalDate createdFrom, LocalDate createdTo, int page, int pageSize) {
@@ -785,10 +792,6 @@ public class PostsServiceImpl implements PostsService {
     }
 
     private static String safeText(String s, int maxLen) {
-        if (s == null) return null;
-        String t = s.replaceAll("[\\r\\n\\t]+", " ").trim();
-        if (t.isBlank()) return null;
-        if (maxLen <= 0) return "";
-        return t.length() <= maxLen ? t : t.substring(0, maxLen);
+        return SafeTextSupport.safeText(s, maxLen);
     }
 }

@@ -1146,31 +1146,34 @@ class AdminModerationLlmUpstreamSupport {
     List<String> enrichEvidenceWithText(List<String> evidence, String auditText) {
         if (evidence == null || evidence.isEmpty() || auditText == null || auditText.isBlank()) return evidence;
         ArrayList<String> out = new ArrayList<>();
-        for (String ev : evidence) {
-            if (ev == null) { out.add(ev); continue; }
-            String s = ev.trim();
+        for (String rawEvidence : evidence) {
+            if (rawEvidence == null) { out.add(null); continue; }
+            String s = rawEvidence.trim();
             if (!s.startsWith("{") || !s.endsWith("}")) {
-                out.add(ev);
+                out.add(rawEvidence);
                 continue;
             }
             try {
                 Map<String, Object> node = objectMapper.readValue(s, Map.class);
-                if (node == null) { out.add(ev); continue; }
+                if (node == null) { out.add(rawEvidence); continue; }
                 Object textObj = node.get("text");
-                String existing = textObj == null ? "" : String.valueOf(textObj).trim();
-                if (!existing.isBlank() && !isSuspiciousEvidenceText(existing, auditText)) { out.add(ev); continue; }
+                if (textObj instanceof String existing && !existing.trim().isBlank()
+                        && !isSuspiciousEvidenceText(existing.trim(), auditText)) {
+                    out.add(rawEvidence);
+                    continue;
+                }
 
                 String snippet = extractByContextAnchors(node, auditText);
-                if (snippet == null || snippet.isBlank()) { out.add(ev); continue; }
+                if (snippet == null || snippet.isBlank()) { out.add(rawEvidence); continue; }
                 snippet = IMAGE_PLACEHOLDER.matcher(snippet).replaceAll("").trim();
-                if (snippet.isBlank()) { out.add(ev); continue; }
+                if (snippet.isBlank()) { out.add(rawEvidence); continue; }
                 String cleaned = cleanExtractedSnippet(snippet);
-                if (cleaned.isBlank()) { out.add(ev); continue; }
+                if (cleaned.isBlank()) { out.add(rawEvidence); continue; }
                 String clipped = cleaned.length() > 240 ? cleaned.substring(0, 240) : cleaned;
                 node.put("text", clipped);
                 out.add(objectMapper.writeValueAsString(node));
             } catch (Exception e2) {
-                out.add(ev);
+                out.add(rawEvidence);
             }
         }
         return out;

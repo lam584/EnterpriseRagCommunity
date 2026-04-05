@@ -8,6 +8,8 @@ import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.ai.ChatContextGovernanceConfigService;
 import com.example.EnterpriseRagCommunity.service.ai.admin.ChatContextEventLogsService;
+import com.example.EnterpriseRagCommunity.service.access.CurrentUsernameResolver;
+import com.example.EnterpriseRagCommunity.service.access.DateTimeParamSupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeParseException;
 
 @RestController
 @RequestMapping("/api/admin/ai/chat-context")
@@ -46,7 +47,7 @@ public class AdminChatContextGovernanceController {
         ChatContextGovernanceConfigDTO after = configService.updateConfig(payload);
         auditLogWriter.write(
                 null,
-                currentUsernameOrNull(),
+                CurrentUsernameResolver.currentUsernameOrNull(),
                 "ADMIN_SETTINGS_UPDATE",
                 "CHAT_CONTEXT_GOVERNANCE_CONFIG",
                 null,
@@ -76,24 +77,10 @@ public class AdminChatContextGovernanceController {
     }
 
     private static LocalDateTime parseTimeOrNull(String s) {
-        if (s == null) return null;
-        String t = s.trim();
-        if (t.isBlank()) return null;
-        try {
-            return LocalDateTime.parse(t);
-        } catch (DateTimeParseException ignored) {
-            return null;
-        }
+        return DateTimeParamSupport.parseOrNull(s);
     }
 
     private static String currentUsernameOrNull() {
-        try {
-            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) return null;
-            String name = auth.getName();
-            return name == null || name.isBlank() ? null : name.trim();
-        } catch (Exception e) {
-            return null;
-        }
+        return CurrentUsernameResolver.currentUsernameOrNull();
     }
 }

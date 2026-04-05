@@ -32,6 +32,7 @@ import com.example.EnterpriseRagCommunity.config.AdminSetupManager;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 import jakarta.validation.Valid;
@@ -48,16 +49,11 @@ public class SetupController {
     private static final String ES_CHECK_FAILED_MESSAGE = "Failed to connect to ES";
     private static final String SAVE_CONFIG_FAILED_MESSAGE = "Failed to save config";
 
-    public InitialAdminIndexBootstrapService getInitialAdminIndexBootstrapService() {
-        return initialAdminIndexBootstrapService;
-    }
-
     @FunctionalInterface
     public interface RestClientFactory {
         RestClient create(String uris, String apiKey);
     }
 
-    @Autowired(required = false)
     private RestClientFactory restClientFactory;
 
     private final AdministratorService administratorService;
@@ -72,7 +68,7 @@ public class SetupController {
 
     private final AuthController authController;
 
-    @Autowired(required = false)
+    @Getter
     private InitialAdminIndexBootstrapService initialAdminIndexBootstrapService;
 
     private final com.example.EnterpriseRagCommunity.utils.AesGcmUtils aesGcmUtils;
@@ -81,6 +77,16 @@ public class SetupController {
 
     @org.springframework.beans.factory.annotation.Value("${APP_MASTER_KEY}")
     private String masterKey;
+
+    @Autowired(required = false)
+    void setRestClientFactory(RestClientFactory restClientFactory) {
+        this.restClientFactory = restClientFactory;
+    }
+
+    @Autowired(required = false)
+    void setInitialAdminIndexBootstrapService(InitialAdminIndexBootstrapService initialAdminIndexBootstrapService) {
+        this.initialAdminIndexBootstrapService = initialAdminIndexBootstrapService;
+    }
 
     @GetMapping("/status")
     public ResponseEntity<?> getStatus() {

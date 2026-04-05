@@ -9,6 +9,7 @@ import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.access.SafeTextSupport;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.service.content.PostInteractionsService;
 import com.example.EnterpriseRagCommunity.service.monitor.NotificationsService;
@@ -252,11 +253,7 @@ public class PostInteractionsServiceImpl implements PostInteractionsService {
     }
 
     private static String safeText(String s, int maxLen) {
-        if (s == null) return null;
-        String t = s.replaceAll("[\\r\\n\\t]+", " ").trim();
-        if (t.isBlank()) return null;
-        if (maxLen <= 0) return "";
-        return t.length() <= maxLen ? t : t.substring(0, maxLen);
+        return SafeTextSupport.safeText(s, maxLen);
     }
 
     @Override

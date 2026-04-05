@@ -7,6 +7,8 @@ import com.example.EnterpriseRagCommunity.dto.monitor.ResumableUploadStatusDTO;
 import com.example.EnterpriseRagCommunity.service.monitor.UploadService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -18,6 +20,9 @@ import java.util.List;
 @CrossOrigin(origins = {"http://localhost:5173", "http://127.0.0.1:5173"}, allowCredentials = "true")
 @RequiredArgsConstructor
 public class UploadsController {
+    private static final String HEADER_UPLOAD_OFFSET = "X-Upload-Offset";
+    private static final String HEADER_UPLOAD_TOTAL = "X-Upload-Total";
+
     private final UploadService uploadService;
 
     @PostMapping
@@ -51,12 +56,10 @@ public class UploadsController {
     @PutMapping("/resumable/{uploadId}/chunk")
     public ResumableUploadStatusDTO uploadResumableChunk(
             @PathVariable String uploadId,
-            //noinspection UastIncorrectHttpHeaderInspection
-            @RequestHeader("X-Upload-Offset") long offset,
-            //noinspection UastIncorrectHttpHeaderInspection
-            @RequestHeader("X-Upload-Total") long total,
             HttpServletRequest request
     ) throws IOException {
+        long offset = parseRequiredLongHeader(request, HEADER_UPLOAD_OFFSET);
+        long total = parseRequiredLongHeader(request, HEADER_UPLOAD_TOTAL);
         return uploadService.uploadResumableChunk(uploadId, offset, total, request.getInputStream());
     }
 
@@ -69,5 +72,16 @@ public class UploadsController {
     public void cancelResumable(@PathVariable String uploadId) {
         uploadService.cancelResumable(uploadId);
     }
-}
 
+    private static long parseRequiredLongHeader(HttpServletRequest request, String headerName) {
+        String raw = request.getHeader(headerName);
+        if (raw == null || raw.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing header: " + headerName);
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid header: " + headerName, ex);
+        }
+    }
+}

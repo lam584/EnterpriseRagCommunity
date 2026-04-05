@@ -48,7 +48,7 @@ public class AdminLlmLoadTestExportTest {
                 mock(PromptsRepository.class)
         );
 
-        ResponseEntity<StreamingResponseBody> res = svc.export("run\r\nX", "json");
+        ResponseEntity<StreamingResponseBody> res = svc.export("run\r\nX", false);
         assertEquals(400, res.getStatusCode().value());
     }
 
@@ -103,7 +103,7 @@ public class AdminLlmLoadTestExportTest {
                 mock(PromptsRepository.class)
         );
 
-        ResponseEntity<StreamingResponseBody> res = svc.export(runId, "json");
+        ResponseEntity<StreamingResponseBody> res = svc.export(runId, false);
         assertEquals(200, res.getStatusCode().value());
         assertNotNull(res.getBody());
 
@@ -168,7 +168,7 @@ public class AdminLlmLoadTestExportTest {
                 mock(PromptsRepository.class)
         );
 
-        ResponseEntity<StreamingResponseBody> res = svc.export(runId, "csv");
+        ResponseEntity<StreamingResponseBody> res = svc.export(runId, true);
         assertEquals(200, res.getStatusCode().value());
         assertNotNull(res.getBody());
 
@@ -219,7 +219,7 @@ public class AdminLlmLoadTestExportTest {
                 mock(PromptsRepository.class)
         );
 
-        ResponseEntity<StreamingResponseBody> res = svc.export(runId, "csv");
+        ResponseEntity<StreamingResponseBody> res = svc.export(runId, true);
         assertEquals(200, res.getStatusCode().value());
         assertNotNull(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION));
         assertFalse(res.getHeaders().getFirst(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION).contains("\r"));

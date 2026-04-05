@@ -41,6 +41,8 @@ import java.util.function.LongConsumer;
 @Service
 @RequiredArgsConstructor
 public class UploadServiceImpl implements UploadService {
+    private static final int RESUMABLE_VERIFY_BUFFER_BYTES = 1024 * 1024;
+
 
     @Value("${app.upload.root:uploads}")
     private String uploadRoot;
@@ -87,7 +89,7 @@ public class UploadServiceImpl implements UploadService {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             try (InputStream is = Files.newInputStream(file)) {
-                byte[] buf = new byte[8 * 1024 * 1024];
+                byte[] buf = new byte[RESUMABLE_VERIFY_BUFFER_BYTES];
                 int n;
                 long read = 0L;
                 while ((n = is.read(buf)) > 0) {
@@ -565,25 +567,16 @@ public class UploadServiceImpl implements UploadService {
         meta.errorMessage = null;
         saveResumableMetaOrThrow(meta);
 
-        final long[] lastSaveAtMs = new long[]{0L};
-        final long[] lastSaveBytes = new long[]{0L};
-
         String sha256;
         try {
             sha256 = normalizeSha256OrThrow(sha256Hex(partPath, (read) -> {
                 long now = System.currentTimeMillis();
-                long deltaBytes = read - lastSaveBytes[0];
-                long deltaMs = now - lastSaveAtMs[0];
-                boolean shouldSave = lastSaveAtMs[0] == 0L || deltaBytes >= 64L * 1024 * 1024 || deltaMs >= 1000L;
-                if (!shouldSave) return;
                 if (!Files.exists(metaPath) || !Files.exists(partPath)) {
                     throw new IllegalArgumentException("上传任务已取消");
                 }
                 meta.verifyBytes = read;
                 meta.updatedAtEpochMs = now;
                 saveResumableMetaOrThrow(meta);
-                lastSaveAtMs[0] = now;
-                lastSaveBytes[0] = read;
             }, () -> !Files.exists(metaPath) || !Files.exists(partPath)));
         } catch (IllegalArgumentException e) {
             meta.phase = "ERROR";

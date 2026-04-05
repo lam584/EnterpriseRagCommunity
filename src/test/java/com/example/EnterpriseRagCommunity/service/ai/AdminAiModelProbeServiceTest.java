@@ -302,14 +302,13 @@ class AdminAiModelProbeServiceTest {
 
     @Test
     void helper_methods_should_cover_remaining_branches() throws Exception {
-        Method buildProbeMessages = AdminAiModelProbeService.class.getDeclaredMethod("buildProbeMessages", LlmQueueTaskType.class);
+        Method buildProbeMessages = AdminAiModelProbeService.class.getDeclaredMethod("buildProbeMessages");
         buildProbeMessages.setAccessible(true);
         @SuppressWarnings("unchecked")
-        List<ChatMessage> rerankMessages = (List<ChatMessage>) buildProbeMessages.invoke(null, LlmQueueTaskType.RERANK);
-        assertEquals(2, rerankMessages.size());
-        @SuppressWarnings("unchecked")
-        List<ChatMessage> chatMessages = (List<ChatMessage>) buildProbeMessages.invoke(null, LlmQueueTaskType.TEXT_CHAT);
-        assertEquals(2, chatMessages.size());
+        List<ChatMessage> probeMessages = (List<ChatMessage>) buildProbeMessages.invoke(null);
+        assertEquals(2, probeMessages.size());
+        assertEquals("system", probeMessages.get(0).role());
+        assertEquals("user", probeMessages.get(1).role());
 
         Method safeMessage = AdminAiModelProbeService.class.getDeclaredMethod("safeMessage", Throwable.class);
         safeMessage.setAccessible(true);

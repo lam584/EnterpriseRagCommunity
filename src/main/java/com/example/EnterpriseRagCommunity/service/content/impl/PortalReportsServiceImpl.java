@@ -77,8 +77,12 @@ public class PortalReportsServiceImpl implements PortalReportsService {
 
     private final ModerationLlmAutoRunner moderationLlmAutoRunner;
 
-    @Autowired(required = false)
     private ModerationAutoKickService moderationAutoKickService;
+
+    @Autowired(required = false)
+    void setModerationAutoKickService(ModerationAutoKickService moderationAutoKickService) {
+        this.moderationAutoKickService = moderationAutoKickService;
+    }
 
     @Override
     @Transactional

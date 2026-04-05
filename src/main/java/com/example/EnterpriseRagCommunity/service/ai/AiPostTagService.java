@@ -214,21 +214,20 @@ public class AiPostTagService {
     }
 
     private static String extractJsonPayload(String assistantText) {
-        String json = assistantText;
-        int lObj = json.indexOf('{');
-        int rObj = json.lastIndexOf('}');
-        int lArr = json.indexOf('[');
-        int rArr = json.lastIndexOf(']');
+        int lObj = assistantText.indexOf('{');
+        int rObj = assistantText.lastIndexOf('}');
+        int lArr = assistantText.indexOf('[');
+        int rArr = assistantText.lastIndexOf(']');
         if ((lObj >= 0 && rObj <= lObj) || (lArr >= 0 && rArr <= lArr)) {
             throw new IllegalArgumentException("AI 输出包含不完整的 JSON 片段，请重试");
         }
         if (lObj >= 0 && (lArr < 0 || lObj < lArr)) {
-            return json.substring(lObj, rObj + 1);
+            return assistantText.substring(lObj, rObj + 1);
         }
         if (lArr >= 0) {
-            return json.substring(lArr, rArr + 1);
+            return assistantText.substring(lArr, rArr + 1);
         }
-        return json;
+        return assistantText;
     }
 
     private static String buildExcerpt(String content) {

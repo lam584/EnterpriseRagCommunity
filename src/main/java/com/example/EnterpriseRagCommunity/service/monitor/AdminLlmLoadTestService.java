@@ -140,13 +140,11 @@ public class AdminLlmLoadTestService {
         return st.toStatus();
     }
 
-    public ResponseEntity<StreamingResponseBody> export(String runId, String format) {
+    public ResponseEntity<StreamingResponseBody> export(String runId, boolean csv) {
         String safeRunId = safeRunId(runId);
         if (safeRunId == null) {
             return ResponseEntity.badRequest().build();
         }
-        String f = (format == null ? "json" : format.trim().toLowerCase(Locale.ROOT));
-        boolean csv = "csv".equals(f);
 
         boolean hasAny = llmLoadTestRunDetailRepository.existsByRunId(safeRunId);
         if (!hasAny && !llmLoadTestRunHistoryRepository.existsById(safeRunId)) {

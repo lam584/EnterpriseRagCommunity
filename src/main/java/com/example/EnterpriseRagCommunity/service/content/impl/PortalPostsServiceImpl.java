@@ -51,7 +51,6 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
     private final PostViewsDailyRepository postViewsDailyRepository;
 
-    @Autowired(required = false)
     private HotScoresRepository hotScoresRepository;
 
     private final ReactionsRepository reactionsRepository;
@@ -65,6 +64,11 @@ public class PortalPostsServiceImpl implements PortalPostsService {
     private final BoardAccessControlService boardAccessControlService;
 
     private static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
+
+    @Autowired(required = false)
+    void setHotScoresRepository(HotScoresRepository hotScoresRepository) {
+        this.hotScoresRepository = hotScoresRepository;
+    }
 
     private static PostDetailDTO toBaseDto(PostsEntity e) {
         PostDetailDTO dto = new PostDetailDTO();

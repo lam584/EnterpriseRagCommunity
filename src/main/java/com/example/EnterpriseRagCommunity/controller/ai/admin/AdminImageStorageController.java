@@ -61,7 +61,7 @@ public class AdminImageStorageController {
     @PostMapping("/test-upload")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_ai_image_storage','write'))")
     public Map<String, Object> testUpload(@RequestBody TestUploadRequest req) {
-        String localPath = sanitizeLocalPath(req.localPath());
+        LlmImageUploadService.ValidatedLocalPath localPath = sanitizeLocalPath(req.localPath());
         if (localPath == null) {
             return Map.of("success", false, "error", "localPath 不能为空");
         }
@@ -89,7 +89,7 @@ public class AdminImageStorageController {
 
     public record TestUploadRequest(String localPath, String mimeType, String modelName) {}
 
-    private static String sanitizeLocalPath(String raw) {
+    private static LlmImageUploadService.ValidatedLocalPath sanitizeLocalPath(String raw) {
         if (raw == null) return null;
         String p = raw.trim();
         if (p.isBlank()) return null;
@@ -98,7 +98,7 @@ public class AdminImageStorageController {
         if (normalized.contains("..") || normalized.contains("//")) return null;
         if (normalized.startsWith("/") || normalized.matches("^[A-Za-z]:/.*") || normalized.contains("://")) return null;
         if (!(normalized.startsWith("uploads/") || normalized.startsWith("_resumable/") || normalized.startsWith("202"))) return null;
-        return normalized;
+        return new LlmImageUploadService.ValidatedLocalPath(normalized);
     }
 
 }

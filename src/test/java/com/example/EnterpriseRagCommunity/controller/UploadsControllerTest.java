@@ -140,6 +140,15 @@ class UploadsControllerTest {
     }
 
     @Test
+    void uploadResumableChunk_shouldReturn400_whenRequiredHeaderMissing() throws Exception {
+        mockMvc.perform(put("/api/uploads/resumable/u1/chunk")
+                        .header("X-Upload-Offset", "0")
+                        .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                        .content("0123456789".getBytes()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void completeResumable_shouldReturn200() throws Exception {
         UploadResultDTO out = new UploadResultDTO();
         out.setId(9L);
@@ -158,4 +167,3 @@ class UploadsControllerTest {
                 .andExpect(status().isOk());
     }
 }
-

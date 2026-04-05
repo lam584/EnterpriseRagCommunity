@@ -346,12 +346,7 @@ public class FileAssetExtractionAsyncService {
             meta.put("archiveExtractedImages", images);
             meta.put("imagesExtractionMode", "ARCHIVE_INNER_FILES");
 
-            archiveMeta.put("maxDepthSeen", c.maxDepthSeen);
-            archiveMeta.put("entriesSeen", c.entriesSeen);
-            archiveMeta.put("filesParsed", c.filesParsed);
-            archiveMeta.put("filesSkipped", c.filesSkipped);
-            archiveMeta.put("pathTraversalDroppedCount", c.pathTraversalDroppedCount);
-            archiveMeta.put("totalBytesRead", c.totalBytesRead);
+            putArchiveCounters(archiveMeta, c);
             if (c.truncatedReason != null) {
                 archiveMeta.put("truncated", true);
                 archiveMeta.put("truncatedReason", c.truncatedReason);
@@ -360,12 +355,7 @@ public class FileAssetExtractionAsyncService {
             }
             return truncate(out.toString().trim(), maxChars);
         } catch (ArchiveNestingTooDeepException deep) {
-            archiveMeta.put("maxDepthSeen", c.maxDepthSeen);
-            archiveMeta.put("entriesSeen", c.entriesSeen);
-            archiveMeta.put("filesParsed", c.filesParsed);
-            archiveMeta.put("filesSkipped", c.filesSkipped);
-            archiveMeta.put("pathTraversalDroppedCount", c.pathTraversalDroppedCount);
-            archiveMeta.put("totalBytesRead", c.totalBytesRead);
+            putArchiveCounters(archiveMeta, c);
             archiveMeta.put("hardFailReason", "ARCHIVE_NESTING_TOO_DEEP");
             throw new HardFailException("ARCHIVE_NESTING_TOO_DEEP", deep);
         } finally {
@@ -585,92 +575,10 @@ public class FileAssetExtractionAsyncService {
             long startNs,
             List<Map<String, Object>> files
     ) throws Exception {
-        c.maxDepthSeen = Math.max(c.maxDepthSeen, depth);
-        archiveMeta.putIfAbsent("archiveType", "7z");
-        try (SeekableByteChannel ch = Files.newByteChannel(sevenZPath); SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
-            SevenZArchiveEntry entry;
-            byte[] buf = new byte[8192];
-            while ((entry = sevenZ.getNextEntry()) != null) {
-                if (exceededArchiveBudget(c, startNs)) {
-                    c.truncatedReason = c.truncatedReason == null ? "TIME_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                c.entriesSeen++;
-                if (c.entriesSeen > archiveMaxEntries) {
-                    c.truncatedReason = c.truncatedReason == null ? "ENTRY_COUNT_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                if (entry.isDirectory()) continue;
-                String name = entry.getName();
-                if (name == null || name.isBlank()) {
-                    drain7zEntry(sevenZ, c, startNs);
-                    continue;
-                }
-                String norm = name.trim();
-                if (isPathTraversal(norm)) {
-                    c.pathTraversalDroppedCount++;
-                    drain7zEntry(sevenZ, c, startNs);
-                    continue;
-                }
-                Path target = safeResolveUnder(outDir, norm);
-                if (target == null) {
-                    c.pathTraversalDroppedCount++;
-                    drain7zEntry(sevenZ, c, startNs);
-                    continue;
-                }
-                Files.createDirectories(target.getParent());
-                long kept = 0L;
-                boolean truncated = false;
-                try (OutputStream os = Files.newOutputStream(target)) {
-                    while (true) {
-                        if (exceededArchiveBudget(c, startNs)) {
-                            truncated = true;
-                            break;
-                        }
-                        int n = sevenZ.read(buf);
-                        if (n < 0) break;
-                        c.totalBytesRead += n;
-                        if (c.totalBytesRead > archiveMaxTotalBytes) {
-                            truncated = true;
-                            break;
-                        }
-                        if (kept < archiveMaxEntryBytes) {
-                            long can = Math.min(n, archiveMaxEntryBytes - kept);
-                            if (can > 0) {
-                                os.write(buf, 0, (int) can);
-                                kept += can;
-                            }
-                            if (can < n) truncated = true;
-                        } else {
-                            truncated = true;
-                        }
-                    }
-                }
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("path", virtualPrefix + norm);
-                item.put("depth", depth);
-                String ext = extLowerOrNull(norm);
-                item.put("ext", ext);
-                item.put("sizeBytes", kept);
-                item.put("localPath", target.toString());
-                item.put("extractionTruncated", truncated);
-                files.add(item);
-
-                if (c.totalBytesRead > archiveMaxTotalBytes) {
-                    c.truncatedReason = c.truncatedReason == null ? "TOTAL_BYTES_LIMIT" : c.truncatedReason;
-                    break;
-                }
-
-                if (truncated) continue;
-                if (isArchiveExt(ext)) {
-                    if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
-                    Path subDir = target.getParent().resolve(target.getFileName().toString() + "__unpacked").normalize();
-                    if (!subDir.startsWith(outDir)) subDir = outDir.resolve("__unpacked_" + UUID.randomUUID()).normalize();
-                    Files.createDirectories(subDir);
-                    expandArchiveToDisk(target, norm, ext, virtualPrefix + norm + "!/", depth + 1, subDir, archiveMeta, c, startNs, files);
-                }
-            }
-        }
+        withSevenZPath(sevenZPath, sevenZ -> {
+            expandOpenedSevenZToDisk(sevenZ, virtualPrefix, depth, outDir, archiveMeta, c, startNs, files);
+            return null;
+        });
     }
 
     private void expand7zBytesToDisk(
@@ -684,92 +592,10 @@ public class FileAssetExtractionAsyncService {
             List<Map<String, Object>> files
     ) throws Exception {
         if (bytes == null || bytes.length == 0) return;
-        c.maxDepthSeen = Math.max(c.maxDepthSeen, depth);
-        archiveMeta.putIfAbsent("archiveType", "7z");
-        try (SeekableInMemoryByteChannel ch = new SeekableInMemoryByteChannel(bytes); SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
-            SevenZArchiveEntry entry;
-            byte[] buf = new byte[8192];
-            while ((entry = sevenZ.getNextEntry()) != null) {
-                if (exceededArchiveBudget(c, startNs)) {
-                    c.truncatedReason = c.truncatedReason == null ? "TIME_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                c.entriesSeen++;
-                if (c.entriesSeen > archiveMaxEntries) {
-                    c.truncatedReason = c.truncatedReason == null ? "ENTRY_COUNT_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                if (entry.isDirectory()) continue;
-                String name = entry.getName();
-                if (name == null || name.isBlank()) {
-                    drain7zEntry(sevenZ, c, startNs);
-                    continue;
-                }
-                String norm = name.trim();
-                if (isPathTraversal(norm)) {
-                    c.pathTraversalDroppedCount++;
-                    drain7zEntry(sevenZ, c, startNs);
-                    continue;
-                }
-                Path target = safeResolveUnder(outDir, norm);
-                if (target == null) {
-                    c.pathTraversalDroppedCount++;
-                    drain7zEntry(sevenZ, c, startNs);
-                    continue;
-                }
-                Files.createDirectories(target.getParent());
-                long kept = 0L;
-                boolean truncated = false;
-                try (OutputStream os = Files.newOutputStream(target)) {
-                    while (true) {
-                        if (exceededArchiveBudget(c, startNs)) {
-                            truncated = true;
-                            break;
-                        }
-                        int n = sevenZ.read(buf);
-                        if (n < 0) break;
-                        c.totalBytesRead += n;
-                        if (c.totalBytesRead > archiveMaxTotalBytes) {
-                            truncated = true;
-                            break;
-                        }
-                        if (kept < archiveMaxEntryBytes) {
-                            long can = Math.min(n, archiveMaxEntryBytes - kept);
-                            if (can > 0) {
-                                os.write(buf, 0, (int) can);
-                                kept += can;
-                            }
-                            if (can < n) truncated = true;
-                        } else {
-                            truncated = true;
-                        }
-                    }
-                }
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("path", virtualPrefix + norm);
-                item.put("depth", depth);
-                String ext = extLowerOrNull(norm);
-                item.put("ext", ext);
-                item.put("sizeBytes", kept);
-                item.put("localPath", target.toString());
-                item.put("extractionTruncated", truncated);
-                files.add(item);
-
-                if (c.totalBytesRead > archiveMaxTotalBytes) {
-                    c.truncatedReason = c.truncatedReason == null ? "TOTAL_BYTES_LIMIT" : c.truncatedReason;
-                    break;
-                }
-
-                if (truncated) continue;
-                if (isArchiveExt(ext)) {
-                    if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
-                    Path subDir = target.getParent().resolve(target.getFileName().toString() + "__unpacked").normalize();
-                    if (!subDir.startsWith(outDir)) subDir = outDir.resolve("__unpacked_" + UUID.randomUUID()).normalize();
-                    Files.createDirectories(subDir);
-                    expandArchiveToDisk(target, norm, ext, virtualPrefix + norm + "!/", depth + 1, subDir, archiveMeta, c, startNs, files);
-                }
-            }
-        }
+        withSevenZBytes(bytes, sevenZ -> {
+            expandOpenedSevenZToDisk(sevenZ, virtualPrefix, depth, outDir, archiveMeta, c, startNs, files);
+            return null;
+        });
     }
 
     private static Path safeResolveUnder(Path root, String rel) {
@@ -972,90 +798,7 @@ public class FileAssetExtractionAsyncService {
             ArchiveCounters c,
             long startNs
     ) throws Exception {
-        c.maxDepthSeen = Math.max(c.maxDepthSeen, depth);
-        archiveMeta.putIfAbsent("archiveType", "7z");
-
-        StringBuilder out = new StringBuilder();
-        try (SeekableByteChannel ch = Files.newByteChannel(path); SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
-            SevenZArchiveEntry entry;
-            while ((entry = sevenZ.getNextEntry()) != null) {
-                if (exceededArchiveBudget(c, startNs)) {
-                    c.truncatedReason = c.truncatedReason == null ? "TIME_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                c.entriesSeen++;
-                if (c.entriesSeen > archiveMaxEntries) {
-                    c.truncatedReason = c.truncatedReason == null ? "ENTRY_COUNT_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                if (entry.isDirectory()) continue;
-                String name = entry.getName();
-                if (name == null || name.isBlank()) {
-                    c.filesSkipped++;
-                    continue;
-                }
-                String norm = name.trim();
-                if (isPathTraversal(norm)) {
-                    c.pathTraversalDroppedCount++;
-                    c.filesSkipped++;
-                    drain7zEntry(sevenZ, c, startNs);
-                    continue;
-                }
-
-                byte[] data = read7zEntryLimited(sevenZ, c, startNs);
-                if (data.length == 0) {
-                    c.filesSkipped++;
-                    continue;
-                }
-
-                String ext = extLowerOrNull(norm);
-                boolean nestedArchive = ext != null && !ext.isBlank()
-                        ? isArchiveExt(ext)
-                        : looksLikeArchiveBytes(data);
-                try {
-                    if (nestedArchive) {
-                        if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
-                        String inner;
-                        if ("7z".equalsIgnoreCase(ext) || looksLike7zBytes(data)) {
-                            inner = extract7zFromBytes(data, norm, depth + 1, maxChars, archiveMeta, c, startNs);
-                        } else {
-                            inner = extractArchiveFromStream(new ByteArrayInputStream(data), norm, depth + 1, maxChars, archiveMeta, c, startNs);
-                        }
-                        if (inner != null && !inner.isBlank()) {
-                            c.filesParsed++;
-                            appendArchiveEntryBlock(out, norm, inner);
-                        } else {
-                            c.filesSkipped++;
-                        }
-                    } else {
-                        String txt = extractEntryBytesAsText(norm, ext, data, maxChars);
-                        if (txt != null && !txt.isBlank()) {
-                            c.filesParsed++;
-                            appendArchiveEntryBlock(out, norm, txt);
-                            recordArchiveParsedEntry(archiveMeta, norm, depth, txt);
-                        } else {
-                            c.filesSkipped++;
-                        }
-                    }
-                } catch (Exception ex) {
-                    if (ex instanceof ArchiveNestingTooDeepException deep) throw deep;
-                    if (ex instanceof HardFailException hf) throw hf;
-                    c.filesSkipped++;
-                    recordArchiveEntryError(archiveMeta, norm, ex);
-                }
-
-                if (out.length() >= maxChars) {
-                    c.truncatedReason = c.truncatedReason == null ? "TEXT_CHAR_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                if (c.totalBytesRead > archiveMaxTotalBytes) {
-                    c.truncatedReason = c.truncatedReason == null ? "TOTAL_BYTES_LIMIT" : c.truncatedReason;
-                    break;
-                }
-            }
-        }
-        String merged = out.toString().trim();
-        return truncate(merged, maxChars);
+        return withSevenZPath(path, sevenZ -> extractOpenedSevenZText(sevenZ, depth, maxChars, archiveMeta, c, startNs));
     }
 
     private String extract7zFromBytes(
@@ -1068,111 +811,224 @@ public class FileAssetExtractionAsyncService {
             long startNs
     ) throws Exception {
         if (bytes == null || bytes.length == 0) return "";
+        return withSevenZBytes(bytes, sevenZ -> extractOpenedSevenZText(sevenZ, depth, maxChars, archiveMeta, c, startNs));
+    }
+
+    private void expandOpenedSevenZToDisk(
+            SevenZFile sevenZ,
+            String virtualPrefix,
+            int depth,
+            Path outDir,
+            Map<String, Object> archiveMeta,
+            ArchiveCounters c,
+            long startNs,
+            List<Map<String, Object>> files
+    ) throws Exception {
         c.maxDepthSeen = Math.max(c.maxDepthSeen, depth);
         archiveMeta.putIfAbsent("archiveType", "7z");
+        SevenZArchiveEntry entry;
+        byte[] buf = new byte[8192];
+        while ((entry = sevenZ.getNextEntry()) != null) {
+            if (exceededArchiveBudget(c, startNs)) {
+                c.truncatedReason = keepReasonOrDefault(c.truncatedReason, "TIME_LIMIT");
+                break;
+            }
+            c.entriesSeen++;
+            if (c.entriesSeen > archiveMaxEntries) {
+                c.truncatedReason = keepReasonOrDefault(c.truncatedReason, "ENTRY_COUNT_LIMIT");
+                break;
+            }
+            if (entry.isDirectory()) continue;
+            String norm = normalizeSevenZEntryName(entry, sevenZ, c, startNs, false);
+            if (norm == null) continue;
+            Path target = safeResolveUnder(outDir, norm);
+            if (target == null) {
+                c.pathTraversalDroppedCount++;
+                drain7zEntry(sevenZ, c, startNs);
+                continue;
+            }
+            Files.createDirectories(target.getParent());
+            SevenZDiskWriteResult result = writeSevenZEntryToDisk(sevenZ, target, c, startNs, buf);
+            String ext = extLowerOrNull(norm);
+            files.add(buildArchiveDiskItem(virtualPrefix, depth, norm, ext, target, result));
 
+            if (markTotalBytesLimitIfExceeded(c, archiveMaxTotalBytes)) break;
+            if (result.truncated()) continue;
+            if (isArchiveExt(ext)) {
+                if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
+                Path subDir = safeNestedUnpackDir(target, outDir);
+                Files.createDirectories(subDir);
+                expandArchiveToDisk(target, norm, ext, virtualPrefix + norm + "!/", depth + 1, subDir, archiveMeta, c, startNs, files);
+            }
+        }
+    }
+
+    private String extractOpenedSevenZText(
+            SevenZFile sevenZ,
+            int depth,
+            int maxChars,
+            Map<String, Object> archiveMeta,
+            ArchiveCounters c,
+            long startNs
+    ) throws Exception {
+        c.maxDepthSeen = Math.max(c.maxDepthSeen, depth);
+        archiveMeta.putIfAbsent("archiveType", "7z");
         StringBuilder out = new StringBuilder();
-        try (SeekableInMemoryByteChannel ch = new SeekableInMemoryByteChannel(bytes); SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
-            SevenZArchiveEntry entry;
-            while ((entry = sevenZ.getNextEntry()) != null) {
-                if (exceededArchiveBudget(c, startNs)) {
-                    c.truncatedReason = c.truncatedReason == null ? "TIME_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                c.entriesSeen++;
-                if (c.entriesSeen > archiveMaxEntries) {
-                    c.truncatedReason = c.truncatedReason == null ? "ENTRY_COUNT_LIMIT" : c.truncatedReason;
-                    break;
-                }
-                if (entry.isDirectory()) continue;
-                String name = entry.getName();
-                if (name == null || name.isBlank()) {
-                    c.filesSkipped++;
-                    continue;
-                }
-                String norm = name.trim();
-                if (isPathTraversal(norm)) {
-                    c.pathTraversalDroppedCount++;
-                    c.filesSkipped++;
-                    drain7zEntry(sevenZ, c, startNs);
-                    continue;
-                }
+        SevenZArchiveEntry entry;
+        while ((entry = sevenZ.getNextEntry()) != null) {
+            if (exceededArchiveBudget(c, startNs)) {
+                c.truncatedReason = keepReasonOrDefault(c.truncatedReason, "TIME_LIMIT");
+                break;
+            }
+            c.entriesSeen++;
+            if (c.entriesSeen > archiveMaxEntries) {
+                c.truncatedReason = keepReasonOrDefault(c.truncatedReason, "ENTRY_COUNT_LIMIT");
+                break;
+            }
+            if (entry.isDirectory()) continue;
+            String norm = normalizeSevenZEntryName(entry, sevenZ, c, startNs, true);
+            if (norm == null) continue;
 
-                byte[] data = read7zEntryLimited(sevenZ, c, startNs);
-                if (data.length == 0) {
-                    c.filesSkipped++;
-                    continue;
-                }
+            byte[] data = read7zEntryLimited(sevenZ, c, startNs);
+            if (data.length == 0) {
+                c.filesSkipped++;
+                continue;
+            }
 
-                String ext = extLowerOrNull(norm);
-                boolean nestedArchive = ext != null && !ext.isBlank()
-                        ? isArchiveExt(ext)
-                        : looksLikeArchiveBytes(data);
-                try {
-                    if (nestedArchive) {
-                        if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
-                        String inner;
-                        if ("7z".equalsIgnoreCase(ext) || looksLike7zBytes(data)) {
-                            inner = extract7zFromBytes(data, norm, depth + 1, maxChars, archiveMeta, c, startNs);
-                        } else {
-                            inner = extractArchiveFromStream(new ByteArrayInputStream(data), norm, depth + 1, maxChars, archiveMeta, c, startNs);
-                        }
-                        if (inner != null && !inner.isBlank()) {
-                            c.filesParsed++;
-                            appendArchiveEntryBlock(out, norm, inner);
-                        } else {
-                            c.filesSkipped++;
-                        }
+            String ext = extLowerOrNull(norm);
+            boolean nestedArchive = ext != null && !ext.isBlank() ? isArchiveExt(ext) : looksLikeArchiveBytes(data);
+            try {
+                if (nestedArchive) {
+                    if (depth + 1 >= archiveMaxDepth) throw new ArchiveNestingTooDeepException();
+                    String inner = ("7z".equalsIgnoreCase(ext) || looksLike7zBytes(data))
+                            ? extract7zFromBytes(data, norm, depth + 1, maxChars, archiveMeta, c, startNs)
+                            : extractArchiveFromStream(new ByteArrayInputStream(data), norm, depth + 1, maxChars, archiveMeta, c, startNs);
+                    if (inner != null && !inner.isBlank()) {
+                        c.filesParsed++;
+                        appendArchiveEntryBlock(out, norm, inner);
                     } else {
-                        String txt = extractEntryBytesAsText(norm, ext, data, maxChars);
-                        if (txt != null && !txt.isBlank()) {
-                            c.filesParsed++;
-                            appendArchiveEntryBlock(out, norm, txt);
-                            recordArchiveParsedEntry(archiveMeta, norm, depth, txt);
-                        } else {
-                            c.filesSkipped++;
-                        }
+                        c.filesSkipped++;
                     }
-                } catch (Exception ex) {
-                    if (ex instanceof ArchiveNestingTooDeepException deep) throw deep;
-                    if (ex instanceof HardFailException hf) throw hf;
-                    c.filesSkipped++;
-                    recordArchiveEntryError(archiveMeta, norm, ex);
+                } else {
+                    String txt = extractEntryBytesAsText(norm, ext, data, maxChars);
+                    if (txt != null && !txt.isBlank()) {
+                        c.filesParsed++;
+                        appendArchiveEntryBlock(out, norm, txt);
+                        recordArchiveParsedEntry(archiveMeta, norm, depth, txt);
+                    } else {
+                        c.filesSkipped++;
+                    }
                 }
+            } catch (Exception ex) {
+                if (ex instanceof ArchiveNestingTooDeepException deep) throw deep;
+                if (ex instanceof HardFailException hf) throw hf;
+                c.filesSkipped++;
+                recordArchiveEntryError(archiveMeta, norm, ex);
+            }
 
-                if (out.length() >= maxChars) {
-                    c.truncatedReason = c.truncatedReason == null ? "TEXT_CHAR_LIMIT" : c.truncatedReason;
+            if (out.length() >= maxChars) {
+                c.truncatedReason = keepReasonOrDefault(c.truncatedReason, "TEXT_CHAR_LIMIT");
+                break;
+            }
+            if (markTotalBytesLimitIfExceeded(c, archiveMaxTotalBytes)) break;
+        }
+        return truncate(out.toString().trim(), maxChars);
+    }
+
+    private String normalizeSevenZEntryName(
+            SevenZArchiveEntry entry,
+            SevenZFile sevenZ,
+            ArchiveCounters c,
+            long startNs,
+            boolean countSkippedOnBlank
+    ) throws Exception {
+        String name = entry == null ? null : entry.getName();
+        if (name == null || name.isBlank()) {
+            if (countSkippedOnBlank) c.filesSkipped++;
+            else drain7zEntry(sevenZ, c, startNs);
+            return null;
+        }
+        String norm = name.trim();
+        if (isPathTraversal(norm)) {
+            c.pathTraversalDroppedCount++;
+            c.filesSkipped++;
+            drain7zEntry(sevenZ, c, startNs);
+            return null;
+        }
+        return norm;
+    }
+
+    private SevenZDiskWriteResult writeSevenZEntryToDisk(
+            SevenZFile sevenZ,
+            Path target,
+            ArchiveCounters c,
+            long startNs,
+            byte[] buf
+    ) throws Exception {
+        long kept = 0L;
+        boolean truncated = false;
+        try (OutputStream os = Files.newOutputStream(target)) {
+            while (true) {
+                if (exceededArchiveBudget(c, startNs)) {
+                    truncated = true;
                     break;
                 }
+                int n = sevenZ.read(buf);
+                if (n < 0) break;
+                c.totalBytesRead += n;
                 if (c.totalBytesRead > archiveMaxTotalBytes) {
-                    c.truncatedReason = c.truncatedReason == null ? "TOTAL_BYTES_LIMIT" : c.truncatedReason;
+                    truncated = true;
                     break;
+                }
+                if (kept < archiveMaxEntryBytes) {
+                    long can = Math.min(n, archiveMaxEntryBytes - kept);
+                    if (can > 0) {
+                        os.write(buf, 0, (int) can);
+                        kept += can;
+                    }
+                    if (can < n) truncated = true;
+                } else {
+                    truncated = true;
                 }
             }
         }
-        String merged = out.toString().trim();
-        return truncate(merged, maxChars);
+        return new SevenZDiskWriteResult(kept, truncated);
+    }
+
+    private static Map<String, Object> buildArchiveDiskItem(
+            String virtualPrefix,
+            int depth,
+            String norm,
+            String ext,
+            Path target,
+            SevenZDiskWriteResult result
+    ) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("path", virtualPrefix + norm);
+        item.put("depth", depth);
+        item.put("ext", ext);
+        item.put("sizeBytes", result.kept());
+        item.put("localPath", target.toString());
+        item.put("extractionTruncated", result.truncated());
+        return item;
+    }
+
+    private <T> T withSevenZPath(Path path, SevenZOperation<T> operation) throws Exception {
+        try (SeekableByteChannel ch = Files.newByteChannel(path);
+             SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
+            return operation.apply(sevenZ);
+        }
+    }
+
+    private <T> T withSevenZBytes(byte[] bytes, SevenZOperation<T> operation) throws Exception {
+        try (SeekableInMemoryByteChannel ch = new SeekableInMemoryByteChannel(bytes);
+             SevenZFile sevenZ = SevenZFile.builder().setSeekableByteChannel(ch).get()) {
+            return operation.apply(sevenZ);
+        }
     }
 
     private byte[] read7zEntryLimited(SevenZFile sevenZ, ArchiveCounters c, long startNs) throws Exception {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        byte[] buf = new byte[8192];
-        long kept = 0L;
-        while (true) {
-            if (exceededArchiveBudget(c, startNs)) break;
-            int n = sevenZ.read(buf);
-            if (n < 0) break;
-            c.totalBytesRead += n;
-            if (c.totalBytesRead > archiveMaxTotalBytes) break;
-            if (kept < archiveMaxEntryBytes) {
-                long can = Math.min(n, archiveMaxEntryBytes - kept);
-                if (can > 0) {
-                    baos.write(buf, 0, (int) can);
-                    kept += can;
-                }
-            }
-        }
-        return baos.toByteArray();
+        return readEntryLimited(sevenZ::read, c, startNs);
     }
 
     private void drain7zEntry(SevenZFile sevenZ, ArchiveCounters c, long startNs) throws Exception {
@@ -1202,12 +1058,16 @@ public class FileAssetExtractionAsyncService {
     }
 
     private byte[] readEntryLimited(InputStream in, ArchiveCounters c, long startNs) throws Exception {
+        return readEntryLimited(in::read, c, startNs);
+    }
+
+    private byte[] readEntryLimited(EntryReader reader, ArchiveCounters c, long startNs) throws Exception {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         byte[] buf = new byte[8192];
         long kept = 0L;
         while (true) {
             if (exceededArchiveBudget(c, startNs)) break;
-            int n = in.read(buf);
+            int n = reader.read(buf);
             if (n < 0) break;
             c.totalBytesRead += n;
             if (c.totalBytesRead > archiveMaxTotalBytes) break;
@@ -1220,6 +1080,28 @@ public class FileAssetExtractionAsyncService {
             }
         }
         return baos.toByteArray();
+    }
+
+    private static void putArchiveCounters(Map<String, Object> archiveMeta, ArchiveCounters c) {
+        archiveMeta.put("maxDepthSeen", c.maxDepthSeen);
+        archiveMeta.put("entriesSeen", c.entriesSeen);
+        archiveMeta.put("filesParsed", c.filesParsed);
+        archiveMeta.put("filesSkipped", c.filesSkipped);
+        archiveMeta.put("pathTraversalDroppedCount", c.pathTraversalDroppedCount);
+        archiveMeta.put("totalBytesRead", c.totalBytesRead);
+    }
+
+    @FunctionalInterface
+    private interface EntryReader {
+        int read(byte[] buffer) throws Exception;
+    }
+
+    @FunctionalInterface
+    private interface SevenZOperation<T> {
+        T apply(SevenZFile sevenZ) throws Exception;
+    }
+
+    private record SevenZDiskWriteResult(long kept, boolean truncated) {
     }
 
     private void drainEntry(InputStream in, ArchiveCounters c, long startNs) throws Exception {

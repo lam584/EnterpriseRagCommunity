@@ -11,6 +11,14 @@ import com.example.EnterpriseRagCommunity.dto.retrieval.CitationConfigDTO;
 
 final class AiChatCitationSupport {
 
+    private static final class CodeScanState {
+        private boolean inFence;
+        private boolean inInlineCode;
+    }
+
+    private record CitationMarker(int value, int endIndex) {
+    }
+
     private AiChatCitationSupport() {
     }
 
@@ -127,26 +135,18 @@ final class AiChatCitationSupport {
         if (text == null || text.isEmpty()) return text;
 
         StringBuilder out = new StringBuilder(text.length());
-        boolean inFence = false;
-        boolean inInlineCode = false;
+        CodeScanState state = new CodeScanState();
         int n = text.length();
 
         for (int i = 0; i < n; i++) {
             char c = text.charAt(i);
 
             if (c == '`') {
-                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
-                    inFence = !inFence;
-                    out.append("```");
-                    i += 2;
-                    continue;
-                }
-                if (!inFence) inInlineCode = !inInlineCode;
-                out.append(c);
+                i = advanceCodeState(text, i, state, out);
                 continue;
             }
 
-            if (inFence || inInlineCode) {
+            if (isInsideCode(state)) {
                 out.append(c);
                 continue;
             }
@@ -156,29 +156,13 @@ final class AiChatCitationSupport {
                 continue;
             }
 
-            int j = i + 1;
-            int value = 0;
-            int digits = 0;
-            while (j < n && digits < 3) {
-                char d = text.charAt(j);
-                if (d < '0' || d > '9') break;
-                value = value * 10 + (d - '0');
-                digits++;
-                j++;
-            }
-
-            boolean isCitation = digits > 0
-                    && j < n
-                    && text.charAt(j) == ']'
-                    && !(j + 1 < n && text.charAt(j + 1) == '(')
-                    && value > 0;
-
-            if (!isCitation) {
+            CitationMarker marker = parseCitationMarker(text, i, 0);
+            if (marker == null) {
                 out.append(c);
                 continue;
             }
 
-            i = j;
+            i = marker.endIndex();
 
             int next = i + 1;
             boolean leftWs = !out.isEmpty() && Character.isWhitespace(out.charAt(out.length() - 1));
@@ -198,41 +182,24 @@ final class AiChatCitationSupport {
         Set<Integer> out = new HashSet<>();
         if (text == null || text.isEmpty()) return out;
 
-        boolean inFence = false;
-        boolean inInlineCode = false;
+        CodeScanState state = new CodeScanState();
         int n = text.length();
 
         for (int i = 0; i < n; i++) {
             char c = text.charAt(i);
 
             if (c == '`') {
-                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
-                    inFence = !inFence;
-                    i += 2;
-                    continue;
-                }
-                if (!inFence) inInlineCode = !inInlineCode;
+                i = advanceCodeState(text, i, state, null);
                 continue;
             }
 
-            if (inFence || inInlineCode) continue;
+            if (isInsideCode(state)) continue;
             if (c != '[') continue;
 
-            int j = i + 1;
-            int value = 0;
-            int digits = 0;
-            while (j < n && digits < 3) {
-                char d = text.charAt(j);
-                if (d < '0' || d > '9') break;
-                value = value * 10 + (d - '0');
-                digits++;
-                j++;
-            }
-            if (digits == 0) continue;
-            if (j >= n || text.charAt(j) != ']') continue;
-            if (j + 1 < n && text.charAt(j + 1) == '(') continue;
-            if (value <= 0 || value > maxIndex) continue;
-            out.add(value);
+            CitationMarker marker = parseCitationMarker(text, i, maxIndex);
+            if (marker == null) continue;
+            out.add(marker.value());
+            i = marker.endIndex();
         }
 
         return out;
@@ -241,23 +208,15 @@ final class AiChatCitationSupport {
     static String normalizeCitationQuoteFormatting(String text) {
         if (text == null || text.isBlank()) return text;
         StringBuilder out = new StringBuilder(text.length());
-        boolean inFence = false;
-        boolean inInlineCode = false;
+        CodeScanState state = new CodeScanState();
         int n = text.length();
         for (int i = 0; i < n; i++) {
             char c = text.charAt(i);
             if (c == '`') {
-                if (i + 2 < n && text.charAt(i + 1) == '`' && text.charAt(i + 2) == '`') {
-                    inFence = !inFence;
-                    out.append("```");
-                    i += 2;
-                    continue;
-                }
-                if (!inFence) inInlineCode = !inInlineCode;
-                out.append(c);
+                i = advanceCodeState(text, i, state, out);
                 continue;
             }
-            if (inFence || inInlineCode) {
+            if (isInsideCode(state)) {
                 out.append(c);
                 continue;
             }
@@ -285,6 +244,49 @@ final class AiChatCitationSupport {
             i = closeIndex;
         }
         return out.toString();
+    }
+
+    private static boolean isInsideCode(CodeScanState state) {
+        return state.inFence || state.inInlineCode;
+    }
+
+    private static int advanceCodeState(String text, int index, CodeScanState state, StringBuilder out) {
+        if (isFenceDelimiter(text, index)) {
+            state.inFence = !state.inFence;
+            if (out != null) out.append("```");
+            return index + 2;
+        }
+        if (!state.inFence) {
+            state.inInlineCode = !state.inInlineCode;
+        }
+        if (out != null) out.append('`');
+        return index;
+    }
+
+    private static boolean isFenceDelimiter(String text, int index) {
+        return index + 2 < text.length()
+                && text.charAt(index + 1) == '`'
+                && text.charAt(index + 2) == '`';
+    }
+
+    private static CitationMarker parseCitationMarker(String text, int index, int maxIndex) {
+        if (text == null || index < 0 || index >= text.length() || text.charAt(index) != '[') return null;
+        int j = index + 1;
+        int value = 0;
+        int digits = 0;
+        while (j < text.length() && digits < 3) {
+            char d = text.charAt(j);
+            if (d < '0' || d > '9') break;
+            value = value * 10 + (d - '0');
+            digits++;
+            j++;
+        }
+        if (digits == 0) return null;
+        if (j >= text.length() || text.charAt(j) != ']') return null;
+        if (j + 1 < text.length() && text.charAt(j + 1) == '(') return null;
+        if (value <= 0) return null;
+        if (maxIndex > 0 && value > maxIndex) return null;
+        return new CitationMarker(value, j);
     }
 
     private static boolean isCitationQuote(char c) {
