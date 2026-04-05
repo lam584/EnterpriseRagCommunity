@@ -3,11 +3,15 @@ import type { ComponentType } from 'react';
 import { MemoryRouter, Outlet } from 'react-router-dom';
 import { vi } from 'vitest';
 
-export const { useAuthMock, useAccessMock, checkInitialSetupStatusMock } = vi.hoisted(() => ({
+const hoistedMocks = vi.hoisted(() => ({
   useAuthMock: vi.fn(),
   useAccessMock: vi.fn(),
   checkInitialSetupStatusMock: vi.fn(),
 }));
+
+export const useAuthMock = hoistedMocks.useAuthMock;
+export const useAccessMock = hoistedMocks.useAccessMock;
+export const checkInitialSetupStatusMock = hoistedMocks.checkInitialSetupStatusMock;
 
 vi.mock('./contexts/AuthContext', () => ({
   AuthProvider: ({ children }: any) => children,

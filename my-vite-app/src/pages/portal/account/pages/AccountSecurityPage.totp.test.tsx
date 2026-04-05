@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, within, cleanup, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('qrcode.react', () => {
@@ -65,7 +65,11 @@ const mockVerifyTotp = vi.mocked(verifyTotp);
 const mockVerifyTotpPassword = vi.mocked(verifyTotpPassword);
 
 async function completeEnablePrecheckFlow() {
-  fireEvent.click(screen.getByRole('button', { name: '开始启用' }));
+  const startEnableButton = await screen.findByRole('button', { name: '开始启用' });
+  await waitFor(() => {
+    expect(startEnableButton.hasAttribute('disabled')).toBe(false);
+  });
+  fireEvent.click(startEnableButton);
   fireEvent.change(await screen.findByPlaceholderText('先验证密码才能继续'), { target: { value: 'p' } });
   fireEvent.click(screen.getByRole('button', { name: '验证密码' }));
   fireEvent.change(await screen.findByPlaceholderText('启用前必填'), { target: { value: '123456' } });

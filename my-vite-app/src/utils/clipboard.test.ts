@@ -23,9 +23,14 @@ describe('clipboard', () => {
       configurable: true,
       value: { writeText },
     });
-    const execSpy = vi.spyOn(document, 'execCommand').mockReturnValue(true);
+
+    const execCommand = vi.fn().mockReturnValue(true);
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: execCommand,
+    });
 
     await expect(copyTextWithFallback('xyz')).resolves.toBe(true);
-    expect(execSpy).toHaveBeenCalledWith('copy');
+    expect(execCommand).toHaveBeenCalledWith('copy');
   });
 });
