@@ -4,11 +4,14 @@ import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AccountStatus;
 import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionTargetType;
+import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionType;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ContentFormat;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -40,6 +43,9 @@ class PostFavoritesAndBookmarksControllerTest {
 
     @Autowired
     private PostsRepository postsRepository;
+
+    @Autowired
+    private ReactionsRepository reactionsRepository;
 
     private UsersEntity ensureUser(String email) {
         return usersRepository.findByEmailAndIsDeletedFalse(email).orElseGet(() -> {
@@ -84,6 +90,7 @@ class PostFavoritesAndBookmarksControllerTest {
     @WithMockUser(username = "u", authorities = {})
     void favorite_and_bookmarks_shouldWork_withoutFavoritesTable() throws Exception {
         UsersEntity u = ensureUser("u");
+        reactionsRepository.deleteByUserIdAndTargetTypeAndType(u.getId(), ReactionTargetType.POST, ReactionType.FAVORITE);
         BoardsEntity b = createBoard();
         PostsEntity p = createPost(b.getId(), u.getId());
 

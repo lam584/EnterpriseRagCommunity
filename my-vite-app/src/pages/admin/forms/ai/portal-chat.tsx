@@ -19,6 +19,7 @@ function clampNumber(v: number, min: number, max: number): number {
 }
 
 type AssistantFormState = {
+  allowManualModelSelection: boolean;
   providerId: string;
   model: string;
   temperature: string;
@@ -33,6 +34,7 @@ type AssistantFormState = {
 };
 
 type PostComposeFormState = {
+  allowManualModelSelection: boolean;
   providerId: string;
   model: string;
   temperature: string;
@@ -52,6 +54,7 @@ type FormState = {
 function defaultForm(): FormState {
   return {
     assistant: {
+      allowManualModelSelection: true,
       providerId: '',
       model: '',
       temperature: '',
@@ -65,6 +68,7 @@ function defaultForm(): FormState {
       deepThinkSystemPromptCode: 'PORTAL_CHAT_ASSISTANT_DEEP_THINK',
     },
     postCompose: {
+      allowManualModelSelection: true,
       providerId: '',
       model: '',
       temperature: '',
@@ -84,6 +88,7 @@ function toFormState(dto?: PortalChatConfigDTO | null): FormState {
   const p = dto?.postComposeAssistant ?? null;
   return {
     assistant: {
+      allowManualModelSelection: Boolean(a?.allowManualModelSelection ?? d.assistant.allowManualModelSelection),
       providerId: String(a?.providerId ?? ''),
       model: String(a?.model ?? ''),
       temperature: a?.temperature == null ? '' : String(a.temperature),
@@ -97,6 +102,7 @@ function toFormState(dto?: PortalChatConfigDTO | null): FormState {
       deepThinkSystemPromptCode: String(a?.deepThinkSystemPromptCode ?? d.assistant.deepThinkSystemPromptCode),
     },
     postCompose: {
+      allowManualModelSelection: Boolean(p?.allowManualModelSelection ?? d.postCompose.allowManualModelSelection),
       providerId: String(p?.providerId ?? ''),
       model: String(p?.model ?? ''),
       temperature: p?.temperature == null ? '' : String(p.temperature),
@@ -168,6 +174,7 @@ function buildPayload(s: FormState): PortalChatConfigDTO {
 
   return {
     assistantChat: {
+      allowManualModelSelection: s.assistant.allowManualModelSelection,
       providerId: s.assistant.providerId.trim() ? s.assistant.providerId.trim() : null,
       model: s.assistant.model.trim() ? s.assistant.model.trim() : null,
       temperature: at === undefined ? null : clampNumber(at, 0, 2),
@@ -181,6 +188,7 @@ function buildPayload(s: FormState): PortalChatConfigDTO {
       deepThinkSystemPromptCode: s.assistant.deepThinkSystemPromptCode,
     },
     postComposeAssistant: {
+      allowManualModelSelection: s.postCompose.allowManualModelSelection,
       providerId: s.postCompose.providerId.trim() ? s.postCompose.providerId.trim() : null,
       model: s.postCompose.model.trim() ? s.postCompose.model.trim() : null,
       temperature: pt === undefined ? null : clampNumber(pt, 0, 2),
@@ -221,6 +229,7 @@ const PortalChatConfigForm: React.FC = () => {
     const c = form.postCompose;
     const d = committedForm.postCompose;
     const formChanged =
+      a.allowManualModelSelection !== b.allowManualModelSelection ||
       a.providerId !== b.providerId ||
       a.model !== b.model ||
       a.temperature !== b.temperature ||
@@ -232,6 +241,7 @@ const PortalChatConfigForm: React.FC = () => {
       a.defaultStream !== b.defaultStream ||
       a.systemPromptCode !== b.systemPromptCode ||
       a.deepThinkSystemPromptCode !== b.deepThinkSystemPromptCode ||
+      c.allowManualModelSelection !== d.allowManualModelSelection ||
       c.providerId !== d.providerId ||
       c.model !== d.model ||
       c.temperature !== d.temperature ||
@@ -485,6 +495,21 @@ const PortalChatConfigForm: React.FC = () => {
               }}
             />
 
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={form.assistant.allowManualModelSelection}
+                disabled={!isEditing}
+                onChange={(e) => {
+                  if (!isEditing) return;
+                  setForm((p) => ({ ...p, assistant: { ...p.assistant, allowManualModelSelection: e.target.checked } }));
+                  setSavedHint(null);
+                }}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              智能助手允许手动选模
+            </label>
+
             <div>
               <div className="text-sm font-medium mb-1">温度</div>
               <input
@@ -543,6 +568,9 @@ const PortalChatConfigForm: React.FC = () => {
                   setSavedHint(null);
                 }}
               />
+              <div className="mt-1 text-xs text-gray-500">
+                控制“检索候选数量”。动态上下文裁剪中的“最大条数”控制的是最终注入到提示词的条数，两者不是同一参数。
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-2">
@@ -644,6 +672,21 @@ const PortalChatConfigForm: React.FC = () => {
                 setSavedHint(null);
               }}
             />
+
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={form.postCompose.allowManualModelSelection}
+                disabled={!isEditing}
+                onChange={(e) => {
+                  if (!isEditing) return;
+                  setForm((p) => ({ ...p, postCompose: { ...p.postCompose, allowManualModelSelection: e.target.checked } }));
+                  setSavedHint(null);
+                }}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              AI 发帖助手允许手动选模
+            </label>
 
             <div>
               <div className="text-sm font-medium mb-1">温度</div>

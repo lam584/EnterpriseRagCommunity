@@ -56,34 +56,31 @@ data = [
 ]
 
 columns = [
-    '测试编号', '测试的功能模块', '测试的功能',
-    '系统初始状态', '输入', '期望的输出',
+    '测试编号', '测试的功能模块', '测试的功能', 
+    '系统初始状态', '输入', '期望的输出', 
     '实际的输出', '测试结论'
 ]
 
 df = pd.DataFrame(data, columns=columns)
 
-# 👇 核心修改：清空指定列内容（也可在创建 DataFrame 后直接赋值）
-df['实际的输出'] = ''
-df['测试结论'] = ''
-
-output_dir = r'/docs/测试'
+script_dir = os.path.dirname(os.path.abspath(__file__))
+output_dir = os.path.join(script_dir, 'temp')
 os.makedirs(output_dir, exist_ok=True)
 output_path = os.path.join(output_dir, '功能测试用例表.xlsx')
 
 with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
     df.to_excel(writer, index=False, sheet_name='系统手工功能测试')
     worksheet = writer.sheets['系统手工功能测试']
-
+    
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill('solid', fgColor="4F81BD")
-
+    
     for row in worksheet.iter_rows(min_row=1, max_row=1):
         for cell in row:
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal='center', vertical='center')
-
+            
     for col_idx, col_name in enumerate(columns, 1):
         column_letter = worksheet.cell(row=1, column=col_idx).column_letter
         if col_idx in [4, 5, 6, 7]:
@@ -92,9 +89,9 @@ with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
             worksheet.column_dimensions[column_letter].width = 25
         else:
             worksheet.column_dimensions[column_letter].width = 15
-
+            
     for row in worksheet.iter_rows(min_row=2, max_row=len(data)+1):
         for cell in row:
             cell.alignment = Alignment(wrap_text=True, vertical='top')
 
-print(f'合并后的测试用例文件生成完毕: {output_path}')
+print(f'合并后的测试用例文件生成完毕: {os.path.abspath(output_path)}')

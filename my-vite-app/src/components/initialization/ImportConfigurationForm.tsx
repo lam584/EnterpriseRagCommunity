@@ -193,7 +193,7 @@ const ImportConfigurationForm: React.FC = () => {
             setLoading(true);
             try {
                 if (!esConnected) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                     
                     const res = await testEsConnection(configs);
                     if (res.success) {
                         setEsConnected(true);
@@ -233,7 +233,7 @@ const ImportConfigurationForm: React.FC = () => {
                 setEsConnected(false);
                 setError(getFriendlyErrorMessage(res.message));
             }
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
         } catch (e: any) {
             setEsConnected(false);
             setError(getFriendlyErrorMessage(e.message));
@@ -277,7 +277,7 @@ const ImportConfigurationForm: React.FC = () => {
 
             toast.success("设置完成！");
             navigate('/login', { state: { setupJustCompleted: true } });
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
         } catch (e: any) {
             const msg = getFriendlyErrorMessage(e.message);
             setError(msg);

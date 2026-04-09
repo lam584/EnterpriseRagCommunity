@@ -5,9 +5,11 @@ import com.example.EnterpriseRagCommunity.dto.ai.AiChatOptionsDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiChatProviderOptionDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiProviderDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.AiProvidersConfigDTO;
+import com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO;
 import com.example.EnterpriseRagCommunity.entity.ai.LlmModelEntity;
 import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
-import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,12 +20,28 @@ import java.util.Locale;
 import java.util.Set;
 
 @Service
-@RequiredArgsConstructor
 public class AiChatOptionsService {
     private static final String ENV_DEFAULT = "default";
 
     private final AiProvidersConfigService aiProvidersConfigService;
     private final LlmModelRepository llmModelRepository;
+    private final PortalChatConfigService portalChatConfigService;
+
+    @Autowired
+    public AiChatOptionsService(
+        AiProvidersConfigService aiProvidersConfigService,
+        LlmModelRepository llmModelRepository,
+        PortalChatConfigService portalChatConfigService
+    ) {
+        this.aiProvidersConfigService = aiProvidersConfigService;
+        this.llmModelRepository = llmModelRepository;
+        this.portalChatConfigService = portalChatConfigService;
+    }
+
+    // Keep backward compatibility for unit tests that instantiate this service directly.
+    public AiChatOptionsService(AiProvidersConfigService aiProvidersConfigService, LlmModelRepository llmModelRepository) {
+        this(aiProvidersConfigService, llmModelRepository, null);
+    }
 
     @Transactional(readOnly = true)
     public AiChatOptionsDTO getOptions() {
@@ -68,9 +86,22 @@ public class AiChatOptionsService {
             if (!exists && !outProviders.isEmpty()) activeProviderId = toNonBlank(outProviders.getFirst().getId());
         }
 
+        return getAiChatOptionsDTO(activeProviderId, outProviders);
+    }
+
+    private @NonNull AiChatOptionsDTO getAiChatOptionsDTO(String activeProviderId, List<AiChatProviderOptionDTO> outProviders) {
         AiChatOptionsDTO out = new AiChatOptionsDTO();
         out.setActiveProviderId(activeProviderId);
         out.setProviders(outProviders);
+        PortalChatConfigDTO cfg2 = portalChatConfigService == null ? null : portalChatConfigService.getConfigOrDefault();
+        out.setAssistantManualModelSelectionEnabled(cfg2 == null
+            || cfg2.getAssistantChat() == null
+            || cfg2.getAssistantChat().getAllowManualModelSelection() == null
+            || cfg2.getAssistantChat().getAllowManualModelSelection());
+        out.setPostComposeManualModelSelectionEnabled(cfg2 == null
+            || cfg2.getPostComposeAssistant() == null
+            || cfg2.getPostComposeAssistant().getAllowManualModelSelection() == null
+            || cfg2.getPostComposeAssistant().getAllowManualModelSelection());
         return out;
     }
 

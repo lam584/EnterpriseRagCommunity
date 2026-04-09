@@ -4,7 +4,9 @@ import com.example.EnterpriseRagCommunity.config.LlmQueueProperties;
 import com.example.EnterpriseRagCommunity.dto.monitor.AdminLlmQueueConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.monitor.AdminLlmQueueStatusDTO;
 import com.example.EnterpriseRagCommunity.dto.monitor.AdminLlmQueueTaskDetailDTO;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.monitor.LlmQueueMonitorService;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -24,8 +26,20 @@ import org.springframework.web.server.ResponseStatusException;
 @RequiredArgsConstructor
 public class AdminLlmQueueController {
 
+    private static final String KEY_MAX_CONCURRENT = "app.ai.queue.maxConcurrent";
+    private static final String KEY_MAX_QUEUE_SIZE = "app.ai.queue.maxQueueSize";
+    private static final String KEY_KEEP_COMPLETED = "app.ai.queue.keepCompleted";
+
     private final LlmQueueMonitorService llmQueueMonitorService;
     private final LlmQueueProperties llmQueueProperties;
+    private final SystemConfigurationService systemConfigurationService;
+
+    @PostConstruct
+    void initFromSystemConfigurations() {
+        applyIfPresent(KEY_MAX_CONCURRENT, 1, 1024, llmQueueProperties::setMaxConcurrent);
+        applyIfPresent(KEY_MAX_QUEUE_SIZE, 100, 200000, llmQueueProperties::setMaxQueueSize);
+        applyIfPresent(KEY_KEEP_COMPLETED, 0, 20000, llmQueueProperties::setKeepCompleted);
+    }
 
     @GetMapping
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
@@ -63,16 +77,31 @@ public class AdminLlmQueueController {
             if (payload.getMaxConcurrent() != null) {
                 int v = Math.clamp(payload.getMaxConcurrent(), 1, 1024);
                 llmQueueProperties.setMaxConcurrent(v);
+                systemConfigurationService.saveConfig(KEY_MAX_CONCURRENT, String.valueOf(v), false, "LLM 调用队列并发上限");
             }
             if (payload.getMaxQueueSize() != null) {
                 int v = Math.clamp(payload.getMaxQueueSize(), 100, 200000);
                 llmQueueProperties.setMaxQueueSize(v);
+                systemConfigurationService.saveConfig(KEY_MAX_QUEUE_SIZE, String.valueOf(v), false, "LLM 调用队列容量上限");
             }
             if (payload.getKeepCompleted() != null) {
                 int v = Math.clamp(payload.getKeepCompleted(), 0, 20000);
                 llmQueueProperties.setKeepCompleted(v);
+                systemConfigurationService.saveConfig(KEY_KEEP_COMPLETED, String.valueOf(v), false, "LLM 调用队列已完成任务保留条数");
             }
         }
         return getConfig();
+    }
+
+    private void applyIfPresent(String key, int min, int max, java.util.function.IntConsumer setter) {
+        String raw = systemConfigurationService.getConfig(key);
+        if (raw == null || raw.isBlank()) {
+            return;
+        }
+        try {
+            int parsed = Integer.parseInt(raw.trim());
+            setter.accept(Math.clamp(parsed, min, max));
+        } catch (NumberFormatException ignored) {
+        }
     }
 }

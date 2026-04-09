@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import NotificationList from '../components/NotificationList';
 import { deleteNotification, fetchNotifications, markNotificationsRead, markNotificationRead } from '../../../../services/notificationService';
 import type { NotificationDTO } from '../../../../types/notification';
@@ -24,7 +24,7 @@ export default function InteractNotificationsPage(props: {
 
   const unreadIds = useMemo(() => items.filter((x) => !x.readAt).map((x) => x.id), [items]);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -35,11 +35,11 @@ export default function InteractNotificationsPage(props: {
     } finally {
       setLoading(false);
     }
-  }
+  }, [props.type]);
 
   useEffect(() => {
     void load();
-  }, [props.type]);
+  }, [load]);
 
   async function onMarkRead(id: number) {
     await markNotificationRead(id);

@@ -789,7 +789,7 @@ function AiProvidersFormInner(props: InnerProps) {
     const endpointMatch = msg.match(/endpoint:\s*([^\s)]+)/i);
     const endpoint = endpointMatch?.[1] ?? null;
     const local = endpoint
-        ? /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)([:\/])/i.test(endpoint)
+        ? /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)([:/])/i.test(endpoint)
       : /localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(msg);
 
     const tips: string[] = [];

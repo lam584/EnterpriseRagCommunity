@@ -666,7 +666,7 @@ export default function PostDetailPage() {
 
   const sortNodes = (nodes: CommentNode[], mode: CommentSortMode) => nodes.slice().sort((a, b) => compareNodes(a, b, mode));
 
-  const sortedRootNodes = useMemo(() => sortNodes(commentNodes.roots, commentSortMode), [commentNodes.roots, commentSortMode]);
+  const sortedRootNodes = sortNodes(commentNodes.roots, commentSortMode);
   const threadRootNode = useMemo(
     () => (threadModalRootId == null ? null : commentNodes.byId.get(threadModalRootId) ?? null),
     [commentNodes.byId, threadModalRootId],

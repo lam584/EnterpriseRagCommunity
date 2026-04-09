@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Edit2, Check } from 'lucide-react';
 import {
+  adminGetLlmQueueConfig,
   adminGetLlmQueueStatus,
   adminGetLlmQueueTaskDetail,
   adminUpdateLlmQueueConfig,
@@ -38,6 +39,9 @@ const LlmQueueForm: React.FC = () => {
   const [maxConcurrentInput, setMaxConcurrentInput] = useState('');
   const [maxConcurrentDirty, setMaxConcurrentDirty] = useState(false);
   const [isEditingMaxConcurrent, setIsEditingMaxConcurrent] = useState(false);
+  const [maxQueueSizeInput, setMaxQueueSizeInput] = useState('');
+  const [maxQueueSizeDirty, setMaxQueueSizeDirty] = useState(false);
+  const [isEditingMaxQueueSize, setIsEditingMaxQueueSize] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const [refreshIntervalInput, setRefreshIntervalInput] = useState('5000');
@@ -90,6 +94,24 @@ const LlmQueueForm: React.FC = () => {
       })
       .catch((e) => console.error('Failed to load providers config for names', e));
   }, []);
+
+  const loadQueueConfig = useCallback(async () => {
+    try {
+      const cfg = await adminGetLlmQueueConfig();
+      if (!maxConcurrentDirty && Number.isFinite(Number(cfg.maxConcurrent))) {
+        setMaxConcurrentInput(String(Math.max(1, Math.floor(Number(cfg.maxConcurrent)))));
+      }
+      if (!maxQueueSizeDirty && Number.isFinite(Number(cfg.maxQueueSize))) {
+        setMaxQueueSizeInput(String(Math.max(100, Math.floor(Number(cfg.maxQueueSize)))));
+      }
+    } catch (e) {
+      console.error('Failed to load llm queue config', e);
+    }
+  }, [maxConcurrentDirty, maxQueueSizeDirty]);
+
+  useEffect(() => {
+    void loadQueueConfig();
+  }, [loadQueueConfig]);
 
   const fetchWindowSec = useMemo(() => Math.max(queueWindowSec, speedWindowSec), [queueWindowSec, speedWindowSec]);
 
@@ -426,6 +448,7 @@ const LlmQueueForm: React.FC = () => {
     try {
       await adminUpdateLlmQueueConfig({ maxConcurrent: Math.max(1, Math.min(1024, n)) });
       setMaxConcurrentDirty(false);
+      await loadQueueConfig();
       abortInFlight();
       await load({ timeoutMs: 30000 });
     } catch (e) {
@@ -433,7 +456,28 @@ const LlmQueueForm: React.FC = () => {
     } finally {
       setSavingConfig(false);
     }
-  }, [abortInFlight, load, maxConcurrentInput]);
+  }, [abortInFlight, load, loadQueueConfig, maxConcurrentInput]);
+
+  const saveMaxQueueSize = useCallback(async () => {
+    const n = Math.floor(Number(maxQueueSizeInput));
+    if (!Number.isFinite(n)) {
+      setError('队列上限必须是数字');
+      return;
+    }
+    setSavingConfig(true);
+    setError(null);
+    try {
+      await adminUpdateLlmQueueConfig({ maxQueueSize: Math.max(100, Math.min(200000, n)) });
+      setMaxQueueSizeDirty(false);
+      await loadQueueConfig();
+      abortInFlight();
+      await load({ timeoutMs: 30000 });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingConfig(false);
+    }
+  }, [abortInFlight, load, loadQueueConfig, maxQueueSizeInput]);
 
   const busy = loading;
 
@@ -532,7 +576,7 @@ const LlmQueueForm: React.FC = () => {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
         <div className="rounded border p-3">
           <div className="text-xs text-gray-600">排队中</div>
           <div className="text-3xl font-semibold">{data ? fmtNum(data.pendingCount) : '—'}</div>
@@ -588,6 +632,48 @@ const LlmQueueForm: React.FC = () => {
               }
             }}
             autoFocus={isEditingMaxConcurrent}
+          />
+        </div>
+        <div className="rounded border p-3">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-gray-600">队列上限</div>
+            <button
+              type="button"
+              className="text-gray-400 hover:text-blue-600 transition-colors"
+              onClick={() => {
+                if (isEditingMaxQueueSize) {
+                  void saveMaxQueueSize();
+                  setIsEditingMaxQueueSize(false);
+                } else {
+                  setIsEditingMaxQueueSize(true);
+                }
+              }}
+              disabled={savingConfig}
+              title={isEditingMaxQueueSize ? '保存' : '编辑'}
+            >
+              {isEditingMaxQueueSize ? <Check className="w-4 h-4" /> : <Edit2 className="w-4 h-4" />}
+            </button>
+          </div>
+          <input
+            className={`text-3xl font-semibold w-full bg-transparent outline-none transition-all ${
+              isEditingMaxQueueSize ? 'border rounded px-2 py-1 mt-1 text-2xl' : 'border-none p-0'
+            }`}
+            type="number"
+            min={100}
+            max={200000}
+            value={maxQueueSizeInput}
+            readOnly={!isEditingMaxQueueSize}
+            onChange={(e) => {
+              setMaxQueueSizeInput(e.target.value);
+              setMaxQueueSizeDirty(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                void saveMaxQueueSize();
+                setIsEditingMaxQueueSize(false);
+              }
+            }}
+            autoFocus={isEditingMaxQueueSize}
           />
         </div>
       </div>

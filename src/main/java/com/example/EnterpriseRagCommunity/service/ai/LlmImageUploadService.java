@@ -323,6 +323,10 @@ public class LlmImageUploadService {
 
     private byte[] compressIfEnabled(byte[] src, String mimeType) {
         CompressionConfig cfg = configService.getCompressionConfig();
+        return compressWithConfig(src, mimeType, cfg);
+    }
+
+    private byte[] compressWithConfig(byte[] src, String mimeType, CompressionConfig cfg) {
         if (!cfg.enabled() || src == null || src.length == 0) return src;
         if (mimeType != null && !mimeType.toLowerCase().startsWith("image/")) return src;
         if (src.length <= cfg.maxBytes()) return src;
@@ -499,6 +503,20 @@ public class LlmImageUploadService {
         }
     }
 
+    private static String toBase64DataUrl(byte[] imageBytes, String mimeType) {
+        try {
+            if (imageBytes == null || imageBytes.length == 0) return "";
+            String safeMimeType = mimeType;
+            if (safeMimeType == null || safeMimeType.isBlank() || !safeMimeType.toLowerCase().startsWith("image/")) {
+                safeMimeType = "image/jpeg";
+            }
+            String base64 = java.util.Base64.getEncoder().encodeToString(imageBytes);
+            return "data:" + safeMimeType + ";base64," + base64;
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     private static String guessImageMimeType(String path) {
         if (path == null) return "image/jpeg";
         String lower = path.toLowerCase();
@@ -513,7 +531,19 @@ public class LlmImageUploadService {
     /**
      * 测试压缩：读取本地文件并返回原始/压缩后的信息与 Base64 预览。
      */
-    public Map<String, Object> testCompress(String localPath) throws Exception {
+    public Map<String, Object> testCompress(String inputPathOrUrl) throws Exception {
+        return testCompress(inputPathOrUrl, null);
+    }
+
+    /**
+     * 测试压缩：支持传入临时压缩配置（不落库），便于前端在保存前预览当前配置效果。
+     */
+    public Map<String, Object> testCompress(String inputPathOrUrl, CompressionConfig overrideConfig) throws Exception {
+        String localPath = resolveLocalPathForCompression(inputPathOrUrl);
+        if (localPath == null || localPath.isBlank()) {
+            throw new IllegalArgumentException("请输入本地路径或测试上传返回链接");
+        }
+
         byte[] original = readLocalFile(localPath);
         if (original == null || original.length == 0) {
             throw new IllegalArgumentException("无法读取文件: " + localPath);
@@ -528,18 +558,26 @@ public class LlmImageUploadService {
         int origW = originalImage.getWidth();
         int origH = originalImage.getHeight();
 
-        byte[] compressed = compressIfEnabled(original, mimeType);
+        CompressionConfig cfg = overrideConfig == null ? configService.getCompressionConfig() : overrideConfig;
+        byte[] compressed = compressWithConfig(original, mimeType, cfg);
         boolean wasCompressed = compressed != original;
 
         BufferedImage compressedImage = wasCompressed ? ImageIO.read(new ByteArrayInputStream(compressed)) : originalImage;
         int compW = compressedImage != null ? compressedImage.getWidth() : origW;
         int compH = compressedImage != null ? compressedImage.getHeight() : origH;
 
-        // Limit Base64 preview size: resize preview images to max 400px for response
+        // Thumbnail preview for card view (max 400px)
         String originalBase64 = toBase64Preview(originalImage, mimeType);
         String compressedBase64 = wasCompressed && compressedImage != null
                 ? toBase64Preview(compressedImage, "image/jpeg")
                 : originalBase64;
+
+        // Full-resolution image for modal viewer (no resizing)
+        String originalFullBase64 = toBase64DataUrl(original, mimeType);
+        String compressedFullMimeType = wasCompressed ? "image/jpeg" : mimeType;
+        String compressedFullBase64 = wasCompressed
+            ? toBase64DataUrl(compressed, compressedFullMimeType)
+            : originalFullBase64;
 
         double ratio = (double) compressed.length / original.length;
 
@@ -555,6 +593,22 @@ public class LlmImageUploadService {
         result.put("wasCompressed", wasCompressed);
         result.put("originalBase64", originalBase64);
         result.put("compressedBase64", compressedBase64);
+        result.put("originalFullBase64", originalFullBase64);
+        result.put("compressedFullBase64", compressedFullBase64);
         return result;
+    }
+
+    private String resolveLocalPathForCompression(String inputPathOrUrl) {
+        String raw = inputPathOrUrl == null ? "" : inputPathOrUrl.trim();
+        if (raw.isBlank()) return null;
+
+        if (!(raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("oss://"))) {
+            return raw;
+        }
+
+        ImageUploadLogEntity log = uploadLogRepository.findFirstByRemoteUrlOrderByUploadedAtDesc(raw).orElse(null);
+        if (log == null) return null;
+        String localPath = log.getLocalPath();
+        return localPath == null || localPath.isBlank() ? null : localPath.trim();
     }
 }

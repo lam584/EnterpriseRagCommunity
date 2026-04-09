@@ -695,7 +695,7 @@ const QueueForm: React.FC = () => {
         return () => {
             mounted = false;
         };
-    }, [detailOpen, detail?.id]);
+    }, [detailOpen, detail?.id, detail?.riskTagItems, detail?.riskTags]);
 
     useEffect(() => {
         if (!detailOpen || !detail?.id) {
@@ -740,7 +740,7 @@ const QueueForm: React.FC = () => {
         return () => {
             mounted = false;
         };
-    }, [detailOpen, detail?.id]);
+    }, [detailOpen, detail?.id, detail?.riskTagItems, detail?.riskTags]);
 
     useEffect(() => {
         if (!riskEditorOpen) return;

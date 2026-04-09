@@ -6,6 +6,7 @@ const apiUrl = serviceApiUrl;
 
 export type PortalChatConfigDTO = {
   assistantChat?: {
+    allowManualModelSelection?: boolean | null;
     providerId?: string | null;
     model?: string | null;
     temperature?: number | null;
@@ -19,6 +20,7 @@ export type PortalChatConfigDTO = {
     deepThinkSystemPromptCode?: string | null;
   } | null;
   postComposeAssistant?: {
+    allowManualModelSelection?: boolean | null;
     providerId?: string | null;
     model?: string | null;
     temperature?: number | null;

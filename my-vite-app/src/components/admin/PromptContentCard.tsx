@@ -4,6 +4,10 @@ export type PromptContentDraft = {
   name: string;
   systemPrompt: string;
   userPromptTemplate: string;
+  providerId?: string | null;
+  modelName?: string | null;
+  visionProviderId?: string | null;
+  visionModel?: string | null;
   temperature?: number | null;
   topP?: number | null;
   maxTokens?: number | null;

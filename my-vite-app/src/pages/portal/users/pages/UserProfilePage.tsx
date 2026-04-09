@@ -156,7 +156,7 @@ export default function UserProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [paramInvalid, parsedParamUserId]);
+  }, [paramInvalid, parsedParamUserId, resetDraftFrom, setBaseProfile, setIsEditing, setPostsErr, setPostsPage, setPostsPageNo, setPostsReloadTick, setProfile, setSaveOk]);
 
   async function refreshMyProfileModerationSoon() {
     if (!mountedRef.current) return;
@@ -219,7 +219,7 @@ export default function UserProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [isSelf, postsPageNo, postsReloadTick, profile]);
+  }, [isSelf, postsPageNo, postsReloadTick, profile, setPostsErr, setPostsLoading, setPostsPage]);
 
   const validationError = useMemo(
     () => validateProfileFields({ username, bio, location, website }),

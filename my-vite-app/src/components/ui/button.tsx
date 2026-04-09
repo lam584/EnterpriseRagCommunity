@@ -1,4 +1,5 @@
 // src/components/ui/button.tsx
+/* eslint-disable react-refresh/only-export-components */
 import * as React from "react"
 import { cn } from "../../lib/utils"
 

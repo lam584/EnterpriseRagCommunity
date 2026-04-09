@@ -357,14 +357,31 @@ const BoardManagement: React.FC = () => {
     }
     try {
       setModeratorSearching(true);
-      const page = await userAccessService.queryUsers({
-        pageNum: 1,
-        pageSize: 10,
-        email: kw,
-        username: kw,
-        includeDeleted: false,
-      });
-      setModeratorSearchResults(page?.content ?? []);
+      // 后端 queryUsers 对多个字段是 AND 关系，分开查询再合并可实现“用户名或邮箱”搜索。
+      const [byUsername, byEmail] = await Promise.all([
+        userAccessService.queryUsers({
+          pageNum: 1,
+          pageSize: 10,
+          username: kw,
+          includeDeleted: false,
+        }),
+        userAccessService.queryUsers({
+          pageNum: 1,
+          pageSize: 10,
+          email: kw,
+          includeDeleted: false,
+        }),
+      ]);
+
+      const merged: UserDTO[] = [];
+      const seen = new Set<number>();
+      for (const u of [...(byUsername?.content ?? []), ...(byEmail?.content ?? [])]) {
+        if (!u || typeof u.id !== 'number') continue;
+        if (seen.has(u.id)) continue;
+        seen.add(u.id);
+        merged.push(u);
+      }
+      setModeratorSearchResults(merged);
     } catch (err: any) {
       setMessage(err?.message || '搜索用户失败');
     } finally {

@@ -17,6 +17,7 @@ import { stripThinkBlocks } from '../../../../utils/thinkTags';
 import { createAiComposeChannelRouterState, routeAiComposeDelta } from '../../../../utils/aiComposeChannelRouter';
 import { extractImageFilesFromClipboardData } from '../../../../utils/clipboardImageFiles';
 import { normalizeMarkdownForPreview } from '../../../../utils/markdownUtils';
+import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
 import {
   buildProviderModelValue,
   flattenProviderModelOptions,
@@ -73,6 +74,33 @@ function extractMarkdownImageUrls(md: string, maxCount: number): string[] {
   return out;
 }
 
+function decodeEscapedLineBreaks(text: string): string {
+  let out = String(text ?? '');
+  if (!out) return out;
+
+  // Handle multi-escaped JSON fragments like "\\n" by decoding in rounds.
+  for (let i = 0; i < 3; i += 1) {
+    const next = out
+      .replace(/\\u000d\\u000a/g, '\n')
+      .replace(/\\u000a|\\u000d/g, '\n')
+      .replace(/\\r\\n/g, '\n')
+      .replace(/\\n/g, '\n')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"');
+    if (next === out) break;
+    out = next;
+  }
+
+  const slashNlPattern = /(^|[\s\](){},.;:!?，。；：！？"'])\/n(?=\s|$|[\](){},.;:!?，。；：！？"'])/g;
+  const slashNlCount = (out.match(slashNlPattern) ?? []).length;
+  const actualNlCount = (out.match(/\r?\n/g) ?? []).length;
+  if (slashNlCount >= 2 && actualNlCount === 0) {
+    out = out.replace(slashNlPattern, '$1\n');
+  }
+
+  return out;
+}
+
 function normalizeAiPostMarkdown(text: string): string {
   let out = String(text ?? '');
   if (!out) return out;
@@ -89,11 +117,7 @@ function normalizeAiPostMarkdown(text: string): string {
     }
   }
 
-  const escapedNlCount = (out.match(/\\r\\n|\\n/g) ?? []).length;
-  const actualNlCount = (out.match(/\r?\n/g) ?? []).length;
-  if (escapedNlCount >= 2 && escapedNlCount > actualNlCount * 2) {
-    out = out.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
-  }
+  out = decodeEscapedLineBreaks(out);
 
   out = out.replace(/\r\n/g, '\n');
   return normalizeMarkdownForPreview(out);
@@ -110,10 +134,27 @@ function sanitizeAssistantChatOutput(text: string): string {
     .replace(/<\\\/think>/gi, '')
     .replace(/&lt;\\\/think&gt;/gi, '');
 
-  out = out.replace(/^(?:\s|\\r\\n|\\n)+/g, '');
-  const residue = out.replace(/\\r\\n|\\n|\\t/g, '').trim();
+  const fenced = out.match(/^\s*```(?:markdown|md|mdown)?\s*\r?\n([\s\S]*?)\r?\n?```\s*$/i);
+  if (fenced?.[1]) {
+    out = fenced[1];
+  }
+
+  const maybeQuoted = out.trim();
+  if (maybeQuoted.startsWith('"') && maybeQuoted.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(maybeQuoted);
+      if (typeof parsed === 'string') {
+        out = parsed;
+      }
+    } catch {
+    }
+  }
+
+  out = decodeEscapedLineBreaks(out);
+  out = out.replace(/^\s+/g, '');
+  const residue = out.replace(/\s+/g, '').trim();
   if (!residue) return '';
-  return out;
+  return normalizeMarkdownForPreview(out.replace(/\r\n/g, '\n'));
 }
 
 export default function PostComposeAssistantWindow(props: Props) {
@@ -190,6 +231,15 @@ export default function PostComposeAssistantWindow(props: Props) {
       }
     })();
   }, []);
+
+  const postComposeManualModelSelectionEnabled = chatOptions?.postComposeManualModelSelectionEnabled !== false;
+
+  useEffect(() => {
+    if (postComposeManualModelSelectionEnabled) return;
+    if (!selectedProviderId && !selectedModel) return;
+    setSelectedProviderId('');
+    setSelectedModel('');
+  }, [postComposeManualModelSelectionEnabled, selectedModel, selectedProviderId]);
 
   const providerOptions = useMemo(() => {
     const providers = (chatOptions?.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[];
@@ -299,6 +349,25 @@ export default function PostComposeAssistantWindow(props: Props) {
     return { targetType: 'DRAFT' as const, draftId: did };
   }, [draft.id, draftId, postId]);
 
+  const revertAndRestore = useCallback(async (dto: PostComposeAiSnapshotDTO) => {
+    setComposeLocked(false);
+    setDraft((prev) => {
+      const next: PostDraftDTO = {
+        ...prev,
+        title: dto.beforeTitle ?? '',
+        content: dto.beforeContent ?? '',
+        boardId: Number(dto.beforeBoardId ?? prev.boardId),
+        tags: Array.isArray((dto.beforeMetadata as any)?.tags) ? (dto.beforeMetadata as any).tags.map(String) : prev.tags,
+        attachments: Array.isArray((dto.beforeMetadata as any)?.attachments)
+          ? (dto.beforeMetadata as any).attachments
+          : prev.attachments,
+        updatedAt: new Date().toISOString(),
+      };
+      return next;
+    });
+    await revertPostComposeAiSnapshot(dto.id);
+  }, [setComposeLocked, setDraft]);
+
   useEffect(() => {
     if (busy) return;
     if (streaming) return;
@@ -317,7 +386,7 @@ export default function PostComposeAssistantWindow(props: Props) {
       } catch {
       }
     })();
-  }, [busy, pendingSnapshot, streaming, target]);
+  }, [busy, pendingSnapshot, revertAndRestore, streaming, target]);
 
   useEffect(() => {
     return () => {
@@ -382,24 +451,6 @@ export default function PostComposeAssistantWindow(props: Props) {
     return Number(saved.id);
   }
 
-  async function revertAndRestore(dto: PostComposeAiSnapshotDTO) {
-    setComposeLocked(false);
-    setDraft((prev) => {
-      const next: PostDraftDTO = {
-        ...prev,
-        title: dto.beforeTitle ?? '',
-        content: dto.beforeContent ?? '',
-        boardId: Number(dto.beforeBoardId ?? prev.boardId),
-        tags: Array.isArray((dto.beforeMetadata as any)?.tags) ? (dto.beforeMetadata as any).tags.map(String) : prev.tags,
-        attachments: Array.isArray((dto.beforeMetadata as any)?.attachments)
-          ? (dto.beforeMetadata as any).attachments
-          : prev.attachments,
-        updatedAt: new Date().toISOString(),
-      };
-      return next;
-    });
-    await revertPostComposeAiSnapshot(dto.id);
-  }
 
   async function handleSend() {
     const prompt = input.trim();
@@ -418,8 +469,8 @@ export default function PostComposeAssistantWindow(props: Props) {
     setLog(nextLog);
 
     try {
-      const providerIdToSend = selectedProviderId.trim() ? selectedProviderId.trim() : null;
-      const modelToSend = selectedModel.trim() ? selectedModel.trim() : null;
+      const providerIdToSend = postComposeManualModelSelectionEnabled && selectedProviderId.trim() ? selectedProviderId.trim() : null;
+      const modelToSend = postComposeManualModelSelectionEnabled && selectedModel.trim() ? selectedModel.trim() : null;
 
       const targetType: PostComposeAiSnapshotTargetType = postId !== null ? 'POST' : 'DRAFT';
       const ensuredDraftId = targetType === 'DRAFT' ? await ensureDraftIdForSnapshot() : null;
@@ -682,34 +733,40 @@ export default function PostComposeAssistantWindow(props: Props) {
               >
                 清空上下文
               </button>
-              <select
-                className="min-w-0 max-w-[240px] px-2 py-1 rounded-md border border-gray-300 bg-white text-xs disabled:opacity-60"
-                value={selectedProviderModelValue}
-                disabled={streaming || chatOptionsLoading}
-                onChange={(e) => {
-                  const parsed = parseProviderModelValue(String(e.target.value ?? ''));
-                  if (!parsed) {
-                    setSelectedProviderId('');
-                    setSelectedModel('');
-                    return;
-                  }
-                  setSelectedProviderId(parsed.providerId);
-                  setSelectedModel(parsed.model);
-                }}
-              >
-                <option value="">
-                  {chatOptionsLoading
-                    ? '模型加载中…'
-                    : visionImageCount
-                      ? '模型：自动(多模态聊天/多模态模型池)'
-                      : '模型：自动(多模态聊天/均衡负载)'}
-                </option>
-                {flatModelOptions.map((o) => (
-                  <option key={`${o.providerId}::${o.model}`} value={o.value}>
-                    {o.providerLabel} / {o.model}
+              {postComposeManualModelSelectionEnabled ? (
+                <select
+                  className="min-w-0 max-w-[240px] px-2 py-1 rounded-md border border-gray-300 bg-white text-xs disabled:opacity-60"
+                  value={selectedProviderModelValue}
+                  disabled={streaming || chatOptionsLoading}
+                  onChange={(e) => {
+                    const parsed = parseProviderModelValue(String(e.target.value ?? ''));
+                    if (!parsed) {
+                      setSelectedProviderId('');
+                      setSelectedModel('');
+                      return;
+                    }
+                    setSelectedProviderId(parsed.providerId);
+                    setSelectedModel(parsed.model);
+                  }}
+                >
+                  <option value="">
+                    {chatOptionsLoading
+                      ? '模型加载中…'
+                      : visionImageCount
+                        ? '模型：自动(多模态聊天/多模态模型池)'
+                        : '模型：自动(多模态聊天/均衡负载)'}
                   </option>
-                ))}
-              </select>
+                  {flatModelOptions.map((o) => (
+                    <option key={`${o.providerId}::${o.model}`} value={o.value}>
+                      {o.providerLabel} / {o.model}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="min-w-0 max-w-[240px] px-2 py-1 rounded-md border border-gray-300 bg-gray-50 text-xs text-gray-500">
+                  已关闭手动选模（自动负载均衡）
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-600">
               <span className="whitespace-nowrap" title={contextTokensError ?? undefined}>
@@ -763,14 +820,15 @@ export default function PostComposeAssistantWindow(props: Props) {
           ) : (
             log.map((m, idx) => (
               <div key={`${idx}-${m.role}`} className={m.role === 'user' ? 'text-right' : 'text-left'}>
-                <div
-                  className={
-                    'inline-block max-w-[92%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words ' +
-                    (m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-50 border border-gray-200 text-gray-900')
-                  }
-                >
-                  {m.content || (m.role === 'assistant' && streaming ? '…' : '')}
-                </div>
+                {m.role === 'user' ? (
+                  <div className="inline-block max-w-[92%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap break-words bg-blue-600 text-white">
+                    {m.content || ''}
+                  </div>
+                ) : (
+                  <div className="inline-block max-w-[92%] rounded-lg px-3 py-2 text-sm break-words bg-gray-50 border border-gray-200 text-gray-900">
+                    <MarkdownPreview markdown={m.content || (streaming ? '…' : '')} />
+                  </div>
+                )}
               </div>
             ))
           )}

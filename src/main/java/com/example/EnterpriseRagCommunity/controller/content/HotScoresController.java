@@ -17,7 +17,7 @@ public class HotScoresController {
 
     /**
      * 热榜：
-     * GET /api/hot?window=24h|7d|all&page=1&pageSize=20
+      * GET /api/hot?window=24h|7d|30d|3m|6m|1y|all&page=1&pageSize=20
      */
     @GetMapping("/hot")
     public Page<HotPostDTO> listHot(
@@ -34,8 +34,12 @@ public class HotScoresController {
         return switch (window.trim().toLowerCase()) {
             case "24h" -> HotScoresService.Window.H24;
             case "7d" -> HotScoresService.Window.D7;
+            case "30d" -> HotScoresService.Window.D30;
+            case "3m" -> HotScoresService.Window.M3;
+            case "6m" -> HotScoresService.Window.M6;
+            case "1y" -> HotScoresService.Window.Y1;
             case "all" -> HotScoresService.Window.ALL;
-            default -> throw new IllegalArgumentException("window 参数不合法，应为 24h|7d|all");
+            default -> throw new IllegalArgumentException("window 参数不合法，应为 24h|7d|30d|3m|6m|1y|all");
         };
     }
 }

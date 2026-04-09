@@ -9,6 +9,8 @@
   - 大部分写入使用 INSERT IGNORE（依赖唯一键/主键）或 WHERE NOT EXISTS
 */
 
+
+
 -- 1) 管理员后台：访问入口 + 左侧菜单分区
 -- 表：permissions
 -- 字段说明：
@@ -323,6 +325,41 @@ VALUES
   "maxInputTokens": 30000
 }', NOW());
 
+INSERT IGNORE INTO app_settings (k, v, updated_at)
+VALUES
+('retrieval.context.config.json', '{
+  "enabled": true,
+  "policy": "TOPK",
+  "maxItems": 6,
+  "maxContextTokens": 12000,
+  "reserveAnswerTokens": 2000,
+  "perItemMaxTokens": 2000,
+  "maxPromptChars": 200000,
+  "contextTokenBudget": 3000,
+  "minScore": null,
+  "maxSamePostItems": 2,
+  "requireTitle": false,
+  "alpha": 1.0,
+  "beta": 1.0,
+  "gamma": 1.0,
+  "ablationMode": "REL_IMP_RED",
+  "crossSourceDedup": true,
+  "dedupByPostId": true,
+  "dedupByTitle": false,
+  "dedupByContentHash": true,
+  "sectionTitle": "以下为从社区帖子检索到的参考资料（仅供参考，回答时请结合用户问题，不要编造不存在的来源）：",
+  "itemHeaderTemplate": "[{i}] post_id={postId} chunk={chunkIndex} score={score}\\n标题：{title}\\n",
+  "separator": "\\n\\n",
+  "showPostId": true,
+  "showChunkIndex": true,
+  "showScore": true,
+  "showTitle": true,
+  "extraInstruction": "回答时尽量在相关句末添加 [编号] 引用；如资料不足请明确说明。",
+  "logEnabled": true,
+  "logSampleRate": 1.0,
+  "logMaxDays": 30
+}', NOW(3));
+
 INSERT INTO vector_indices (provider, collection_name, metric, dim, status, metadata)
 SELECT
   'OTHER',
@@ -510,10 +547,10 @@ VALUES
     ('image.storage.oss.access_key_secret', '', TRUE, '阿里云 OSS AccessKey Secret'),
     ('image.storage.oss.region', '', FALSE, '阿里云 OSS Region (如 cn-hangzhou)'),
     ('image.compression.enabled', 'true', FALSE, '是否在上传前压缩图片'),
-    ('image.compression.max_width', '1920', FALSE, '压缩最大宽度 (px)'),
-    ('image.compression.max_height', '1920', FALSE, '压缩最大高度 (px)'),
-    ('image.compression.quality', '0.85', FALSE, 'JPEG 压缩质量 (0.0-1.0)'),
-    ('image.compression.max_bytes', '500000', FALSE, '压缩后最大字节数');
+    ('image.compression.max_width', '7680', FALSE, '压缩最大宽度 (px)'),
+    ('image.compression.max_height', '7680', FALSE, '压缩最大高度 (px)'),
+    ('image.compression.quality', '0.95', FALSE, 'JPEG 压缩质量 (0.0-1.0)'),
+    ('image.compression.max_bytes', '10000000', FALSE, '压缩后最大字节数');
 
 INSERT IGNORE INTO permissions(resource, action, description) VALUES
     ('admin_ai_image_storage', 'access', '后台-LLM-图片存储管理查看'),
@@ -679,3 +716,127 @@ INSERT INTO supported_languages (language_code, display_name, native_name, is_ac
 ('war', '瓦莱语（Waray (Philippines)）', 'Winaray', 1, 117),
 ('ht', '海地语（Haitian）', 'Kreyòl ayisyen', 1, 118),
 ('pap', '帕皮阿门托语（Papiamento）', 'Papiamentu', 1, 119);
+
+-- 11) hot_scores 扩展窗口（合并原 V5/V6）
+SET @hs_schema_name = DATABASE();
+
+SET @hs_sql_col_30d = IF(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = @hs_schema_name
+      AND table_name = 'hot_scores'
+      AND column_name = 'score_30d'
+  ),
+  'SELECT 1',
+  'ALTER TABLE hot_scores ADD COLUMN score_30d DOUBLE NOT NULL DEFAULT 0 COMMENT ''30天热度分'' AFTER score_7d'
+);
+PREPARE hs_stmt_col_30d FROM @hs_sql_col_30d;
+EXECUTE hs_stmt_col_30d;
+DEALLOCATE PREPARE hs_stmt_col_30d;
+
+SET @hs_sql_col_90d = IF(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = @hs_schema_name
+      AND table_name = 'hot_scores'
+      AND column_name = 'score_90d'
+  ),
+  'SELECT 1',
+  'ALTER TABLE hot_scores ADD COLUMN score_90d DOUBLE NOT NULL DEFAULT 0 COMMENT ''3个月热度分'' AFTER score_30d'
+);
+PREPARE hs_stmt_col_90d FROM @hs_sql_col_90d;
+EXECUTE hs_stmt_col_90d;
+DEALLOCATE PREPARE hs_stmt_col_90d;
+
+SET @hs_sql_col_180d = IF(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = @hs_schema_name
+      AND table_name = 'hot_scores'
+      AND column_name = 'score_180d'
+  ),
+  'SELECT 1',
+  'ALTER TABLE hot_scores ADD COLUMN score_180d DOUBLE NOT NULL DEFAULT 0 COMMENT ''半年热度分'' AFTER score_90d'
+);
+PREPARE hs_stmt_col_180d FROM @hs_sql_col_180d;
+EXECUTE hs_stmt_col_180d;
+DEALLOCATE PREPARE hs_stmt_col_180d;
+
+SET @hs_sql_col_365d = IF(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = @hs_schema_name
+      AND table_name = 'hot_scores'
+      AND column_name = 'score_365d'
+  ),
+  'SELECT 1',
+  'ALTER TABLE hot_scores ADD COLUMN score_365d DOUBLE NOT NULL DEFAULT 0 COMMENT ''1年热度分'' AFTER score_180d'
+);
+PREPARE hs_stmt_col_365d FROM @hs_sql_col_365d;
+EXECUTE hs_stmt_col_365d;
+DEALLOCATE PREPARE hs_stmt_col_365d;
+
+SET @hs_sql_idx_30d = IF(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.statistics
+    WHERE table_schema = @hs_schema_name
+      AND table_name = 'hot_scores'
+      AND index_name = 'idx_hs_score_30d'
+  ),
+  'SELECT 1',
+  'CREATE INDEX idx_hs_score_30d ON hot_scores(score_30d)'
+);
+PREPARE hs_stmt_idx_30d FROM @hs_sql_idx_30d;
+EXECUTE hs_stmt_idx_30d;
+DEALLOCATE PREPARE hs_stmt_idx_30d;
+
+SET @hs_sql_idx_90d = IF(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.statistics
+    WHERE table_schema = @hs_schema_name
+      AND table_name = 'hot_scores'
+      AND index_name = 'idx_hs_score_90d'
+  ),
+  'SELECT 1',
+  'CREATE INDEX idx_hs_score_90d ON hot_scores(score_90d)'
+);
+PREPARE hs_stmt_idx_90d FROM @hs_sql_idx_90d;
+EXECUTE hs_stmt_idx_90d;
+DEALLOCATE PREPARE hs_stmt_idx_90d;
+
+SET @hs_sql_idx_180d = IF(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.statistics
+    WHERE table_schema = @hs_schema_name
+      AND table_name = 'hot_scores'
+      AND index_name = 'idx_hs_score_180d'
+  ),
+  'SELECT 1',
+  'CREATE INDEX idx_hs_score_180d ON hot_scores(score_180d)'
+);
+PREPARE hs_stmt_idx_180d FROM @hs_sql_idx_180d;
+EXECUTE hs_stmt_idx_180d;
+DEALLOCATE PREPARE hs_stmt_idx_180d;
+
+SET @hs_sql_idx_365d = IF(
+  EXISTS (
+    SELECT 1
+    FROM information_schema.statistics
+    WHERE table_schema = @hs_schema_name
+      AND table_name = 'hot_scores'
+      AND index_name = 'idx_hs_score_365d'
+  ),
+  'SELECT 1',
+  'CREATE INDEX idx_hs_score_365d ON hot_scores(score_365d)'
+);
+PREPARE hs_stmt_idx_365d FROM @hs_sql_idx_365d;
+EXECUTE hs_stmt_idx_365d;
+DEALLOCATE PREPARE hs_stmt_idx_365d;
+

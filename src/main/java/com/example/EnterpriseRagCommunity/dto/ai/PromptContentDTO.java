@@ -8,6 +8,8 @@ public class PromptContentDTO {
     private String name;
     private String systemPrompt;
     private String userPromptTemplate;
+    private String visionProviderId;
+    private String visionModel;
     private Double temperature;
     private Double topP;
     private Integer maxTokens;

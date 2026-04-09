@@ -63,7 +63,7 @@ const CostForm: React.FC = () => {
     if (!next) return;
     setStartDate(next.startDate);
     setEndDate(next.endDate);
-  }, []);
+  }, [setEndDate, setRangePreset, setStartDate]);
 
   const load = useCallback(
     async () => {
@@ -89,12 +89,12 @@ const CostForm: React.FC = () => {
         setLoading(false);
       }
     },
-    [startDate, endDate],
+    [endDate, setError, setLoading, setResp, setTimeline, setTimelineError, startDate],
   );
 
   useEffect(() => {
     load();
-  }, [startDate, endDate]);
+  }, [load]);
 
   return (
     <div className="bg-white rounded-lg shadow p-4 space-y-4">

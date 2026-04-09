@@ -26,6 +26,7 @@ import com.example.EnterpriseRagCommunity.dto.safety.ContentSafetyCircuitBreaker
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
 import com.example.EnterpriseRagCommunity.service.init.TotpMasterKeyBootstrapService;
 import com.example.EnterpriseRagCommunity.service.monitor.AppSettingsService;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.notify.EmailVerificationMailer;
 import com.example.EnterpriseRagCommunity.service.safety.ContentSafetyCircuitBreakerService;
 import com.example.EnterpriseRagCommunity.service.monitor.LlmQueueMonitorService;
@@ -145,6 +146,9 @@ class AuthControllerSecuritySliceTest {
 
     @MockitoBean
     LlmQueueProperties llmQueueProperties;
+
+    @MockitoBean
+    SystemConfigurationService systemConfigurationService;
 
     @BeforeEach
     void setUp() throws Exception {

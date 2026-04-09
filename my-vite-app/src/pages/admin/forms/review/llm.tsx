@@ -8,9 +8,15 @@ import {
   type LlmModerationStages,
   type LlmModerationTestResponse,
 } from '../../../../services/moderationLlmService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
 import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
 import { ModerationPipelineHistoryPanel } from '../../../../components/admin/ModerationPipelineHistoryPanel';
 import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
+import {
+  buildProviderModelValue,
+  flattenProviderModelOptions,
+  parseProviderModelValue,
+} from '../../../portal/assistant/pages/AssistantChatPage.shared';
 
 type TabKey = 'config' | 'test' | 'history';
 
@@ -41,6 +47,8 @@ function toPromptDraft(dto?: PromptContentDTO | null): PromptContentDraft {
     name: dto?.name ?? '',
     systemPrompt: dto?.systemPrompt ?? '',
     userPromptTemplate: dto?.userPromptTemplate ?? '',
+    visionProviderId: dto?.visionProviderId ?? null,
+    visionModel: dto?.visionModel ?? null,
     temperature: dto?.temperature ?? null,
     topP: dto?.topP ?? null,
     maxTokens: dto?.maxTokens ?? null,
@@ -155,6 +163,7 @@ const LlmForm: React.FC = () => {
   const [committedPromptDrafts, setCommittedPromptDrafts] = useState<Record<string, PromptContentDraft | null>>({});
 
   const [tab, setTab] = useState<TabKey>('config');
+  const [chatProviders, setChatProviders] = useState<AiChatProviderOptionDTO[]>([]);
 
   const [queueId, setQueueId] = useState<string>(initialQueueId ? String(initialQueueId) : '');
   const [testText, setTestText] = useState('');
@@ -164,6 +173,49 @@ const LlmForm: React.FC = () => {
   useEffect(() => {
     if (initialQueueId) setQueueId(String(initialQueueId));
   }, [initialQueueId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const opts = await getAiChatOptions();
+        if (cancelled) return;
+        setChatProviders((opts.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[]);
+      } catch {
+        if (cancelled) return;
+        setChatProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const flatModelOptions = useMemo(() => flattenProviderModelOptions(chatProviders), [chatProviders]);
+
+  const multimodalModelValue = useMemo(() => {
+    const draft = promptDrafts[form.multimodalPromptCode];
+    if (!draft) return '';
+    const providerId = String(draft.visionProviderId ?? '').trim();
+    const model = String(draft.visionModel ?? '').trim();
+    return buildProviderModelValue(providerId, model);
+  }, [promptDrafts, form.multimodalPromptCode]);
+
+  const multimodalModelOptions = useMemo(() => {
+    if (!multimodalModelValue) return flatModelOptions;
+    if (flatModelOptions.some((it) => it.value === multimodalModelValue)) return flatModelOptions;
+    const parsed = parseProviderModelValue(multimodalModelValue);
+    if (!parsed) return flatModelOptions;
+    return [
+      {
+        providerId: parsed.providerId,
+        providerLabel: parsed.providerId,
+        model: parsed.model,
+        value: multimodalModelValue,
+      },
+      ...flatModelOptions,
+    ];
+  }, [flatModelOptions, multimodalModelValue]);
 
   const hasUnsavedChanges = useMemo(() => {
     const formChanged =
@@ -255,6 +307,8 @@ const LlmForm: React.FC = () => {
           await adminUpdatePromptContent(code, {
             systemPrompt: draft.systemPrompt,
             userPromptTemplate: draft.userPromptTemplate,
+            visionProviderId: draft.visionProviderId ?? null,
+            visionModel: draft.visionModel ?? null,
             temperature: draft.temperature ?? null,
             topP: draft.topP ?? null,
             maxTokens: draft.maxTokens ?? null,
@@ -417,6 +471,40 @@ const LlmForm: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 gap-4">
+            <div className="bg-white rounded-lg shadow p-4 space-y-2">
+              <div className="text-sm font-medium text-gray-700">多模态模型选择</div>
+              <select
+                className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-500"
+                value={multimodalModelValue}
+                disabled={!isEditing || !(promptDrafts[form.multimodalPromptCode] ?? null)}
+                onChange={(e) => {
+                  if (!isEditing) return;
+                  const nextValue = String(e.target.value ?? '');
+                  const parsed = parseProviderModelValue(nextValue);
+                  setPromptDrafts((s) => {
+                    const current = s[form.multimodalPromptCode];
+                    if (!current) return s;
+                    return {
+                      ...s,
+                      [form.multimodalPromptCode]: {
+                        ...current,
+                        visionProviderId: parsed?.providerId ?? '',
+                        visionModel: parsed?.model ?? '',
+                      },
+                    };
+                  });
+                }}
+              >
+                <option value="">自动（均衡负载）</option>
+                {multimodalModelOptions.map((it) => (
+                  <option key={it.value} value={it.value}>
+                    {it.providerLabel}：{it.model}
+                  </option>
+                ))}
+              </select>
+              <div className="text-xs text-gray-500">从当前可用聊天模型池中选择多模态审核模型；留空表示自动路由。</div>
+            </div>
+
             <PromptContentCard
               title="多模态提示词"
               draft={promptDrafts[form.multimodalPromptCode] ?? null}

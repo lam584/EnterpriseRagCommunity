@@ -221,7 +221,7 @@ const MultiLabelForm: React.FC = () => {
   const langFormWarnings = useMemo(() => {
     const warnings: string[] = [];
     return warnings;
-  }, [langForm.promptCode]);
+  }, []);
   const langCanSave = langFormErrors.length === 0 && !langSaving && !langLoading;
   const langFormHasUnsavedChanges = useMemo(() => {
     return (
@@ -270,7 +270,7 @@ const MultiLabelForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setCommittedPromptDraft, setEditing, setError, setLoading, setPromptDraft, setPromptLoadError, setSavedHint]);
 
   useEffect(() => {
     void loadConfig();
@@ -336,7 +336,7 @@ const MultiLabelForm: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [canSave, form, saving, promptDraft, promptHasUnsavedChanges]);
+  }, [canSave, form, promptDraft, promptHasUnsavedChanges, saving, setCommittedPromptDraft, setEditing, setError, setSavedHint, setSaving]);
 
   const onSaveLang = useCallback(async () => {
     if (!langCanSave) return;
@@ -401,7 +401,7 @@ const MultiLabelForm: React.FC = () => {
     } finally {
       setTesting(false);
     }
-  }, [testContent, testCount, testKind, testTitle, testing]);
+  }, [setTesting, testContent, testCount, testKind, testTitle, testing]);
 
   const [historyPage, setHistoryPage] = useState<Page<PostTagGenHistoryDTO> | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);

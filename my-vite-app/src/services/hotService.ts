@@ -5,7 +5,7 @@ import { serviceApiUrl } from './serviceUrlUtils';
 import type { SpringPage } from '../types/page';
 import type { PostDTO } from './postService';
 
-export type HotWindow = '24h' | '7d' | 'all';
+export type HotWindow = '24h' | '7d' | '30d' | '3m' | '6m' | '1y' | 'all';
 
 export interface HotPostDTO {
   post: PostDTO;

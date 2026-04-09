@@ -25,6 +25,18 @@ public class HotScoresEntity {
     @Column(name = "score_7d", nullable = false)
     private Double score7d;
 
+    @Column(name = "score_30d", nullable = false)
+    private Double score30d;
+
+    @Column(name = "score_90d", nullable = false)
+    private Double score90d;
+
+    @Column(name = "score_180d", nullable = false)
+    private Double score180d;
+
+    @Column(name = "score_365d", nullable = false)
+    private Double score365d;
+
     @Column(name = "score_all", nullable = false)
     private Double scoreAll;
 

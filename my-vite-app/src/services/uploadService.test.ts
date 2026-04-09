@@ -242,7 +242,6 @@ describe('uploadService', () => {
     const file = new File(['hello'], 'a.txt', { type: 'text/plain' });
 
     const OriginalXhr = (globalThis as any).XMLHttpRequest;
-    let instance: any;
     let mode: 'error' | 'hang' = 'error';
     class MockXhr {
       upload = { onprogress: null as any };
@@ -260,9 +259,6 @@ describe('uploadService', () => {
       send = vi.fn(() => {
         if (mode === 'error') this.onerror?.();
       });
-      constructor() {
-        instance = this;
-      }
     }
 
     (globalThis as any).XMLHttpRequest = MockXhr;
@@ -274,7 +270,6 @@ describe('uploadService', () => {
       mode = 'hang';
       const h2 = uploadFileWithProgress(file);
       await Promise.resolve();
-      expect(instance).toBeTruthy();
       h2.cancel();
       await expect(h2.promise).rejects.toThrow('已取消上传');
     } finally {

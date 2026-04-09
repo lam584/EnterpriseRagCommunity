@@ -355,6 +355,7 @@ export const ContentMgmtPage: React.FC = () => (
     title="内容管理"
     items={[
       { id: 'board-management', label: '版块管理' },
+      { id: 'hot-board-config', label: '热榜配置' },
       { id: 'post', label: '帖子管理' },
       { id: 'post-files', label: '帖子文件解析' },
       { id: 'comment', label: '评论管理' },

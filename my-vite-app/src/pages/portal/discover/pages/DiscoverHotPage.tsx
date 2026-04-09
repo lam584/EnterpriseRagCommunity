@@ -5,8 +5,16 @@ import { fetchHotPosts, type HotPostDTO, type HotWindow } from '../../../../serv
 import type { PostDTO } from '../../../../services/postService';
 import PostFeed from '../components/PostFeed';
 
-const tabs: HotWindow[] = ['24h', '7d', 'all'];
-const labels: Record<HotWindow, string> = { '24h': '24小时', '7d': '7天', all: '全部' };
+const tabs: HotWindow[] = ['24h', '7d', '30d', '3m', '6m', '1y', 'all'];
+const labels: Record<HotWindow, string> = {
+  '24h': '24小时',
+  '7d': '7天',
+  '30d': '30天',
+  '3m': '3个月',
+  '6m': '半年',
+  '1y': '1年',
+  all: '全部',
+};
 
 const PAGE_SIZE = 25;
 
@@ -63,7 +71,7 @@ export default function DiscoverHotPage() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">热榜</h3>
-          <p className="text-sm text-gray-600">来自后端 /api/hot?window=24h|7d|all</p>
+          <p className="text-sm text-gray-600">来自后端 /api/hot?window=24h|7d|30d|3m|6m|1y|all</p>
         </div>
         <Link to="/portal/discover" className="text-sm text-blue-600 hover:underline">
           返回首页

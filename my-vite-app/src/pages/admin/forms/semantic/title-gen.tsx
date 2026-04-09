@@ -185,7 +185,7 @@ const TitleGenForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setCommittedPromptDraft, setEditing, setError, setLoading, setPromptDraft, setPromptLoadError, setSavedHint]);
 
   useEffect(() => {
     void loadConfig();
@@ -216,7 +216,7 @@ const TitleGenForm: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [canSave, form, saving, promptDraft, promptHasUnsavedChanges]);
+  }, [canSave, form, promptDraft, promptHasUnsavedChanges, saving, setCommittedPromptDraft, setEditing, setError, setSavedHint, setSaving]);
 
   const [testContent, setTestContent] = useState('');
   const [testCount, setTestCount] = useState('');
@@ -245,7 +245,7 @@ const TitleGenForm: React.FC = () => {
     } finally {
       setTesting(false);
     }
-  }, [testContent, testCount, testing]);
+  }, [setTesting, testContent, testCount, testing]);
 
   const [historyPage, setHistoryPage] = useState<Page<PostTitleGenHistoryDTO> | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);

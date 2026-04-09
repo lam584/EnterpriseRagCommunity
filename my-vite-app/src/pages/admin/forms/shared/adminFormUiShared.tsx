@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 export function computeLogsTotalPages(total: number | null | undefined): number {
   return Math.max(1, Math.ceil((total || 0) / 20));
 }

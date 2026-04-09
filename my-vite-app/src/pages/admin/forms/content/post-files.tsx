@@ -114,12 +114,14 @@ const PostFilesForm: React.FC = () => {
     }
   }, []);
 
+  const attachmentId = detail?.attachmentId;
+
   const doReextract = useCallback(async () => {
-    if (!detail?.attachmentId) return;
+    if (!attachmentId) return;
     setDetailError(null);
     setDetailLoading(true);
     try {
-      const d = await adminReextractPostFile(detail.attachmentId);
+      const d = await adminReextractPostFile(attachmentId);
       setDetail(d);
       void fetchList();
     } catch (e) {
@@ -127,7 +129,7 @@ const PostFilesForm: React.FC = () => {
     } finally {
       setDetailLoading(false);
     }
-  }, [detail?.attachmentId, fetchList, detail]);
+  }, [attachmentId, fetchList]);
 
   const doCopyPreview = useCallback(async () => {
     const text = (detail?.llmInputPreview ?? '').trim();
@@ -137,7 +139,7 @@ const PostFilesForm: React.FC = () => {
     } catch {}
   }, [detail?.llmInputPreview]);
 
-  const items = data?.items ?? [];
+  const items = useMemo(() => data?.items ?? [], [data?.items]);
   const totalPages = data?.totalPages ?? 0;
 
     useEffect(() => {

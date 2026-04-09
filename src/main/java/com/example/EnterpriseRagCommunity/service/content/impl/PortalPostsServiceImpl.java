@@ -284,7 +284,6 @@ public class PortalPostsServiceImpl implements PortalPostsService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public Page<PostDetailDTO> queryMyBookmarkedPosts(int page, int pageSize) {
         int safePage = Math.max(page, 1);
         int safePageSize = pageSize <= 0 ? 20 : Math.min(pageSize, 200);

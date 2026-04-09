@@ -162,6 +162,10 @@ public class SecurityConfig {
                                 // 手动触发热度分重算：脚本/运维调用时通常不带 CSRF token
                                 "/api/admin/hot-scores/recompute-24h",
                                 "/api/admin/hot-scores/recompute-7d",
+                                "/api/admin/hot-scores/recompute-30d",
+                                "/api/admin/hot-scores/recompute-3m",
+                                "/api/admin/hot-scores/recompute-6m",
+                                "/api/admin/hot-scores/recompute-1y",
                                 "/api/admin/hot-scores/recompute-all"
                         );
                 })
@@ -210,6 +214,11 @@ public class SecurityConfig {
                         // 手动触发热度分重算：需要登录（建议后续改为仅管理员）
                         .requestMatchers(
                                 "/api/admin/hot-scores/recompute-24h",
+                            "/api/admin/hot-scores/recompute-7d",
+                            "/api/admin/hot-scores/recompute-30d",
+                            "/api/admin/hot-scores/recompute-3m",
+                            "/api/admin/hot-scores/recompute-6m",
+                            "/api/admin/hot-scores/recompute-1y",
                                 "/api/admin/hot-scores/recompute-all"
                         ).authenticated()
                         // 其他 /api/** 请求都需要认证

@@ -88,6 +88,7 @@ public class PortalChatConfigService {
 
         PortalChatConfigDTO.AssistantChatConfigDTO a = new PortalChatConfigDTO.AssistantChatConfigDTO();
         PortalChatConfigDTO.AssistantChatConfigDTO ia = input == null ? null : input.getAssistantChat();
+        a.setAllowManualModelSelection(ia == null || ia.getAllowManualModelSelection() == null ? Boolean.TRUE : ia.getAllowManualModelSelection());
         a.setProviderId(normalizeOptionalString(ia == null ? null : ia.getProviderId()));
         a.setModel(normalizeOptionalString(ia == null ? null : ia.getModel()));
         a.setTemperature(normalizeOptionalNumber(ia == null ? null : ia.getTemperature(), 2.0, "assistantChat.temperature", strict));
@@ -113,6 +114,7 @@ public class PortalChatConfigService {
 
         PortalChatConfigDTO.PostComposeAssistantConfigDTO p = new PortalChatConfigDTO.PostComposeAssistantConfigDTO();
         PortalChatConfigDTO.PostComposeAssistantConfigDTO ip = input == null ? null : input.getPostComposeAssistant();
+        p.setAllowManualModelSelection(ip == null || ip.getAllowManualModelSelection() == null ? Boolean.TRUE : ip.getAllowManualModelSelection());
         p.setProviderId(normalizeOptionalString(ip == null ? null : ip.getProviderId()));
         p.setModel(normalizeOptionalString(ip == null ? null : ip.getModel()));
         p.setTemperature(normalizeOptionalNumber(ip == null ? null : ip.getTemperature(), 2.0, "postComposeAssistant.temperature", strict));

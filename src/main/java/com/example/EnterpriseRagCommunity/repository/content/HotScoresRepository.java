@@ -16,6 +16,10 @@ import java.util.List;
 public interface HotScoresRepository extends JpaRepository<HotScoresEntity, Long>, JpaSpecificationExecutor<HotScoresEntity> {
     Page<HotScoresEntity> findAllByOrderByScore24hDesc(Pageable pageable);
     Page<HotScoresEntity> findAllByOrderByScore7dDesc(Pageable pageable);
+        Page<HotScoresEntity> findAllByOrderByScore30dDesc(Pageable pageable);
+        Page<HotScoresEntity> findAllByOrderByScore90dDesc(Pageable pageable);
+        Page<HotScoresEntity> findAllByOrderByScore180dDesc(Pageable pageable);
+        Page<HotScoresEntity> findAllByOrderByScore365dDesc(Pageable pageable);
     Page<HotScoresEntity> findAllByOrderByScoreAllDesc(Pageable pageable);
     List<HotScoresEntity> findByPostIdIn(List<Long> postIds);
     java.util.Optional<HotScoresEntity> findByPostId(Long postId);
@@ -81,5 +85,9 @@ public interface HotScoresRepository extends JpaRepository<HotScoresEntity, Long
 
     Page<HotScoresEntity> findAllByScore24hGreaterThanOrderByScore24hDesc(Double minScore, Pageable pageable);
     Page<HotScoresEntity> findAllByScore7dGreaterThanOrderByScore7dDesc(Double minScore, Pageable pageable);
+        Page<HotScoresEntity> findAllByScore30dGreaterThanOrderByScore30dDesc(Double minScore, Pageable pageable);
+        Page<HotScoresEntity> findAllByScore90dGreaterThanOrderByScore90dDesc(Double minScore, Pageable pageable);
+        Page<HotScoresEntity> findAllByScore180dGreaterThanOrderByScore180dDesc(Double minScore, Pageable pageable);
+        Page<HotScoresEntity> findAllByScore365dGreaterThanOrderByScore365dDesc(Double minScore, Pageable pageable);
     Page<HotScoresEntity> findAllByScoreAllGreaterThanOrderByScoreAllDesc(Double minScore, Pageable pageable);
 }

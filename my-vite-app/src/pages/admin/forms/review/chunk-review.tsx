@@ -503,7 +503,7 @@ const ChunkReviewConfigForm: React.FC = () => {
     );
 
     return () => controller.abort();
-  }, [content, detailOpen]);
+  }, [content, detailOpen, toLogImageInfo]);
 
   useEffect(() => {
     void loadLogs();

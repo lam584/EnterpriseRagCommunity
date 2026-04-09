@@ -62,6 +62,8 @@ export default function AssistantSettingsPage() {
   const [topP, setTopP] = useState<string>('');
   const [defaultSystemPrompt, setDefaultSystemPrompt] = useState<string>('');
 
+  const assistantManualModelSelectionEnabled = chatOptions?.assistantManualModelSelectionEnabled !== false;
+
   const makeSnapshot = (overrides?: Partial<PrefSnapshot>): PrefSnapshot => {
     return {
       defaultProviderId,
@@ -170,9 +172,10 @@ export default function AssistantSettingsPage() {
         const providers = (opt.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[];
         const storedProvider = normAssistantValue(prefs.defaultProviderId);
         const storedModel = normAssistantValue(prefs.defaultModel);
-        const nextProviderId = pickAssistantProviderId(opt, providers, storedProvider);
+        const allowManual = opt.assistantManualModelSelectionEnabled !== false;
+        const nextProviderId = allowManual ? pickAssistantProviderId(opt, providers, storedProvider) : '';
         const p = providers.find((x) => normAssistantValue(x.id) === nextProviderId) ?? null;
-        const nextModel = pickAssistantModel(p, storedModel);
+        const nextModel = allowManual ? pickAssistantModel(p, storedModel) : '';
 
         setDefaultProviderId(nextProviderId);
         setDefaultModel(nextModel);
@@ -220,8 +223,8 @@ export default function AssistantSettingsPage() {
     setSavedHint(null);
     try {
       const saved = await updateMyAssistantPreferences({
-        defaultProviderId: defaultProviderId ? defaultProviderId : null,
-        defaultModel: defaultModel ? defaultModel : null,
+        defaultProviderId: assistantManualModelSelectionEnabled && defaultProviderId ? defaultProviderId : null,
+        defaultModel: assistantManualModelSelectionEnabled && defaultModel ? defaultModel : null,
         defaultDeepThink,
         autoLoadLastSession,
         defaultUseRag,
@@ -326,6 +329,11 @@ export default function AssistantSettingsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="lg:col-span-2">
             <div className="text-sm text-gray-700 mb-1">默认模型</div>
+            {!assistantManualModelSelectionEnabled ? (
+              <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                管理员已关闭“智能助手手动选模”，此处固定为自动路由。
+              </div>
+            ) : null}
             <select
               value={selectedProviderModelValue}
               onChange={(e) => {
@@ -339,7 +347,7 @@ export default function AssistantSettingsPage() {
                 setDefaultModel(parsed.model);
               }}
               className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed"
-              disabled={readOnly}
+              disabled={readOnly || !assistantManualModelSelectionEnabled}
             >
               <option value="">自动（均衡负载）</option>
               {settingsModelOptions.map((it) => (

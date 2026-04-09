@@ -1,4 +1,5 @@
 //my-vite-app/src/contexts/AuthContext.tsx
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useState, useContext, useEffect, ReactNode, useRef } from 'react';
 import { AdminDTO, getCurrentAdmin } from '../services/authService';
 import { getMySecurity2faPolicy } from '../services/security2faPolicyAccountService';

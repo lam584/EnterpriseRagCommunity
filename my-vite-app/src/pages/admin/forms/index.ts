@@ -9,6 +9,7 @@ export type FormLoader = () => Promise<{ default: AnyPropsComponent }>;
 export const formsLoaders: Partial<Record<string, FormLoader>> = {
   'board': () => import('./content/board'),
   'board-management': () => import('./content/BoardManagement'),
+  'hot-board-config': () => import('./content/hot-board-config'),
   'post': () => import('./content/post'),
   'post-files': () => import('./content/post-files'),
   'comment': () => import('./content/comment'),

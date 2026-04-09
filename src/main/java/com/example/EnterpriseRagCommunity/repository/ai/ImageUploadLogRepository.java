@@ -22,6 +22,9 @@ public interface ImageUploadLogRepository extends JpaRepository<ImageUploadLogEn
     Optional<ImageUploadLogEntity> findFirstByLocalPathAndStorageModeAndStatusOrderByUploadedAtDesc(
             String localPath, String storageMode, String status);
 
+    /** Lookup by remote url for test-compress link reuse. */
+    Optional<ImageUploadLogEntity> findFirstByRemoteUrlOrderByUploadedAtDesc(String remoteUrl);
+
     Page<ImageUploadLogEntity> findAllByOrderByUploadedAtDesc(Pageable pageable);
 
     @Modifying

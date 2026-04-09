@@ -137,7 +137,7 @@ describe('EvidenceListView', () => {
             title: 'LLM#7 · id=6 · REJECT · 17336ms',
             order: 7,
             stage: 'LLM',
-            evidence: [JSON.stringify({ before_context: '⬤ TERR - Displays relative terrain overlay on HSI.', after_context: '⬤ WX - Displays weather overlay on HSI.', text: '\",\"after_context\":\"' })],
+            evidence: [JSON.stringify({ before_context: '⬤ TERR - Displays relative terrain overlay on HSI.', after_context: '⬤ WX - Displays weather overlay on HSI.', text: '","after_context":"' })],
           },
         ]}
         chunkEvidenceByChunkIndex={{}}
@@ -146,7 +146,7 @@ describe('EvidenceListView', () => {
       />,
     );
 
-    expect(screen.queryByText('\",\"after_context\":\"')).toBeNull();
+    expect(screen.queryByText('","after_context":"')).toBeNull();
     expect(screen.getByText('⬤ TERR - Displays relative terrain overlay on HSI.')).toBeTruthy();
     expect(screen.getByText('⬤ WX - Displays weather overlay on HSI.')).toBeTruthy();
   });

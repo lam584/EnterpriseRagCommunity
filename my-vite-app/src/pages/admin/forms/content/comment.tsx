@@ -123,7 +123,7 @@ const CommentForm: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessLoading, canRead, query]);
 
-    const items = resp?.content ?? [];
+    const items = useMemo(() => resp?.content ?? [], [resp?.content]);
 
     useEffect(() => {
         if (!canRead || items.length === 0) {

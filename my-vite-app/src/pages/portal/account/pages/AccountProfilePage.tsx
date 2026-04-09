@@ -72,7 +72,7 @@ export default function AccountProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [resetDraftFrom, setBaseProfile, setIsEditing, setProfile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,7 +106,7 @@ export default function AccountProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [profile, postsPageNo, postsReloadTick]);
+  }, [profile, postsPageNo, postsReloadTick, setPostsErr, setPostsLoading, setPostsPage]);
 
   const validationError = useMemo(
     () => validateProfileFields({ username, bio, location, website }),

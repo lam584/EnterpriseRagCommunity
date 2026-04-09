@@ -1,12 +1,14 @@
 package com.example.EnterpriseRagCommunity.controller.ai;
 
 import com.example.EnterpriseRagCommunity.dto.ai.AssistantPreferencesDTO;
+import com.example.EnterpriseRagCommunity.dto.ai.PortalChatConfigDTO;
 import com.example.EnterpriseRagCommunity.dto.ai.UpdateAssistantPreferencesRequest;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.ai.PortalChatConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -35,12 +37,19 @@ public class AiAssistantPreferencesController {
     private final AuditLogWriter auditLogWriter;
     private final AuditDiffBuilder auditDiffBuilder;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private PortalChatConfigService portalChatConfigService;
+
     @GetMapping
     public ResponseEntity<?> getPreferences() {
         UsersEntity user = resolveCurrentUserOrNull();
         if (user == null) return unauthorizedResponse();
-
-        return ResponseEntity.ok(toAssistantPreferencesDto(user.getMetadata()));
+        AssistantPreferencesDTO dto = toAssistantPreferencesDto(user.getMetadata());
+        if (!isAssistantManualModelSelectionEnabled()) {
+            dto.setDefaultProviderId(null);
+            dto.setDefaultModel(null);
+        }
+        return ResponseEntity.ok(dto);
     }
 
     @PutMapping
@@ -55,13 +64,19 @@ public class AiAssistantPreferencesController {
 
         Map<String, Object> prefs = ensureObjectMap(metadata, "preferences");
         Map<String, Object> assistant = ensureObjectMap(prefs, "assistant");
+        boolean allowManualModelSelection = isAssistantManualModelSelectionEnabled();
 
-        if (req.isDefaultProviderIdPresent()) {
+        if (allowManualModelSelection && req.isDefaultProviderIdPresent()) {
             assistant.put("defaultProviderId", normalizeOptionalString(req.getDefaultProviderId()));
         }
 
-        if (req.isDefaultModelPresent()) {
+        if (allowManualModelSelection && req.isDefaultModelPresent()) {
             assistant.put("defaultModel", normalizeOptionalString(req.getDefaultModel()));
+        }
+
+        if (!allowManualModelSelection) {
+            assistant.put("defaultProviderId", null);
+            assistant.put("defaultModel", null);
         }
 
         if (req.isDefaultDeepThinkPresent()) {
@@ -116,7 +131,25 @@ public class AiAssistantPreferencesController {
                 null,
                 auditDiffBuilder.build(beforeAudit, summarizeAssistantPrefsForAudit(saved.getMetadata()))
         );
-        return ResponseEntity.ok(toAssistantPreferencesDto(saved.getMetadata()));
+        AssistantPreferencesDTO dto = toAssistantPreferencesDto(saved.getMetadata());
+        if (!allowManualModelSelection) {
+            dto.setDefaultProviderId(null);
+            dto.setDefaultModel(null);
+        }
+        return ResponseEntity.ok(dto);
+    }
+
+    private boolean isAssistantManualModelSelectionEnabled() {
+        PortalChatConfigService svc = this.portalChatConfigService;
+        if (svc == null) return true;
+        try {
+            PortalChatConfigDTO cfg = svc.getConfigOrDefault();
+            if (cfg == null || cfg.getAssistantChat() == null) return true;
+            Boolean enabled = cfg.getAssistantChat().getAllowManualModelSelection();
+            return enabled == null || enabled;
+        } catch (Exception ignored) {
+            return true;
+        }
     }
 
     private UsersEntity resolveCurrentUserOrNull() {

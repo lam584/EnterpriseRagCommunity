@@ -26,6 +26,33 @@ function extractCodeTextFromPreChildren(children: ReactNode): string {
   return nodeText(children);
 }
 
+function tryExtractUploadPath(href: string): string | null {
+  const raw = String(href ?? '').trim();
+  if (!raw) return null;
+  if (raw.startsWith('/uploads/')) return raw;
+  if (raw.startsWith('uploads/')) return `/${raw}`;
+  try {
+    const url = new URL(raw, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    const path = String(url.pathname ?? '').trim();
+    if (path.startsWith('/uploads/')) return path;
+  } catch {
+  }
+  return null;
+}
+
+function inferDownloadFileName(href: string | undefined, children: ReactNode): string | null {
+  const uploadPath = tryExtractUploadPath(String(href ?? ''));
+  if (!uploadPath) return null;
+
+  const label = nodeText(children).trim();
+  if (!label) return null;
+  const tail = label.split(/[\\/]/).pop()?.trim() ?? '';
+  if (!tail) return null;
+  // 浏览器下载建议名：优先使用 markdown 链接文字，并要求包含扩展名。
+  if (!/\.[A-Za-z0-9]{1,12}$/.test(tail)) return null;
+  return tail;
+}
+
 const INLINE_CODE_CLASSES = new Set(['px-1', 'py-0.5', 'bg-gray-100', 'rounded', 'border', 'border-gray-200']);
 
 function trimLeadingWhitespaceNodes(nodes: ReactNode[]): ReactNode[] {
@@ -245,15 +272,18 @@ export default function MarkdownPreview(props: { markdown: string; className?: s
           {children}
         </td>
       ),
-      a: ({ href, ...p }) => {
+      a: ({ href, children, ...p }) => {
         const h = href ?? '';
         const isHashLink = typeof h === 'string' && h.startsWith('#');
+        const downloadName = inferDownloadFileName(href, children);
         return (
           <a
             {...p}
+            children={children}
             href={resolveAssetUrl(href) ?? href}
             target={isHashLink ? undefined : '_blank'}
             rel={isHashLink ? undefined : 'noreferrer'}
+            download={downloadName ?? undefined}
             className="text-blue-600 hover:underline"
           />
         );

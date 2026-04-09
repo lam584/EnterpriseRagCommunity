@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { screen, fireEvent, cleanup } from '@testing-library/react';
 const authServiceMocks = vi.hoisted(() => {
   return {
     getRegistrationStatus: vi.fn(),
@@ -23,7 +23,6 @@ vi.mock('./AuthFooter', () => {
 });
 
 import { getRegistrationStatus, registerAndGetStatus, verifyRegister } from '../../services/authService';
-import Register from './Register';
 import { renderRegisterRoutes, submitRegisterForm } from './Register.test-helpers';
 
 const mockGetRegistrationStatus = vi.mocked(getRegistrationStatus);

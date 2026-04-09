@@ -18,6 +18,8 @@ export type AiChatProviderOptionDTO = {
 export type AiChatOptionsDTO = {
   activeProviderId?: string | null;
   providers?: AiChatProviderOptionDTO[] | null;
+  assistantManualModelSelectionEnabled?: boolean | null;
+  postComposeManualModelSelectionEnabled?: boolean | null;
 };
 
 export async function getAiChatOptions(): Promise<AiChatOptionsDTO> {

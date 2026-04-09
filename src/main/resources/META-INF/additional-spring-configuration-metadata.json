@@ -1,23 +1,4 @@
 {
-  "properties": [
-    {
-      "name": "app.ai.connect-timeout-ms",
-      "type": "java.lang.Integer",
-      "description": "Default connect timeout in milliseconds for AI upstream HTTP calls.",
-      "defaultValue": 10000
-    },
-    {
-      "name": "app.ai.read-timeout-ms",
-      "type": "java.lang.Integer",
-      "description": "Default read timeout in milliseconds for AI upstream HTTP calls.",
-      "defaultValue": 300000
-    },
-    {
-      "name": "app.ai.default-history-limit",
-      "type": "java.lang.Integer",
-      "description": "Default chat history limit for AI conversations.",
-      "defaultValue": 20
-    }
-  ]
+  "properties": []
 }
 

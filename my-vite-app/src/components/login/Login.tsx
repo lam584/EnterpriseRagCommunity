@@ -7,6 +7,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import OtpCodeInput from '../common/OtpCodeInput';
 import AuthFooter from './AuthFooter';
 
+const LOGIN_BACKGROUND_IMAGES = [backgroundImage1, backgroundImage2];
+
 interface LoginFormData {
     email: string; 
     password: string;
@@ -63,14 +65,13 @@ const Login: React.FC = () => {
 
     // 轮播图相关状态
     const [currentImage, setCurrentImage] = useState(backgroundImage1);
-    const images = [backgroundImage1, backgroundImage2];
 
     useEffect(() => {
         const interval = setInterval(() => {
             setCurrentImage((prevImage: string) => {
-                const currentIndex = images.indexOf(prevImage);
-                const nextIndex = (currentIndex + 1) % images.length;
-                return images[nextIndex];
+                const currentIndex = LOGIN_BACKGROUND_IMAGES.indexOf(prevImage);
+                const nextIndex = (currentIndex + 1) % LOGIN_BACKGROUND_IMAGES.length;
+                return LOGIN_BACKGROUND_IMAGES[nextIndex];
             });
         }, 10000); // 每10秒切换图片
 

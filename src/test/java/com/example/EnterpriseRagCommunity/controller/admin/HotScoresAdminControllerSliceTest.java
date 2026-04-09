@@ -96,6 +96,38 @@ class HotScoresAdminControllerSliceTest {
     }
 
     @Test
+    void recompute30d_should401_whenAnonymous() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-30d"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute3m_should401_whenAnonymous() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-3m"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute6m_should401_whenAnonymous() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-6m"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute1y_should401_whenAnonymous() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-1y"))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(hotScoresService);
+    }
+
+    @Test
     void recompute24h_should200_withoutCsrf_whenAuthenticated() throws Exception {
         mockMvc.perform(post("/api/admin/hot-scores/recompute-24h")
                         .with(user("u")))
@@ -104,7 +136,7 @@ class HotScoresAdminControllerSliceTest {
                 .andExpect(jsonPath("$.window").value("H24"))
                 .andExpect(jsonPath("$.at").isNotEmpty());
 
-        verify(hotScoresService, times(1)).recompute24hHourly();
+        verify(hotScoresService, times(1)).recompute24hHourlyWithResult();
         verifyNoMoreInteractions(hotScoresService);
     }
 
@@ -117,7 +149,59 @@ class HotScoresAdminControllerSliceTest {
                 .andExpect(jsonPath("$.window").value("D7"))
                 .andExpect(jsonPath("$.at").isNotEmpty());
 
-        verify(hotScoresService, times(1)).recomputeAllWindowsDaily();
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.D7);
+        verifyNoMoreInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute30d_should200_withoutCsrf_whenAuthenticated() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-30d")
+                        .with(user("u")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.window").value("D30"))
+                .andExpect(jsonPath("$.at").isNotEmpty());
+
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.D30);
+        verifyNoMoreInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute3m_should200_withoutCsrf_whenAuthenticated() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-3m")
+                        .with(user("u")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.window").value("M3"))
+                .andExpect(jsonPath("$.at").isNotEmpty());
+
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.M3);
+        verifyNoMoreInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute6m_should200_withoutCsrf_whenAuthenticated() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-6m")
+                        .with(user("u")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.window").value("M6"))
+                .andExpect(jsonPath("$.at").isNotEmpty());
+
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.M6);
+        verifyNoMoreInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute1y_should200_withoutCsrf_whenAuthenticated() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-1y")
+                        .with(user("u")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.window").value("Y1"))
+                .andExpect(jsonPath("$.at").isNotEmpty());
+
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.Y1);
         verifyNoMoreInteractions(hotScoresService);
     }
 
@@ -130,7 +214,7 @@ class HotScoresAdminControllerSliceTest {
                 .andExpect(jsonPath("$.window").value("ALL_WINDOWS"))
                 .andExpect(jsonPath("$.at").isNotEmpty());
 
-        verify(hotScoresService, times(1)).recomputeAllWindowsDaily();
+        verify(hotScoresService, times(1)).recomputeAllWindowsDailyWithResult();
         verifyNoMoreInteractions(hotScoresService);
     }
 
@@ -144,7 +228,7 @@ class HotScoresAdminControllerSliceTest {
                 .andExpect(jsonPath("$.window").value("H24"))
                 .andExpect(jsonPath("$.at").isNotEmpty());
 
-        verify(hotScoresService, times(1)).recompute24hHourly();
+        verify(hotScoresService, times(1)).recompute24hHourlyWithResult();
         verifyNoMoreInteractions(hotScoresService);
     }
 
@@ -158,7 +242,63 @@ class HotScoresAdminControllerSliceTest {
                 .andExpect(jsonPath("$.window").value("D7"))
                 .andExpect(jsonPath("$.at").isNotEmpty());
 
-        verify(hotScoresService, times(1)).recomputeAllWindowsDaily();
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.D7);
+        verifyNoMoreInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute30d_should200_withCsrf_whenAuthenticated() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-30d")
+                        .with(user("u"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.window").value("D30"))
+                .andExpect(jsonPath("$.at").isNotEmpty());
+
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.D30);
+        verifyNoMoreInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute3m_should200_withCsrf_whenAuthenticated() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-3m")
+                        .with(user("u"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.window").value("M3"))
+                .andExpect(jsonPath("$.at").isNotEmpty());
+
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.M3);
+        verifyNoMoreInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute6m_should200_withCsrf_whenAuthenticated() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-6m")
+                        .with(user("u"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.window").value("M6"))
+                .andExpect(jsonPath("$.at").isNotEmpty());
+
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.M6);
+        verifyNoMoreInteractions(hotScoresService);
+    }
+
+    @Test
+    void recompute1y_should200_withCsrf_whenAuthenticated() throws Exception {
+        mockMvc.perform(post("/api/admin/hot-scores/recompute-1y")
+                        .with(user("u"))
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.window").value("Y1"))
+                .andExpect(jsonPath("$.at").isNotEmpty());
+
+        verify(hotScoresService, times(1)).recomputeWindowWithResult(HotScoresService.Window.Y1);
         verifyNoMoreInteractions(hotScoresService);
     }
 
@@ -172,7 +312,7 @@ class HotScoresAdminControllerSliceTest {
                 .andExpect(jsonPath("$.window").value("ALL_WINDOWS"))
                 .andExpect(jsonPath("$.at").isNotEmpty());
 
-        verify(hotScoresService, times(1)).recomputeAllWindowsDaily();
+        verify(hotScoresService, times(1)).recomputeAllWindowsDailyWithResult();
         verifyNoMoreInteractions(hotScoresService);
     }
 }

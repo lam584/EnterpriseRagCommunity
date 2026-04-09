@@ -318,6 +318,8 @@ export default function AssistantChatPage() {
     [selectedProviderId, selectedModel]
   );
 
+  const assistantManualModelSelectionEnabled = chatOptions?.assistantManualModelSelectionEnabled !== false;
+
   const tokensTotals = useMemo(() => {
     let tokensInSum = 0;
     let tokensOutSum = 0;
@@ -423,6 +425,7 @@ export default function AssistantChatPage() {
         const [opt, prefs] = await Promise.all([getAiChatOptions(), getMyAssistantPreferences().catch(() => null)]);
         if (cancelled) return;
         setChatOptions(opt);
+        const manualAllowed = opt.assistantManualModelSelectionEnabled !== false;
         const providers = (opt.providers ?? []).filter(Boolean) as AiChatProviderOptionDTO[];
         const storedProvider = prefs ? normAssistantValue(prefs.defaultProviderId) : '';
         const storedModel = prefs ? normAssistantValue(prefs.defaultModel) : '';
@@ -435,6 +438,12 @@ export default function AssistantChatPage() {
           setStreamOutput(typeof prefs.stream === 'boolean' ? prefs.stream : true);
           setTemperature(typeof prefs.temperature === 'number' && Number.isFinite(prefs.temperature) ? prefs.temperature : null);
           setTopP(typeof prefs.topP === 'number' && Number.isFinite(prefs.topP) ? prefs.topP : null);
+        }
+
+        if (!manualAllowed) {
+          setSelectedProviderId('');
+          setSelectedModel('');
+          return;
         }
 
         if (prefs && !storedProvider && !storedModel) {
@@ -482,7 +491,7 @@ export default function AssistantChatPage() {
     if (!editing || !el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
-  }, [editing?.id, editing?.draft]);
+  }, [editing, editing?.id, editing?.draft]);
 
   useEffect(() => {
     // when url sessionId changes, load that session
@@ -727,8 +736,8 @@ export default function AssistantChatPage() {
     if (!trimmed || isStreaming) return;
 
     setError(null);
-    const providerIdToSend = selectedProviderId.trim() ? selectedProviderId.trim() : undefined;
-    const modelToSend = selectedModel.trim() ? selectedModel.trim() : undefined;
+    const providerIdToSend = assistantManualModelSelectionEnabled && selectedProviderId.trim() ? selectedProviderId.trim() : undefined;
+    const modelToSend = assistantManualModelSelectionEnabled && selectedModel.trim() ? selectedModel.trim() : undefined;
     const requestDeepThink = effectiveDeepThink;
 
     const userId = uid();
@@ -1120,32 +1129,38 @@ export default function AssistantChatPage() {
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-600 whitespace-nowrap">模型:</label>
-                <select
-                  className="w-80 border rounded px-3 py-1.5 text-sm bg-white"
-                  value={selectedProviderModelValue}
-                  onChange={(e) => {
-                    const parsed = parseProviderModelValue(String(e.target.value ?? ''));
-                    if (!parsed) {
-                      setSelectedProviderId('');
-                      setSelectedModel('');
-                      void updateMyAssistantPreferences({ defaultProviderId: null, defaultModel: null }).catch(() => {});
-                      return;
-                    }
-                    setSelectedProviderId(parsed.providerId);
-                    setSelectedModel(parsed.model);
-                    void updateMyAssistantPreferences({ defaultProviderId: parsed.providerId, defaultModel: parsed.model }).catch(() => {});
-                  }}
-                  disabled={isStreaming}
-                >
-                  <option value="">
-                    {pendingImages.length ? '自动（多模态聊天/多模态模型池）' : '自动（多模态聊天/均衡负载）'}
-                  </option>
-                  {flatModelOptions.map((it) => (
-                    <option key={it.value} value={it.value}>
-                      {it.providerLabel}：{it.model}
+                {assistantManualModelSelectionEnabled ? (
+                  <select
+                    className="w-80 border rounded px-3 py-1.5 text-sm bg-white"
+                    value={selectedProviderModelValue}
+                    onChange={(e) => {
+                      const parsed = parseProviderModelValue(String(e.target.value ?? ''));
+                      if (!parsed) {
+                        setSelectedProviderId('');
+                        setSelectedModel('');
+                        void updateMyAssistantPreferences({ defaultProviderId: null, defaultModel: null }).catch(() => {});
+                        return;
+                      }
+                      setSelectedProviderId(parsed.providerId);
+                      setSelectedModel(parsed.model);
+                      void updateMyAssistantPreferences({ defaultProviderId: parsed.providerId, defaultModel: parsed.model }).catch(() => {});
+                    }}
+                    disabled={isStreaming}
+                  >
+                    <option value="">
+                      {pendingImages.length ? '自动（多模态聊天/多模态模型池）' : '自动（多模态聊天/均衡负载）'}
                     </option>
-                  ))}
-                </select>
+                    {flatModelOptions.map((it) => (
+                      <option key={it.value} value={it.value}>
+                        {it.providerLabel}：{it.model}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-80 border rounded px-3 py-1.5 text-sm bg-gray-50 text-gray-500">
+                    已关闭手动选模（自动负载均衡）
+                  </div>
+                )}
               </div>
               {pendingImages.length ? (
                 <div className="text-xs text-gray-500">

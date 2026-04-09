@@ -91,7 +91,7 @@ export async function encryptValue(value: string): Promise<string> {
   return data.encrypted;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export async function completeSetup(data: any): Promise<void> {
   const csrfToken = await getCsrfToken();
   const res = await fetch('/api/setup/complete', {

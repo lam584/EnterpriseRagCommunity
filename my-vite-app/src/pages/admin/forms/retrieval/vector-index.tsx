@@ -333,7 +333,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId, selectedSourceType]);
+  }, [canAction, indexConfig, load, loadHistory, selectedIndexId, selectedSourceType]);
 
   const onSync = useCallback(async () => {
     if (!canAction) return;
@@ -362,7 +362,7 @@ const VectorIndexForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [canAction, indexConfig.defaultChunkMaxChars, indexConfig.defaultChunkOverlapChars, indexConfig.dim, indexConfig.embeddingProviderId, load, loadHistory, selectedIndexId, selectedSourceType]);
+  }, [canAction, indexConfig, load, loadHistory, selectedIndexId, selectedSourceType]);
 
   const onSaveAutoSync = useCallback(async (next?: { enabled?: boolean; intervalSeconds?: number }) => {
     if (!canAction) return;

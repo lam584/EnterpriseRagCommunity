@@ -9,6 +9,7 @@ public class PortalChatConfigDTO {
 
     @Data
     public static class AssistantChatConfigDTO {
+        private Boolean allowManualModelSelection;
         private String providerId;
         private String model;
         private Double temperature;
@@ -24,6 +25,7 @@ public class PortalChatConfigDTO {
 
     @Data
     public static class PostComposeAssistantConfigDTO {
+        private Boolean allowManualModelSelection;
         private String providerId;
         private String model;
         private Double temperature;

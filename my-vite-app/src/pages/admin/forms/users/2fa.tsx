@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
 import { Checkbox } from '../../../../components/ui/checkbox';
@@ -216,7 +216,7 @@ const TwoFAForm: React.FC = () => {
     }
   };
 
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     setUsersLoading(true);
     setUsersError(null);
     try {
@@ -229,7 +229,7 @@ const TwoFAForm: React.FC = () => {
     } finally {
       setUsersLoading(false);
     }
-  };
+  }, [queryPayload]);
 
   useEffect(() => {
     void loadSettings();
@@ -238,7 +238,7 @@ const TwoFAForm: React.FC = () => {
 
   useEffect(() => {
     void loadUsers();
-  }, [queryPayload]);
+  }, [loadUsers]);
 
   const canEditSettings = settingsEditing && !settingsLoading && !settingsSaving;
   const canEditPolicy = policyEditing && !policyLoading && !policySaving;

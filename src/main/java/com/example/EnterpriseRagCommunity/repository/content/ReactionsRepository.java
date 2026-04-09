@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -23,6 +24,8 @@ public interface ReactionsRepository extends JpaRepository<ReactionsEntity, Long
     boolean existsByUserIdAndTargetTypeAndTargetIdAndType(Long userId, ReactionTargetType targetType, Long targetId, ReactionType type);
     long countByTargetTypeAndTargetIdAndType(ReactionTargetType targetType, Long targetId, ReactionType type);
     void deleteByUserIdAndTargetTypeAndTargetIdAndType(Long userId, ReactionTargetType targetType, Long targetId, ReactionType type);
+        @Transactional
+        void deleteByUserIdAndTargetTypeAndType(Long userId, ReactionTargetType targetType, ReactionType type);
 
     @Query("""
             select r.targetId, count(r.id)

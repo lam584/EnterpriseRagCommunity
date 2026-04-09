@@ -9,6 +9,8 @@ export type PromptContentDTO = {
   name?: string | null;
   systemPrompt?: string | null;
   userPromptTemplate?: string | null;
+  visionProviderId?: string | null;
+  visionModel?: string | null;
   temperature?: number | null;
   topP?: number | null;
   maxTokens?: number | null;
@@ -45,6 +47,8 @@ export async function adminUpdatePromptContent(
     name?: string | null;
     systemPrompt?: string | null;
     userPromptTemplate?: string | null;
+    visionProviderId?: string | null;
+    visionModel?: string | null;
     temperature?: number | null;
     topP?: number | null;
     maxTokens?: number | null;

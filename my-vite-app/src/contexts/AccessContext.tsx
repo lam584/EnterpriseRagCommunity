@@ -1,4 +1,5 @@
 // my-vite-app/src/contexts/AccessContext.tsx
+/* eslint-disable react-refresh/only-export-components */
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';

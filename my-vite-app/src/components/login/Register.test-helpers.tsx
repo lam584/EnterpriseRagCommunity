@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import Register from './Register';

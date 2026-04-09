@@ -59,6 +59,8 @@ public class PromptsAdminService {
             if (req.getName() != null) entity.setName(req.getName());
             if (req.getSystemPrompt() != null) entity.setSystemPrompt(req.getSystemPrompt());
             if (req.getUserPromptTemplate() != null) entity.setUserPromptTemplate(req.getUserPromptTemplate());
+            if (req.getVisionProviderId() != null) entity.setVisionProviderId(normalizeNullable(req.getVisionProviderId()));
+            if (req.getVisionModel() != null) entity.setVisionModel(normalizeNullable(req.getVisionModel()));
             if (req.getTemperature() != null) entity.setTemperature(req.getTemperature());
             if (req.getTopP() != null) entity.setTopP(req.getTopP());
             if (req.getMaxTokens() != null) entity.setMaxTokens(req.getMaxTokens());
@@ -79,6 +81,8 @@ public class PromptsAdminService {
         dto.setName(p.getName());
         dto.setSystemPrompt(p.getSystemPrompt());
         dto.setUserPromptTemplate(p.getUserPromptTemplate());
+        dto.setVisionProviderId(p.getVisionProviderId());
+        dto.setVisionModel(p.getVisionModel());
         dto.setTemperature(p.getTemperature());
         dto.setTopP(p.getTopP());
         dto.setMaxTokens(p.getMaxTokens());
@@ -86,6 +90,12 @@ public class PromptsAdminService {
         dto.setVersion(p.getVersion());
         dto.setUpdatedBy(p.getUpdatedBy());
         return dto;
+    }
+
+    private static String normalizeNullable(String raw) {
+        if (raw == null) return null;
+        String s = raw.trim();
+        return s.isEmpty() ? null : s;
     }
 
     private static String normalizeCode(String code) {

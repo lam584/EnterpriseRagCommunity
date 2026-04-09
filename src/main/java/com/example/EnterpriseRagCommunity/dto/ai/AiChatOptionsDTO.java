@@ -8,5 +8,7 @@ import java.util.List;
 public class AiChatOptionsDTO {
     private String activeProviderId;
     private List<AiChatProviderOptionDTO> providers;
+    private Boolean assistantManualModelSelectionEnabled;
+    private Boolean postComposeManualModelSelectionEnabled;
 }
 

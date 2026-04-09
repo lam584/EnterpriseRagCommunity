@@ -280,9 +280,12 @@ const EmailConfigForm: React.FC = () => {
   useEffect(() => {
     void load();
     void loadInboxConfig();
+  }, []);
+
+  useEffect(() => {
     void loadInboxMessages(Math.min(MAILBOX_MAX_LIMIT, inboxPageSize));
     void loadSentMessages(Math.min(MAILBOX_MAX_LIMIT, sentPageSize));
-  }, []);
+  }, [inboxPageSize, sentPageSize]);
 
   const inboxPageStart = (inboxPageNum - 1) * inboxPageSize;
   const inboxPageItems = inboxMessages.slice(inboxPageStart, inboxPageStart + inboxPageSize);

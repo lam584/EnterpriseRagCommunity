@@ -113,10 +113,20 @@ export type TestCompressResult = {
   wasCompressed?: boolean;
   originalPreview?: string;
   compressedPreview?: string;
+  originalFullImage?: string;
+  compressedFullImage?: string;
   error?: string;
 };
 
-export async function adminTestCompress(localPath: string): Promise<TestCompressResult> {
+export type TestCompressConfigOverride = {
+  compressionEnabled?: boolean | null;
+  compressionMaxWidth?: number | null;
+  compressionMaxHeight?: number | null;
+  compressionQuality?: number | null;
+  compressionMaxBytes?: number | null;
+};
+
+export async function adminTestCompress(localPath: string, override?: TestCompressConfigOverride): Promise<TestCompressResult> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl('/api/admin/ai/image-storage/test-compress'), {
     method: 'POST',
@@ -125,7 +135,7 @@ export async function adminTestCompress(localPath: string): Promise<TestCompress
       'X-XSRF-TOKEN': csrfToken,
     },
     credentials: 'include',
-    body: JSON.stringify({ localPath }),
+    body: JSON.stringify({ localPath, ...(override ?? {}) }),
   });
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '测试压缩失败');

@@ -127,7 +127,7 @@ export async function adminGetLlmQueueConfig(): Promise<LlmQueueConfigDTO> {
   return data as LlmQueueConfigDTO;
 }
 
-export async function adminUpdateLlmQueueConfig(payload: { maxConcurrent?: number }): Promise<LlmQueueConfigDTO> {
+export async function adminUpdateLlmQueueConfig(payload: { maxConcurrent?: number; maxQueueSize?: number; keepCompleted?: number }): Promise<LlmQueueConfigDTO> {
   const csrfToken = await getCsrfToken();
   const res = await fetch(apiUrl('/api/admin/metrics/llm-queue/config'), {
     method: 'PUT',

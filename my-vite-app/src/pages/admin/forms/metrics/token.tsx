@@ -202,7 +202,7 @@ const TokenForm: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, pricingMode, source]);
+  }, [endDate, pricingMode, setError, setLoading, setResp, setTimeline, setTimelineError, source, startDate]);
 
   const loadPrices = useCallback(async () => {
     setPricesLoading(true);
@@ -228,7 +228,7 @@ const TokenForm: React.FC = () => {
     if (!next) return;
     setStartDate(next.startDate);
     setEndDate(next.endDate);
-  }, []);
+  }, [setEndDate, setRangePreset, setStartDate]);
 
   const toggleSort = useCallback(
     (k: SortKey) => {

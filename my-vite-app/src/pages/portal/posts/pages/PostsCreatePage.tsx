@@ -95,6 +95,7 @@ export default function PostsCreatePage() {
   const uploadProgressPendingRef = useRef<Map<string, { loaded: number; total: number }>>(new Map());
   const uploadProgressTimerRef = useRef<number | null>(null);
   const verifyPollTimerRef = useRef<number | null>(null);
+  const scheduleVerifyPollRef = useRef<() => void>(() => {});
   const [composeAssistantWindowOpen, setComposeAssistantWindowOpen] = useState(false);
 
   const [useAiTitle, setUseAiTitle] = useState(true);
@@ -139,13 +140,15 @@ export default function PostsCreatePage() {
   }, [composeLocked]);
 
   useEffect(() => {
+    const autoOpenTransferWindowTimers = autoOpenTransferWindowTimerRef.current;
+    const uploadHandles = uploadHandleRef.current;
     return () => {
       mountedRef.current = false;
-      const timers = Array.from(autoOpenTransferWindowTimerRef.current.values());
-      autoOpenTransferWindowTimerRef.current.clear();
+      const timers = Array.from(autoOpenTransferWindowTimers.values());
+      autoOpenTransferWindowTimers.clear();
       for (const t of timers) window.clearTimeout(t);
-      const handles = Array.from(uploadHandleRef.current.values());
-      uploadHandleRef.current.clear();
+      const handles = Array.from(uploadHandles.values());
+      uploadHandles.clear();
       for (const h of handles) {
         if (preserveServerUploadsOnUnmountRef.current) {
           h.pause();
@@ -487,7 +490,7 @@ export default function PostsCreatePage() {
       });
       window.setTimeout(() => {
         if (!mounted) return;
-        scheduleVerifyPoll();
+        scheduleVerifyPollRef.current();
       }, 0);
     };
 
@@ -765,8 +768,10 @@ export default function PostsCreatePage() {
       scheduleVerifyPoll();
     }, 1000);
   };
+  scheduleVerifyPollRef.current = scheduleVerifyPoll;
 
   useEffect(() => {
+    const uploadHashAbortControllers = uploadHashAbortRef.current;
     return () => {
       if (uploadProgressTimerRef.current != null) {
         window.clearTimeout(uploadProgressTimerRef.current);
@@ -776,13 +781,13 @@ export default function PostsCreatePage() {
         window.clearTimeout(verifyPollTimerRef.current);
         verifyPollTimerRef.current = null;
       }
-      for (const ac of uploadHashAbortRef.current.values()) {
+      for (const ac of uploadHashAbortControllers.values()) {
         try {
           ac.abort();
         } catch {
         }
       }
-      uploadHashAbortRef.current.clear();
+      uploadHashAbortControllers.clear();
     };
   }, []);
 

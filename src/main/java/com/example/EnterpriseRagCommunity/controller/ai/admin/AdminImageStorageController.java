@@ -79,6 +79,37 @@ public class AdminImageStorageController {
         }
     }
 
+    @PostMapping("/test-compress")
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_ai_image_storage','write'))")
+    public Map<String, Object> testCompress(@RequestBody TestCompressRequest req) {
+        String input = req == null ? null : req.localPath();
+        if (input == null || input.trim().isBlank()) {
+            return Map.of("success", false, "error", "localPath 不能为空");
+        }
+        try {
+            ImageStorageConfigService.CompressionConfig compressionConfig = resolveCompressionConfig(req);
+            Map<String, Object> data = uploadService.testCompress(input.trim(), compressionConfig);
+            java.util.LinkedHashMap<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("success", true);
+            out.put("originalSize", data.get("originalSize"));
+            out.put("compressedSize", data.get("compressedSize"));
+            out.put("originalWidth", data.get("originalWidth"));
+            out.put("originalHeight", data.get("originalHeight"));
+            out.put("compressedWidth", data.get("compressedWidth"));
+            out.put("compressedHeight", data.get("compressedHeight"));
+            out.put("compressionRatio", data.get("compressionRatio"));
+            out.put("format", data.get("format"));
+            out.put("wasCompressed", data.get("wasCompressed"));
+            out.put("originalPreview", data.get("originalBase64"));
+            out.put("compressedPreview", data.get("compressedBase64"));
+            out.put("originalFullImage", data.get("originalFullBase64"));
+            out.put("compressedFullImage", data.get("compressedFullBase64"));
+            return out;
+        } catch (Exception e) {
+            return Map.of("success", false, "error", e.getMessage() == null ? "测试压缩失败" : e.getMessage());
+        }
+    }
+
     @DeleteMapping("/expired-logs")
     @Transactional
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_ai_image_storage','write'))")
@@ -87,7 +118,39 @@ public class AdminImageStorageController {
         return Map.of("deleted", deleted);
     }
 
-    public record TestUploadRequest(String localPath, String mimeType, String modelName) {}
+        public record TestUploadRequest(String localPath, String mimeType, String modelName) {}
+        public record TestCompressRequest(
+            String localPath,
+            Boolean compressionEnabled,
+            Integer compressionMaxWidth,
+            Integer compressionMaxHeight,
+            Double compressionQuality,
+            Integer compressionMaxBytes
+        ) {}
+
+        private ImageStorageConfigService.CompressionConfig resolveCompressionConfig(TestCompressRequest req) {
+        ImageStorageConfigService.CompressionConfig base = configService.getCompressionConfig();
+        if (req == null) return base;
+
+        Boolean enabledOverride = req.compressionEnabled();
+        Integer maxWidthOverride = req.compressionMaxWidth();
+        Integer maxHeightOverride = req.compressionMaxHeight();
+        Double qualityOverride = req.compressionQuality();
+        Integer maxBytesOverride = req.compressionMaxBytes();
+        boolean hasOverride = enabledOverride != null
+            || maxWidthOverride != null
+            || maxHeightOverride != null
+            || qualityOverride != null
+            || maxBytesOverride != null;
+        if (!hasOverride) return base;
+
+        boolean enabled = enabledOverride != null ? enabledOverride : base.enabled();
+        int maxWidth = maxWidthOverride != null ? Math.clamp(maxWidthOverride, 1, 16384) : base.maxWidth();
+        int maxHeight = maxHeightOverride != null ? Math.clamp(maxHeightOverride, 1, 16384) : base.maxHeight();
+        double quality = qualityOverride != null ? Math.clamp(qualityOverride, 0.1, 1.0) : base.quality();
+        int maxBytes = maxBytesOverride != null ? Math.clamp(maxBytesOverride, 1024, 50_000_000) : base.maxBytes();
+        return new ImageStorageConfigService.CompressionConfig(enabled, maxWidth, maxHeight, quality, maxBytes);
+        }
 
     private static LlmImageUploadService.ValidatedLocalPath sanitizeLocalPath(String raw) {
         if (raw == null) return null;

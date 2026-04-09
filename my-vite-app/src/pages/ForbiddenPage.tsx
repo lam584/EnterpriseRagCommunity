@@ -28,7 +28,7 @@ export default function ForbiddenPage() {
       setIsAuthenticated(false);
     } catch (e) {
       // Even if backend logout fails, still try to let user re-login.
-      // eslint-disable-next-line no-console
+       
       console.warn('logout failed, force navigate to /login', e);
     } finally {
       navigate('/login', { replace: true });
