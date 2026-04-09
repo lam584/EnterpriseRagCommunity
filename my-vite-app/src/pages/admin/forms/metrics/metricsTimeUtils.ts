@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { adminGetAiProvidersConfig } from '../../../../services/aiProvidersAdminService';
 
 export type MetricsRangePreset =
@@ -79,11 +79,21 @@ export function createDefaultMetricsRangeState(now = new Date()): MetricsRangeSt
 
 export function useMetricsRangeState() {
   const [state, setState] = useState<MetricsRangeState>(() => createDefaultMetricsRangeState());
+  const setStartDate = useCallback((startDate: Date) => {
+    setState((prev) => ({ ...prev, startDate }));
+  }, []);
+  const setEndDate = useCallback((endDate: Date) => {
+    setState((prev) => ({ ...prev, endDate }));
+  }, []);
+  const setRangePreset = useCallback((rangePreset: MetricsRangePreset) => {
+    setState((prev) => ({ ...prev, rangePreset }));
+  }, []);
+
   return {
     ...state,
-    setStartDate: (startDate: Date) => setState((prev) => ({ ...prev, startDate })),
-    setEndDate: (endDate: Date) => setState((prev) => ({ ...prev, endDate })),
-    setRangePreset: (rangePreset: MetricsRangePreset) => setState((prev) => ({ ...prev, rangePreset })),
+    setStartDate,
+    setEndDate,
+    setRangePreset,
   };
 }
 
@@ -95,13 +105,29 @@ export function useMetricsRequestState<TMetrics, TTimeline>() {
     timeline: null,
     timelineError: null,
   });
+  const setLoading = useCallback((loading: boolean) => {
+    setState((prev) => ({ ...prev, loading }));
+  }, []);
+  const setError = useCallback((error: string | null) => {
+    setState((prev) => ({ ...prev, error }));
+  }, []);
+  const setResp = useCallback((resp: TMetrics | null) => {
+    setState((prev) => ({ ...prev, resp }));
+  }, []);
+  const setTimeline = useCallback((timeline: TTimeline | null) => {
+    setState((prev) => ({ ...prev, timeline }));
+  }, []);
+  const setTimelineError = useCallback((timelineError: string | null) => {
+    setState((prev) => ({ ...prev, timelineError }));
+  }, []);
+
   return {
     ...state,
-    setLoading: (loading: boolean) => setState((prev) => ({ ...prev, loading })),
-    setError: (error: string | null) => setState((prev) => ({ ...prev, error })),
-    setResp: (resp: TMetrics | null) => setState((prev) => ({ ...prev, resp })),
-    setTimeline: (timeline: TTimeline | null) => setState((prev) => ({ ...prev, timeline })),
-    setTimelineError: (timelineError: string | null) => setState((prev) => ({ ...prev, timelineError })),
+    setLoading,
+    setError,
+    setResp,
+    setTimeline,
+    setTimelineError,
   };
 }
 

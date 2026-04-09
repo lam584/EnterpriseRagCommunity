@@ -1,3 +1,4 @@
+import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
   buildProviderNameMap,
@@ -7,6 +8,8 @@ import {
   dayEnd,
   dayStart,
   resolveRangePresetDates,
+  useMetricsRangeState,
+  useMetricsRequestState,
 } from './metricsTimeUtils';
 
 describe('metricsTimeUtils', () => {
@@ -52,5 +55,33 @@ describe('metricsTimeUtils', () => {
     expect(computeMaxMetricChartValue(items, 'tokens', (x) => x.totalTokens, (x) => x.cost)).toBe(8);
     expect(computeMaxMetricChartValue(items, 'cost', (x) => x.totalTokens, (x) => x.cost)).toBe(0.2);
     expect(computeMaxMetricChartValue([], 'tokens', () => 0, () => 0)).toBe(1);
+  });
+
+  it('keeps metrics hook setter references stable across rerenders', () => {
+    const { result: range, rerender: rerenderRange } = renderHook(() => useMetricsRangeState());
+    const rangeSetters = {
+      setStartDate: range.current.setStartDate,
+      setEndDate: range.current.setEndDate,
+      setRangePreset: range.current.setRangePreset,
+    };
+    rerenderRange();
+    expect(range.current.setStartDate).toBe(rangeSetters.setStartDate);
+    expect(range.current.setEndDate).toBe(rangeSetters.setEndDate);
+    expect(range.current.setRangePreset).toBe(rangeSetters.setRangePreset);
+
+    const { result: request, rerender: rerenderRequest } = renderHook(() => useMetricsRequestState<unknown, unknown>());
+    const requestSetters = {
+      setLoading: request.current.setLoading,
+      setError: request.current.setError,
+      setResp: request.current.setResp,
+      setTimeline: request.current.setTimeline,
+      setTimelineError: request.current.setTimelineError,
+    };
+    rerenderRequest();
+    expect(request.current.setLoading).toBe(requestSetters.setLoading);
+    expect(request.current.setError).toBe(requestSetters.setError);
+    expect(request.current.setResp).toBe(requestSetters.setResp);
+    expect(request.current.setTimeline).toBe(requestSetters.setTimeline);
+    expect(request.current.setTimelineError).toBe(requestSetters.setTimelineError);
   });
 });

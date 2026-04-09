@@ -103,11 +103,13 @@ function buildQuery(params: Record<string, unknown>): string {
 
 export async function adminGetTokenMetrics(
   params: { start?: string; end?: string; source?: string; pricingMode?: string } = {},
+  options: { signal?: AbortSignal } = {},
 ): Promise<TokenMetricsResponseDTO> {
   const qs = buildQuery({ start: params.start, end: params.end, source: params.source, pricingMode: params.pricingMode });
   const res = await fetch(apiUrl(`/api/admin/metrics/token${qs}`), {
     method: 'GET',
     credentials: 'include',
+    signal: options.signal,
   });
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '获取 Token 成本统计失败');
@@ -119,11 +121,12 @@ export async function adminGetTokenTimeline(params: {
   end?: string;
   source?: string;
   bucket?: 'AUTO' | 'HOUR' | 'DAY' | string;
-} = {}): Promise<TokenTimelineResponseDTO> {
+} = {}, options: { signal?: AbortSignal } = {}): Promise<TokenTimelineResponseDTO> {
   const qs = buildQuery({ start: params.start, end: params.end, source: params.source, bucket: params.bucket });
   const res = await fetch(apiUrl(`/api/admin/metrics/token/timeline${qs}`), {
     method: 'GET',
     credentials: 'include',
+    signal: options.signal,
   });
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '获取 Token 趋势失败');

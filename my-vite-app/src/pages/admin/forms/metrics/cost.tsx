@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import {
   adminGetTokenMetrics,
@@ -25,9 +25,13 @@ import { TokenTimelineChart } from './TokenTimelineChart';
 import { ModelTokenCostChart } from './ModelTokenCostChart';
 
 const CostForm: React.FC = () => {
+  const LOAD_DEBOUNCE_MS = 300;
   const { startDate, setStartDate, endDate, setEndDate, rangePreset, setRangePreset } = useMetricsRangeState();
   const { loading, setLoading, error, setError, resp, setResp, timeline, setTimeline, timelineError, setTimelineError } =
     useMetricsRequestState<TokenMetricsResponseDTO, TokenTimelineResponseDTO>();
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const loadRequestSeqRef = useRef(0);
+  const loadTimerRef = useRef<number | null>(null);
 
   const [chartBy, setChartBy] = useState<'cost' | 'tokens'>('cost');
 
@@ -67,6 +71,10 @@ const CostForm: React.FC = () => {
 
   const load = useCallback(
     async () => {
+      if (loadAbortRef.current) loadAbortRef.current.abort();
+      const controller = new AbortController();
+      loadAbortRef.current = controller;
+      const requestSeq = ++loadRequestSeqRef.current;
       setLoading(true);
       setError(null);
       setTimelineError(null);
@@ -74,27 +82,58 @@ const CostForm: React.FC = () => {
         const start = formatLocalDateTime(startDate);
         const end = formatLocalDateTime(endDate);
         const [r, t] = await Promise.all([
-          adminGetTokenMetrics({ start, end, source: 'MODERATION' }),
-          adminGetTokenTimeline({ start, end, source: 'MODERATION' }),
+          adminGetTokenMetrics({ start, end, source: 'MODERATION' }, { signal: controller.signal }),
+          adminGetTokenTimeline({ start, end, source: 'MODERATION' }, { signal: controller.signal }),
         ]);
+        if (controller.signal.aborted || requestSeq !== loadRequestSeqRef.current) return;
         setResp(r);
         setTimeline(t);
       } catch (e) {
+        const aborted = controller.signal.aborted || (e instanceof Error && e.name === 'AbortError');
+        if (aborted) return;
         const msg = e instanceof Error ? e.message : String(e);
         setError(msg);
         setTimelineError(msg);
         setResp(null);
         setTimeline(null);
       } finally {
-        setLoading(false);
+        if (requestSeq === loadRequestSeqRef.current) setLoading(false);
+        if (loadAbortRef.current === controller) loadAbortRef.current = null;
       }
     },
     [endDate, setError, setLoading, setResp, setTimeline, setTimelineError, startDate],
   );
 
+  const scheduleLoad = useCallback(() => {
+    if (loadTimerRef.current !== null) window.clearTimeout(loadTimerRef.current);
+    loadTimerRef.current = window.setTimeout(() => {
+      loadTimerRef.current = null;
+      void load();
+    }, LOAD_DEBOUNCE_MS);
+  }, [LOAD_DEBOUNCE_MS, load]);
+
   useEffect(() => {
-    load();
-  }, [load]);
+    scheduleLoad();
+    return () => {
+      if (loadTimerRef.current !== null) {
+        window.clearTimeout(loadTimerRef.current);
+        loadTimerRef.current = null;
+      }
+    };
+  }, [scheduleLoad]);
+
+  useEffect(() => {
+    return () => {
+      if (loadTimerRef.current !== null) {
+        window.clearTimeout(loadTimerRef.current);
+        loadTimerRef.current = null;
+      }
+      if (loadAbortRef.current) {
+        loadAbortRef.current.abort();
+        loadAbortRef.current = null;
+      }
+    };
+  }, []);
 
   return (
     <div className="bg-white rounded-lg shadow p-4 space-y-4">
