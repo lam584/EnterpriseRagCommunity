@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { PostDTO } from '../../../../services/postService';
 import type { SpringPage } from '../../../../types/page';
 import type { UpdateUserProfileRequest, UserProfile } from '../../../../types/userProfile';
@@ -63,14 +63,14 @@ export function useProfilePageState() {
   const [postsPageNo, setPostsPageNo] = useState(1);
   const [postsReloadTick, setPostsReloadTick] = useState(0);
 
-  function resetDraftFrom(profileDraft: Pick<UserProfile, 'username' | 'bio' | 'avatarUrl' | 'location' | 'website'>) {
+  const resetDraftFrom = useCallback((profileDraft: Pick<UserProfile, 'username' | 'bio' | 'avatarUrl' | 'location' | 'website'>) => {
     const nextDraft = toProfileDraft(profileDraft);
     setUsername(nextDraft.username);
     setBio(nextDraft.bio);
     setAvatarUrl(nextDraft.avatarUrl);
     setLocation(nextDraft.location);
     setWebsite(nextDraft.website);
-  }
+  }, []);
 
   return {
     saveOk,

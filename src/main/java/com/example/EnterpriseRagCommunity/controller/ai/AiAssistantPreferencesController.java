@@ -191,7 +191,6 @@ public class AiAssistantPreferencesController {
         return null;
     }
 
-    @SuppressWarnings("unchecked")
     private static AssistantPreferencesDTO toAssistantPreferencesDto(Map<String, Object> metadata) {
         AssistantPreferencesDTO dto = new AssistantPreferencesDTO();
         Map<String, Object> prefs = metadata == null ? null : copyObjectMap(metadata.get("preferences"));
@@ -254,7 +253,6 @@ public class AiAssistantPreferencesController {
         return dto;
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, Object> summarizeAssistantPrefsForAudit(Map<String, Object> metadata) {
         Map<String, Object> m = new LinkedHashMap<>();
         Map<String, Object> prefs = metadata == null ? null : copyObjectMap(metadata.get("preferences"));

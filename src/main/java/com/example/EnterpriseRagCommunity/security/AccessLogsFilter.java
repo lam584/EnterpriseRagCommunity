@@ -36,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 
 @Component
@@ -61,6 +62,12 @@ public class AccessLogsFilter extends OncePerRequestFilter {
 
     @Value("${app.logging.access.max-body-bytes:65536}")
     private int maxBodyBytes;
+
+    @Value("${app.logging.access.sample-rate:1.0}")
+    private double sampleRate = 1.0;
+
+    @Value("${app.logging.access.keep-error:true}")
+    private boolean keepErrorLogsWhenSampling = true;
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -180,6 +187,18 @@ public class AccessLogsFilter extends OncePerRequestFilter {
     private static int clampMaxBodyBytes(int v) {
         if (v <= 0) return 0;
         return Math.min(v, 1024 * 1024);
+    }
+
+    private static double normalizeSampleRate(double v) {
+        if (Double.isNaN(v) || Double.isInfinite(v)) return 1.0;
+        return Math.clamp(v, 0.0, 1.0);
+    }
+
+    private boolean shouldWriteAccessLog(int statusCode) {
+        double rate = normalizeSampleRate(sampleRate);
+        if (rate >= 1.0) return true;
+        if (keepErrorLogsWhenSampling && statusCode >= 500) return true;
+        return ThreadLocalRandom.current().nextDouble() < rate;
     }
 
     private static boolean shouldWrapRequest(HttpServletRequest request) {
@@ -495,6 +514,10 @@ public class AccessLogsFilter extends OncePerRequestFilter {
                 Authentication auth = SecurityContextHolder.getContext().getAuthentication();
                 Long userId = resolveUserId(auth);
                 String username = resolveUsername(auth);
+
+                if (!shouldWriteAccessLog(statusCode)) {
+                    return;
+                }
 
                 accessLogWriter.write(
                         null,

@@ -3,12 +3,15 @@ package com.example.EnterpriseRagCommunity.service.content.impl;
 import com.example.EnterpriseRagCommunity.dto.content.PostDetailDTO;
 import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.entity.content.BoardsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.HotScoresEntity;
 import com.example.EnterpriseRagCommunity.entity.content.PostsEntity;
+import com.example.EnterpriseRagCommunity.entity.content.enums.CommentStatus;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionTargetType;
 import com.example.EnterpriseRagCommunity.entity.content.enums.PostStatus;
 import com.example.EnterpriseRagCommunity.entity.content.enums.ReactionType;
 import com.example.EnterpriseRagCommunity.repository.content.HotScoresRepository;
 import com.example.EnterpriseRagCommunity.repository.content.BoardsRepository;
+import com.example.EnterpriseRagCommunity.repository.content.CommentsRepository;
 import com.example.EnterpriseRagCommunity.repository.content.ReactionsRepository;
 import com.example.EnterpriseRagCommunity.service.content.CommentsService;
 import com.example.EnterpriseRagCommunity.service.content.PortalPostsService;
@@ -46,6 +49,8 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
     private final CommentsService commentsService;
 
+    private CommentsRepository commentsRepository;
+
     private final PostViewsDailyRepository postViewsDailyRepository;
 
     private HotScoresRepository hotScoresRepository;
@@ -65,6 +70,11 @@ public class PortalPostsServiceImpl implements PortalPostsService {
     @Autowired(required = false)
     void setHotScoresRepository(HotScoresRepository hotScoresRepository) {
         this.hotScoresRepository = hotScoresRepository;
+    }
+
+    @Autowired(required = false)
+    void setCommentsRepository(CommentsRepository commentsRepository) {
+        this.commentsRepository = commentsRepository;
     }
 
     private static PostDetailDTO toBaseDto(PostsEntity e) {
@@ -139,33 +149,195 @@ public class PortalPostsServiceImpl implements PortalPostsService {
 
     private PostDetailDTO enrichAggregates(PostDetailDTO dto) {
         Long postId = dto.getId();
-        dto.setCommentCount(commentsService.countByPostId(postId));
-        dto.setReactionCount(postInteractionsService.countLikes(postId));
-        dto.setFavoriteCount(postInteractionsService.countFavorites(postId));
+        if (postId == null) {
+            return applyAggregates(dto, null);
+        }
+        Map<Long, PostAggregateSnapshot> aggregateMap = loadPostAggregates(List.of(postId), currentUserIdOrNull());
+        return applyAggregates(dto, aggregateMap.get(postId));
+    }
 
-        // Fill hotScore (if hot scores are enabled).
-        // Default to scoreAll so all feeds and detail share one stable "热度分".
+    private static PostDetailDTO applyAggregates(PostDetailDTO dto, PostAggregateSnapshot aggregate) {
+        if (aggregate == null) {
+            dto.setCommentCount(0L);
+            dto.setReactionCount(0L);
+            dto.setFavoriteCount(0L);
+            dto.setHotScore(null);
+            dto.setLikedByMe(false);
+            dto.setFavoritedByMe(false);
+            return dto;
+        }
+        dto.setCommentCount(aggregate.commentCount());
+        dto.setReactionCount(aggregate.likeCount());
+        dto.setFavoriteCount(aggregate.favoriteCount());
+        dto.setHotScore(aggregate.hotScore());
+        dto.setLikedByMe(aggregate.likedByMe());
+        dto.setFavoritedByMe(aggregate.favoritedByMe());
+        return dto;
+    }
+
+    private Map<Long, PostAggregateSnapshot> loadPostAggregates(List<Long> postIds, Long viewerId) {
+        if (postIds == null || postIds.isEmpty()) {
+            return Map.of();
+        }
+
+        if (commentsRepository == null) {
+            return loadPostAggregatesFallback(postIds, viewerId);
+        }
+
+        Map<Long, Long> commentCountMap = toLongCountMap(
+            commentsRepository.countByPostIdsAndStatusGrouped(postIds, CommentStatus.VISIBLE)
+        );
+        Map<Long, Long> likeCountMap = toLongCountMap(
+                reactionsRepository.countByTargetIdsGrouped(ReactionTargetType.POST, ReactionType.LIKE, postIds)
+        );
+        Map<Long, Long> favoriteCountMap = toLongCountMap(
+                reactionsRepository.countByTargetIdsGrouped(ReactionTargetType.POST, ReactionType.FAVORITE, postIds)
+        );
+
+        Set<Long> likedIds = viewerId == null
+                ? Set.of()
+                : new HashSet<>(reactionsRepository.findTargetIdsLikedByUser(
+                viewerId,
+                ReactionTargetType.POST,
+                ReactionType.LIKE,
+                postIds
+        ));
+        Set<Long> favoritedIds = viewerId == null
+                ? Set.of()
+                : new HashSet<>(reactionsRepository.findTargetIdsLikedByUser(
+                viewerId,
+                ReactionTargetType.POST,
+                ReactionType.FAVORITE,
+                postIds
+        ));
+
+        Map<Long, Double> hotScoreMap = Map.of();
         try {
             if (hotScoresRepository != null) {
-                hotScoresRepository.findByPostId(postId).ifPresent(h -> dto.setHotScore(h.getScoreAll()));
+                hotScoreMap = toHotScoreMap(hotScoresRepository.findByPostIdIn(postIds));
             }
         } catch (Exception ex) {
-            log.debug("Failed to read hotScore for postId={}", postId, ex);
+            log.debug("Failed to load hotScore in batch. postCount={}", postIds.size(), ex);
         }
 
-        // likedByMe/favoritedByMe may throw when anonymous; treat as false for browse.
-        try {
-            dto.setLikedByMe(postInteractionsService.likedByMe(postId));
-        } catch (Exception ignored) {
-            dto.setLikedByMe(false);
+        Map<Long, PostAggregateSnapshot> result = new HashMap<>();
+        for (Long postId : postIds) {
+            if (postId == null) {
+                continue;
+            }
+            result.put(postId, new PostAggregateSnapshot(
+                    commentCountMap.getOrDefault(postId, 0L),
+                    likeCountMap.getOrDefault(postId, 0L),
+                    favoriteCountMap.getOrDefault(postId, 0L),
+                    hotScoreMap.get(postId),
+                    likedIds.contains(postId),
+                    favoritedIds.contains(postId)
+            ));
         }
-        try {
-            dto.setFavoritedByMe(postInteractionsService.favoritedByMe(postId));
-        } catch (Exception ignored) {
-            dto.setFavoritedByMe(false);
-        }
+        return result;
+    }
 
-        return dto;
+    private Map<Long, PostAggregateSnapshot> loadPostAggregatesFallback(List<Long> postIds, Long viewerId) {
+        Map<Long, PostAggregateSnapshot> result = new HashMap<>();
+        for (Long postId : postIds) {
+            if (postId == null) {
+                continue;
+            }
+            long commentCount = commentsService.countByPostId(postId);
+            long likeCount = postInteractionsService.countLikes(postId);
+            long favoriteCount = postInteractionsService.countFavorites(postId);
+
+            boolean likedByMe = false;
+            boolean favoritedByMe = false;
+            if (viewerId != null) {
+                try {
+                    likedByMe = postInteractionsService.likedByMe(postId);
+                } catch (Exception ignored) {
+                    likedByMe = false;
+                }
+                try {
+                    favoritedByMe = postInteractionsService.favoritedByMe(postId);
+                } catch (Exception ignored) {
+                    favoritedByMe = false;
+                }
+            }
+
+            Double hotScore = null;
+            try {
+                if (hotScoresRepository != null) {
+                    hotScore = hotScoresRepository.findByPostId(postId).map(HotScoresEntity::getScoreAll).orElse(null);
+                }
+            } catch (Exception ex) {
+                log.debug("Failed to read hotScore for postId={}", postId, ex);
+            }
+
+            result.put(postId, new PostAggregateSnapshot(
+                    commentCount,
+                    likeCount,
+                    favoriteCount,
+                    hotScore,
+                    likedByMe,
+                    favoritedByMe
+            ));
+        }
+        return result;
+    }
+
+    private static Map<Long, Long> toLongCountMap(List<Object[]> rows) {
+        Map<Long, Long> out = new HashMap<>();
+        if (rows == null || rows.isEmpty()) {
+            return out;
+        }
+        for (Object[] row : rows) {
+            if (row == null || row.length < 2) {
+                continue;
+            }
+            Long id = asLong(row[0]);
+            Long count = asLong(row[1]);
+            if (id == null || count == null) {
+                continue;
+            }
+            out.put(id, count);
+        }
+        return out;
+    }
+
+    private static Map<Long, Double> toHotScoreMap(List<HotScoresEntity> rows) {
+        Map<Long, Double> out = new HashMap<>();
+        if (rows == null || rows.isEmpty()) {
+            return out;
+        }
+        for (HotScoresEntity row : rows) {
+            if (row == null || row.getPostId() == null) {
+                continue;
+            }
+            out.put(row.getPostId(), row.getScoreAll());
+        }
+        return out;
+    }
+
+    private static Long asLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private record PostAggregateSnapshot(
+            long commentCount,
+            long likeCount,
+            long favoriteCount,
+            Double hotScore,
+            boolean likedByMe,
+            boolean favoritedByMe
+    ) {
     }
 
     private static <T> Map<Long, T> indexById(Collection<T> rows, java.util.function.Function<T, Long> idFn) {
@@ -225,10 +397,22 @@ public class PortalPostsServiceImpl implements PortalPostsService {
                 .query(keyword, postId, searchMode, boardId, status, authorId, createdFrom, createdTo, page, pageSize, sortBy, sortOrderDirection);
 
         Set<Long> roleIds = boardAccessControlService.currentUserRoleIds();
+        Map<Long, Boolean> boardVisibility = new HashMap<>();
         var visiblePosts = rs.getContent().stream()
                 .filter(Objects::nonNull)
-                .filter(e -> e.getBoardId() == null || boardAccessControlService.canViewBoard(e.getBoardId(), roleIds))
+            .filter(e -> e.getBoardId() == null
+                || boardVisibility.computeIfAbsent(
+                e.getBoardId(),
+                bid -> boardAccessControlService.canViewBoard(bid, roleIds)
+            ))
                 .toList();
+
+        List<Long> postIds = visiblePosts.stream()
+            .map(PostsEntity::getId)
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+        Map<Long, PostAggregateSnapshot> aggregateMap = loadPostAggregates(postIds, currentUserIdOrNull());
 
         LinkedHashSet<Long> authorIds = new LinkedHashSet<>();
         LinkedHashSet<Long> boardIds = new LinkedHashSet<>();
@@ -243,7 +427,7 @@ public class PortalPostsServiceImpl implements PortalPostsService {
         var content = visiblePosts.stream()
                 .map(PortalPostsServiceImpl::toBaseDto)
                 .map(dto -> enrichDisplay(dto, authorMap.get(dto.getAuthorId()), boardMap.get(dto.getBoardId())))
-                .map(this::enrichAggregates)
+            .map(dto -> applyAggregates(dto, aggregateMap.get(dto.getId())))
                 .toList();
 
         return new PageImpl<>(content, rs.getPageable(), rs.getTotalElements());

@@ -56,12 +56,25 @@ data = [
 ]
 
 columns = [
-    '测试编号', '测试的功能模块', '测试的功能', 
-    '系统初始状态', '输入', '期望的输出', 
-    '实际的输出', '测试结论'
+    '测试编号', '功能名称', '前置条件',
+    '测试步骤', '预期结果', '测试结果', '测试结论'
 ]
 
-df = pd.DataFrame(data, columns=columns)
+# 将旧结构(8列)映射为新结构(7列)，并统一编号为 TC1...TCn
+records = []
+for idx, row in enumerate(data, start=1):
+    function_name = row[2].strip()
+    records.append([
+        f'TC{idx}',
+        function_name,
+        row[3],
+        row[4],
+        row[5],
+        '',
+        ''
+    ])
+
+df = pd.DataFrame(records, columns=columns)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 output_dir = os.path.join(script_dir, 'temp')
@@ -83,10 +96,10 @@ with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
             
     for col_idx, col_name in enumerate(columns, 1):
         column_letter = worksheet.cell(row=1, column=col_idx).column_letter
-        if col_idx in [4, 5, 6, 7]:
+        if col_idx in [3, 4, 5, 6]:
             worksheet.column_dimensions[column_letter].width = 50
-        elif col_idx in [2, 3]:
-            worksheet.column_dimensions[column_letter].width = 25
+        elif col_idx == 2:
+            worksheet.column_dimensions[column_letter].width = 35
         else:
             worksheet.column_dimensions[column_letter].width = 15
             
