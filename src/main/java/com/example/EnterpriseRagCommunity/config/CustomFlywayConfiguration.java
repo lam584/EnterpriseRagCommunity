@@ -7,6 +7,7 @@ import org.flywaydb.core.api.configuration.FluentConfiguration;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationInitializer;
 import org.springframework.boot.autoconfigure.flyway.FlywayProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -15,13 +16,31 @@ import org.springframework.context.annotation.Configuration;
 public class CustomFlywayConfiguration {
 
     @Bean
-    public Flyway flyway(FlywayProperties properties, DataSource dataSource) {
+    public Flyway flyway(FlywayProperties properties, DataSource dataSource, Environment environment) {
+        String url = firstNonBlank(
+                properties.getUrl(),
+                environment.getProperty("spring.flyway.url"),
+                environment.getProperty("spring.datasource.url"));
+        String user = firstNonBlank(
+                properties.getUser(),
+                environment.getProperty("spring.flyway.user"),
+                environment.getProperty("spring.datasource.username"));
+        String password = firstNonBlank(
+                properties.getPassword(),
+                environment.getProperty("spring.flyway.password"),
+                environment.getProperty("spring.datasource.password"));
+
         FluentConfiguration configuration = Flyway.configure()
-                .dataSource(dataSource)
                 .locations(properties.getLocations().toArray(new String[0]))
                 .baselineOnMigrate(properties.isBaselineOnMigrate())
                 .outOfOrder(properties.isOutOfOrder())
                 .encoding("UTF-8");
+
+        if (url != null) {
+            configuration.dataSource(url, user, password);
+        } else {
+            configuration.dataSource(dataSource);
+        }
 
         // Map other properties that are commonly used
         if (properties.getBaselineVersion() != null) {
@@ -45,5 +64,14 @@ public class CustomFlywayConfiguration {
             f.repair();
             f.migrate();
         });
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 }
