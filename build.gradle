@@ -571,6 +571,7 @@ tasks.named('check') {
 
 // 2. 处理资源，把 my-vite-app/dist 下的文件复制到 Spring Boot 的 static 目录
 processResources {
+    doNotTrackState("Frontend static assets may contain filenames that Gradle cannot fingerprint reliably across locales.")
     def taskNames = gradle.startParameter.taskNames.collect { it == null ? '' : it.toLowerCase() }
     def skipViteBuild = taskNames.any { n ->
         n.contains('test') || n.contains('jacoco') || n.contains('coverage') || n == 'check'

@@ -4,6 +4,7 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationInitializer;
 import org.springframework.boot.autoconfigure.flyway.FlywayProperties;
+import org.springframework.core.env.Environment;
 
 import javax.sql.DataSource;
 import java.util.List;
@@ -18,6 +19,7 @@ class CustomFlywayConfigurationTest {
     void flyway_should_map_optional_properties_when_present_or_absent() {
         CustomFlywayConfiguration cfg = new CustomFlywayConfiguration();
         DataSource dataSource = mock(DataSource.class);
+        Environment environment = mock(Environment.class);
 
         FlywayProperties p1 = new FlywayProperties();
         p1.setLocations(List.of("classpath:db/migration"));
@@ -27,7 +29,7 @@ class CustomFlywayConfigurationTest {
         p1.setBaselineVersion("1");
         p1.setTable("flyway_schema_history_custom");
 
-        Flyway f1 = cfg.flyway(p1, dataSource);
+        Flyway f1 = cfg.flyway(p1, dataSource, environment);
         assertNotNull(f1);
 
         FlywayProperties p2 = new FlywayProperties();
@@ -36,7 +38,7 @@ class CustomFlywayConfigurationTest {
         p2.setOutOfOrder(false);
         p2.setFailOnMissingLocations(false);
 
-        Flyway f2 = cfg.flyway(p2, dataSource);
+        Flyway f2 = cfg.flyway(p2, dataSource, environment);
         assertNotNull(f2);
     }
 

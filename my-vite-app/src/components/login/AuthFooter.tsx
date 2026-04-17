@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import beianIcon from '../../assets/images/备案编号图标.png';
+import beianIcon from '../../assets/images/beian-badge.png';
 import { getPublicSiteConfig, type PublicSiteConfig } from '../../services/publicSiteConfigService';
 import { applySiteConfigIfActive, fallbackSiteConfigIfActive } from '../common/beianFooterShared';
 
