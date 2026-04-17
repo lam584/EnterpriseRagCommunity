@@ -502,6 +502,7 @@ def configureFrontendNpmExec = { Exec task, String scriptName ->
 
 tasks.register('buildVite', Exec) {
     workingDir 'my-vite-app'
+    doNotTrackState("Vite outputs may contain filenames that Gradle cannot fingerprint reliably across locales.")
 
     inputs.dir('my-vite-app/src')
     inputs.dir('my-vite-app/public')
