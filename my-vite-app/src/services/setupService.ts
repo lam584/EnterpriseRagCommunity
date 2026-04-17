@@ -58,12 +58,12 @@ export async function testEsConnection(configs: Record<string, string>): Promise
   return res.json();
 }
 
-export async function initIndices(indexNames: string[]): Promise<void> {
+export async function initIndices(indexNames: string[], configs?: Record<string, string>): Promise<void> {
   const csrfToken = await getCsrfToken();
   const res = await fetch('/api/setup/init-indices', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-XSRF-TOKEN': csrfToken },
-    body: JSON.stringify({ indexNames }),
+    body: JSON.stringify({ indexNames, configs }),
   });
   if (!res.ok) throw new Error('Failed to init indices');
 }

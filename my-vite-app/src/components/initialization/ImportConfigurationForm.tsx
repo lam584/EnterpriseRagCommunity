@@ -19,6 +19,8 @@ import {
     Check, 
     Upload, 
     HelpCircle, 
+    ChevronDown,
+    ChevronUp,
     Server, 
     Shield, 
     Key, 
@@ -45,6 +47,19 @@ const getFriendlyErrorMessage = (errorMessage: string): string => {
         return '连接失败：无法连接到 ES 服务器，请检查地址配置';
     }
     return errorMessage;
+};
+
+type KafkaPreset = 'LOCAL' | 'CLOUD';
+
+const KAFKA_ADVANCED_DEFAULTS: Record<string, string> = {
+    'app.logging.access.kafka-topic': 'access-logs-v1',
+    'app.logging.access.sink-mode': 'KAFKA',
+    'app.logging.access.es-sink.enabled': 'true',
+    'app.logging.access.es-sink.consumer-enabled': 'true',
+    'app.logging.access.es-sink.index': 'access-logs-v1',
+    'app.logging.access.es-sink.consumer-group': 'access-log-es-sink-v1',
+    'app.logging.access.es-sink.dual-verify-enabled': 'true',
+    'app.logging.access.es-sink.dual-verify-log-on-success': 'false',
 };
 
 const ImportConfigurationForm: React.FC = () => {
@@ -88,6 +103,20 @@ const ImportConfigurationForm: React.FC = () => {
         APP_TOTP_MASTER_KEY: '',
         'spring.elasticsearch.uris': 'http://127.0.0.1:9200',
         APP_ES_API_KEY: '',
+        'spring.kafka.bootstrap-servers': '127.0.0.1:9092',
+        'app.logging.access.kafka-topic': 'access-logs-v1',
+        'app.logging.access.sink-mode': 'KAFKA',
+        'app.logging.access.es-sink.enabled': 'true',
+        'app.logging.access.es-sink.consumer-enabled': 'true',
+        'app.logging.access.es-sink.index': 'access-logs-v1',
+        'app.logging.access.es-sink.consumer-group': 'access-log-es-sink-v1',
+        'app.logging.access.es-sink.dual-verify-enabled': 'true',
+        'app.logging.access.es-sink.dual-verify-log-on-success': 'false',
+        APP_KAFKA_AUTH_ENABLED: 'true',
+        APP_KAFKA_SECURITY_PROTOCOL: 'SASL_SSL',
+        APP_KAFKA_SASL_MECHANISM: 'PLAIN',
+        APP_KAFKA_API_KEY: '',
+        APP_KAFKA_API_SECRET: '',
         APP_AI_TOKENIZER_API_KEY: '',
         APP_SITE_COPYRIGHT: '',
         APP_SITE_BEIAN: '',
@@ -105,10 +134,19 @@ const ImportConfigurationForm: React.FC = () => {
         IMAGE_STORAGE_OSS_ACCESS_KEY_SECRET: '',
         IMAGE_STORAGE_OSS_REGION: '',
     });
+    const [kafkaPreset, setKafkaPreset] = useState<KafkaPreset>('LOCAL');
+    const [showKafkaAdvancedOptions, setShowKafkaAdvancedOptions] = useState(false);
 
     // Step 2: ES
     const [esConnected, setEsConnected] = useState(false);
-    const indices = ['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_post_chunks_v1', 'rag_file_assets_v1'];
+    const indexOptions = [
+        { name: 'ad_violation_samples_v1', label: 'ad_violation_samples_v1（审核样本索引）' },
+        { name: 'rag_post_chunks_v1_comments', label: 'rag_post_chunks_v1_comments（评论 RAG 索引）' },
+        { name: 'rag_post_chunks_v1', label: 'rag_post_chunks_v1（帖子 RAG 索引）' },
+        { name: 'rag_file_assets_v1', label: 'rag_file_assets_v1（文件 RAG 索引）' },
+        { name: 'access-logs-v1', label: 'access-logs-v1（HTTP 访问日志索引）' },
+    ] as const;
+    const indices = indexOptions.map((x) => x.name);
     const [selectedIndices, setSelectedIndices] = useState<string[]>(indices);
     const [indicesCreated, setIndicesCreated] = useState(false);
     const [indicesStatus, setIndicesStatus] = useState<Record<string, string>>({});
@@ -125,6 +163,48 @@ const ImportConfigurationForm: React.FC = () => {
         });
     };
 
+    const applyKafkaPreset = (preset: KafkaPreset) => {
+        setKafkaPreset(preset);
+        const patch: Record<string, string> = preset === 'LOCAL'
+            ? {
+                'spring.kafka.bootstrap-servers': '127.0.0.1:9092',
+                'app.logging.access.kafka-topic': 'access-logs-v1',
+                'app.logging.access.sink-mode': 'KAFKA',
+                'app.logging.access.es-sink.enabled': 'true',
+                'app.logging.access.es-sink.consumer-enabled': 'true',
+                'app.logging.access.es-sink.index': 'access-logs-v1',
+                'app.logging.access.es-sink.consumer-group': 'access-log-es-sink-v1',
+                'app.logging.access.es-sink.dual-verify-enabled': 'true',
+                'app.logging.access.es-sink.dual-verify-log-on-success': 'false',
+                APP_KAFKA_AUTH_ENABLED: 'true',
+                APP_KAFKA_SECURITY_PROTOCOL: 'SASL_SSL',
+                APP_KAFKA_SASL_MECHANISM: 'PLAIN',
+            }
+            : {
+                'spring.kafka.bootstrap-servers': 'your-kafka-broker:9092',
+                'app.logging.access.kafka-topic': 'access-logs-v1',
+                'app.logging.access.sink-mode': 'KAFKA',
+                'app.logging.access.es-sink.enabled': 'true',
+                'app.logging.access.es-sink.consumer-enabled': 'true',
+                'app.logging.access.es-sink.index': 'access-logs-v1',
+                'app.logging.access.es-sink.consumer-group': 'access-log-es-sink-v1',
+                'app.logging.access.es-sink.dual-verify-enabled': 'true',
+                'app.logging.access.es-sink.dual-verify-log-on-success': 'false',
+                APP_KAFKA_AUTH_ENABLED: 'true',
+                APP_KAFKA_SECURITY_PROTOCOL: 'SASL_SSL',
+                APP_KAFKA_SASL_MECHANISM: 'PLAIN',
+            };
+
+        setConfigs(prev => ({ ...prev, ...patch }));
+        setEncryptedValues(prev => {
+            const next = { ...prev };
+            Object.keys(patch).forEach(k => {
+                delete next[k];
+            });
+            return next;
+        });
+    };
+
     const generateKey = async () => {
         try {
             const key = await generateTotpKey();
@@ -132,6 +212,18 @@ const ImportConfigurationForm: React.FC = () => {
         } catch (_e) {
             setError('生成密钥失败');
         }
+    };
+
+    const resetKafkaAdvancedDefaults = () => {
+        setConfigs(prev => ({ ...prev, ...KAFKA_ADVANCED_DEFAULTS }));
+        setEncryptedValues(prev => {
+            const next = { ...prev };
+            Object.keys(KAFKA_ADVANCED_DEFAULTS).forEach(k => {
+                delete next[k];
+            });
+            return next;
+        });
+        toast.success('Kafka 高级选项已恢复默认值');
     };
 
     const processConfigText = (text: string) => {
@@ -147,11 +239,41 @@ const ImportConfigurationForm: React.FC = () => {
 
                 if (key === 'APP_MAIL_FROM') key = 'APP_MAIL_FROM_ADDRESS';
                 if (key === 'image.storage.mode') key = 'IMAGE_STORAGE_MODE';
+                if (key === 'KAFKA_BOOTSTRAP_SERVERS') key = 'spring.kafka.bootstrap-servers';
+                if (key === 'SPRING_KAFKA_BOOTSTRAP_SERVERS') key = 'spring.kafka.bootstrap-servers';
+                if (key === 'APP_LOGGING_ACCESS_KAFKA_TOPIC') key = 'app.logging.access.kafka-topic';
+                if (key === 'APP_LOGGING_ACCESS_SINK_MODE') key = 'app.logging.access.sink-mode';
+                if (key === 'APP_LOGGING_ACCESS_ES_SINK_ENABLED') key = 'app.logging.access.es-sink.enabled';
+                if (key === 'APP_LOGGING_ACCESS_ES_SINK_CONSUMER_ENABLED') key = 'app.logging.access.es-sink.consumer-enabled';
+                if (key === 'APP_LOGGING_ACCESS_ES_SINK_INDEX') key = 'app.logging.access.es-sink.index';
+                if (key === 'APP_LOGGING_ACCESS_ES_SINK_CONSUMER_GROUP') key = 'app.logging.access.es-sink.consumer-group';
+                if (key === 'APP_LOGGING_ACCESS_ES_SINK_DUAL_VERIFY_ENABLED') key = 'app.logging.access.es-sink.dual-verify-enabled';
+                if (key === 'APP_LOGGING_ACCESS_ES_SINK_DUAL_VERIFY_LOG_ON_SUCCESS') key = 'app.logging.access.es-sink.dual-verify-log-on-success';
                 if (key === 'IMAGE_STORAGE_MODE') {
                     const normalizedValue = value.toUpperCase();
                     if (['LOCAL', 'DASHSCOPE_TEMP', 'ALIYUN_OSS'].includes(normalizedValue)) {
                         value = normalizedValue;
                     }
+                }
+                if (key === 'app.logging.access.sink-mode') {
+                    const normalizedValue = value.toUpperCase();
+                    if (['MYSQL', 'KAFKA', 'DUAL'].includes(normalizedValue)) {
+                        value = normalizedValue;
+                    }
+                }
+                if (key === 'APP_KAFKA_AUTH_ENABLED') {
+                    value = String(value).toLowerCase() === 'true' ? 'true' : 'false';
+                }
+                if (
+                    key === 'app.logging.access.es-sink.enabled' ||
+                    key === 'app.logging.access.es-sink.consumer-enabled' ||
+                    key === 'app.logging.access.es-sink.dual-verify-enabled' ||
+                    key === 'app.logging.access.es-sink.dual-verify-log-on-success'
+                ) {
+                    value = String(value).toLowerCase() === 'true' ? 'true' : 'false';
+                }
+                if (key === 'APP_KAFKA_SECURITY_PROTOCOL' || key === 'APP_KAFKA_SASL_MECHANISM') {
+                    value = value.toUpperCase();
                 }
                 
                 if (Object.keys(configs).includes(key)) {
@@ -169,6 +291,9 @@ const ImportConfigurationForm: React.FC = () => {
                 }
             }
         });
+        const bootstrapServers = (newConfigs['spring.kafka.bootstrap-servers'] || '').toLowerCase();
+        const isLocalBootstrap = bootstrapServers.includes('127.0.0.1') || bootstrapServers.includes('localhost');
+        setKafkaPreset(isLocalBootstrap ? 'LOCAL' : 'CLOUD');
         setConfigs(newConfigs);
         setAdminForm(newAdminForm);
         toast.success('配置导入成功');
@@ -204,7 +329,7 @@ const ImportConfigurationForm: React.FC = () => {
                     }
                 }
 
-                await initIndices(selectedIndices);
+                await initIndices(selectedIndices, configs);
                 setIndicesCreated(true);
                 toast.success('索引初始化成功');
                 setStep(3);
@@ -265,7 +390,7 @@ const ImportConfigurationForm: React.FC = () => {
 
             // 2. Init Indices
             if (!indicesCreated) {
-                await initIndices(selectedIndices);
+                await initIndices(selectedIndices, configs);
             }
 
             // 3. Register Admin
@@ -419,6 +544,37 @@ const ImportConfigurationForm: React.FC = () => {
         );
     };
 
+    const renderBooleanConfigSelect = (fieldKey: string) => {
+        return (
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <Label className="text-gray-700 flex items-center">
+                        {getConfigLabel(fieldKey)}
+                        <span className="ml-2 text-xs text-gray-400 font-normal">({fieldKey})</span>
+                    </Label>
+                    <button type="button" onClick={() => setHelpKey(fieldKey)} className="text-gray-400 hover:text-blue-500 transition-colors">
+                        <HelpCircle className="w-4 h-4" />
+                    </button>
+                </div>
+                <select
+                    className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    value={configs[fieldKey] || 'false'}
+                    onChange={e => handleConfigChange(fieldKey, e.target.value)}
+                >
+                    <option value="true">开启</option>
+                    <option value="false">关闭</option>
+                </select>
+            </div>
+        );
+    };
+
+    const renderDefaultValueHint = (fieldKey: string) => {
+        const defaultValue = KAFKA_ADVANCED_DEFAULTS[fieldKey];
+        if (!defaultValue) return null;
+
+        return <p className="text-xs text-gray-500">默认值：{defaultValue}</p>;
+    };
+
         return (
             <>
             <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8">
@@ -568,31 +724,194 @@ const ImportConfigurationForm: React.FC = () => {
                                     </div>
                                 </div>
 
+                                <div className="bg-indigo-50 p-6 rounded-xl border border-indigo-100">
+                                    <h3 className="text-lg font-semibold text-indigo-900 mb-4 flex items-center gap-2">
+                                        <Server className="w-5 h-5" />
+                                        Kafka 配置
+                                    </h3>
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <div className="text-sm text-indigo-900 font-medium">Kafka 预设</div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applyKafkaPreset('LOCAL')}
+                                                    className={cn(
+                                                        'rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                                                        kafkaPreset === 'LOCAL'
+                                                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300'
+                                                    )}
+                                                >
+                                                    <div className="font-medium">本地 Kafka 预设</div>
+                                                    <div className="text-xs text-gray-500 mt-1">适合自建 Kafka，本地地址 + 默认开启鉴权开关。</div>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applyKafkaPreset('CLOUD')}
+                                                    className={cn(
+                                                        'rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                                                        kafkaPreset === 'CLOUD'
+                                                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-300'
+                                                    )}
+                                                >
+                                                    <div className="font-medium">云 Kafka 预设（SASL）</div>
+                                                    <div className="text-xs text-gray-500 mt-1">适合云服务 Kafka，自动开启 SASL 配置。</div>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {renderConfigField('spring.kafka.bootstrap-servers')}
+                                        <div className="-mt-2 text-xs text-gray-500">点击各字段右侧问号可查看详细配置说明。</div>
+
+                                        <div className="rounded-lg border border-indigo-200 bg-white">
+                                            <button
+                                                type="button"
+                                                className="w-full flex items-center justify-between px-3 py-2 text-left"
+                                                onClick={() => setShowKafkaAdvancedOptions(prev => !prev)}
+                                            >
+                                                <div>
+                                                    <div className="text-sm font-medium text-indigo-900">高级选项（可选）</div>
+                                                    <div className="text-xs text-gray-500">Kafka Topic、日志写入模式、ES Sink 固定值等配置</div>
+                                                </div>
+                                                {showKafkaAdvancedOptions ? (
+                                                    <ChevronUp className="w-4 h-4 text-indigo-700" />
+                                                ) : (
+                                                    <ChevronDown className="w-4 h-4 text-indigo-700" />
+                                                )}
+                                            </button>
+
+                                            {showKafkaAdvancedOptions && (
+                                                <div className="border-t border-indigo-100 px-3 py-3 space-y-4">
+                                                    <div className="flex items-center justify-between rounded-md bg-indigo-50 px-3 py-2 text-xs text-indigo-900">
+                                                        <span>以下字段已有前端默认值，仅在需要时修改。</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={resetKafkaAdvancedDefaults}
+                                                            className="font-medium text-indigo-700 hover:text-indigo-900"
+                                                        >
+                                                            恢复默认值
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        {renderConfigField('app.logging.access.kafka-topic')}
+                                                        {renderDefaultValueHint('app.logging.access.kafka-topic')}
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <Label className="text-gray-700 flex items-center">
+                                                                {getConfigLabel('app.logging.access.sink-mode')}
+                                                                <span className="ml-2 text-xs text-gray-400 font-normal">(app.logging.access.sink-mode)</span>
+                                                            </Label>
+                                                            <button type="button" onClick={() => setHelpKey('app.logging.access.sink-mode')} className="text-gray-400 hover:text-blue-500 transition-colors">
+                                                                <HelpCircle className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                        <select
+                                                            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                            value={configs['app.logging.access.sink-mode'] || 'KAFKA'}
+                                                            onChange={e => handleConfigChange('app.logging.access.sink-mode', e.target.value)}
+                                                        >
+                                                            <option value="MYSQL">MYSQL</option>
+                                                            <option value="DUAL">DUAL</option>
+                                                            <option value="KAFKA">KAFKA（推荐）</option>
+                                                        </select>
+                                                        {renderDefaultValueHint('app.logging.access.sink-mode')}
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        {renderBooleanConfigSelect('app.logging.access.es-sink.enabled')}
+                                                        {renderDefaultValueHint('app.logging.access.es-sink.enabled')}
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        {renderBooleanConfigSelect('app.logging.access.es-sink.consumer-enabled')}
+                                                        {renderDefaultValueHint('app.logging.access.es-sink.consumer-enabled')}
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        {renderConfigField('app.logging.access.es-sink.index')}
+                                                        {renderDefaultValueHint('app.logging.access.es-sink.index')}
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        {renderConfigField('app.logging.access.es-sink.consumer-group')}
+                                                        {renderDefaultValueHint('app.logging.access.es-sink.consumer-group')}
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        {renderBooleanConfigSelect('app.logging.access.es-sink.dual-verify-enabled')}
+                                                        {renderDefaultValueHint('app.logging.access.es-sink.dual-verify-enabled')}
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        {renderBooleanConfigSelect('app.logging.access.es-sink.dual-verify-log-on-success')}
+                                                        {renderDefaultValueHint('app.logging.access.es-sink.dual-verify-log-on-success')}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="text-gray-700 flex items-center">
+                                                    {getConfigLabel('APP_KAFKA_AUTH_ENABLED')}
+                                                    <span className="ml-2 text-xs text-gray-400 font-normal">(APP_KAFKA_AUTH_ENABLED)</span>
+                                                </Label>
+                                                <button type="button" onClick={() => setHelpKey('APP_KAFKA_AUTH_ENABLED')} className="text-gray-400 hover:text-blue-500 transition-colors">
+                                                    <HelpCircle className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            <select
+                                                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                value={configs.APP_KAFKA_AUTH_ENABLED || 'true'}
+                                                onChange={e => handleConfigChange('APP_KAFKA_AUTH_ENABLED', e.target.value)}
+                                            >
+                                                <option value="false">关闭</option>
+                                                <option value="true">开启</option>
+                                            </select>
+                                            <p className="text-xs text-gray-500">默认值：true</p>
+                                        </div>
+
+                                        {configs.APP_KAFKA_AUTH_ENABLED === 'true' && (
+                                            <>
+                                                {renderConfigField('APP_KAFKA_SECURITY_PROTOCOL')}
+                                                {renderConfigField('APP_KAFKA_SASL_MECHANISM')}
+                                                {renderConfigField('APP_KAFKA_API_KEY')}
+                                                {renderConfigField('APP_KAFKA_API_SECRET')}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
                                 <div>
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className="text-lg font-semibold text-gray-800">初始化索引</h3>
                                 </div>
                                 <div className="grid grid-cols-1 gap-3">
-                                        {indices.map(idx => (
-                                            <div key={idx} className="flex items-center p-3 border rounded-lg hover:bg-gray-50 transition-colors">
+                                        {indexOptions.map(({ name, label }) => (
+                                            <div key={name} className="flex items-center p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                                                 <Checkbox
-                                                    id={idx}
-                                                    checked={selectedIndices.includes(idx)}
+                                                    id={name}
+                                                    checked={selectedIndices.includes(name)}
                                                     onCheckedChange={(checked) => {
-                                                        if (checked === true) setSelectedIndices([...selectedIndices, idx]);
-                                                        else setSelectedIndices(selectedIndices.filter(i => i !== idx));
+                                                        if (checked === true) setSelectedIndices([...selectedIndices, name]);
+                                                        else setSelectedIndices(selectedIndices.filter(i => i !== name));
                                                     }}
                                                 />
-                                                <Label htmlFor={idx} className="ml-3 flex-1 cursor-pointer font-medium text-gray-700">
-                                                    {idx}
+                                                <Label htmlFor={name} className="ml-3 flex-1 cursor-pointer font-medium text-gray-700">
+                                                    {label}
                                                 </Label>
                                                 <span className={cn(
                                                     "text-xs px-2 py-1 rounded",
-                                                    indicesStatus[idx] === '已创建' ? "text-green-600 bg-green-100" :
-                                                    indicesStatus[idx] === '未创建' ? "text-yellow-600 bg-yellow-100" :
+                                                    indicesStatus[name] === '已创建' ? "text-green-600 bg-green-100" :
+                                                    indicesStatus[name] === '未创建' ? "text-yellow-600 bg-yellow-100" :
                                                     "text-gray-400 bg-gray-100"
                                                 )}>
-                                                    状态：{indicesStatus[idx] || '未知'}
+                                                    状态：{indicesStatus[name] || '未知'}
                                                 </span>
                                             </div>
                                         ))}

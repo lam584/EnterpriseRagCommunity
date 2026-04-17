@@ -26,12 +26,27 @@ public class LogsRetentionJob {
         var cfg = logRetentionConfigService.getConfig();
         if (!cfg.enabled()) return;
 
-        LocalDateTime cutoff = LocalDateTime.now().minusDays(cfg.keepDays());
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime cutoff = now.minusDays(cfg.keepDays());
         LogRetentionMode mode = cfg.mode();
+        int maxPerRun = cfg.maxPerRun();
 
-        int maxPerRun = 5000;
-        processAuditLogs(cutoff, mode, maxPerRun);
-        processAccessLogs(cutoff, mode, maxPerRun);
+        if (cfg.auditLogsEnabled()) {
+            processAuditLogs(cutoff, mode, maxPerRun);
+        }
+        if (cfg.accessLogsEnabled()) {
+            processAccessLogs(cutoff, mode, maxPerRun);
+        }
+
+        if (cfg.purgeArchivedEnabled()) {
+            LocalDateTime purgeArchivedCutoff = now.minusDays(cfg.purgeArchivedKeepDays());
+            if (cfg.auditLogsEnabled()) {
+                purgeArchivedAuditLogs(purgeArchivedCutoff, maxPerRun);
+            }
+            if (cfg.accessLogsEnabled()) {
+                purgeArchivedAccessLogs(purgeArchivedCutoff, maxPerRun);
+            }
+        }
     }
 
     private void processAuditLogs(LocalDateTime cutoff, LogRetentionMode mode, int maxPerRun) {
@@ -70,6 +85,26 @@ public class LogsRetentionJob {
                 accessLogsRepository.deleteAllInBatch(batch);
             }
 
+            processed += batch.size();
+        }
+    }
+
+    private void purgeArchivedAuditLogs(LocalDateTime archivedCutoff, int maxPerRun) {
+        int processed = 0;
+        while (processed < maxPerRun) {
+            List<AuditLogsEntity> batch = auditLogsRepository.findTop1000ByArchivedAtBeforeOrderByArchivedAtAscIdAsc(archivedCutoff);
+            if (batch.isEmpty()) return;
+            auditLogsRepository.deleteAllInBatch(batch);
+            processed += batch.size();
+        }
+    }
+
+    private void purgeArchivedAccessLogs(LocalDateTime archivedCutoff, int maxPerRun) {
+        int processed = 0;
+        while (processed < maxPerRun) {
+            List<AccessLogsEntity> batch = accessLogsRepository.findTop1000ByArchivedAtBeforeOrderByArchivedAtAscIdAsc(archivedCutoff);
+            if (batch.isEmpty()) return;
+            accessLogsRepository.deleteAllInBatch(batch);
             processed += batch.size();
         }
     }

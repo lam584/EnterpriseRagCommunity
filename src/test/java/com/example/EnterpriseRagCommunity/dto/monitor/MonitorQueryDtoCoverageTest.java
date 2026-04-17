@@ -13,11 +13,25 @@ class MonitorQueryDtoCoverageTest {
 
     @Test
     void logRetentionConfigRecord_shouldExposeComponents() {
-        LogRetentionConfigDTO dto = new LogRetentionConfigDTO(true, 30, LogRetentionMode.DELETE);
+        LogRetentionConfigDTO dto = new LogRetentionConfigDTO(
+            true,
+            30,
+            LogRetentionMode.DELETE,
+            5000,
+            true,
+            true,
+            true,
+            365
+        );
 
         assertThat(dto.enabled()).isTrue();
         assertThat(dto.keepDays()).isEqualTo(30);
         assertThat(dto.mode()).isEqualTo(LogRetentionMode.DELETE);
+        assertThat(dto.maxPerRun()).isEqualTo(5000);
+        assertThat(dto.auditLogsEnabled()).isTrue();
+        assertThat(dto.accessLogsEnabled()).isTrue();
+        assertThat(dto.purgeArchivedEnabled()).isTrue();
+        assertThat(dto.purgeArchivedKeepDays()).isEqualTo(365);
     }
 
     @Test

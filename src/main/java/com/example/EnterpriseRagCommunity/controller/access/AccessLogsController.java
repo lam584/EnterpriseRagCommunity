@@ -1,6 +1,8 @@
 package com.example.EnterpriseRagCommunity.controller.access;
 
+import com.example.EnterpriseRagCommunity.dto.access.AccessLogEsIndexStatusDTO;
 import com.example.EnterpriseRagCommunity.dto.access.AccessLogsViewDTO;
+import com.example.EnterpriseRagCommunity.service.access.AccessLogEsIndexStatusService;
 import com.example.EnterpriseRagCommunity.service.access.AccessLogsService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -28,9 +30,14 @@ import java.time.LocalDateTime;
 public class AccessLogsController {
 
     private final AccessLogsService accessLogsService;
+    private final AccessLogEsIndexStatusService accessLogEsIndexStatusService;
 
-    public AccessLogsController(AccessLogsService accessLogsService) {
+    public AccessLogsController(
+            AccessLogsService accessLogsService,
+            AccessLogEsIndexStatusService accessLogEsIndexStatusService
+    ) {
         this.accessLogsService = accessLogsService;
+        this.accessLogEsIndexStatusService = accessLogEsIndexStatusService;
     }
 
     @GetMapping
@@ -74,8 +81,15 @@ public class AccessLogsController {
     @GetMapping("/{id}")
     @ApiOperation("获取访问日志详情")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AccessLogsViewDTO> getById(@PathVariable Long id) {
+    public ResponseEntity<AccessLogsViewDTO> getById(@PathVariable("id") String id) {
         return ResponseEntity.ok(accessLogsService.getById(id));
+    }
+
+    @GetMapping("/es-index-status")
+    @ApiOperation("获取访问日志 ES 索引状态")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AccessLogEsIndexStatusDTO> getEsIndexStatus() {
+        return ResponseEntity.ok(accessLogEsIndexStatusService.getStatus());
     }
 
     @PostMapping(value = "/export.csv", produces = "text/csv")

@@ -3,6 +3,8 @@ package com.example.EnterpriseRagCommunity.service.access;
 import com.example.EnterpriseRagCommunity.dto.access.AccessLogsViewDTO;
 import com.example.EnterpriseRagCommunity.entity.access.AccessLogsEntity;
 import com.example.EnterpriseRagCommunity.repository.access.AccessLogsRepository;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
+import com.example.EnterpriseRagCommunity.testutil.MockHttpUrl;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
@@ -15,6 +17,9 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.nio.charset.StandardCharsets;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -32,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -93,15 +99,19 @@ class AccessLogsServiceBranchTest {
         e.setReferer("ref");
         e.setDetails(Map.of("k", "v"));
         when(repo.findById(3L)).thenReturn(Optional.of(e));
+        when(repo.findFirstByRequestIdOrderByIdDesc("rid")).thenReturn(Optional.of(e));
         when(repo.findById(8L)).thenReturn(Optional.empty());
+        when(repo.findFirstByRequestIdOrderByIdDesc("8")).thenReturn(Optional.empty());
+        when(repo.findFirstByTraceIdOrderByIdDesc("8")).thenReturn(Optional.empty());
 
-        AccessLogsViewDTO dto = svc.getById(3L);
+        AccessLogsViewDTO dto = svc.getById("3");
         assertEquals(3L, dto.id());
         assertEquals("GET", dto.method());
         assertEquals("rid", dto.requestId());
         assertFalse(dto.details().isEmpty());
+        assertEquals(3L, svc.getById("rid").id());
 
-        assertThrows(NoSuchElementException.class, () -> svc.getById(8L));
+        assertThrows(NoSuchElementException.class, () -> svc.getById("8"));
     }
 
     @Test
@@ -123,9 +133,118 @@ class AccessLogsServiceBranchTest {
         AccessLogsViewDTO listItem = page.getContent().get(0);
         assertEquals(null, listItem.details());
 
-        AccessLogsViewDTO detailItem = svc.getById(11L);
+        AccessLogsViewDTO detailItem = svc.getById("11");
         assertNotNull(detailItem.details());
         assertFalse(detailItem.details().isEmpty());
+    }
+
+    @Test
+    void query_should_read_from_es_when_sink_mode_is_kafka() throws Exception {
+        MockHttpUrl.installOnce();
+        MockHttpUrl.reset();
+        MockHttpUrl.enqueue(200, """
+                        {
+                            "hits": {
+                                "total": {"value": 1},
+                                "hits": [
+                                    {
+                                        "_source": {
+                                            "event_id": "evt-1",
+                                            "created_at": "2026-04-17T10:10:10",
+                                            "user_id": 9,
+                                            "username": "alice",
+                                            "method": "GET",
+                                            "path": "/api/demo",
+                                            "status_code": 200,
+                                            "client_ip": "127.0.0.1",
+                                            "request_id": "req-1",
+                                            "trace_id": "trace-1"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                        """);
+
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogsService svc = kafkaService(repo);
+
+        Page<AccessLogsViewDTO> out = svc.query(1, 20, null, null, null, null, null, null, null, null, null, null, null, "createdAt,desc");
+        assertEquals(1, out.getTotalElements());
+        assertEquals(1, out.getContent().size());
+        AccessLogsViewDTO first = out.getContent().getFirst();
+        assertEquals("alice", first.username());
+        assertEquals("GET", first.method());
+        assertEquals("/api/demo", first.path());
+        assertEquals("req-1", first.requestId());
+
+        verify(repo, never()).findAll(any(Specification.class), any(Pageable.class));
+
+        MockHttpUrl.RequestCapture req = MockHttpUrl.pollRequest();
+        assertNotNull(req);
+        assertTrue(req.url().toString().contains("/access-logs-v1/_search"));
+        assertEquals("POST", req.method());
+        String body = new String(req.body(), StandardCharsets.UTF_8);
+        assertTrue(body.contains("\"track_total_hits\":true"));
+        assertTrue(body.contains("\"event_id.keyword\""));
+        assertFalse(body.contains("\"event_id\":{\"order\""));
+    }
+
+    @Test
+    void getById_should_read_detail_from_es_when_sink_mode_is_kafka() throws Exception {
+        MockHttpUrl.installOnce();
+        MockHttpUrl.reset();
+        MockHttpUrl.enqueue(200, """
+                        {
+                            "hits": {
+                                "hits": [
+                                    {
+                                        "_source": {
+                                            "event_id": "req-1",
+                                            "created_at": "2026-04-17T10:10:10",
+                                            "user_id": 9,
+                                            "username": "alice",
+                                            "method": "GET",
+                                            "path": "/api/demo",
+                                            "status_code": 200,
+                                            "client_ip": "127.0.0.1",
+                                            "request_id": "req-1",
+                                            "trace_id": "trace-1",
+                                            "details": {
+                                                "reqBody": {"body": "payload"}
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                        """);
+
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogsService svc = kafkaService(repo);
+
+        AccessLogsViewDTO dto = svc.getById("req-1");
+        assertEquals("alice", dto.username());
+        assertEquals("req-1", dto.requestId());
+        assertNotNull(dto.details());
+        assertEquals("payload", ((Map<?, ?>) dto.details().get("reqBody")).get("body"));
+
+        MockHttpUrl.RequestCapture req = MockHttpUrl.pollRequest();
+        assertNotNull(req);
+        String body = new String(req.body(), StandardCharsets.UTF_8);
+        assertTrue(body.contains("\"request_id\":\"req-1\""));
+        assertTrue(body.contains("\"trace_id\":\"req-1\""));
+    }
+
+    private static AccessLogsService kafkaService(AccessLogsRepository repo) {
+        AccessLogsService svc = new AccessLogsService(repo);
+        SystemConfigurationService configService = mock(SystemConfigurationService.class);
+        when(configService.getConfig("app.logging.access.sink-mode")).thenReturn("KAFKA");
+        when(configService.getConfig("spring.elasticsearch.uris")).thenReturn("mockhttp://es");
+        when(configService.getConfig("app.logging.access.es-sink.index")).thenReturn("access-logs-v1");
+        when(configService.getConfig("APP_ES_API_KEY")).thenReturn("");
+        ReflectionTestUtils.setField(svc, "systemConfigurationService", configService);
+        return svc;
     }
 
     private static final class CriteriaEnv {

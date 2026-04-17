@@ -34,7 +34,7 @@ my-vite-app/test-reports/
 .codebuddy/
 .qoder/agents
 .qoder/skills
-
+.workbuddy
 # Logs and runtime files
 *.log
 logs/
@@ -74,3 +74,4 @@ docs/测试/gen_test_cases-2.py
 docs/测试/gen_test_cases.py
 scripts/qodana/
 /temp/
+docs/测试/双机压测运行手册.md

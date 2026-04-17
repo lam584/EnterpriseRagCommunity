@@ -227,7 +227,18 @@ describe('p2ZeroCoverageServices', () => {
 
     replyJsonOnce({ ok: false, json: { message: 'bad' } });
     const { adminUpdateLogRetentionConfig } = await import('./logRetentionService');
-    await expect(adminUpdateLogRetentionConfig({ enabled: true, keepDays: 1, mode: 'DELETE' })).rejects.toThrow('bad');
+    await expect(
+      adminUpdateLogRetentionConfig({
+        enabled: true,
+        keepDays: 1,
+        mode: 'DELETE',
+        maxPerRun: 5000,
+        auditLogsEnabled: true,
+        accessLogsEnabled: true,
+        purgeArchivedEnabled: false,
+        purgeArchivedKeepDays: 365,
+      })
+    ).rejects.toThrow('bad');
 
     replyJsonOnce({ ok: false, json: { error: 'bad' } });
     const { adminUpsertPortalChatConfig } = await import('./portalChatAdminService');

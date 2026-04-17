@@ -515,31 +515,29 @@ public class AccessLogsFilter extends OncePerRequestFilter {
                 Long userId = resolveUserId(auth);
                 String username = resolveUsername(auth);
 
-                if (!shouldWriteAccessLog(statusCode)) {
-                    return;
+                if (shouldWriteAccessLog(statusCode)) {
+                    accessLogWriter.write(
+                            null,
+                            userId,
+                            username,
+                            method,
+                            path,
+                            queryString,
+                            statusCode,
+                            latencyMs,
+                            clientIp,
+                            clientPort,
+                            serverIp,
+                            serverPort,
+                            scheme,
+                            host,
+                            requestId,
+                            traceId,
+                            userAgent,
+                            referer,
+                            reqDetails
+                    );
                 }
-
-                accessLogWriter.write(
-                        null,
-                        userId,
-                        username,
-                        method,
-                        path,
-                        queryString,
-                        statusCode,
-                        latencyMs,
-                        clientIp,
-                        clientPort,
-                        serverIp,
-                        serverPort,
-                        scheme,
-                        host,
-                        requestId,
-                        traceId,
-                        userAgent,
-                        referer,
-                        reqDetails
-                );
             } catch (Exception ignored) {
                 // ignore
             } finally {

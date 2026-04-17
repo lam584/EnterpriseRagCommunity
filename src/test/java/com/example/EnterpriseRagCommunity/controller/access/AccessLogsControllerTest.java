@@ -1,6 +1,8 @@
 package com.example.EnterpriseRagCommunity.controller.access;
 
+import com.example.EnterpriseRagCommunity.dto.access.AccessLogEsIndexStatusDTO;
 import com.example.EnterpriseRagCommunity.dto.access.AccessLogsViewDTO;
+import com.example.EnterpriseRagCommunity.service.access.AccessLogEsIndexStatusService;
 import com.example.EnterpriseRagCommunity.service.access.AccessLogsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
@@ -22,7 +24,8 @@ class AccessLogsControllerTest {
     @Test
     void exportCsv_should_include_header_and_escape_quotes_and_handle_nulls() {
         AccessLogsService service = mock(AccessLogsService.class);
-        AccessLogsController controller = new AccessLogsController(service);
+        AccessLogEsIndexStatusService statusService = mock(AccessLogEsIndexStatusService.class);
+        AccessLogsController controller = new AccessLogsController(service, statusService);
 
         AccessLogsViewDTO row = new AccessLogsViewDTO(
                 1L,
@@ -63,7 +66,8 @@ class AccessLogsControllerTest {
     @Test
     void list_and_getById_should_delegate_to_service() {
         AccessLogsService service = mock(AccessLogsService.class);
-        AccessLogsController controller = new AccessLogsController(service);
+        AccessLogEsIndexStatusService statusService = mock(AccessLogEsIndexStatusService.class);
+        AccessLogsController controller = new AccessLogsController(service, statusService);
 
         when(service.query(anyInt(), anyInt(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
@@ -94,7 +98,24 @@ class AccessLogsControllerTest {
             null,
             null
         );
-        when(service.getById(1L)).thenReturn(dto);
-        assertThat(controller.getById(1L).getBody()).isSameAs(dto);
+        when(service.getById("1")).thenReturn(dto);
+        assertThat(controller.getById("1").getBody()).isSameAs(dto);
+
+        AccessLogEsIndexStatusDTO status = new AccessLogEsIndexStatusDTO(
+            "access-logs-v1",
+            "access-logs-v1",
+            "DUAL",
+            true,
+            true,
+            true,
+            true,
+            "green",
+            "open",
+            100L,
+            "1mb",
+            null
+        );
+        when(statusService.getStatus()).thenReturn(status);
+        assertThat(controller.getEsIndexStatus().getBody()).isSameAs(status);
     }
 }

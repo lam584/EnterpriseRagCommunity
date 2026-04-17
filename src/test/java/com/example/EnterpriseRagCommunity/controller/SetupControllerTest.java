@@ -6,6 +6,7 @@ import com.example.EnterpriseRagCommunity.config.DynamicElasticsearchConfig;
 import com.example.EnterpriseRagCommunity.config.ElasticsearchIndexStartupInitializer;
 import com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AccessLogKafkaLifecycleManager;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
 import com.example.EnterpriseRagCommunity.utils.AesGcmUtils;
@@ -97,6 +98,9 @@ class SetupControllerTest {
 
     @MockitoBean
     private AdminSetupManager adminSetupManager;
+
+    @MockitoBean
+    private AccessLogKafkaLifecycleManager accessLogKafkaLifecycleManager;
 
     private final String originalUserDir = System.getProperty("user.dir");
 
@@ -491,6 +495,8 @@ class SetupControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true));
+
+            verify(accessLogKafkaLifecycleManager).startAccessLogEsSinkConsumerIfEnabled();
     }
 
     @Test
@@ -714,6 +720,14 @@ class SetupControllerTest {
                                     "IMAGE_STORAGE_OSS_REGION": "r",
                                     "IMAGE_STORAGE_WHATEVER": "x",
                                     "spring.elasticsearch.uris": "http://x",
+                                    "spring.kafka.bootstrap-servers": "127.0.0.1:9092",
+                                    "app.logging.access.kafka-topic": "access-logs-v1",
+                                    "app.logging.access.sink-mode": "DUAL",
+                                    "APP_KAFKA_AUTH_ENABLED": "true",
+                                    "APP_KAFKA_SECURITY_PROTOCOL": "SASL_SSL",
+                                    "APP_KAFKA_SASL_MECHANISM": "PLAIN",
+                                    "APP_KAFKA_API_KEY": "k-api",
+                                    "APP_KAFKA_API_SECRET": "k-secret",
                                     "APP_MAIL_HOST": "smtp",
                                     "APP_MAIL_PORT": "25",
                                     "APP_MAIL_FROM_ADDRESS": "from@example.invalid",
@@ -737,6 +751,14 @@ class SetupControllerTest {
         verify(systemConfigurationService, never()).saveConfig(eq("IMAGE_STORAGE_WHATEVER"), anyString(), anyBoolean(), anyString());
 
         verify(systemConfigurationService).saveConfig(eq("spring.elasticsearch.uris"), eq("http://x"), eq(false), anyString());
+    verify(systemConfigurationService).saveConfig(eq("spring.kafka.bootstrap-servers"), eq("127.0.0.1:9092"), eq(false), anyString());
+    verify(systemConfigurationService).saveConfig(eq("app.logging.access.kafka-topic"), eq("access-logs-v1"), eq(false), anyString());
+    verify(systemConfigurationService).saveConfig(eq("app.logging.access.sink-mode"), eq("DUAL"), eq(false), anyString());
+    verify(systemConfigurationService).saveConfig(eq("APP_KAFKA_AUTH_ENABLED"), eq("true"), eq(false), anyString());
+    verify(systemConfigurationService).saveConfig(eq("APP_KAFKA_SECURITY_PROTOCOL"), eq("SASL_SSL"), eq(false), anyString());
+    verify(systemConfigurationService).saveConfig(eq("APP_KAFKA_SASL_MECHANISM"), eq("PLAIN"), eq(false), anyString());
+    verify(systemConfigurationService).saveConfig(eq("APP_KAFKA_API_KEY"), eq("k-api"), eq(true), anyString());
+    verify(systemConfigurationService).saveConfig(eq("APP_KAFKA_API_SECRET"), eq("k-secret"), eq(true), anyString());
         verify(systemConfigurationService).saveConfig(eq("APP_MAIL_HOST"), eq("smtp"), eq(false), anyString());
         verify(systemConfigurationService).saveConfig(eq("APP_MAIL_PORT"), eq("25"), eq(false), anyString());
         verify(systemConfigurationService).saveConfig(eq("APP_MAIL_FROM_ADDRESS"), eq("from@example.invalid"), eq(false), anyString());

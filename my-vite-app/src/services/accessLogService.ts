@@ -56,6 +56,21 @@ export type AccessLogPageQuery = {
   sort?: string;
 };
 
+export type AccessLogEsIndexStatusDTO = {
+  indexName: string;
+  collectionName: string;
+  sinkMode: string;
+  esSinkEnabled: boolean;
+  consumerEnabled: boolean;
+  exists: boolean;
+  available: boolean;
+  health?: string | null;
+  status?: string | null;
+  docsCount?: number | null;
+  storeSize?: string | null;
+  availabilityMessage?: string | null;
+};
+
 const apiUrl = serviceApiUrl;
 
 export async function adminListAccessLogs(query: AccessLogPageQuery = {}): Promise<SpringPage<AccessLogDTO>> {
@@ -86,8 +101,8 @@ export async function adminListAccessLogs(query: AccessLogPageQuery = {}): Promi
   return data as SpringPage<AccessLogDTO>;
 }
 
-export async function adminGetAccessLogDetail(id: number): Promise<AccessLogDTO> {
-  const res = await fetch(apiUrl(`/api/admin/access-logs/${id}`), {
+export async function adminGetAccessLogDetail(id: string | number): Promise<AccessLogDTO> {
+  const res = await fetch(apiUrl(`/api/admin/access-logs/${encodeURIComponent(String(id))}`), {
     method: 'GET',
     credentials: 'include',
   });
@@ -128,4 +143,15 @@ export async function adminExportAccessLogsCsv(query: Omit<AccessLogPageQuery, '
   }
 
   return res.blob();
+}
+
+export async function adminGetAccessLogEsIndexStatus(): Promise<AccessLogEsIndexStatusDTO> {
+  const res = await fetch(apiUrl('/api/admin/access-logs/es-index-status'), {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(getBackendMessage(data) || '获取日志索引状态失败');
+  return data as AccessLogEsIndexStatusDTO;
 }

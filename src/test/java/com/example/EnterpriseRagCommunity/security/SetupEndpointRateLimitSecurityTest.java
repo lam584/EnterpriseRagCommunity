@@ -5,6 +5,7 @@ import com.example.EnterpriseRagCommunity.config.SecurityConfig;
 import com.example.EnterpriseRagCommunity.controller.AuthController;
 import com.example.EnterpriseRagCommunity.controller.SetupController;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AccessLogKafkaLifecycleManager;
 import com.example.EnterpriseRagCommunity.service.access.AccessControlService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
@@ -78,6 +79,9 @@ class SetupEndpointRateLimitSecurityTest {
 
     @MockitoBean
     private SetupController.RestClientFactory restClientFactory;
+
+    @MockitoBean
+    private AccessLogKafkaLifecycleManager accessLogKafkaLifecycleManager;
 
     @BeforeEach
     void setUp() {

@@ -15,6 +15,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = AdminLlmLoadTestController.class)
@@ -26,6 +27,29 @@ class AdminLlmLoadTestControllerSliceTest {
 
     @MockitoBean
     private AdminLlmLoadTestService service;
+
+        @Test
+        void status_shouldResolveRunIdPathVariable() throws Exception {
+                AdminLlmLoadTestStatusDTO dto = new AdminLlmLoadTestStatusDTO();
+                dto.setRunId("run-1");
+                dto.setRunning(true);
+                when(service.status(eq("run-1"))).thenReturn(dto);
+
+                mockMvc.perform(get("/api/admin/metrics/llm-loadtest/run-1"))
+                                .andExpect(status().isOk());
+
+                verify(service).status("run-1");
+        }
+
+        @Test
+        void stop_shouldResolveRunIdPathVariable() throws Exception {
+                when(service.stop(eq("run-1"))).thenReturn(true);
+
+                mockMvc.perform(post("/api/admin/metrics/llm-loadtest/run-1/stop"))
+                                .andExpect(status().isOk());
+
+                verify(service).stop("run-1");
+        }
 
     @Test
     void export_shouldPassFalse_whenFormatIsJson() throws Exception {

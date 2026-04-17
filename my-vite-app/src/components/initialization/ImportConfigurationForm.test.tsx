@@ -90,6 +90,17 @@ const getVisibilityButtonByKey = (key: string) => {
   return btn;
 };
 
+const getSelectByKey = (key: string) => {
+  const span = screen.getByText(`(${key})`);
+  const label = span.closest('label');
+  if (!label) throw new Error(`Label not found for key: ${key}`);
+  const fieldRoot = label.parentElement?.parentElement as HTMLElement | null;
+  if (!fieldRoot) throw new Error(`Field root not found for key: ${key}`);
+  const select = fieldRoot.querySelector('select') as HTMLSelectElement | null;
+  if (!select) throw new Error(`Select not found for key: ${key}`);
+  return select;
+};
+
 const goToEsStep = async () => {
   render(<ImportConfigurationForm />);
   fireEvent.click(screen.getByText('下一步'));
@@ -305,7 +316,17 @@ describe('ImportConfigurationForm', () => {
     class MockFileReader {
       public onload: ((evt: any) => void) | null = null;
       readAsText(_file: any) {
-        this.onload?.({ target: { result: 'APP_AI_API_KEY=K2' } });
+        this.onload?.({
+          target: {
+            result: [
+              'APP_AI_API_KEY=K2',
+              'APP_KAFKA_AUTH_ENABLED=true',
+              'APP_KAFKA_API_KEY=KFK',
+              'APP_KAFKA_API_SECRET=KFS',
+              'spring.kafka.bootstrap-servers=127.0.0.1:9092',
+            ].join('\n'),
+          },
+        });
       }
     }
     globalThis.FileReader = MockFileReader as any;
@@ -321,9 +342,59 @@ describe('ImportConfigurationForm', () => {
 
       expect(toastMocks.success).toHaveBeenCalledWith('配置导入成功');
       expect(getInputByKey('APP_AI_API_KEY').value).toBe('K2');
+
+      fireEvent.click(screen.getByText('下一步'));
+      await screen.findByText('ES 初始化');
+      expect(getSelectByKey('APP_KAFKA_AUTH_ENABLED').value).toBe('true');
+      expect(getInputByKey('APP_KAFKA_API_KEY').value).toBe('KFK');
+      expect(getInputByKey('APP_KAFKA_API_SECRET').value).toBe('KFS');
+      expect(getInputByKey('spring.kafka.bootstrap-servers').value).toBe('127.0.0.1:9092');
     } finally {
       globalThis.FileReader = originalFileReader;
     }
+  });
+
+  it('toggles Kafka API key visibility with encryption', async () => {
+    setupServiceMocks.encryptValue.mockResolvedValue('ENC_KAFKA_KEY');
+    await goToEsStep();
+
+    fireEvent.change(getSelectByKey('APP_KAFKA_AUTH_ENABLED'), { target: { value: 'true' } });
+
+    const input = getInputByKey('APP_KAFKA_API_KEY');
+    fireEvent.change(input, { target: { value: 'RAW_KAFKA_KEY' } });
+
+    fireEvent.click(getVisibilityButtonByKey('APP_KAFKA_API_KEY'));
+    expect(setupServiceMocks.encryptValue).toHaveBeenCalledWith('RAW_KAFKA_KEY');
+
+    await waitFor(() => {
+      const inputAfter = getInputByKey('APP_KAFKA_API_KEY');
+      expect(inputAfter.readOnly).toBe(true);
+      expect(inputAfter.value).toBe('ENC_KAFKA_KEY');
+    });
+  });
+
+  it('applies Kafka local/cloud presets and auto-fills key options', async () => {
+    await goToEsStep();
+
+    const cloudPresetBtn = screen.getByText('云 Kafka 预设（SASL）').closest('button');
+    if (!cloudPresetBtn) throw new Error('cloud preset button not found');
+    fireEvent.click(cloudPresetBtn);
+
+    await waitFor(() => {
+      expect(getInputByKey('spring.kafka.bootstrap-servers').value).toBe('your-kafka-broker:9092');
+      expect(getSelectByKey('APP_KAFKA_AUTH_ENABLED').value).toBe('true');
+      expect(getInputByKey('APP_KAFKA_SECURITY_PROTOCOL').value).toBe('SASL_SSL');
+      expect(getInputByKey('APP_KAFKA_SASL_MECHANISM').value).toBe('PLAIN');
+    });
+
+    const localPresetBtn = screen.getByText('本地 Kafka 预设').closest('button');
+    if (!localPresetBtn) throw new Error('local preset button not found');
+    fireEvent.click(localPresetBtn);
+
+    await waitFor(() => {
+      expect(getInputByKey('spring.kafka.bootstrap-servers').value).toBe('127.0.0.1:9092');
+      expect(getSelectByKey('APP_KAFKA_AUTH_ENABLED').value).toBe('true');
+    });
   });
 
   it('ignores file import when no file is selected', async () => {
@@ -360,6 +431,8 @@ describe('ImportConfigurationForm', () => {
       ad_violation_samples_v1: '未创建',
       rag_post_chunks_v1_comments: '未创建',
       rag_post_chunks_v1: '未创建',
+      'rag_file_assets_v1': '未创建',
+      'access-logs-v1': '未创建',
     });
 
     try {
@@ -390,6 +463,8 @@ describe('ImportConfigurationForm', () => {
       ad_violation_samples_v1: '已创建',
       rag_post_chunks_v1_comments: '未创建',
       rag_post_chunks_v1: '已创建',
+      'rag_file_assets_v1': '未创建',
+      'access-logs-v1': '已创建',
     });
     render(<ImportConfigurationForm />);
 
@@ -403,9 +478,9 @@ describe('ImportConfigurationForm', () => {
     expect(toastMocks.success).toHaveBeenCalledWith('连接成功！');
 
     const created = await screen.findAllByText('状态：已创建');
-    expect(created).toHaveLength(2);
+    expect(created).toHaveLength(3);
     const notCreated = await screen.findAllByText('状态：未创建');
-    expect(notCreated).toHaveLength(1);
+    expect(notCreated).toHaveLength(2);
   });
 
   it('skips testEsConnection on create when already connected', async () => {
@@ -414,6 +489,8 @@ describe('ImportConfigurationForm', () => {
       ad_violation_samples_v1: '未创建',
       rag_post_chunks_v1_comments: '未创建',
       rag_post_chunks_v1: '未创建',
+      'rag_file_assets_v1': '未创建',
+      'access-logs-v1': '未创建',
     });
     setupServiceMocks.initIndices.mockResolvedValue(undefined);
     render(<ImportConfigurationForm />);
@@ -524,7 +601,7 @@ describe('ImportConfigurationForm', () => {
     await goToEsStep();
     fireEvent.change(getInputByKey('APP_ES_API_KEY'), { target: { value: 'ESK' } });
 
-    const toUncheck = screen.getByRole('checkbox', { name: 'rag_post_chunks_v1' });
+    const toUncheck = screen.getByRole('checkbox', { name: /rag_post_chunks_v1（帖子 RAG 索引）/ });
     fireEvent.click(toUncheck);
 
     fireEvent.click(screen.getByText('创建'));
@@ -532,7 +609,9 @@ describe('ImportConfigurationForm', () => {
 
     expect(setupServiceMocks.initIndices).toHaveBeenCalledTimes(1);
     const arg = setupServiceMocks.initIndices.mock.calls[0]?.[0] as string[];
-    expect(arg).toEqual(['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_file_assets_v1']);
+    expect(arg).toEqual(['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_file_assets_v1', 'access-logs-v1']);
+    const cfg = setupServiceMocks.initIndices.mock.calls[0]?.[1] as Record<string, string>;
+    expect(cfg['spring.elasticsearch.uris']).toBe('http://127.0.0.1:9200');
     expect(toastMocks.success).toHaveBeenCalledWith('索引初始化成功');
   });
 
@@ -542,7 +621,7 @@ describe('ImportConfigurationForm', () => {
     await goToEsStep();
     fireEvent.change(getInputByKey('APP_ES_API_KEY'), { target: { value: 'ESK' } });
 
-    const cb = screen.getByRole('checkbox', { name: 'rag_post_chunks_v1' });
+    const cb = screen.getByRole('checkbox', { name: /rag_post_chunks_v1（帖子 RAG 索引）/ });
     fireEvent.click(cb);
     fireEvent.click(cb);
 
@@ -550,7 +629,7 @@ describe('ImportConfigurationForm', () => {
     await screen.findByText('创建管理员账户');
 
     const arg = setupServiceMocks.initIndices.mock.calls[0]?.[0] as string[];
-    expect(arg).toEqual(['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_file_assets_v1', 'rag_post_chunks_v1']);
+    expect(arg).toEqual(['ad_violation_samples_v1', 'rag_post_chunks_v1_comments', 'rag_file_assets_v1', 'access-logs-v1', 'rag_post_chunks_v1']);
   });
 
   it('shows friendly error and toast when final submit fails', async () => {

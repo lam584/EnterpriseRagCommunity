@@ -6,6 +6,8 @@ import com.example.EnterpriseRagCommunity.service.access.AuditLogsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
@@ -17,6 +19,8 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class AuditLogsControllerTest {
 
@@ -70,5 +74,20 @@ class AuditLogsControllerTest {
         AuditLogsViewDTO dto = new AuditLogsViewDTO(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         when(service.getById(1L)).thenReturn(dto);
         assertThat(controller.getById(1L).getBody()).isSameAs(dto);
+    }
+
+    @Test
+    void getById_endpoint_should_bind_path_variable_without_parameter_metadata() throws Exception {
+        AuditLogsService service = mock(AuditLogsService.class);
+        AuditLogsController controller = new AuditLogsController(service);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        AuditLogsViewDTO dto = new AuditLogsViewDTO(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        when(service.getById(1L)).thenReturn(dto);
+
+        mockMvc.perform(get("/api/admin/audit-logs/1"))
+                .andExpect(status().isOk());
+
+        verify(service).getById(1L);
     }
 }

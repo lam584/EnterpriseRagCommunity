@@ -11,6 +11,7 @@ import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
 import com.example.EnterpriseRagCommunity.service.ai.PortalChatConfigService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -36,9 +37,7 @@ public class AiAssistantPreferencesController {
     private final UsersRepository usersRepository;
     private final AuditLogWriter auditLogWriter;
     private final AuditDiffBuilder auditDiffBuilder;
-
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private PortalChatConfigService portalChatConfigService;
+    private final ObjectProvider<PortalChatConfigService> portalChatConfigServiceProvider;
 
     @GetMapping
     public ResponseEntity<?> getPreferences() {
@@ -140,7 +139,7 @@ public class AiAssistantPreferencesController {
     }
 
     private boolean isAssistantManualModelSelectionEnabled() {
-        PortalChatConfigService svc = this.portalChatConfigService;
+        PortalChatConfigService svc = portalChatConfigServiceProvider.getIfAvailable();
         if (svc == null) return true;
         try {
             PortalChatConfigDTO cfg = svc.getConfigOrDefault();

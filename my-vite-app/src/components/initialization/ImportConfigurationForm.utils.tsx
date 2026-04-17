@@ -30,6 +30,20 @@ export const HELP_CONTENT: Record<string, string> = {
   IMAGE_STORAGE_OSS_ACCESS_KEY_ID: '阿里云 OSS AccessKey ID，用于身份验证。',
   IMAGE_STORAGE_OSS_ACCESS_KEY_SECRET: '阿里云 OSS AccessKey Secret，用于身份验证。请妥善保管。',
   IMAGE_STORAGE_OSS_REGION: '阿里云 OSS Region，例如 cn-beijing。',
+  'spring.kafka.bootstrap-servers': 'Kafka Broker 地址，多个地址用逗号分隔。默认本地预设为 127.0.0.1:9092（单机开发）；云预设为 your-kafka-broker:9092（托管 Kafka）。',
+  'app.logging.access.kafka-topic': 'Access 日志写入的 Kafka Topic，默认 access-logs-v1。通常无需修改，除非你有多环境或多业务隔离需求。',
+  'app.logging.access.sink-mode': '日志写入模式：MYSQL（仅数据库）、KAFKA（主写 Kafka）、DUAL（Kafka+MySQL 双写，适合灰度与一致性校验）。默认 KAFKA。',
+  'app.logging.access.es-sink.enabled': '是否启用 Access 日志 Kafka -> ES 落库链路。关闭后不会消费 Kafka 写入 ES。',
+  'app.logging.access.es-sink.consumer-enabled': '是否自动启动 ES sink 消费者。仅在启用 ES sink 时生效。',
+  'app.logging.access.es-sink.index': 'ES 写入索引名，默认 access-logs-v1。',
+  'app.logging.access.es-sink.consumer-group': 'Kafka 消费组名称，建议环境内唯一，避免多实例抢占异常。',
+  'app.logging.access.es-sink.dual-verify-enabled': 'DUAL 校验开关。开启后消费端会回查 MySQL 是否存在同一事件并记录校验日志。',
+  'app.logging.access.es-sink.dual-verify-log-on-success': '是否输出 dual 校验成功日志。排障期可开启，稳定后建议关闭以减少日志噪声。',
+  APP_KAFKA_AUTH_ENABLED: '是否启用 Kafka SASL 鉴权。默认开启；若本地 Kafka 未启用 SASL，可暂时留空 APP_KAFKA_API_KEY 和 APP_KAFKA_API_SECRET，后续再补齐。',
+  APP_KAFKA_SECURITY_PROTOCOL: 'Kafka 安全协议，常见值：SASL_SSL、SASL_PLAINTEXT。',
+  APP_KAFKA_SASL_MECHANISM: 'Kafka SASL 机制，常见值：PLAIN。',
+  APP_KAFKA_API_KEY: 'Kafka API Key（或用户名），用于 SASL 鉴权。',
+  APP_KAFKA_API_SECRET: 'Kafka API Secret（或密码），用于 SASL 鉴权。',
 };
 
 export const CONFIG_LABELS: Record<string, string> = {
@@ -53,6 +67,20 @@ export const CONFIG_LABELS: Record<string, string> = {
   IMAGE_STORAGE_OSS_ACCESS_KEY_ID: 'OSS AccessKey ID',
   IMAGE_STORAGE_OSS_ACCESS_KEY_SECRET: 'OSS AccessKey Secret',
   IMAGE_STORAGE_OSS_REGION: 'OSS Region',
+  'spring.kafka.bootstrap-servers': 'Kafka Broker 地址',
+  'app.logging.access.kafka-topic': 'Kafka Topic',
+  'app.logging.access.sink-mode': '日志写入模式',
+  'app.logging.access.es-sink.enabled': 'ES Sink 总开关',
+  'app.logging.access.es-sink.consumer-enabled': 'ES Sink 消费者开关',
+  'app.logging.access.es-sink.index': 'ES 索引名',
+  'app.logging.access.es-sink.consumer-group': 'ES Sink 消费组',
+  'app.logging.access.es-sink.dual-verify-enabled': 'DUAL 校验开关',
+  'app.logging.access.es-sink.dual-verify-log-on-success': 'DUAL 成功日志开关',
+  APP_KAFKA_AUTH_ENABLED: 'Kafka 鉴权开关',
+  APP_KAFKA_SECURITY_PROTOCOL: 'Kafka 安全协议',
+  APP_KAFKA_SASL_MECHANISM: 'Kafka SASL 机制',
+  APP_KAFKA_API_KEY: 'Kafka API Key',
+  APP_KAFKA_API_SECRET: 'Kafka API Secret',
 };
 
 export const isSensitiveConfigKey = (key: string) => key.includes('KEY') || key.includes('PASSWORD') || key.includes('SECRET');

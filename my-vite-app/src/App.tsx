@@ -1,6 +1,6 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import { Toaster } from 'react-hot-toast';
 import Login from './components/login/Login';
 import AdminSetup from './components/login/AdminSetup';
@@ -106,9 +106,13 @@ export function AppRoutes() {
     useAuth();
     const [setupRequired, setSetupRequired] = useState<boolean | null>(null);
     const [loading, setLoading] = useState(true);
+    const didCheckSetupRef = useRef(false);
 
     // 检查系统是否需要初始设置
     useEffect(() => {
+        if (didCheckSetupRef.current) return;
+        didCheckSetupRef.current = true;
+
         const checkSetupStatus = async () => {
             try {
                 const { setupRequired } = await checkInitialSetupStatus();

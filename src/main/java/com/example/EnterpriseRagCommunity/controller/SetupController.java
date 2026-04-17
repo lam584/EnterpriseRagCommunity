@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest;
 import com.example.EnterpriseRagCommunity.config.AdminSetupManager;
+import com.example.EnterpriseRagCommunity.service.access.AccessLogKafkaLifecycleManager;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
@@ -48,6 +49,7 @@ public class SetupController {
     private static final String ES_CONNECTION_FAILED_MESSAGE = "Connection failed";
     private static final String ES_CHECK_FAILED_MESSAGE = "Failed to connect to ES";
     private static final String SAVE_CONFIG_FAILED_MESSAGE = "Failed to save config";
+    private static final String INIT_INDICES_FAILED_MESSAGE = "Failed to init indices";
 
     @FunctionalInterface
     public interface RestClientFactory {
@@ -74,6 +76,8 @@ public class SetupController {
     private final com.example.EnterpriseRagCommunity.utils.AesGcmUtils aesGcmUtils;
 
     private final AdminSetupManager adminSetupManager;
+
+    private final AccessLogKafkaLifecycleManager accessLogKafkaLifecycleManager;
 
     @org.springframework.beans.factory.annotation.Value("${APP_MASTER_KEY}")
     private String masterKey;
@@ -382,11 +386,16 @@ public class SetupController {
                     }
 
                     boolean shouldEncrypt = !key.startsWith("spring.elasticsearch")
+                            && !key.startsWith("spring.kafka.")
+                            && !key.startsWith("app.logging.access.")
                             && !key.startsWith("APP_MAIL_HOST")
                             && !key.startsWith("APP_MAIL_PORT")
                             && !key.startsWith("APP_MAIL_FROM_ADDRESS")
                             && !key.equals("APP_SITE_COPYRIGHT")
                             && !key.equals("APP_SITE_BEIAN")
+                            && !key.equals("APP_KAFKA_AUTH_ENABLED")
+                            && !key.equals("APP_KAFKA_SECURITY_PROTOCOL")
+                            && !key.equals("APP_KAFKA_SASL_MECHANISM")
                             && !key.equals("APP_SITE_BEIAN_HREF");
 
                     systemConfigurationService.saveConfig(key, value, shouldEncrypt, "Initialized via Setup Wizard");
@@ -411,30 +420,99 @@ public class SetupController {
     }
 
     @PostMapping("/init-indices")
-    public ResponseEntity<?> initIndices(@RequestBody Map<String, List<String>> payload) {
+    public ResponseEntity<?> initIndices(@RequestBody Map<String, Object> payload) {
         return runIfSetupInProgress(() -> {
-            // In a real scenario, we would use the new configs to init indices.
-            // Here we rely on the bootstrap service if available, or just return success
-            // since the actual index creation might happen lazily or via the existing InitialAdminIndexBootstrapService
-            // which we can trigger manually if needed.
+            @SuppressWarnings("unchecked")
+            List<String> indexNames = (List<String>) payload.get("indexNames");
+            @SuppressWarnings("unchecked")
+            Map<String, String> configs = (Map<String, String>) payload.get("configs");
 
-            // However, InitialAdminIndexBootstrapService usually uses the injected ES client.
-            // If the injected ES client is not yet updated with the new keys, this might fail.
+            // Backward compatibility: old clients do not pass configs and only expect an ack.
+            if (configs == null || configs.isEmpty()) {
+                return ResponseEntity.ok(Map.of("message", "Index initialization configuration saved."));
+            }
 
-            // For the purpose of this task, we will assume the user has configured the keys correctly
-            // OR we implement a way to re-init the client.
+            String uris = configs.get("spring.elasticsearch.uris");
+            String apiKey = configs.get("APP_ES_API_KEY");
+            if (uris == null || uris.isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Elasticsearch URI is required"));
+            }
 
-            // Since we can't easily re-init the global client without restart,
-            // we will just return success and let the final "complete" step (which might trigger a restart request or similar) handle it.
-            // OR, we can try to use the low-level client we built to create indices? That's too much code duplication.
-
-            // Let's assume the user will restart or the app handles dynamic properties eventually.
-            return ResponseEntity.ok(Map.of("message", "Index initialization configuration saved."));
+            Map<String, String> results = new HashMap<>();
+            try (RestClient client = createClient(uris, apiKey)) {
+                if (indexNames != null) {
+                    for (String rawName : indexNames) {
+                        String indexName = rawName == null ? "" : rawName.trim();
+                        if (indexName.isBlank()) continue;
+                        ensureIndex(client, indexName, results);
+                    }
+                }
+                return ResponseEntity.ok(Map.of("message", "Index initialization completed.", "results", results));
+            } catch (Exception e) {
+                logger.warn("Failed to init indices", e);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(Map.of("message", INIT_INDICES_FAILED_MESSAGE));
+            }
         });
+    }
+
+    private void ensureIndex(RestClient client, String indexName, Map<String, String> results) {
+        try {
+            Request head = new Request("HEAD", "/" + indexName);
+            Response resp = client.performRequest(head);
+            int statusCode = resp.getStatusLine().getStatusCode();
+            if (statusCode == 200) {
+                results.put(indexName, "已创建");
+                return;
+            }
+        } catch (Exception e) {
+            if (!isNotFound(e)) {
+                results.put(indexName, "检查失败");
+                return;
+            }
+        }
+
+        try {
+            Request put = new Request("PUT", "/" + indexName);
+            Response created = client.performRequest(put);
+            int statusCode = created.getStatusLine().getStatusCode();
+            if (statusCode >= 200 && statusCode < 300) {
+                results.put(indexName, "已创建");
+            } else {
+                results.put(indexName, "状态码: " + statusCode);
+            }
+        } catch (Exception e) {
+            if (isAlreadyExists(e)) {
+                results.put(indexName, "已创建");
+                return;
+            }
+            results.put(indexName, "创建失败");
+        }
+    }
+
+    private static boolean isNotFound(Exception e) {
+        String msg = e == null ? null : e.getMessage();
+        return msg != null && (msg.contains(" 404") || msg.contains("HTTP/1.1 404"));
+    }
+
+    private static boolean isAlreadyExists(Exception e) {
+        String msg = e == null ? null : e.getMessage();
+        if (msg == null) return false;
+        return msg.contains("resource_already_exists_exception") || msg.contains("already exists");
     }
 
     @PostMapping("/complete")
     public ResponseEntity<?> completeSetup(@Valid @RequestBody RegisterRequest request) {
-        return runIfSetupInProgress(() -> authController.registerInitialAdmin(request));
+        return runIfSetupInProgress(() -> {
+            ResponseEntity<?> response = authController.registerInitialAdmin(request);
+            if (response.getStatusCode().is2xxSuccessful()) {
+                try {
+                    accessLogKafkaLifecycleManager.startAccessLogEsSinkConsumerIfEnabled();
+                } catch (Exception e) {
+                    logger.warn("Failed to start access log ES sink consumer after setup completion: {}", e.getMessage(), e);
+                }
+            }
+            return response;
+        });
     }
 }

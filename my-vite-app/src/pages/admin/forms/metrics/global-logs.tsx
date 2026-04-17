@@ -9,7 +9,9 @@ import {
 import {
   adminExportAccessLogsCsv,
   adminGetAccessLogDetail,
+  adminGetAccessLogEsIndexStatus,
   adminListAccessLogs,
+  type AccessLogEsIndexStatusDTO,
   type AccessLogDTO,
 } from '../../../../services/accessLogService';
 import { downloadBlob } from '../../../../utils/download';
@@ -79,6 +81,15 @@ function parsePositiveInt(s: string | null): number | undefined {
   const n = Number(s);
   if (!Number.isFinite(n) || n <= 0) return undefined;
   return Math.floor(n);
+}
+
+function firstNonBlankString(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
 }
 
 type LogBodyInfo = {
@@ -246,6 +257,9 @@ const GlobalLogsForm: React.FC = () => {
   const [retentionLoading, setRetentionLoading] = useState(false);
   const [retentionError, setRetentionError] = useState<string | null>(null);
   const [retention, setRetention] = useState<LogRetentionConfigDTO | null>(null);
+  const [accessIndexStatusLoading, setAccessIndexStatusLoading] = useState(false);
+  const [accessIndexStatusError, setAccessIndexStatusError] = useState<string | null>(null);
+  const [accessIndexStatus, setAccessIndexStatus] = useState<AccessLogEsIndexStatusDTO | null>(null);
 
   const syncToUrl = useCallback(
     (nextTab: TabKey, nextPage: number, nextPageSize: number, nextAuditQuery: AuditQueryState, nextAccessQuery: AccessQueryState) => {
@@ -305,6 +319,25 @@ const GlobalLogsForm: React.FC = () => {
   useEffect(() => {
     loadRetention();
   }, [loadRetention]);
+
+  const loadAccessIndexStatus = useCallback(async () => {
+    setAccessIndexStatusLoading(true);
+    setAccessIndexStatusError(null);
+    try {
+      const res = await adminGetAccessLogEsIndexStatus();
+      if (!mountedRef.current) return;
+      setAccessIndexStatus(res);
+    } catch (e) {
+      if (!mountedRef.current) return;
+      setAccessIndexStatusError(e instanceof Error ? e.message : String(e));
+    } finally {
+      if (mountedRef.current) setAccessIndexStatusLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAccessIndexStatus();
+  }, [loadAccessIndexStatus]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -376,14 +409,15 @@ const GlobalLogsForm: React.FC = () => {
     load();
   }, [load]);
 
-  const openDetail = useCallback(async (id: number) => {
+  const openDetail = useCallback(async (id: string | number) => {
     setDetailOpen(true);
     setDetailTab('overview');
     setDetailLoading(true);
     setDetail(null);
     try {
       if (tab === 'audit') {
-        const res = await adminGetAuditLogDetail(id);
+        const auditId = typeof id === 'number' ? id : Number(id);
+        const res = await adminGetAuditLogDetail(auditId);
         if (!mountedRef.current) return;
         setDetail(res);
       } else {
@@ -459,7 +493,6 @@ const GlobalLogsForm: React.FC = () => {
   }, [accessQuery, auditQuery, tab]);
 
   const currentList = tab === 'audit' ? auditItems : accessItems;
-
   const resolvedTotalElements = useMemo(() => {
     if (currentList.length === 0) return totalElements;
     return Math.max(totalElements, (page - 1) * pageSize + currentList.length);
@@ -483,6 +516,11 @@ const GlobalLogsForm: React.FC = () => {
         enabled: patch.enabled ?? retention.enabled,
         keepDays: patch.keepDays ?? retention.keepDays,
         mode: patch.mode ?? retention.mode,
+        maxPerRun: patch.maxPerRun ?? retention.maxPerRun,
+        auditLogsEnabled: patch.auditLogsEnabled ?? retention.auditLogsEnabled,
+        accessLogsEnabled: patch.accessLogsEnabled ?? retention.accessLogsEnabled,
+        purgeArchivedEnabled: patch.purgeArchivedEnabled ?? retention.purgeArchivedEnabled,
+        purgeArchivedKeepDays: patch.purgeArchivedKeepDays ?? retention.purgeArchivedKeepDays,
       };
       const res = await adminUpdateLogRetentionConfig(next);
       if (!mountedRef.current) return;
@@ -546,13 +584,13 @@ const GlobalLogsForm: React.FC = () => {
         <div className="flex items-center gap-3">
           <div>
             <div className="font-medium">日志自动清理/归档任务</div>
-            <div className="text-xs text-gray-600">默认关闭。开启后将按保留天数定期清理/归档历史日志。</div>
+            <div className="text-xs text-gray-600">默认关闭。开启后可按保留天数、处理范围、单轮处理量执行归档/清理，并可选清理已归档数据。</div>
           </div>
         </div>
 
         {retentionError ? <div className="text-sm text-red-700">{retentionError}</div> : null}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
           <div className="space-y-1">
             <div className="text-xs text-gray-600">保留天数</div>
             <input
@@ -560,6 +598,15 @@ const GlobalLogsForm: React.FC = () => {
               value={retention?.keepDays ?? 180}
               disabled={retentionLoading || !retention}
               onChange={(e) => updateRetention({ keepDays: toIntOrUndefined(e.target.value) ?? 180 })}
+            />
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">单轮最大处理量</div>
+            <input
+              className="rounded border px-3 py-2 text-sm w-full"
+              value={retention?.maxPerRun ?? 5000}
+              disabled={retentionLoading || !retention}
+              onChange={(e) => updateRetention({ maxPerRun: toIntOrUndefined(e.target.value) ?? 5000 })}
             />
           </div>
           <div className="space-y-1">
@@ -599,6 +646,147 @@ const GlobalLogsForm: React.FC = () => {
             </select>
           </div>
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">处理业务审计日志</div>
+            <select
+              className="rounded border px-3 py-2 text-sm bg-white w-full"
+              value={retention?.auditLogsEnabled ? 'ENABLED' : 'DISABLED'}
+              disabled={retentionLoading || !retention}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === 'ENABLED' || v === 'DISABLED') updateRetention({ auditLogsEnabled: v === 'ENABLED' });
+              }}
+            >
+              <option value="ENABLED">开启</option>
+              <option value="DISABLED">关闭</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">处理 HTTP 访问日志</div>
+            <select
+              className="rounded border px-3 py-2 text-sm bg-white w-full"
+              value={retention?.accessLogsEnabled ? 'ENABLED' : 'DISABLED'}
+              disabled={retentionLoading || !retention}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === 'ENABLED' || v === 'DISABLED') updateRetention({ accessLogsEnabled: v === 'ENABLED' });
+              }}
+            >
+              <option value="ENABLED">开启</option>
+              <option value="DISABLED">关闭</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">清理已归档日志</div>
+            <select
+              className="rounded border px-3 py-2 text-sm bg-white w-full"
+              value={retention?.purgeArchivedEnabled ? 'ENABLED' : 'DISABLED'}
+              disabled={retentionLoading || !retention}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === 'ENABLED' || v === 'DISABLED') updateRetention({ purgeArchivedEnabled: v === 'ENABLED' });
+              }}
+            >
+              <option value="DISABLED">关闭</option>
+              <option value="ENABLED">开启</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <div className="text-xs text-gray-600">归档保留天数</div>
+            <input
+              className="rounded border px-3 py-2 text-sm w-full"
+              value={retention?.purgeArchivedKeepDays ?? 365}
+              disabled={retentionLoading || !retention || !retention.purgeArchivedEnabled}
+              onChange={(e) => updateRetention({ purgeArchivedKeepDays: toIntOrUndefined(e.target.value) ?? 365 })}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded border p-3 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="font-medium">日志索引状态（ES）</div>
+            <div className="text-xs text-gray-600">用于观察 HTTP 日志 ES 索引是否可用，便于灰度切换查询链路。</div>
+          </div>
+          <button
+            type="button"
+            className="rounded border px-3 py-1.5 text-sm bg-white disabled:opacity-50"
+            onClick={() => {
+              void loadAccessIndexStatus();
+            }}
+            disabled={accessIndexStatusLoading}
+          >
+            刷新
+          </button>
+        </div>
+
+        {accessIndexStatusError ? <div className="text-sm text-red-700">{accessIndexStatusError}</div> : null}
+
+        {!accessIndexStatus ? (
+          <div className="text-sm text-gray-500 py-4 text-center bg-gray-50 rounded border border-dashed">
+            {accessIndexStatusLoading ? '加载中…' : '暂无索引状态数据'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto border rounded-md">
+            <table className="min-w-full text-sm divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr className="text-left text-gray-500 font-medium text-sm uppercase tracking-wider">
+                  <th className="py-2 px-3">索引名</th>
+                  <th className="py-2 px-3">集合名</th>
+                  <th className="py-2 px-3">文档数</th>
+                  <th className="py-2 px-3">状态</th>
+                  <th className="py-2 px-3">写入模式</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white">
+                <tr className="hover:bg-gray-50 transition-colors">
+                  <td className="py-2 px-3 font-mono text-gray-900 break-all text-sm font-medium">{accessIndexStatus.indexName || '—'}</td>
+                  <td className="py-2 px-3 text-gray-600 text-sm">{accessIndexStatus.collectionName || '—'}</td>
+                  <td className="py-2 px-3 text-gray-600 text-sm">
+                    {typeof accessIndexStatus.docsCount === 'number' ? accessIndexStatus.docsCount.toLocaleString() : '—'}
+                  </td>
+                  <td className="py-2 px-3">
+                    <div className="flex flex-col gap-1 items-start">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase tracking-wide ${
+                            accessIndexStatus.exists ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}
+                        >
+                          {accessIndexStatus.exists ? '存在' : '不存在'}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium uppercase tracking-wide ${
+                            accessIndexStatus.available ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          }`}
+                        >
+                          {accessIndexStatus.available ? '可用' : '不可用'}
+                        </span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                          {accessIndexStatus.health || 'unknown'} / {accessIndexStatus.status || 'unknown'}
+                        </span>
+                      </div>
+                      {accessIndexStatus.availabilityMessage ? (
+                        <div className="text-xs text-gray-500">{accessIndexStatus.availabilityMessage}</div>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="py-2 px-3 text-sm text-gray-600">
+                    <div className="flex flex-col gap-1">
+                      <div>sink-mode: {accessIndexStatus.sinkMode || '—'}</div>
+                      <div className="text-xs text-gray-500">
+                        ES sink: {accessIndexStatus.esSinkEnabled ? '开启' : '关闭'} / consumer: {accessIndexStatus.consumerEnabled ? '开启' : '关闭'}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {error ? <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
@@ -905,6 +1093,10 @@ const GlobalLogsForm: React.FC = () => {
                 ))
               : accessItems.map((it) => (
                   <tr key={it.id} className="border-t">
+                    {(() => {
+                      const detailKey = firstNonBlankString(it.requestId, it.traceId, String(it.id));
+                      return (
+                        <>
                     <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(it.createdAt)}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{it.username ?? (it.userId ? `#${it.userId}` : '—')}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{`${it.method ?? '—'} ${it.path ?? '—'}`}</td>
@@ -914,10 +1106,17 @@ const GlobalLogsForm: React.FC = () => {
                     <td className="px-3 py-2 whitespace-nowrap">{it.statusCode ?? '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{it.requestId ?? it.traceId ?? '—'}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-right">
-                      <button className="text-blue-600 hover:underline" type="button" onClick={() => openDetail(it.id)}>
-                        详情
-                      </button>
+                      {detailKey ? (
+                        <button className="text-blue-600 hover:underline" type="button" onClick={() => openDetail(detailKey)}>
+                          详情
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">缺少可用详情键</span>
+                      )}
                     </td>
+                        </>
+                      );
+                    })()}
                   </tr>
                 ))}
           </tbody>

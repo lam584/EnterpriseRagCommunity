@@ -17,6 +17,7 @@ public interface AuditLogsRepository extends JpaRepository<AuditLogsEntity, Long
     List<AuditLogsEntity> findByActorUserId(Long actorUserId);
     List<AuditLogsEntity> findByEntityTypeAndEntityId(String entityType, Long entityId);
     List<AuditLogsEntity> findTop1000ByArchivedAtIsNullAndCreatedAtBeforeOrderByCreatedAtAscIdAsc(LocalDateTime createdAt);
+    List<AuditLogsEntity> findTop1000ByArchivedAtBeforeOrderByArchivedAtAscIdAsc(LocalDateTime archivedAt);
 
     List<AuditLogsEntity> findTop2000ByEntityTypeAndEntityIdInAndActionStartingWithOrderByCreatedAtDesc(String entityType, Collection<Long> entityIds, String actionPrefix);
 

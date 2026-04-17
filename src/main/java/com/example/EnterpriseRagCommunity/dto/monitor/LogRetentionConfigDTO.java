@@ -5,7 +5,12 @@ import com.example.EnterpriseRagCommunity.service.monitor.LogRetentionMode;
 public record LogRetentionConfigDTO(
         boolean enabled,
         long keepDays,
-        LogRetentionMode mode
+        LogRetentionMode mode,
+        int maxPerRun,
+        boolean auditLogsEnabled,
+        boolean accessLogsEnabled,
+        boolean purgeArchivedEnabled,
+        long purgeArchivedKeepDays
 ) {
 }
 

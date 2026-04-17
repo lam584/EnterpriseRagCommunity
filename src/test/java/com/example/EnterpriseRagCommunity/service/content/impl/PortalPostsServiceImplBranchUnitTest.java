@@ -216,8 +216,6 @@ class PortalPostsServiceImplBranchUnitTest {
         when(commentsService.countByPostId(anyLong())).thenReturn(1L);
         when(postInteractionsService.countLikes(anyLong())).thenReturn(2L);
         when(postInteractionsService.countFavorites(anyLong())).thenReturn(3L);
-        when(postInteractionsService.likedByMe(anyLong())).thenReturn(false);
-        when(postInteractionsService.favoritedByMe(anyLong())).thenReturn(false);
 
         var page = s.query(null, null, null, null, null, null, null, null, 1, 10, null, null);
         assertEquals(3, page.getContent().size());
@@ -256,8 +254,6 @@ class PortalPostsServiceImplBranchUnitTest {
         when(commentsService.countByPostId(anyLong())).thenReturn(0L);
         when(postInteractionsService.countLikes(anyLong())).thenReturn(0L);
         when(postInteractionsService.countFavorites(anyLong())).thenReturn(0L);
-        when(postInteractionsService.likedByMe(anyLong())).thenReturn(false);
-        when(postInteractionsService.favoritedByMe(anyLong())).thenReturn(false);
 
         var page = s.query(null, null, null, null, null, null, null, null, 1, 10, null, null);
         assertEquals(1, page.getContent().size());
@@ -268,6 +264,12 @@ class PortalPostsServiceImplBranchUnitTest {
     @Test
     void enrichAggregates_shouldHandleHotScoreAndLikedFavoriteExceptions() {
         PortalPostsServiceImpl s = newService(hotScoresRepository);
+
+        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken("u", "p", List.of());
+        SecurityContextHolder.getContext().setAuthentication(auth);
+        UsersEntity me = new UsersEntity();
+        me.setId(1L);
+        when(administratorService.findByUsername(eq("u"))).thenReturn(Optional.of(me));
 
         when(commentsService.countByPostId(anyLong())).thenReturn(10L);
         when(postInteractionsService.countLikes(anyLong())).thenReturn(20L);
@@ -311,8 +313,6 @@ class PortalPostsServiceImplBranchUnitTest {
         when(commentsService.countByPostId(anyLong())).thenReturn(0L);
         when(postInteractionsService.countLikes(anyLong())).thenReturn(0L);
         when(postInteractionsService.countFavorites(anyLong())).thenReturn(0L);
-        when(postInteractionsService.likedByMe(anyLong())).thenReturn(false);
-        when(postInteractionsService.favoritedByMe(anyLong())).thenReturn(false);
 
         PostDetailDTO dto = new PostDetailDTO();
         dto.setId(1L);
@@ -467,8 +467,6 @@ class PortalPostsServiceImplBranchUnitTest {
         when(commentsService.countByPostId(anyLong())).thenReturn(0L);
         when(postInteractionsService.countLikes(anyLong())).thenReturn(0L);
         when(postInteractionsService.countFavorites(anyLong())).thenReturn(0L);
-        when(postInteractionsService.likedByMe(anyLong())).thenReturn(false);
-        when(postInteractionsService.favoritedByMe(anyLong())).thenReturn(false);
 
         PostDetailDTO dto = s.getById(9L);
         assertNull(dto.getAuthorName());
@@ -506,8 +504,6 @@ class PortalPostsServiceImplBranchUnitTest {
         when(commentsService.countByPostId(anyLong())).thenReturn(0L);
         when(postInteractionsService.countLikes(anyLong())).thenReturn(0L);
         when(postInteractionsService.countFavorites(anyLong())).thenReturn(0L);
-        when(postInteractionsService.likedByMe(anyLong())).thenReturn(false);
-        when(postInteractionsService.favoritedByMe(anyLong())).thenReturn(false);
 
         PostDetailDTO dto = s.getById(9L);
         assertNull(dto.getAuthorName());

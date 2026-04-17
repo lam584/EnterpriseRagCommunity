@@ -5,17 +5,25 @@ import com.example.EnterpriseRagCommunity.entity.access.AuditLogsEntity;
 import com.example.EnterpriseRagCommunity.entity.access.enums.AuditResult;
 import com.example.EnterpriseRagCommunity.repository.access.AccessLogsRepository;
 import com.example.EnterpriseRagCommunity.repository.access.AuditLogsRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.CompletableFuture;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,7 +38,7 @@ class AccessAuditWritersBranchTest {
     @Test
     void accessLogWriter_should_fill_defaults_and_save() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
-        AccessLogWriter writer = new AccessLogWriter(repo);
+        AccessLogWriter writer = new AccessLogWriter(repo, null);
 
         writer.write((AccessLogsEntity) null);
 
@@ -45,7 +53,7 @@ class AccessAuditWritersBranchTest {
     @Test
     void accessLogWriter_overload_should_handle_null_method_and_path() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
-        AccessLogWriter writer = new AccessLogWriter(repo);
+        AccessLogWriter writer = new AccessLogWriter(repo, null);
         ArgumentCaptor<AccessLogsEntity> cap = ArgumentCaptor.forClass(AccessLogsEntity.class);
 
         writer.write(
@@ -62,6 +70,102 @@ class AccessAuditWritersBranchTest {
         assertEquals("/", out.getPath());
         assertNotNull(out.getCreatedAt());
         assertEquals("v", out.getDetails().get("k"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void accessLogWriter_kafka_mode_should_not_write_mysql_when_kafka_fails() {
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogWriter writer = new AccessLogWriter(repo, null);
+
+        KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
+        CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(new RuntimeException("kafka down"));
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(failed);
+
+        ReflectionTestUtils.setField(writer, "accessLogsKafkaTemplate", kafkaTemplate);
+        ReflectionTestUtils.setField(writer, "sinkModeRaw", "KAFKA");
+        ReflectionTestUtils.setField(writer, "kafkaTopic", "access-logs-v1");
+        ReflectionTestUtils.setField(writer, "asyncEnabled", false);
+
+        AccessLogsEntity e = new AccessLogsEntity();
+        e.setRequestId("r1");
+        e.setTraceId("t1");
+        e.setMethod("GET");
+        e.setPath("/p");
+        writer.write(e);
+
+        verify(repo, never()).save(e);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void accessLogWriter_kafka_mode_should_not_write_mysql_when_kafka_succeeds() {
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogWriter writer = new AccessLogWriter(repo, null);
+
+        KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
+        CompletableFuture<SendResult<String, String>> ok = new CompletableFuture<>();
+        ok.complete(null);
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(ok);
+
+        ReflectionTestUtils.setField(writer, "accessLogsKafkaTemplate", kafkaTemplate);
+        ReflectionTestUtils.setField(writer, "sinkModeRaw", "KAFKA");
+        ReflectionTestUtils.setField(writer, "kafkaTopic", "access-logs-v1");
+        ReflectionTestUtils.setField(writer, "kafkaKeyPrefix", "access");
+        ReflectionTestUtils.setField(writer, "asyncEnabled", false);
+
+        AccessLogsEntity e = new AccessLogsEntity();
+        e.setRequestId("r2");
+        e.setTraceId("t2");
+        e.setMethod("GET");
+        e.setPath("/ok");
+        writer.write(e);
+
+        verify(repo, never()).save(e);
+
+        ArgumentCaptor<String> keyCap = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> payloadCap = ArgumentCaptor.forClass(String.class);
+        verify(kafkaTemplate).send(anyString(), keyCap.capture(), payloadCap.capture());
+
+        assertTrue(keyCap.getValue().startsWith("access|"));
+        try {
+            JsonNode root = new ObjectMapper().readTree(payloadCap.getValue());
+            assertEquals("access_log_event.v1", root.path("schemaVersion").asText());
+            assertEquals("ACCESS_LOG", root.path("eventType").asText());
+            assertEquals("r2", root.path("eventId").asText());
+            assertEquals("r2", root.path("data").path("requestId").asText());
+            assertEquals("/ok", root.path("data").path("path").asText());
+        } catch (Exception ex) {
+            fail("payload should be valid json: " + ex.getMessage());
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void accessLogWriter_dual_mode_should_write_mysql_when_kafka_succeeds() {
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogWriter writer = new AccessLogWriter(repo, null);
+
+        KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
+        CompletableFuture<SendResult<String, String>> ok = new CompletableFuture<>();
+        ok.complete(null);
+        when(kafkaTemplate.send(anyString(), anyString(), anyString())).thenReturn(ok);
+
+        ReflectionTestUtils.setField(writer, "accessLogsKafkaTemplate", kafkaTemplate);
+        ReflectionTestUtils.setField(writer, "sinkModeRaw", "DUAL");
+        ReflectionTestUtils.setField(writer, "kafkaTopic", "access-logs-v1");
+        ReflectionTestUtils.setField(writer, "kafkaKeyPrefix", "access");
+        ReflectionTestUtils.setField(writer, "asyncEnabled", false);
+
+        AccessLogsEntity e = new AccessLogsEntity();
+        e.setRequestId("r-dual");
+        e.setTraceId("t-dual");
+        e.setMethod("GET");
+        e.setPath("/dual");
+        writer.write(e);
+
+        verify(repo).save(e);
     }
 
     @Test

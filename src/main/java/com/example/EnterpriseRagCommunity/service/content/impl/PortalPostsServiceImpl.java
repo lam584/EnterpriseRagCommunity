@@ -253,12 +253,10 @@ public class PortalPostsServiceImpl implements PortalPostsService {
                 try {
                     likedByMe = postInteractionsService.likedByMe(postId);
                 } catch (Exception ignored) {
-                    likedByMe = false;
                 }
                 try {
                     favoritedByMe = postInteractionsService.favoritedByMe(postId);
                 } catch (Exception ignored) {
-                    favoritedByMe = false;
                 }
             }
 

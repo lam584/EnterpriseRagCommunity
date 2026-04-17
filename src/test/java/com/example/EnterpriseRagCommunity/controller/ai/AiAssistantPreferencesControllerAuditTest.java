@@ -5,8 +5,10 @@ import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.ai.PortalChatConfigService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -45,7 +47,12 @@ public class AiAssistantPreferencesControllerAuditTest {
         when(usersRepository.findByEmailAndIsDeletedFalse("alice@example.com")).thenReturn(Optional.of(u));
         when(usersRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        AiAssistantPreferencesController c = new AiAssistantPreferencesController(usersRepository, auditLogWriter, auditDiffBuilder);
+        AiAssistantPreferencesController c = new AiAssistantPreferencesController(
+            usersRepository,
+            auditLogWriter,
+            auditDiffBuilder,
+            new DefaultListableBeanFactory().getBeanProvider(PortalChatConfigService.class)
+        );
         UpdateAssistantPreferencesRequest req = new UpdateAssistantPreferencesRequest();
         req.setDefaultModel("m1");
 

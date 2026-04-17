@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminExportAccessLogsCsv, adminGetAccessLogDetail, adminListAccessLogs } from './accessLogService';
+import { adminExportAccessLogsCsv, adminGetAccessLogDetail, adminGetAccessLogEsIndexStatus, adminListAccessLogs } from './accessLogService';
 
 vi.mock('../utils/csrfUtils', () => {
   return {
@@ -46,7 +46,8 @@ describe('accessLogService', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 1, createdAt: 't' }) } as any)
       .mockResolvedValueOnce({ ok: false, json: async () => ({ message: 'bad' }) } as any);
 
-    await expect(adminGetAccessLogDetail(1)).resolves.toMatchObject({ id: 1 });
+    await expect(adminGetAccessLogDetail('req-1')).resolves.toMatchObject({ id: 1 });
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toContain('/api/admin/access-logs/req-1');
     await expect(adminGetAccessLogDetail(2)).rejects.toThrow('bad');
   });
 
@@ -78,5 +79,22 @@ describe('accessLogService', () => {
       },
     } as any);
     await expect(adminExportAccessLogsCsv({})).rejects.toThrow('导出失败');
+  });
+
+  it('adminGetAccessLogEsIndexStatus returns dto and throws fallback message', async () => {
+    const fetchSpy = fetch as any;
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ indexName: 'access-logs-v1', docsCount: 12, exists: true }),
+    } as any);
+    await expect(adminGetAccessLogEsIndexStatus()).resolves.toMatchObject({ indexName: 'access-logs-v1', docsCount: 12 });
+
+    fetchSpy.mockResolvedValueOnce({
+      ok: false,
+      json: async () => {
+        throw new Error('bad');
+      },
+    } as any);
+    await expect(adminGetAccessLogEsIndexStatus()).rejects.toThrow('获取日志索引状态失败');
   });
 });

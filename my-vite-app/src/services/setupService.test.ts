@@ -55,8 +55,14 @@ describe('setupService', () => {
   });
 
   it('initIndices resolves on ok', async () => {
-    mockFetchJsonOnce({ ok: true, json: {} });
-    await expect(initIndices(['a'])).resolves.toBeUndefined();
+    const fetchMock = mockFetch();
+    (fetchMock as any).mockResolvedValueOnce({ ok: true, json: async () => ({}) });
+    await expect(initIndices(['a'], { 'spring.elasticsearch.uris': 'http://127.0.0.1:9200' })).resolves.toBeUndefined();
+    const init = (fetchMock as any).mock.calls[0]?.[1];
+    expect(JSON.parse(String(init.body))).toEqual({
+      indexNames: ['a'],
+      configs: { 'spring.elasticsearch.uris': 'http://127.0.0.1:9200' },
+    });
   });
 
   it('generateTotpKey returns key on ok', async () => {

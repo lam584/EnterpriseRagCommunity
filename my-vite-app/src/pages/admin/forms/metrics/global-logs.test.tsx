@@ -13,6 +13,7 @@ vi.mock('../../../../services/auditLogService', () => ({
 vi.mock('../../../../services/accessLogService', () => ({
   adminExportAccessLogsCsv: vi.fn(),
   adminGetAccessLogDetail: vi.fn(),
+  adminGetAccessLogEsIndexStatus: vi.fn(),
   adminListAccessLogs: vi.fn(),
 }));
 
@@ -25,8 +26,8 @@ vi.mock('../../../../components/common/DetailDialog', () => ({
   default: ({ open, children }: { open: boolean; children?: React.ReactNode }) => (open ? <div>{children}</div> : null),
 }));
 
-import { adminListAccessLogs } from '../../../../services/accessLogService';
-import { adminGetLogRetentionConfig } from '../../../../services/logRetentionService';
+import { adminGetAccessLogDetail, adminGetAccessLogEsIndexStatus, adminListAccessLogs } from '../../../../services/accessLogService';
+import { adminGetLogRetentionConfig, adminUpdateLogRetentionConfig } from '../../../../services/logRetentionService';
 import GlobalLogsForm from './global-logs';
 
 function buildAccessPage(overrides: Partial<SpringPage<AccessLogDTO>> = {}): SpringPage<AccessLogDTO> {
@@ -42,7 +43,10 @@ function buildAccessPage(overrides: Partial<SpringPage<AccessLogDTO>> = {}): Spr
 
 describe('GlobalLogsForm', () => {
   const mockAdminListAccessLogs = vi.mocked(adminListAccessLogs);
+  const mockAdminGetAccessLogDetail = vi.mocked(adminGetAccessLogDetail);
+  const mockAdminGetAccessLogEsIndexStatus = vi.mocked(adminGetAccessLogEsIndexStatus);
   const mockAdminGetLogRetentionConfig = vi.mocked(adminGetLogRetentionConfig);
+  const mockAdminUpdateLogRetentionConfig = vi.mocked(adminUpdateLogRetentionConfig);
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -50,6 +54,35 @@ describe('GlobalLogsForm', () => {
       enabled: false,
       keepDays: 90,
       mode: 'ARCHIVE_TABLE',
+      maxPerRun: 5000,
+      auditLogsEnabled: true,
+      accessLogsEnabled: true,
+      purgeArchivedEnabled: false,
+      purgeArchivedKeepDays: 365,
+    });
+    mockAdminUpdateLogRetentionConfig.mockResolvedValue({
+      enabled: false,
+      keepDays: 90,
+      mode: 'ARCHIVE_TABLE',
+      maxPerRun: 5000,
+      auditLogsEnabled: true,
+      accessLogsEnabled: true,
+      purgeArchivedEnabled: false,
+      purgeArchivedKeepDays: 365,
+    });
+    mockAdminGetAccessLogEsIndexStatus.mockResolvedValue({
+      indexName: 'access-logs-v1',
+      collectionName: 'access-logs-v1',
+      sinkMode: 'DUAL',
+      esSinkEnabled: true,
+      consumerEnabled: true,
+      exists: true,
+      available: true,
+      health: 'green',
+      status: 'open',
+      docsCount: 123,
+      storeSize: '1mb',
+      availabilityMessage: null,
     });
   });
 
@@ -129,6 +162,136 @@ describe('GlobalLogsForm', () => {
 
     await waitFor(() => {
       expect(screen.getByText('第 2 页 / 共 2 页（16 条）')).not.toBeNull();
+    });
+  });
+
+  it('updates extended retention options and submits complete payload', async () => {
+    mockAdminListAccessLogs.mockResolvedValue(
+      buildAccessPage({
+        content: [],
+        totalElements: 0,
+        totalPages: 0,
+        size: 15,
+        number: 0,
+        last: true,
+      })
+    );
+
+    mockAdminUpdateLogRetentionConfig.mockResolvedValue({
+      enabled: false,
+      keepDays: 90,
+      mode: 'ARCHIVE_TABLE',
+      maxPerRun: 8000,
+      auditLogsEnabled: true,
+      accessLogsEnabled: true,
+      purgeArchivedEnabled: false,
+      purgeArchivedKeepDays: 365,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/admin/metrics?active=global-logs&glTab=access&page=1&pageSize=15']}>
+        <GlobalLogsForm />
+      </MemoryRouter>
+    );
+
+    const maxPerRunInput = await screen.findByDisplayValue('5000');
+    fireEvent.change(maxPerRunInput, { target: { value: '8000' } });
+
+    await waitFor(() => {
+      expect(mockAdminUpdateLogRetentionConfig).toHaveBeenCalledWith({
+        enabled: false,
+        keepDays: 90,
+        mode: 'ARCHIVE_TABLE',
+        maxPerRun: 8000,
+        auditLogsEnabled: true,
+        accessLogsEnabled: true,
+        purgeArchivedEnabled: false,
+        purgeArchivedKeepDays: 365,
+      });
+    });
+  });
+
+  it('renders access-log ES index status panel', async () => {
+    mockAdminListAccessLogs.mockResolvedValue(
+      buildAccessPage({
+        content: [],
+        totalElements: 0,
+        totalPages: 0,
+        size: 15,
+        number: 0,
+        last: true,
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/admin/metrics?active=global-logs&glTab=access&page=1&pageSize=15']}>
+        <GlobalLogsForm />
+      </MemoryRouter>
+    );
+
+    await screen.findByText('日志索引状态（ES）');
+    const indexCells = await screen.findAllByText('access-logs-v1');
+    expect(indexCells.length).toBeGreaterThanOrEqual(2);
+    await screen.findByText('123');
+    await screen.findByText('存在');
+    await screen.findByText('可用');
+  });
+
+  it('uses requestId to load access-log detail in KAFKA mode', async () => {
+    mockAdminGetAccessLogEsIndexStatus.mockResolvedValue({
+      indexName: 'access-logs-v1',
+      collectionName: 'access-logs-v1',
+      sinkMode: 'KAFKA',
+      esSinkEnabled: true,
+      consumerEnabled: true,
+      exists: true,
+      available: true,
+      health: 'green',
+      status: 'open',
+      docsCount: 1,
+      storeSize: '1mb',
+      availabilityMessage: null,
+    });
+    mockAdminListAccessLogs.mockResolvedValue(
+      buildAccessPage({
+        content: [
+          {
+            id: 999,
+            createdAt: '2026-03-09T11:41:00Z',
+            username: 'admin',
+            method: 'GET',
+            path: '/api/admin/access-logs/999',
+            clientIp: '127.0.0.1',
+            serverIp: '127.0.0.1',
+            statusCode: 200,
+            requestId: 'req-kafka-1',
+          },
+        ],
+        totalElements: 1,
+        totalPages: 1,
+        size: 15,
+        number: 0,
+        last: true,
+      })
+    );
+    mockAdminGetAccessLogDetail.mockResolvedValue({
+      id: 999,
+      createdAt: '2026-03-09T11:41:00Z',
+      requestId: 'req-kafka-1',
+      details: {},
+    } as AccessLogDTO);
+
+    render(
+      <MemoryRouter initialEntries={['/admin/metrics?active=global-logs&glTab=access&page=1&pageSize=15']}>
+        <GlobalLogsForm />
+      </MemoryRouter>
+    );
+
+    const detailButton = await screen.findByRole('button', { name: '详情' });
+    fireEvent.click(detailButton);
+
+    await waitFor(() => {
+      expect(mockAdminGetAccessLogDetail).toHaveBeenCalledWith('req-kafka-1');
     });
   });
 });

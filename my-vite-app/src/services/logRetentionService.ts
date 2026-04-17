@@ -8,7 +8,26 @@ export type LogRetentionConfigDTO = {
   enabled: boolean;
   keepDays: number;
   mode: LogRetentionMode;
+  maxPerRun: number;
+  auditLogsEnabled: boolean;
+  accessLogsEnabled: boolean;
+  purgeArchivedEnabled: boolean;
+  purgeArchivedKeepDays: number;
 };
+
+function normalizeConfig(raw: unknown): LogRetentionConfigDTO {
+  const r = (raw ?? {}) as Partial<LogRetentionConfigDTO>;
+  return {
+    enabled: Boolean(r.enabled),
+    keepDays: Number.isFinite(r.keepDays) ? Number(r.keepDays) : 90,
+    mode: r.mode === 'DELETE' ? 'DELETE' : 'ARCHIVE_TABLE',
+    maxPerRun: Number.isFinite(r.maxPerRun) ? Number(r.maxPerRun) : 5000,
+    auditLogsEnabled: r.auditLogsEnabled !== false,
+    accessLogsEnabled: r.accessLogsEnabled !== false,
+    purgeArchivedEnabled: Boolean(r.purgeArchivedEnabled),
+    purgeArchivedKeepDays: Number.isFinite(r.purgeArchivedKeepDays) ? Number(r.purgeArchivedKeepDays) : 365,
+  };
+}
 
 const apiUrl = serviceApiUrl;
 
@@ -20,7 +39,7 @@ export async function adminGetLogRetentionConfig(): Promise<LogRetentionConfigDT
 
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '获取配置失败');
-  return data as LogRetentionConfigDTO;
+  return normalizeConfig(data);
 }
 
 export async function adminUpdateLogRetentionConfig(payload: LogRetentionConfigDTO): Promise<LogRetentionConfigDTO> {
@@ -37,5 +56,5 @@ export async function adminUpdateLogRetentionConfig(payload: LogRetentionConfigD
 
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(getBackendMessage(data) || '更新配置失败');
-  return data as LogRetentionConfigDTO;
+  return normalizeConfig(data);
 }

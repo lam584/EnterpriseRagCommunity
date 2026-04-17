@@ -69,7 +69,7 @@ public class AuditLogsController {
     @GetMapping("/{id}")
     @ApiOperation("获取审计日志详情")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AuditLogsViewDTO> getById(@PathVariable Long id) {
+    public ResponseEntity<AuditLogsViewDTO> getById(@PathVariable("id") Long id) {
         return ResponseEntity.ok(auditLogsService.getById(id));
     }
 

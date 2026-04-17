@@ -42,7 +42,7 @@ export default function CommunityPortalLayout() {
 
   const location = useLocation();
 
-  const { currentUser, isAuthenticated, setCurrentUser, setIsAuthenticated, refreshAuth } = useAuth();
+  const { currentUser, isAuthenticated, loading: authLoading, setCurrentUser, setIsAuthenticated, refreshAuth } = useAuth();
   const { profileAvatarUrl, userMenuOpen, userMenuRef, setUserMenuOpen, handleLogout } = useAuthenticatedAvatarMenu({
     isAuthenticated,
     setCurrentUser,
@@ -76,11 +76,18 @@ export default function CommunityPortalLayout() {
   const didInitialRefreshRef = useRef(false);
 
   useEffect(() => {
-    if (!didInitialRefreshRef.current) {
-      didInitialRefreshRef.current = true;
+    // AuthProvider 已在应用启动时执行过一次 refreshAuth。
+    // 这里仅在 auth 初始化完成且仍未登录时补一次，避免重复触发 /api/auth/current-admin。
+    if (didInitialRefreshRef.current) return;
+    if (authLoading) return;
+
+    didInitialRefreshRef.current = true;
+    if (!isAuthenticated) {
       void refreshAuth?.();
     }
+  }, [authLoading, isAuthenticated, refreshAuth]);
 
+  useEffect(() => {
     // 兼容其它页面（例如登录页）写入 localStorage 后，同步 portal UI
     const onStorage = (e: StorageEvent) => {
       if (e.key !== 'userData') return;

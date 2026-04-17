@@ -6,9 +6,12 @@ import com.example.EnterpriseRagCommunity.entity.access.UsersEntity;
 import com.example.EnterpriseRagCommunity.repository.access.UsersRepository;
 import com.example.EnterpriseRagCommunity.service.access.AuditDiffBuilder;
 import com.example.EnterpriseRagCommunity.service.access.AuditLogWriter;
+import com.example.EnterpriseRagCommunity.service.ai.PortalChatConfigService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -26,6 +29,10 @@ import static org.mockito.Mockito.when;
 
 class AiAssistantPreferencesControllerTest {
 
+        private static ObjectProvider<PortalChatConfigService> emptyPortalChatConfigProvider() {
+                return new DefaultListableBeanFactory().getBeanProvider(PortalChatConfigService.class);
+        }
+
     @AfterEach
     void cleanup() {
         SecurityContextHolder.clearContext();
@@ -36,7 +43,12 @@ class AiAssistantPreferencesControllerTest {
         UsersRepository usersRepository = mock(UsersRepository.class);
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
         AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
-        AiAssistantPreferencesController c = new AiAssistantPreferencesController(usersRepository, auditLogWriter, auditDiffBuilder);
+        AiAssistantPreferencesController c = new AiAssistantPreferencesController(
+                usersRepository,
+                auditLogWriter,
+                auditDiffBuilder,
+                emptyPortalChatConfigProvider()
+        );
 
         SecurityContextHolder.getContext().setAuthentication(null);
 
@@ -50,7 +62,12 @@ class AiAssistantPreferencesControllerTest {
         UsersRepository usersRepository = mock(UsersRepository.class);
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
         AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
-        AiAssistantPreferencesController c = new AiAssistantPreferencesController(usersRepository, auditLogWriter, auditDiffBuilder);
+        AiAssistantPreferencesController c = new AiAssistantPreferencesController(
+                usersRepository,
+                auditLogWriter,
+                auditDiffBuilder,
+                emptyPortalChatConfigProvider()
+        );
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("alice@example.com", "N/A")
@@ -66,7 +83,12 @@ class AiAssistantPreferencesControllerTest {
         UsersRepository usersRepository = mock(UsersRepository.class);
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
         AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
-        AiAssistantPreferencesController c = new AiAssistantPreferencesController(usersRepository, auditLogWriter, auditDiffBuilder);
+        AiAssistantPreferencesController c = new AiAssistantPreferencesController(
+                usersRepository,
+                auditLogWriter,
+                auditDiffBuilder,
+                emptyPortalChatConfigProvider()
+        );
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
@@ -85,7 +107,12 @@ class AiAssistantPreferencesControllerTest {
         UsersRepository usersRepository = mock(UsersRepository.class);
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
         AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
-        AiAssistantPreferencesController c = new AiAssistantPreferencesController(usersRepository, auditLogWriter, auditDiffBuilder);
+        AiAssistantPreferencesController c = new AiAssistantPreferencesController(
+                usersRepository,
+                auditLogWriter,
+                auditDiffBuilder,
+                emptyPortalChatConfigProvider()
+        );
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
@@ -119,7 +146,12 @@ class AiAssistantPreferencesControllerTest {
         UsersRepository usersRepository = mock(UsersRepository.class);
         AuditLogWriter auditLogWriter = mock(AuditLogWriter.class);
         AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
-        AiAssistantPreferencesController c = new AiAssistantPreferencesController(usersRepository, auditLogWriter, auditDiffBuilder);
+        AiAssistantPreferencesController c = new AiAssistantPreferencesController(
+                usersRepository,
+                auditLogWriter,
+                auditDiffBuilder,
+                emptyPortalChatConfigProvider()
+        );
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
@@ -173,7 +205,12 @@ class AiAssistantPreferencesControllerTest {
         AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
         when(auditDiffBuilder.build(any(), any())).thenReturn(Map.of());
 
-        AiAssistantPreferencesController c = new AiAssistantPreferencesController(usersRepository, auditLogWriter, auditDiffBuilder);
+        AiAssistantPreferencesController c = new AiAssistantPreferencesController(
+                usersRepository,
+                auditLogWriter,
+                auditDiffBuilder,
+                emptyPortalChatConfigProvider()
+        );
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
@@ -225,7 +262,12 @@ class AiAssistantPreferencesControllerTest {
         AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
         when(auditDiffBuilder.build(any(), any())).thenReturn(Map.of());
 
-        AiAssistantPreferencesController c = new AiAssistantPreferencesController(usersRepository, auditLogWriter, auditDiffBuilder);
+        AiAssistantPreferencesController c = new AiAssistantPreferencesController(
+                usersRepository,
+                auditLogWriter,
+                auditDiffBuilder,
+                emptyPortalChatConfigProvider()
+        );
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
@@ -264,7 +306,12 @@ class AiAssistantPreferencesControllerTest {
         AuditDiffBuilder auditDiffBuilder = mock(AuditDiffBuilder.class);
         when(auditDiffBuilder.build(any(), any())).thenReturn(Map.of());
 
-        AiAssistantPreferencesController c = new AiAssistantPreferencesController(usersRepository, auditLogWriter, auditDiffBuilder);
+        AiAssistantPreferencesController c = new AiAssistantPreferencesController(
+                usersRepository,
+                auditLogWriter,
+                auditDiffBuilder,
+                emptyPortalChatConfigProvider()
+        );
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
