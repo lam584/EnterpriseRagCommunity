@@ -74,7 +74,7 @@ public class UserRoleController {
      * 根据 ID 查询单个角色
      */
     @GetMapping("/{id:\\d+}")
-    public ResponseEntity<?> getUserRoleById(@PathVariable Long id) {
+    public ResponseEntity<?> getUserRoleById(@PathVariable("id") Long id) {
         try {
             UserRolesCreateDTO dto = userRoleService.getById(id); // 对齐: UserRoleDTO → UserRolesCreateDTO
             return ResponseEntity.ok(sanitizeRole(dto));
@@ -105,7 +105,7 @@ public class UserRoleController {
      */
     @PutMapping("/{id:\\d+}")
     public ResponseEntity<?> updateUserRole(
-            @PathVariable Long id,
+            @PathVariable("id") Long id,
             @Valid @RequestBody UserRolesCreateDTO updateDto) { // 对齐: 参数类型改为UserRolesCreateDTO
         try {
             UserRolesCreateDTO updated = userRoleService.update(id, updateDto); // 修改调用，传递 id 和 dto
@@ -125,7 +125,7 @@ public class UserRoleController {
      * 删除角色
      */
     @DeleteMapping("/{id:\\d+}")
-    public ResponseEntity<Map<String, String>> deleteUserRole(@PathVariable Long id) {
+    public ResponseEntity<Map<String, String>> deleteUserRole(@PathVariable("id") Long id) {
         Map<String, String> res = new HashMap<>();
         try {
             userRoleService.delete(id);

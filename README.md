@@ -188,7 +188,7 @@ cd ..
 
 项目默认数据库名为 EnterpriseRagCommunity，建议先创建数据库，再通过环境变量注入账号密码与主密钥。
 
-可以将环境变量写入 /etc/default/enterprise-rag，供 systemd 服务直接读取：
+可以将环境变量写入 /etc/default/enterprise-rag，供 systemd 服务直接读取。不要把 APP_MASTER_KEY、DB_USERNAME、DB_PASSWORD 写入项目根目录 .env：
 
 ```ini
 APP_MASTER_KEY=<replace-with-random-base64-key>
@@ -207,6 +207,15 @@ SERVER_FORWARD_HEADERS_STRATEGY=framework
 - APP_MASTER_KEY 用于初始化向导中的敏感配置加密
 - app.cors.allowed-origins 是当前代码实际读取的 CORS 配置键
 - 未配置 CORS 时，默认仅放行 http://localhost:5173 与 http://127.0.0.1:5173
+
+若只想临时手工启动，也应先导出环境变量，再运行 java：
+
+```bash
+export APP_MASTER_KEY='<replace-with-random-base64-key>'
+export DB_USERNAME='root'
+export DB_PASSWORD='<replace-with-your-password>'
+java -jar build/libs/EnterpriseRagCommunity.war --spring.profiles.active=perf
+```
 
 ### 4. 构建前后端
 

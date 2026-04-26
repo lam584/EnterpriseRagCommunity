@@ -24,7 +24,7 @@ public class AdminAiSupportedLanguagesController {
 
     @PutMapping("/{languageCode}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_semantic_translate','action'))")
-    public SupportedLanguageDTO update(@PathVariable String languageCode, @RequestBody SupportedLanguageDTO payload) {
+    public SupportedLanguageDTO update(@PathVariable("languageCode") String languageCode, @RequestBody SupportedLanguageDTO payload) {
         String oldCode = languageCode == null ? "" : languageCode.trim();
         String nextCode = payload == null || payload.getLanguageCode() == null ? "" : payload.getLanguageCode().trim();
         if (SupportedLanguageService.DEFAULT_LANGUAGE_CODE.equals(oldCode) && !oldCode.equals(nextCode)) {
@@ -41,7 +41,7 @@ public class AdminAiSupportedLanguagesController {
 
     @DeleteMapping("/{languageCode}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_semantic_translate','action'))")
-    public ResponseEntity<Void> delete(@PathVariable String languageCode) {
+    public ResponseEntity<Void> delete(@PathVariable("languageCode") String languageCode) {
         String code = languageCode == null ? "" : languageCode.trim();
         if (SupportedLanguageService.DEFAULT_LANGUAGE_CODE.equals(code)) {
             throw new IllegalArgumentException("不允许删除默认语言");

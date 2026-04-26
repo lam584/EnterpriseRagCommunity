@@ -74,7 +74,7 @@ public class PortalAuditLogsController {
 
     @GetMapping("/me/{id}")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<AuditLogsViewDTO> getMineById(@PathVariable Long id) {
+    public ResponseEntity<AuditLogsViewDTO> getMineById(@PathVariable("id") Long id) {
         Long me = currentUserIdOrThrow();
         AuditLogsViewDTO dto = auditLogsService.getById(id);
         if (dto.actorId() == null || !dto.actorId().equals(me)) {

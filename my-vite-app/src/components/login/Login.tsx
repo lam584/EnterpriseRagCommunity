@@ -17,7 +17,7 @@ interface LoginFormData {
 
 const Login: React.FC = () => {
     const navigate = useNavigate();
-    const { setCurrentUser, setIsAuthenticated } = useAuth();
+    const { refreshAuth } = useAuth();
     const [formData, setFormData] = useState<LoginFormData>(() => {
         const rememberedEmail = localStorage.getItem('rememberedEmail');
         if (rememberedEmail) {
@@ -164,9 +164,11 @@ const Login: React.FC = () => {
             // 使用 authService 的 login 函数，传递 CSRF 令牌
             const userData = await login(formData.email, formData.password, csrfToken); 
 
-            // 更新全局认证状态
-            setCurrentUser(userData);
-            setIsAuthenticated(true);
+            // 更新全局认证状态：通过 refreshAuth 从服务端获取完整认证信息，
+            // 避免手动 setCurrentUser + setIsAuthenticated 导致的时序竞争问题
+            // （Login 页面设置的状态可能被 AuthProvider 初始化的 refreshAuth 覆盖）
+            await refreshAuth();
+
             setVerifyMode(false);
             setLogin2faRequired(false);
             setLogin2faMethods([]);
@@ -305,9 +307,9 @@ const Login: React.FC = () => {
             setLogin2faSubmitting(true);
             setError(null);
             setInfo(null);
-            const userData = await verifyLogin2fa(method, trimmed);
-            setCurrentUser(userData);
-            setIsAuthenticated(true);
+            await verifyLogin2fa(method, trimmed);
+            // 通过 refreshAuth 从服务端获取完整认证信息，避免手动设置导致的时序竞争
+            await refreshAuth();
             setLogin2faRequired(false);
             setLogin2faMethods([]);
             setLogin2faMethod(null);

@@ -59,8 +59,8 @@ public class AiProviderModelsAdminService {
         }
 
         out.sort(Comparator
-                .comparing((AiProviderModelDTO m) -> m.getPurpose() == null ? "" : m.getPurpose())
-                .thenComparing((AiProviderModelDTO m) -> m.getModelName() == null ? "" : m.getModelName()));
+            .comparing(AiProviderModelsAdminService::purposeSortKey)
+            .thenComparing(AiProviderModelsAdminService::modelNameSortKey));
 
         AiProviderModelsDTO dto = new AiProviderModelsDTO();
         dto.setProviderId(pid);
@@ -188,6 +188,14 @@ public class AiProviderModelsAdminService {
         } catch (Exception e) {
             throw new IllegalArgumentException("endpoint 格式不合法", e);
         }
+    }
+
+    private static String purposeSortKey(AiProviderModelDTO model) {
+        return model == null || model.getPurpose() == null ? "" : model.getPurpose();
+    }
+
+    private static String modelNameSortKey(AiProviderModelDTO model) {
+        return model == null || model.getModelName() == null ? "" : model.getModelName();
     }
 
     private static String buildConnectErrorMessage(String endpoint, ConnectException e) {

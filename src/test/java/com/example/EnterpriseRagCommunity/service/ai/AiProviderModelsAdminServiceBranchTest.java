@@ -780,12 +780,12 @@ class AiProviderModelsAdminServiceBranchTest {
 
     @Test
     void privateHelpers_shouldCoverComparatorHeadersAndEndpointBranches() throws Exception {
-        Method comparatorPurpose = AiProviderModelsAdminService.class.getDeclaredMethod("lambda$listProviderModels$0", com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelDTO.class);
+        Method comparatorPurpose = AiProviderModelsAdminService.class.getDeclaredMethod("purposeSortKey", com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelDTO.class);
         comparatorPurpose.setAccessible(true);
         com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelDTO empty = new com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelDTO();
         assertEquals("", comparatorPurpose.invoke(null, empty));
 
-        Method comparatorModel = AiProviderModelsAdminService.class.getDeclaredMethod("lambda$listProviderModels$1", com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelDTO.class);
+        Method comparatorModel = AiProviderModelsAdminService.class.getDeclaredMethod("modelNameSortKey", com.example.EnterpriseRagCommunity.dto.ai.AiProviderModelDTO.class);
         comparatorModel.setAccessible(true);
         assertEquals("", comparatorModel.invoke(null, empty));
 

@@ -58,16 +58,11 @@ public class HybridRagRetrievalServiceFuseRrfBranchTest {
 
     @Test
     void lambda_fuse_comparatorHandlesNullScores() throws Exception {
-        Method m = null;
-        for (Method mm : HybridRagRetrievalService.class.getDeclaredMethods()) {
-            if (!mm.getName().startsWith("lambda$fuse$")) continue;
-            if (mm.getParameterCount() != 2) continue;
-            if (mm.getParameterTypes()[0] != HybridRagRetrievalService.DocHit.class) continue;
-            if (mm.getParameterTypes()[1] != HybridRagRetrievalService.DocHit.class) continue;
-            m = mm;
-            break;
-        }
-        assertNotNull(m);
+        Method m = HybridRagRetrievalService.class.getDeclaredMethod(
+                "compareFusedScoreDesc",
+                HybridRagRetrievalService.DocHit.class,
+                HybridRagRetrievalService.DocHit.class
+        );
         m.setAccessible(true);
 
         HybridRagRetrievalService.DocHit a = new HybridRagRetrievalService.DocHit();

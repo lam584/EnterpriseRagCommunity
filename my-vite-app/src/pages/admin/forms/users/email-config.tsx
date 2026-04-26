@@ -94,6 +94,7 @@ const EmailConfigForm: React.FC = () => {
   const [sentReachedEnd, setSentReachedEnd] = useState(false);
   const [activeBox, setActiveBox] = useState<'inbox' | 'sent' | null>(null);
   const [inboxError, setInboxError] = useState<string | null>(null);
+  const [senderExpanded, setSenderExpanded] = useState(false);
   const [inboxExpanded, setInboxExpanded] = useState(false);
   const [showSenderAdvanced, setShowSenderAdvanced] = useState(false);
   const [showReceiverAdvanced, setShowReceiverAdvanced] = useState(false);
@@ -328,6 +329,23 @@ const EmailConfigForm: React.FC = () => {
           <Button variant="secondary" size="sm" onClick={load} disabled={loading || saving}>
             刷新
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              if (senderExpanded && editing) {
+                if (settingsSnapshot) setSettings(settingsSnapshot);
+                setEditing(false);
+                setSettingsSnapshot(null);
+                setError(null);
+                setTestMsg(null);
+              }
+              setSenderExpanded(v => !v);
+            }}
+            disabled={loading || saving}
+          >
+            {senderExpanded ? '收起配置' : '展开配置'}
+          </Button>
           {editing ? (
             <>
               <Button
@@ -355,6 +373,7 @@ const EmailConfigForm: React.FC = () => {
                 if (!settings) return;
                 setSettingsSnapshot(settings);
                 setEditing(true);
+                setSenderExpanded(true);
                 setError(null);
                 setTestMsg(null);
               }}
@@ -372,7 +391,7 @@ const EmailConfigForm: React.FC = () => {
 
       {!settings ? (
         <div className="text-sm text-gray-500">{loading ? '加载中...' : '暂无配置'}</div>
-      ) : (
+      ) : senderExpanded ? (
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2 md:grid-cols-12">
             <div className="col-span-2 space-y-0.5 md:col-span-3">
@@ -1031,7 +1050,7 @@ const EmailConfigForm: React.FC = () => {
             </div>
           ) : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

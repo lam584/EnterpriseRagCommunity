@@ -52,8 +52,8 @@ public class AdminImageStorageController {
     @GetMapping("/upload-logs")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_ai_image_storage','access'))")
     public Page<ImageUploadLogEntity> getUploadLogs(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
         int safeSize = Math.clamp(size, 1, 100);
         return uploadLogRepository.findAllByOrderByUploadedAtDesc(PageRequest.of(page, safeSize));
     }

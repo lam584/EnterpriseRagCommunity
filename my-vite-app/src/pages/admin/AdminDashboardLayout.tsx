@@ -29,15 +29,16 @@ export default function AdminDashboardLayout() {
   const didInitialRefreshRef = useRef(false);
 
   useEffect(() => {
-    // 只在“未认证”时尝试刷新一次即可；
+    // 只在"未认证"或"已认证但用户信息缺失"时尝试刷新一次即可；
     // 如果每次 userData 变更/或其它地方频繁 refreshAuth，可能导致循环请求。
     if (didInitialRefreshRef.current) return;
-    didInitialRefreshRef.current = true;
+    if (isAuthenticated && currentUser) return;
 
-    if (!isAuthenticated) {
+    didInitialRefreshRef.current = true;
+    if (!isAuthenticated || (isAuthenticated && !currentUser)) {
       void refreshAuth?.();
     }
-  }, [isAuthenticated, refreshAuth]);
+  }, [isAuthenticated, currentUser, refreshAuth]);
 
   useEffect(() => {
     function onDocumentMouseDown(e: MouseEvent) {

@@ -241,7 +241,7 @@ public class AuthController {
         Cookie sessionCookie = new Cookie("JSESSIONID", sessionId);
         sessionCookie.setPath("/");
         sessionCookie.setHttpOnly(false);
-        sessionCookie.setMaxAge(86400);
+        sessionCookie.setMaxAge(21600);
         servletResponse.addCookie(sessionCookie);
 
         currentUser.setLastLoginAt(java.time.LocalDateTime.now());

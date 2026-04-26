@@ -186,8 +186,130 @@ class AccessLogsServiceBranchTest {
         assertEquals("POST", req.method());
         String body = new String(req.body(), StandardCharsets.UTF_8);
         assertTrue(body.contains("\"track_total_hits\":true"));
+        assertTrue(body.contains("\"created_at\":{\"order\":\"desc\",\"unmapped_type\":\"date\""));
+        assertTrue(body.contains("\"@timestamp\":{\"order\":\"desc\",\"unmapped_type\":\"date\""));
+        assertTrue(body.contains("\"event_time\":{\"order\":\"desc\",\"unmapped_type\":\"date\""));
         assertTrue(body.contains("\"event_id.keyword\""));
         assertFalse(body.contains("\"event_id\":{\"order\""));
+    }
+
+    @Test
+    void query_should_use_compatible_es_time_range_filter_when_sink_mode_is_kafka() throws Exception {
+        MockHttpUrl.installOnce();
+        MockHttpUrl.reset();
+        MockHttpUrl.enqueue(200, """
+                        {
+                            "hits": {
+                                "total": {"value": 0},
+                                "hits": []
+                            }
+                        }
+                        """);
+
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogsService svc = kafkaService(repo);
+
+        svc.query(
+                1,
+                20,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDateTime.of(2026, 4, 17, 0, 0),
+                LocalDateTime.of(2026, 4, 18, 0, 0),
+                "createdAt,desc"
+        );
+
+        MockHttpUrl.RequestCapture req = MockHttpUrl.pollRequest();
+        assertNotNull(req);
+        String body = new String(req.body(), StandardCharsets.UTF_8);
+        assertTrue(body.contains("\"should\":[{\"range\":{\"created_at\""));
+        assertTrue(body.contains("\"@timestamp\":{\"gte\":\"2026-04-17T00:00\",\"lte\":\"2026-04-18T00:00\"}"));
+        assertTrue(body.contains("\"event_time\":{\"gte\":\"2026-04-17T00:00\",\"lte\":\"2026-04-18T00:00\"}"));
+    }
+
+    @Test
+    void query_should_use_fuzzy_client_ip_field_and_exact_ip_fallback_in_es() throws Exception {
+        MockHttpUrl.installOnce();
+        MockHttpUrl.reset();
+        MockHttpUrl.enqueue(200, """
+                        {
+                            "hits": {
+                                "total": {"value": 0},
+                                "hits": []
+                            }
+                        }
+                        """);
+
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogsService svc = kafkaService(repo);
+
+        svc.query(1, 20, null, null, null, null, null, null, "127.0.0.1", null, null, null, null, "createdAt,desc");
+
+        MockHttpUrl.RequestCapture req = MockHttpUrl.pollRequest();
+        assertNotNull(req);
+        String body = new String(req.body(), StandardCharsets.UTF_8);
+        assertTrue(body.contains("\"client_ip_text\""));
+        assertTrue(body.contains("*127.0.0.1*"));
+        assertTrue(body.contains("\"term\":{\"client_ip\":\"127.0.0.1\"}"));
+        assertFalse(body.contains("\"wildcard\":{\"client_ip\""));
+    }
+
+    @Test
+    void query_should_add_fuzzy_client_ip_keyword_clause_in_es() throws Exception {
+        MockHttpUrl.installOnce();
+        MockHttpUrl.reset();
+        MockHttpUrl.enqueue(200, """
+                        {
+                            "hits": {
+                                "total": {"value": 0},
+                                "hits": []
+                            }
+                        }
+                        """);
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogsService svc = kafkaService(repo);
+
+        svc.query(1, 20, "127.0", null, null, null, null, null, null, null, null, null, null, "createdAt,desc");
+
+        MockHttpUrl.RequestCapture req = MockHttpUrl.pollRequest();
+        assertNotNull(req);
+        String body = new String(req.body(), StandardCharsets.UTF_8);
+        assertTrue(body.contains("\"client_ip_text\""));
+        assertTrue(body.contains("*127.0*"));
+        assertFalse(body.contains("\"term\":{\"client_ip\":\"127.0\"}"));
+    }
+
+    @Test
+    void query_should_use_fuzzy_client_ip_field_for_partial_client_ip_filter_in_es() throws Exception {
+        MockHttpUrl.installOnce();
+        MockHttpUrl.reset();
+        MockHttpUrl.enqueue(200, """
+                        {
+                            "hits": {
+                                "total": {"value": 0},
+                                "hits": []
+                            }
+                        }
+                        """);
+
+        AccessLogsRepository repo = mock(AccessLogsRepository.class);
+        AccessLogsService svc = kafkaService(repo);
+
+        svc.query(1, 20, null, null, null, null, null, null, "127.0", null, null, null, null, "createdAt,desc");
+
+        MockHttpUrl.RequestCapture req = MockHttpUrl.pollRequest();
+        assertNotNull(req);
+        String body = new String(req.body(), StandardCharsets.UTF_8);
+        assertTrue(body.contains("\"client_ip_text\""));
+        assertTrue(body.contains("*127.0*"));
+        assertFalse(body.contains("\"term\":{\"client_ip\":\"127.0\"}"));
     }
 
     @Test
@@ -234,6 +356,8 @@ class AccessLogsServiceBranchTest {
         String body = new String(req.body(), StandardCharsets.UTF_8);
         assertTrue(body.contains("\"request_id\":\"req-1\""));
         assertTrue(body.contains("\"trace_id\":\"req-1\""));
+        assertTrue(body.contains("\"created_at\":{\"order\":\"desc\",\"unmapped_type\":\"date\""));
+        assertTrue(body.contains("\"@timestamp\":{\"order\":\"desc\",\"unmapped_type\":\"date\""));
     }
 
     private static AccessLogsService kafkaService(AccessLogsRepository repo) {

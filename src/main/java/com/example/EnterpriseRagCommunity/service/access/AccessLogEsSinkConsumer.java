@@ -82,7 +82,9 @@ public class AccessLogEsSinkConsumer {
             doc.put("query_string", text(data, "queryString"));
             doc.put("status_code", intVal(data, "statusCode"));
             doc.put("latency_ms", intVal(data, "latencyMs"));
-            doc.put("client_ip", text(data, "clientIp"));
+            String clientIp = text(data, "clientIp");
+            doc.put("client_ip", clientIp);
+            doc.put("client_ip_text", clientIp);
             doc.put("client_port", intVal(data, "clientPort"));
             doc.put("server_ip", text(data, "serverIp"));
             doc.put("server_port", intVal(data, "serverPort"));

@@ -102,12 +102,12 @@ class AdminModerationQueueControllerSecurityTest {
     @BeforeEach
     void setup() {
         LocalDateTime now = LocalDateTime.now();
-        board1 = boardsRepository.save(newBoardEntity("b1", now)).getId();
-        board2 = boardsRepository.save(newBoardEntity("b2", now)).getId();
+        board1 = boardsRepository.saveAndFlush(newBoardEntity("b1", now)).getId();
+        board2 = boardsRepository.saveAndFlush(newBoardEntity("b2", now)).getId();
 
-        UsersEntity moderator = usersRepository.save(newUserEntity(moderatorEmail, now));
+        UsersEntity moderator = usersRepository.saveAndFlush(newUserEntity(moderatorEmail, now));
         moderatorId = moderator.getId();
-        UsersEntity normal = usersRepository.save(newUserEntity(normalEmail, now));
+        UsersEntity normal = usersRepository.saveAndFlush(newUserEntity(normalEmail, now));
         normalUserId = normal.getId();
 
         Mockito.when(administratorService.findByUsername(Mockito.eq(moderatorEmail)))
@@ -118,7 +118,7 @@ class AdminModerationQueueControllerSecurityTest {
         BoardModeratorsEntity m = new BoardModeratorsEntity();
         m.setBoardId(board1);
         m.setUserId(moderatorId);
-        boardModeratorsRepository.save(m);
+        boardModeratorsRepository.saveAndFlush(m);
 
         postInBoard1Id = insertPost(board1, moderatorId, "p1", "c1", now);
         postInBoard2Id = insertPost(board2, normalUserId, "p2", "c2", now);
@@ -132,7 +132,7 @@ class AdminModerationQueueControllerSecurityTest {
         c1.setIsDeleted(false);
         c1.setCreatedAt(now);
         c1.setUpdatedAt(now);
-        c1 = commentsRepository.save(c1);
+        c1 = commentsRepository.saveAndFlush(c1);
         commentOnPost1Id = c1.getId();
 
         CommentsEntity c2 = new CommentsEntity();
@@ -144,13 +144,13 @@ class AdminModerationQueueControllerSecurityTest {
         c2.setIsDeleted(false);
         c2.setCreatedAt(now);
         c2.setUpdatedAt(now);
-        c2 = commentsRepository.save(c2);
+        c2 = commentsRepository.saveAndFlush(c2);
         commentOnPost2Id = c2.getId();
 
-        postQueueBoard1Id = moderationQueueRepository.save(queue(ContentType.POST, postInBoard1Id)).getId();
-        postQueueBoard2Id = moderationQueueRepository.save(queue(ContentType.POST, postInBoard2Id)).getId();
-        commentQueueBoard1Id = moderationQueueRepository.save(queue(ContentType.COMMENT, commentOnPost1Id)).getId();
-        commentQueueBoard2Id = moderationQueueRepository.save(queue(ContentType.COMMENT, commentOnPost2Id)).getId();
+        postQueueBoard1Id = moderationQueueRepository.saveAndFlush(queue(ContentType.POST, postInBoard1Id)).getId();
+        postQueueBoard2Id = moderationQueueRepository.saveAndFlush(queue(ContentType.POST, postInBoard2Id)).getId();
+        commentQueueBoard1Id = moderationQueueRepository.saveAndFlush(queue(ContentType.COMMENT, commentOnPost1Id)).getId();
+        commentQueueBoard2Id = moderationQueueRepository.saveAndFlush(queue(ContentType.COMMENT, commentOnPost2Id)).getId();
 
         AdminModerationQueueDetailDTO ok = new AdminModerationQueueDetailDTO();
         ok.setId(999L);

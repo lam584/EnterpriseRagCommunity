@@ -24,6 +24,7 @@ export type PromptContentCardProps = {
   showSystemPrompt?: boolean;
   showUserPromptTemplate?: boolean;
   showRuntimeParams?: boolean;
+  compact?: boolean;
 };
 
 const PromptContentCard: React.FC<PromptContentCardProps> = ({
@@ -36,11 +37,24 @@ const PromptContentCard: React.FC<PromptContentCardProps> = ({
   showSystemPrompt = true,
   showUserPromptTemplate = true,
   showRuntimeParams = false,
+  compact = false,
 }) => {
   const readOnly = !editing || !onChange;
+  const cardClassName = compact
+    ? 'rounded-2xl border border-slate-200 bg-white/95 p-3 space-y-3 shadow-sm'
+    : 'rounded-lg border border-gray-200 bg-white p-3 space-y-3';
+  const inputClassName = compact
+    ? 'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed'
+    : 'w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed';
+  const systemPromptClassName = compact
+    ? 'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm min-h-[120px] max-h-[240px] resize-y font-mono disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed'
+    : 'w-full rounded border px-3 py-2 text-sm min-h-[120px] font-mono disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed';
+  const userPromptClassName = compact
+    ? 'w-full rounded-xl border border-slate-200 px-3 py-2 text-sm min-h-[140px] max-h-[260px] resize-y font-mono disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed'
+    : 'w-full rounded border px-3 py-2 text-sm min-h-[140px] font-mono disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed';
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-3">
+    <div className={cardClassName}>
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm font-semibold text-gray-900">{title}</div>
         {!editing ? <div className="text-xs text-gray-500">只读</div> : null}
@@ -56,7 +70,7 @@ const PromptContentCard: React.FC<PromptContentCardProps> = ({
             <div>
               <div className="text-xs text-gray-600 mb-1">名称</div>
               <input
-                className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                className={inputClassName}
                 value={draft.name}
                 disabled={readOnly}
                 onChange={(e) => onChange?.({ ...draft, name: e.target.value })}
@@ -68,7 +82,7 @@ const PromptContentCard: React.FC<PromptContentCardProps> = ({
             <div>
               <div className="text-xs text-gray-600 mb-1">系统提示词</div>
               <textarea
-                className="w-full rounded border px-3 py-2 text-sm min-h-[120px] font-mono disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                className={systemPromptClassName}
                 value={draft.systemPrompt}
                 disabled={readOnly}
                 onChange={(e) => onChange?.({ ...draft, systemPrompt: e.target.value })}
@@ -80,7 +94,7 @@ const PromptContentCard: React.FC<PromptContentCardProps> = ({
             <div>
               <div className="text-xs text-gray-600 mb-1">用户提示词模板</div>
               <textarea
-                className="w-full rounded border px-3 py-2 text-sm min-h-[140px] font-mono disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                className={userPromptClassName}
                 value={draft.userPromptTemplate}
                 disabled={readOnly}
                 onChange={(e) => onChange?.({ ...draft, userPromptTemplate: e.target.value })}
@@ -89,7 +103,7 @@ const PromptContentCard: React.FC<PromptContentCardProps> = ({
           ) : null}
 
           {showRuntimeParams ? (
-            <div className="rounded border border-gray-200 bg-gray-50 p-3 space-y-3">
+            <div className={`${compact ? 'rounded-2xl' : 'rounded'} border border-gray-200 bg-gray-50 p-3 space-y-3`}>
               <div className="text-xs font-semibold text-gray-700">LLM 参数</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="text-xs text-gray-600">
@@ -98,7 +112,7 @@ const PromptContentCard: React.FC<PromptContentCardProps> = ({
                     type="number"
                     min={1}
                     step={1}
-                    className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    className={inputClassName}
                     value={draft.maxTokens ?? ''}
                     disabled={readOnly}
                     onChange={(e) => onChange?.({
@@ -117,7 +131,7 @@ const PromptContentCard: React.FC<PromptContentCardProps> = ({
                 <label className="text-xs text-gray-600">
                   <div className="mb-1">启用深度思考</div>
                   <select
-                    className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    className={inputClassName}
                     value={draft.enableDeepThinking == null ? '' : String(draft.enableDeepThinking)}
                     disabled={readOnly}
                     onChange={(e) => onChange?.({
@@ -138,7 +152,7 @@ const PromptContentCard: React.FC<PromptContentCardProps> = ({
                     min={0}
                     max={2}
                     step={0.1}
-                    className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    className={inputClassName}
                     value={draft.temperature ?? ''}
                     disabled={readOnly}
                     onChange={(e) => onChange?.({
@@ -160,7 +174,7 @@ const PromptContentCard: React.FC<PromptContentCardProps> = ({
                     min={0}
                     max={1}
                     step={0.01}
-                    className="w-full rounded border px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    className={inputClassName}
                     value={draft.topP ?? ''}
                     disabled={readOnly}
                     onChange={(e) => onChange?.({

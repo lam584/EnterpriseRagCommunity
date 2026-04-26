@@ -72,7 +72,7 @@ public class AdminChatContextGovernanceController {
 
     @GetMapping("/logs/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_ai_chat_context','access'))")
-    public AdminChatContextEventDetailDTO getLog(@PathVariable long id) {
+    public AdminChatContextEventDetailDTO getLog(@PathVariable("id") long id) {
         return logsService.get(id);
     }
 

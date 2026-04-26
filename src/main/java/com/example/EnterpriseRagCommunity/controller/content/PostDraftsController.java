@@ -28,7 +28,7 @@ public class PostDraftsController {
     }
 
     @GetMapping("/{id}")
-    public PostDraftsDTO getMine(@PathVariable Long id) {
+    public PostDraftsDTO getMine(@PathVariable("id") Long id) {
         return postDraftsService.getMine(id);
     }
 
@@ -38,12 +38,12 @@ public class PostDraftsController {
     }
 
     @PutMapping("/{id}")
-    public PostDraftsDTO updateMine(@PathVariable Long id, @Valid @RequestBody PostDraftsUpdateDTO dto) {
+    public PostDraftsDTO updateMine(@PathVariable("id") Long id, @Valid @RequestBody PostDraftsUpdateDTO dto) {
         return postDraftsService.updateMine(id, dto);
     }
 
     @DeleteMapping("/{id}")
-    public void deleteMine(@PathVariable Long id) {
+    public void deleteMine(@PathVariable("id") Long id) {
         postDraftsService.deleteMine(id);
     }
 }

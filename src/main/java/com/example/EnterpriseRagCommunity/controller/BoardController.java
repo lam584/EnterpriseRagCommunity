@@ -55,7 +55,7 @@ public class BoardController {
     @PutMapping("/{id}")
     @ApiOperation("更新板块")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_boards','write'))")
-    public ResponseEntity<BoardsDTO> updateBoard(@PathVariable Long id, @RequestBody BoardsUpdateDTO updateDTO) {
+    public ResponseEntity<BoardsDTO> updateBoard(@PathVariable("id") Long id, @RequestBody BoardsUpdateDTO updateDTO) {
         // Ensure ID matches path variable
         updateDTO.setId(id);
         BoardsDTO result = boardService.updateBoard(updateDTO);
@@ -65,7 +65,7 @@ public class BoardController {
     @DeleteMapping("/{id}")
     @ApiOperation("删除板块")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_boards','write'))")
-    public ResponseEntity<Void> deleteBoard(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteBoard(@PathVariable("id") Long id) {
         boardService.deleteBoard(id);
         return ResponseEntity.noContent().build();
     }

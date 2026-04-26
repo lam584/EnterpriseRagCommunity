@@ -12,14 +12,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
 class AdminModerationQueueControllerBranchTest {
@@ -96,6 +103,30 @@ class AdminModerationQueueControllerBranchTest {
 
         assertSame(page, out);
         verify(queueService).list(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void endpoints_shouldBindPathVariableWithoutParameterMetadata() throws Exception {
+        AdminModerationQueueService queueService = mock(AdminModerationQueueService.class);
+        ModerationChunkReviewService chunkReviewService = mock(ModerationChunkReviewService.class);
+        AdminModerationQueueController controller = new AdminModerationQueueController(queueService, chunkReviewService);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+
+        AdminModerationQueueDetailDTO detail = new AdminModerationQueueDetailDTO();
+        detail.setId(1L);
+        when(queueService.getDetail(1L)).thenReturn(detail);
+        when(queueService.approve(1L, "ok")).thenReturn(detail);
+
+        mockMvc.perform(get("/api/admin/moderation/queue/1"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/admin/moderation/queue/1/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"ok\"}"))
+                .andExpect(status().isOk());
+
+        verify(queueService).getDetail(1L);
+        verify(queueService).approve(1L, "ok");
     }
 
     private AdminModerationQueueController newController() {

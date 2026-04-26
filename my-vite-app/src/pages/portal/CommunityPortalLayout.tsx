@@ -77,15 +77,17 @@ export default function CommunityPortalLayout() {
 
   useEffect(() => {
     // AuthProvider 已在应用启动时执行过一次 refreshAuth。
-    // 这里仅在 auth 初始化完成且仍未登录时补一次，避免重复触发 /api/auth/current-admin。
+    // 这里处理两种情况：
+    // 1. auth 初始化完成且仍未登录时补一次（原逻辑）
+    // 2. isAuthenticated=true 但 currentUser 为空（登录后状态不一致时补一次）
     if (didInitialRefreshRef.current) return;
     if (authLoading) return;
 
-    didInitialRefreshRef.current = true;
-    if (!isAuthenticated) {
+    if (!isAuthenticated || (isAuthenticated && !currentUser)) {
+      didInitialRefreshRef.current = true;
       void refreshAuth?.();
     }
-  }, [authLoading, isAuthenticated, refreshAuth]);
+  }, [authLoading, isAuthenticated, currentUser, refreshAuth]);
 
   useEffect(() => {
     // 兼容其它页面（例如登录页）写入 localStorage 后，同步 portal UI

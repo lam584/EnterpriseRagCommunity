@@ -168,6 +168,26 @@ Write-Host "✅ 存储格式化成功" -ForegroundColor Green
 
 *看到 `Kafka Server started` 字样且无报错退出，即表示启动成功。保持此窗口开启。*
 
+### 3.3.1 后台启动 / 停止脚本 (推荐日常开发使用)
+
+仓库已补充两组脚本：`.cmd` 用于日常直接执行，`.ps1` 用于需要传参或二次开发的场景。日常开发优先使用 `.cmd`：
+
+```powershell
+# 在项目根目录执行
+.\scripts\start-kafka.cmd
+
+# 停止 Kafka
+.\scripts\stop-kafka.cmd
+```
+
+脚本行为说明：
+
+1. 自动使用 `JAVA_HOME` / `KAFKA_HOME`；未配置时回退到本文默认路径。
+2. 自动检查 `9092/9093`，若 Kafka 已在运行则直接返回，不重复启动。
+3. 若检测到 `meta.properties` 不存在，会自动执行一次 `kafka-storage.bat format`。
+4. 日志输出到项目目录 `logs\kafka\kafka.stdout.log` 与 `logs\kafka\kafka.stderr.log`。
+5. 后台启动成功后，会在 `logs\kafka\kafka.pid` 中记录实际 Kafka Java 进程 PID。
+
 ### 3.4 验证服务状态
 
 在原 PowerShell 窗口执行：
@@ -278,6 +298,28 @@ app.logging.access.sink-mode=DUAL
 app.logging.access.kafka-topic=access-logs-v1
 ```
 
+### 5.1.1 当前仓库的本地默认值
+
+这次已将项目默认配置调整为适合本机单机链路：
+
+```properties
+spring.kafka.bootstrap-servers=127.0.0.1:9092
+app.logging.access.sink-mode=KAFKA
+app.logging.access.kafka-topic=access-logs-v1
+app.logging.access.force-mysql-during-setup=false
+APP_KAFKA_AUTH_ENABLED=false
+APP_KAFKA_SECURITY_PROTOCOL=PLAINTEXT
+app.logging.access.es-sink.enabled=true
+app.logging.access.es-sink.consumer-enabled=true
+```
+
+这意味着：
+
+1. Spring Boot 应用默认会把 Access 日志写入本机 Kafka。
+2. 即使当前实例还处于 `isInitialized=false` 的初始化阶段，也不会被强制回退到 MySQL。
+3. Kafka -> ES 的消费端默认也会启动，前提是本机 `9200` 有可用 ES。
+4. 若你临时不想消费写 ES，可将 `app.logging.access.es-sink.consumer-enabled=false` 覆盖到环境变量或启动参数中。
+
 ### 5.2 ES Sink 配置 (如果需要写入 ES)
 ```properties
 app.logging.access.es-sink.enabled=true
@@ -322,11 +364,40 @@ app.logging.access.kafka.producer.compression-type=lz4
 *   ✅ **正常**：无 `access_log_kafka_send_failed` 或 `access_log_es_sink_consume_failed`。
 *   ⚠️ **警告**：如果出现 `access_log_dual_verify_miss`，说明 Kafka 有数据但 ES 没收到（或延迟高）。初期少量出现是正常的，持续出现需检查 ES 连接。
 
+### 6.1.1 启动项目并挂到本地 Kafka
+
+项目默认端口是 `8099`。在项目根目录执行：
+
+```powershell
+.\gradlew.bat bootRun --no-daemon --args='--server.port=8099'
+```
+
+如果你需要显式覆盖 Kafka / ES 地址，也可以这样启动：
+
+```powershell
+.\gradlew.bat bootRun --no-daemon --args='--server.port=8099 --spring.kafka.bootstrap-servers=127.0.0.1:9092 --spring.elasticsearch.uris=http://127.0.0.1:9200'
+```
+
 ### 6.2 检查 Kafka 消费情况
 再次运行消费者命令，看是否有新的业务日志进入：
 ```powershell
 & "E:\kafka_2.13-4.2.0\bin\windows\kafka-console-consumer.bat" --bootstrap-server 127.0.0.1:9092 --topic access-logs-v1 --from-beginning --max-messages 3
 ```
+
+更推荐用一个新的消费组，只看刚触发的请求日志：
+
+```powershell
+$group = "access-log-check-$(Get-Date -Format yyyyMMddHHmmss)"
+& "E:\kafka_2.13-4.2.0\bin\windows\kafka-console-consumer.bat" --bootstrap-server 127.0.0.1:9092 --topic access-logs-v1 --group $group --max-messages 1 --timeout-ms 15000
+```
+
+然后在另一个窗口触发一条公开接口请求：
+
+```powershell
+Invoke-WebRequest -Uri "http://127.0.0.1:8099/api/public/site-config" -UseBasicParsing | Out-Null
+```
+
+若消费者读到一条 JSON，且其中 `data.path` 为 `/api/public/site-config`，说明 **业务访问日志已经成功写入 Kafka**。
 
 ### 6.3 检查 ES 数据 (如果配置了 ES)
 ```powershell
@@ -334,6 +405,14 @@ app.logging.access.kafka.producer.compression-type=lz4
 curl "http://127.0.0.1:9200/access-logs-v1/_search?size=1&pretty"
 ```
 *   **成功标志**：返回 JSON 数据，`hits.total.value` > 0。
+
+更精确的验证方式：
+
+```powershell
+curl "http://127.0.0.1:9200/access-logs-v1/_search?q=path.keyword:%2Fapi%2Fpublic%2Fsite-config&size=1&pretty"
+```
+
+如果能查到刚触发的访问记录，说明 **Kafka -> ES 消费链路也已经打通**。
 
 ---
 
@@ -355,11 +434,8 @@ $TOPIC = "access-logs-v1"
 # 前台启动（推荐排障时使用）
 & "$KAFKA_HOME\bin\windows\kafka-server-start.bat" "$KAFKA_HOME\config\server.properties"
 
-# 后台启动（日志输出到 kafka.log）
-Start-Process -FilePath "$KAFKA_HOME\bin\windows\kafka-server-start.bat" `
-    -ArgumentList "$KAFKA_HOME\config\server.properties" `
-    -RedirectStandardOutput "$KAFKA_HOME\kafka.log" `
-    -RedirectStandardError "$KAFKA_HOME\kafka-error.log"
+# 后台启动（推荐）
+.\scripts\start-kafka.cmd
 
 # 检查 9092 / 9093 端口是否监听
 Get-NetTCPConnection -LocalPort 9092,9093 -State Listen -ErrorAction SilentlyContinue
@@ -367,12 +443,12 @@ Get-NetTCPConnection -LocalPort 9092,9093 -State Listen -ErrorAction SilentlyCon
 # 查看 Kafka Java 进程
 Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java(.exe)?' -and $_.CommandLine -match 'kafka.Kafka' } | Select-Object ProcessId, CommandLine
 
-# 停止 Kafka（按命令行匹配）
-Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'java(.exe)?' -and $_.CommandLine -match 'kafka.Kafka' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+# 停止 Kafka（推荐）
+.\scripts\stop-kafka.cmd
 
 # 查看最近日志
-Get-Content "$KAFKA_HOME\kafka.log" -Tail 100
-Get-Content "$KAFKA_HOME\kafka-error.log" -Tail 100
+Get-Content ".\logs\kafka\kafka.stdout.log" -Tail 100
+Get-Content ".\logs\kafka\kafka.stderr.log" -Tail 100
 ```
 
 ### 7.3 Topic 管理
@@ -442,3 +518,9 @@ Write-Output $msg | & "$KAFKA_HOME\bin\windows\kafka-console-producer.bat" --boo
 
 调试完成后，在启动 Kafka 的 PowerShell 窗口按 `Ctrl + C` 停止。
 如果需要彻底清理环境重新开始，删除 `E:\kafka_2.13-4.2.0\data\kraft-logs` 目录即可。
+
+如果你使用的是本文新增的后台脚本，则直接执行：
+
+```powershell
+.\scripts\stop-kafka.cmd
+```

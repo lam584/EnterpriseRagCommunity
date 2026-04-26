@@ -11,7 +11,6 @@ import org.springframework.lang.Nullable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,6 +67,9 @@ public class AccessLogWriter {
     @Value("${app.logging.access.no-drop-guarantee:false}")
     private boolean noDropGuarantee = false;
 
+    @Value("${app.logging.access.force-mysql-during-setup:true}")
+    private boolean forceMysqlDuringSetup = true;
+
     @Value("${app.logging.access.async-enabled:false}")
     private boolean asyncEnabled = false;
 
@@ -87,8 +89,8 @@ public class AccessLogWriter {
         if (e == null) return;
         normalizeEntity(e);
 
-        // During setup, force MySQL path to avoid using Kafka clients initialized with stale/default config.
-        if (adminSetupManager != null && adminSetupManager.isSetupRequired()) {
+        // During setup, default to MySQL unless explicitly disabled for local/dev verification.
+        if (forceMysqlDuringSetup && adminSetupManager != null && adminSetupManager.isSetupRequired()) {
             persistMysql(e, noDropGuarantee);
             return;
         }
@@ -156,7 +158,6 @@ public class AccessLogWriter {
     }
 
     @Scheduled(fixedDelayString = "${app.logging.access.async-flush-interval-ms:200}")
-    @Transactional
     public void flushAsyncQueue() {
         if (!asyncEnabled) return;
         flushBatch(Math.max(1, asyncBatchSize));

@@ -150,7 +150,7 @@ export const RoutingStatusCard: React.FC<{
     chart.setOption(
       {
         tooltip: { trigger: 'item' },
-        legend: { top: 8, left: 'center' },
+        legend: { bottom: 8, left: 'center' },
         series: [
           {
             name: '模型提供方',
@@ -277,6 +277,14 @@ export const RoutingStatusCard: React.FC<{
         )}
       </div>
 
+      <div className="rounded border bg-white p-3 space-y-2">
+        <div className="text-sm font-semibold">路由事件 模型提供方占比</div>
+        <div className="text-xs text-gray-500">
+          {providerSeries.total ? <>统计范围：当前已接收 {providerSeries.total} 条成功路由事件</> : <>暂无可统计事件</>}
+        </div>
+        <div className="w-full h-[260px]" ref={providerChartRef} />
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">
         <div className="flex items-center gap-2">
           {routingEvents.length ? <div className="text-gray-500">共 {routingEvents.length} 条</div> : null}
@@ -341,14 +349,6 @@ export const RoutingStatusCard: React.FC<{
             ) : null}
           </tbody>
         </table>
-      </div>
-
-      <div className="rounded border bg-white p-3 space-y-2">
-        <div className="text-sm font-semibold">路由事件 模型提供方占比</div>
-        <div className="text-xs text-gray-500">
-          {providerSeries.total ? <>统计范围：当前已接收 {providerSeries.total} 条成功路由事件</> : <>暂无可统计事件</>}
-        </div>
-        <div className="w-full h-[260px]" ref={providerChartRef} />
       </div>
     </div>
   );

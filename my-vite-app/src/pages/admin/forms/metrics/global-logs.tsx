@@ -260,6 +260,8 @@ const GlobalLogsForm: React.FC = () => {
   const [accessIndexStatusLoading, setAccessIndexStatusLoading] = useState(false);
   const [accessIndexStatusError, setAccessIndexStatusError] = useState<string | null>(null);
   const [accessIndexStatus, setAccessIndexStatus] = useState<AccessLogEsIndexStatusDTO | null>(null);
+  const accessQueryUsesKafkaEs = (accessIndexStatus?.sinkMode ?? '').trim().toUpperCase() === 'KAFKA';
+  const accessClientIpPlaceholder = accessQueryUsesKafkaEs ? '客户端IP（模糊，ES 子串匹配）' : '客户端IP（模糊）';
 
   const syncToUrl = useCallback(
     (nextTab: TabKey, nextPage: number, nextPageSize: number, nextAuditQuery: AuditQueryState, nextAccessQuery: AccessQueryState) => {
@@ -841,7 +843,7 @@ const GlobalLogsForm: React.FC = () => {
               />
               <input
                 className="rounded border px-3 py-2 text-sm"
-                placeholder="客户端IP（模糊）"
+                placeholder={accessClientIpPlaceholder}
                 value={accessQuery.clientIp}
                 onChange={(e) => setAccessQuery((p) => ({ ...p, clientIp: e.target.value }))}
               />

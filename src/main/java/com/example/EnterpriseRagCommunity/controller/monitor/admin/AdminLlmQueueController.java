@@ -54,7 +54,7 @@ public class AdminLlmQueueController {
 
     @GetMapping("/tasks/{taskId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public AdminLlmQueueTaskDetailDTO taskDetail(@PathVariable String taskId) {
+    public AdminLlmQueueTaskDetailDTO taskDetail(@PathVariable("taskId") String taskId) {
         AdminLlmQueueTaskDetailDTO d = llmQueueMonitorService.getTaskDetail(taskId);
         if (d == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "任务不存在或详情已被清理");
         return d;

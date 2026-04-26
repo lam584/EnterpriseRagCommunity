@@ -22,7 +22,7 @@ public class AiPostSummaryController {
     }
 
     @GetMapping("/{postId}/summary")
-    public PostAiSummaryDTO getPostSummary(@PathVariable Long postId) {
+    public PostAiSummaryDTO getPostSummary(@PathVariable("postId") Long postId) {
         PostSummaryGenPublicConfigDTO cfg = postSummaryGenConfigService.getPublicConfig();
 
         PostAiSummaryDTO dto = new PostAiSummaryDTO();

@@ -24,6 +24,7 @@ import org.springframework.util.StringUtils;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -33,6 +34,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -49,6 +51,8 @@ public class AccessLogsService {
     private static final int MAX_LOG_PAGE_SIZE = 20_000;
     private static final String DEFAULT_ES_ACCESS_INDEX = "access-logs-v1";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final String CLIENT_IP_TEXT_FIELD = "client_ip_text";
+    private static final Pattern IPV4_LITERAL = Pattern.compile("^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}$");
 
     @Transactional(readOnly = true)
     public Page<AccessLogsViewDTO> query(
@@ -197,13 +201,7 @@ public class AccessLogsService {
         root.put("from", from);
         root.put("size", safePageSize);
         root.put("track_total_hits", true);
-        root.put("sort", List.of(
-                Map.of("created_at", Map.of("order", order)),
-            Map.of("event_id.keyword", Map.of(
-                "order", order,
-                "unmapped_type", "keyword"
-            ))
-        ));
+        root.put("sort", buildEsSort(order));
 
         Map<String, Object> bool = new LinkedHashMap<>();
         List<Map<String, Object>> filter = new ArrayList<>();
@@ -220,22 +218,19 @@ public class AccessLogsService {
         addWildcardMust(must, "username", username);
         addWildcardMust(must, "method", method);
         addWildcardMust(must, "path", path);
-        addWildcardMust(must, "client_ip", clientIp);
+        addClientIpMust(must, clientIp);
         addWildcardMust(must, "request_id", requestId);
         addWildcardMust(must, "trace_id", traceId);
 
         if (createdFrom != null || createdTo != null) {
-            Map<String, Object> rangeBody = new LinkedHashMap<>();
-            if (createdFrom != null) rangeBody.put("gte", createdFrom.toString());
-            if (createdTo != null) rangeBody.put("lte", createdTo.toString());
-            filter.add(Map.of("range", Map.of("created_at", rangeBody)));
+            filter.add(buildEsCreatedAtRangeFilter(createdFrom, createdTo));
         }
 
         if (StringUtils.hasText(keyword)) {
             addWildcardShould(should, "method", keyword);
             addWildcardShould(should, "path", keyword);
             addWildcardShould(should, "username", keyword);
-            addWildcardShould(should, "client_ip", keyword);
+            addClientIpShould(should, keyword);
             addWildcardShould(should, "request_id", keyword);
             addWildcardShould(should, "trace_id", keyword);
         }
@@ -351,7 +346,7 @@ public class AccessLogsService {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("size", 1);
         root.put("query", Map.of("bool", bool));
-        root.put("sort", List.of(Map.of("created_at", Map.of("order", "desc"))));
+        root.put("sort", buildEsSort("desc"));
 
         try {
             JsonNode json = postEsSearch(endpoint, indexName, OBJECT_MAPPER.writeValueAsString(root));
@@ -408,20 +403,116 @@ public class AccessLogsService {
         return "asc".equals(dir) ? "asc" : "desc";
     }
 
+    private static List<Map<String, Object>> buildEsSort(String order) {
+        return List.of(
+                esSortField("created_at", order, "date"),
+                esSortField("@timestamp", order, "date"),
+                esSortField("event_time", order, "date"),
+                esSortField("event_id.keyword", order, "keyword")
+        );
+    }
+
+    private static Map<String, Object> esSortField(String field, String order, String unmappedType) {
+        Map<String, Object> sortBody = new LinkedHashMap<>();
+        sortBody.put("order", order);
+        sortBody.put("unmapped_type", unmappedType);
+        sortBody.put("missing", "_last");
+        return Map.of(field, sortBody);
+    }
+
+    private static Map<String, Object> buildEsCreatedAtRangeFilter(LocalDateTime createdFrom, LocalDateTime createdTo) {
+        return Map.of(
+                "bool",
+                Map.of(
+                        "should",
+                        List.of(
+                                Map.of("range", Map.of("created_at", buildEsRangeBody(createdFrom, createdTo))),
+                                Map.of("range", Map.of("@timestamp", buildEsRangeBody(createdFrom, createdTo))),
+                                Map.of("range", Map.of("event_time", buildEsRangeBody(createdFrom, createdTo)))
+                        ),
+                        "minimum_should_match",
+                        1
+                )
+        );
+    }
+
+    private static Map<String, Object> buildEsRangeBody(LocalDateTime createdFrom, LocalDateTime createdTo) {
+        Map<String, Object> rangeBody = new LinkedHashMap<>();
+        if (createdFrom != null) rangeBody.put("gte", createdFrom.toString());
+        if (createdTo != null) rangeBody.put("lte", createdTo.toString());
+        return rangeBody;
+    }
+
     private static void addWildcardMust(List<Map<String, Object>> must, String field, String value) {
         if (!StringUtils.hasText(value)) return;
-        must.add(Map.of(
-                "wildcard",
-                Map.of(field, Map.of("value", toWildcardPattern(value), "case_insensitive", true))
-        ));
+        must.add(buildWildcardClause(field, value));
     }
 
     private static void addWildcardShould(List<Map<String, Object>> should, String field, String value) {
         if (!StringUtils.hasText(value)) return;
-        should.add(Map.of(
+        should.add(buildWildcardClause(field, value));
+    }
+
+    private static void addClientIpMust(List<Map<String, Object>> must, String value) {
+        Map<String, Object> clause = buildClientIpMustClause(value);
+        if (clause == null) return;
+        must.add(clause);
+    }
+
+    private static void addClientIpShould(List<Map<String, Object>> should, String value) {
+        should.addAll(buildClientIpShouldClauses(value));
+    }
+
+    private static Map<String, Object> buildWildcardClause(String field, String value) {
+        return Map.of(
                 "wildcard",
                 Map.of(field, Map.of("value", toWildcardPattern(value), "case_insensitive", true))
-        ));
+        );
+    }
+
+    private static Map<String, Object> buildClientIpMustClause(String value) {
+        List<Map<String, Object>> clauses = buildClientIpShouldClauses(value);
+        if (clauses.isEmpty()) return null;
+        if (clauses.size() == 1) return clauses.get(0);
+        return Map.of("bool", Map.of("should", clauses, "minimum_should_match", 1));
+    }
+
+    private static List<Map<String, Object>> buildClientIpShouldClauses(String value) {
+        if (!StringUtils.hasText(value)) return List.of();
+        List<Map<String, Object>> clauses = new ArrayList<>();
+        clauses.add(buildWildcardClause(CLIENT_IP_TEXT_FIELD, value));
+
+        String normalized = normalizeIpLiteral(value);
+        if (normalized != null) {
+            clauses.add(Map.of("term", Map.of("client_ip", normalized)));
+        }
+        return clauses;
+    }
+
+    private static String normalizeIpLiteral(String value) {
+        if (!StringUtils.hasText(value)) return null;
+        String trimmed = value.trim();
+        if (trimmed.indexOf('*') >= 0 || trimmed.indexOf('?') >= 0) return null;
+        if (trimmed.contains(":")) {
+            if (!isIpv6Literal(trimmed)) return null;
+            return trimmed;
+        }
+        return IPV4_LITERAL.matcher(trimmed).matches() ? trimmed : null;
+    }
+
+    private static boolean isIpv6Literal(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            if (ch == ':' || ch == '.') continue;
+            if (Character.digit(ch, 16) >= 0) continue;
+            return false;
+        }
+        try {
+            InetAddress.getByName(value);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private static String toWildcardPattern(String value) {

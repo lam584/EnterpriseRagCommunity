@@ -37,7 +37,7 @@ public class AdminDependencyCircuitBreakerController {
 
     @GetMapping("/{dependency}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_safety_circuit_breaker','read'))")
-    public DependencyCircuitBreakerConfigDTO get(@PathVariable String dependency) {
+    public DependencyCircuitBreakerConfigDTO get(@PathVariable("dependency") String dependency) {
         String dep = normalizeDep(dependency);
         DependencyCircuitBreakerConfigDTO out = new DependencyCircuitBreakerConfigDTO();
         out.setDependency(dep);
@@ -48,7 +48,7 @@ public class AdminDependencyCircuitBreakerController {
 
     @PutMapping("/{dependency}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_safety_circuit_breaker','write'))")
-    public DependencyCircuitBreakerConfigDTO update(@PathVariable String dependency, @Valid @RequestBody DependencyCircuitBreakerUpdateRequest req, HttpServletRequest request) {
+    public DependencyCircuitBreakerConfigDTO update(@PathVariable("dependency") String dependency, @Valid @RequestBody DependencyCircuitBreakerUpdateRequest req, HttpServletRequest request) {
         String dep = normalizeDep(dependency);
         DependencyCircuitBreakerConfigDTO cfg = req.getConfig();
         if (cfg == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "config 不能为空");

@@ -42,19 +42,19 @@ public class QaHistoryController {
     }
 
     @GetMapping("/sessions/{sessionId}/messages")
-    public List<QaMessageDTO> listSessionMessages(@PathVariable Long sessionId) {
+    public List<QaMessageDTO> listSessionMessages(@PathVariable("sessionId") Long sessionId) {
         Long me = currentUserIdOrThrow();
         return qaHistoryService.getMySessionMessages(me, sessionId);
     }
 
     @PatchMapping("/sessions/{sessionId}")
-    public QaSessionDTO updateSession(@PathVariable Long sessionId, @Valid @RequestBody QaSessionUpdateRequest req) {
+    public QaSessionDTO updateSession(@PathVariable("sessionId") Long sessionId, @Valid @RequestBody QaSessionUpdateRequest req) {
         Long me = currentUserIdOrThrow();
         return qaHistoryService.updateMySession(me, sessionId, req);
     }
 
     @PostMapping("/sessions/{sessionId}/compress-context")
-    public QaCompressContextResultDTO compressContext(@PathVariable Long sessionId) {
+    public QaCompressContextResultDTO compressContext(@PathVariable("sessionId") Long sessionId) {
         Long me = currentUserIdOrThrow();
         return qaHistoryService.compressMySessionContext(me, sessionId);
     }
@@ -70,7 +70,7 @@ public class QaHistoryController {
     }
 
     @DeleteMapping("/sessions/{sessionId}")
-    public ResponseEntity<Void> deleteSession(@PathVariable Long sessionId) {
+    public ResponseEntity<Void> deleteSession(@PathVariable("sessionId") Long sessionId) {
         Long me = currentUserIdOrThrow();
         qaHistoryService.deleteMySession(me, sessionId);
         return ResponseEntity.noContent().build();

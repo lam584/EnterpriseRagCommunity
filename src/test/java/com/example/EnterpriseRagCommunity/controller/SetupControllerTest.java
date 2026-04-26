@@ -6,6 +6,7 @@ import com.example.EnterpriseRagCommunity.config.DynamicElasticsearchConfig;
 import com.example.EnterpriseRagCommunity.config.ElasticsearchIndexStartupInitializer;
 import com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
+import com.example.EnterpriseRagCommunity.service.access.AccessLogEsIndexProvisioningService;
 import com.example.EnterpriseRagCommunity.service.access.AccessLogKafkaLifecycleManager;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
@@ -101,6 +102,9 @@ class SetupControllerTest {
 
     @MockitoBean
     private AccessLogKafkaLifecycleManager accessLogKafkaLifecycleManager;
+
+    @MockitoBean
+    private AccessLogEsIndexProvisioningService accessLogEsIndexProvisioningService;
 
     private final String originalUserDir = System.getProperty("user.dir");
 
@@ -539,6 +543,27 @@ class SetupControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Index initialization configuration saved."));
     }
+
+        @Test
+        void initIndices_shouldProvisionAccessLogIndexViaDedicatedService() throws Exception {
+                mockMvc.perform(post("/api/setup/init-indices")
+                                                .contentType(MediaType.APPLICATION_JSON)
+                                                .content("""
+                                                                {
+                                                                    "indexNames": ["access-logs-v1"],
+                                                                    "configs": {
+                                                                        "spring.elasticsearch.uris": "http://localhost:9200",
+                                                                        "APP_ES_API_KEY": "k",
+                                                                        "app.logging.access.es-sink.index": "access-logs-v1"
+                                                                    }
+                                                                }
+                                                                """))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.results['access-logs-v1']").value("已创建"));
+
+                verify(accessLogEsIndexProvisioningService).initialize(eq("http://localhost:9200"), eq("k"), any());
+                verify(restClientFactory, never()).create(anyString(), nullable(String.class));
+        }
 
     @Test
     void setupEndpoints_shouldReturn403_whenSetupAlreadyCompleted() throws Exception {

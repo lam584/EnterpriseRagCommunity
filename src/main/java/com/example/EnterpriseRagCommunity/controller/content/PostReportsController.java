@@ -44,7 +44,7 @@ public class PostReportsController {
     }
 
     @PostMapping("/{postId}/report")
-    public Map<String, Object> reportPost(@PathVariable Long postId, @Valid @RequestBody PostReportRequest req) {
+    public Map<String, Object> reportPost(@PathVariable("postId") Long postId, @Valid @RequestBody PostReportRequest req) {
         Long userId = currentUserIdOrNull();
         String actorName = currentUsernameOrNull();
         try {

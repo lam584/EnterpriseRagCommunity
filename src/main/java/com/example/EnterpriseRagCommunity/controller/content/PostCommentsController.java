@@ -18,7 +18,7 @@ public class PostCommentsController {
     private final CommentsService commentsService;
 
     @GetMapping("/{postId}/comments")
-    public Page<CommentDTO> list(@PathVariable Long postId,
+    public Page<CommentDTO> list(@PathVariable("postId") Long postId,
                                  @RequestParam(value = "page", defaultValue = "1") int page,
                                  @RequestParam(value = "pageSize", defaultValue = "20") int pageSize,
                                  @RequestParam(value = "includeMinePending", defaultValue = "false") boolean includeMinePending) {
@@ -26,7 +26,7 @@ public class PostCommentsController {
     }
 
     @PostMapping("/{postId}/comments")
-    public CommentDTO create(@PathVariable Long postId, @Valid @RequestBody CommentCreateRequest req) {
+    public CommentDTO create(@PathVariable("postId") Long postId, @Valid @RequestBody CommentCreateRequest req) {
         return commentsService.createForPost(postId, req);
     }
 
@@ -42,7 +42,7 @@ public class PostCommentsController {
     }
 
     @GetMapping("/{postId}/comments/count")
-    public CountResponse count(@PathVariable Long postId) {
+    public CountResponse count(@PathVariable("postId") Long postId) {
         return new CountResponse(commentsService.countByPostId(postId));
     }
 }

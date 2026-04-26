@@ -55,7 +55,7 @@ public class NotificationsController {
     }
 
     @PatchMapping("/{id}/read")
-    public ResponseEntity<NotificationsEntity> markRead(@PathVariable Long id, Authentication authentication, HttpServletRequest request) {
+    public ResponseEntity<NotificationsEntity> markRead(@PathVariable("id") Long id, Authentication authentication, HttpServletRequest request) {
         Long userId = currentUserIdOrNull(authentication, request);
         String actorName = currentUsernameOrNull(authentication, request);
         try {
@@ -155,7 +155,7 @@ public class NotificationsController {
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Long id, Authentication authentication, HttpServletRequest request) {
+    public ResponseEntity<?> delete(@PathVariable("id") Long id, Authentication authentication, HttpServletRequest request) {
         Long userId = currentUserIdOrNull(authentication, request);
         String actorName = currentUsernameOrNull(authentication, request);
         try {

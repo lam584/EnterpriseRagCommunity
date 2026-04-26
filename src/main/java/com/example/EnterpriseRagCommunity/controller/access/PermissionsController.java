@@ -31,7 +31,7 @@ public class PermissionsController {
     @GetMapping("/{id}")
     @ApiOperation("获取权限详情")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_permissions','read'))")
-    public ResponseEntity<PermissionsUpdateDTO> getById(@PathVariable Long id) {
+    public ResponseEntity<PermissionsUpdateDTO> getById(@PathVariable("id") Long id) {
         return ResponseEntity.ok(permissionsService.getById(id));
     }
 
@@ -55,7 +55,7 @@ public class PermissionsController {
     @ApiOperation("删除权限")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_permissions','write'))")
     @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         permissionsService.delete(id);
         return ResponseEntity.ok().build();
     }

@@ -29,6 +29,19 @@ import static org.mockito.Mockito.when;
 
 class LlmGatewayPrivateHelpersCoveragePart3Test {
 
+        private static Class<?> wrap(Class<?> c) {
+                if (!c.isPrimitive()) return c;
+                if (c == int.class) return Integer.class;
+                if (c == long.class) return Long.class;
+                if (c == boolean.class) return Boolean.class;
+                if (c == double.class) return Double.class;
+                if (c == float.class) return Float.class;
+                if (c == short.class) return Short.class;
+                if (c == byte.class) return Byte.class;
+                if (c == char.class) return Character.class;
+                return c;
+        }
+
     private static Object callStatic(String name, Class<?>[] paramTypes, Object... args) throws Exception {
         Method m = LlmGateway.class.getDeclaredMethod(name, paramTypes);
         m.setAccessible(true);
@@ -46,11 +59,30 @@ class LlmGatewayPrivateHelpersCoveragePart3Test {
             if (!m.getName().startsWith("lambda$callChatOnceSingle$")) {
                 continue;
             }
-            if (!Arrays.equals(m.getParameterTypes(), paramTypes)) {
+                        Class<?>[] actual = m.getParameterTypes();
+                        boolean isStatic = java.lang.reflect.Modifier.isStatic(m.getModifiers());
+                        int shift = (isStatic && actual.length == paramTypes.length + 1 && actual[0] == LlmGateway.class) ? 1 : 0;
+                        if (actual.length != paramTypes.length + shift) {
                 continue;
             }
+                        boolean match = true;
+                        for (int i = 0; i < paramTypes.length; i++) {
+                                if (!actual[i + shift].equals(paramTypes[i])) {
+                                        match = false;
+                                        break;
+                                }
+                        }
+                        if (!match) {
+                                continue;
+                        }
             m.setAccessible(true);
-            return m.invoke(gateway, args);
+                        if (shift == 1) {
+                                Object[] invokeArgs = new Object[args.length + 1];
+                                invokeArgs[0] = gateway;
+                                System.arraycopy(args, 0, invokeArgs, 1, args.length);
+                                return m.invoke(null, invokeArgs);
+                        }
+                        return isStatic ? m.invoke(null, args) : m.invoke(gateway, args);
         }
         throw new NoSuchMethodException("lambda$callChatOnceSingle$* with expected signature not found");
     }
@@ -301,12 +333,26 @@ class LlmGatewayPrivateHelpersCoveragePart3Test {
 
     @Test
     void lambda_callChatOnceSingle_1_should_cover_output_routing_branches() throws Exception {
-        LlmGateway gateway = gateway();
+        AiProvidersConfigService aiProvidersConfigService = mock(AiProvidersConfigService.class);
+        AiEmbeddingService aiEmbeddingService = mock(AiEmbeddingService.class);
+        AiRerankService aiRerankService = mock(AiRerankService.class);
+        LlmCallQueueService llmCallQueueService = mock(LlmCallQueueService.class);
+        LlmRoutingService llmRoutingService = mock(LlmRoutingService.class);
+        LlmRoutingTelemetryService llmRoutingTelemetryService = mock(LlmRoutingTelemetryService.class);
+        TokenCountService tokenCountService = mock(TokenCountService.class);
+
+        LlmGateway gateway = new LlmGateway(
+                aiProvidersConfigService,
+                aiEmbeddingService,
+                aiRerankService,
+                llmCallQueueService,
+                llmRoutingService,
+                llmRoutingTelemetryService,
+                tokenCountService
+        );
         AiProvidersConfigService.ResolvedProvider provider = new AiProvidersConfigService.ResolvedProvider(
                 "p1", "OPENAI_COMPAT", "http://example.invalid", "k", "m1", "e1", Map.of(), Map.of(), 1000, 1000
         );
-        OpenAiCompatClient client = mock(OpenAiCompatClient.class);
-        OpenAiCompatClient.ChatRequest req = mock(OpenAiCompatClient.ChatRequest.class);
         LlmCallQueueService.TaskHandle task = mock(LlmCallQueueService.TaskHandle.class);
         when(task.id()).thenReturn("task-l1");
         AtomicReference<String> idOut = new AtomicReference<>();
@@ -316,41 +362,62 @@ class LlmGatewayPrivateHelpersCoveragePart3Test {
             return null;
         }).when(task).reportOutput(org.mockito.ArgumentMatchers.any());
 
-        when(client.chatCompletionsOnce(req))
-                .thenReturn("{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}")
-                .thenReturn("{\"choices\":[{\"message\":{\"content\":\"<think>x</think>ok\"}}]}")
-                .thenReturn("   ");
+        when(llmCallQueueService.call(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.any(LlmCallQueueService.CheckedTaskSupplier.class),
+                org.mockito.ArgumentMatchers.any(LlmCallQueueService.ResultMetricsExtractor.class)
+        )).thenAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            LlmCallQueueService.CheckedTaskSupplier<String> supplier = inv.getArgument(4);
+            return supplier.get(task);
+        });
+        when(llmCallQueueService.parseOpenAiUsageFromJson(org.mockito.ArgumentMatchers.anyString())).thenReturn(null);
 
-        callCallChatOnceSingleLambda(
-                gateway,
-                new Class[]{
-                        AtomicReference.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class, Double.class,
-                        Boolean.class, Integer.class, int.class, OpenAiCompatClient.class, OpenAiCompatClient.ChatRequest.class,
-                        boolean.class, LlmCallQueueService.TaskHandle.class
-                },
-                idOut, provider, "m1", List.of(ChatMessage.user("hi")), 0.2,
-                Boolean.TRUE, null, 1, client, req, false, task
-        );
-        callCallChatOnceSingleLambda(
-                gateway,
-                new Class[]{
-                        AtomicReference.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class, Double.class,
-                        Boolean.class, Integer.class, int.class, OpenAiCompatClient.class, OpenAiCompatClient.ChatRequest.class,
-                        boolean.class, LlmCallQueueService.TaskHandle.class
-                },
-                idOut, provider, "m1", List.of(ChatMessage.user("hi")), 0.2,
-                Boolean.FALSE, null, 1, client, req, true, task
-        );
-        callCallChatOnceSingleLambda(
-                gateway,
-                new Class[]{
-                        AtomicReference.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class, Double.class,
-                        Boolean.class, Integer.class, int.class, OpenAiCompatClient.class, OpenAiCompatClient.ChatRequest.class,
-                        boolean.class, LlmCallQueueService.TaskHandle.class
-                },
-                idOut, provider, "m1", List.of(ChatMessage.user("hi")), 0.2,
-                null, null, 1, client, req, false, task
-        );
+        try (org.mockito.MockedConstruction<OpenAiCompatClient> mocked = org.mockito.Mockito.mockConstruction(
+                OpenAiCompatClient.class,
+                (client, context) -> when(client.chatCompletionsOnce(org.mockito.ArgumentMatchers.any()))
+                        .thenReturn("{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}")
+                        .thenReturn("{\"choices\":[{\"message\":{\"content\":\"<think>x</think>ok\"}}]}")
+                        .thenReturn("   ")
+        )) {
+            callInstance(
+                    gateway,
+                    "callChatOnceSingle",
+                    new Class[]{
+                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
+                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
+                            int.class, AtomicReference.class, Map.class
+                    },
+                    LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")), 0.2,
+                    null, null, null, Boolean.TRUE, null, Map.of(), 1, idOut, Map.of()
+            );
+            callInstance(
+                    gateway,
+                    "callChatOnceSingle",
+                    new Class[]{
+                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
+                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
+                            int.class, AtomicReference.class, Map.class
+                    },
+                    LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")), 0.2,
+                    null, null, null, Boolean.FALSE, null, Map.of(), 1, idOut, Map.of()
+            );
+            callInstance(
+                    gateway,
+                    "callChatOnceSingle",
+                    new Class[]{
+                            LlmQueueTaskType.class, AiProvidersConfigService.ResolvedProvider.class, String.class, List.class,
+                            Double.class, Double.class, Integer.class, List.class, Boolean.class, Integer.class, Map.class,
+                            int.class, AtomicReference.class, Map.class
+                    },
+                    LlmQueueTaskType.TEXT_CHAT, provider, "m1", List.of(ChatMessage.user("hi")), 0.2,
+                    null, null, null, null, null, Map.of(), 1, idOut, Map.of()
+            );
+            assertFalse(mocked.constructed().isEmpty());
+        }
 
         assertEquals("task-l1", idOut.get());
         assertTrue(outputs.stream().anyMatch(s -> s.contains("鏉堟挸鍤弬鍥ㄦ拱:")));

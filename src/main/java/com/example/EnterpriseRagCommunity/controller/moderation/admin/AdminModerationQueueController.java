@@ -73,14 +73,14 @@ public class AdminModerationQueueController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO getDetail(@PathVariable Long id) {
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO getDetail(@PathVariable("id") Long id) {
         return adminModerationQueueService.getDetail(id);
     }
 
     @GetMapping("/{id}/chunk-progress")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationChunkProgressDTO getChunkProgress(@PathVariable Long id,
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationChunkProgressDTO getChunkProgress(@PathVariable("id") Long id,
                                                             @RequestParam(value = "includeChunks", defaultValue = "0") int includeChunks,
                                                             @RequestParam(value = "limit", defaultValue = "80") int limit) {
         boolean inc = includeChunks == 1;
@@ -89,43 +89,43 @@ public class AdminModerationQueueController {
     }
 
     @GetMapping("/{id}/risk-tags")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#id)")
-    public List<String> getRiskTags(@PathVariable Long id) {
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','read')) or @boardAcl.canModerateQueueItem(#p0)")
+    public List<String> getRiskTags(@PathVariable("id") Long id) {
         return adminModerationQueueService.getRiskTags(id);
     }
 
     @PostMapping("/{id}/risk-tags")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO setRiskTags(@PathVariable Long id,
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO setRiskTags(@PathVariable("id") Long id,
                                                      @Valid @RequestBody(required = false) AdminModerationQueueRiskTagsRequest req) {
         List<String> tags = req == null ? null : req.getRiskTags();
         return adminModerationQueueService.setRiskTags(id, tags);
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO approve(@PathVariable Long id,
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO approve(@PathVariable("id") Long id,
                                                  @Valid @RequestBody AdminModerationQueueActionRequest req) {
         return adminModerationQueueService.approve(id, req.getReason());
     }
 
     @PostMapping("/{id}/override-approve")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO overrideApprove(@PathVariable Long id,
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO overrideApprove(@PathVariable("id") Long id,
                                                          @Valid @RequestBody AdminModerationQueueActionRequest req) {
         return adminModerationQueueService.overrideApprove(id, req.getReason());
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO reject(@PathVariable Long id,
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO reject(@PathVariable("id") Long id,
                                                 @Valid @RequestBody AdminModerationQueueActionRequest req) {
         return adminModerationQueueService.reject(id, req.getReason());
     }
 
     @PostMapping("/{id}/override-reject")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO overrideReject(@PathVariable Long id,
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO overrideReject(@PathVariable("id") Long id,
                                                         @Valid @RequestBody AdminModerationQueueActionRequest req) {
         return adminModerationQueueService.overrideReject(id, req.getReason());
     }
@@ -137,27 +137,27 @@ public class AdminModerationQueueController {
     }
 
     @PostMapping("/{id}/claim")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO claim(@PathVariable Long id) {
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO claim(@PathVariable("id") Long id) {
         return adminModerationQueueService.claim(id);
     }
 
     @PostMapping("/{id}/release")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO release(@PathVariable Long id) {
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO release(@PathVariable("id") Long id) {
         return adminModerationQueueService.release(id);
     }
 
     @PostMapping("/{id}/requeue")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO requeue(@PathVariable Long id,
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO requeue(@PathVariable("id") Long id,
                                                 @Valid @RequestBody AdminModerationQueueActionRequest req) {
         return adminModerationQueueService.requeueToAuto(id, req.getReason(), req.getReviewStage());
     }
 
     @PostMapping("/{id}/ban-user")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO banUser(@PathVariable Long id,
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO banUser(@PathVariable("id") Long id,
                                                  @Valid @RequestBody AdminModerationQueueActionRequest req) {
         return adminModerationQueueService.banUser(id, req.getReason());
     }
@@ -172,8 +172,8 @@ public class AdminModerationQueueController {
     }
 
     @PostMapping("/{id}/to-human")
-    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#id)")
-    public AdminModerationQueueDetailDTO toHuman(@PathVariable Long id,
+    @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action')) or @boardAcl.canModerateQueueItem(#p0)")
+    public AdminModerationQueueDetailDTO toHuman(@PathVariable("id") Long id,
                                                  @Valid @RequestBody AdminModerationQueueActionRequest req) {
         return adminModerationQueueService.toHuman(id, req.getReason());
     }

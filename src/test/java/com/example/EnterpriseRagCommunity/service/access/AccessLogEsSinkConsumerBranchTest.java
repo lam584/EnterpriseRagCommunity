@@ -44,6 +44,7 @@ class AccessLogEsSinkConsumerBranchTest {
                     \"method\": \"GET\",
                     \"path\": \"/p\",
                     \"statusCode\": 200,
+                    "clientIp": "127.0.0.1",
                     \"requestId\": \"req-1\",
                     \"traceId\": \"trace-1\",
                     \"createdAt\": \"2026-04-17T10:10:10\"
@@ -64,6 +65,8 @@ class AccessLogEsSinkConsumerBranchTest {
         assertEquals("req-1", doc.getId());
         assertEquals("req-1", doc.get("event_id"));
         assertEquals("/p", doc.get("path"));
+        assertEquals("127.0.0.1", doc.get("client_ip"));
+        assertEquals("127.0.0.1", doc.get("client_ip_text"));
     }
 
     @Test

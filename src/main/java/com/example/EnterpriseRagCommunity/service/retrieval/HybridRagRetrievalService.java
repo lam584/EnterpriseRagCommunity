@@ -364,9 +364,15 @@ public class HybridRagRetrievalService {
             }
         }
 
-        out.sort((a, b) -> Double.compare(b.getFusedScore() == null ? 0.0 : b.getFusedScore(), a.getFusedScore() == null ? 0.0 : a.getFusedScore()));
+        out.sort(HybridRagRetrievalService::compareFusedScoreDesc);
         if (out.size() > maxDocs) out = out.subList(0, maxDocs);
         return out;
+    }
+
+    private static int compareFusedScoreDesc(DocHit a, DocHit b) {
+        double left = b == null || b.getFusedScore() == null ? 0.0 : b.getFusedScore();
+        double right = a == null || a.getFusedScore() == null ? 0.0 : a.getFusedScore();
+        return Double.compare(left, right);
     }
 
     private List<DocHit> rerank(String queryText, List<DocHit> fused, int rerankK, HybridRetrievalConfigDTO cfg) {

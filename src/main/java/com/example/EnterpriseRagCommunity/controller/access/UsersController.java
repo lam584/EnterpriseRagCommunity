@@ -47,7 +47,7 @@ public class UsersController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
+    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
         UsersEntity actor = currentUserOrThrow();
         usersService.delete(id, actor.getId());
         return ResponseEntity.ok().build();
@@ -55,7 +55,7 @@ public class UsersController {
 
     @PostMapping("/{id}/ban")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
-    public ResponseEntity<UsersUpdateDTO> ban(@PathVariable Long id, @Valid @RequestBody UserBanActionRequest req) {
+    public ResponseEntity<UsersUpdateDTO> ban(@PathVariable("id") Long id, @Valid @RequestBody UserBanActionRequest req) {
         UsersEntity actor = currentUserOrThrow();
         UsersEntity updated = usersService.banUser(id, actor.getId(), actorName(actor), req.getReason(), "ADMIN_USERS", null);
         return ResponseEntity.ok(convertToDTO(updated));
@@ -63,7 +63,7 @@ public class UsersController {
 
     @PostMapping("/{id}/unban")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
-    public ResponseEntity<UsersUpdateDTO> unban(@PathVariable Long id, @Valid @RequestBody UserBanActionRequest req) {
+    public ResponseEntity<UsersUpdateDTO> unban(@PathVariable("id") Long id, @Valid @RequestBody UserBanActionRequest req) {
         UsersEntity actor = currentUserOrThrow();
         UsersEntity updated = usersService.unbanUser(id, actor.getId(), actorName(actor), req.getReason());
         return ResponseEntity.ok(convertToDTO(updated));
@@ -76,7 +76,7 @@ public class UsersController {
      */
     @DeleteMapping("/{id}/hard")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','write'))")
-    public ResponseEntity<Void> hardDelete(@PathVariable Long id) {
+    public ResponseEntity<Void> hardDelete(@PathVariable("id") Long id) {
         UsersEntity actor = currentUserOrThrow();
         usersService.hardDelete(id, actor.getId());
         return ResponseEntity.ok().build();
@@ -91,7 +91,7 @@ public class UsersController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users','read'))")
-    public ResponseEntity<UsersUpdateDTO> getById(@PathVariable Long id) {
+    public ResponseEntity<UsersUpdateDTO> getById(@PathVariable("id") Long id) {
         UsersEntity entity = usersService.getById(id);
         return ResponseEntity.ok(convertToDTO(entity));
     }
@@ -99,14 +99,14 @@ public class UsersController {
     @PostMapping("/{id}/roles")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_user_roles','write'))")
     @com.example.EnterpriseRagCommunity.security.stepup.RequireAdminStepUp
-    public ResponseEntity<Void> assignRoles(@PathVariable Long id, @RequestBody List<Long> roleIds) {
+    public ResponseEntity<Void> assignRoles(@PathVariable("id") Long id, @RequestBody List<Long> roleIds) {
         usersService.assignRoles(id, roleIds);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{id}/roles")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_user_roles','read'))")
-    public ResponseEntity<List<RoleLinkDTO>> getUserRoles(@PathVariable Long id) {
+    public ResponseEntity<List<RoleLinkDTO>> getUserRoles(@PathVariable("id") Long id) {
         List<UserRoleLinksEntity> roles = usersService.getUserRoles(id);
         return ResponseEntity.ok(roles.stream().map(this::convertToRoleLinkDTO).collect(Collectors.toList()));
     }

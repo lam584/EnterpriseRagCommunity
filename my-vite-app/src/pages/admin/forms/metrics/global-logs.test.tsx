@@ -294,4 +294,30 @@ describe('GlobalLogsForm', () => {
       expect(mockAdminGetAccessLogDetail).toHaveBeenCalledWith('req-kafka-1');
     });
   });
+
+  it('shows a more accurate client-ip hint in KAFKA mode', async () => {
+    mockAdminGetAccessLogEsIndexStatus.mockResolvedValue({
+      indexName: 'access-logs-v1',
+      collectionName: 'access-logs-v1',
+      sinkMode: 'KAFKA',
+      esSinkEnabled: true,
+      consumerEnabled: true,
+      exists: true,
+      available: true,
+      health: 'green',
+      status: 'open',
+      docsCount: 1,
+      storeSize: '1mb',
+      availabilityMessage: null,
+    });
+    mockAdminListAccessLogs.mockResolvedValue(buildAccessPage({ last: true }));
+
+    render(
+      <MemoryRouter initialEntries={['/admin/metrics?active=global-logs&glTab=access&page=1&pageSize=15']}>
+        <GlobalLogsForm />
+      </MemoryRouter>
+    );
+
+    await screen.findByPlaceholderText('客户端IP（模糊，ES 子串匹配）');
+  });
 });

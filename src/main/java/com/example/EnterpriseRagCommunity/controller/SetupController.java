@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.EnterpriseRagCommunity.dto.access.request.RegisterRequest;
 import com.example.EnterpriseRagCommunity.config.AdminSetupManager;
 import com.example.EnterpriseRagCommunity.service.access.AccessLogKafkaLifecycleManager;
+import com.example.EnterpriseRagCommunity.service.access.AccessLogEsIndexProvisioningService;
 import com.example.EnterpriseRagCommunity.service.AdministratorService;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.example.EnterpriseRagCommunity.service.init.InitialAdminIndexBootstrapService;
@@ -78,6 +79,8 @@ public class SetupController {
     private final AdminSetupManager adminSetupManager;
 
     private final AccessLogKafkaLifecycleManager accessLogKafkaLifecycleManager;
+
+    private final AccessLogEsIndexProvisioningService accessLogEsIndexProvisioningService;
 
     @org.springframework.beans.factory.annotation.Value("${APP_MASTER_KEY}")
     private String masterKey;
@@ -439,11 +442,19 @@ public class SetupController {
             }
 
             Map<String, String> results = new HashMap<>();
-            try (RestClient client = createClient(uris, apiKey)) {
+            try (RestClient client = shouldOpenGenericIndexClient(indexNames, configs) ? createClient(uris, apiKey) : null) {
                 if (indexNames != null) {
                     for (String rawName : indexNames) {
                         String indexName = rawName == null ? "" : rawName.trim();
                         if (indexName.isBlank()) continue;
+                        if (isAccessLogIndex(indexName, configs)) {
+                            ensureAccessLogIndex(uris, apiKey, configs, indexName, results);
+                            continue;
+                        }
+                        if (client == null) {
+                            results.put(indexName, "创建失败");
+                            continue;
+                        }
                         ensureIndex(client, indexName, results);
                     }
                 }
@@ -488,6 +499,34 @@ public class SetupController {
             }
             results.put(indexName, "创建失败");
         }
+    }
+
+    private void ensureAccessLogIndex(String uris, String apiKey, Map<String, String> configs, String indexName, Map<String, String> results) {
+        try {
+            accessLogEsIndexProvisioningService.initialize(uris, apiKey, configs);
+            results.put(indexName, "已创建");
+        } catch (Exception e) {
+            logger.warn("Failed to initialize access log index {}", indexName, e);
+            results.put(indexName, "创建失败");
+        }
+    }
+
+    private boolean shouldOpenGenericIndexClient(List<String> indexNames, Map<String, String> configs) {
+        if (indexNames == null || indexNames.isEmpty()) return false;
+        for (String rawName : indexNames) {
+            String indexName = rawName == null ? "" : rawName.trim();
+            if (!indexName.isBlank() && !isAccessLogIndex(indexName, configs)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isAccessLogIndex(String indexName, Map<String, String> configs) {
+        if (indexName == null || indexName.isBlank()) return false;
+        String configured = configs == null ? null : configs.get("app.logging.access.es-sink.index");
+        String expected = (configured == null || configured.isBlank()) ? "access-logs-v1" : configured.trim();
+        return "access-logs-v1".equals(indexName) || expected.equals(indexName);
     }
 
     private static boolean isNotFound(Exception e) {

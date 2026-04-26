@@ -39,7 +39,7 @@ public class AdminModerationReviewTraceController {
 
     @GetMapping("/tasks/{queueId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_logs','read'))")
-    public AdminModerationReviewTraceTaskDetailDTO taskDetail(@PathVariable Long queueId) {
+    public AdminModerationReviewTraceTaskDetailDTO taskDetail(@PathVariable("queueId") Long queueId) {
         return service.getTaskDetail(queueId);
     }
 }

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Navigate, Outlet, useLocation, useOutletContext } from 'react-router-dom';
 import SubTabsNav from '../components/SubTabsNav';
 import type { PortalOutletContext } from '../CommunityPortalLayout';
-import { getPortalSection } from '../portalMenu';
+import { getPortalSection, type PortalSection } from '../portalMenu';
 import PostsCreatePreviewSidebar from './components/PostsCreatePreviewSidebar';
 
 export type PostsOutletContext = PortalOutletContext & {
@@ -11,15 +11,22 @@ export type PostsOutletContext = PortalOutletContext & {
   previewPaneEnabled: boolean;
 };
 
-export default function PostsLayout() {
-  // 使用“发帖(compose)”分组作为二级导航来源（basePath 仍然是 /portal/posts）
-  const section = getPortalSection('compose');
-  const items = section.children.map((c) => ({
-    id: c.id,
-    label: c.label,
-    to: `${section.basePath}/${c.path}`,
-  }));
+type LocationState = {
+  from?: {
+    pathname?: string;
+  };
+};
 
+function resolvePostsHeaderSection(pathname: string, state: LocationState | null): PortalSection['id'] {
+  if (!/^\/portal\/posts\/detail\/[^/]+\/?$/.test(pathname)) return 'compose';
+
+  const fromPathname = state?.from?.pathname;
+  if (typeof fromPathname !== 'string') return 'compose';
+  if (fromPathname.startsWith('/portal/discover')) return 'discover';
+  return 'compose';
+}
+
+export default function PostsLayout() {
   const { composePreviewOpen, setComposePreviewOpen } = useOutletContext<PortalOutletContext>();
 
   const location = useLocation();
@@ -28,6 +35,13 @@ export default function PostsLayout() {
 
   // 详情页：/portal/posts/detail/:postId
   const isPostDetail = /^\/portal\/posts\/detail\/[^/]+\/?$/.test(location.pathname);
+  const sectionId = resolvePostsHeaderSection(location.pathname, (location.state ?? null) as LocationState | null);
+  const section = getPortalSection(sectionId);
+  const items = section.children.map((c) => ({
+    id: c.id,
+    label: c.label,
+    to: `${section.basePath}/${c.path}`,
+  }));
 
   const previewPaneEnabled = !isPostDetail && isComposeRoute && composePreviewOpen;
 

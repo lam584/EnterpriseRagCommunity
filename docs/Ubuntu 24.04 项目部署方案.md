@@ -71,7 +71,7 @@ cd EnterpriseRagCommunity
    openssl rand -base64 32
    ```
    > 请复制输出的字符串，稍后会用到。
-2. **创建配置文件**：   我们将把环境变量写入 `/etc/default/enterprise-rag` 文件中，这样 Systemd 可以直接读取。   
+2. **创建 Systemd 环境文件**：   我们将把环境变量写入 `/etc/default/enterprise-rag`，由 Systemd 在启动时注入进程环境。不要把 `APP_MASTER_KEY`、`DB_USERNAME`、`DB_PASSWORD` 写入项目根目录 `.env`。   
 ```bash
    sudo nano /etc/default/enterprise-rag
    ```
@@ -98,6 +98,14 @@ cd EnterpriseRagCommunity
    # === 反向代理头处理（推荐）===
    # 让 Spring 正确识别 Nginx 转发后的 https/http、host、port
    SERVER_FORWARD_HEADERS_STRATEGY=framework
+   ```
+
+   若你不是通过 Systemd 启动，而是临时手工启动，也应先导出环境变量，再执行 `java -jar`，而不是写入项目 `.env`：
+   ```bash
+   export APP_MASTER_KEY='<您的APP_MASTER_KEY>'
+   export DB_USERNAME='root'
+   export DB_PASSWORD='password'
+   java -jar build/libs/EnterpriseRagCommunity.war --spring.profiles.active=perf
    ```
 
    **保存退出**：`Ctrl + O`, `Enter`, `Ctrl + X`。
