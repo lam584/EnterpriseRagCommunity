@@ -192,7 +192,7 @@ public class AdminRetrievalHybridController {
 
     @GetMapping("/logs/events/{eventId}/hits")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_hybrid','access'))")
-    public List<RetrievalHitLogDTO> listHits(@PathVariable("eventId") long eventId) {
+    public List<RetrievalHitLogDTO> listHits(@PathVariable long eventId) {
         return hybridRetrievalLogsService.listHits(eventId);
     }
 

@@ -42,7 +42,7 @@ public class AdminModerationRulesController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_rules','write'))")
-    public ModerationRulesEntity update(@PathVariable("id") Long id,
+    public ModerationRulesEntity update(@PathVariable Long id,
                                         @RequestBody ModerationRulesUpdateDTO dto) {
         // allow frontend to omit dto.id and only use path id
         if (dto.getId() == null) dto.setId(id);
@@ -51,7 +51,7 @@ public class AdminModerationRulesController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_rules','write'))")
-    public void delete(@PathVariable("id") Long id) {
+    public void delete(@PathVariable Long id) {
         service.delete(id);
     }
 }

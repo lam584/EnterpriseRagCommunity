@@ -42,7 +42,7 @@ public class UserReportsController {
     }
 
     @PostMapping("/{userId}/report")
-    public Map<String, Object> reportProfile(@PathVariable("userId") Long userId, @Valid @RequestBody UserReportRequest req) {
+    public Map<String, Object> reportProfile(@PathVariable Long userId, @Valid @RequestBody UserReportRequest req) {
         Long reporterId = currentUserIdOrNull();
         String actorName = currentUsernameOrNull();
         try {

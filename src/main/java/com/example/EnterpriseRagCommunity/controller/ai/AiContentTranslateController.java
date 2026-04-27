@@ -26,7 +26,7 @@ public class AiContentTranslateController {
 
     @PostMapping("/posts/{postId}/translate")
     public SseEmitter translatePost(
-            @PathVariable("postId") Long postId,
+            @PathVariable Long postId,
             @RequestParam("targetLang") String targetLang
     ) {
         Long me = currentUserIdOrThrow();
@@ -35,7 +35,7 @@ public class AiContentTranslateController {
 
     @PostMapping("/comments/{commentId}/translate")
     public SseEmitter translateComment(
-            @PathVariable("commentId") Long commentId,
+            @PathVariable Long commentId,
             @RequestParam("targetLang") String targetLang
     ) {
         Long me = currentUserIdOrThrow();

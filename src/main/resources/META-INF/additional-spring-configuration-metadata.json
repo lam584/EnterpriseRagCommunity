@@ -1,0 +1,58 @@
+{
+  "properties": [
+    {
+      "name": "app.logging.access.kafka.producer.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enable or disable the dedicated Kafka producer for access logs.",
+      "defaultValue": true
+    },
+    {
+      "name": "app.logging.access.kafka.producer.acks",
+      "type": "java.lang.String",
+      "description": "Kafka producer acks configuration for access logs.",
+      "defaultValue": "all"
+    },
+    {
+      "name": "app.logging.access.kafka.producer.idempotence",
+      "type": "java.lang.Boolean",
+      "description": "Enable Kafka producer idempotence for access logs.",
+      "defaultValue": true
+    },
+    {
+      "name": "app.logging.access.kafka.producer.retries",
+      "type": "java.lang.Integer",
+      "description": "Number of retries for the Kafka access logs producer.",
+      "defaultValue": 10
+    },
+    {
+      "name": "app.logging.access.kafka.producer.max-in-flight",
+      "type": "java.lang.Integer",
+      "description": "Max in-flight requests per connection for Kafka access logs producer.",
+      "defaultValue": 5
+    },
+    {
+      "name": "app.logging.access.kafka.producer.delivery-timeout-ms",
+      "type": "java.lang.Integer",
+      "description": "Delivery timeout in milliseconds for Kafka access logs producer.",
+      "defaultValue": 120000
+    },
+    {
+      "name": "app.logging.access.kafka.producer.request-timeout-ms",
+      "type": "java.lang.Integer",
+      "description": "Request timeout in milliseconds for Kafka access logs producer.",
+      "defaultValue": 30000
+    },
+    {
+      "name": "app.logging.access.kafka.producer.linger-ms",
+      "type": "java.lang.Integer",
+      "description": "Linger time in milliseconds for Kafka access logs producer batching.",
+      "defaultValue": 5
+    },
+    {
+      "name": "app.logging.access.kafka.producer.compression-type",
+      "type": "java.lang.String",
+      "description": "Compression type for Kafka access logs producer.",
+      "defaultValue": "lz4"
+    }
+  ]
+}

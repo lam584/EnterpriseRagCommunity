@@ -38,7 +38,7 @@ public class AdminUsersTotpController {
     @PostMapping("/{userId}/reset")
     @ApiOperation("重置用户 TOTP（禁用所有记录）")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_users_2fa','access'))")
-    public ResponseEntity<Void> reset(@PathVariable("userId") Long userId) {
+    public ResponseEntity<Void> reset(@PathVariable Long userId) {
         if (userId == null || userId <= 0) throw new IllegalArgumentException("userId is required");
         List<TotpSecretsEntity> rows = totpSecretsRepository.findByUserId(userId);
         for (TotpSecretsEntity e : rows) {

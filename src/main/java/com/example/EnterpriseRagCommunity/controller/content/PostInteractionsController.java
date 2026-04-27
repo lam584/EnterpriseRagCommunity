@@ -13,17 +13,17 @@ public class PostInteractionsController {
     private final PostInteractionsService postInteractionsService;
 
     @PostMapping("/{postId}/like")
-    public PostToggleResponseDTO toggleLike(@PathVariable("postId") Long postId) {
+    public PostToggleResponseDTO toggleLike(@PathVariable Long postId) {
         return postInteractionsService.toggleLike(postId);
     }
 
     @PostMapping("/{postId}/favorite")
-    public PostToggleResponseDTO toggleFavorite(@PathVariable("postId") Long postId) {
+    public PostToggleResponseDTO toggleFavorite(@PathVariable Long postId) {
         return postInteractionsService.toggleFavorite(postId);
     }
 
     @DeleteMapping("/{postId}/favorite")
-    public PostToggleResponseDTO unfavorite(@PathVariable("postId") Long postId) {
+    public PostToggleResponseDTO unfavorite(@PathVariable Long postId) {
         return postInteractionsService.unfavorite(postId);
     }
 }

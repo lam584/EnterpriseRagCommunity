@@ -49,13 +49,13 @@ public class UploadsController {
     }
 
     @GetMapping("/resumable/{uploadId}")
-    public ResumableUploadStatusDTO getResumableStatus(@PathVariable("uploadId") String uploadId) {
+    public ResumableUploadStatusDTO getResumableStatus(@PathVariable String uploadId) {
         return uploadService.getResumableStatus(uploadId);
     }
 
     @PutMapping("/resumable/{uploadId}/chunk")
     public ResumableUploadStatusDTO uploadResumableChunk(
-            @PathVariable("uploadId") String uploadId,
+            @PathVariable String uploadId,
             HttpServletRequest request
     ) throws IOException {
         long offset = parseRequiredLongHeader(request, HEADER_UPLOAD_OFFSET);
@@ -64,12 +64,12 @@ public class UploadsController {
     }
 
     @PostMapping("/resumable/{uploadId}/complete")
-    public UploadResultDTO completeResumable(@PathVariable("uploadId") String uploadId) {
+    public UploadResultDTO completeResumable(@PathVariable String uploadId) {
         return uploadService.completeResumable(uploadId);
     }
 
     @DeleteMapping("/resumable/{uploadId}")
-    public void cancelResumable(@PathVariable("uploadId") String uploadId) {
+    public void cancelResumable(@PathVariable String uploadId) {
         uploadService.cancelResumable(uploadId);
     }
 

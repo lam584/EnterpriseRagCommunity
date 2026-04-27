@@ -8,8 +8,6 @@ import com.example.EnterpriseRagCommunity.service.retrieval.ElasticsearchHttpSup
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.persistence.criteria.Predicate;
-import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -17,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -37,13 +36,17 @@ import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 @Service
-@RequiredArgsConstructor
 public class AccessLogsService {
 
     private final AccessLogsRepository accessLogsRepository;
+    private final SystemConfigurationService systemConfigurationService;
 
-    @Autowired(required = false)
-    private SystemConfigurationService systemConfigurationService;
+    public AccessLogsService(
+            AccessLogsRepository accessLogsRepository,
+            @Nullable SystemConfigurationService systemConfigurationService) {
+        this.accessLogsRepository = accessLogsRepository;
+        this.systemConfigurationService = systemConfigurationService;
+    }
 
     @Value("${app.logging.access.sink-mode:MYSQL}")
     private String sinkModeRaw = "MYSQL";
@@ -473,7 +476,7 @@ public class AccessLogsService {
     private static Map<String, Object> buildClientIpMustClause(String value) {
         List<Map<String, Object>> clauses = buildClientIpShouldClauses(value);
         if (clauses.isEmpty()) return null;
-        if (clauses.size() == 1) return clauses.get(0);
+        if (clauses.size() == 1) return clauses.getFirst();
         return Map.of("bool", Map.of("should", clauses, "minimum_should_match", 1));
     }
 
@@ -508,8 +511,8 @@ public class AccessLogsService {
             return false;
         }
         try {
-            InetAddress.getByName(value);
-            return true;
+            InetAddress addr = InetAddress.getByName(value);
+            return addr != null;
         } catch (Exception ignored) {
             return false;
         }

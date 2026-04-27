@@ -47,7 +47,7 @@ class AccessLogsServiceBranchTest {
     void query_should_cover_filters_and_sort_branches() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
         when(repo.findAll(any(Specification.class), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
-        AccessLogsService svc = new AccessLogsService(repo);
+        AccessLogsService svc = new AccessLogsService(repo, null);
 
         svc.query(0, 30000, "  kw ", 9L, " user ", " GET ", " /p ", 200, " 127 ", " req ", " tr ",
                 LocalDateTime.now().minusDays(1), LocalDateTime.now(), "createdAt,asc");
@@ -74,7 +74,7 @@ class AccessLogsServiceBranchTest {
     @Test
     void getById_should_map_and_throw_when_missing() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
-        AccessLogsService svc = new AccessLogsService(repo);
+        AccessLogsService svc = new AccessLogsService(repo, null);
 
         AccessLogsEntity e = new AccessLogsEntity();
         e.setId(3L);
@@ -117,7 +117,7 @@ class AccessLogsServiceBranchTest {
     @Test
     void query_should_not_include_details_but_getById_should() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
-        AccessLogsService svc = new AccessLogsService(repo);
+        AccessLogsService svc = new AccessLogsService(repo, null);
 
         AccessLogsEntity entity = new AccessLogsEntity();
         entity.setId(11L);
@@ -361,7 +361,7 @@ class AccessLogsServiceBranchTest {
     }
 
     private static AccessLogsService kafkaService(AccessLogsRepository repo) {
-        AccessLogsService svc = new AccessLogsService(repo);
+        AccessLogsService svc = new AccessLogsService(repo, null);
         SystemConfigurationService configService = mock(SystemConfigurationService.class);
         when(configService.getConfig("app.logging.access.sink-mode")).thenReturn("KAFKA");
         when(configService.getConfig("spring.elasticsearch.uris")).thenReturn("mockhttp://es");

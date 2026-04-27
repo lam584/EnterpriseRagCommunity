@@ -38,7 +38,7 @@ class AccessAuditWritersBranchTest {
     @Test
     void accessLogWriter_should_fill_defaults_and_save() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
-        AccessLogWriter writer = new AccessLogWriter(repo, null);
+        AccessLogWriter writer = new AccessLogWriter(repo, null, null, null);
 
         writer.write((AccessLogsEntity) null);
 
@@ -53,7 +53,7 @@ class AccessAuditWritersBranchTest {
     @Test
     void accessLogWriter_overload_should_handle_null_method_and_path() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
-        AccessLogWriter writer = new AccessLogWriter(repo, null);
+        AccessLogWriter writer = new AccessLogWriter(repo, null, null, null);
         ArgumentCaptor<AccessLogsEntity> cap = ArgumentCaptor.forClass(AccessLogsEntity.class);
 
         writer.write(
@@ -76,7 +76,7 @@ class AccessAuditWritersBranchTest {
     @SuppressWarnings("unchecked")
     void accessLogWriter_kafka_mode_should_not_write_mysql_when_kafka_fails() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
-        AccessLogWriter writer = new AccessLogWriter(repo, null);
+        AccessLogWriter writer = new AccessLogWriter(repo, null, null, null);
 
         KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
         CompletableFuture<SendResult<String, String>> failed = new CompletableFuture<>();
@@ -102,7 +102,7 @@ class AccessAuditWritersBranchTest {
     @SuppressWarnings("unchecked")
     void accessLogWriter_kafka_mode_should_not_write_mysql_when_kafka_succeeds() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
-        AccessLogWriter writer = new AccessLogWriter(repo, null);
+        AccessLogWriter writer = new AccessLogWriter(repo, null, null, null);
 
         KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
         CompletableFuture<SendResult<String, String>> ok = new CompletableFuture<>();
@@ -145,7 +145,7 @@ class AccessAuditWritersBranchTest {
     @SuppressWarnings("unchecked")
     void accessLogWriter_dual_mode_should_write_mysql_when_kafka_succeeds() {
         AccessLogsRepository repo = mock(AccessLogsRepository.class);
-        AccessLogWriter writer = new AccessLogWriter(repo, null);
+        AccessLogWriter writer = new AccessLogWriter(repo, null, null, null);
 
         KafkaTemplate<String, String> kafkaTemplate = mock(KafkaTemplate.class);
         CompletableFuture<SendResult<String, String>> ok = new CompletableFuture<>();

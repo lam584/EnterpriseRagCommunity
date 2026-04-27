@@ -28,13 +28,13 @@ public class AdminPostFilesController {
 
     @GetMapping("/{attachmentId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_posts','read'))")
-    public PostFileExtractionAdminDetailDTO detail(@PathVariable("attachmentId") Long attachmentId) {
+    public PostFileExtractionAdminDetailDTO detail(@PathVariable Long attachmentId) {
         return adminPostFilesService.detail(attachmentId);
     }
 
     @PostMapping("/{attachmentId}/reextract")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_posts','update'))")
-    public PostFileExtractionAdminDetailDTO reextract(@PathVariable("attachmentId") Long attachmentId) {
+    public PostFileExtractionAdminDetailDTO reextract(@PathVariable Long attachmentId) {
         return adminPostFilesService.reextract(attachmentId);
     }
 }

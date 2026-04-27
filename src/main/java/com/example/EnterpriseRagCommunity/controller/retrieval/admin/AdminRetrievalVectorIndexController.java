@@ -105,7 +105,7 @@ public class AdminRetrievalVectorIndexController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
-        public ResponseEntity<Void> delete(@PathVariable("id") Long id, Principal principal) {
+        public ResponseEntity<Void> delete(@PathVariable Long id, Principal principal) {
         if (id == null || !vectorIndicesRepository.existsById(id)) {
             auditLogWriter.write(null, principal == null ? null : principal.getName(),
                     "RETRIEVAL_VECTOR_INDEX_DELETE", "VECTOR_INDEX", id, AuditResult.FAIL, "not found", null, null);
@@ -120,7 +120,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/build/posts")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagPostsBuildResponse> buildPosts(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestParam(value = "boardId", required = false) Long boardId,
             @RequestParam(value = "fromPostId", required = false) Long fromPostId,
             @RequestParam(value = "postBatchSize", required = false) Integer postBatchSize,
@@ -149,7 +149,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/rebuild/posts")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagPostsBuildResponse> rebuildPosts(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestParam(value = "boardId", required = false) Long boardId,
             @RequestParam(value = "postBatchSize", required = false) Integer postBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
@@ -176,7 +176,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/sync/posts")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagPostsBuildResponse> syncPosts(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestParam(value = "boardId", required = false) Long boardId,
             @RequestParam(value = "postBatchSize", required = false) Integer postBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
@@ -203,7 +203,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/build/comments")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagCommentsBuildResponse> buildComments(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestParam(value = "fromCommentId", required = false) Long fromCommentId,
             @RequestParam(value = "commentBatchSize", required = false) Integer commentBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
@@ -230,7 +230,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/rebuild/comments")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagCommentsBuildResponse> rebuildComments(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestParam(value = "commentBatchSize", required = false) Integer commentBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
@@ -255,7 +255,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/sync/comments")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagCommentsBuildResponse> syncComments(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestParam(value = "commentBatchSize", required = false) Integer commentBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
@@ -280,7 +280,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/test-query/comments")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagCommentsTestQueryResponse> testQueryComments(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestBody(required = false) RagCommentsTestQueryRequest req,
             Principal principal
     ) {
@@ -301,7 +301,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/build/files")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagFilesBuildResponse> buildFiles(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestParam(value = "fromFileAssetId", required = false) Long fromFileAssetId,
             @RequestParam(value = "fileBatchSize", required = false) Integer fileBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
@@ -328,7 +328,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/rebuild/files")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagFilesBuildResponse> rebuildFiles(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestParam(value = "fileBatchSize", required = false) Integer fileBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
@@ -353,7 +353,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/sync/files")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagFilesBuildResponse> syncFiles(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestParam(value = "fileBatchSize", required = false) Integer fileBatchSize,
             @RequestParam(value = "chunkMaxChars", required = false) Integer chunkMaxChars,
             @RequestParam(value = "chunkOverlapChars", required = false) Integer chunkOverlapChars,
@@ -378,7 +378,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/test-query/files")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagFilesTestQueryResponse> testQueryFiles(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestBody(required = false) RagFilesTestQueryRequest req,
             Principal principal
     ) {
@@ -398,7 +398,7 @@ public class AdminRetrievalVectorIndexController {
     @PostMapping("/{id}/test-query")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
     public ResponseEntity<RagPostsTestQueryResponse> testQuery(
-            @PathVariable("id") Long id,
+            @PathVariable Long id,
             @RequestBody(required = false) RagPostsTestQueryRequest req,
             Principal principal
     ) {
@@ -418,9 +418,9 @@ public class AdminRetrievalVectorIndexController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_retrieval_index','action'))")
-        public ResponseEntity<VectorIndicesEntity> update(@PathVariable("id") Long id,
-                                                      @RequestBody(required = false) @Valid VectorIndicesUpdateDTO dto,
-                                                      Principal principal) {
+        public ResponseEntity<VectorIndicesEntity> update(@PathVariable Long id,
+                                                          @RequestBody(required = false) @Valid VectorIndicesUpdateDTO dto,
+                                                          Principal principal) {
         if (id == null) throw new IllegalArgumentException("id is required");
         if (dto == null) throw new IllegalArgumentException("payload is required");
         if (dto.getId() == null || !id.equals(dto.getId())) throw new IllegalArgumentException("id mismatch");

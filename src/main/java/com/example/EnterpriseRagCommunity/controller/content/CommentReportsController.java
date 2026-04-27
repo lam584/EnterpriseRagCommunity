@@ -42,7 +42,7 @@ public class CommentReportsController {
     }
 
     @PostMapping("/{commentId}/report")
-    public Map<String, Object> reportComment(@PathVariable("commentId") Long commentId, @Valid @RequestBody CommentReportRequest req) {
+    public Map<String, Object> reportComment(@PathVariable Long commentId, @Valid @RequestBody CommentReportRequest req) {
         Long userId = currentUserIdOrNull();
         String actorName = currentUsernameOrNull();
         try {

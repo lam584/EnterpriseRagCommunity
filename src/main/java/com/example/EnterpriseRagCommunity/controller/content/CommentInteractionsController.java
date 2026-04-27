@@ -36,7 +36,7 @@ public class CommentInteractionsController {
     }
 
     @PostMapping("/{commentId}/like")
-    public CommentToggleResponseDTO toggleLike(@PathVariable("commentId") Long commentId) {
+    public CommentToggleResponseDTO toggleLike(@PathVariable Long commentId) {
         if (commentId == null) throw new IllegalArgumentException("commentId 不能为空");
         Long me = null;
         String actorName = null;
@@ -98,7 +98,7 @@ public class CommentInteractionsController {
     }
 
     @DeleteMapping("/{commentId}")
-    public void deleteMyComment(@PathVariable("commentId") Long commentId) {
+    public void deleteMyComment(@PathVariable Long commentId) {
         commentsService.deleteOwnComment(commentId);
     }
 

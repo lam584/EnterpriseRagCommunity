@@ -46,7 +46,7 @@ public class AdminBoardsController {
     @PutMapping("/{id}")
     @ApiOperation("后台更新板块")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_boards','write'))")
-    public ResponseEntity<BoardsDTO> updateBoard(@PathVariable("id") Long id, @RequestBody BoardsUpdateDTO updateDTO) {
+    public ResponseEntity<BoardsDTO> updateBoard(@PathVariable Long id, @RequestBody BoardsUpdateDTO updateDTO) {
         updateDTO.setId(id);
         BoardsDTO result = boardService.updateBoard(updateDTO);
         return ResponseEntity.ok(BoardDtoSupport.sanitizeBoard(result));
@@ -55,7 +55,7 @@ public class AdminBoardsController {
     @DeleteMapping("/{id}")
     @ApiOperation("后台删除板块")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_boards','write'))")
-    public ResponseEntity<Void> deleteBoard(@PathVariable("id") Long id) {
+    public ResponseEntity<Void> deleteBoard(@PathVariable Long id) {
         boardService.deleteBoard(id);
         return ResponseEntity.noContent().build();
     }
@@ -63,14 +63,14 @@ public class AdminBoardsController {
     @GetMapping("/{id}/access-control")
     @ApiOperation("查询板块访问/发帖角色与版主配置")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_boards','read'))")
-    public ResponseEntity<BoardAccessControlDTO> getAccessControl(@PathVariable("id") Long id) {
+    public ResponseEntity<BoardAccessControlDTO> getAccessControl(@PathVariable Long id) {
         return ResponseEntity.ok(boardAccessControlService.getByBoardId(id));
     }
 
     @PutMapping("/{id}/access-control")
     @ApiOperation("覆盖更新板块访问/发帖角色与版主配置")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_boards','write'))")
-    public ResponseEntity<BoardAccessControlDTO> replaceAccessControl(@PathVariable("id") Long id,
+    public ResponseEntity<BoardAccessControlDTO> replaceAccessControl(@PathVariable Long id,
                                                                       @RequestBody BoardAccessControlDTO dto) {
         return ResponseEntity.ok(boardAccessControlService.replace(id, dto));
     }

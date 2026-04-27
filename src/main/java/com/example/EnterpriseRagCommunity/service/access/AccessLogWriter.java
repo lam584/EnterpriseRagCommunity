@@ -6,7 +6,6 @@ import com.example.EnterpriseRagCommunity.config.AdminSetupManager;
 import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -37,19 +36,19 @@ public class AccessLogWriter {
 
     private final AccessLogsRepository accessLogsRepository;
     private final KafkaTemplate<String, String> accessLogsKafkaTemplate;
-
-    @Autowired(required = false)
-    private AdminSetupManager adminSetupManager;
-
-    @Autowired(required = false)
-    private SystemConfigurationService systemConfigurationService;
+    private final AdminSetupManager adminSetupManager;
+    private final SystemConfigurationService systemConfigurationService;
 
     public AccessLogWriter(
             AccessLogsRepository accessLogsRepository,
-            @Qualifier("accessLogsKafkaTemplate") @Nullable KafkaTemplate<String, String> accessLogsKafkaTemplate
+            @Qualifier("accessLogsKafkaTemplate") @Nullable KafkaTemplate<String, String> accessLogsKafkaTemplate,
+            @Nullable AdminSetupManager adminSetupManager,
+            @Nullable SystemConfigurationService systemConfigurationService
     ) {
         this.accessLogsRepository = accessLogsRepository;
         this.accessLogsKafkaTemplate = accessLogsKafkaTemplate;
+        this.adminSetupManager = adminSetupManager;
+        this.systemConfigurationService = systemConfigurationService;
     }
 
     @Value("${app.logging.access.sink-mode:MYSQL}")
@@ -98,9 +97,7 @@ public class AccessLogWriter {
         AccessLogSinkMode mode = resolveSinkMode();
         switch (mode) {
             case MYSQL -> persistMysql(e, noDropGuarantee);
-            case KAFKA -> {
-                sendToKafka(e, false);
-            }
+            case KAFKA -> sendToKafka(e, false);
             case DUAL -> {
                 boolean sent = sendToKafka(e, false);
                 if (sent) {

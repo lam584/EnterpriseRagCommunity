@@ -34,12 +34,12 @@ public class PostComposeAiSnapshotsController {
     }
 
     @PostMapping("/{id}/apply")
-    public PostComposeAiSnapshotDTO apply(@PathVariable("id") Long id, @Valid @RequestBody PostComposeAiSnapshotApplyRequest req) {
+    public PostComposeAiSnapshotDTO apply(@PathVariable Long id, @Valid @RequestBody PostComposeAiSnapshotApplyRequest req) {
         return service.apply(id, req);
     }
 
     @PostMapping("/{id}/revert")
-    public PostComposeAiSnapshotDTO revert(@PathVariable("id") Long id) {
+    public PostComposeAiSnapshotDTO revert(@PathVariable Long id) {
         return service.revert(id);
     }
 }

@@ -65,7 +65,7 @@ public class PostsController {
     }
 
     @GetMapping("/{id}")
-    public PostDetailDTO getById(@PathVariable("id") Long id) {
+    public PostDetailDTO getById(@PathVariable Long id) {
         return portalPostsService.getById(id);
     }
 
@@ -79,17 +79,17 @@ public class PostsController {
 
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_queue','action'))")
-    public PostsEntity updateStatus(@PathVariable("id") Long id, @Valid @RequestBody UpdateStatusRequest req) {
+    public PostsEntity updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest req) {
         return postsService.updateStatus(id, req.getStatus());
     }
 
     @PutMapping("/{id}")
-    public PostsEntity update(@PathVariable("id") Long id, @Valid @RequestBody PostsUpdateDTO dto) {
+    public PostsEntity update(@PathVariable Long id, @Valid @RequestBody PostsUpdateDTO dto) {
         return postsService.update(id, dto);
     }
 
     @DeleteMapping("/{id}")
-    public void delete(@PathVariable("id") Long id) {
+    public void delete(@PathVariable Long id) {
         postsService.delete(id);
     }
 

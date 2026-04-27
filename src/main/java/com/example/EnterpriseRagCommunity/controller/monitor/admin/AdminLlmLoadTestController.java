@@ -46,7 +46,7 @@ public class AdminLlmLoadTestController {
 
     @GetMapping("/{runId}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public ResponseEntity<AdminLlmLoadTestStatusDTO> status(@PathVariable("runId") @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
+    public ResponseEntity<AdminLlmLoadTestStatusDTO> status(@PathVariable @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
         AdminLlmLoadTestStatusDTO st = service.status(runId);
         if (st == null) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(st);
@@ -54,7 +54,7 @@ public class AdminLlmLoadTestController {
 
     @PostMapping("/{runId}/stop")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
-    public ResponseEntity<?> stop(@PathVariable("runId") @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
+    public ResponseEntity<?> stop(@PathVariable @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId) {
         boolean ok = service.stop(runId);
         if (!ok) return ResponseEntity.notFound().build();
         return ResponseEntity.ok(Map.of("stopped", true));
@@ -63,7 +63,7 @@ public class AdminLlmLoadTestController {
     @GetMapping("/{runId}/export")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_metrics_llm_queue','read'))")
     public ResponseEntity<StreamingResponseBody> export(
-            @PathVariable("runId") @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId,
+            @PathVariable @Pattern(regexp = "^[A-Za-z0-9-]{1,64}$") String runId,
             @RequestParam(value = "format", required = false, defaultValue = "json") @Pattern(regexp = "^(json|csv)$") String format
     ) {
         String normalizedRunId = normalizeRunId(runId);

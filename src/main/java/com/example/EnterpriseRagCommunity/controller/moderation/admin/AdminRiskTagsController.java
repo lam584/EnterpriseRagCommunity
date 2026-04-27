@@ -92,7 +92,7 @@ public class AdminRiskTagsController {
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_risk_tags','write'))")
-    public ResponseEntity<TagsDTO> update(@PathVariable("id") Long id, @Valid @RequestBody TagsUpdateDTO updateDTO) {
+    public ResponseEntity<TagsDTO> update(@PathVariable Long id, @Valid @RequestBody TagsUpdateDTO updateDTO) {
         if (updateDTO == null) updateDTO = new TagsUpdateDTO();
         updateDTO.setId(id);
         if (updateDTO.getType() != null && updateDTO.getType() != TagType.RISK) {
@@ -125,7 +125,7 @@ public class AdminRiskTagsController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_risk_tags','write'))")
-    public ResponseEntity<Void> delete(@PathVariable("id") Long id) {
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
         if (id == null) throw new IllegalArgumentException("id 不能为空");
         TagsEntity current = tagsRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("审核标签不存在: " + id));
         if (current.getType() != TagType.RISK) {

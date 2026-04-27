@@ -39,14 +39,14 @@ public class AdminModerationChunkReviewLogsController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_chunk_review','access'))")
-    public AdminModerationChunkLogDetailDTO get(@PathVariable("id") Long id) {
+    public AdminModerationChunkLogDetailDTO get(@PathVariable Long id) {
         if (id == null || id <= 0) throw new IllegalArgumentException("id 不合法");
         return logsService.getDetail(id);
     }
 
     @GetMapping("/{id}/content")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_moderation_chunk_review','access'))")
-    public AdminModerationChunkContentPreviewDTO getContent(@PathVariable("id") Long id) {
+    public AdminModerationChunkContentPreviewDTO getContent(@PathVariable Long id) {
         if (id == null || id <= 0) throw new IllegalArgumentException("id 不合法");
         return logsService.getContentPreview(id);
     }

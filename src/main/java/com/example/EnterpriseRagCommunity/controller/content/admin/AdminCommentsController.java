@@ -39,14 +39,14 @@ public class AdminCommentsController {
 
     @PatchMapping("/{id}/status")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_comments','update'))")
-    public CommentAdminDTO updateStatus(@PathVariable("id") Long id,
+    public CommentAdminDTO updateStatus(@PathVariable Long id,
                                         @Valid @RequestBody CommentUpdateStatusRequest req) {
         return adminCommentsService.updateStatus(id, req);
     }
 
     @PatchMapping("/{id}/deleted")
     @PreAuthorize("hasAuthority(T(com.example.EnterpriseRagCommunity.security.Permissions).perm('admin_comments','update'))")
-    public CommentAdminDTO setDeleted(@PathVariable("id") Long id,
+    public CommentAdminDTO setDeleted(@PathVariable Long id,
                                       @Valid @RequestBody CommentSetDeletedRequest req) {
         return adminCommentsService.setDeleted(id, req);
     }
