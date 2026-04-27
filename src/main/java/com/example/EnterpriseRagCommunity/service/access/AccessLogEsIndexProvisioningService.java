@@ -56,6 +56,52 @@ public class AccessLogEsIndexProvisioningService {
         ensureExistingIndexClientIpTextMapping(safeEndpoint, apiKey, indexName);
     }
 
+    /**
+     * 系统初始化向导专用：先删除已存在的访问日志索引（清空历史数据），再按模板重新创建。
+     * 仅应在用户主动触发的初始化场景调用，避免误删生产数据。
+     */
+    public void recreate(String endpoint, String apiKey, Map<String, String> configs) {
+        String safeEndpoint = endpoint == null ? "" : endpoint.trim();
+        if (safeEndpoint.isEmpty()) {
+            throw new IllegalArgumentException("Elasticsearch endpoint is required");
+        }
+
+        Map<String, String> safeConfigs = configs == null ? Map.of() : configs;
+        String indexName = resolveConfig(safeConfigs, "app.logging.access.es-sink.index", DEFAULT_ACCESS_INDEX);
+        String templateName = resolveConfig(safeConfigs, "app.logging.access.es-sink.template-name", DEFAULT_TEMPLATE_NAME);
+        String indexPattern = resolveConfig(safeConfigs, "app.logging.access.es-sink.index-pattern", DEFAULT_INDEX_PATTERN);
+        int shards = resolveIntConfig(safeConfigs, "app.logging.access.es-sink.template-shards", 1, 1);
+        int replicas = resolveIntConfig(safeConfigs, "app.logging.access.es-sink.template-replicas", 1, 0);
+
+        deleteIndexIfExists(safeEndpoint, apiKey, indexName);
+        upsertIndexTemplate(safeEndpoint, apiKey, templateName, indexPattern, shards, replicas);
+        ensureIndexExists(safeEndpoint, apiKey, indexName);
+        ensureExistingIndexClientIpTextMapping(safeEndpoint, apiKey, indexName);
+        log.info("access_log_es_index_recreated index={}", indexName);
+    }
+
+    private void deleteIndexIfExists(String endpoint, String apiKey, String indexName) {
+        try {
+            String encodedIndex = URLEncoder.encode(indexName, StandardCharsets.UTF_8);
+            URL url = java.net.URI.create(endpoint + "/" + encodedIndex).toURL();
+            HttpURLConnection conn = openJsonConnection(url, "DELETE", apiKey, false);
+            ResponseInfo response = readResponse(conn);
+            if (response.isSuccess()) {
+                log.info("access_log_es_index_delete_ok index={}", indexName);
+                return;
+            }
+            if (response.code == 404) {
+                // 索引本就不存在，视为成功
+                return;
+            }
+            throw new IllegalStateException("Index delete failed: HTTP " + response.code + " " + response.body);
+        } catch (IllegalStateException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to delete access log index: " + ex.getMessage(), ex);
+        }
+    }
+
     private void upsertIndexTemplate(String endpoint, String apiKey, String templateName, String indexPattern, int shards, int replicas) {
         try {
             String encodedName = URLEncoder.encode(templateName, StandardCharsets.UTF_8);

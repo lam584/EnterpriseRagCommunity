@@ -503,7 +503,8 @@ public class SetupController {
 
     private void ensureAccessLogIndex(String uris, String apiKey, Map<String, String> configs, String indexName, Map<String, String> results) {
         try {
-            accessLogEsIndexProvisioningService.initialize(uris, apiKey, configs);
+            // 系统初始化向导语义：需要清空旧数据并按最新模板重建，保持与 RAG 向量索引 ensureOrRecreate 行为一致。
+            accessLogEsIndexProvisioningService.recreate(uris, apiKey, configs);
             results.put(indexName, "已创建");
         } catch (Exception e) {
             logger.warn("Failed to initialize access log index {}", indexName, e);

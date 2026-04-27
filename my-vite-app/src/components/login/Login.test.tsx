@@ -2,7 +2,6 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
-import React from 'react';
 
 const authServiceMocks = vi.hoisted(() => {
   return {
@@ -19,6 +18,7 @@ const authContextMocks = vi.hoisted(() => {
   return {
     setCurrentUser: vi.fn(),
     setIsAuthenticated: vi.fn(),
+    refreshAuth: vi.fn(),
   };
 });
 
@@ -41,6 +41,7 @@ vi.mock('../../contexts/AuthContext', () => {
       return {
         setCurrentUser: authContextMocks.setCurrentUser,
         setIsAuthenticated: authContextMocks.setIsAuthenticated,
+        refreshAuth: authContextMocks.refreshAuth,
       };
     },
   };
@@ -189,8 +190,7 @@ describe('Login', () => {
     fireEvent.click(screen.getByRole('button', { name: '登录' }));
 
     expect(await screen.findByText('HOME')).not.toBeNull();
-    expect(authContextMocks.setCurrentUser).toHaveBeenCalled();
-    expect(authContextMocks.setIsAuthenticated).toHaveBeenCalledWith(true);
+    expect(authContextMocks.refreshAuth).toHaveBeenCalledTimes(1);
 
     expect(localStorage.getItem('rememberedEmail')).toBe('test@example.com');
       expect(localStorage.getItem('rememberedPassword')).toBeNull();

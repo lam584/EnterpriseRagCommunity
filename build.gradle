@@ -451,17 +451,39 @@ if (providers.gradleProperty('enforceLicenseWhitelist').map { Boolean.parseBoole
 }
 
 dependencyCheck {
+    def dependencyCheckOnline = providers.gradleProperty('dependencyCheckOnline')
+            .map { Boolean.parseBoolean(it) }
+            .orElse(false)
+            .get()
+    def dependencyCheckFailCvss = providers.gradleProperty('dependencyCheckFailCvss')
+        .map { Float.parseFloat(it) }
+        .orElse(dependencyCheckOnline ? 9.0f : 11.0f)
+        .get()
+
     formats = ['HTML', 'JSON']
     outputDirectory = layout.buildDirectory.dir('reports/dependency-check').get().asFile.absolutePath
-    failBuildOnCVSS = 9.0
+    failBuildOnCVSS = dependencyCheckFailCvss
     suppressionFile = "${projectDir}/dependency-check-suppressions.xml"
     def nvdApiKey = providers.environmentVariable('NVD_API_KEY')
-    autoUpdate = nvdApiKey.isPresent()
+    autoUpdate = dependencyCheckOnline && nvdApiKey.isPresent()
+    failOnError = dependencyCheckOnline
+
     analyzers {
         assemblyEnabled = false
+        kev {
+            enabled = dependencyCheckOnline
+        }
+        retirejs {
+            enabled = dependencyCheckOnline
+        }
     }
+
+    hostedSuppressions {
+        enabled = dependencyCheckOnline
+    }
+
     nvd {
-        apiKey = nvdApiKey.orNull // 推荐从环境变量读取
+        apiKey = dependencyCheckOnline ? nvdApiKey.orNull : null // 推荐从环境变量读取
         // 或者硬编码（不推荐）：apiKey = '你的_API_KEY'
     }
 }

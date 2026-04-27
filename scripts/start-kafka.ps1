@@ -95,20 +95,41 @@ if (-not [string]::IsNullOrWhiteSpace($dataDir)) {
         $env:JAVA_HOME = $JavaHome
         $env:KAFKA_HOME = $KafkaHome
         $env:Path = "$JavaHome\bin;$KafkaHome\bin\windows;" + $env:Path
-        $clusterId = (& (Join-Path $KafkaHome 'bin\windows\kafka-storage.bat') random-uuid 2>$null).Trim()
+
+        # Kafka 4.0+ removed 'kafka-storage.bat random-uuid'; generate UUID via PowerShell instead.
+        $clusterId = [guid]::NewGuid().ToString()
         if ([string]::IsNullOrWhiteSpace($clusterId)) {
             throw 'Unable to generate Kafka cluster ID.'
         }
-        & (Join-Path $KafkaHome 'bin\windows\kafka-storage.bat') format -t $clusterId -c $ConfigFile | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            throw 'Kafka metadata format failed.'
+
+        # Preserve stderr for troubleshooting instead of swallowing it with Out-Null.
+        $formatStdoutLog = Join-Path $LogDir 'kafka-storage.stdout.log'
+        $formatStderrLog = Join-Path $LogDir 'kafka-storage.stderr.log'
+        $formatProc = Start-Process -FilePath (Join-Path $KafkaHome 'bin\windows\kafka-storage.bat') `
+            -ArgumentList @('format', '-t', $clusterId, '-c', $ConfigFile) `
+            -NoNewWindow `
+            -Wait `
+            -PassThru `
+            -RedirectStandardOutput $formatStdoutLog `
+            -RedirectStandardError $formatStderrLog
+        if ($formatProc.ExitCode -ne 0) {
+            $errTail = @()
+            if (Test-Path $formatStderrLog) {
+                $errTail += Get-Content $formatStderrLog -Tail 20 -ErrorAction SilentlyContinue
+            }
+            if ($errTail.Count -eq 0 -and (Test-Path $formatStdoutLog)) {
+                $errTail += Get-Content $formatStdoutLog -Tail 20 -ErrorAction SilentlyContinue
+            }
+            throw ("Kafka metadata format failed (exit=$($formatProc.ExitCode)).`n" + ($errTail -join [Environment]::NewLine))
         }
     }
 }
 
-$command = "$env:JAVA_HOME='$JavaHome'; " +
-    "$env:KAFKA_HOME='$KafkaHome'; " +
-    "$env:Path='$JavaHome\bin;$KafkaHome\bin\windows;' + $env:Path; " +
+# Escape $env:* with backticks so they are expanded inside the child shell, not the parent.
+# Otherwise $env:JAVA_HOME would be replaced by its current value here and produce invalid syntax.
+$command = "`$env:JAVA_HOME='$JavaHome'; " +
+    "`$env:KAFKA_HOME='$KafkaHome'; " +
+    "`$env:Path='$JavaHome\bin;$KafkaHome\bin\windows;' + `$env:Path; " +
     "& '$KafkaHome\bin\windows\kafka-server-start.bat' '$ConfigFile'"
 
 $launcher = Start-Process -FilePath 'powershell.exe' `
@@ -141,4 +162,4 @@ while ((Get-Date) -lt $deadline) {
     }
 }
 
-    throw "Kafka start timed out. Check logs: $stdoutLog / $stderrLog"
+throw "Kafka start timed out. Check logs: $stdoutLog / $stderrLog"
