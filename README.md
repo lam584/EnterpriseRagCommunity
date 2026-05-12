@@ -1,6 +1,6 @@
 # 企业 RAG 社区系统
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 一个围绕社区内容生产、审核治理、检索增强和大模型接入构建的全栈 Web 系统。项目当前已经不是单纯的“社区 + 聊天”原型，而是包含前台社区、版主工作台、后台管理台、审核流水线、RAG 检索链路、LLM 接入配置和监控面板的完整工程化实现。
 
@@ -73,10 +73,10 @@
 
 ## 开源许可证与合规说明
 
-- 本仓库源码采用 `Apache-2.0`，详见根目录 `LICENSE`。
+- 本仓库源码采用 MIT，详见根目录 LICENSE。
 - 第三方依赖声明见根目录 `NOTICE`，机器清单可生成到 `licenses/THIRD-PARTY-LICENSES.txt`。
 - 当前许可证白名单门禁为：`Apache-2.0`、`MIT`（见 `build.gradle` 的 `checkLicenseWhitelist`）。
-- 当前状态为“源码 Apache-2.0 + 依赖例外治理中”，整改清单见 `docs/许可证整改清单-Apache2.md`。
+- 当前状态为“源码 MIT + 依赖例外治理中”。
 
 ```powershell
 .\gradlew.bat generateLicenseReport
