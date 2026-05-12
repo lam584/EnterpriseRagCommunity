@@ -23,6 +23,7 @@ jobs:
         uses: JetBrains/qodana-action@v2025.3
         with:
           pr-mode: false
+          args: --image,jetbrains/qodana-jvm:2025.3.2
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_1061188619 }}
           QODANA_ENDPOINT: 'https://qodana.cloud'

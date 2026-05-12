@@ -15,6 +15,7 @@ plugins {
     id 'java'
     id 'war'
     id 'jacoco'
+    id 'idea'
     id 'com.github.jk1.dependency-license-report' version '2.5'
     id 'org.owasp.dependencycheck' version '12.2.0'
     id 'org.sonarqube' version '7.2.2.6593'
@@ -39,22 +40,26 @@ ext['spring-framework.version'] = '6.2.17'
 ext['spring-security.version'] = '6.5.9'
 ext['jackson.version'] = '2.19.4'
 
+def projectJavaVersion = providers.gradleProperty('javaToolchainVersion')
+        .orElse('25')
+        .map { Integer.parseInt(it) }
+        .get()
+
 java {
     toolchain {
-        def toolchainVersion = providers.gradleProperty('javaToolchainVersion')
-                .orElse('25')
-                .map { Integer.parseInt(it) }
-                .get()
-        languageVersion = JavaLanguageVersion.of(toolchainVersion)
+        languageVersion = JavaLanguageVersion.of(projectJavaVersion)
     }
 }
 
 def projectJavaLauncher = javaToolchains.launcherFor {
-    def toolchainVersion = providers.gradleProperty('javaToolchainVersion')
-            .orElse('25')
-            .map { Integer.parseInt(it) }
-            .get()
-    languageVersion = JavaLanguageVersion.of(toolchainVersion)
+    languageVersion = JavaLanguageVersion.of(projectJavaVersion)
+}
+
+idea {
+    module {
+        inheritOutputDirs = true
+        jdkName = projectJavaVersion.toString()
+    }
 }
 
 tasks.withType(Test).configureEach {
