@@ -9,17 +9,18 @@ vi.mock('./llm-loadtest', () => ({
 const adminGetLlmQueueStatus = vi.fn();
 const adminGetLlmQueueTaskDetail = vi.fn();
 
-vi.mock('../../../../services/llmQueueAdminService', () => ({
+vi.mock('../../../../services/admin/ai/llmQueueAdminService', () => ({
+  adminGetLlmQueueConfig: () => Promise.resolve({ maxConcurrent: 1, maxQueueSize: 0, keepCompleted: 0 }),
   adminGetLlmQueueStatus: (...args: unknown[]) => adminGetLlmQueueStatus(...args),
   adminGetLlmQueueTaskDetail: (...args: unknown[]) => adminGetLlmQueueTaskDetail(...args),
   adminUpdateLlmQueueConfig: () => Promise.resolve({ maxConcurrent: 1, maxQueueSize: 0, keepCompleted: 0 }),
 }));
 
-vi.mock('../../../../services/llmRoutingAdminService', () => ({
+vi.mock('../../../../services/admin/ai/llmRoutingAdminService', () => ({
   adminGetLlmRoutingConfig: () => Promise.resolve({ scenarios: [] }),
 }));
 
-vi.mock('../../../../services/aiProvidersAdminService', () => ({
+vi.mock('../../../../services/admin/ai/aiProvidersAdminService', () => ({
   adminGetAiProvidersConfig: () => Promise.resolve({ providers: [] }),
 }));
 

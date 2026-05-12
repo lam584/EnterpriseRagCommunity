@@ -131,17 +131,12 @@ export default function CommunityPortalLayout() {
   const showAssistantRecentSessionsSidebar = location.pathname.startsWith('/portal/assistant/chat');
   const isAssistantChatWide = showAssistantRecentSessionsSidebar;
   const isDiscoverWide = showDiscoverHotSidebar;
-  // 用户反馈希望保持导航栏位置不变，因此不再对 AssistantChat 强制 full-width
-  // 但为了解决宽屏下聊天框不伸展且侧边栏分离的问题，这里放宽最大宽度限制
-  // 使用 1760px (110rem) 代替原来的 7xl (80rem/1280px)，既增加了宽度，又保持了居中和两侧留白，避免视觉重心偏移
   const containerClassName = isComposeWide
     ? 'w-full max-w-none'
     : isAssistantChatWide || isDiscoverWide
     ? 'w-full max-w-[1760px]'
     : 'max-w-7xl';
 
-  // 恢复 HotSidebar 的右侧留白逻辑（仅针对 HotSidebar，因为 AssistantSidebar 现在是 Flex 布局）
-  // 既然 HotSidebar 也要改为 Flex 布局，这里就不再需要 padding-right 了
   const rightSidebarSpacerClassName = '';
 
   return (
@@ -158,7 +153,7 @@ export default function CommunityPortalLayout() {
               <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
                 R
               </div>
-              RAG技术学习探索笔记
+              企业RAG社区
             </div>
           </div>
 
@@ -169,8 +164,6 @@ export default function CommunityPortalLayout() {
                 to={n.to}
                 className={({ isActive }) => {
                   const finalActive = isTopNavActive(n.id, location.pathname, isActive);
-
-                  // 其他一级菜单：补充 hover 灰底圆角阴影；激活态文字加粗
                   return `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors shadow-transparent active:shadow-sm ${
                     finalActive
                       ? 'bg-gray-100 text-gray-900'

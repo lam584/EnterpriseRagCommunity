@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { LlmQueueTaskDTO } from '../../../../services/llmQueueAdminService';
+import type { LlmQueueTaskDTO } from '../../../../services/admin/ai/llmQueueAdminService';
 import { fmtHmsTs, fmtMs, fmtNum, fmtType } from './llm-queue.sparkline';
 
 export function TaskTable({

@@ -4,13 +4,13 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
 import OtpCodeInput from '../../../../components/common/OtpCodeInput';
-import { sendAccountEmailVerificationCode } from '../../../../services/emailVerificationService';
+import { sendAccountEmailVerificationCode } from '../../../../services/auth/emailVerificationService';
 import {
   getMySecurity2faPolicy,
   type Security2faPolicyStatusDTO,
   updateMyLogin2faPreference,
   verifyMyLogin2faPreferencePassword,
-} from '../../../../services/security2faPolicyAccountService';
+} from '../../../../services/auth/security2faPolicyAccountService';
 import {
   disableTotp,
   enrollTotp,
@@ -20,8 +20,8 @@ import {
   type TotpStatusResponse,
   verifyTotp,
   verifyTotpPassword,
-} from '../../../../services/totpAccountService';
-import type { TotpAdminSettingsDTO } from '../../../../services/totpAdminService';
+} from '../../../../services/auth/totpAccountService';
+import type { TotpAdminSettingsDTO } from '../../../../services/auth/totpAdminService';
 import { ChangeEmailSection } from './AccountConnectionsPage';
 import Modal from '../../../../components/common/Modal';
 import ChangePasswordCard from './ChangePasswordCard';

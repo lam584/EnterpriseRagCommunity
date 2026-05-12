@@ -1,19 +1,19 @@
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../../services/aiProvidersAdminService', () => ({
+vi.mock('../../../../services/admin/ai/aiProvidersAdminService', () => ({
   adminGetAiProvidersConfig: vi.fn(),
 }));
 
-vi.mock('../../../../services/aiChatOptionsService', () => ({
+vi.mock('../../../../services/ai/chat/aiChatOptionsService', () => ({
   getAiChatOptions: vi.fn(),
 }));
 
-vi.mock('../../../../services/tokenMetricsAdminService', () => ({
+vi.mock('../../../../services/admin/ai/tokenMetricsAdminService', () => ({
   adminGetTokenMetrics: vi.fn(),
 }));
 
-vi.mock('../../../../services/llmLoadtestAdminService', () => ({
+vi.mock('../../../../services/admin/ai/llmLoadtestAdminService', () => ({
   adminGetLlmLoadTestStatus: vi.fn(),
   adminGetLlmLoadTestExportUrl: vi.fn(),
   adminListLlmLoadTestHistory: vi.fn(),
@@ -26,9 +26,9 @@ vi.mock('../../../../components/admin/ProviderModelSelect', () => ({
   ProviderModelSelect: () => <div data-testid="provider-model-select" />,
 }));
 
-import { adminGetAiProvidersConfig } from '../../../../services/aiProvidersAdminService';
-import { getAiChatOptions } from '../../../../services/aiChatOptionsService';
-import { adminListLlmLoadTestHistory } from '../../../../services/llmLoadtestAdminService';
+import { adminGetAiProvidersConfig } from '../../../../services/admin/ai/aiProvidersAdminService';
+import { getAiChatOptions } from '../../../../services/ai/chat/aiChatOptionsService';
+import { adminListLlmLoadTestHistory } from '../../../../services/admin/ai/llmLoadtestAdminService';
 import LlmLoadTestPanel from './llm-loadtest';
 
 describe('LlmLoadTestPanel', () => {

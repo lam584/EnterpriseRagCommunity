@@ -3,21 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockConsole } from '../testUtils/mockConsole';
 import { AuthProvider, useAuth } from './AuthContext';
 
-vi.mock('../services/authService', () => ({
+vi.mock('../services/auth/authService', () => ({
   getCurrentAdmin: vi.fn(),
 }));
 
-vi.mock('../services/security2faPolicyAccountService', () => ({
+vi.mock('../services/auth/security2faPolicyAccountService', () => ({
   getMySecurity2faPolicy: vi.fn(),
 }));
 
-vi.mock('../services/totpAccountService', () => ({
+vi.mock('../services/auth/totpAccountService', () => ({
   getTotpStatus: vi.fn(),
 }));
 
-import { getCurrentAdmin } from '../services/authService';
-import { getMySecurity2faPolicy } from '../services/security2faPolicyAccountService';
-import { getTotpStatus } from '../services/totpAccountService';
+import { getCurrentAdmin } from '../services/auth/authService';
+import { getMySecurity2faPolicy } from '../services/auth/security2faPolicyAccountService';
+import { getTotpStatus } from '../services/auth/totpAccountService';
 
 type AuthCtx = ReturnType<typeof useAuth>;
 

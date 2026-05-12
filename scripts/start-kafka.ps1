@@ -46,6 +46,40 @@ function Get-LogDirFromConfig {
     return $value.Replace('/', '\\')
 }
 
+function Remove-StaleKafkaRecoveryMarkers {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path $Path)) {
+        return
+    }
+
+    $staleFiles = @(Get-ChildItem -Path $Path -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -like '*.checkpoint.deleted' -or $_.Name -like '*.snapshot.deleted'
+        })
+    if ($staleFiles.Count -eq 0) {
+        return
+    }
+
+    $failedPaths = New-Object System.Collections.Generic.List[string]
+    foreach ($file in $staleFiles) {
+        try {
+            Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+        } catch {
+            $failedPaths.Add($file.FullName)
+        }
+    }
+
+    if ($failedPaths.Count -gt 0) {
+        throw (
+            "Unable to remove stale Kafka recovery markers under $Path. " +
+            "Close any process holding the files, then retry. " +
+            "Blocked files: " + ($failedPaths -join '; ')
+        )
+    }
+
+    Write-Host "Removed stale Kafka recovery markers under $Path"
+}
+
 if ([string]::IsNullOrWhiteSpace($KafkaHome)) {
     $KafkaHome = 'E:\kafka_2.13-4.2.0'
 }
@@ -89,9 +123,11 @@ if ($existing -and $ForceRestart) {
 
 $dataDir = Get-LogDirFromConfig -Path $ConfigFile
 if (-not [string]::IsNullOrWhiteSpace($dataDir)) {
+    New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
+    Remove-StaleKafkaRecoveryMarkers -Path $dataDir
+
     $metaFile = Join-Path $dataDir 'meta.properties'
     if (-not (Test-Path $metaFile)) {
-        New-Item -ItemType Directory -Force -Path $dataDir | Out-Null
         $env:JAVA_HOME = $JavaHome
         $env:KAFKA_HOME = $KafkaHome
         $env:Path = "$JavaHome\bin;$KafkaHome\bin\windows;" + $env:Path

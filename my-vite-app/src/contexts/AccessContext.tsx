@@ -3,7 +3,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
-import { fetchAccessContext, AccessContextDTO } from '../services/accessContextService';
+import { fetchAccessContext, AccessContextDTO } from '../services/permissions/accessContextService';
 
 export type AccessContextType = {
   email: string | null;

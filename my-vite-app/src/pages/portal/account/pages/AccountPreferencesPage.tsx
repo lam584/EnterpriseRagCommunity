@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getMyTranslatePreferences, updateMyTranslatePreferences } from '../../../../services/accountPreferencesService';
-import { getTranslateConfig } from '../../../../services/translateService';
-import { listSupportedLanguages, normalizeSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
-import { getPostTitleGenPublicConfig, type PostTitleGenPublicConfigDTO } from '../../../../services/titleGenPublicService';
-import { getPostTagGenPublicConfig, type PostTagGenPublicConfigDTO } from '../../../../services/tagGenPublicService';
+import { getMyTranslatePreferences, updateMyTranslatePreferences } from '../../../../services/users/accountPreferencesService';
+import { getTranslateConfig } from '../../../../services/ai/public/translateService';
+import { listSupportedLanguages, normalizeSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/ai/public/supportedLanguagesService';
+import { getPostTitleGenPublicConfig, type PostTitleGenPublicConfigDTO } from '../../../../services/ai/public/titleGenPublicService';
+import { getPostTagGenPublicConfig, type PostTagGenPublicConfigDTO } from '../../../../services/ai/public/tagGenPublicService';
 
 function clampCount(n: number, maxCount?: number | null): number {
   const max = Math.max(1, Math.min(maxCount ?? 50, 50));

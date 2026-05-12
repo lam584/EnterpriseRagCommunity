@@ -3,7 +3,7 @@ import type {
   HybridRerankTestResponse,
   HybridRetrievalConfigDTO,
   HybridRetrievalTestResponse,
-} from '../../../../services/retrievalHybridService';
+} from '../../../../services/search/retrievalHybridService';
 import Modal from '../../../../components/common/Modal';
 
 type UiClasses = {

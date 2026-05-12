@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { adminCreateBoard, BoardCreateDTO } from '../../../../services/boardService';
+import { adminCreateBoard, BoardCreateDTO } from '../../../../services/content/boardService';
 
 const BoardForm: React.FC = () => {
   const [form, setForm] = useState<BoardCreateDTO>({ tenantId: 1, parentId: null, name: '', description: '', visible: true, sortOrder: 0 });

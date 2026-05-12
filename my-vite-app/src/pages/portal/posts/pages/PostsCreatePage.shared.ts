@@ -1,4 +1,4 @@
-import { slugify, type TagDTO } from '../../../../services/tagService';
+import { slugify, type TagDTO } from '../../../../services/content/tagService';
 
 export function getErrorMessage(e: unknown, fallback: string) {
     if (e && typeof e === 'object' && 'message' in e) {

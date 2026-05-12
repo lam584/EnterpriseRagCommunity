@@ -5,7 +5,7 @@ import {
   adminGetAuditLogDetail,
   adminListAuditLogs,
   type AuditLogDTO,
-} from '../../../../services/auditLogService';
+} from '../../../../services/admin/platform/auditLogService';
 import {
   adminExportAccessLogsCsv,
   adminGetAccessLogDetail,
@@ -13,10 +13,10 @@ import {
   adminListAccessLogs,
   type AccessLogEsIndexStatusDTO,
   type AccessLogDTO,
-} from '../../../../services/accessLogService';
+} from '../../../../services/admin/platform/accessLogService';
 import { downloadBlob } from '../../../../utils/download';
-import { adminGetLogRetentionConfig, adminUpdateLogRetentionConfig } from '../../../../services/logRetentionService';
-import type { LogRetentionConfigDTO } from '../../../../services/logRetentionService';
+import { adminGetLogRetentionConfig, adminUpdateLogRetentionConfig } from '../../../../services/admin/platform/logRetentionService';
+import type { LogRetentionConfigDTO } from '../../../../services/admin/platform/logRetentionService';
 import DetailDialog from '../../../../components/common/DetailDialog';
 import { resolveMetricsPageMeta } from './metricsPageMeta';
 

@@ -1,9 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
-import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
-import { adminGetTokenMetrics, type TokenMetricsResponseDTO } from '../../../../services/tokenMetricsAdminService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/admin/ai/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
+import { adminGetTokenMetrics, type TokenMetricsResponseDTO } from '../../../../services/admin/ai/tokenMetricsAdminService';
 import {
   adminGetLlmLoadTestStatus,
   adminGetLlmLoadTestExportUrl,
@@ -12,7 +12,7 @@ import {
   adminStopLlmLoadTest,
   adminUpsertLlmLoadTestHistory,
   type AdminLlmLoadTestStatus,
-} from '../../../../services/llmLoadtestAdminService';
+} from '../../../../services/admin/ai/llmLoadtestAdminService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 import { fmtCost, fmtInt, formatDurationMs as formatDurationText, formatLocalDateTime, toNumber } from './metricsTimeUtils';
  

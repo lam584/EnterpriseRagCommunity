@@ -1,4 +1,4 @@
-import type {RiskTagDTO} from '../../../../services/riskTagService';
+import type {RiskTagDTO} from '../../../../services/moderation/policy/riskTagService';
 
 type RiskEditorModalProps = {
     open: boolean;

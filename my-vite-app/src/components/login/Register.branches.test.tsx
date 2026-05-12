@@ -8,8 +8,8 @@ const authServiceMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../services/authService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/authService')>();
+vi.mock('../../services/auth/authService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/auth/authService')>();
   return {
     ...actual,
     getRegistrationStatus: authServiceMocks.getRegistrationStatus,
@@ -22,7 +22,7 @@ vi.mock('./AuthFooter', () => {
   return { default: () => null };
 });
 
-import { getRegistrationStatus, registerAndGetStatus, verifyRegister } from '../../services/authService';
+import { getRegistrationStatus, registerAndGetStatus, verifyRegister } from '../../services/auth/authService';
 import { renderRegisterRoutes, submitRegisterForm } from './Register.test-helpers';
 
 const mockGetRegistrationStatus = vi.mocked(getRegistrationStatus);

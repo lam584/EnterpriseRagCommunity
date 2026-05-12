@@ -61,6 +61,32 @@ class AiPostComposeAssistantServiceTest {
             PromptsRepository promptsRepository,
             String uploadRoot,
             String urlPrefix
+        ) {
+                return newService(
+                                snapshotsRepository,
+                                usersRepository,
+                                llmGateway,
+                                llmModelRepository,
+                                fileAssetsRepository,
+                                mock(LlmImageUploadService.class),
+                                portalChatConfigService,
+                                promptsRepository,
+                                uploadRoot,
+                                urlPrefix
+                );
+        }
+
+        private AiPostComposeAssistantService newService(
+                        PostComposeAiSnapshotsRepository snapshotsRepository,
+                        UsersRepository usersRepository,
+                        LlmGateway llmGateway,
+                        LlmModelRepository llmModelRepository,
+                        FileAssetsRepository fileAssetsRepository,
+                        LlmImageUploadService llmImageUploadService,
+                        PortalChatConfigService portalChatConfigService,
+                        PromptsRepository promptsRepository,
+                        String uploadRoot,
+                        String urlPrefix
     ) {
         AiPostComposeAssistantService s = new AiPostComposeAssistantService(
                 snapshotsRepository,
@@ -68,6 +94,7 @@ class AiPostComposeAssistantServiceTest {
                 llmGateway,
                 llmModelRepository,
                 fileAssetsRepository,
+                                llmImageUploadService,
                 portalChatConfigService,
                 promptsRepository
         );
@@ -194,13 +221,20 @@ class AiPostComposeAssistantServiceTest {
     }
 
     private static String encodeImageUrlForUpstream(AiPostComposeAssistantService s, AiPostComposeStreamRequest.ImageInput img) {
+                return encodeImageUrlForUpstream(s, img, null);
+        }
+
+        private static String encodeImageUrlForUpstream(AiPostComposeAssistantService s,
+                                                                                                        AiPostComposeStreamRequest.ImageInput img,
+                                                                                                        String modelName) {
         try {
             Method m = AiPostComposeAssistantService.class.getDeclaredMethod(
                     "encodeImageUrlForUpstream",
-                    AiPostComposeStreamRequest.ImageInput.class
+                                        AiPostComposeStreamRequest.ImageInput.class,
+                                        String.class
             );
             m.setAccessible(true);
-            return (String) m.invoke(s, img);
+                        return (String) m.invoke(s, img, modelName);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -808,7 +842,77 @@ class AiPostComposeAssistantServiceTest {
     }
 
     @Test
-    void encodeImageUrlForUpstream_should_pass_through_data_and_http_urls() {
+    void streamComposeEdit_should_send_dashscope_oss_resolve_header_when_images_include_oss_url() throws Exception {
+        long userId = 10L;
+        PostComposeAiSnapshotsEntity snap = snapPending(1L, userId);
+
+        PostComposeAiSnapshotsRepository snapshotsRepository = mock(PostComposeAiSnapshotsRepository.class);
+        when(snapshotsRepository.findByIdAndUserId(eq(1L), eq(userId))).thenReturn(Optional.of(snap));
+
+        LlmModelEntity enabled = new LlmModelEntity();
+        enabled.setEnabled(true);
+        LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("p1"), eq("MULTIMODAL_CHAT"), eq("m1")))
+                .thenReturn(Optional.of(enabled));
+
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        when(llmGateway.chatStreamRouted(
+                any(LlmQueueTaskType.class),
+                anyString(),
+                anyString(),
+                any(List.class),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(OpenAiCompatClient.SseLineConsumer.class),
+                any(Map.class)
+        )).thenReturn(new LlmGateway.RoutedChatStreamResult("p1", "m1", null));
+
+        AiPostComposeAssistantService s = newService(
+                snapshotsRepository,
+                usersRepoWithDefaultPrompt(userId, null),
+                llmGateway,
+                llmModelRepository,
+                mock(FileAssetsRepository.class),
+                portalCfg("p1", "m1", 0.6, 0.9, 20, false, "base", "deep", "compose"),
+                promptsRepo("base", "deep", "compose"),
+                tempDir.toString(),
+                "/uploads"
+        );
+
+        AiPostComposeStreamRequest r = req(1L);
+        r.setImages(List.of(img(1L, "oss://dashscope-temp/a.png", "image/png")));
+
+        s.streamComposeEdit(r, userId, newSseResponse());
+
+        verify(llmGateway).chatStreamRouted(
+                eq(LlmQueueTaskType.MULTIMODAL_CHAT),
+                eq("p1"),
+                eq("m1"),
+                any(List.class),
+                eq(0.6),
+                eq(0.9),
+                eq(false),
+                eq(null),
+                any(OpenAiCompatClient.SseLineConsumer.class),
+                eq(Map.of("X-DashScope-OssResourceResolve", "enable"))
+        );
+        verify(llmGateway, never()).chatStreamRouted(
+                any(LlmQueueTaskType.class),
+                anyString(),
+                anyString(),
+                any(List.class),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(OpenAiCompatClient.SseLineConsumer.class)
+        );
+    }
+
+    @Test
+        void encodeImageUrlForUpstream_should_pass_through_data_and_http_urls() {
         AiPostComposeAssistantService s = newService(
                 mock(PostComposeAiSnapshotsRepository.class),
                 mock(UsersRepository.class),
@@ -836,6 +940,159 @@ class AiPostComposeAssistantServiceTest {
     }
 
     @Test
+        void encodeImageUrlForUpstream_should_return_oss_url_when_uploader_returns_model_bound_oss_url() throws Exception {
+        writeTempFile("a4.bin", "abc".getBytes(StandardCharsets.UTF_8));
+
+        FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+        LlmImageUploadService llmImageUploadService = mock(LlmImageUploadService.class);
+        when(llmImageUploadService.resolveImageUrl(eq("/uploads/a4.bin"), eq("image/png"), eq("qwen-vl")))
+                .thenReturn("oss://dashscope-temp/a4.bin");
+
+        AiPostComposeAssistantService s = newService(
+                mock(PostComposeAiSnapshotsRepository.class),
+                mock(UsersRepository.class),
+                mock(LlmGateway.class),
+                mock(LlmModelRepository.class),
+                fileAssetsRepository,
+                llmImageUploadService,
+                portalCfg("p", "m", 0.6, 0.9, 20, false, "base", "deep", "compose"),
+                promptsRepo("base", "deep", "compose"),
+                tempDir.toString(),
+                "/uploads"
+        );
+
+        String url = encodeImageUrlForUpstream(s, img(null, "/uploads/a4.bin", "image/png"), "qwen-vl");
+        assertEquals("oss://dashscope-temp/a4.bin", url);
+        verify(fileAssetsRepository, never()).findById(any());
+    }
+
+    @Test
+    void encodeImageUrlForUpstream_should_reupload_input_oss_url_when_uploader_can_rebind_model() {
+        FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+        LlmImageUploadService llmImageUploadService = mock(LlmImageUploadService.class);
+        when(llmImageUploadService.resolveImageUrl(eq("oss://dashscope-temp/old-a4.bin"), eq("image/png"), eq("qwen-vl")))
+                .thenReturn("oss://dashscope-temp/rebound-a4.bin");
+
+        AiPostComposeAssistantService s = newService(
+                mock(PostComposeAiSnapshotsRepository.class),
+                mock(UsersRepository.class),
+                mock(LlmGateway.class),
+                mock(LlmModelRepository.class),
+                fileAssetsRepository,
+                llmImageUploadService,
+                portalCfg("p", "m", 0.6, 0.9, 20, false, "base", "deep", "compose"),
+                promptsRepo("base", "deep", "compose"),
+                tempDir.toString(),
+                "/uploads"
+        );
+
+        String url = encodeImageUrlForUpstream(s, img(null, "oss://dashscope-temp/old-a4.bin", "image/png"), "qwen-vl");
+        assertEquals("oss://dashscope-temp/rebound-a4.bin", url);
+        verify(fileAssetsRepository, never()).findById(any());
+    }
+
+    @Test
+    void streamComposeEdit_should_resolve_routed_model_when_model_not_specified() throws Exception {
+        long userId = 10L;
+        PostComposeAiSnapshotsEntity snap = snapPending(1L, userId);
+        snap.setProviderId("aliyun");
+        snap.setModel(null);
+        snap.setBeforeMetadata(Map.of(
+                "attachments", List.of(
+                        Map.of("fileUrl", "/uploads/a.png", "mimeType", "image/png", "fileAssetId", 1)
+                )
+        ));
+
+        PostComposeAiSnapshotsRepository snapshotsRepository = mock(PostComposeAiSnapshotsRepository.class);
+        when(snapshotsRepository.findByIdAndUserId(eq(1L), eq(userId))).thenReturn(Optional.of(snap));
+
+        LlmModelEntity enabled = new LlmModelEntity();
+        enabled.setEnabled(true);
+        LlmModelRepository llmModelRepository = mock(LlmModelRepository.class);
+        when(llmModelRepository.findByEnvAndProviderIdAndPurposeAndModelName(eq("default"), eq("aliyun"), eq("MULTIMODAL_CHAT"), eq("qwen3.5-35b-a3b")))
+                .thenReturn(Optional.of(enabled));
+
+        LlmGateway llmGateway = mock(LlmGateway.class);
+        when(llmGateway.resolveRoutedChatTarget(eq(LlmQueueTaskType.MULTIMODAL_CHAT), eq("aliyun"), eq(null)))
+                .thenReturn(new LlmGateway.RoutedChatTarget("aliyun", "qwen3.5-35b-a3b"));
+        when(llmGateway.chatStreamRouted(
+                any(LlmQueueTaskType.class),
+                anyString(),
+                anyString(),
+                any(List.class),
+                any(),
+                any(),
+                any(),
+                any(),
+                any(OpenAiCompatClient.SseLineConsumer.class),
+                any(Map.class)
+        )).thenReturn(new LlmGateway.RoutedChatStreamResult("aliyun", "qwen3.5-35b-a3b", null));
+
+        LlmImageUploadService llmImageUploadService = mock(LlmImageUploadService.class);
+        when(llmImageUploadService.resolveImageUrl(eq("/uploads/a.png"), eq("image/png"), eq("qwen3.5-35b-a3b")))
+                .thenReturn("oss://dashscope-temp/rebound-a.png");
+
+        AiPostComposeAssistantService s = newService(
+                snapshotsRepository,
+                usersRepoWithDefaultPrompt(userId, null),
+                llmGateway,
+                llmModelRepository,
+                mock(FileAssetsRepository.class),
+                llmImageUploadService,
+                portalCfg("aliyun", null, 0.6, 0.9, 20, false, "base", "deep", "compose"),
+                promptsRepo("base", "deep", "compose"),
+                tempDir.toString(),
+                "/uploads"
+        );
+
+        AiPostComposeStreamRequest r = req(1L);
+        s.streamComposeEdit(r, userId, newSseResponse());
+
+        verify(llmGateway).resolveRoutedChatTarget(eq(LlmQueueTaskType.MULTIMODAL_CHAT), eq("aliyun"), eq(null));
+        verify(llmImageUploadService).resolveImageUrl(eq("/uploads/a.png"), eq("image/png"), eq("qwen3.5-35b-a3b"));
+        verify(llmGateway).chatStreamRouted(
+                eq(LlmQueueTaskType.MULTIMODAL_CHAT),
+                eq("aliyun"),
+                eq("qwen3.5-35b-a3b"),
+                any(List.class),
+                eq(0.6),
+                eq(0.9),
+                eq(false),
+                eq(null),
+                any(OpenAiCompatClient.SseLineConsumer.class),
+                eq(Map.of("X-DashScope-OssResourceResolve", "enable"))
+        );
+    }
+
+    @Test
+        void encodeImageUrlForUpstream_should_preserve_oss_url_when_uploader_cannot_rebind_model() throws Exception {
+        Path p = writeTempFile("asset-oss.bin", "abc".getBytes(StandardCharsets.UTF_8));
+
+        com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity fa = new com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity();
+        fa.setId(7L);
+        fa.setMimeType("image/png");
+        fa.setPath(p.toString());
+
+        FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+        when(fileAssetsRepository.findById(7L)).thenReturn(Optional.of(fa));
+
+        AiPostComposeAssistantService s = newService(
+                mock(PostComposeAiSnapshotsRepository.class),
+                mock(UsersRepository.class),
+                mock(LlmGateway.class),
+                mock(LlmModelRepository.class),
+                fileAssetsRepository,
+                portalCfg("p", "m", 0.6, 0.9, 20, false, "base", "deep", "compose"),
+                promptsRepo("base", "deep", "compose"),
+                tempDir.toString(),
+                "/uploads"
+        );
+
+                String url = encodeImageUrlForUpstream(s, img(7L, "oss://dashscope-temp/asset-oss.bin", "image/png"));
+                assertEquals("oss://dashscope-temp/asset-oss.bin", url);
+    }
+
+    @Test
     void encodeImageUrlForUpstream_should_encode_local_upload_file_and_strip_query() throws Exception {
         writeTempFile("a.bin", "abc".getBytes(StandardCharsets.UTF_8));
 
@@ -857,6 +1114,61 @@ class AiPostComposeAssistantServiceTest {
         assertTrue(url.endsWith("YWJj"));
         verify(fileAssetsRepository, never()).findById(any());
     }
+
+    @Test
+    void encodeImageUrlForUpstream_should_resolve_local_upload_url_before_forwarding() {
+        FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+        LlmImageUploadService llmImageUploadService = mock(LlmImageUploadService.class);
+        when(llmImageUploadService.resolveImageUrl(eq("/uploads/a.png"), eq("image/png"), eq("qwen-vl")))
+                .thenReturn("https://cdn.example.com/uploads/a.png");
+
+        AiPostComposeAssistantService s = newService(
+                mock(PostComposeAiSnapshotsRepository.class),
+                mock(UsersRepository.class),
+                mock(LlmGateway.class),
+                mock(LlmModelRepository.class),
+                fileAssetsRepository,
+                llmImageUploadService,
+                portalCfg("p", "m", 0.6, 0.9, 20, false, "base", "deep", "compose"),
+                promptsRepo("base", "deep", "compose"),
+                tempDir.toString(),
+                "/uploads"
+        );
+
+        assertEquals(
+                "https://cdn.example.com/uploads/a.png",
+                encodeImageUrlForUpstream(s, img(null, "/uploads/a.png", "image/png"), "qwen-vl")
+        );
+        verify(fileAssetsRepository, never()).findById(any());
+    }
+
+        @Test
+        void encodeImageUrlForUpstream_should_fallback_to_base64_when_uploader_returns_relative_local_path() throws Exception {
+                writeTempFile("a3.bin", "abc".getBytes(StandardCharsets.UTF_8));
+
+                FileAssetsRepository fileAssetsRepository = mock(FileAssetsRepository.class);
+                LlmImageUploadService llmImageUploadService = mock(LlmImageUploadService.class);
+                when(llmImageUploadService.resolveImageUrl(eq("/uploads/a3.bin"), eq("image/png"), eq("qwen-vl")))
+                                .thenReturn("/uploads/a3.bin");
+
+                AiPostComposeAssistantService s = newService(
+                                mock(PostComposeAiSnapshotsRepository.class),
+                                mock(UsersRepository.class),
+                                mock(LlmGateway.class),
+                                mock(LlmModelRepository.class),
+                                fileAssetsRepository,
+                                llmImageUploadService,
+                                portalCfg("p", "m", 0.6, 0.9, 20, false, "base", "deep", "compose"),
+                                promptsRepo("base", "deep", "compose"),
+                                tempDir.toString(),
+                                "/uploads"
+                );
+
+                String url = encodeImageUrlForUpstream(s, img(null, "/uploads/a3.bin", "image/png"), "qwen-vl");
+                assertTrue(url.startsWith("data:image/png;base64,"));
+                assertTrue(url.endsWith("YWJj"));
+                verify(fileAssetsRepository, never()).findById(any());
+        }
 
     @Test
     void encodeImageUrlForUpstream_should_use_fileAsset_mimeType_when_missing() throws Exception {
@@ -888,7 +1200,7 @@ class AiPostComposeAssistantServiceTest {
     }
 
     @Test
-    void encodeImageUrlForUpstream_should_return_original_url_when_missing_or_too_large_or_path_escape() throws Exception {
+        void encodeImageUrlForUpstream_should_return_null_when_missing_or_too_large_or_path_escape() throws Exception {
         byte[] big = new byte[4_000_001];
         Arrays.fill(big, (byte) 'a');
         writeTempFile("big.bin", big);
@@ -906,9 +1218,9 @@ class AiPostComposeAssistantServiceTest {
                 "/uploads"
         );
 
-        assertEquals("/uploads/missing.bin", encodeImageUrlForUpstream(s, img(null, "/uploads/missing.bin", "image/png")));
-        assertEquals("/uploads/big.bin", encodeImageUrlForUpstream(s, img(null, "/uploads/big.bin", "image/png")));
-        assertEquals("/uploads/../evil.txt", encodeImageUrlForUpstream(s, img(null, "/uploads/../evil.txt", "image/png")));
+        assertNull(encodeImageUrlForUpstream(s, img(null, "/uploads/missing.bin", "image/png")));
+        assertNull(encodeImageUrlForUpstream(s, img(null, "/uploads/big.bin", "image/png")));
+        assertNull(encodeImageUrlForUpstream(s, img(null, "/uploads/../evil.txt", "image/png")));
     }
 
     @Test
@@ -1625,7 +1937,7 @@ class AiPostComposeAssistantServiceTest {
         assertTrue(url1.startsWith("data:application/octet-stream;base64,"));
         assertTrue(url1.endsWith("YWJj"));
 
-        assertEquals("/uploads/empty.bin", encodeImageUrlForUpstream(s1, img(null, "/uploads/empty.bin", "image/png")));
+        assertNull(encodeImageUrlForUpstream(s1, img(null, "/uploads/empty.bin", "image/png")));
 
         AiPostComposeAssistantService s2 = newService(
                 mock(PostComposeAiSnapshotsRepository.class),
@@ -1638,7 +1950,7 @@ class AiPostComposeAssistantServiceTest {
                 "up\u0000loads",
                 "/uploads"
         );
-        assertEquals("/uploads/oct.bin", encodeImageUrlForUpstream(s2, img(null, "/uploads/oct.bin", "image/png")));
+        assertNull(encodeImageUrlForUpstream(s2, img(null, "/uploads/oct.bin", "image/png")));
     }
 
     @Test
@@ -1874,7 +2186,7 @@ class AiPostComposeAssistantServiceTest {
     }
 
     @Test
-    void encodeImageUrlForUpstream_should_return_original_url_when_url_prefix_blank_and_file_asset_path_blank() {
+        void encodeImageUrlForUpstream_should_return_null_when_url_prefix_blank_and_file_asset_path_blank() {
         com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity fa = new com.example.EnterpriseRagCommunity.entity.monitor.FileAssetsEntity();
         fa.setId(77L);
         fa.setPath("   ");
@@ -1895,7 +2207,7 @@ class AiPostComposeAssistantServiceTest {
         );
 
         String out = encodeImageUrlForUpstream(s, img(77L, "/uploads/a.png", "image/png"));
-        assertEquals("/uploads/a.png", out);
+                assertNull(out);
         verify(fileAssetsRepository).findById(77L);
     }
 

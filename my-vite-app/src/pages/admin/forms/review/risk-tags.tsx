@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { createRiskTag, deleteRiskTag, listRiskTagsPage, updateRiskTag, type RiskTagDTO } from '../../../../services/riskTagService';
-import { slugify } from '../../../../services/tagService';
+import { createRiskTag, deleteRiskTag, listRiskTagsPage, updateRiskTag, type RiskTagDTO } from '../../../../services/moderation/policy/riskTagService';
+import { slugify } from '../../../../services/content/tagService';
 
 const MAX_NAME = 64;
 const MAX_DESC = 255;

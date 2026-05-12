@@ -24,19 +24,19 @@ import {
     type ModerationChunkProgress,
     type ModerationQueueItem,
     type QueueStatus,
-} from '../../../../services/moderationQueueService';
-import { getCurrentAdmin } from '../../../../services/authService';
+} from '../../../../services/moderation/review/moderationQueueService';
+import { getCurrentAdmin } from '../../../../services/auth/authService';
 import { ModerationPipelineTracePanel } from '../../../../components/admin/ModerationPipelineTracePanel';
-import { createRiskTag, listRiskTagsPage, type RiskTagDTO } from '../../../../services/riskTagService';
-import { getPostAiSummary, type PostAiSummaryDTO } from '../../../../services/aiPostSummaryService';
-import { getPost } from '../../../../services/postService';
-import { adminListPostSummaryHistory, type PostSummaryGenHistoryDTO } from '../../../../services/postSummaryAdminService';
-import { getModerationChunkReviewConfig, type ModerationChunkReviewConfig } from '../../../../services/moderationChunkReviewConfigService';
-import { adminGetModerationReviewTraceTaskDetail, type ModerationReviewTraceTaskDetail } from '../../../../services/moderationReviewTraceService';
+import { createRiskTag, listRiskTagsPage, type RiskTagDTO } from '../../../../services/moderation/policy/riskTagService';
+import { getPostAiSummary, type PostAiSummaryDTO } from '../../../../services/ai/authoring/aiPostSummaryService';
+import { getPost } from '../../../../services/content/postService';
+import { adminListPostSummaryHistory, type PostSummaryGenHistoryDTO } from '../../../../services/admin/ai/postSummaryAdminService';
+import { getModerationChunkReviewConfig, type ModerationChunkReviewConfig } from '../../../../services/moderation/policy/moderationChunkReviewConfigService';
+import { adminGetModerationReviewTraceTaskDetail, type ModerationReviewTraceTaskDetail } from '../../../../services/moderation/review/moderationReviewTraceService';
 import EvidenceListView from '../../../../components/admin/EvidenceListView';
 import { countUniqueEvidence, extractEvidenceFromDetails, shouldSkipStepEvidenceForChunkedReview } from '../../../../utils/evidence-utils';
 import DetailDialog from '../../../../components/common/DetailDialog';
-import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
+import MarkdownPreview from '../../../../components/ui/DeferredMarkdownPreview';
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import { buildEvidenceImageUrlMap, extractLatestRunImageUrls } from '../../../../utils/evidenceImageMap';
 import {RiskEditorModal, TextPreviewModal} from './queue-components';

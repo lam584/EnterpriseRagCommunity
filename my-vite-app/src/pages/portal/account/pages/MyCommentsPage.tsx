@@ -1,7 +1,7 @@
 import React, {useEffect, useState, useCallback} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {listMyComments, deleteMyComment, type CommentDTO} from '../../../../services/commentService';
-import {getStoredUserId, resolvePortalAuthState} from '../../../../services/portalAuthService';
+import {listMyComments, deleteMyComment, type CommentDTO} from '../../../../services/content/commentService';
+import {getStoredUserId, resolvePortalAuthState} from '../../../../services/auth/portalAuthService';
 import toast from 'react-hot-toast';
 
 function formatDateTime(iso?: string) {

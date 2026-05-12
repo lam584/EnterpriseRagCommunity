@@ -5,7 +5,10 @@
     "baseUrl": ".",
     // 定义别名：/components/* → src/components/*
     "paths": {
-      "/components/*": ["src/components/*"]
+      "/components/*": ["src/components/*"],
+      "/services/*": ["src/services/*"],
+      "/testUtils/*": ["src/testUtils/*"],
+      "/utils/*": ["src/utils/*"]
     }
   },
   "files": [],

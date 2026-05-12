@@ -9,11 +9,11 @@ import {
   type ContentSafetyCircuitBreakerEventDTO,
   type ContentSafetyCircuitBreakerScopeDTO,
   type ContentSafetyCircuitBreakerStatusDTO,
-} from '../../../../services/contentSafetyCircuitBreakerAdminService';
+} from '../../../../services/admin/platform/contentSafetyCircuitBreakerAdminService';
 import {
   adminGetDependencyCircuitBreakerConfig,
   adminUpdateDependencyCircuitBreakerConfig,
-} from '../../../../services/dependencyCircuitBreakerAdminService';
+} from '../../../../services/admin/platform/dependencyCircuitBreakerAdminService';
 import { clampMetricInt } from './metricsTimeUtils';
 
 type LoadState = 'idle' | 'loading' | 'saving';

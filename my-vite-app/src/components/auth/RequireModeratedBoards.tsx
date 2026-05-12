@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { listMyModeratedBoards } from '../../services/moderatorBoardsService';
+import { listMyModeratedBoards } from '../../services/moderation/review/moderatorBoardsService';
 
 export default function RequireModeratedBoards() {
   const [loading, setLoading] = useState(true);

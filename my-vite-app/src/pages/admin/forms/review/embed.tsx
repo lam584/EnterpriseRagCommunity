@@ -11,12 +11,12 @@ import {
   type ModerationSample,
   type ModerationSampleCreateRequest,
   type ModerationSamplesSyncResult,
-} from '../../../../services/moderationEmbedSamplesService';
+} from '../../../../services/moderation/samples/moderationEmbedSamplesService';
 import {
   triggerReindexSamples,
   getSamplesIndexStatus,
   type ModerationSamplesIndexStatusResponse
-} from '../../../../services/moderationService';
+} from '../../../../services/moderation/samples/moderationService';
 import { ModerationPipelineHistoryPanel } from '../../../../components/admin/ModerationPipelineHistoryPanel';
 
 // ===== 后端/运行时配置 =====

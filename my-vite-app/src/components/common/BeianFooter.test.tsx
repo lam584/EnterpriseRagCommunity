@@ -6,7 +6,7 @@ const { getPublicSiteConfigMock } = vi.hoisted(() => ({
   getPublicSiteConfigMock: vi.fn(),
 }));
 
-vi.mock('../../services/publicSiteConfigService', () => ({
+vi.mock('../../services/siteConfig/publicSiteConfigService', () => ({
   getPublicSiteConfig: getPublicSiteConfigMock,
 }));
 

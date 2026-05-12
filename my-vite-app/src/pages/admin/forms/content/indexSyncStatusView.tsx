@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { IndexSyncStatus } from '../../../../services/retrievalIndexSyncAdminService';
+import type { IndexSyncStatus } from '../../../../services/search/retrievalIndexSyncAdminService';
 
 export function renderIndexStatus(status?: IndexSyncStatus): ReactNode {
   if (!status) return <span className="text-gray-400">加载中</span>;

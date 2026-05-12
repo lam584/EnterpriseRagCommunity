@@ -27,6 +27,7 @@ class AccessLogEsSinkConsumerBranchTest {
         ReflectionTestUtils.setField(consumer, "esIndex", "access-logs-v1");
         ReflectionTestUtils.setField(consumer, "dualVerifyEnabled", true);
         ReflectionTestUtils.setField(consumer, "dualVerifyLogOnSuccess", false);
+      ReflectionTestUtils.setField(consumer, "sinkModeRaw", "MYSQL");
 
         when(accessLogsRepository.existsByRequestId("req-1")).thenReturn(true);
 
@@ -67,6 +68,38 @@ class AccessLogEsSinkConsumerBranchTest {
         assertEquals("/p", doc.get("path"));
         assertEquals("127.0.0.1", doc.get("client_ip"));
         assertEquals("127.0.0.1", doc.get("client_ip_text"));
+    }
+
+    @Test
+    void consume_should_skip_mysql_verify_when_sink_mode_is_kafka() {
+        ElasticsearchOperations esOps = mock(ElasticsearchOperations.class);
+        AccessLogsRepository accessLogsRepository = mock(AccessLogsRepository.class);
+        AccessLogEsSinkConsumer consumer = new AccessLogEsSinkConsumer(esOps, accessLogsRepository, new ObjectMapper());
+
+        ReflectionTestUtils.setField(consumer, "esIndex", "access-logs-v1");
+        ReflectionTestUtils.setField(consumer, "dualVerifyEnabled", true);
+        ReflectionTestUtils.setField(consumer, "sinkModeRaw", "KAFKA");
+
+        String payload = """
+                {
+                  \"eventId\": \"req-kafka-1\",
+                  \"data\": {
+                    \"method\": \"GET\",
+                    \"path\": \"/p\",
+                    \"requestId\": \"req-kafka-1\",
+                    \"traceId\": \"trace-kafka-1\",
+                    \"createdAt\": \"2026-04-17T10:10:10\"
+                  }
+                }
+                """;
+
+        Acknowledgment acknowledgment = mock(Acknowledgment.class);
+        consumer.consume(payload, "k1", "access-logs-v1", acknowledgment);
+
+        verify(esOps).save(any(Document.class), any(org.springframework.data.elasticsearch.core.mapping.IndexCoordinates.class));
+        verify(accessLogsRepository, never()).existsByRequestId(any());
+        verify(accessLogsRepository, never()).existsByTraceId(any());
+        verify(acknowledgment).acknowledge();
     }
 
     @Test

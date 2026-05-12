@@ -55,8 +55,8 @@ vi.mock('../../../../contexts/AuthContext', () => {
   };
 });
 
-vi.mock('../../../../services/totpAccountService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../../services/totpAccountService')>();
+vi.mock('../../../../services/auth/totpAccountService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/auth/totpAccountService')>();
   return {
     ...actual,
     getTotpPolicy: vi.fn(),
@@ -68,8 +68,8 @@ vi.mock('../../../../services/totpAccountService', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../../services/security2faPolicyAccountService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../../services/security2faPolicyAccountService')>();
+vi.mock('../../../../services/auth/security2faPolicyAccountService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/auth/security2faPolicyAccountService')>();
   return {
     ...actual,
     getMySecurity2faPolicy: vi.fn(),
@@ -80,8 +80,8 @@ vi.mock('../../../../services/security2faPolicyAccountService', async (importOri
 
 import AccountSecurityPage from './AccountSecurityPage';
 import { toast } from 'react-hot-toast';
-import { getTotpPolicy, getTotpStatus } from '../../../../services/totpAccountService';
-import { getMySecurity2faPolicy } from '../../../../services/security2faPolicyAccountService';
+import { getTotpPolicy, getTotpStatus } from '../../../../services/auth/totpAccountService';
+import { getMySecurity2faPolicy } from '../../../../services/auth/security2faPolicyAccountService';
 
 const mockGetTotpPolicy = vi.mocked(getTotpPolicy);
 const mockGetTotpStatus = vi.mocked(getTotpStatus);

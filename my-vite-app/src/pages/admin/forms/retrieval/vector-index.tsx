@@ -18,9 +18,9 @@ import {
   type VectorIndexDTO,
   type VectorIndexProvider,
   type VectorIndexStatus,
-} from '../../../../services/retrievalVectorIndexService';
-import { adminListAuditLogs, type AuditLogDTO } from '../../../../services/auditLogService';
-import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+} from '../../../../services/search/retrievalVectorIndexService';
+import { adminListAuditLogs, type AuditLogDTO } from '../../../../services/admin/platform/auditLogService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/admin/ai/aiProvidersAdminService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 
 function safeNumber(v: unknown): number | undefined {

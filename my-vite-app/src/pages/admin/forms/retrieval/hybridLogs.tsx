@@ -1,5 +1,5 @@
 import React from 'react';
-import type { RetrievalEventLogDTO, RetrievalHitLogDTO } from '../../../../services/retrievalHybridService';
+import type { RetrievalEventLogDTO, RetrievalHitLogDTO } from '../../../../services/search/retrievalHybridService';
 
 type UiClasses = {
   btnSecondaryClass: string;

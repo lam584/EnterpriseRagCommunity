@@ -22,7 +22,7 @@ vi.mock('../../../../contexts/AccessContext', () => ({
   useAccess: useAccessMock,
 }));
 
-vi.mock('../../../../services/retrievalContextService', () => ({
+vi.mock('../../../../services/search/retrievalContextService', () => ({
   adminGetContextClipConfig: adminGetContextClipConfigMock,
   adminUpdateContextClipConfig: adminUpdateContextClipConfigMock,
   adminTestContextClip: adminTestContextClipMock,

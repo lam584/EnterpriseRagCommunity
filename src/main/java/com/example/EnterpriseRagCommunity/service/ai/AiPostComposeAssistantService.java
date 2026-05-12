@@ -11,6 +11,7 @@ import com.example.EnterpriseRagCommunity.repository.ai.LlmModelRepository;
 import com.example.EnterpriseRagCommunity.repository.content.PostComposeAiSnapshotsRepository;
 import com.example.EnterpriseRagCommunity.repository.monitor.FileAssetsRepository;
 import com.example.EnterpriseRagCommunity.repository.semantic.PromptsRepository;
+import com.example.EnterpriseRagCommunity.service.ai.client.OpenAiCompatClient;
 import com.example.EnterpriseRagCommunity.service.ai.dto.ChatMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,12 +35,15 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class AiPostComposeAssistantService {
     private static final String ENV_DEFAULT = "default";
+    private static final long MAX_INLINE_IMAGE_BYTES = 4_000_000L;
+    private static final Map<String, String> DASHSCOPE_OSS_RESOLVE_HEADERS = Map.of("X-DashScope-OssResourceResolve", "enable");
 
     private final PostComposeAiSnapshotsRepository snapshotsRepository;
     private final UsersRepository usersRepository;
     private final LlmGateway llmGateway;
     private final LlmModelRepository llmModelRepository;
     private final FileAssetsRepository fileAssetsRepository;
+    private final LlmImageUploadService llmImageUploadService;
     private final PortalChatConfigService portalChatConfigService;
     private final PromptsRepository promptsRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -228,31 +232,100 @@ public class AiPostComposeAssistantService {
         return LikelyImageUrlSupport.isLikelyImageUrl(url);
     }
 
+    private static boolean isUpstreamSafeImageUrl(String url) {
+        String normalized = toNonBlank(url);
+        if (normalized == null) return false;
+        String lower = normalized.toLowerCase();
+        return lower.startsWith("data:")
+                || lower.startsWith("http://")
+                || lower.startsWith("https://")
+                || lower.startsWith("oss://");
+    }
+
+    private record ResolvedMultimodalTarget(String providerId, String modelName) {}
+
+    private ResolvedMultimodalTarget resolveMultimodalTarget(String providerId, String modelName) {
+        String pid = firstNonBlank(providerId, null);
+        String mn = firstNonBlank(modelName, null);
+        if (mn != null) {
+            return new ResolvedMultimodalTarget(pid, mn);
+        }
+        LlmGateway.RoutedChatTarget target = llmGateway.resolveRoutedChatTarget(LlmQueueTaskType.MULTIMODAL_CHAT, pid, null);
+        return new ResolvedMultimodalTarget(
+                firstNonBlank(target == null ? null : target.providerId(), pid),
+                firstNonBlank(target == null ? null : target.modelName(), mn)
+        );
+    }
+
+    private static boolean hasOssImageUrl(List<AiPostComposeStreamRequest.ImageInput> images) {
+        if (images == null || images.isEmpty()) return false;
+        for (AiPostComposeStreamRequest.ImageInput image : images) {
+            String url = image == null ? null : toNonBlank(image.getUrl());
+            if (url != null && url.regionMatches(true, 0, "oss://", 0, "oss://".length())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private String encodeImageUrlForUpstream(AiPostComposeStreamRequest.ImageInput img) {
+        return encodeImageUrlForUpstream(img, null);
+    }
+
+    private String encodeImageUrlForUpstream(AiPostComposeStreamRequest.ImageInput img, String modelName) {
         if (img == null) return null;
         String url = toNonBlank(img.getUrl());
         if (url == null) return null;
 
-        if (url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://")) {
+        String lower = url.toLowerCase();
+        if (lower.startsWith("data:") || lower.startsWith("http://") || lower.startsWith("https://")) {
             return url;
         }
 
-        byte[] bytes = readLocalUploadBytes(img.getFileAssetId(), url);
-        if (bytes == null || bytes.length == 0) return url;
-        if (bytes.length > 4_000_000) return url;
+        if (lower.startsWith("oss://")) {
+            String mimeType = toNonBlank(img.getMimeType());
+            if (!StringUtils.hasText(mimeType) && img.getFileAssetId() != null) {
+                var fa = fileAssetsRepository.findById(img.getFileAssetId()).orElse(null);
+                mimeType = fa == null ? null : toNonBlank(fa.getMimeType());
+            }
+            try {
+                String rebound = llmImageUploadService == null ? null : llmImageUploadService.resolveImageUrl(url, mimeType, modelName);
+                if (StringUtils.hasText(rebound)) return rebound;
+            } catch (Exception ignored) {
+            }
+            return url;
+        }
 
         String mimeType = toNonBlank(img.getMimeType());
         if (!StringUtils.hasText(mimeType) && img.getFileAssetId() != null) {
             var fa = fileAssetsRepository.findById(img.getFileAssetId()).orElse(null);
             mimeType = fa == null ? null : toNonBlank(fa.getMimeType());
         }
+
+        try {
+            String uploaded = llmImageUploadService == null ? null : llmImageUploadService.resolveImageUrl(url, mimeType, modelName);
+            if (isUpstreamSafeImageUrl(uploaded)) return uploaded;
+        } catch (Exception ignored) {
+        }
+
+        byte[] bytes = readLocalUploadBytes(img.getFileAssetId(), url);
+        if (bytes == null || bytes.length == 0) return null;
+        if (bytes.length > MAX_INLINE_IMAGE_BYTES) return null;
+
         if (!StringUtils.hasText(mimeType)) mimeType = "application/octet-stream";
 
         return "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(bytes);
     }
 
     private byte[] readLocalUploadBytes(Long fileAssetId, String url) {
-        return LocalUploadFileSupport.readLocalUploadBytes(fileAssetsRepository, uploadRoot, urlPrefix, fileAssetId, url);
+        return LocalUploadFileSupport.readLocalUploadBytes(
+                fileAssetsRepository,
+                uploadRoot,
+                urlPrefix,
+                fileAssetId,
+                url,
+                MAX_INLINE_IMAGE_BYTES
+        );
     }
 
     private static String appendImagesAsText(String userMsg, List<AiPostComposeStreamRequest.ImageInput> images) {
@@ -352,6 +425,9 @@ public class AiPostComposeAssistantService {
 
         String providerId = firstNonBlank(req.getProviderId(), snap.getProviderId(), portalCfg.getProviderId());
         String model = firstNonBlank(req.getModel(), snap.getModel(), portalCfg.getModel());
+        ResolvedMultimodalTarget routedTarget = resolveMultimodalTarget(providerId, model);
+        String effectiveProviderId = firstNonBlank(routedTarget.providerId(), providerId);
+        String effectiveModel = firstNonBlank(routedTarget.modelName(), model);
         Double temperature = req.getTemperature() != null ? req.getTemperature() : (snap.getTemperature() != null ? snap.getTemperature() : portalCfg.getTemperature());
         if (temperature == null && deepThink) temperature = 0.2;
         Double topP = req.getTopP() != null ? req.getTopP() : (snap.getTopP() != null ? snap.getTopP() : portalCfg.getTopP());
@@ -360,7 +436,7 @@ public class AiPostComposeAssistantService {
         boolean hasImages = !images.isEmpty();
         LlmQueueTaskType chatTaskType = LlmQueueTaskType.MULTIMODAL_CHAT;
         try {
-            ensureMultimodalModelForRequest(chatTaskType, providerId, model);
+            ensureMultimodalModelForRequest(chatTaskType, effectiveProviderId, effectiveModel);
         } catch (Exception e) {
             out.write("event: error\n");
             out.write("data: {\"message\":\"" + jsonEscape(String.valueOf(e.getMessage() == null ? "请求失败" : e.getMessage())) + "\"}\n\n");
@@ -370,12 +446,16 @@ public class AiPostComposeAssistantService {
             return;
         }
         List<ChatMessage> messagesMultimodal = new ArrayList<>(messages);
+        boolean hasOssUpstreamUrl = false;
         if (hasImages) {
             List<Map<String, Object>> parts = new ArrayList<>();
             parts.add(Map.of("type", "text", "text", userMsg));
             for (AiPostComposeStreamRequest.ImageInput img : images) {
-                String url = encodeImageUrlForUpstream(img);
+                String url = encodeImageUrlForUpstream(img, effectiveModel);
                 if (!StringUtils.hasText(url)) continue;
+                if (url.regionMatches(true, 0, "oss://", 0, "oss://".length())) {
+                    hasOssUpstreamUrl = true;
+                }
                 parts.add(Map.of("type", "image_url", "image_url", Map.of("url", url)));
             }
             messagesMultimodal.add(ChatMessage.userParts(parts));
@@ -385,27 +465,44 @@ public class AiPostComposeAssistantService {
 
         long startedAt = System.currentTimeMillis();
         try {
-            llmGateway.chatStreamRouted(
-                    chatTaskType,
-                    providerId,
-                    model,
-                    messagesMultimodal,
-                    temperature,
-                    topP,
-                    deepThink,
-                    null,
-                    line -> {
-                        if (line == null || line.isBlank()) return;
-                        if (!line.startsWith("data:")) return;
-                        String data = line.substring("data:".length()).trim();
-                        if ("[DONE]".equals(data)) return;
-                        String content = extractDeltaContent(data);
-                        if (!StringUtils.hasText(content)) return;
-                        out.write("event: delta\n");
-                        out.write("data: {\"content\":\"" + jsonEscape(content) + "\"}\n\n");
-                        out.flush();
-                    }
-            );
+            OpenAiCompatClient.SseLineConsumer consumer = line -> {
+                if (line == null || line.isBlank()) return;
+                if (!line.startsWith("data:")) return;
+                String data = line.substring("data:".length()).trim();
+                if ("[DONE]".equals(data)) return;
+                String content = extractDeltaContent(data);
+                if (!StringUtils.hasText(content)) return;
+                out.write("event: delta\n");
+                out.write("data: {\"content\":\"" + jsonEscape(content) + "\"}\n\n");
+                out.flush();
+            };
+            Map<String, String> extraHeaders = hasOssUpstreamUrl ? DASHSCOPE_OSS_RESOLVE_HEADERS : null;
+            if (extraHeaders == null) {
+                llmGateway.chatStreamRouted(
+                        chatTaskType,
+                        effectiveProviderId,
+                        effectiveModel,
+                        messagesMultimodal,
+                        temperature,
+                        topP,
+                        deepThink,
+                        null,
+                        consumer
+                );
+            } else {
+                llmGateway.chatStreamRouted(
+                        chatTaskType,
+                    effectiveProviderId,
+                    effectiveModel,
+                        messagesMultimodal,
+                        temperature,
+                        topP,
+                        deepThink,
+                        null,
+                        consumer,
+                        extraHeaders
+                );
+            }
         } catch (Exception ex) {
             out.write("event: error\n");
             out.write("data: {\"message\":\"" + jsonEscape("上游AI调用失败：" + ex.getMessage()) + "\"}\n\n");

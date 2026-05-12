@@ -7,7 +7,7 @@ import {
   type CitationConfigDTO,
   type CitationTestItem,
   type CitationTestResponse,
-} from '../../../../services/retrievalCitationService';
+} from '../../../../services/search/retrievalCitationService';
 import { EditSaveActions } from '../../../../components/admin/EditSaveActions';
 
 const inputClass =

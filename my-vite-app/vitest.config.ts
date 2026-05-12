@@ -7,6 +7,10 @@ export default defineConfig({
   resolve: {
     alias: {
       echarts: resolve(__dirname, 'src/testUtils/echartsMockModule.ts'),
+      '/components': resolve(__dirname, 'src/components'),
+      '/services': resolve(__dirname, 'src/services'),
+      '/testUtils': resolve(__dirname, 'src/testUtils'),
+      '/utils': resolve(__dirname, 'src/utils'),
     },
   },
   test: {

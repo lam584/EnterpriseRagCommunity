@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { SpringPage } from '../../../../types/page';
-import { portalSearch, type PortalSearchHitDTO } from '../../../../services/portalSearchService';
+import { portalSearch, type PortalSearchHitDTO } from '../../../../services/search/portalSearchService';
 
 export default function DiscoverSearchPage() {
   const navigate = useNavigate();

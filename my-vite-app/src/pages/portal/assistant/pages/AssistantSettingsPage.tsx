@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CircleHelp } from 'lucide-react';
-import { getMyAssistantPreferences, updateMyAssistantPreferences } from '../../../../services/assistantPreferencesService';
-import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+import { getMyAssistantPreferences, updateMyAssistantPreferences } from '../../../../services/users/assistantPreferencesService';
+import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
 import { normAssistantValue, pickAssistantModel, pickAssistantProviderId } from './assistantOptionsUtils';
 
 function buildProviderModelValue(providerId: string, model: string): string {

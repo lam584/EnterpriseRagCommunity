@@ -3,7 +3,7 @@ import type {
     ModerationCaseType,
     ModerationQueueDetail,
     ModerationQueueItem,
-} from '../../../../services/moderationQueueService';
+} from '../../../../services/moderation/review/moderationQueueService';
 export { toInt } from '../../../../utils/numberParsers';
 
 export function formatDateTime(s?: string | null): string {

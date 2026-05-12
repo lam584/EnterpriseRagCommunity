@@ -6,8 +6,8 @@ import {
   type Page,
   type PostTitleGenConfigDTO,
   type PostTitleGenHistoryDTO,
-} from '../../../../services/titleGenAdminService';
-import { suggestPostTitles, type AiPostTitleSuggestResponse } from '../../../../services/aiTitleService';
+} from '../../../../services/admin/ai/titleGenAdminService';
+import { suggestPostTitles, type AiPostTitleSuggestResponse } from '../../../../services/ai/authoring/aiTitleService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 import { EditToggleButton } from '../../../../components/admin/EditToggleButton';
 import PromptContentCard from '../../../../components/admin/PromptContentCard';

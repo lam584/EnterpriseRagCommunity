@@ -5,7 +5,7 @@ import {
   adminUpdateContentFormatsConfig,
   type UploadFormatRuleDTO,
   type UploadFormatsConfigDTO,
-} from '../../../../services/contentFormatsAdminService';
+} from '../../../../services/admin/content/contentFormatsAdminService';
 
 const inputClass =
   'block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors duration-200';

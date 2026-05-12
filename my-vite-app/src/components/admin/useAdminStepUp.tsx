@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Modal from '../common/Modal';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
-import { sendAccountEmailVerificationCode } from '../../services/emailVerificationService';
-import { getAdminStepUpStatus, verifyAdminStepUp } from '../../services/adminStepUpService';
+import { sendAccountEmailVerificationCode } from '../../services/auth/emailVerificationService';
+import { getAdminStepUpStatus, verifyAdminStepUp } from '../../services/auth/adminStepUpService';
 
 type EnsureResult = { ensured: true } | { ensured: false };
 

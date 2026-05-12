@@ -1,4 +1,4 @@
-import type { AiChatOptionsDTO, AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+import type { AiChatOptionsDTO, AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
 
 export function normAssistantValue(v: unknown): string {
   return typeof v === 'string' ? v.trim() : '';

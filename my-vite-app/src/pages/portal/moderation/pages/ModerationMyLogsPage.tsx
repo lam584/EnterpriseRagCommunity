@@ -3,7 +3,7 @@ import {
   portalExportMyAuditLogsCsv,
   portalListMyAuditLogs,
   type AuditLogDTO,
-} from '../../../../services/auditLogService';
+} from '../../../../services/admin/platform/auditLogService';
 import { downloadBlob } from '../../../../utils/download';
 
 function formatDateTime(s?: string | null): string {

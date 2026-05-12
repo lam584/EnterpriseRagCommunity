@@ -7,8 +7,8 @@ const serviceMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../services/moderationPipelineService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/moderationPipelineService')>();
+vi.mock('../../services/moderation/review/moderationPipelineService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/moderation/review/moderationPipelineService')>();
   return {
     ...actual,
     adminGetLatestPipelineByQueueId: serviceMocks.adminGetLatestPipelineByQueueId,
@@ -16,7 +16,7 @@ vi.mock('../../services/moderationPipelineService', async (importOriginal) => {
 });
 
 import { ModerationPipelineTracePanel } from './ModerationPipelineTracePanel';
-import { adminGetLatestPipelineByQueueId } from '../../services/moderationPipelineService';
+import { adminGetLatestPipelineByQueueId } from '../../services/moderation/review/moderationPipelineService';
 
 const mockAdminGetLatestPipelineByQueueId = vi.mocked(adminGetLatestPipelineByQueueId);
 

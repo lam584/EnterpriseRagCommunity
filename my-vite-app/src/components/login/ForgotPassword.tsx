@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/1.png';
 import AuthFooter from './AuthFooter';
-import { getRegistrationStatus } from '../../services/authService';
+import { getRegistrationStatus } from '../../services/auth/authService';
 import {
   getPasswordResetStatus,
   resetPasswordByEmailCode,
   resetPasswordByTotp,
   sendPasswordResetEmailCode,
   type PasswordResetStatusResponse,
-} from '../../services/passwordResetService';
+} from '../../services/auth/passwordResetService';
 
 type Step = 'email' | 'reset' | 'done';
 

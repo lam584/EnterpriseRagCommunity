@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../../services/aiProvidersAdminService', () => ({
+vi.mock('../../../../services/admin/ai/aiProvidersAdminService', () => ({
   adminAddProviderModel: vi.fn(),
   adminDeleteProviderModel: vi.fn(),
   adminFetchUpstreamModels: vi.fn(),
@@ -18,7 +18,7 @@ import {
   adminListProviderModels,
   adminPreviewUpstreamModels,
   adminUpdateAiProvidersConfig,
-} from '../../../../services/aiProvidersAdminService';
+} from '../../../../services/admin/ai/aiProvidersAdminService';
 import AiProvidersForm from './providers';
 
 describe('AiProvidersForm', () => {

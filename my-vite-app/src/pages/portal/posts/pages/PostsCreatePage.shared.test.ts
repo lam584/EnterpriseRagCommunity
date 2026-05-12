@@ -6,7 +6,7 @@ import {
   normalizeSuggestedLanguages,
   suggestLanguagesToPublish,
 } from './PostsCreatePage.shared';
-import { slugify } from '../../../../services/tagService';
+import { slugify } from '../../../../services/content/tagService';
 
 describe('PostsCreatePage.shared', () => {
   it('normalizeRequestedTagNames trims blanks and applies optional limit', () => {

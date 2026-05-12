@@ -9,16 +9,16 @@ const tokenizerMocks = vi.hoisted(() => ({
   tokenizeText: vi.fn(),
 }));
 
-vi.mock('../../services/moderationChunkReviewLogsService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/moderationChunkReviewLogsService')>();
+vi.mock('../../services/moderation/review/moderationChunkReviewLogsService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/moderation/review/moderationChunkReviewLogsService')>();
   return {
     ...actual,
     adminGetModerationChunkLogContent: chunkServiceMocks.adminGetModerationChunkLogContent,
   };
 });
 
-vi.mock('../../services/opensearchTokenService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/opensearchTokenService')>();
+vi.mock('../../services/search/opensearchTokenService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/search/opensearchTokenService')>();
   return {
     ...actual,
     tokenizeText: tokenizerMocks.tokenizeText,

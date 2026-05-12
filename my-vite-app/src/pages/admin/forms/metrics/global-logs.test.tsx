@@ -2,22 +2,22 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { SpringPage } from '../../../../types/page';
-import type { AccessLogDTO } from '../../../../services/accessLogService';
+import type { AccessLogDTO } from '../../../../services/admin/platform/accessLogService';
 
-vi.mock('../../../../services/auditLogService', () => ({
+vi.mock('../../../../services/admin/platform/auditLogService', () => ({
   adminExportAuditLogsCsv: vi.fn(),
   adminGetAuditLogDetail: vi.fn(),
   adminListAuditLogs: vi.fn(),
 }));
 
-vi.mock('../../../../services/accessLogService', () => ({
+vi.mock('../../../../services/admin/platform/accessLogService', () => ({
   adminExportAccessLogsCsv: vi.fn(),
   adminGetAccessLogDetail: vi.fn(),
   adminGetAccessLogEsIndexStatus: vi.fn(),
   adminListAccessLogs: vi.fn(),
 }));
 
-vi.mock('../../../../services/logRetentionService', () => ({
+vi.mock('../../../../services/admin/platform/logRetentionService', () => ({
   adminGetLogRetentionConfig: vi.fn(),
   adminUpdateLogRetentionConfig: vi.fn(),
 }));
@@ -26,8 +26,8 @@ vi.mock('../../../../components/common/DetailDialog', () => ({
   default: ({ open, children }: { open: boolean; children?: React.ReactNode }) => (open ? <div>{children}</div> : null),
 }));
 
-import { adminGetAccessLogDetail, adminGetAccessLogEsIndexStatus, adminListAccessLogs } from '../../../../services/accessLogService';
-import { adminGetLogRetentionConfig, adminUpdateLogRetentionConfig } from '../../../../services/logRetentionService';
+import { adminGetAccessLogDetail, adminGetAccessLogEsIndexStatus, adminListAccessLogs } from '../../../../services/admin/platform/accessLogService';
+import { adminGetLogRetentionConfig, adminUpdateLogRetentionConfig } from '../../../../services/admin/platform/logRetentionService';
 import GlobalLogsForm from './global-logs';
 
 function buildAccessPage(overrides: Partial<SpringPage<AccessLogDTO>> = {}): SpringPage<AccessLogDTO> {

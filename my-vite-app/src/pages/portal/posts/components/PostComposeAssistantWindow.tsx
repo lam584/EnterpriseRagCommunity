@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import FloatingWindow from '../../../../components/ui/FloatingWindow';
-import { upsertDraft, type PostDraftDTO } from '../../../../services/draftService';
-import { postComposeEditStream, type PostComposeAiStreamEvent } from '../../../../services/aiPostComposeService';
-import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
-import { tokenizeText } from '../../../../services/opensearchTokenService';
-import { uploadFile, type UploadResult } from '../../../../services/uploadService';
+import { upsertDraft, type PostDraftDTO } from '../../../../services/content/draftService';
+import { postComposeEditStream, type PostComposeAiStreamEvent } from '../../../../services/ai/authoring/aiPostComposeService';
+import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
+import { tokenizeText } from '../../../../services/search/opensearchTokenService';
+import { uploadFile, type UploadResult } from '../../../../services/content/uploadService';
 import {
   applyPostComposeAiSnapshot,
   createPostComposeAiSnapshot,
@@ -12,12 +12,12 @@ import {
   revertPostComposeAiSnapshot,
   type PostComposeAiSnapshotDTO,
   type PostComposeAiSnapshotTargetType,
-} from '../../../../services/postComposeAiSnapshotService';
+} from '../../../../services/ai/authoring/postComposeAiSnapshotService';
 import { stripThinkBlocks } from '../../../../utils/thinkTags';
 import { createAiComposeChannelRouterState, routeAiComposeDelta } from '../../../../utils/aiComposeChannelRouter';
 import { extractImageFilesFromClipboardData } from '../../../../utils/clipboardImageFiles';
 import { normalizeMarkdownForPreview } from '../../../../utils/markdownUtils';
-import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
+import MarkdownPreview from '../../../../components/ui/DeferredMarkdownPreview';
 import {
   buildProviderModelValue,
   flattenProviderModelOptions,

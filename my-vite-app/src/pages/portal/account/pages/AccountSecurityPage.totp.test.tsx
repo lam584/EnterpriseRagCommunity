@@ -28,16 +28,16 @@ vi.mock('../../../../contexts/AuthContext', () => {
   };
 });
 
-vi.mock('../../../../services/accountService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../../services/accountService')>();
+vi.mock('../../../../services/users/accountService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/users/accountService')>();
   return {
     ...actual,
     changePassword: vi.fn(),
   };
 });
 
-vi.mock('../../../../services/totpAccountService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../../services/totpAccountService')>();
+vi.mock('../../../../services/auth/totpAccountService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/auth/totpAccountService')>();
   return {
     ...actual,
     getTotpPolicy: vi.fn(),
@@ -56,7 +56,7 @@ vi.mock('./AccountConnectionsPage', () => {
 });
 
 import AccountSecurityPage from './AccountSecurityPage';
-import { getTotpPolicy, getTotpStatus, enrollTotp, verifyTotp, verifyTotpPassword } from '../../../../services/totpAccountService';
+import { getTotpPolicy, getTotpStatus, enrollTotp, verifyTotp, verifyTotpPassword } from '../../../../services/auth/totpAccountService';
 
 const mockGetTotpPolicy = vi.mocked(getTotpPolicy);
 const mockGetTotpStatus = vi.mocked(getTotpStatus);

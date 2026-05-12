@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { adminGetAiProvidersConfig } from '../../../../services/aiProvidersAdminService';
+import { adminGetAiProvidersConfig } from '../../../../services/admin/ai/aiProvidersAdminService';
 
 export type MetricsRangePreset =
   | 'CUSTOM'

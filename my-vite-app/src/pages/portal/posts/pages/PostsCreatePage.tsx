@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
 import MarkdownEditor from '../../../../components/ui/MarkdownEditor';
-import { createPost, getPost, updatePost, type PostDTO } from '../../../../services/postService';
+import { createPost, getPost, updatePost, type PostDTO } from '../../../../services/content/postService';
 import {
   cancelResumableUpload,
   findUploadBySha256,
@@ -9,24 +9,24 @@ import {
   uploadFileResumable,
   type ResumableUploadHandle,
   type UploadResult,
-} from '../../../../services/uploadService';
+} from '../../../../services/content/uploadService';
 import {
   createEmptyDraft,
   deleteDraft,
   getDraft,
   upsertDraft,
   type PostDraftDTO,
-} from '../../../../services/draftService';
-import { listBoards, type BoardDTO } from '../../../../services/boardService';
-import { suggestPostTitles } from '../../../../services/aiTitleService';
-import { getPostTitleGenPublicConfig, type PostTitleGenPublicConfigDTO } from '../../../../services/titleGenPublicService';
-import { createTag, listTags, type TagDTO } from '../../../../services/tagService';
-import { suggestPostTags } from '../../../../services/aiTagService';
-import { getPostTagGenPublicConfig, type PostTagGenPublicConfigDTO } from '../../../../services/tagGenPublicService';
-import { getLangLabelGenConfig, suggestPostLangLabels, type LangLabelGenPublicConfigDTO } from '../../../../services/aiLangLabelService';
-import { getPostComposeConfig, type PostComposeConfigDTO } from '../../../../services/postComposeConfigService';
-import { getUploadFormatsConfig, type UploadFormatsConfigDTO, type UploadFormatRuleDTO } from '../../../../services/uploadFormatsPublicService';
-import { getMyTranslatePreferences } from '../../../../services/accountPreferencesService';
+} from '../../../../services/content/draftService';
+import { listBoards, type BoardDTO } from '../../../../services/content/boardService';
+import { suggestPostTitles } from '../../../../services/ai/authoring/aiTitleService';
+import { getPostTitleGenPublicConfig, type PostTitleGenPublicConfigDTO } from '../../../../services/ai/public/titleGenPublicService';
+import { createTag, listTags, type TagDTO } from '../../../../services/content/tagService';
+import { suggestPostTags } from '../../../../services/ai/authoring/aiTagService';
+import { getPostTagGenPublicConfig, type PostTagGenPublicConfigDTO } from '../../../../services/ai/public/tagGenPublicService';
+import { getLangLabelGenConfig, suggestPostLangLabels, type LangLabelGenPublicConfigDTO } from '../../../../services/ai/authoring/aiLangLabelService';
+import { getPostComposeConfig, type PostComposeConfigDTO } from '../../../../services/content/postComposeConfigService';
+import { getUploadFormatsConfig, type UploadFormatsConfigDTO, type UploadFormatRuleDTO } from '../../../../services/content/uploadFormatsPublicService';
+import { getMyTranslatePreferences } from '../../../../services/users/accountPreferencesService';
 import { escapeMarkdownLinkDestination, escapeMarkdownLinkText } from '../../../../utils/markdownUtils';
 import { computeFileSha256 } from '../../../../utils/fileSha256';
 import {

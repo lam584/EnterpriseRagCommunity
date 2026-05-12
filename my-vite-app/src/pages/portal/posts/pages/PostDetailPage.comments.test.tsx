@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {render, screen, within, fireEvent, cleanup, waitFor} from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
-vi.mock('../../../../services/postService', () => ({
+vi.mock('../../../../services/content/postService', () => ({
   getPost: vi.fn(),
   togglePostFavorite: vi.fn(),
   togglePostLike: vi.fn(),
 }));
 
-vi.mock('../../../../services/commentService', () => ({
+vi.mock('../../../../services/content/commentService', () => ({
   listPostComments: vi.fn(),
   createPostComment: vi.fn(),
   toggleCommentLike: vi.fn(),
@@ -21,31 +21,31 @@ vi.mock('../../../../contexts/AuthContext', () => ({
     })),
 }));
 
-vi.mock('../../../../services/translateService', () => ({
+vi.mock('../../../../services/ai/public/translateService', () => ({
   getTranslateConfig: vi.fn(),
   translatePost: vi.fn(),
   translateComment: vi.fn(),
 }));
 
-vi.mock('../../../../services/accountPreferencesService', () => ({
+vi.mock('../../../../services/users/accountPreferencesService', () => ({
   getMyTranslatePreferences: vi.fn(),
 }));
 
-vi.mock('../../../../services/tagService', () => ({
+vi.mock('../../../../services/content/tagService', () => ({
   listTags: vi.fn(),
 }));
 
-vi.mock('../../../../services/reportService', () => ({
+vi.mock('../../../../services/content/reportService', () => ({
   reportPost: vi.fn(),
   reportComment: vi.fn(),
 }));
 
 import PostDetailPage from './PostDetailPage';
-import { getPost } from '../../../../services/postService';
-import {deleteMyComment, listPostComments} from '../../../../services/commentService';
-import { getTranslateConfig } from '../../../../services/translateService';
-import { getMyTranslatePreferences } from '../../../../services/accountPreferencesService';
-import { listTags } from '../../../../services/tagService';
+import { getPost } from '../../../../services/content/postService';
+import {deleteMyComment, listPostComments} from '../../../../services/content/commentService';
+import { getTranslateConfig } from '../../../../services/ai/public/translateService';
+import { getMyTranslatePreferences } from '../../../../services/users/accountPreferencesService';
+import { listTags } from '../../../../services/content/tagService';
 
 describe('PostDetailPage (comments)', () => {
   beforeEach(() => {

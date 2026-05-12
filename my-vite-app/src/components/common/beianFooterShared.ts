@@ -1,4 +1,4 @@
-import type { PublicSiteConfig } from '../../services/publicSiteConfigService';
+import type { PublicSiteConfig } from '../../services/siteConfig/publicSiteConfigService';
 
 type SiteConfigSetter = (value: PublicSiteConfig) => void;
 

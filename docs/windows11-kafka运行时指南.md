@@ -1,54 +1,4 @@
 
-## 6. 全链路最终验证
-
-启动你的 Spring Boot 项目，然后执行以下检查：
-
-### 6.1 检查应用日志
-在 IDEA 控制台或日志文件中搜索关键字：
-*   ✅ **正常**：无 `access_log_kafka_send_failed` 或 `access_log_es_sink_consume_failed`。
-*   ⚠️ **警告**：如果出现 `access_log_dual_verify_miss`，说明 Kafka 有数据但 ES 没收到（或延迟高）。初期少量出现是正常的，持续出现需检查 ES 连接。
-
-### 6.1.1 启动项目并挂到本地 Kafka
-
-
-### 6.2 检查 Kafka 消费情况
-再次运行消费者命令，看是否有新的业务日志进入：
-```powershell
-& "E:\kafka_2.13-4.2.0\bin\windows\kafka-console-consumer.bat" --bootstrap-server 127.0.0.1:9092 --topic access-logs-v1 --from-beginning --max-messages 3
-```
-
-更推荐用一个新的消费组，只看刚触发的请求日志：
-
-```powershell
-$group = "access-log-check-$(Get-Date -Format yyyyMMddHHmmss)"
-& "E:\kafka_2.13-4.2.0\bin\windows\kafka-console-consumer.bat" --bootstrap-server 127.0.0.1:9092 --topic access-logs-v1 --group $group --max-messages 1 --timeout-ms 15000
-```
-
-然后在另一个窗口触发一条公开接口请求：
-
-```powershell
-Invoke-WebRequest -Uri "http://127.0.0.1:8099/api/public/site-config" -UseBasicParsing | Out-Null
-```
-
-若消费者读到一条 JSON，且其中 `data.path` 为 `/api/public/site-config`，说明 **业务访问日志已经成功写入 Kafka**。
-
-### 6.3 检查 ES 数据 (如果配置了 ES)
-```powershell
-# 假设 ES 在本地 9200，且无需鉴权
-curl "http://127.0.0.1:9200/access-logs-v1/_search?size=1&pretty"
-```
-*   **成功标志**：返回 JSON 数据，`hits.total.value` > 0。
-
-更精确的验证方式：
-
-```powershell
-curl "http://127.0.0.1:9200/access-logs-v1/_search?q=path.keyword:%2Fapi%2Fpublic%2Fsite-config&size=1&pretty"
-```
-
-如果能查到刚触发的访问记录，说明 **Kafka -> ES 消费链路也已经打通**。
-
----
-
 ## 7. Kafka 常用运维命令
 
 下面这些命令适合日常排查 `access-logs-v1` 链路是否正常，默认仍使用本机单节点配置。
@@ -139,10 +89,11 @@ Write-Output $msg | & "$KAFKA_HOME\bin\windows\kafka-console-producer.bat" --boo
 | **`Invalid cluster.id`** | 数据目录残留旧 ID | 执行 **[3.1]** 清空 `data/kraft-logs` 目录后重新 Format。 |
 | **`Timed out waiting for node assignment`** | Kafka 未启动或端口错 | 1. 确认 Kafka 启动窗口无报错。<br>2. 确认 `get-nettcpconnection` 能看到 9092 监听。<br>3. 检查 `server.properties` 中 `advertised.listeners` 是否为 `127.0.0.1`。 |
 | **`Error while renaming dir ... AccessDeniedException` 且 `all log dirs ... have failed`** | `log.dirs` 根目录下混入了 Kafka 不识别的目录（如手工隔离目录），或旧分区目录在重命名为 stray/delete 时被拒绝 | 1. 停止 Kafka 进程。<br>2. 仅保留合法分区目录（形如 `topic-partition`）和 Kafka 元数据目录。<br>3. 将手工隔离目录移到 `log.dirs` 外部（例如 `data/manual-quarantine`）。<br>4. 重启 Kafka 后再执行 topic/group 校验命令。 |
+| **`AccessDeniedException ... checkpoint.deleted`** | KRaft 元数据目录里残留了旧的 `*.checkpoint.deleted` / `*.snapshot.deleted` 标记，Windows 重启时删除失败 | 直接执行 **`.scripts\start-kafka.cmd`** 重新启动；脚本会先清理这些残留标记。若仍报错，先确认没有其他 Kafka 进程占用目录，再手工删除对应文件后重启。 |
 | **Topic 分区数一直是 1** | `--if-not-exists` 不修改现有 Topic | 执行 **[4.2]** 中的 `--alter --partitions 6`。 |
 | **消费组出现负 lag（例如 `-57`）** | Topic 曾被删除/重建，历史 committed offset 高于新日志末尾 | 1. 先停掉消费端（group 必须非 Stable）。<br>2. 执行 **[7.4]** 的 `--reset-offsets --to-latest --execute`。<br>3. 重启消费端并复查 group。 |
 | **PowerShell 报“无法识别命令”** | 相对路径失效 | **永远使用绝对路径**，如 `E:\kafka...\bin\windows\xxx.bat`。 |
-| **Java 版本冲突** | JDK 25 某些 API 变更 | 建议切换到 **JDK 21 LTS**，这是目前 Kafka 4.x 最稳定的搭配。 |
+| **Java 版本冲突** | JDK 25 下本地脚本或依赖行为与预期不一致 | 建议优先保持 **JDK 25 LTS** 与项目一致，并优先排查 Kafka 脚本、环境变量与本地插件兼容性。 |
 | **ES 连不上** | 鉴权或地址错误 | 检查 `APP_ES_API_KEY` 是否正确；本地开发确保 ES 允许匿名访问或配置了正确的 Basic Auth。 |
 
 ---

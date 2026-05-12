@@ -3,12 +3,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useParams } from 'react-router-dom';
 
-vi.mock('../../../../services/portalSearchService', () => ({
+vi.mock('../../../../services/search/portalSearchService', () => ({
   portalSearch: vi.fn(),
 }));
 
 import DiscoverSearchPage from './DiscoverSearchPage';
-import { portalSearch } from '../../../../services/portalSearchService';
+import { portalSearch } from '../../../../services/search/portalSearchService';
 
 function DetailProbe() {
   const { postId } = useParams();

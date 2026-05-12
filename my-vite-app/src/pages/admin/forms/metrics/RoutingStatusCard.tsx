@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import * as echarts from 'echarts';
-import { adminGetAiProvidersConfig } from '../../../../services/aiProvidersAdminService';
+import React, { useEffect, useMemo, useState } from 'react';
+import { adminGetAiProvidersConfig } from '../../../../services/admin/ai/aiProvidersAdminService';
 
 type RoutingState = {
   strategy?: string;
@@ -113,60 +112,14 @@ export const RoutingStatusCard: React.FC<{
     const total = data.reduce((s, x) => s + x.value, 0);
     return { data, total };
   }, [providerLabelById, routingEvents]);
-
-  const providerChartRef = useRef<HTMLDivElement | null>(null);
-  const providerChartInstanceRef = useRef<echarts.EChartsType | null>(null);
-
-  useEffect(() => {
-    const el = providerChartRef.current;
-    if (!el) return;
-    const chart = echarts.init(el);
-    providerChartInstanceRef.current = chart;
-    const onResize = () => {
-      try {
-        chart.resize();
-      } catch {
-      }
-    };
-    window.addEventListener('resize', onResize);
-    onResize();
-    return () => {
-      window.removeEventListener('resize', onResize);
-      providerChartInstanceRef.current = null;
-      try {
-        chart.dispose();
-      } catch {
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const chart = providerChartInstanceRef.current;
-    if (!chart) return;
-    if (!providerSeries.data.length) {
-      chart.clear();
-      return;
-    }
-    chart.setOption(
-      {
-        tooltip: { trigger: 'item' },
-        legend: { bottom: 8, left: 'center' },
-        series: [
-          {
-            name: '模型提供方',
-            type: 'pie',
-            radius: ['35%', '70%'],
-            avoidLabelOverlap: true,
-            itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
-            label: { show: true, formatter: '{b}: {d}%' },
-            labelLine: { show: true },
-            data: providerSeries.data,
-          },
-        ],
-      },
-      { notMerge: true },
-    );
-  }, [providerSeries]);
+  const providerBreakdown = useMemo(
+    () =>
+      providerSeries.data.map((item) => ({
+        ...item,
+        percent: providerSeries.total > 0 ? item.value / providerSeries.total : 0,
+      })),
+    [providerSeries],
+  );
 
   const routingLastTsMs = routingEventsLastAtMs ?? (routingEvents.length ? routingEvents[0].tsMs : null);
   const routingSilenceSec = Math.max(0, Math.floor((tickMs - (routingLastTsMs ?? routingEventsResetAtMs)) / 1000));
@@ -282,7 +235,31 @@ export const RoutingStatusCard: React.FC<{
         <div className="text-xs text-gray-500">
           {providerSeries.total ? <>统计范围：当前已接收 {providerSeries.total} 条成功路由事件</> : <>暂无可统计事件</>}
         </div>
-        <div className="w-full h-[260px]" ref={providerChartRef} />
+        {providerBreakdown.length ? (
+          <div className="space-y-3">
+            {providerBreakdown.map((item) => {
+              const percentText = `${(item.percent * 100).toFixed(item.percent >= 0.1 ? 0 : 1)}%`;
+              const width = item.percent > 0 ? `${Math.max(item.percent * 100, 3)}%` : '0%';
+              return (
+                <div key={item.name} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <div className="min-w-0 truncate text-gray-700" title={item.name}>
+                      {item.name}
+                    </div>
+                    <div className="shrink-0 text-gray-500">
+                      {item.value} 条 · {percentText}
+                    </div>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                    <div className="h-full rounded-full bg-blue-500 transition-[width]" style={{ width }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded border border-dashed px-3 py-8 text-center text-sm text-gray-400">暂无可统计事件</div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600">

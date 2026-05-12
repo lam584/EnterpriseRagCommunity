@@ -1,4 +1,4 @@
-import type { PostDTO } from '../../../../services/postService';
+import type { PostDTO } from '../../../../services/content/postService';
 import type { SpringPage } from '../../../../types/page';
 import PostCard from './PostCard';
 import type { JSX } from 'react';

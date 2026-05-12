@@ -7,8 +7,8 @@ const siteConfigMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../services/publicSiteConfigService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/publicSiteConfigService')>();
+vi.mock('../../services/siteConfig/publicSiteConfigService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/siteConfig/publicSiteConfigService')>();
   return {
     ...actual,
     getPublicSiteConfig: siteConfigMocks.getPublicSiteConfig,
@@ -16,7 +16,7 @@ vi.mock('../../services/publicSiteConfigService', async (importOriginal) => {
 });
 
 import AuthFooter from './AuthFooter';
-import { getPublicSiteConfig } from '../../services/publicSiteConfigService';
+import { getPublicSiteConfig } from '../../services/siteConfig/publicSiteConfigService';
 
 const mockGetPublicSiteConfig = vi.mocked(getPublicSiteConfig);
 

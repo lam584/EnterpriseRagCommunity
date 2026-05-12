@@ -6,7 +6,7 @@ const { listMyModeratedBoardsMock } = vi.hoisted(() => ({
   listMyModeratedBoardsMock: vi.fn(),
 }));
 
-vi.mock('../../services/moderatorBoardsService', () => ({
+vi.mock('../../services/moderation/review/moderatorBoardsService', () => ({
   listMyModeratedBoards: listMyModeratedBoardsMock,
 }));
 

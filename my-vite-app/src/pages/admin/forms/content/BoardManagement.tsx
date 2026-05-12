@@ -12,9 +12,9 @@ import {
   adminUpdateBoard,
   getBoardAccessControl,
   updateBoardAccessControl,
-} from '../../../../services/boardService';
-import { listRoleSummaries, type RoleSummaryDTO } from '../../../../services/rolePermissionsService';
-import { userAccessService } from '../../../../services/userAccessService';
+} from '../../../../services/content/boardService';
+import { listRoleSummaries, type RoleSummaryDTO } from '../../../../services/permissions/rolePermissionsService';
+import { userAccessService } from '../../../../services/users/userAccessService';
 import type { UserDTO } from '../../../../types/userAccess';
 
 const BoardManagement: React.FC = () => {

@@ -8,9 +8,9 @@ import {
   type LlmQueueStatusDTO,
   type LlmQueueTaskDTO,
   type LlmQueueTaskDetailDTO,
-} from '../../../../services/llmQueueAdminService';
-import { adminGetLlmRoutingConfig } from '../../../../services/llmRoutingAdminService';
-import { adminGetAiProvidersConfig } from '../../../../services/aiProvidersAdminService';
+} from '../../../../services/admin/ai/llmQueueAdminService';
+import { adminGetLlmRoutingConfig } from '../../../../services/admin/ai/llmRoutingAdminService';
+import { adminGetAiProvidersConfig } from '../../../../services/admin/ai/aiProvidersAdminService';
 import LlmLoadTestPanel from './llm-loadtest';
 import { stripThinkBlocks } from '../../../../utils/thinkTags';
 import { SparkLine, fmtMs, fmtNum, fmtTs, fmtHmsTs, fmtType, normalizeSamples, sliceSamplesByWindow } from './llm-queue.sparkline';

@@ -11,7 +11,7 @@ import {
   type AiProviderModelsDTO,
   type AiUpstreamModelsDTO,
   type AiProvidersConfigDTO,
-} from '../../../../services/aiProvidersAdminService';
+} from '../../../../services/admin/ai/aiProvidersAdminService';
 
 type HeaderRow = { rowId: string; k: string; v: string };
 

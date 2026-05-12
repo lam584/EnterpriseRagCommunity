@@ -2,16 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { logout } from '../../../../services/authService';
-import { getMyProfile } from '../../../../services/accountService';
+import { logout } from '../../../../services/auth/authService';
+import { getMyProfile } from '../../../../services/users/accountService';
 import {
   changeEmail,
   sendChangeEmailVerificationCode,
   sendOldEmailVerificationCode,
   verifyEmailChangePassword,
   verifyOldEmailOrTotp,
-} from '../../../../services/emailChangeService';
-import { getTotpStatus } from '../../../../services/totpAccountService';
+} from '../../../../services/auth/emailChangeService';
+import { getTotpStatus } from '../../../../services/auth/totpAccountService';
 import OtpCodeInput from '../../../../components/common/OtpCodeInput';
 
 export type ChangeEmailSectionMode = 'page' | 'embedded';

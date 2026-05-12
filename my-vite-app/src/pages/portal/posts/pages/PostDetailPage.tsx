@@ -1,9 +1,9 @@
 import {useEffect, useMemo, useRef, useState} from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
+import MarkdownPreview from '../../../../components/ui/DeferredMarkdownPreview';
 import ImageLightbox from '../../../../components/ui/ImageLightbox';
-import { getPost, togglePostFavorite, togglePostLike, type PostDTO } from '../../../../services/postService';
-import { getPostAiSummary, type PostAiSummaryDTO } from '../../../../services/aiPostSummaryService';
+import { getPost, togglePostFavorite, togglePostLike, type PostDTO } from '../../../../services/content/postService';
+import { getPostAiSummary, type PostAiSummaryDTO } from '../../../../services/ai/authoring/aiPostSummaryService';
 import { formatPostTime, getPostCoverThumbUrl } from '../../../../utils/postMeta';
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import * as StatButtonModule from '../../../../components/ui/StatButton';
@@ -14,12 +14,12 @@ import {
     listPostComments,
     toggleCommentLike,
     type CommentDTO
-} from '../../../../services/commentService';
-import { listTags, type TagDTO } from '../../../../services/tagService';
-import { getTranslateConfig, translateComment, translatePost, type TranslateResultDTO } from '../../../../services/translateService';
-import { getMyTranslatePreferences, type TranslatePreferencesDTO } from '../../../../services/accountPreferencesService';
-import { listSupportedLanguages, normalizeSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/supportedLanguagesService';
-import { reportComment, reportPost } from '../../../../services/reportService';
+} from '../../../../services/content/commentService';
+import { listTags, type TagDTO } from '../../../../services/content/tagService';
+import { getTranslateConfig, translateComment, translatePost, type TranslateResultDTO } from '../../../../services/ai/public/translateService';
+import { getMyTranslatePreferences, type TranslatePreferencesDTO } from '../../../../services/users/accountPreferencesService';
+import { listSupportedLanguages, normalizeSupportedLanguages, type SupportedLanguageDTO } from '../../../../services/ai/public/supportedLanguagesService';
+import { reportComment, reportPost } from '../../../../services/content/reportService';
 import { extractLanguagesFromMetadata, normalizeLangBase, normalizeTargetLanguageBase } from '../../../../utils/langUtils';
 import { parseTranslateMarkdown } from '../../../../utils/translateOutputUtils';
 import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';

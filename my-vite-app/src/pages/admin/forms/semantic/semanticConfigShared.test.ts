@@ -1,23 +1,23 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
-vi.mock('../../../../services/aiProvidersAdminService', () => ({
+vi.mock('../../../../services/admin/ai/aiProvidersAdminService', () => ({
   adminGetAiProvidersConfig: vi.fn(),
 }));
 
-vi.mock('../../../../services/aiChatOptionsService', () => ({
+vi.mock('../../../../services/ai/chat/aiChatOptionsService', () => ({
   getAiChatOptions: vi.fn(),
 }));
 
-vi.mock('../../../../services/promptsAdminService', () => ({
+vi.mock('../../../../services/admin/ai/promptsAdminService', () => ({
   adminBatchGetPrompts: vi.fn(),
   adminUpdatePromptContent: vi.fn(),
 }));
 
-import { adminGetAiProvidersConfig } from '../../../../services/aiProvidersAdminService';
-import { getAiChatOptions } from '../../../../services/aiChatOptionsService';
-import { adminBatchGetPrompts } from '../../../../services/promptsAdminService';
-import { adminUpdatePromptContent } from '../../../../services/promptsAdminService';
+import { adminGetAiProvidersConfig } from '../../../../services/admin/ai/aiProvidersAdminService';
+import { getAiChatOptions } from '../../../../services/ai/chat/aiChatOptionsService';
+import { adminBatchGetPrompts } from '../../../../services/admin/ai/promptsAdminService';
+import { adminUpdatePromptContent } from '../../../../services/admin/ai/promptsAdminService';
 import {
   applySavedConfigState,
   buildSuggestionPayload,

@@ -41,16 +41,16 @@ vi.mock('../../../../contexts/AuthContext', () => {
   };
 });
 
-vi.mock('../../../../services/authService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../../services/authService')>();
+vi.mock('../../../../services/auth/authService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/auth/authService')>();
   return {
     ...actual,
     logout: serviceMocks.logout,
   };
 });
 
-vi.mock('../../../../services/accountService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../../services/accountService')>();
+vi.mock('../../../../services/users/accountService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../services/users/accountService')>();
   return {
     ...actual,
     changePassword: serviceMocks.changePassword,
@@ -73,8 +73,8 @@ vi.mock('../../../../components/common/OtpCodeInput', () => {
 
 import ChangePasswordCard from './ChangePasswordCard';
 import { toast } from 'react-hot-toast';
-import { changePassword } from '../../../../services/accountService';
-import { logout } from '../../../../services/authService';
+import { changePassword } from '../../../../services/users/accountService';
+import { logout } from '../../../../services/auth/authService';
 
 const mockChangePassword = vi.mocked(changePassword);
 const mockLogout = vi.mocked(logout);

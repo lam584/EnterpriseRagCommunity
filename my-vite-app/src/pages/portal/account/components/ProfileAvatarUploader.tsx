@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { uploadFile } from '../../../../services/uploadService';
+import { uploadFile } from '../../../../services/content/uploadService';
 
 export type ProfileAvatarUploaderProps = {
   value?: string;

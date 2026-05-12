@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { searchPosts, type PostDTO } from '../../../../services/postService';
+import { searchPosts, type PostDTO } from '../../../../services/content/postService';
 import {
   adminListComments,
   adminSetCommentDeleted,
@@ -7,8 +7,8 @@ import {
   type CommentAdminDTO,
   type CommentAdminQuery,
   type CommentStatus,
-} from '../../../../services/commentService';
-import {batchCommentIndexSyncStatus, type IndexSyncStatus} from '../../../../services/retrievalIndexSyncAdminService';
+} from '../../../../services/content/commentService';
+import {batchCommentIndexSyncStatus, type IndexSyncStatus} from '../../../../services/search/retrievalIndexSyncAdminService';
 import { useAccess } from '../../../../contexts/AccessContext';
 import { renderIndexStatus } from './indexSyncStatusView';
 

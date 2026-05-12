@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { logout } from '../services/authService';
+import { logout } from '../services/auth/authService';
 import { useProfileAvatarUrl } from './useProfileAvatarUrl';
 
 export function useAuthenticatedAvatarMenu(options: {

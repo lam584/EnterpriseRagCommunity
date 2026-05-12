@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DatePicker from 'react-datepicker';
 import {
   adminGetTokenMetrics,
@@ -11,7 +11,7 @@ import {
   type TokenMetricsModelItemDTO,
   type TokenMetricsResponseDTO,
   type TokenTimelineResponseDTO,
-} from '../../../../services/tokenMetricsAdminService';
+} from '../../../../services/admin/ai/tokenMetricsAdminService';
 import {
   computeMaxMetricChartValue,
   fmtCost,
@@ -26,8 +26,10 @@ import {
   useMetricsRangeState,
   useMetricsRequestState,
 } from './metricsTimeUtils';
-import { TokenTimelineChart } from './TokenTimelineChart';
-import { ModelTokenCostChart } from './ModelTokenCostChart';
+import DeferredChartPanel from './DeferredChartPanel';
+
+const TokenTimelineChart = lazy(() => import('./TokenTimelineChart').then((module) => ({ default: module.TokenTimelineChart })));
+const ModelTokenCostChart = lazy(() => import('./ModelTokenCostChart').then((module) => ({ default: module.ModelTokenCostChart })));
 
 type SortKey = 'cost' | 'totalTokens' | 'model';
 type SortDir = 'asc' | 'desc';
@@ -78,6 +80,12 @@ type PriceEditState = {
 
 const TokenForm: React.FC = () => {
   const LOAD_DEBOUNCE_MS = 300;
+    const chartFallback = (label: string, minHeight: number) => (
+      <div className="rounded border bg-white p-3 text-sm text-gray-500" style={{ minHeight: `${minHeight}px` }}>
+        {label}加载中...
+      </div>
+    );
+
   const { startDate, setStartDate, endDate, setEndDate, rangePreset, setRangePreset } = useMetricsRangeState();
   const { loading, setLoading, error, setError, resp, setResp, timeline, setTimeline, timelineError, setTimelineError } =
     useMetricsRequestState<TokenMetricsResponseDTO, TokenTimelineResponseDTO>();
@@ -605,11 +613,15 @@ const TokenForm: React.FC = () => {
         </div>
       </div>
 
-      <TokenTimelineChart
-        title={`Token 消耗趋势（${sourceLabel}）`}
-        bucket={timeline?.bucket}
-        points={timeline?.points ?? []}
-      />
+      <DeferredChartPanel minHeight={220} rootMargin="120px" placeholder={chartFallback('Token 趋势图', 220)}>
+        <Suspense fallback={chartFallback('Token 趋势图', 220)}>
+          <TokenTimelineChart
+            title={`Token 消耗趋势（${sourceLabel}）`}
+            bucket={timeline?.bucket}
+            points={timeline?.points ?? []}
+          />
+        </Suspense>
+      </DeferredChartPanel>
 
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-semibold">按模型对比</div>
@@ -640,7 +652,11 @@ const TokenForm: React.FC = () => {
         </div>
       </div>
 
-      <ModelTokenCostChart title="按模型 Token/费用对比" items={sortedItems.slice(0, 30)} currency={resp?.currency} providerNameById={providerNameById} />
+      <DeferredChartPanel minHeight={320} rootMargin="120px" placeholder={chartFallback('模型对比图', 320)}>
+        <Suspense fallback={chartFallback('模型对比图', 320)}>
+          <ModelTokenCostChart title="按模型 Token/费用对比" items={sortedItems.slice(0, 30)} currency={resp?.currency} providerNameById={providerNameById} />
+        </Suspense>
+      </DeferredChartPanel>
 
       <div className="rounded border p-3 space-y-2 w-full max-w-5xl mx-auto">
         {sortedItems.length === 0 ? (

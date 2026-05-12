@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import type { PostDTO } from '../../../../services/postService';
+import type { PostDTO } from '../../../../services/content/postService';
 import type { SpringPage } from '../../../../types/page';
 import type { UpdateUserProfileRequest, UserProfile } from '../../../../types/userProfile';
 

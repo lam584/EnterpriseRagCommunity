@@ -5,12 +5,12 @@ vi.mock('./AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
-vi.mock('../services/accessContextService', () => ({
+vi.mock('../services/permissions/accessContextService', () => ({
   fetchAccessContext: vi.fn(),
 }));
 
 import { useAuth } from './AuthContext';
-import { fetchAccessContext } from '../services/accessContextService';
+import { fetchAccessContext } from '../services/permissions/accessContextService';
 import { AccessProvider, useAccess } from './AccessContext';
 
 type AccessCtx = ReturnType<typeof useAccess>;

@@ -24,7 +24,7 @@ vi.mock('react-hot-toast', () => {
   };
 });
 
-vi.mock('../../services/setupService', () => {
+vi.mock('../../services/initialization/setupService', () => {
   return {
     checkEnvFile: setupServiceMocks.checkEnvFile,
     generateTotpKey: vi.fn(),

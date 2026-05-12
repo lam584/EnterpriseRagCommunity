@@ -1,6 +1,6 @@
 // tags.tsx - 管理员标签管理（前端模拟，遵循后端 TagDTO 约束）
 import React, { useEffect, useState } from 'react';
-import { createTag, listTagsPage, updateTag, deleteTag as deleteTagApi, type TagDTO, type TagCreateDTO, slugify, type TagType } from '../../../../services/tagService';
+import { createTag, listTagsPage, updateTag, deleteTag as deleteTagApi, type TagDTO, type TagCreateDTO, slugify, type TagType } from '../../../../services/content/tagService';
 
 const MAX_NAME = 64;
 const MAX_DESC = 255;

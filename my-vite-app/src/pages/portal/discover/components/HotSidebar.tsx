@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { fetchHotPosts, type HotPostDTO, type HotWindow } from '../../../../services/hotService';
+import { fetchHotPosts, type HotPostDTO, type HotWindow } from '../../../../services/content/hotService';
 
 
 export default function HotSidebar({ initialWindow = '24h', limit = 8 }: { initialWindow?: HotWindow; limit?: number }) {

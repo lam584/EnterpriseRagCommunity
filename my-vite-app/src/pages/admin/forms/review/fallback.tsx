@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleHelp, ChevronDown, ChevronUp } from 'lucide-react';
-import type { ModerationPolicyContentType } from '../../../../services/moderationPolicyService';
-import { adminGetModerationPolicyConfig, adminUpsertModerationPolicyConfig } from '../../../../services/moderationPolicyService';
+import type { ModerationPolicyContentType } from '../../../../services/moderation/policy/moderationPolicyService';
+import { adminGetModerationPolicyConfig, adminUpsertModerationPolicyConfig } from '../../../../services/moderation/policy/moderationPolicyService';
 
 type JsonObject = Record<string, unknown>;
 

@@ -40,21 +40,21 @@ vi.mock('../ui/input', () => {
   };
 });
 
-vi.mock('../../services/emailVerificationService', () => {
+vi.mock('../../services/auth/emailVerificationService', () => {
   return {
     sendAccountEmailVerificationCode: vi.fn(),
   };
 });
 
-vi.mock('../../services/adminStepUpService', () => {
+vi.mock('../../services/auth/adminStepUpService', () => {
   return {
     getAdminStepUpStatus: vi.fn(),
     verifyAdminStepUp: vi.fn(),
   };
 });
 
-import { sendAccountEmailVerificationCode } from '../../services/emailVerificationService';
-import { getAdminStepUpStatus } from '../../services/adminStepUpService';
+import { sendAccountEmailVerificationCode } from '../../services/auth/emailVerificationService';
+import { getAdminStepUpStatus } from '../../services/auth/adminStepUpService';
 
 function Host() {
   const { ensureAdminStepUp, adminStepUpModal } = useAdminStepUp();

@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as echarts from 'echarts';
+import { init, type AppEChartsType } from './echartsCore';
 import { parseTimestampMs } from './metricsTimeUtils';
+
+const LOAD_BALANCE_SERIES_META = [
+  { label: 'QPS', color: '#3b82f6', dash: 'solid' },
+  { label: '平均响应时间(ms)', color: '#f59e0b', dash: 'solid' },
+  { label: 'P95响应(ms)', color: '#ef4444', dash: 'dashed' },
+] as const;
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 function apiUrl(path: string): string {
@@ -240,7 +246,7 @@ export const LoadBalanceChart: React.FC<{ autoRefreshIntervalMs?: number; suspen
   const inFlightRef = useRef(false);
 
   const elRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<echarts.EChartsType | null>(null);
+  const chartRef = useRef<AppEChartsType | null>(null);
 
   useEffect(() => {
     const cached = loadLoadBalanceCache(range);
@@ -432,11 +438,23 @@ export const LoadBalanceChart: React.FC<{ autoRefreshIntervalMs?: number; suspen
     return { decreaseSuggest, increaseSuggest, removeSuggest, noTrafficSuggest, suggestMeta: { totalQps, cv, peerMedianMs, n } };
   }, [rows, rangeSeconds]);
 
+  const chartSummary = useMemo(() => {
+    if (!rows.length) {
+      return null;
+    }
+
+    const topQpsRow = rows.reduce((best, row) => (row.qps > best.qps ? row : best), rows[0]);
+    const peakP95Row = rows.reduce((best, row) => (row.p95Ms > best.p95Ms ? row : best), rows[0]);
+    const fastestRow = rows.reduce((best, row) => (row.avgMs < best.avgMs ? row : best), rows[0]);
+
+    return { topQpsRow, peakP95Row, fastestRow };
+  }, [rows]);
+
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;
 
-    if (!chartRef.current) chartRef.current = echarts.init(el, undefined, { renderer: 'canvas' });
+    if (!chartRef.current) chartRef.current = init(el, undefined, { renderer: 'canvas' });
     const chart = chartRef.current;
 
     const names = rows.map((r) => r.label).reverse();
@@ -446,9 +464,7 @@ export const LoadBalanceChart: React.FC<{ autoRefreshIntervalMs?: number; suspen
 
     chart.setOption(
       {
-        grid: { left: 60, right: 60, top: 36, bottom: 30, containLabel: true },
-        legend: { top: 6, data: ['QPS', '平均响应时间(ms)', 'P95响应(ms)'] },
-        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 60, right: 60, top: 18, bottom: 30, containLabel: true },
         xAxis: [
           { type: 'value', name: 'QPS', axisLabel: { formatter: (v: number) => String(v) } },
           { type: 'value', name: 'ms', position: 'top', axisLabel: { formatter: (v: number) => String(v) } },
@@ -491,7 +507,31 @@ export const LoadBalanceChart: React.FC<{ autoRefreshIntervalMs?: number; suspen
       ) : null}
 
       <div className="rounded border bg-white">
-        <div className="border-b bg-gray-50 px-3 py-2 text-xs text-gray-600">模型 QPS（柱）与响应时间（平均 / P95）</div>
+        <div className="border-b bg-gray-50 px-3 py-2 text-xs text-gray-600">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div>模型 QPS（柱）与响应时间（平均 / P95）</div>
+              <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-gray-500">
+                {LOAD_BALANCE_SERIES_META.map((item) => (
+                  <div key={item.label} className="inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-0.5 w-4 rounded-full"
+                      style={{ backgroundColor: item.color, borderTop: item.dash === 'solid' ? undefined : `2px ${item.dash} ${item.color}` }}
+                    />
+                    <span>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {chartSummary ? (
+              <div className="flex flex-wrap gap-2 text-[11px] text-gray-600">
+                <span className="rounded bg-white px-2 py-1">最高 QPS: {chartSummary.topQpsRow.label} {chartSummary.topQpsRow.qps.toFixed(2)}</span>
+                <span className="rounded bg-white px-2 py-1">最快平均响应: {chartSummary.fastestRow.label} {chartSummary.fastestRow.avgMs.toFixed(0)}ms</span>
+                <span className="rounded bg-white px-2 py-1">最高 P95: {chartSummary.peakP95Row.label} {chartSummary.peakP95Row.p95Ms.toFixed(0)}ms</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
         <div className="p-2">
           {loading && !rows.length ? (
             <div className="h-[360px] flex items-center justify-center text-sm text-gray-500">加载中…</div>

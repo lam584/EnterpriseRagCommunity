@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import NotificationList from '../components/NotificationList';
-import { deleteNotification, fetchNotifications, markNotificationsRead, markNotificationRead } from '../../../../services/notificationService';
+import { deleteNotification, fetchNotifications, markNotificationsRead, markNotificationRead } from '../../../../services/notification/notificationService';
 import type { NotificationDTO } from '../../../../types/notification';
 
 function toErrorMessage(e: unknown): string {

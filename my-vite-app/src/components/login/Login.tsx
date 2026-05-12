@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import backgroundImage1 from '../../assets/images/1.png';
 import backgroundImage2 from '../../assets/images/2.png';
-import { getRegistrationStatus, login, resendLogin2faEmail, resendRegisterCode, verifyLogin2fa, verifyRegister } from '../../services/authService';
+import { getRegistrationStatus, login, resendLogin2faEmail, resendRegisterCode, verifyLogin2fa, verifyRegister } from '../../services/auth/authService';
 import { useAuth } from '../../contexts/AuthContext';
 import OtpCodeInput from '../common/OtpCodeInput';
 import AuthFooter from './AuthFooter';
@@ -341,7 +341,7 @@ const Login: React.FC = () => {
                 <div className="bg-white p-8 rounded-lg shadow-lg w-96">
                     <div className="flex items-center mb-6">
                         <i className="fas fa-book fa-2x mr-2"></i>
-                        <h1 className="text-2xl font-bold">RAG技术学习探索笔记</h1>
+                        <h1 className="text-2xl font-bold">企业RAG社区</h1>
                     </div>
 
                     {error && (

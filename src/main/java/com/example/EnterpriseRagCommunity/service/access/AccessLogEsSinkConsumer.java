@@ -1,11 +1,13 @@
 package com.example.EnterpriseRagCommunity.service.access;
 
 import com.example.EnterpriseRagCommunity.repository.access.AccessLogsRepository;
+import com.example.EnterpriseRagCommunity.service.config.SystemConfigurationService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
@@ -38,6 +40,12 @@ public class AccessLogEsSinkConsumer {
 
     @Value("${app.logging.access.es-sink.dual-verify-log-on-success:false}")
     private boolean dualVerifyLogOnSuccess = false;
+
+    @Value("${app.logging.access.sink-mode:MYSQL}")
+    private String sinkModeRaw = "MYSQL";
+
+    @Autowired(required = false)
+    private SystemConfigurationService systemConfigurationService;
 
     @KafkaListener(
             id = "accessLogEsSinkConsumer",
@@ -106,7 +114,7 @@ public class AccessLogEsSinkConsumer {
     }
 
     private void verifyDualConsistency(String eventId, String requestId, String traceId, String kafkaKey) {
-        if (!dualVerifyEnabled) return;
+        if (!isDualVerifyEnabled() || !shouldVerifyAgainstMysql()) return;
 
         boolean mysqlExists = false;
         if (requestId != null && !requestId.isBlank()) {
@@ -122,10 +130,47 @@ public class AccessLogEsSinkConsumer {
             return;
         }
 
-        if (dualVerifyLogOnSuccess) {
+        if (shouldLogDualVerifySuccess()) {
             log.info("access_log_dual_verify_ok eventId={} requestId={} traceId={} kafkaKey={}",
                     eventId, requestId, traceId, kafkaKey);
         }
+    }
+
+    private boolean isDualVerifyEnabled() {
+        return resolveBoolean("app.logging.access.es-sink.dual-verify-enabled", dualVerifyEnabled);
+    }
+
+    private boolean shouldLogDualVerifySuccess() {
+        return resolveBoolean("app.logging.access.es-sink.dual-verify-log-on-success", dualVerifyLogOnSuccess);
+    }
+
+    private boolean shouldVerifyAgainstMysql() {
+        AccessLogSinkMode sinkMode = resolveSinkMode();
+        return sinkMode == AccessLogSinkMode.MYSQL || sinkMode == AccessLogSinkMode.DUAL;
+    }
+
+    private AccessLogSinkMode resolveSinkMode() {
+        String raw = resolveConfig("app.logging.access.sink-mode", sinkModeRaw);
+        if (raw == null || raw.isBlank()) return AccessLogSinkMode.MYSQL;
+        try {
+            return AccessLogSinkMode.valueOf(raw.trim().toUpperCase());
+        } catch (Exception ex) {
+            log.warn("Unknown app.logging.access.sink-mode='{}', fallback MYSQL", raw);
+            return AccessLogSinkMode.MYSQL;
+        }
+    }
+
+    private boolean resolveBoolean(String key, boolean fallback) {
+        String raw = resolveConfig(key, Boolean.toString(fallback));
+        if (raw == null || raw.isBlank()) return fallback;
+        return Boolean.parseBoolean(raw.trim());
+    }
+
+    private String resolveConfig(String key, String fallback) {
+        if (systemConfigurationService == null) return fallback;
+        String value = systemConfigurationService.getConfig(key);
+        if (value == null || value.isBlank()) return fallback;
+        return value;
     }
 
     private JsonNode resolveData(JsonNode root) {

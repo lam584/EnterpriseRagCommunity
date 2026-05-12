@@ -42,7 +42,7 @@ ext['jackson.version'] = '2.19.4'
 java {
     toolchain {
         def toolchainVersion = providers.gradleProperty('javaToolchainVersion')
-                .orElse('21')
+                .orElse('25')
                 .map { Integer.parseInt(it) }
                 .get()
         languageVersion = JavaLanguageVersion.of(toolchainVersion)
@@ -51,7 +51,7 @@ java {
 
 def projectJavaLauncher = javaToolchains.launcherFor {
     def toolchainVersion = providers.gradleProperty('javaToolchainVersion')
-            .orElse('21')
+            .orElse('25')
             .map { Integer.parseInt(it) }
             .get()
     languageVersion = JavaLanguageVersion.of(toolchainVersion)
@@ -76,7 +76,7 @@ tasks.withType(JavaExec).configureEach {
 
 tasks.withType(JavaCompile).configureEach {
     def releaseVersion = providers.gradleProperty('javaReleaseVersion')
-            .orElse('21')
+            .orElse('25')
             .map { Integer.parseInt(it) }
             .get()
     options.release.set(releaseVersion)

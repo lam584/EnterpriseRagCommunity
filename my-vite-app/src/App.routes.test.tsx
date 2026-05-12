@@ -18,7 +18,7 @@ vi.mock('./contexts/AccessContext', () => ({
   useAccess: useAccessMock,
 }));
 
-vi.mock('./services/authService', () => ({
+vi.mock('./services/auth/authService', () => ({
   checkInitialSetupStatus: checkInitialSetupStatusMock,
 }));
 

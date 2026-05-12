@@ -1,5 +1,9 @@
-import {useEffect, useRef, useState, type ReactNode} from 'react';
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import MarkdownPreview from './MarkdownPreview';
+import MarkdownRichPreview from './MarkdownRichPreview';
+import PlainTextPreview from './PlainTextPreview';
+import type { MarkdownPreviewProps } from './markdownPreviewShared';
+import { getMarkdownPreviewMode } from '../../utils/markdownUtils';
 
 export type MarkdownEditorValue = {
   markdown: string;
@@ -138,6 +142,9 @@ export default function MarkdownEditor(props: {
   };
 
   const effectiveBoxHeightPx = boxHeightPx ?? editorHeightPx ?? null;
+  const previewMode = getMarkdownPreviewMode(live);
+  const PreviewRenderer: ComponentType<MarkdownPreviewProps> =
+    previewMode === 'plain' ? PlainTextPreview : previewMode === 'rich' ? MarkdownRichPreview : MarkdownPreview;
 
   return (
     <div className="space-y-2">
@@ -219,7 +226,7 @@ export default function MarkdownEditor(props: {
           className="w-full border border-gray-300 rounded-md px-3 py-2 bg-white overflow-auto"
           style={effectiveBoxHeightPx ? { height: `${effectiveBoxHeightPx}px` } : undefined}
         >
-          <MarkdownPreview markdown={live}/>
+          <PreviewRenderer markdown={live} />
         </div>
       )}
 

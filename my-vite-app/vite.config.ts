@@ -51,6 +51,96 @@ function hasFiles(dir: string): boolean {
     }
 }
 
+function manualChunks(id: string): string | undefined {
+    if (!id.includes('node_modules')) {
+        return undefined;
+    }
+
+    const normalizedId = id.replace(/\\/g, '/');
+    const packagePath = normalizedId.split('/node_modules/').pop();
+    if (!packagePath) {
+        return undefined;
+    }
+
+    const packageName = packagePath.startsWith('@')
+        ? packagePath.split('/').slice(0, 2).join('/')
+        : packagePath.split('/')[0];
+
+    if (['react', 'react-dom', 'react-router', 'react-router-dom', 'scheduler'].includes(packageName)) {
+        return 'vendor-react';
+    }
+
+    const markdownPackages = [
+        'react-markdown',
+        'property-information',
+        'parse5',
+        'entities',
+        'hastscript',
+        'inline-style-parser',
+        'style-to-js',
+        'style-to-object',
+        'bail',
+        'devlop',
+        'trough',
+        'zwitch',
+        'web-namespaces',
+        'space-separated-tokens',
+        'comma-separated-tokens',
+        'html-url-attributes',
+        'html-void-elements',
+        'decode-named-character-reference',
+        'ccount',
+        'is-plain-obj',
+        'longest-streak',
+        'markdown-table',
+        'trim-lines'
+    ];
+
+    if (['rehype-highlight', 'highlight.js', 'lowlight'].includes(packageName)) {
+        return 'vendor-markdown-highlight';
+    }
+
+    if (
+        markdownPackages.includes(packageName) ||
+        packageName.startsWith('remark-') ||
+        packageName.startsWith('rehype-') ||
+        packageName === 'highlight.js' ||
+        packageName.startsWith('hast-') ||
+        packageName.startsWith('mdast-') ||
+        packageName.startsWith('micromark') ||
+        packageName.startsWith('unist-') ||
+        packageName.startsWith('vfile')
+    ) {
+        return 'vendor-markdown';
+    }
+
+    if (packageName === 'echarts') {
+        return 'vendor-charts-core';
+    }
+
+    if (packageName === 'zrender') {
+        return 'vendor-charts-runtime';
+    }
+
+    if (['@fortawesome/fontawesome-svg-core', '@fortawesome/free-brands-svg-icons', '@fortawesome/free-regular-svg-icons', '@fortawesome/free-solid-svg-icons', '@fortawesome/react-fontawesome', 'react-icons', 'lucide-react', '@heroicons/react'].includes(packageName)) {
+        return 'vendor-icons';
+    }
+
+    if (packageName.startsWith('@radix-ui/')) {
+        return 'vendor-ui';
+    }
+
+    if (packageName === 'react-datepicker' || packageName === 'date-fns') {
+        return 'vendor-react-datepicker';
+    }
+
+    if (packageName === 'qrcode.react') {
+        return 'vendor-qrcode.react';
+    }
+
+    return undefined;
+}
+
 const fontsDir = resolve(__dirname, 'src/assets/fonts');
 const enableFontsCopy = hasFiles(fontsDir);
 
@@ -58,6 +148,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '/components': path.resolve(__dirname, 'src/components'),
+            '/services': path.resolve(__dirname, 'src/services'),
         },
     },
     server: {
@@ -92,9 +183,11 @@ export default defineConfig({
         manifest: true,
         outDir: 'dist',
         assetsDir: 'assets',
+        chunkSizeWarningLimit: 900,
         rollupOptions: {
             input,
             output: {
+                manualChunks,
                 chunkFileNames: 'assets/js/[name]-[hash].js',
                 entryFileNames: 'assets/js/[name]-[hash].js',
                 assetFileNames: assetInfo => {

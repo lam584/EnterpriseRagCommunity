@@ -561,7 +561,7 @@ class SetupControllerTest {
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.results['access-logs-v1']").value("已创建"));
 
-                verify(accessLogEsIndexProvisioningService).initialize(eq("http://localhost:9200"), eq("k"), any());
+                        verify(accessLogEsIndexProvisioningService).recreate(eq("http://localhost:9200"), eq("k"), any());
                 verify(restClientFactory, never()).create(anyString(), nullable(String.class));
         }
 

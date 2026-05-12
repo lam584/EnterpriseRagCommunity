@@ -18,8 +18,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
   };
 });
 
-vi.mock('../../services/moderationPipelineService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/moderationPipelineService')>();
+vi.mock('../../services/moderation/review/moderationPipelineService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/moderation/review/moderationPipelineService')>();
   return {
     ...actual,
     adminListPipelineHistory: serviceMocks.adminListPipelineHistory,
@@ -29,7 +29,7 @@ vi.mock('../../services/moderationPipelineService', async (importOriginal) => {
 
 import { ModerationPipelineHistoryPanel } from './ModerationPipelineHistoryPanel';
 import { renderWithRoute } from '../../testUtils/renderWithRoute';
-import { adminGetPipelineByRunId, adminListPipelineHistory } from '../../services/moderationPipelineService';
+import { adminGetPipelineByRunId, adminListPipelineHistory } from '../../services/moderation/review/moderationPipelineService';
 
 const mockAdminListPipelineHistory = vi.mocked(adminListPipelineHistory);
 const mockAdminGetPipelineByRunId = vi.mocked(adminGetPipelineByRunId);

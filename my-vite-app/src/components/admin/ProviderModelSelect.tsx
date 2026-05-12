@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import type { AiProviderDTO } from '../../services/aiProvidersAdminService';
-import type { AiChatProviderOptionDTO } from '../../services/aiChatOptionsService';
+import type { AiProviderDTO } from '../../services/admin/ai/aiProvidersAdminService';
+import type { AiChatProviderOptionDTO } from '../../services/ai/chat/aiChatOptionsService';
 
 type Mode = 'chat' | 'embedding';
 

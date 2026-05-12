@@ -1,17 +1,27 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LoadBalanceChart } from './LoadBalanceChart';
-import { RoutingStatusCard } from './RoutingStatusCard';
-import { adminGetLlmRoutingConfig, type AdminLlmRoutingConfigDTO } from '../../../../services/llmRoutingAdminService';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DeferredChartPanel from './DeferredChartPanel';
+import { adminGetLlmRoutingConfig, type AdminLlmRoutingConfigDTO } from '../../../../services/admin/ai/llmRoutingAdminService';
 import {
   adminGetLlmRoutingDecisions,
   adminOpenLlmRoutingEventSource,
   type AdminLlmRoutingDecisionEventDTO,
-} from '../../../../services/llmRoutingMonitorAdminService';
-import { getBackendMessage } from '../../../../services/serviceErrorUtils';
-import { serviceApiUrl } from '../../../../services/serviceUrlUtils';
+} from '../../../../services/admin/ai/llmRoutingMonitorAdminService';
+import { getBackendMessage } from '../../../../services/shared/serviceErrorUtils';
+import { serviceApiUrl } from '../../../../services/shared/serviceUrlUtils';
 import { clampMetricInt, formatMmddHms } from './metricsTimeUtils';
 
+const LoadBalanceChart = lazy(() => import('./LoadBalanceChart').then((module) => ({ default: module.LoadBalanceChart })));
+const RoutingStatusCard = lazy(() => import('./RoutingStatusCard').then((module) => ({ default: module.RoutingStatusCard })));
+
 const apiUrl = serviceApiUrl;
+
+function chartFallback(label: string, minHeight: number) {
+  return (
+    <div className="rounded border bg-white p-3 text-sm text-gray-500" style={{ minHeight: `${minHeight}px` }}>
+      {label}加载中...
+    </div>
+  );
+}
 
 function normTaskType(s: string | null | undefined): string {
   return String(s || '').trim().toUpperCase();
@@ -374,30 +384,38 @@ const LlmRoutingMonitorForm: React.FC = () => {
         </div>
       </div>
 
-      <LoadBalanceChart autoRefreshIntervalMs={autoRefreshIntervalMsSafe} suspended={false} />
+      <DeferredChartPanel minHeight={520} rootMargin="120px" placeholder={chartFallback('负载均衡图表', 520)}>
+        <Suspense fallback={chartFallback('负载均衡图表', 520)}>
+          <LoadBalanceChart autoRefreshIntervalMs={autoRefreshIntervalMsSafe} suspended={false} />
+        </Suspense>
+      </DeferredChartPanel>
 
-      <RoutingStatusCard
-        taskTypes={taskTypes}
-        monitorTaskType={monitorTaskType}
-        setMonitorTaskType={setMonitorTaskType}
-        formatTaskTypeLabel={formatTaskTypeLabel}
-        routingState={routingState}
-        routingEventsConnected={routingEventsConnected}
-        routingEvents={routingEvents}
-        routingEventsResetAtMs={routingEventsResetAtMs}
-        routingEventsLastAtMs={routingEventsLastAtMs}
-        routingEventsReplayedCount={routingEventsReplayedCount}
-        routingEventsPageSize={routingEventsPageSize}
-        routingEventsPageIndex={routingEventsPageIndex}
-        setRoutingEvents={setRoutingEvents}
-        setRoutingEventsResetAtMs={setRoutingEventsResetAtMs}
-        setRoutingEventsLastAtMs={setRoutingEventsLastAtMs}
-        setRoutingEventsPageSize={setRoutingEventsPageSize}
-        setRoutingEventsPageIndex={setRoutingEventsPageIndex}
-        clampInt={clampMetricInt}
-        formatMmddHms={formatMmddHms}
-        draft={{}}
-      />
+      <DeferredChartPanel minHeight={640} rootMargin="120px" placeholder={chartFallback('实时路由状态图表', 640)}>
+        <Suspense fallback={chartFallback('实时路由状态图表', 640)}>
+          <RoutingStatusCard
+            taskTypes={taskTypes}
+            monitorTaskType={monitorTaskType}
+            setMonitorTaskType={setMonitorTaskType}
+            formatTaskTypeLabel={formatTaskTypeLabel}
+            routingState={routingState}
+            routingEventsConnected={routingEventsConnected}
+            routingEvents={routingEvents}
+            routingEventsResetAtMs={routingEventsResetAtMs}
+            routingEventsLastAtMs={routingEventsLastAtMs}
+            routingEventsReplayedCount={routingEventsReplayedCount}
+            routingEventsPageSize={routingEventsPageSize}
+            routingEventsPageIndex={routingEventsPageIndex}
+            setRoutingEvents={setRoutingEvents}
+            setRoutingEventsResetAtMs={setRoutingEventsResetAtMs}
+            setRoutingEventsLastAtMs={setRoutingEventsLastAtMs}
+            setRoutingEventsPageSize={setRoutingEventsPageSize}
+            setRoutingEventsPageIndex={setRoutingEventsPageIndex}
+            clampInt={clampMetricInt}
+            formatMmddHms={formatMmddHms}
+            draft={{}}
+          />
+        </Suspense>
+      </DeferredChartPanel>
     </div>
   );
 };

@@ -1,61 +1,64 @@
 // src/App.tsx
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useState, useEffect, lazy, Suspense, useRef } from 'react';
+import { useState, useEffect, lazy, Suspense, useRef, type ReactElement } from 'react';
 import { Toaster } from 'react-hot-toast';
-import Login from './components/login/Login';
-import AdminSetup from './components/login/AdminSetup';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AccessProvider, useAccess } from './contexts/AccessContext';
-import { checkInitialSetupStatus } from './services/authService';
-import CommunityPortalLayout from './pages/portal/CommunityPortalLayout';
-import AdminDashboardLayout from './pages/admin/AdminDashboardLayout';
-import Register from './components/login/Register';
-import ForgotPassword from './components/login/ForgotPassword';
-import DiscoverLayout, { DiscoverIndexRedirect } from './pages/portal/discover/DiscoverLayout';
-import PostsLayout, { PostsIndexRedirect } from './pages/portal/posts/PostsLayout';
-import InteractLayout, { InteractIndexRedirect } from './pages/portal/interact/InteractLayout';
-import AssistantLayout, { AssistantIndexRedirect } from './pages/portal/assistant/AssistantLayout';
-import AccountLayout, { AccountIndexRedirect } from './pages/portal/account/AccountLayout';
-import ModerationLayout, { ModerationIndexRedirect } from './pages/portal/moderation/ModerationLayout';
-
-import DiscoverHomePage from './pages/portal/discover/pages/DiscoverHomePage';
-import DiscoverBoardsPage from './pages/portal/discover/pages/DiscoverBoardsPage';
-import DiscoverTagsPage from './pages/portal/discover/pages/DiscoverTagsPage';
-import DiscoverHotPage from './pages/portal/discover/pages/DiscoverHotPage';
-
-import PostsCreatePage from './pages/portal/posts/pages/PostsCreatePage';
-import PostsDraftsPage from './pages/portal/posts/pages/PostsDraftsPage';
-import PostsMinePage from './pages/portal/posts/pages/PostsMinePage';
-import PostsBookmarksPage from './pages/portal/posts/pages/PostsBookmarksPage';
-import PostDetailPage from './pages/portal/posts/pages/PostDetailPage';
-
-// 删除 notifications 页路由后，该 import 不再需要
-import InteractAllPage from './pages/portal/interact/pages/InteractAllPage';
-import InteractRepliesPage from './pages/portal/interact/pages/InteractRepliesPage';
-import InteractLikesPage from './pages/portal/interact/pages/InteractLikesPage';
-import InteractMentionsPage from './pages/portal/interact/pages/InteractMentionsPage';
-import InteractReportsPage from './pages/portal/interact/pages/InteractReportsPage';
-import InteractModerationPage from './pages/portal/interact/pages/InteractModerationPage';
-import InteractSecurityPage from './pages/portal/interact/pages/InteractSecurityPage';
-
-import AssistantChatPage from './pages/portal/assistant/pages/AssistantChatPage';
-import AssistantHistoryPage from './pages/portal/assistant/pages/AssistantHistoryPage';
-import AssistantCollectionsPage from './pages/portal/assistant/pages/AssistantCollectionsPage';
-import AssistantSettingsPage from './pages/portal/assistant/pages/AssistantSettingsPage';
-
-import AccountSecurityPage from './pages/portal/account/pages/AccountSecurityPage';
-import AccountPreferencesPage from './pages/portal/account/pages/AccountPreferencesPage';
-import MyCommentsPage from './pages/portal/account/pages/MyCommentsPage';
-import UserProfilePage from './pages/portal/users/pages/UserProfilePage';
-import SearchLayout from './pages/portal/search/SearchLayout';
-import SearchIndexRedirect from './pages/portal/search/SearchIndexRedirect';
-import SearchPostsPage from './pages/portal/search/pages/SearchPostsPage';
-import ModerationQueuePage from './pages/portal/moderation/pages/ModerationQueuePage';
-import ModerationMyLogsPage from './pages/portal/moderation/pages/ModerationMyLogsPage';
+import { checkInitialSetupStatus } from './services/auth/authService';
 import { RequirePermission } from './components/auth/RequirePermission';
 import { RequireAccess } from './components/auth/RequireAccess';
 import RequireModeratedBoards from './components/auth/RequireModeratedBoards';
-import ForbiddenPage from './pages/ForbiddenPage';
+import { getStoredUserId } from './services/auth/portalAuthService';
+import { getPortalSection } from './pages/portal/portalMenu';
+
+const Login = lazy(() => import('./components/login/Login'));
+const AdminSetup = lazy(() => import('./components/login/AdminSetup'));
+const Register = lazy(() => import('./components/login/Register'));
+const ForgotPassword = lazy(() => import('./components/login/ForgotPassword'));
+const ForbiddenPage = lazy(() => import('./pages/ForbiddenPage'));
+const CommunityPortalLayout = lazy(() => import('./pages/portal/CommunityPortalLayout'));
+const AdminDashboardLayout = lazy(() => import('./pages/admin/AdminDashboardLayout'));
+const DiscoverLayout = lazy(() => import('./pages/portal/discover/DiscoverLayout'));
+const PostsLayout = lazy(() => import('./pages/portal/posts/PostsLayout'));
+const InteractLayout = lazy(() => import('./pages/portal/interact/InteractLayout'));
+const AssistantLayout = lazy(() => import('./pages/portal/assistant/AssistantLayout'));
+const AccountLayout = lazy(() => import('./pages/portal/account/AccountLayout'));
+const ModerationLayout = lazy(() => import('./pages/portal/moderation/ModerationLayout'));
+const SearchLayout = lazy(() => import('./pages/portal/search/SearchLayout'));
+const DiscoverHomePage = lazy(() => import('./pages/portal/discover/pages/DiscoverHomePage'));
+const DiscoverBoardsPage = lazy(() => import('./pages/portal/discover/pages/DiscoverBoardsPage'));
+const DiscoverTagsPage = lazy(() => import('./pages/portal/discover/pages/DiscoverTagsPage'));
+const DiscoverHotPage = lazy(() => import('./pages/portal/discover/pages/DiscoverHotPage'));
+const SearchPostsPage = lazy(() => import('./pages/portal/search/pages/SearchPostsPage'));
+const PostsCreatePage = lazy(() => import('./pages/portal/posts/pages/PostsCreatePage'));
+const PostsDraftsPage = lazy(() => import('./pages/portal/posts/pages/PostsDraftsPage'));
+const PostsMinePage = lazy(() => import('./pages/portal/posts/pages/PostsMinePage'));
+const PostsBookmarksPage = lazy(() => import('./pages/portal/posts/pages/PostsBookmarksPage'));
+const PostDetailPage = lazy(() => import('./pages/portal/posts/pages/PostDetailPage'));
+const InteractAllPage = lazy(() => import('./pages/portal/interact/pages/InteractAllPage'));
+const InteractRepliesPage = lazy(() => import('./pages/portal/interact/pages/InteractRepliesPage'));
+const InteractLikesPage = lazy(() => import('./pages/portal/interact/pages/InteractLikesPage'));
+const InteractMentionsPage = lazy(() => import('./pages/portal/interact/pages/InteractMentionsPage'));
+const InteractReportsPage = lazy(() => import('./pages/portal/interact/pages/InteractReportsPage'));
+const InteractModerationPage = lazy(() => import('./pages/portal/interact/pages/InteractModerationPage'));
+const InteractSecurityPage = lazy(() => import('./pages/portal/interact/pages/InteractSecurityPage'));
+const AssistantChatPage = lazy(() => import('./pages/portal/assistant/pages/AssistantChatPage'));
+const AssistantHistoryPage = lazy(() => import('./pages/portal/assistant/pages/AssistantHistoryPage'));
+const AssistantCollectionsPage = lazy(() => import('./pages/portal/assistant/pages/AssistantCollectionsPage'));
+const AssistantSettingsPage = lazy(() => import('./pages/portal/assistant/pages/AssistantSettingsPage'));
+const AccountSecurityPage = lazy(() => import('./pages/portal/account/pages/AccountSecurityPage'));
+const AccountPreferencesPage = lazy(() => import('./pages/portal/account/pages/AccountPreferencesPage'));
+const MyCommentsPage = lazy(() => import('./pages/portal/account/pages/MyCommentsPage'));
+const UserProfilePage = lazy(() => import('./pages/portal/users/pages/UserProfilePage'));
+const ModerationQueuePage = lazy(() => import('./pages/portal/moderation/pages/ModerationQueuePage'));
+const ModerationMyLogsPage = lazy(() => import('./pages/portal/moderation/pages/ModerationMyLogsPage'));
+
+const routeLoadingFallback = <div className="flex justify-center items-center h-screen">加载中...</div>;
+const adminRouteLoadingFallback = <div className="p-4">正在加载模块…</div>;
+
+const withRouteSuspense = (element: ReactElement, fallback = routeLoadingFallback) => (
+    <Suspense fallback={fallback}>{element}</Suspense>
+);
 
 // NOTE: admin sections are lazy-loaded to reduce main-thread EvaluateScript on menu switch.
 const ContentMgmtPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.ContentMgmtPage })));
@@ -65,6 +68,37 @@ const RetrievalRagPage = lazy(() => import('./pages/admin/sections').then(m => (
 const MetricsMonitorPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.MetricsMonitorPage })));
 const UsersRBACPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.UsersRBACPage })));
 const LlmConfigPage = lazy(() => import('./pages/admin/sections').then(m => ({ default: m.LlmConfigPage })));
+
+function SectionIndexRedirect({ sectionId }: { sectionId: Parameters<typeof getPortalSection>[0] }) {
+    const section = getPortalSection(sectionId);
+    const firstChild = section.children?.find(child => !child.to) ?? section.children?.[0];
+    const targetPath = firstChild ? (firstChild.to ?? `${section.basePath}/${firstChild.path}`) : section.basePath;
+    return <Navigate to={targetPath} replace />;
+}
+
+function PostsSectionIndexRedirect() {
+    const section = getPortalSection('compose');
+    const firstChild = section.children[0];
+    const targetPath = firstChild ? `${section.basePath}/${firstChild.path}` : '/portal/posts/drafts';
+    return <Navigate to={targetPath} replace />;
+}
+
+function toNumId(v: unknown): number | undefined {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '') {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : undefined;
+    }
+    return undefined;
+}
+
+function AccountSectionIndexRedirect() {
+    const { currentUser } = useAuth();
+    const section = getPortalSection('account');
+    const userId = toNumId((currentUser as unknown as { id?: unknown } | null)?.id) ?? getStoredUserId();
+    const targetPath = userId ? `/portal/users/${userId}` : `${section.basePath}/profile`;
+    return <Navigate to={targetPath} replace />;
+}
 
 // 受保护的路由组件
 const ProtectedRoute = () => {
@@ -144,154 +178,154 @@ export function AppRoutes() {
 
             {/* 初始管理员设置页面 */}
             <Route path="/admin-setup" element={
-                setupRequired ? <AdminSetup /> : <Navigate to="/" replace />
+                setupRequired ? withRouteSuspense(<AdminSetup />) : <Navigate to="/" replace />
             } />
 
             {/* 登录页面 - 如果需要初始设置则重定向到初始设置页面 */}
             <Route path="/login" element={
-                <LoginRouteElement setupRequired={setupRequired} onBypassSetup={() => setSetupRequired(false)} />
+                withRouteSuspense(<LoginRouteElement setupRequired={setupRequired} onBypassSetup={() => setSetupRequired(false)} />)
             } />
 
             {/* 前台门户（普通用户/访客） */}
-            <Route path="/portal" element={<CommunityPortalLayout />}>
-                <Route path="discover" element={<DiscoverLayout />}>
-                    <Route index element={<DiscoverIndexRedirect />} />
+            <Route path="/portal" element={withRouteSuspense(<CommunityPortalLayout />)}>
+                <Route path="discover" element={withRouteSuspense(<DiscoverLayout />)}>
+                    <Route index element={<SectionIndexRedirect sectionId="discover" />} />
 
                     {/* 发现：按权限控制（portal_discover_home/boards/tags/hot:view） */}
                     <Route element={<RequireAccess requiresAuth resource="portal_discover_home" action="view" />}>
-                        <Route path="home" element={<DiscoverHomePage />} />
+                        <Route path="home" element={withRouteSuspense(<DiscoverHomePage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_discover_boards" action="view" />}>
-                        <Route path="boards" element={<DiscoverBoardsPage />} />
+                        <Route path="boards" element={withRouteSuspense(<DiscoverBoardsPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_discover_tags" action="view" />}>
-                        <Route path="tags" element={<DiscoverTagsPage />} />
+                        <Route path="tags" element={withRouteSuspense(<DiscoverTagsPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_discover_hot" action="view" />}>
-                        <Route path="hot" element={<DiscoverHotPage />} />
+                        <Route path="hot" element={withRouteSuspense(<DiscoverHotPage />)} />
                     </Route>
 
                     {/* discover/search 快捷入口仍然保留，但 search 页面本身也有权限控制 */}
                     <Route path="search" element={<Navigate to="/portal/search/posts" replace />} />
                 </Route>
 
-                <Route path="search" element={<SearchLayout />}>
-                    <Route index element={<SearchIndexRedirect />} />
+                <Route path="search" element={withRouteSuspense(<SearchLayout />)}>
+                    <Route index element={<Navigate to="/portal/search/posts" replace />} />
                     <Route element={<RequireAccess requiresAuth resource="portal_search_posts" action="view" />}>
-                        <Route path="posts" element={<SearchPostsPage />} />
+                        <Route path="posts" element={withRouteSuspense(<SearchPostsPage />)} />
                     </Route>
                 </Route>
 
-                <Route path="posts" element={<PostsLayout />}>
-                    <Route index element={<PostsIndexRedirect />} />
+                <Route path="posts" element={withRouteSuspense(<PostsLayout />)}>
+                    <Route index element={<PostsSectionIndexRedirect />} />
 
                     {/* 写作相关：需要登录 + portal_posts:create */}
                     <Route element={<RequireAccess requiresAuth resource="portal_posts" action="create" /> }>
-                        <Route path="create" element={<PostsCreatePage />} />
-                        <Route path="edit/:postId" element={<PostsCreatePage />} />
+                        <Route path="create" element={withRouteSuspense(<PostsCreatePage />)} />
+                        <Route path="edit/:postId" element={withRouteSuspense(<PostsCreatePage />)} />
                     </Route>
 
                     {/* 草稿/我的/收藏：需要登录 + 对应 view 权限 */}
                     <Route element={<RequireAccess requiresAuth resource="portal_posts_drafts" action="view" /> }>
-                        <Route path="drafts" element={<PostsDraftsPage />} />
+                        <Route path="drafts" element={withRouteSuspense(<PostsDraftsPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_posts_mine" action="view" /> }>
-                        <Route path="mine" element={<PostsMinePage />} />
+                        <Route path="mine" element={withRouteSuspense(<PostsMinePage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_posts_bookmarks" action="view" /> }>
-                        <Route path="bookmarks" element={<PostsBookmarksPage />} />
+                        <Route path="bookmarks" element={withRouteSuspense(<PostsBookmarksPage />)} />
                     </Route>
 
                     {/* 详情页：公开 */}
-                    <Route path="detail/:postId" element={<PostDetailPage />} />
+                    <Route path="detail/:postId" element={withRouteSuspense(<PostDetailPage />)} />
                 </Route>
 
                 {/* 互动中心：需要登录 + 对应 view 权限 */}
-                <Route path="interact" element={<InteractLayout />}>
-                    <Route index element={<InteractIndexRedirect />} />
+                <Route path="interact" element={withRouteSuspense(<InteractLayout />)}>
+                    <Route index element={<SectionIndexRedirect sectionId="interact" />} />
 
                     <Route element={<RequireAccess requiresAuth resource="portal_interact_replies" action="view" /> }>
-                        <Route path="replies" element={<InteractRepliesPage />} />
+                        <Route path="replies" element={withRouteSuspense(<InteractRepliesPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_interact_likes" action="view" /> }>
-                        <Route path="likes" element={<InteractLikesPage />} />
+                        <Route path="likes" element={withRouteSuspense(<InteractLikesPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_interact_mentions" action="view" /> }>
-                        <Route path="mentions" element={<InteractMentionsPage />} />
+                        <Route path="mentions" element={withRouteSuspense(<InteractMentionsPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_interact_reports" action="view" /> }>
-                        <Route path="reports" element={<InteractReportsPage />} />
+                        <Route path="reports" element={withRouteSuspense(<InteractReportsPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth /> }>
-                        <Route path="all" element={<InteractAllPage />} />
-                        <Route path="moderation" element={<InteractModerationPage />} />
-                        <Route path="security" element={<InteractSecurityPage />} />
+                        <Route path="all" element={withRouteSuspense(<InteractAllPage />)} />
+                        <Route path="moderation" element={withRouteSuspense(<InteractModerationPage />)} />
+                        <Route path="security" element={withRouteSuspense(<InteractSecurityPage />)} />
                     </Route>
                 </Route>
 
                 {/* 智能助手：需要登录 + 对应 view 权限 */}
-                <Route path="assistant" element={<AssistantLayout />}>
-                    <Route index element={<AssistantIndexRedirect />} />
+                <Route path="assistant" element={withRouteSuspense(<AssistantLayout />)}>
+                    <Route index element={<SectionIndexRedirect sectionId="assistant" />} />
 
                     <Route element={<RequireAccess requiresAuth resource="portal_assistant_chat" action="view" /> }>
-                        <Route path="chat" element={<AssistantChatPage />} />
+                        <Route path="chat" element={withRouteSuspense(<AssistantChatPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_assistant_history" action="view" /> }>
-                        <Route path="history" element={<AssistantHistoryPage />} />
+                        <Route path="history" element={withRouteSuspense(<AssistantHistoryPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_assistant_collections" action="view" /> }>
-                        <Route path="collections" element={<AssistantCollectionsPage />} />
+                        <Route path="collections" element={withRouteSuspense(<AssistantCollectionsPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_assistant_settings" action="view" /> }>
-                        <Route path="settings" element={<AssistantSettingsPage />} />
+                        <Route path="settings" element={withRouteSuspense(<AssistantSettingsPage />)} />
                     </Route>
                 </Route>
 
                 <Route element={<RequireAccess requiresAuth />}>
-                    <Route path="moderation" element={<ModerationLayout />}>
-                        <Route index element={<ModerationIndexRedirect />} />
+                    <Route path="moderation" element={withRouteSuspense(<ModerationLayout />)}>
+                        <Route index element={<SectionIndexRedirect sectionId="moderation" />} />
                         <Route element={<RequireModeratedBoards />}>
-                            <Route path="queue" element={<ModerationQueuePage />} />
+                            <Route path="queue" element={withRouteSuspense(<ModerationQueuePage />)} />
                         </Route>
-                        <Route path="logs" element={<ModerationMyLogsPage />} />
+                        <Route path="logs" element={withRouteSuspense(<ModerationMyLogsPage />)} />
                     </Route>
                 </Route>
 
                 {/* 账号中心：需要登录 + 对应 view 权限 */}
-                <Route path="account" element={<AccountLayout />}>
-                    <Route index element={<AccountIndexRedirect />} />
+                <Route path="account" element={withRouteSuspense(<AccountLayout />)}>
+                    <Route index element={<AccountSectionIndexRedirect />} />
 
                     <Route element={<RequireAccess requiresAuth resource="portal_account_profile" action="view" /> }>
-                        <Route path="profile" element={<UserProfilePage />} />
+                        <Route path="profile" element={withRouteSuspense(<UserProfilePage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_account_security" action="view" /> }>
-                        <Route path="security" element={<AccountSecurityPage />} />
+                        <Route path="security" element={withRouteSuspense(<AccountSecurityPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_account_preferences" action="view" /> }>
-                        <Route path="preferences" element={<AccountPreferencesPage />} />
+                        <Route path="preferences" element={withRouteSuspense(<AccountPreferencesPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_account_connections" action="view" /> }>
                         <Route path="connections" element={<Navigate to="/portal/account/security#email" replace />} />
                     </Route>
 
                     <Route element={<RequireAccess requiresAuth resource="portal_posts_mine" action="view" /> }>
-                        <Route path="mine" element={<PostsMinePage />} />
-                        <Route path="comments" element={<MyCommentsPage/>}/>
+                        <Route path="mine" element={withRouteSuspense(<PostsMinePage />)} />
+                        <Route path="comments" element={withRouteSuspense(<MyCommentsPage />)} />
                     </Route>
                     <Route element={<RequireAccess requiresAuth resource="portal_posts_bookmarks" action="view" /> }>
-                        <Route path="bookmarks" element={<PostsBookmarksPage />} />
+                        <Route path="bookmarks" element={withRouteSuspense(<PostsBookmarksPage />)} />
                     </Route>
                 </Route>
 
                 <Route element={<RequireAccess requiresAuth />}>
-                    <Route path="users/:userId" element={<UserProfilePage />} />
+                    <Route path="users/:userId" element={withRouteSuspense(<UserProfilePage />)} />
                 </Route>
 
                 <Route index element={<Navigate to="discover" replace />} />
             </Route>
 
             {/* 403 无权限 */}
-            <Route path="/forbidden" element={<ForbiddenPage />} />
+            <Route path="/forbidden" element={withRouteSuspense(<ForbiddenPage />)} />
 
             {/* 受保护的路由组 */}
             <Route element={<ProtectedRoute />}>
@@ -302,14 +336,14 @@ export function AppRoutes() {
                  */}
                 <Route element={<RequirePermission resource="admin_ui" action="access" allowRoles={["ADMIN"]} />}>
                     {/* 后台管理（审核员/管理员） */}
-                    <Route path="/admin" element={<AdminDashboardLayout />}>
-                        <Route path="content" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><ContentMgmtPage /></Suspense>} />
-                        <Route path="review" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><ReviewCenterPage /></Suspense>} />
-                        <Route path="semantic" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><SemanticBoostPage /></Suspense>} />
-                        <Route path="retrieval" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><RetrievalRagPage /></Suspense>} />
-                        <Route path="llm-config" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><LlmConfigPage /></Suspense>} />
-                        <Route path="metrics" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><MetricsMonitorPage /></Suspense>} />
-                        <Route path="users" element={<Suspense fallback={<div className="p-4">正在加载模块…</div>}><UsersRBACPage /></Suspense>} />
+                    <Route path="/admin" element={withRouteSuspense(<AdminDashboardLayout />, adminRouteLoadingFallback)}>
+                        <Route path="content" element={withRouteSuspense(<ContentMgmtPage />, adminRouteLoadingFallback)} />
+                        <Route path="review" element={withRouteSuspense(<ReviewCenterPage />, adminRouteLoadingFallback)} />
+                        <Route path="semantic" element={withRouteSuspense(<SemanticBoostPage />, adminRouteLoadingFallback)} />
+                        <Route path="retrieval" element={withRouteSuspense(<RetrievalRagPage />, adminRouteLoadingFallback)} />
+                        <Route path="llm-config" element={withRouteSuspense(<LlmConfigPage />, adminRouteLoadingFallback)} />
+                        <Route path="metrics" element={withRouteSuspense(<MetricsMonitorPage />, adminRouteLoadingFallback)} />
+                        <Route path="users" element={withRouteSuspense(<UsersRBACPage />, adminRouteLoadingFallback)} />
                         <Route index element={<AdminIndexRedirect />} />
                     </Route>
                 </Route>
@@ -318,8 +352,8 @@ export function AppRoutes() {
 
             {/* 新闻相关页面 - 公开访问 */}
 
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/register" element={withRouteSuspense(<Register />)} />
+            <Route path="/forgot-password" element={withRouteSuspense(<ForgotPassword />)} />
 
             {/* 兜底路由 */}
             <Route path="*" element={<Navigate to="/portal/discover" replace />} />

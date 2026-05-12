@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
+import MarkdownPreview from '../../../../components/ui/DeferredMarkdownPreview';
 
 export type CollapsedMarkdownPreviewProps = {
   markdown: string;

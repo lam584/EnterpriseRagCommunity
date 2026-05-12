@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAccess } from '../../../../contexts/AccessContext';
-import { adminGetAiProvidersConfig, adminListProviderModels, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
+import { adminGetAiProvidersConfig, adminListProviderModels, type AiProviderDTO } from '../../../../services/admin/ai/aiProvidersAdminService';
 import {
   adminGetHybridRetrievalConfig,
   adminListHybridRetrievalEvents,
@@ -13,7 +13,7 @@ import {
   type HybridRetrievalTestResponse,
   type RetrievalEventLogDTO,
   type RetrievalHitLogDTO,
-} from '../../../../services/retrievalHybridService';
+} from '../../../../services/search/retrievalHybridService';
 import { EditSaveActions } from '../../../../components/admin/EditSaveActions';
 import HybridLogsSection from './hybridLogs';
 import HybridTestSection from './hybridTest';

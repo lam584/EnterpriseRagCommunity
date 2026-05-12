@@ -79,6 +79,11 @@ public class LlmGateway {
             LlmCallQueueService.UsageMetrics usage
     ) {}
 
+        public record RoutedChatTarget(
+            String providerId,
+            String modelName
+        ) {}
+
     public String chatOnce(
             String providerId,
             String modelOverride,
@@ -152,7 +157,8 @@ public class LlmGateway {
             Double topP,
             Boolean enableThinking,
             Integer thinkingBudget,
-            OpenAiCompatClient.SseLineConsumer consumer
+            OpenAiCompatClient.SseLineConsumer consumer,
+            Map<String, String> extraRequestHeaders
     ) {
         try {
             List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
@@ -167,7 +173,8 @@ public class LlmGateway {
                     thinkingBudget,
                     consumer,
                     2,
-                    null
+                    null,
+                    extraRequestHeaders
             );
             return new RoutedChatStreamResult(provider.id(), model, usage);
         } catch (RuntimeException e) {
@@ -859,7 +866,8 @@ public class LlmGateway {
             Integer thinkingBudget,
             OpenAiCompatClient.SseLineConsumer consumer,
             int streamAttempts,
-            AtomicReference<String> taskIdOut
+            AtomicReference<String> taskIdOut,
+            Map<String, String> extraRequestHeaders
     ) throws Exception {
         OpenAiCompatClient client = new OpenAiCompatClient();
         Boolean enableThinkingToSend = shouldSendDashscopeThinking(provider) ? enableThinking : null;
@@ -876,7 +884,7 @@ public class LlmGateway {
                 enableThinkingToSend,
                 thinkingBudgetToSend,
                 null,
-                provider.extraHeaders(),
+                mergeHeaders(provider.extraHeaders(), extraRequestHeaders),
                 provider.connectTimeoutMs(),
                 provider.readTimeoutMs(),
                 true
@@ -949,6 +957,35 @@ public class LlmGateway {
         );
     }
 
+                private LlmCallQueueService.UsageMetrics callChatStreamSingle(
+                    LlmQueueTaskType taskType,
+                    AiProvidersConfigService.ResolvedProvider provider,
+                    String model,
+                    List<ChatMessage> messages,
+                    Double temperature,
+                    Double topP,
+                    Boolean enableThinking,
+                    Integer thinkingBudget,
+                    OpenAiCompatClient.SseLineConsumer consumer,
+                    int streamAttempts,
+                    AtomicReference<String> taskIdOut
+                ) throws Exception {
+                return callChatStreamSingle(
+                    taskType,
+                    provider,
+                    model,
+                    messages,
+                    temperature,
+                    topP,
+                    enableThinking,
+                    thinkingBudget,
+                    consumer,
+                    streamAttempts,
+                    taskIdOut,
+                    null
+                );
+                }
+
     public RoutedChatStreamResult chatStreamRouted(
             LlmQueueTaskType taskType,
             String providerId,
@@ -960,19 +997,34 @@ public class LlmGateway {
             Integer thinkingBudget,
             OpenAiCompatClient.SseLineConsumer consumer
     ) {
+        return chatStreamRouted(taskType, providerId, modelOverride, messages, temperature, topP, enableThinking, thinkingBudget, consumer, null);
+    }
+
+    public RoutedChatStreamResult chatStreamRouted(
+            LlmQueueTaskType taskType,
+            String providerId,
+            String modelOverride,
+            List<ChatMessage> messages,
+            Double temperature,
+            Double topP,
+            Boolean enableThinking,
+            Integer thinkingBudget,
+            OpenAiCompatClient.SseLineConsumer consumer,
+            Map<String, String> extraRequestHeaders
+    ) {
         LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.MULTIMODAL_CHAT : taskType;
         String pid = providerId == null ? null : providerId.trim();
         String mo = modelOverride == null ? null : modelOverride.trim();
 
         if (mo != null && !mo.isBlank()) {
             AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
-            return callDirectStreamRoute(tt, provider, mo, messages, temperature, topP, enableThinking, thinkingBudget, consumer);
+            return callDirectStreamRoute(tt, provider, mo, messages, temperature, topP, enableThinking, thinkingBudget, consumer, extraRequestHeaders);
         }
 
         if (pid != null && !pid.isBlank()) {
             AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
             String model = provider.defaultChatModel();
-            return callDirectStreamRoute(tt, provider, model, messages, temperature, topP, enableThinking, thinkingBudget, consumer);
+            return callDirectStreamRoute(tt, provider, model, messages, temperature, topP, enableThinking, thinkingBudget, consumer, extraRequestHeaders);
         }
 
         LlmRoutingService.Policy policy = llmRoutingService.getPolicy(tt);
@@ -1021,7 +1073,7 @@ public class LlmGateway {
                         "chatStream"
                 ));
                 List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 1, taskIdRef);
+                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 1, taskIdRef, extraRequestHeaders);
                 llmRoutingService.recordSuccess(tt, target);
                 llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                         System.currentTimeMillis(),
@@ -1080,7 +1132,7 @@ public class LlmGateway {
                     "chatStream"
             ));
             List<ChatMessage> patched = applyThinkingDirectiveToMessages(messages, enableThinking, model);
-            LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 1, taskIdRef);
+                LlmCallQueueService.UsageMetrics usage = callChatStreamSingle(tt, provider, model, patched, temperature, topP, enableThinking, thinkingBudget, consumer, 1, taskIdRef, extraRequestHeaders);
             llmRoutingTelemetryService.record(new LlmRoutingTelemetryService.RoutingDecisionEvent(
                     System.currentTimeMillis(),
                     "FALLBACK_OK",
@@ -1760,6 +1812,31 @@ public class LlmGateway {
             throw new IllegalStateException(unsupportedProviderTypePrefix() + ": " + type);
         }
         return provider;
+    }
+
+    public RoutedChatTarget resolveRoutedChatTarget(
+            LlmQueueTaskType taskType,
+            String providerId,
+            String modelOverride
+    ) {
+        LlmQueueTaskType tt = taskType == null ? LlmQueueTaskType.MULTIMODAL_CHAT : taskType;
+        String pid = providerId == null ? null : providerId.trim();
+        String mo = modelOverride == null ? null : modelOverride.trim();
+
+        if (mo != null && !mo.isBlank()) {
+            AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
+            return new RoutedChatTarget(provider.id(), mo);
+        }
+
+        LlmRoutingService.RouteTarget target = (pid == null || pid.isBlank())
+                ? llmRoutingService.pickNext(tt, new java.util.HashSet<>())
+                : llmRoutingService.pickNextInProvider(tt, pid, new java.util.HashSet<>());
+        if (target != null && target.modelName() != null && !target.modelName().isBlank()) {
+            return new RoutedChatTarget(target.providerId(), target.modelName());
+        }
+
+        AiProvidersConfigService.ResolvedProvider provider = resolve(pid);
+        return new RoutedChatTarget(provider.id(), provider.defaultChatModel());
     }
 
     private String extractAssistantContent(String rawJson) {

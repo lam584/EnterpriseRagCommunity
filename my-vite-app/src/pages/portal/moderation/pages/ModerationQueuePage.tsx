@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BoardDTO } from '../../../../services/boardService';
-import { listMyModeratedBoards } from '../../../../services/moderatorBoardsService';
+import type { BoardDTO } from '../../../../services/content/boardService';
+import { listMyModeratedBoards } from '../../../../services/moderation/review/moderatorBoardsService';
 import {
   adminApproveModerationQueue,
   adminGetModerationQueueDetail,
@@ -10,8 +10,8 @@ import {
   type ModerationQueueDetail,
   type ModerationQueueItem,
   type QueueStatus,
-} from '../../../../services/moderationQueueService';
-import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
+} from '../../../../services/moderation/review/moderationQueueService';
+import MarkdownPreview from '../../../../components/ui/DeferredMarkdownPreview';
 
 const statusOptions: Array<{ value: QueueStatus | ''; label: string }> = [
   { value: '', label: '全部' },

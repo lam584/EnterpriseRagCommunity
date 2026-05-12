@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import PostFeed from '../../discover/components/PostFeed';
 import type { SpringPage } from '../../../../types/page';
-import { deletePostFavorite, listBookmarkedPostsPage, type PostDTO } from '../../../../services/postService';
+import { deletePostFavorite, listBookmarkedPostsPage, type PostDTO } from '../../../../services/content/postService';
 
 export default function PostsBookmarksPage() {
   const [loading, setLoading] = useState(false);

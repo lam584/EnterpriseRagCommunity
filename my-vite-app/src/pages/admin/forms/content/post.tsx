@@ -1,13 +1,13 @@
 // post.tsx - 管理员帖子管理（仅搜索与状态变更）
 import React, { useEffect, useMemo, useState, lazy, Suspense } from 'react';
-import { listBoards, type BoardDTO } from '../../../../services/boardService';
-import { type PostDTO, type PostStatus, searchAdminPosts, updatePostStatus } from '../../../../services/postService';
-import {batchPostIndexSyncStatus, type IndexSyncStatus} from '../../../../services/retrievalIndexSyncAdminService';
+import { listBoards, type BoardDTO } from '../../../../services/content/boardService';
+import { type PostDTO, type PostStatus, searchAdminPosts, updatePostStatus } from '../../../../services/content/postService';
+import {batchPostIndexSyncStatus, type IndexSyncStatus} from '../../../../services/search/retrievalIndexSyncAdminService';
 import { useAccess } from '../../../../contexts/AccessContext';
 import { renderIndexStatus } from './indexSyncStatusView';
 
 // Lazy-load heavy markdown renderer to avoid blocking the main thread during route/menu switches.
-const MarkdownPreview = lazy(() => import('../../../../components/ui/MarkdownPreview'));
+const MarkdownPreview = lazy(() => import('../../../../components/ui/DeferredMarkdownPreview'));
 
 // 状态选项（与DB一致）
 const STATUS_OPTIONS: Array<{ value: PostStatus; label: string }> = [

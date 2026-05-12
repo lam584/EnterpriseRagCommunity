@@ -579,19 +579,18 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
         AdminLlmLoadTestService svc = newService(tokenCountService, mock(LlmQueueMonitorService.class));
         Object cfg = newNormalizedConfig(1, 1, 0, 1, null, "fallback-model", false, 1000, 0, 0, "c", "m");
         Object st = newRunState(svc, "run-hot", cfg);
-        Method lambda = AdminLlmLoadTestService.class.getDeclaredMethod(
-                "lambda$maybeRecomputeTokensAsync$10",
+        Method maybeRecompute = AdminLlmLoadTestService.class.getDeclaredMethod(
+                "maybeRecomputeTokensAsync",
                 st.getClass(),
                 AdminLlmLoadTestResultDTO.class,
-                List.class,
                 newResultClass()
         );
-        lambda.setAccessible(true);
+        maybeRecompute.setAccessible(true);
 
         Field cancelledField = st.getClass().getDeclaredField("cancelled");
         cancelledField.setAccessible(true);
         ((java.util.concurrent.atomic.AtomicBoolean) cancelledField.get(st)).set(true);
-        lambda.invoke(svc, st, new AdminLlmLoadTestResultDTO(), List.of(ChatMessage.user("x")), newResult(1L, null, null, null, null, List.of(ChatMessage.user("x")), "x", "{}", null));
+        maybeRecompute.invoke(svc, st, new AdminLlmLoadTestResultDTO(), newResult(1L, null, null, null, null, List.of(ChatMessage.user("x")), "x", "{}", null));
         ((java.util.concurrent.atomic.AtomicBoolean) cancelledField.get(st)).set(false);
 
         AdminLlmLoadTestResultDTO dto1 = new AdminLlmLoadTestResultDTO();
@@ -601,7 +600,8 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
         dto1.setTokens(1);
         dto1.setModel(" ");
         Object result1 = newResult(1L, null, null, null, null, List.of(ChatMessage.user("NULL_IN")), "X", "{}", null);
-        lambda.invoke(svc, st, dto1, List.of(ChatMessage.user("NULL_IN")), result1);
+        maybeRecompute.invoke(svc, st, dto1, result1);
+        TimeUnit.MILLISECONDS.sleep(120);
         assertEquals(5, dto1.getTokensIn());
         assertEquals(7, dto1.getTokensOut());
         assertEquals(12, dto1.getTokens());
@@ -613,7 +613,8 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
         dto2.setTokens(5);
         dto2.setModel("model-z");
         Object result2 = newResult(1L, null, null, null, null, List.of(ChatMessage.user("KEEP")), "NULL_OUT", "{}", null);
-        lambda.invoke(svc, st, dto2, List.of(ChatMessage.user("KEEP")), result2);
+        maybeRecompute.invoke(svc, st, dto2, result2);
+        TimeUnit.MILLISECONDS.sleep(120);
         assertEquals(2, dto2.getTokensIn());
         assertEquals(3, dto2.getTokensOut());
         assertEquals(5, dto2.getTokens());
@@ -625,7 +626,8 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
         dto3.setTokens(11);
         dto3.setModel(" ");
         Object result3 = newResult(1L, null, null, null, null, List.of(ChatMessage.user("NULL_IN")), "NULL_OUT", "{}", null);
-        lambda.invoke(svc, st, dto3, List.of(ChatMessage.user("NULL_IN")), result3);
+        maybeRecompute.invoke(svc, st, dto3, result3);
+        TimeUnit.MILLISECONDS.sleep(120);
         assertEquals(11, dto3.getTokens());
 
         AdminLlmLoadTestResultDTO dto4 = new AdminLlmLoadTestResultDTO();
@@ -635,8 +637,9 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
         dto4.setTokens(null);
         dto4.setModel(null);
         Object result4 = newResult(1L, null, null, null, null, null, "NULL_OUT", "{}", null);
-        lambda.invoke(svc, st, dto4, null, result4);
-        lambda.invoke(svc, st, dto4, List.of(), result4);
+        maybeRecompute.invoke(svc, st, dto4, result4);
+        maybeRecompute.invoke(svc, st, dto4, result4);
+        TimeUnit.MILLISECONDS.sleep(120);
 
         AdminLlmLoadTestResultDTO dto5 = new AdminLlmLoadTestResultDTO();
         dto5.setKind("CHAT_STREAM");
@@ -645,7 +648,8 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
         dto5.setTokens(5);
         dto5.setModel(" ");
         Object result5 = newResult(1L, null, null, null, null, List.of(ChatMessage.user("KEEP")), "NULL_OUT", "{}", null);
-        lambda.invoke(svc, st, dto5, List.of(ChatMessage.user("KEEP")), result5);
+        maybeRecompute.invoke(svc, st, dto5, result5);
+        TimeUnit.MILLISECONDS.sleep(120);
         assertEquals(9, dto5.getTokensIn());
         assertNull(dto5.getTokensOut());
         assertEquals(5, dto5.getTokens());
@@ -657,7 +661,8 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
         dto6.setTokens(2);
         dto6.setModel("model-agg");
         Object result6 = newResult(1L, null, null, null, null, List.of(ChatMessage.user("KEEP")), "X", "{}", null);
-        lambda.invoke(svc, st, dto6, List.of(ChatMessage.user("KEEP")), result6);
+        maybeRecompute.invoke(svc, st, dto6, result6);
+        TimeUnit.MILLISECONDS.sleep(120);
         assertEquals(9, dto6.getTokensIn());
         assertEquals(1, dto6.getTokensOut());
         assertEquals(10, dto6.getTokens());
@@ -669,7 +674,8 @@ class AdminLlmLoadTestServiceCoverageSprintTest {
         dto7.setTokens(null);
         dto7.setModel(" ");
         Object result7 = newResult(1L, null, null, null, null, List.of(ChatMessage.user("NULL_IN")), "NULL_OUT", "{}", null);
-        lambda.invoke(svc, st, dto7, List.of(ChatMessage.user("NULL_IN")), result7);
+        maybeRecompute.invoke(svc, st, dto7, result7);
+        TimeUnit.MILLISECONDS.sleep(120);
         assertNull(dto7.getTokens());
 
         Method extractAssistant = AdminLlmLoadTestService.class.getDeclaredMethod("extractAssistantContentFromRawModelOutput", String.class);

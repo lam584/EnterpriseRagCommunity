@@ -2,7 +2,7 @@ import { Navigate, Outlet } from 'react-router-dom';
 import SubTabsNav from '../components/SubTabsNav';
 import { getPortalSection } from '../portalMenu';
 import { useAuth } from '../../../contexts/AuthContext';
-import { getStoredUserId } from '../../../services/portalAuthService';
+import { getStoredUserId } from '../../../services/auth/portalAuthService';
 
 function toNumId(v: unknown): number | undefined {
   if (typeof v === 'number' && Number.isFinite(v)) return v;

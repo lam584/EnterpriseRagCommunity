@@ -1,4 +1,4 @@
-import type { PostDTO } from '../services/postService';
+import type { PostDTO } from '../services/content/postService';
 import { resolveAssetUrl } from './urlUtils';
 
 function getNested(obj: unknown, path: string[]): unknown {

@@ -4,7 +4,7 @@ import {
   adminDeleteModerationRule,
   adminListModerationRules,
   adminUpdateModerationRule,
-} from '../../../../services/moderationRulesService';
+} from '../../../../services/moderation/policy/moderationRulesService';
 import type {
   ModerationRuleCategory,
   ModerationRuleCreatePayload,

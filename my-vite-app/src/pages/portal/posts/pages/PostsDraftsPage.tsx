@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { deleteDraft, listDrafts, type PostDraftDTO } from '../../../../services/draftService';
+import { deleteDraft, listDrafts, type PostDraftDTO } from '../../../../services/content/draftService';
 
 export default function PostsDraftsPage() {
   const navigate = useNavigate();

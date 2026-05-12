@@ -6,7 +6,7 @@ import {
   searchQaHistory,
   type QaSearchHitDTO,
   type QaSessionDTO
-} from '../../../../services/qaHistoryService';
+} from '../../../../services/ai/chat/qaHistoryService';
 
 export default function AssistantHistoryPage() {
   const navigate = useNavigate();

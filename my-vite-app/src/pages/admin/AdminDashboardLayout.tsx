@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { FaClipboardList, FaCheckCircle, FaMagic, FaSearch, FaChartLine, FaUsersCog, FaTools, FaLink } from 'react-icons/fa';
 import { useAccess } from '../../contexts/AccessContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { logout } from '../../services/authService';
+import { logout } from '../../services/auth/authService';
 import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import BeianFooter from '../../components/common/BeianFooter';

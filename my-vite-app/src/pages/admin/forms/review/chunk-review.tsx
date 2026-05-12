@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ModerationChunkReviewConfig } from '../../../../services/moderationChunkReviewConfigService';
-import { getModerationChunkReviewConfig, updateModerationChunkReviewConfig } from '../../../../services/moderationChunkReviewConfigService';
-import type { LlmModerationConfigDTO } from '../../../../services/moderationLlmService';
-import { adminGetLlmModerationConfig, adminUpsertLlmModerationConfig } from '../../../../services/moderationLlmService';
-import type { ModerationChunkContentPreview, ModerationChunkLogDetail, ModerationChunkLogItem } from '../../../../services/moderationChunkReviewLogsService';
-import { adminGetModerationChunkLogContent, adminGetModerationChunkLogDetail, adminListModerationChunkLogs } from '../../../../services/moderationChunkReviewLogsService';
-import type { ModerationPolicyConfigDTO, ModerationPolicyContentType } from '../../../../services/moderationPolicyService';
-import { adminGetModerationPolicyConfig } from '../../../../services/moderationPolicyService';
+import type { ModerationChunkReviewConfig } from '../../../../services/moderation/policy/moderationChunkReviewConfigService';
+import { getModerationChunkReviewConfig, updateModerationChunkReviewConfig } from '../../../../services/moderation/policy/moderationChunkReviewConfigService';
+import type { LlmModerationConfigDTO } from '../../../../services/moderation/policy/moderationLlmService';
+import { adminGetLlmModerationConfig, adminUpsertLlmModerationConfig } from '../../../../services/moderation/policy/moderationLlmService';
+import type { ModerationChunkContentPreview, ModerationChunkLogDetail, ModerationChunkLogItem } from '../../../../services/moderation/review/moderationChunkReviewLogsService';
+import { adminGetModerationChunkLogContent, adminGetModerationChunkLogDetail, adminListModerationChunkLogs } from '../../../../services/moderation/review/moderationChunkReviewLogsService';
+import type { ModerationPolicyConfigDTO, ModerationPolicyContentType } from '../../../../services/moderation/policy/moderationPolicyService';
+import { adminGetModerationPolicyConfig } from '../../../../services/moderation/policy/moderationPolicyService';
 import { downloadBlob } from '../../../../utils/download';
 import { estimateVisionImageTokens } from '../../../../utils/visionImageTokens';
 import {

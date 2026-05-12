@@ -3,7 +3,7 @@ import {Button} from '../../../../components/ui/button';
 import {Input} from '../../../../components/ui/input';
 import {Checkbox} from '../../../../components/ui/checkbox';
 import {Label} from '../../../../components/ui/label';
-import {PermissionsUpdateDTO, queryPermissions} from '../../../../services/permissionsService';
+import {PermissionsUpdateDTO, queryPermissions} from '../../../../services/permissions/permissionsService';
 import {
     createRoleWithMatrix,
     listRoleIds,
@@ -13,7 +13,7 @@ import {
     type RolePermissionUpsertDTO,
     type RolePermissionViewDTO,
     type RoleSummaryDTO,
-} from '../../../../services/rolePermissionsService';
+} from '../../../../services/permissions/rolePermissionsService';
 import {FaEdit, FaPlus, FaSearch, FaSync, FaTrash} from 'react-icons/fa';
 import {useAccess} from '../../../../contexts/AccessContext';
 import Modal from './roles/Modal';
@@ -21,11 +21,11 @@ import RolePermissionEditor from './roles/RolePermissionEditor';
 import ActionDescriptions from './roles/ActionDescriptions';
 import {type PermissionVM, safeStr, type StandardAction, stdActionLabel, stdActionOf} from './roles/permissionUtils';
 import { useAdminStepUp } from '../../../../components/admin/useAdminStepUp';
-import { isAdminStepUpRequired } from '../../../../services/apiError';
+import { isAdminStepUpRequired } from '../../../../services/shared/apiError';
 import {
     getRegistrationSettings,
     updateRegistrationSettings,
-} from '../../../../services/adminSettingsService';
+} from '../../../../services/admin/core/adminSettingsService';
 
 type RoleRow = { roleId: number; roleName?: string };
 type ResourceGroupVM = {

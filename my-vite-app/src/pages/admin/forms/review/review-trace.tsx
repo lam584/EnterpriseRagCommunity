@@ -5,7 +5,7 @@ import {
   adminListModerationReviewTraceTasks,
   type ModerationReviewTraceTaskDetail,
   type ModerationReviewTraceTaskItem,
-} from '../../../../services/moderationReviewTraceService';
+} from '../../../../services/moderation/review/moderationReviewTraceService';
 import { ModerationPipelineHistoryPanel } from '../../../../components/admin/ModerationPipelineHistoryPanel';
 import { ModerationPipelineTracePanel } from '../../../../components/admin/ModerationPipelineTracePanel';
 import ChunkEvidenceView from '../../../../components/admin/ChunkEvidenceView';

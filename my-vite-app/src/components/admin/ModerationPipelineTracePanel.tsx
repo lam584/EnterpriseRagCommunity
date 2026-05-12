@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { adminGetLatestPipelineByQueueId, type AdminModerationPipelineRunDetailDTO } from '../../services/moderationPipelineService';
+import { adminGetLatestPipelineByQueueId, type AdminModerationPipelineRunDetailDTO } from '../../services/moderation/review/moderationPipelineService';
 
 function formatMs(ms?: number | null): string {
   if (ms == null) return '—';

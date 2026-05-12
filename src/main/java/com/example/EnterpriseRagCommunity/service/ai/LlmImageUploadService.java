@@ -105,6 +105,7 @@ public class LlmImageUploadService {
     // ── DASHSCOPE_TEMP mode ─────────────────────────────
 
     private String resolveDashscope(String localPath, String mimeType, String modelName) {
+        String sourcePath = localPath == null ? null : localPath.trim();
         String model = modelName;
         if (model == null || model.isBlank()) {
             model = configService.getDashscopeModel();
@@ -112,16 +113,40 @@ public class LlmImageUploadService {
         if (model == null || model.isBlank()) return null;
         model = model.trim();
 
+        if (sourcePath == null || sourcePath.isBlank()) return null;
+
+        LocalDateTime now = LocalDateTime.now();
+        if (sourcePath.startsWith("oss://")) {
+            ImageUploadLogEntity prior = uploadLogRepository.findFirstByRemoteUrlOrderByUploadedAtDesc(sourcePath).orElse(null);
+            if (prior != null) {
+                String priorModel = prior.getModelName() == null ? null : prior.getModelName().trim();
+                String priorStatus = prior.getStatus() == null ? "" : prior.getStatus().trim();
+                if (model.equals(priorModel)
+                        && "ACTIVE".equalsIgnoreCase(priorStatus)
+                        && (prior.getExpiresAt() == null || prior.getExpiresAt().isAfter(now))) {
+                    return sourcePath;
+                }
+                String rebound = prior.getLocalPath() == null ? null : prior.getLocalPath().trim();
+                if (rebound != null && !rebound.isBlank()) {
+                    sourcePath = rebound;
+                } else {
+                    return null;
+                }
+            } else {
+                return null;
+            }
+        }
+
         // Check cache
         Optional<ImageUploadLogEntity> cached = uploadLogRepository
                 .findFirstByLocalPathAndModelNameAndStatusAndExpiresAtAfterOrderByUploadedAtDesc(
-                        localPath, model, "ACTIVE", LocalDateTime.now());
+                        sourcePath, model, "ACTIVE", now);
         if (cached.isPresent()) {
             return cached.get().getRemoteUrl();
         }
 
         // Read local file
-        byte[] fileBytes = readLocalFile(localPath);
+        byte[] fileBytes = readLocalFile(sourcePath);
         if (fileBytes == null || fileBytes.length == 0) return null;
 
         // Compress if needed
@@ -140,7 +165,7 @@ public class LlmImageUploadService {
             if (policy == null) return null;
 
             // Step 2: Upload file to OSS
-            String fileName = extractFileName(localPath);
+            String fileName = extractFileName(sourcePath);
             String key = policy.get("upload_dir") + "/" + fileName;
             uploadToDashscopeOss(policy, key, fileBytes, fileName);
 
@@ -148,12 +173,12 @@ public class LlmImageUploadService {
             long durationMs = System.currentTimeMillis() - startMs;
 
             // Log upload
-            logUpload(localPath, ossUrl, "DASHSCOPE_TEMP", model, fileBytes.length, (int) durationMs,
+            logUpload(sourcePath, ossUrl, "DASHSCOPE_TEMP", model, fileBytes.length, (int) durationMs,
                     LocalDateTime.now().plusHours(48));
 
             return ossUrl;
         } catch (Exception e) {
-            logger.error("Failed to upload image to DashScope temp storage: {} — {}", localPath, e.getMessage());
+            logger.error("Failed to upload image to DashScope temp storage: {} — {}", sourcePath, e.getMessage());
             return null;
         }
     }

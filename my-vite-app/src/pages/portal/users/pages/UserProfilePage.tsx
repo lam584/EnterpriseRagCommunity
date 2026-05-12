@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { getMyProfile, updateMyProfile } from '../../../../services/accountService';
-import { getPublicUserProfile } from '../../../../services/publicUserProfileService';
-import { listMyPostsPage, listPostsPage } from '../../../../services/postService';
-import { reportProfile } from '../../../../services/reportService';
+import { getMyProfile, updateMyProfile } from '../../../../services/users/accountService';
+import { getPublicUserProfile } from '../../../../services/users/publicUserProfileService';
+import { listMyPostsPage, listPostsPage } from '../../../../services/content/postService';
+import { reportProfile } from '../../../../services/content/reportService';
 import type { UserProfile } from '../../../../types/userProfile';
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import ProfileAvatarUploader from '../../account/components/ProfileAvatarUploader';

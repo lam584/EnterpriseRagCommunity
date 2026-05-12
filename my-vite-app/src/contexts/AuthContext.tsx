@@ -1,9 +1,9 @@
 //my-vite-app/src/contexts/AuthContext.tsx
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useState, useContext, useEffect, ReactNode, useRef } from 'react';
-import { AdminDTO, getCurrentAdmin } from '../services/authService';
-import { getMySecurity2faPolicy } from '../services/security2faPolicyAccountService';
-import { getTotpStatus } from '../services/totpAccountService';
+import { AdminDTO, getCurrentAdmin } from '../services/auth/authService';
+import { getMySecurity2faPolicy } from '../services/auth/security2faPolicyAccountService';
+import { getTotpStatus } from '../services/auth/totpAccountService';
 
 interface AuthContextType {
   currentUser: AdminDTO | null;

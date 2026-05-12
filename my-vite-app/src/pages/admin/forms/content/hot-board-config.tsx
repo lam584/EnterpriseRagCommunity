@@ -7,7 +7,7 @@ import {
   type HotScoreConfigDTO,
   type HotScoreRecomputeLogItem,
   type HotRecomputeWindow,
-} from '../../../../services/hotAdminService';
+} from '../../../../services/admin/content/hotAdminService';
 
 const inputClass = 'w-full border rounded px-3 py-2 text-sm';
 const cardClass = 'bg-white rounded-lg border p-4 space-y-4';

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent } from '@testing-library/react';
 
-vi.mock('../../services/authService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/authService')>();
+vi.mock('../../services/auth/authService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/auth/authService')>();
   return {
     ...actual,
     registerAndGetStatus: vi.fn(),
@@ -14,7 +14,7 @@ vi.mock('./AuthFooter', () => {
   return { default: () => null };
 });
 
-import { registerAndGetStatus } from '../../services/authService';
+import { registerAndGetStatus } from '../../services/auth/authService';
 import { renderRegisterRoutes, submitRegisterForm } from './Register.test-helpers';
 
 const mockRegisterAndGetStatus = vi.mocked(registerAndGetStatus);

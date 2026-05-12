@@ -13,7 +13,7 @@ import {
   type EmailInboxSettingsDTO,
   updateEmailInboxAdminSettings,
   updateEmailAdminSettings,
-} from '../../../../services/emailAdminService';
+} from '../../../../services/admin/platform/emailAdminService';
 
 const ENCRYPTIONS = ['NONE', 'SSL', 'STARTTLS'] as const;
 const DEFAULT_SEND_PROTOCOL = 'SMTP';

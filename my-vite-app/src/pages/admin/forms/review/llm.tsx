@@ -7,9 +7,9 @@ import {
   type LlmModerationConfig,
   type LlmModerationStages,
   type LlmModerationTestResponse,
-} from '../../../../services/moderationLlmService';
-import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
-import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
+} from '../../../../services/moderation/policy/moderationLlmService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
+import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/admin/ai/promptsAdminService';
 import { ModerationPipelineHistoryPanel } from '../../../../components/admin/ModerationPipelineHistoryPanel';
 import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
 import {

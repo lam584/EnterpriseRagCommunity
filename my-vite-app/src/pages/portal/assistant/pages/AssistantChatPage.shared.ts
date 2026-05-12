@@ -1,6 +1,6 @@
-import type { AiCitationSource } from '../../../../services/aiChatService';
-import type { AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
-import type { QaMessageDTO } from '../../../../services/qaHistoryService';
+import type { AiCitationSource } from '../../../../services/ai/chat/aiChatService';
+import type { AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
+import type { QaMessageDTO } from '../../../../services/ai/chat/qaHistoryService';
 
 export const MAX_VISION_IMAGES = 10;
 export const MAX_CHAT_FILES = 10;

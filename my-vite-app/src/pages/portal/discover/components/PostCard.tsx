@@ -1,7 +1,7 @@
 import { JSX, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import type { PostDTO } from '../../../../services/postService';
-import { togglePostFavorite, togglePostLike } from '../../../../services/postService';
+import type { PostDTO } from '../../../../services/content/postService';
+import { togglePostFavorite, togglePostLike } from '../../../../services/content/postService';
 import { formatPostTime, getPostCoverThumbUrl } from '../../../../utils/postMeta';
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import CollapsedMarkdownPreview from './CollapsedMarkdownPreview';

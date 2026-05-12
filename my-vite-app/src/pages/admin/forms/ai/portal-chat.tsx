@@ -16,10 +16,10 @@ import {
   BrainCircuit,
   Waves,
 } from 'lucide-react';
-import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
-import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
-import { adminGetPortalChatConfig, adminUpsertPortalChatConfig, type PortalChatConfigDTO } from '../../../../services/portalChatAdminService';
-import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/admin/ai/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
+import { adminGetPortalChatConfig, adminUpsertPortalChatConfig, type PortalChatConfigDTO } from '../../../../services/admin/ai/portalChatAdminService';
+import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/admin/ai/promptsAdminService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
 

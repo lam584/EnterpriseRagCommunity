@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { userAccessService } from '../../../../services/userAccessService';
+import { userAccessService } from '../../../../services/users/userAccessService';
 import { UserDTO, UserCreateDTO } from '../../../../types/userAccess';
 import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
@@ -7,10 +7,10 @@ import { Label } from '../../../../components/ui/label';
 import { Checkbox } from '../../../../components/ui/checkbox';
 import { Badge } from '../../../../components/ui/badge';
 import { FaEdit, FaTrash, FaUserTag, FaPlus, FaSearch, FaBan, FaUnlock } from 'react-icons/fa';
-import { listRoleSummaries, RoleSummaryDTO } from '../../../../services/rolePermissionsService';
-import { getRegistrationSettings } from '../../../../services/adminSettingsService';
+import { listRoleSummaries, RoleSummaryDTO } from '../../../../services/permissions/rolePermissionsService';
+import { getRegistrationSettings } from '../../../../services/admin/core/adminSettingsService';
 import { useAdminStepUp } from '../../../../components/admin/useAdminStepUp';
-import { isAdminStepUpRequired } from '../../../../services/apiError';
+import { isAdminStepUpRequired } from '../../../../services/shared/apiError';
 import { useAuth } from '../../../../contexts/AuthContext';
 
 export default function UserManagementPage() {

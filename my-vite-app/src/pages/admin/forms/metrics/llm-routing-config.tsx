@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { adminGetAiProvidersConfig, adminListProviderModels, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
-import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
-import { adminProbeModel, type AdminAiModelProbeKind, type AdminAiModelProbeResultDTO } from '../../../../services/aiModelProbeAdminService';
+import { adminGetAiProvidersConfig, adminListProviderModels, type AiProviderDTO } from '../../../../services/admin/ai/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
+import { adminProbeModel, type AdminAiModelProbeKind, type AdminAiModelProbeResultDTO } from '../../../../services/admin/ai/aiModelProbeAdminService';
 import { AvailableModelsCard, AvailableModelsModals } from './AvailableModelsCard';
 import { ScenarioPolicyPoolCard } from './ScenarioPolicyPoolCard';
 import {
@@ -10,9 +10,9 @@ import {
   type AdminLlmRoutingConfigDTO,
   type AdminLlmRoutingPolicyDTO,
   type AdminLlmRoutingTargetDTO,
-} from '../../../../services/llmRoutingAdminService';
-import { getBackendMessage } from '../../../../services/serviceErrorUtils';
-import { serviceApiUrl } from '../../../../services/serviceUrlUtils';
+} from '../../../../services/admin/ai/llmRoutingAdminService';
+import { getBackendMessage } from '../../../../services/shared/serviceErrorUtils';
+import { serviceApiUrl } from '../../../../services/shared/serviceUrlUtils';
 import { formatMmddHms, parseTimestampMs } from './metricsTimeUtils';
 
 const apiUrl = serviceApiUrl;

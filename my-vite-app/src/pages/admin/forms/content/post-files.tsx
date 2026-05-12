@@ -6,8 +6,8 @@ import {
   type ExtractedImageItemDTO,
   type PostFileExtractionAdminDetailDTO,
   type PostFileExtractionAdminListItemDTO,
-} from '../../../../services/postFilesAdminService';
-import {batchPostIndexSyncStatus, type IndexSyncStatus} from '../../../../services/retrievalIndexSyncAdminService';
+} from '../../../../services/admin/content/postFilesAdminService';
+import {batchPostIndexSyncStatus, type IndexSyncStatus} from '../../../../services/search/retrievalIndexSyncAdminService';
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import { estimateVisionImageTokens } from '../../../../utils/visionImageTokens';
 

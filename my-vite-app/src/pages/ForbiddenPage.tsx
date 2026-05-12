@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { logout } from '../services/auth/authService';
 
 type FromLocationState = {
   from?: {
@@ -16,11 +17,6 @@ export default function ForbiddenPage() {
 
   const handleSwitchAccount = async () => {
     try {
-      // Lazy import avoids circular deps if any and keeps this page lightweight.
-      const [{ logout }] = await Promise.all([
-        import('../services/authService'),
-      ]);
-
       await logout();
 
       // Clear local auth state so route guards treat user as logged out.

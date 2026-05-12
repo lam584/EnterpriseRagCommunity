@@ -7,12 +7,12 @@ import {
     PermissionsUpdateDTO,
     queryPermissions,
     updatePermission
-} from '../../../../services/permissionsService';
+} from '../../../../services/permissions/permissionsService';
 import {Button} from '../../../../components/ui/button';
 import {Input} from '../../../../components/ui/input';
 import {FaSearch} from "react-icons/fa";
 import { useAdminStepUp } from '../../../../components/admin/useAdminStepUp';
-import { isAdminStepUpRequired } from '../../../../services/apiError';
+import { isAdminStepUpRequired } from '../../../../services/shared/apiError';
 
 // Simple Modal Component
 const Modal = ({isOpen, onClose, title, children}: {

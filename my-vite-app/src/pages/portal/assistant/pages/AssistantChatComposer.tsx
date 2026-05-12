@@ -1,7 +1,7 @@
 import type {MouseEvent, RefObject} from 'react';
 import {Send, Square} from 'lucide-react';
 
-import type {UploadResult} from '../../../../services/uploadService';
+import type {UploadResult} from '../../../../services/content/uploadService';
 import { extractImageFilesFromClipboardData } from '../../../../utils/clipboardImageFiles';
 
 type AssistantChatComposerProps = {

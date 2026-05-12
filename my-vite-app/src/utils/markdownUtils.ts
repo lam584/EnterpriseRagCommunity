@@ -27,6 +27,32 @@ export function normalizeMarkdownForPreview(markdown: string): string {
   return normalized.join('\n');
 }
 
+export type MarkdownPreviewMode = 'plain' | 'rich' | 'code';
+
+const MARKDOWN_CODE_BLOCK_PATTERN = /(?:^|\n)\s*(```|~~~)|(?:^|\n)(?: {4}|\t)\S/u;
+const MARKDOWN_SYNTAX_PATTERN =
+  /(?:^|\n)\s*(?:#{1,6}\s+|[-*+]\s+|>\s+|\d+\.\s+|\|.+\|)|!\[[^\]]*\]\([^)]+\)|\[[^\]]+\]\([^)]+\)|`[^`\n]+`|(?:^|\n)\s*[-*_]{3,}\s*(?:\n|$)|<\/?[A-Za-z][^>]*>/u;
+
+export function getMarkdownPreviewMode(
+  markdown: string,
+  options?: { hasCustomComponents?: boolean },
+): MarkdownPreviewMode {
+  const trimmed = markdown.trim();
+  if (!trimmed) {
+    return 'plain';
+  }
+
+  if (MARKDOWN_CODE_BLOCK_PATTERN.test(trimmed)) {
+    return 'code';
+  }
+
+  if (options?.hasCustomComponents) {
+    return 'rich';
+  }
+
+  return MARKDOWN_SYNTAX_PATTERN.test(trimmed) ? 'rich' : 'plain';
+}
+
 export function escapeMarkdownLinkText(text: string): string {
   if (!text) return text;
   return text.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/]/g, '\\]');

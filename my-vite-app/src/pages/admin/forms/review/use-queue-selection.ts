@@ -1,6 +1,6 @@
 import {useCallback, useMemo, useState} from 'react';
 
-import type {ModerationQueueItem} from '../../../../services/moderationQueueService';
+import type {ModerationQueueItem} from '../../../../services/moderation/review/moderationQueueService';
 
 export function useQueueSelection(items: ModerationQueueItem[]) {
     const [selectedMap, setSelectedMap] = useState<Record<number, boolean>>({});

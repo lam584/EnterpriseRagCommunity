@@ -46,7 +46,7 @@
 
 ### 后端
 
-- Java 21 Toolchain
+- Java 25 Toolchain
 - Spring Boot 3.5.11
 .\gradlew.bat bootWar
 - MyBatis
@@ -88,7 +88,7 @@
 
 ### 1. 环境要求
 
-- JDK 21
+- JDK 25
 - MySQL 8+
 - Node.js 18+，建议 Node.js 20+
 - npm
@@ -164,13 +164,13 @@ Vite 已配置对以下路径的反向代理到后端 http://localhost:8099：
 ### 1. 服务器依赖
 
 - Ubuntu 24.04
-- JDK 21
+- JDK 25
 - MySQL 8+
 - Node.js 20+
 - Nginx
 - Docker（如需本地部署 Elasticsearch）
 
-说明：仓库当前 Gradle toolchain 默认使用 Java 21，生产环境建议与之保持一致。
+说明：仓库当前 Gradle toolchain 默认使用 Java 25，生产环境建议与之保持一致。
 
 ### 2. 拉取代码并安装依赖
 

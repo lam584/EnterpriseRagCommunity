@@ -84,6 +84,7 @@ class AccessLogKafkaProducerConfigTest {
         assertEquals("all", out.get(ProducerConfig.ACKS_CONFIG));
         assertEquals(true, out.get(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG));
         assertEquals(10, out.get(ProducerConfig.RETRIES_CONFIG));
+        assertEquals(false, out.get(AccessLogKafkaProducerConfig.ENABLE_METRICS_PUSH_CONFIG));
         assertEquals("SASL_SSL", out.get(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG));
         assertEquals("PLAIN", out.get(SaslConfigs.SASL_MECHANISM));
     }
@@ -105,6 +106,7 @@ class AccessLogKafkaProducerConfigTest {
 
         Map<String, Object> out = cf.getConfigurationProperties();
         assertEquals("latest", out.get(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG));
+        assertEquals(false, out.get(AccessLogKafkaProducerConfig.ENABLE_METRICS_PUSH_CONFIG));
         assertEquals("SASL_SSL", out.get(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG));
         assertEquals("PLAIN", out.get(SaslConfigs.SASL_MECHANISM));
     }

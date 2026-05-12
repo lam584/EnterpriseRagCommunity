@@ -7,8 +7,8 @@ const serviceMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../services/moderationChunkReviewLogsService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/moderationChunkReviewLogsService')>();
+vi.mock('../../services/moderation/review/moderationChunkReviewLogsService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/moderation/review/moderationChunkReviewLogsService')>();
   return {
     ...actual,
     adminGetModerationChunkLogContent: serviceMocks.adminGetModerationChunkLogContent,
@@ -31,7 +31,7 @@ vi.mock('../ui/ImageLightbox', () => {
 });
 
 import ChunkEvidenceView from './ChunkEvidenceView';
-import { adminGetModerationChunkLogContent } from '../../services/moderationChunkReviewLogsService';
+import { adminGetModerationChunkLogContent } from '../../services/moderation/review/moderationChunkReviewLogsService';
 
 afterEach(() => {
   cleanup();

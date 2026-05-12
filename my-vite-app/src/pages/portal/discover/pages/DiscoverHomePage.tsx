@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { SpringPage } from '../../../../types/page';
-import { listPostsPage, type PostDTO } from '../../../../services/postService';
+import { listPostsPage, type PostDTO } from '../../../../services/content/postService';
 import PostFeed from '../components/PostFeed';
 
 export default function DiscoverHomePage() {

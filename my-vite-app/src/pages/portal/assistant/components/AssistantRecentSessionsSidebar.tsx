@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { listQaSessions, type QaSessionDTO } from '../../../../services/qaHistoryService';
+import { listQaSessions, type QaSessionDTO } from '../../../../services/ai/chat/qaHistoryService';
 
 export default function AssistantRecentSessionsSidebar() {
   const navigate = useNavigate();

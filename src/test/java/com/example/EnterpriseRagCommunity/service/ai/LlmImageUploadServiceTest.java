@@ -174,6 +174,66 @@ class LlmImageUploadServiceTest {
     }
 
     @Test
+    void resolveImageUrl_dashscopeMode_shouldReuseExistingOssUrl_whenModelStillMatches() {
+        ImageStorageConfigService configService = mock(ImageStorageConfigService.class);
+        ImageUploadLogRepository repo = mock(ImageUploadLogRepository.class);
+        when(configService.getMode()).thenReturn(StorageMode.DASHSCOPE_TEMP);
+
+        ImageUploadLogEntity e = new ImageUploadLogEntity();
+        e.setLocalPath("/uploads/a.png");
+        e.setRemoteUrl("oss://cached/k.png");
+        e.setModelName("m1");
+        e.setStatus("ACTIVE");
+        e.setExpiresAt(LocalDateTime.now().plusHours(1));
+        when(repo.findFirstByRemoteUrlOrderByUploadedAtDesc("oss://cached/k.png")).thenReturn(Optional.of(e));
+
+        LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
+        assertEquals("oss://cached/k.png", svc.resolveImageUrl("oss://cached/k.png", "image/png", "m1"));
+        verify(repo, never()).save(any());
+    }
+
+    @Test
+    void resolveImageUrl_dashscopeMode_shouldReuploadExistingOssUrl_whenModelChanges(@TempDir Path dir) throws Exception {
+        HttpsStub.policyResponseCode = 200;
+        HttpsStub.policyBody = "{\"data\":{\"upload_host\":\"https://upload.test\",\"upload_dir\":\"dir\",\"oss_access_key_id\":\"id\",\"signature\":\"sig\",\"policy\":\"p\",\"x_oss_object_acl\":\"a\",\"x_oss_forbid_overwrite\":\"true\"}}";
+        HttpsStub.policyErrorBody = null;
+        HttpsStub.uploadResponseCode = 200;
+        HttpsStub.uploadErrorBody = null;
+
+        ImageStorageConfigService configService = mock(ImageStorageConfigService.class);
+        ImageUploadLogRepository repo = mock(ImageUploadLogRepository.class);
+        when(configService.getMode()).thenReturn(StorageMode.DASHSCOPE_TEMP);
+        when(configService.getDashscopeApiKey()).thenReturn("k");
+        when(configService.getCompressionConfig()).thenReturn(new CompressionConfig(false, 100, 100, 0.8, 10_000));
+
+        ImageUploadLogEntity prior = new ImageUploadLogEntity();
+        prior.setLocalPath("/uploads/a.png");
+        prior.setRemoteUrl("oss://cached/k.png");
+        prior.setModelName("m1");
+        prior.setStatus("ACTIVE");
+        prior.setExpiresAt(LocalDateTime.now().plusHours(1));
+        when(repo.findFirstByRemoteUrlOrderByUploadedAtDesc("oss://cached/k.png")).thenReturn(Optional.of(prior));
+        when(repo.findFirstByLocalPathAndModelNameAndStatusAndExpiresAtAfterOrderByUploadedAtDesc(
+                eq("/uploads/a.png"), eq("m2"), eq("ACTIVE"), any(LocalDateTime.class)
+        )).thenReturn(Optional.empty());
+
+        Path uploadRoot = dir.resolve("uploads");
+        Files.createDirectories(uploadRoot);
+        Files.write(uploadRoot.resolve("a.png"), encodePng(noiseImage(64, 64, BufferedImage.TYPE_INT_RGB, 7)));
+
+        LlmImageUploadService svc = new LlmImageUploadService(configService, repo);
+        setUploadRoot(svc, uploadRoot.toString());
+
+        String url = svc.resolveImageUrl("oss://cached/k.png", "image/png", "m2");
+        assertTrue(url.startsWith("oss://dir/"));
+
+        ArgumentCaptor<ImageUploadLogEntity> captor = ArgumentCaptor.forClass(ImageUploadLogEntity.class);
+        verify(repo).save(captor.capture());
+        assertEquals("/uploads/a.png", captor.getValue().getLocalPath());
+        assertEquals("m2", captor.getValue().getModelName());
+    }
+
+    @Test
     void resolveImageUrl_dashscopeMode_shouldReturnNull_whenFileMissing(@TempDir Path dir) throws Exception {
         ImageStorageConfigService configService = mock(ImageStorageConfigService.class);
         ImageUploadLogRepository repo = mock(ImageUploadLogRepository.class);

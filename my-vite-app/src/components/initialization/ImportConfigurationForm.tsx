@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { generateTotpKey, saveSetupConfig, testEsConnection, initIndices, completeSetup, checkEnvFile, checkIndicesStatus, encryptValue } from '../../services/setupService';
+import { generateTotpKey, saveSetupConfig, testEsConnection, initIndices, completeSetup, checkEnvFile, checkIndicesStatus, encryptValue } from '../../services/initialization/setupService';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Modal from '../common/Modal';

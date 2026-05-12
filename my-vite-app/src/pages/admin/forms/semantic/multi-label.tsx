@@ -6,15 +6,15 @@ import {
   type Page,
   type PostTagGenConfigDTO,
   type PostTagGenHistoryDTO,
-} from '../../../../services/tagGenAdminService';
+} from '../../../../services/admin/ai/tagGenAdminService';
 import {
   adminGetPostLangLabelGenConfig,
   adminUpsertPostLangLabelGenConfig,
   type PostLangLabelGenConfigDTO,
-} from '../../../../services/langLabelAdminService';
-import { suggestPostTags } from '../../../../services/aiTagService';
+} from '../../../../services/admin/ai/langLabelAdminService';
+import { suggestPostTags } from '../../../../services/ai/authoring/aiTagService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
-import { suggestPostLangLabels } from '../../../../services/aiLangLabelService';
+import { suggestPostLangLabels } from '../../../../services/ai/authoring/aiLangLabelService';
 import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
 import SemanticEditActionBar from './SemanticEditActionBar';
 import {

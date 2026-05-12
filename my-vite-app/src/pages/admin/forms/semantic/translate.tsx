@@ -7,8 +7,8 @@ import {
   type Page,
   type SemanticTranslateConfigDTO,
   type SemanticTranslateHistoryDTO,
-} from '../../../../services/translateAdminService';
-import { adminUpdatePromptContent } from '../../../../services/promptsAdminService';
+} from '../../../../services/admin/ai/translateAdminService';
+import { adminUpdatePromptContent } from '../../../../services/admin/ai/promptsAdminService';
 import {
   adminDeleteSupportedLanguage,
   adminUpdateSupportedLanguage,
@@ -16,9 +16,9 @@ import {
   listSupportedLanguages,
   normalizeSupportedLanguages,
   type SupportedLanguageDTO,
-} from '../../../../services/supportedLanguagesService';
-import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
-import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+} from '../../../../services/ai/public/supportedLanguagesService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/admin/ai/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';
 import SemanticEditActionBar from './SemanticEditActionBar';

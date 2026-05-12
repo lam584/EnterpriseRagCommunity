@@ -8,10 +8,10 @@ import {
   type Page,
   type PostSummaryGenConfigDTO,
   type PostSummaryGenHistoryDTO,
-} from '../../../../services/postSummaryAdminService';
-import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/promptsAdminService';
-import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/aiProvidersAdminService';
-import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
+} from '../../../../services/admin/ai/postSummaryAdminService';
+import { adminBatchGetPrompts, adminUpdatePromptContent, type PromptContentDTO } from '../../../../services/admin/ai/promptsAdminService';
+import { adminGetAiProvidersConfig, type AiProviderDTO } from '../../../../services/admin/ai/aiProvidersAdminService';
+import { getAiChatOptions, type AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
 import { ProviderModelSelect } from '../../../../components/admin/ProviderModelSelect';
 import { EditToggleButton } from '../../../../components/admin/EditToggleButton';
 import PromptContentCard, { type PromptContentDraft } from '../../../../components/admin/PromptContentCard';

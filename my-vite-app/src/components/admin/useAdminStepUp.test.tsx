@@ -3,21 +3,21 @@ import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { useState } from 'react';
 import { useAdminStepUp } from './useAdminStepUp';
 
-vi.mock('../../services/emailVerificationService', () => {
+vi.mock('../../services/auth/emailVerificationService', () => {
   return {
     sendAccountEmailVerificationCode: vi.fn(),
   };
 });
 
-vi.mock('../../services/adminStepUpService', () => {
+vi.mock('../../services/auth/adminStepUpService', () => {
   return {
     getAdminStepUpStatus: vi.fn(),
     verifyAdminStepUp: vi.fn(),
   };
 });
 
-import { sendAccountEmailVerificationCode } from '../../services/emailVerificationService';
-import { getAdminStepUpStatus, verifyAdminStepUp } from '../../services/adminStepUpService';
+import { sendAccountEmailVerificationCode } from '../../services/auth/emailVerificationService';
+import { getAdminStepUpStatus, verifyAdminStepUp } from '../../services/auth/adminStepUpService';
 
 function Host() {
   const { ensureAdminStepUp, adminStepUpModal } = useAdminStepUp();

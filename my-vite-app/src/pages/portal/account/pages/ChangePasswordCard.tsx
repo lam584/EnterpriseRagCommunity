@@ -3,9 +3,9 @@ import { toast } from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../../contexts/AuthContext";
 import OtpCodeInput from "../../../../components/common/OtpCodeInput";
-import { logout } from "../../../../services/authService";
-import { changePassword } from "../../../../services/accountService";
-import { sendAccountEmailVerificationCode } from "../../../../services/emailVerificationService";
+import { logout } from "../../../../services/auth/authService";
+import { changePassword } from "../../../../services/users/accountService";
+import { sendAccountEmailVerificationCode } from "../../../../services/auth/emailVerificationService";
 import { validateChangePasswordForm } from "./accountSecurity.validation";
 
 type VerifyMethod = "totp" | "email";

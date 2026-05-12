@@ -10,7 +10,7 @@ import {
   type AdminChatContextEventDetailDTO,
   type AdminChatContextEventLogDTO,
   type ChatContextGovernanceConfigDTO,
-} from '../../../../services/chatContextGovernanceService';
+} from '../../../../services/ai/chat/chatContextGovernanceService';
 
 const inputClass =
   'block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors duration-200';

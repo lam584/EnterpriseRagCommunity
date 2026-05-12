@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listBoards, type BoardDTO } from '../../../../services/boardService';
+import { listBoards, type BoardDTO } from '../../../../services/content/boardService';
 // NOTE: Portal pages shouldn't depend on admin AuthContext (it calls /api/auth/current-admin).
-import { deletePost, type PostDTO, type PostStatus, listMyPostsPage } from '../../../../services/postService';
-import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
-import { getStoredUserId, resolvePortalAuthState } from '../../../../services/portalAuthService';
+import { deletePost, type PostDTO, type PostStatus, listMyPostsPage } from '../../../../services/content/postService';
+import MarkdownPreview from '../../../../components/ui/DeferredMarkdownPreview';
+import { getStoredUserId, resolvePortalAuthState } from '../../../../services/auth/portalAuthService';
 import type { SpringPage } from '../../../../types/page';
 import PostFeed from '../../discover/components/PostFeed';
 

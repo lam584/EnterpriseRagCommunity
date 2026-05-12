@@ -1,4 +1,4 @@
-import type { AiChatStreamRequest } from '../../../../services/aiChatService';
+import type { AiChatStreamRequest } from '../../../../services/ai/chat/aiChatService';
 
 type UploadImage = { fileUrl: string; mimeType?: string; id?: number };
 type UploadFile = { fileUrl: string; mimeType?: string; id?: number; fileName?: string };

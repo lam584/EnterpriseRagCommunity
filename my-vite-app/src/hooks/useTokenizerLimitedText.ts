@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { tokenizeText } from '../services/opensearchTokenService';
+import { tokenizeText } from '../services/search/opensearchTokenService';
 
 type TokenizedTextState = {
   text: string;

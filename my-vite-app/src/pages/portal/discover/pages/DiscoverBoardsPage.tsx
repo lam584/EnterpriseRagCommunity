@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listBoards, type BoardDTO } from '../../../../services/boardService';
-import { listPostsPage, type PostDTO } from '../../../../services/postService';
+import { listBoards, type BoardDTO } from '../../../../services/content/boardService';
+import { listPostsPage, type PostDTO } from '../../../../services/content/postService';
 import type { SpringPage } from '../../../../types/page';
 import PostFeed from '../components/PostFeed';
 

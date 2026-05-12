@@ -22,8 +22,8 @@ const authContextMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../services/authService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/authService')>();
+vi.mock('../../services/auth/authService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/auth/authService')>();
   return {
     ...actual,
     getRegistrationStatus: authServiceMocks.getRegistrationStatus,
@@ -86,7 +86,7 @@ import {
   resendRegisterCode,
   verifyLogin2fa,
   verifyRegister,
-} from '../../services/authService';
+} from '../../services/auth/authService';
 
 const mockGetRegistrationStatus = vi.mocked(getRegistrationStatus);
 const mockLogin = vi.mocked(login);

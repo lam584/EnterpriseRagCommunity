@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, within, waitFor } from '@testing-library/react';
 import ImportConfigurationForm from './ImportConfigurationForm';
-import type { CheckEnvResponse } from '../../services/setupService';
+import type { CheckEnvResponse } from '../../services/initialization/setupService';
 
 const navigate = vi.fn();
 
@@ -43,7 +43,7 @@ vi.mock('react-hot-toast', () => {
   };
 });
 
-vi.mock('../../services/setupService', () => {
+vi.mock('../../services/initialization/setupService', () => {
   return {
     generateTotpKey: setupServiceMocks.generateTotpKey,
     saveSetupConfig: setupServiceMocks.saveSetupConfig,

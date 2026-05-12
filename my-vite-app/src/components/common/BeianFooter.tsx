@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import beianIcon from '../../assets/images/beian-badge.png';
-import { getPublicSiteConfig, type PublicSiteConfig } from '../../services/publicSiteConfigService';
+import { getPublicSiteConfig, type PublicSiteConfig } from '../../services/siteConfig/publicSiteConfigService';
 import { applySiteConfigIfActive, fallbackSiteConfigIfActive } from './beianFooterShared';
 
 export interface BeianFooterProps {

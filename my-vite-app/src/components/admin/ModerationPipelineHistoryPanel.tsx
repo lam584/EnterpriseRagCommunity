@@ -8,7 +8,7 @@ import {
   type AdminModerationPipelineRunHistoryPageDTO,
   type AdminModerationPipelineHistoryQuery,
   type PipelineStepStage,
-} from '../../services/moderationPipelineService';
+} from '../../services/moderation/review/moderationPipelineService';
 
 function formatDateTime(s?: string | null): string {
   if (!s) return '—';

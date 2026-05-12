@@ -24,7 +24,8 @@ const coverageSummaryPath = resolveCoverageSummaryPath(process.argv[2]);
 const toPosixPath = (p) => p.replaceAll('\\', '/');
 
 const normalizeKey = (p) => {
-  const normalized = toPosixPath(path.normalize(p));
+  const projectRelative = path.isAbsolute(p) ? path.relative(process.cwd(), p) : p;
+  const normalized = toPosixPath(path.normalize(projectRelative));
   return normalized.startsWith('./') ? normalized.slice(2) : normalized;
 };
 

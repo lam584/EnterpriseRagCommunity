@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getMyProfile } from '../services/accountService';
+import { getMyProfile } from '../services/users/accountService';
 
 export function useProfileAvatarUrl(isAuthenticated: boolean): string | undefined {
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | undefined>(undefined);

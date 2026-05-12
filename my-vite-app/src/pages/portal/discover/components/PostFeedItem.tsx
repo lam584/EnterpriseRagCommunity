@@ -1,4 +1,4 @@
-import type { PostDTO } from '../../../../services/postService';
+import type { PostDTO } from '../../../../services/content/postService';
 import { formatPostTime, getPostCoverThumbUrl, getPostExcerpt } from '../../../../utils/postMeta';
 import { resolveAssetUrl } from '../../../../utils/urlUtils';
 import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';

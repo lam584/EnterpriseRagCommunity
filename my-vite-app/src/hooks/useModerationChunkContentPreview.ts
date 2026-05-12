@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { adminGetModerationChunkLogContent, type ModerationChunkContentPreview } from '../services/moderationChunkReviewLogsService';
+import { adminGetModerationChunkLogContent, type ModerationChunkContentPreview } from '../services/moderation/review/moderationChunkReviewLogsService';
 
 const cache = new Map<number, ModerationChunkContentPreview>();
 const inflight = new Map<number, Promise<ModerationChunkContentPreview>>();

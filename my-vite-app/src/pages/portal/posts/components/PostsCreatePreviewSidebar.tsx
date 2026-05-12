@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
+import MarkdownPreview from '../../../../components/ui/DeferredMarkdownPreview';
 import {readJsonFromStorage} from '../../../../utils/storage';
 
 /**

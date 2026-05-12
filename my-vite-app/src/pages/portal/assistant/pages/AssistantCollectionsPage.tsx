@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listFavoriteQaMessages, type QaMessageDTO } from '../../../../services/qaHistoryService';
+import { listFavoriteQaMessages, type QaMessageDTO } from '../../../../services/ai/chat/qaHistoryService';
 import { Heart, MessageSquare, Clock, ArrowRight } from 'lucide-react';
 
 export default function AssistantCollectionsPage() {

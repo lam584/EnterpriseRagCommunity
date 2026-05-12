@@ -14,6 +14,7 @@ import java.util.Base64;
 public class AesGcmUtils {
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128;
+    private static final int GCM_TAG_LENGTH_BYTES = GCM_TAG_LENGTH / 8;
 
     private SecretKey getSecretKey(String masterKey) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -42,8 +43,11 @@ public class AesGcmUtils {
 
     public String decrypt(String encryptedText, String masterKey) throws Exception {
         if (encryptedText == null) return null;
+        if (encryptedText.isBlank()) return encryptedText;
 
-        byte[] decoded = Base64.getDecoder().decode(encryptedText);
+        byte[] decoded = decodeCipherPayload(encryptedText);
+        if (decoded == null) return encryptedText;
+
         byte[] iv = new byte[GCM_IV_LENGTH];
         System.arraycopy(decoded, 0, iv, 0, iv.length);
 
@@ -56,5 +60,17 @@ public class AesGcmUtils {
         System.arraycopy(decoded, iv.length, cipherText, 0, cipherText.length);
 
         return new String(cipher.doFinal(cipherText), StandardCharsets.UTF_8);
+    }
+
+    private byte[] decodeCipherPayload(String encryptedText) {
+        try {
+            byte[] decoded = Base64.getDecoder().decode(encryptedText);
+            if (decoded.length < GCM_IV_LENGTH + GCM_TAG_LENGTH_BYTES) {
+                return null;
+            }
+            return decoded;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getMyProfile, updateMyProfile } from '../../../../services/accountService';
-import { listMyPostsPage } from '../../../../services/postService';
+import { getMyProfile, updateMyProfile } from '../../../../services/users/accountService';
+import { listMyPostsPage } from '../../../../services/content/postService';
 import ProfileAvatarUploader from '../components/ProfileAvatarUploader';
 import PostFeed from '../../discover/components/PostFeed';
 import { formatProfileModerationStatus } from '../../profileModerationText';

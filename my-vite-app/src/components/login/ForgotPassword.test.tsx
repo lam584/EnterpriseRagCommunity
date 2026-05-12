@@ -18,16 +18,16 @@ const passwordResetServiceMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../services/authService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/authService')>();
+vi.mock('../../services/auth/authService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/auth/authService')>();
   return {
     ...actual,
     getRegistrationStatus: authServiceMocks.getRegistrationStatus,
   };
 });
 
-vi.mock('../../services/passwordResetService', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../services/passwordResetService')>();
+vi.mock('../../services/auth/passwordResetService', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../services/auth/passwordResetService')>();
   return {
     ...actual,
     getPasswordResetStatus: passwordResetServiceMocks.getPasswordResetStatus,
@@ -42,13 +42,13 @@ vi.mock('./AuthFooter', () => {
 });
 
 import ForgotPassword from './ForgotPassword';
-import { getRegistrationStatus } from '../../services/authService';
+import { getRegistrationStatus } from '../../services/auth/authService';
 import {
   getPasswordResetStatus,
   resetPasswordByEmailCode,
   resetPasswordByTotp,
   sendPasswordResetEmailCode,
-} from '../../services/passwordResetService';
+} from '../../services/auth/passwordResetService';
 
 const mockGetRegistrationStatus = vi.mocked(getRegistrationStatus);
 const mockGetPasswordResetStatus = vi.mocked(getPasswordResetStatus);

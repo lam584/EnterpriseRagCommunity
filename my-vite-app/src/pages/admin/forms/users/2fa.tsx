@@ -5,13 +5,13 @@ import { Checkbox } from '../../../../components/ui/checkbox';
 import { Label } from '../../../../components/ui/label';
 import EmailConfigForm from './email-config';
 import type { UserQueryDTO } from '../../../../types/userAccess';
-import { getEmailAdminSettings } from '../../../../services/emailAdminService';
-import { listRoleSummaries, type RoleSummaryDTO } from '../../../../services/rolePermissionsService';
+import { getEmailAdminSettings } from '../../../../services/admin/platform/emailAdminService';
+import { listRoleSummaries, type RoleSummaryDTO } from '../../../../services/permissions/rolePermissionsService';
 import {
   getSecurity2faPolicySettings,
   type Security2faPolicySettingsDTO,
   updateSecurity2faPolicySettings,
-} from '../../../../services/security2faPolicyAdminService';
+} from '../../../../services/auth/security2faPolicyAdminService';
 import {
   type AdminUserTotpStatusDTO,
   getTotpAdminSettings,
@@ -19,7 +19,7 @@ import {
   resetAdminUserTotp,
   type TotpAdminSettingsDTO,
   updateTotpAdminSettings,
-} from '../../../../services/totpAdminService';
+} from '../../../../services/auth/totpAdminService';
 
 const ALG_OPTIONS = ['SHA1', 'SHA256', 'SHA512'] as const;
 const DIGIT_OPTIONS = [6, 8] as const;

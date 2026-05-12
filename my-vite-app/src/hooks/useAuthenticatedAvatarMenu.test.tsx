@@ -7,11 +7,11 @@ const serviceMocks = vi.hoisted(() => ({
   logout: vi.fn(),
 }));
 
-vi.mock('../services/accountService', () => ({
+vi.mock('../services/users/accountService', () => ({
   getMyProfile: serviceMocks.getMyProfile,
 }));
 
-vi.mock('../services/authService', () => ({
+vi.mock('../services/auth/authService', () => ({
   logout: serviceMocks.logout,
 }));
 

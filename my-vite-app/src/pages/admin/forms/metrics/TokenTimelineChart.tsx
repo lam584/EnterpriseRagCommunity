@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import * as echarts from 'echarts';
-import type { TokenTimelinePointDTO } from '../../../../services/tokenMetricsAdminService';
+import { init, type AppEChartsOption, type AppEChartsType } from './echartsCore';
+import type { TokenTimelinePointDTO } from '../../../../services/admin/ai/tokenMetricsAdminService';
+
+const TOKEN_TIMELINE_SERIES_META = [
+  { label: 'Total Token', color: '#2563EB', dash: 'solid' },
+  { label: 'Input Token', color: '#60A5FA', dash: 'dashed' },
+  { label: 'Output Token', color: '#16A34A', dash: 'dotted' },
+] as const;
 
 function fmtInt(v: unknown): string {
   const n = typeof v === 'number' ? v : Number(v);
@@ -21,7 +27,7 @@ export const TokenTimelineChart: React.FC<{
   points: TokenTimelinePointDTO[];
 }> = ({ title, bucket, points }) => {
   const elRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<echarts.EChartsType | null>(null);
+  const chartRef = useRef<AppEChartsType | null>(null);
 
   const normalized = useMemo(() => {
     const b = String(bucket || 'AUTO').toUpperCase();
@@ -32,43 +38,28 @@ export const TokenTimelineChart: React.FC<{
     return { bucket: b, xs, inYs, outYs, totalYs };
   }, [bucket, points]);
 
+  const latestSnapshot = useMemo(() => {
+    if (!normalized.xs.length) {
+      return null;
+    }
+
+    const lastIndex = normalized.xs.length - 1;
+    return {
+      label: normalized.xs[lastIndex],
+      total: normalized.totalYs[lastIndex] ?? 0,
+      input: normalized.inYs[lastIndex] ?? 0,
+      output: normalized.outYs[lastIndex] ?? 0,
+    };
+  }, [normalized]);
+
   useEffect(() => {
     if (!elRef.current) return;
     if (!chartRef.current) {
-      chartRef.current = echarts.init(elRef.current);
+      chartRef.current = init(elRef.current);
     }
 
-    const opt: echarts.EChartsOption = {
-      title: { text: title, left: 'center', textStyle: { fontSize: 12, fontWeight: 600 } },
-      grid: { left: 44, right: 18, top: 44, bottom: 32 },
-      tooltip: {
-        trigger: 'axis',
-        valueFormatter: (v: any) => fmtInt(v),
-        formatter: (params: any) => {
-          const list = Array.isArray(params) ? params : [];
-          const axisLabel = list[0]?.axisValueLabel ?? list[0]?.axisValue ?? '';
-          const byName = new Map<string, any>();
-          for (const p of list) {
-            if (p?.seriesName) byName.set(String(p.seriesName), p);
-          }
-          const total = byName.get('Total Token')?.data ?? 0;
-          const inV = byName.get('Input Token')?.data ?? 0;
-          const outV = byName.get('Output Token')?.data ?? 0;
-          return [
-            `<div style="font-size:12px;color:#374151">${axisLabel}</div>`,
-            `<div style="margin-top:4px;font-size:12px;color:#111827">Total: <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">${fmtInt(total)}</span></div>`,
-            `<div style="font-size:12px;color:#111827">Input: <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">${fmtInt(inV)}</span></div>`,
-            `<div style="font-size:12px;color:#111827">Output: <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">${fmtInt(outV)}</span></div>`,
-          ].join('');
-        },
-      },
-      legend: {
-        top: 28,
-        left: 'center',
-        itemWidth: 10,
-        itemHeight: 6,
-        textStyle: { fontSize: 10, color: '#6B7280' },
-      },
+    const opt: AppEChartsOption = {
+      grid: { left: 44, right: 18, top: 12, bottom: 32 },
       xAxis: {
         type: 'category',
         data: normalized.xs,
@@ -117,7 +108,7 @@ export const TokenTimelineChart: React.FC<{
     return () => {
       window.removeEventListener('resize', onResize);
     };
-  }, [title, normalized]);
+  }, [normalized]);
 
   useEffect(() => {
     return () => {
@@ -135,5 +126,35 @@ export const TokenTimelineChart: React.FC<{
     );
   }
 
-  return <div className="rounded border p-3" ref={elRef} style={{ height: 220 }} />;
+  return (
+    <div className="rounded border p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium">{title}</div>
+          <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-600">
+            {TOKEN_TIMELINE_SERIES_META.map((item) => (
+              <div key={item.label} className="inline-flex items-center gap-1.5">
+                <span
+                  className="inline-block h-0.5 w-4 rounded-full"
+                  style={{ backgroundColor: item.color, borderTop: item.dash === 'solid' ? undefined : `2px ${item.dash} ${item.color}` }}
+                />
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        {latestSnapshot ? (
+          <div className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            <div className="font-medium text-gray-700">最新桶 {latestSnapshot.label}</div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              <span>Total {fmtInt(latestSnapshot.total)}</span>
+              <span>Input {fmtInt(latestSnapshot.input)}</span>
+              <span>Output {fmtInt(latestSnapshot.output)}</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+      <div ref={elRef} style={{ height: 188 }} />
+    </div>
+  );
 };

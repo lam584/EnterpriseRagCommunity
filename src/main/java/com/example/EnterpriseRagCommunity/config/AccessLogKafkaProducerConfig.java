@@ -25,6 +25,8 @@ import java.util.Map;
 @Configuration
 public class AccessLogKafkaProducerConfig {
 
+    static final String ENABLE_METRICS_PUSH_CONFIG = "enable.metrics.push";
+
     @Bean(name = "accessLogsProducerFactory")
     @ConditionalOnProperty(prefix = "app.logging.access.kafka.producer", name = "enabled", havingValue = "true", matchIfMissing = true)
     public ProducerFactory<String, String> accessLogsProducerFactory(
@@ -55,6 +57,7 @@ public class AccessLogKafkaProducerConfig {
         props.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, Math.max(1000, requestTimeoutMs));
         props.put(ProducerConfig.LINGER_MS_CONFIG, Math.max(0, lingerMs));
         props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, compressionType == null || compressionType.isBlank() ? "lz4" : compressionType.trim());
+        props.put(ENABLE_METRICS_PUSH_CONFIG, false);
         applyKafkaAuth(props, kafkaAuthEnabled, kafkaSecurityProtocol, kafkaSaslMechanism, kafkaApiKey, kafkaApiSecret);
 
         return new DefaultKafkaProducerFactory<>(props);
@@ -80,6 +83,7 @@ public class AccessLogKafkaProducerConfig {
         props.putIfAbsent(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.putIfAbsent(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.putIfAbsent(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
+        props.put(ENABLE_METRICS_PUSH_CONFIG, false);
         applyKafkaAuth(props, kafkaAuthEnabled, kafkaSecurityProtocol, kafkaSaslMechanism, kafkaApiKey, kafkaApiSecret);
         return new DefaultKafkaConsumerFactory<>(props);
     }

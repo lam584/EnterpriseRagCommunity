@@ -1,10 +1,10 @@
 import type {Dispatch, SetStateAction} from 'react';
 
-import type {BoardDTO} from '../../../../services/boardService';
-import type {PostDraftDTO} from '../../../../services/draftService';
-import type {PostTagGenPublicConfigDTO} from '../../../../services/tagGenPublicService';
-import type {TagDTO} from '../../../../services/tagService';
-import type {PostTitleGenPublicConfigDTO} from '../../../../services/titleGenPublicService';
+import type {BoardDTO} from '../../../../services/content/boardService';
+import type {PostDraftDTO} from '../../../../services/content/draftService';
+import type {PostTagGenPublicConfigDTO} from '../../../../services/ai/public/tagGenPublicService';
+import type {TagDTO} from '../../../../services/content/tagService';
+import type {PostTitleGenPublicConfigDTO} from '../../../../services/ai/public/titleGenPublicService';
 
 export type PostsBasicSectionProps = {
     composeLocked: boolean;

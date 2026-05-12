@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { SpringPage } from '../../../../types/page';
-import { fetchHotPosts, type HotPostDTO, type HotWindow } from '../../../../services/hotService';
-import type { PostDTO } from '../../../../services/postService';
+import { fetchHotPosts, type HotPostDTO, type HotWindow } from '../../../../services/content/hotService';
+import type { PostDTO } from '../../../../services/content/postService';
 import PostFeed from '../components/PostFeed';
 
 const tabs: HotWindow[] = ['24h', '7d', '30d', '3m', '6m', '1y', 'all'];

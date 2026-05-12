@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { LlmQueueSampleDTO, LlmQueueTaskType } from '../../../../services/llmQueueAdminService';
+import type { LlmQueueSampleDTO, LlmQueueTaskType } from '../../../../services/admin/ai/llmQueueAdminService';
 import { formatDurationMs, formatHmsTime } from './metricsTimeUtils';
 
 export function fmtMs(v: unknown): string {

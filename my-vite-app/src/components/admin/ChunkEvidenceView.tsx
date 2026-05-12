@@ -3,7 +3,7 @@ import ImageLightbox from '../ui/ImageLightbox';
 import {
   adminGetModerationChunkLogContent,
   type ModerationChunkContentPreview
-} from '../../services/moderationChunkReviewLogsService';
+} from '../../services/moderation/review/moderationChunkReviewLogsService';
 import {expandEvidenceContext} from '../../utils/evidence-context-display';
 import { toInt } from '../../utils/numberParsers';
 

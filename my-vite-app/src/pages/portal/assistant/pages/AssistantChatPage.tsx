@@ -10,13 +10,13 @@ import {
 } from '../../../../utils/citationHighlight';
 import {RefreshCw, Pencil, Trash2, Bot, Send, Copy, Check, Languages, X, ChevronDown, Heart} from 'lucide-react';
 
-import { chatOnce, chatStream, regenerateOnce, type AiCitationSource, type AiStreamEvent } from '../../../../services/aiChatService';
-import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO } from '../../../../services/aiChatOptionsService';
-import { getMyAssistantPreferences, updateMyAssistantPreferences } from '../../../../services/assistantPreferencesService';
-import { uploadFile, type UploadResult } from '../../../../services/uploadService';
+import { chatOnce, chatStream, regenerateOnce, type AiCitationSource, type AiStreamEvent } from '../../../../services/ai/chat/aiChatService';
+import { getAiChatOptions, type AiChatOptionsDTO, type AiChatProviderOptionDTO } from '../../../../services/ai/chat/aiChatOptionsService';
+import { getMyAssistantPreferences, updateMyAssistantPreferences } from '../../../../services/users/assistantPreferencesService';
+import { uploadFile, type UploadResult } from '../../../../services/content/uploadService';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '../../../../components/ui/avatar';
-import MarkdownPreview from '../../../../components/ui/MarkdownPreview';
+import MarkdownPreview from '../../../../components/ui/DeferredMarkdownPreview';
 import { getAvatarFallbackText, getDisplayUsername } from '../../../../utils/userDisplay';
 import { useProfileAvatarUrl } from '../../../../hooks/useProfileAvatarUrl';
 import {
@@ -26,7 +26,7 @@ import {
   listQaSessions,
   updateQaMessage,
   toggleQaMessageFavorite
-} from '../../../../services/qaHistoryService';
+} from '../../../../services/ai/chat/qaHistoryService';
 import {
     MAX_CHAT_FILES,
     MAX_VISION_IMAGES,
