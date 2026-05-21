@@ -253,7 +253,7 @@ public class AiPostComposeAssistantService {
         LlmGateway.RoutedChatTarget target = llmGateway.resolveRoutedChatTarget(LlmQueueTaskType.MULTIMODAL_CHAT, pid, null);
         return new ResolvedMultimodalTarget(
                 firstNonBlank(target == null ? null : target.providerId(), pid),
-                firstNonBlank(target == null ? null : target.modelName(), mn)
+                firstNonBlank(target == null ? null : target.modelName(), null)
         );
     }
 

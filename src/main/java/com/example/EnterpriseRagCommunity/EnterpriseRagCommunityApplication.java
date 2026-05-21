@@ -19,7 +19,7 @@ public class EnterpriseRagCommunityApplication extends SpringBootServletInitiali
 
     private final AtomicInteger visitCounter = new AtomicInteger(0);
 
-    public static void main(String[] args) {
+    static void main(String[] args) {
         SpringApplication.run(EnterpriseRagCommunityApplication.class, args);
     }
 
